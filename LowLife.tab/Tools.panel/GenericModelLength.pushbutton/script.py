@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-__title__ = "Длина\nобобщ. моделей"
+__title__ = "Длина линий"
 __doc__ = "Считает суммарную длину выбранных обобщённых моделей"
-__author__ = "Попов"
+__author__ = "Pipers"
 __persistentengine__ = True
 
 from pyrevit import revit, DB, forms
