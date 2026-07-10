@@ -1,25 +1,24 @@
 # -*- coding: utf-8 -*-
-__title__ = "Длина\nобобщ. моделей"
+__title__ = "Длина линий"
 __doc__ = "Считает суммарную длину выбранных обобщённых моделей"
-__author__ = "Попов"
+__author__ = "Pipers"
 __persistentengine__ = True
 
-from pyrevit import revit, DB, forms
+from pyrevit import revit, DB
+from Autodesk.Revit.UI import TaskDialog
 
 doc = revit.doc
 selection = revit.get_selection()
 
 if not selection:
-    forms.toast("Сначала выберите обобщённые модели на виде!", 
-                title="Нет выбора")
+    TaskDialog.Show("Нет выбора", "Сначала выберите обобщённые модели на виде!")
 else:
     generic_cat_id = DB.ElementId(DB.BuiltInCategory.OST_GenericModel)
     generic_models = [el for el in selection 
                        if el.Category and el.Category.Id == generic_cat_id]
 
     if not generic_models:
-        forms.toast("Среди выбранных элементов нет обобщённых моделей!", 
-                    title="Ошибка")
+        TaskDialog.Show("Ошибка", "Среди выбранных элементов нет обобщённых моделей!")
     else:
         total_length_ft = 0.0
         count_with_length = 0
@@ -40,7 +39,8 @@ else:
 
         total_length_m = total_length_ft * 0.3048
 
-        message = "Элементов: {} | С длиной: {} | Длина: {:.2f} м".format(
-            len(generic_models), count_with_length, total_length_m)
+        message = "Выбрано элементов: {}\n".format(len(generic_models))
+        message += "С определённой длиной: {}\n".format(count_with_length)
+        message += "Общая длина: {:.2f} м".format(total_length_m)
 
-        forms.toast(message, title="Результат")
+        TaskDialog.Show("Длина обобщённых моделей", message)
