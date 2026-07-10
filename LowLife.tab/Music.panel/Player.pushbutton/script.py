@@ -1,12 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from pyrevit import forms
-from pyrevit import revit
-
 import ctypes
-
-from System.Windows.Interop import WindowInteropHelper
-from Autodesk.Revit.UI import UIApplication
 
 
 VK_MEDIA_PLAY_PAUSE = 0xB3
@@ -15,7 +10,6 @@ VK_MEDIA_PREV = 0xB1
 
 VK_VOLUME_DOWN = 0xAE
 VK_VOLUME_UP = 0xAF
-
 
 
 def press_key(key):
@@ -35,7 +29,6 @@ def press_key(key):
     )
 
 
-
 class Player(forms.WPFWindow):
 
     def __init__(self):
@@ -46,52 +39,25 @@ class Player(forms.WPFWindow):
         )
 
 
-        # Получаем главное окно Revit
-        uiapp = UIApplication(
-            revit.HOST_APP.app
-        )
-
-        revit_handle = uiapp.MainWindowHandle
-
-
-        # Привязываем окно к Revit
-        helper = WindowInteropHelper(self)
-
-        helper.Owner = revit_handle
-
-
-
     def PlayButton_Click(self, sender, args):
-
         press_key(VK_MEDIA_PLAY_PAUSE)
 
 
-
     def NextButton_Click(self, sender, args):
-
         press_key(VK_MEDIA_NEXT)
 
 
-
     def PrevButton_Click(self, sender, args):
-
         press_key(VK_MEDIA_PREV)
 
 
-
     def VolUpButton_Click(self, sender, args):
-
         press_key(VK_VOLUME_UP)
 
 
-
     def VolDownButton_Click(self, sender, args):
-
         press_key(VK_VOLUME_DOWN)
 
 
 
-# сохраняем ссылку
-player_window = Player()
-
-player_window.Show()
+Player().ShowDialog()
