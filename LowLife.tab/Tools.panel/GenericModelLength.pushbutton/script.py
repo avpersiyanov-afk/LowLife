@@ -4,12 +4,13 @@ __title__ = "Длина линий"
 __doc__ = "Сумма длин выбранных обобщённых моделей по типам"
 __author__ = "Pipers"
 
-from pyrevit import revit, DB, forms
+from pyrevit import revit, DB
 
 from System.Windows import Window, WindowStyle, WindowStartupLocation, SizeToContent, Thickness
 from System.Windows.Controls import StackPanel, TextBlock, Border
 from System.Windows.Media import Brushes
 from System.Windows import CornerRadius
+from System.Windows import FontWeights
 
 
 doc = revit.doc
@@ -18,41 +19,49 @@ selection = revit.get_selection()
 generic_cat_id = DB.ElementId(DB.BuiltInCategory.OST_GenericModel)
 
 
-def show_click_window(text):
+def show_result_window(text):
     """
-    Маленькое окно без крестика.
+    Простое окно без крестика.
     Закрывается кликом мыши по окну.
     """
+
+    if not text:
+        text = "Нет данных для вывода."
+
     win = Window()
     win.Title = "Результат"
     win.WindowStyle = WindowStyle.None
     win.SizeToContent = SizeToContent.WidthAndHeight
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     win.Topmost = True
-    win.ResizeMode = 0
+    win.MinWidth = 280
+    win.MaxWidth = 600
+    win.Background = Brushes.White
 
     border = Border()
     border.Background = Brushes.White
     border.BorderBrush = Brushes.Gray
     border.BorderThickness = Thickness(1)
-    border.CornerRadius = CornerRadius(6)
-    border.Padding = Thickness(18)
+    border.CornerRadius = CornerRadius(8)
+    border.Padding = Thickness(20)
 
     panel = StackPanel()
 
     title = TextBlock()
     title.Text = "Длина по типам"
     title.FontSize = 16
-    title.FontWeight = 700
-    title.Margin = Thickness(0, 0, 0, 10)
+    title.FontWeight = FontWeights.Bold
+    title.Foreground = Brushes.Black
+    title.Margin = Thickness(0, 0, 0, 12)
 
     body = TextBlock()
     body.Text = text
     body.FontSize = 14
-    body.TextWrapping = 1
+    body.Foreground = Brushes.Black
+    body.Margin = Thickness(0, 0, 0, 10)
 
     hint = TextBlock()
-    hint.Text = "\nНажмите мышью, чтобы закрыть"
+    hint.Text = "Кликните мышью, чтобы закрыть"
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
 
@@ -66,7 +75,7 @@ def show_click_window(text):
     def close_window(sender, args):
         win.Close()
 
-    win.MouseDown += close_window
+    win.MouseLeftButtonDown += close_window
 
     win.ShowDialog()
 
@@ -90,26 +99,32 @@ def get_type_name(el):
     return "Без типа"
 
 
-def get_length(el):
+def get_length_ft(el):
+    """
+    Возвращает длину в футах.
+    """
+
     loc = el.Location
 
     if isinstance(loc, DB.LocationCurve):
         return loc.Curve.Length
 
-    p = el.LookupParameter("Длина") or el.LookupParameter("Length") or el.LookupParameter("L")
+    # Параметры экземпляра
+    for param_name in ["Длина", "Length", "L", "длина"]:
+        p = el.LookupParameter(param_name)
+        if p and p.HasValue and p.StorageType == DB.StorageType.Double:
+            return p.AsDouble()
 
-    if p and p.HasValue and p.StorageType == DB.StorageType.Double:
-        return p.AsDouble()
-
+    # Параметры типа
     type_id = el.GetTypeId()
     if type_id and type_id != DB.ElementId.InvalidElementId:
         type_el = doc.GetElement(type_id)
 
         if type_el:
-            p = type_el.LookupParameter("Длина") or type_el.LookupParameter("Length") or type_el.LookupParameter("L")
-
-            if p and p.HasValue and p.StorageType == DB.StorageType.Double:
-                return p.AsDouble()
+            for param_name in ["Длина", "Length", "L", "длина"]:
+                p = type_el.LookupParameter(param_name)
+                if p and p.HasValue and p.StorageType == DB.StorageType.Double:
+                    return p.AsDouble()
 
     return 0.0
 
@@ -121,7 +136,7 @@ except:
 
 
 if not selected:
-    show_click_window("Сначала выберите обобщённые модели.")
+    show_result_window("Сначала выберите обобщённые модели.")
 else:
     totals = {}
 
@@ -133,7 +148,7 @@ else:
             continue
 
         type_name = get_type_name(el)
-        length_ft = get_length(el)
+        length_ft = get_length_ft(el)
 
         if type_name not in totals:
             totals[type_name] = 0.0
@@ -141,17 +156,21 @@ else:
         totals[type_name] += length_ft
 
     if not totals:
-        show_click_window("Среди выбранных элементов нет обобщённых моделей.")
+        show_result_window("Среди выбранных элементов нет обобщённых моделей.")
     else:
-        total_ft = sum(totals.values())
-
+        total_ft = 0.0
         lines = []
 
         for type_name in sorted(totals.keys()):
-            length_m = totals[type_name] * 0.3048
+            length_ft = totals[type_name]
+            total_ft += length_ft
+
+            length_m = length_ft * 0.3048
             lines.append("{} - {:.2f} м".format(type_name, length_m))
 
         lines.append("")
         lines.append("Общая длина - {:.2f} м".format(total_ft * 0.3048))
 
-        show_click_window("\n".join(lines))
+        result_text = "\n".join(lines)
+
+        show_result_window(result_text)
