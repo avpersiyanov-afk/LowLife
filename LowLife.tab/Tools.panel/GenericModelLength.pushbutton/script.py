@@ -21,8 +21,9 @@ generic_cat_id = DB.ElementId(DB.BuiltInCategory.OST_GenericModel)
 
 def show_result_window(text):
     """
-    Простое окно без крестика.
+    Окно без крестика.
     Закрывается кликом мыши по окну.
+    С видимой рамкой и округлыми краями.
     """
 
     if not text:
@@ -34,15 +35,23 @@ def show_result_window(text):
     win.SizeToContent = SizeToContent.WidthAndHeight
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     win.Topmost = True
-    win.MinWidth = 280
-    win.MaxWidth = 600
-    win.Background = Brushes.White
+    win.MinWidth = 300
+    win.MaxWidth = 650
+
+    # Важно для округлых краёв
+    win.AllowsTransparency = True
+    win.Background = Brushes.Transparent
 
     border = Border()
     border.Background = Brushes.White
-    border.BorderBrush = Brushes.Gray
-    border.BorderThickness = Thickness(1)
-    border.CornerRadius = CornerRadius(8)
+
+    # Более заметная рамка
+    border.BorderBrush = Brushes.Black
+    border.BorderThickness = Thickness(2)
+
+    # Округление углов
+    border.CornerRadius = CornerRadius(10)
+
     border.Padding = Thickness(20)
 
     panel = StackPanel()
