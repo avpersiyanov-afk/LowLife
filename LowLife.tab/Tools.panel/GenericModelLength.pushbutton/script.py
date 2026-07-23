@@ -66,4 +66,4 @@ else:
 
         result += " | Итого: {:.2f} м".format(total * 0.3048)
 
-        forms.toast(result, title="Длина по типам")
+        forms.alert(result, title="Длина по типам")
