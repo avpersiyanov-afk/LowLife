@@ -1,121 +1,69 @@
 # -*- coding: utf-8 -*-
 
 __title__ = "Длина линий"
-__doc__ = "Считает суммарную длину выбранных обобщённых моделей отдельно по типам"
+__doc__ = "Сумма длин выбранных обобщённых моделей по типам"
 __author__ = "Pipers"
-__persistentengine__ = True
 
 from pyrevit import revit, DB, forms
 
 doc = revit.doc
+selection = revit.get_selection()
 
-
-def get_type_element(el):
-    type_id = el.GetTypeId()
-    if type_id and type_id != DB.ElementId.InvalidElementId:
-        return doc.GetElement(type_id)
-    return None
+generic_cat_id = DB.ElementId(DB.BuiltInCategory.OST_GenericModel)
 
 
 def get_type_name(el):
-    type_el = get_type_element(el)
-
+    type_el = doc.GetElement(el.GetTypeId())
     if type_el:
-        name_param = type_el.get_Parameter(DB.BuiltInParameter.SYMBOL_NAME_PARAM)
-        if name_param and name_param.HasValue:
-            return name_param.AsString()
-
-        try:
-            return type_el.Name
-        except:
-            return "Тип ID {}".format(type_el.Id.IntegerValue)
-
+        p = type_el.get_Parameter(DB.BuiltInParameter.SYMBOL_NAME_PARAM)
+        if p and p.HasValue:
+            return p.AsString()
+        return type_el.Name
     return "Без типа"
 
 
-def get_double_param_value(el, param_names):
-    # Сначала параметр экземпляра
-    for name in param_names:
-        param = el.LookupParameter(name)
-        if param and param.HasValue and param.StorageType == DB.StorageType.Double:
-            return param.AsDouble()
+def get_length(el):
+    loc = el.Location
 
-    # Потом параметр типа
-    type_el = get_type_element(el)
-    if type_el:
-        for name in param_names:
-            param = type_el.LookupParameter(name)
-            if param and param.HasValue and param.StorageType == DB.StorageType.Double:
-                return param.AsDouble()
+    if isinstance(loc, DB.LocationCurve):
+        return loc.Curve.Length
 
-    return None
+    p = el.LookupParameter("Длина") or el.LookupParameter("Length")
+    if p and p.HasValue:
+        return p.AsDouble()
+
+    return 0.0
 
 
-def get_element_length_ft(el):
-    location = el.Location
+selected = list(selection.elements)
 
-    if isinstance(location, DB.LocationCurve):
-        return location.Curve.Length
-
-    return get_double_param_value(
-        el,
-        [
-            "Длина",
-            "Length",
-            "L",
-            "длина"
-        ]
-    )
-
-
-selection = revit.get_selection()
-
-try:
-    selected_elements = list(selection.elements)
-except:
-    selected_elements = list(selection)
-
-if not selected_elements:
-    forms.alert(
-        "Сначала выберите обобщённые модели на виде.",
-        title="Нет выбора"
-    )
+if not selected:
+    forms.toast("Нет выбора", title="Длина линий")
 else:
-    generic_cat_id = DB.ElementId(DB.BuiltInCategory.OST_GenericModel)
+    totals = {}
 
-    generic_models = []
+    for el in selected:
+        if not el.Category:
+            continue
 
-    for el in selected_elements:
-        if el.Category and el.Category.Id.IntegerValue == generic_cat_id.IntegerValue:
-            generic_models.append(el)
+        if el.Category.Id.IntegerValue != generic_cat_id.IntegerValue:
+            continue
 
-    if not generic_models:
-        forms.alert(
-            "Среди выбранных элементов нет обобщённых моделей.",
-            title="Ошибка"
-        )
+        type_name = get_type_name(el)
+        length = get_length(el)
+
+        totals[type_name] = totals.get(type_name, 0.0) + length
+
+    if not totals:
+        forms.toast("Нет обобщённых моделей", title="Длина линий")
     else:
-        type_totals = {}
+        total = sum(totals.values())
 
-        for el in generic_models:
-            type_name = get_type_name(el)
-            length_ft = get_element_length_ft(el)
+        result = " | ".join(
+            ["{}: {:.2f} м".format(name, value * 0.3048)
+             for name, value in sorted(totals.items())]
+        )
 
-            if type_name not in type_totals:
-                type_totals[type_name] = 0.0
+        result += " | Итого: {:.2f} м".format(total * 0.3048)
 
-            if length_ft is not None:
-                type_totals[type_name] += length_ft
-
-        total_ft = sum(type_totals.values())
-
-        lines = []
-
-        for type_name in sorted(type_totals.keys()):
-            length_m = type_totals[type_name] * 0.3048
-            lines.append("{} - {:.2f} м".format(type_name, length_m))
-
-        lines.append("")
-        lines.append("Общая длина - {:.2f} м".format(total_ft * 0.3048))
-
-        forms.alert("\n".join(lines), title="Результат")
+        forms.toast(result, title="Длина по типам")
