@@ -17,11 +17,16 @@ view = doc.ActiveView
 # НАСТРОЙКИ
 # ------------------------------------------------------------
 
-# Отступ размерной линии от осей, мм
-OFFSET_MM = 1000.0
+# Отступ размерной цепочки от осей, мм
+OFFSET_MM = 1400.0
+
+# Отступ общего размера от размерной цепочки, мм
+TOTAL_GAP_MM = 700.0
 
 MM_IN_FOOT = 304.8
+
 OFFSET = OFFSET_MM / MM_IN_FOOT
+TOTAL_OFFSET = (OFFSET_MM + TOTAL_GAP_MM) / MM_IN_FOOT
 
 
 # ------------------------------------------------------------
@@ -44,7 +49,7 @@ def get_dim_type_name(dim_type):
 
 
 class DimTypeOption(object):
-    """Обертка для красивого отображения типа размера в окне выбора"""
+    """Обертка для отображения типа размера в списке"""
 
     def __init__(self, dim_type):
         self.dim_type = dim_type
@@ -112,8 +117,6 @@ def choose_dimension_type():
 
 def is_vertical_grid(grid):
     """
-    Определяет направление оси.
-
     True  — вертикальная ось
     False — горизонтальная ось
     """
@@ -144,8 +147,30 @@ def sort_grids(grids, vertical):
     return sorted(grids, key=key_func)
 
 
-def create_dimension_chain(grids, vertical, dim_type):
-    """Создать размерную цепочку по осям"""
+def apply_dimension_type(dimension, dim_type):
+    """Применить выбранный стиль размера"""
+    if dimension and dim_type:
+        dimension.ChangeTypeId(dim_type.Id)
+
+
+def get_grid_center_x(grid):
+    curve = grid.Curve
+    p1 = curve.GetEndPoint(0)
+    p2 = curve.GetEndPoint(1)
+    return (p1.X + p2.X) / 2.0
+
+
+def get_grid_center_y(grid):
+    curve = grid.Curve
+    p1 = curve.GetEndPoint(0)
+    p2 = curve.GetEndPoint(1)
+    return (p1.Y + p2.Y) / 2.0
+
+
+def create_dimension_chain(grids, vertical, dim_type, offset):
+    """
+    Создать размерную цепочку по всем осям
+    """
 
     if len(grids) < 2:
         return None
@@ -167,16 +192,10 @@ def create_dimension_chain(grids, vertical, dim_type):
     if vertical:
         # Вертикальные оси образмериваются горизонтальной размерной линией
 
-        x_values = []
-
-        for grid in grids:
-            curve = grid.Curve
-            p1 = curve.GetEndPoint(0)
-            p2 = curve.GetEndPoint(1)
-            x_values.append((p1.X + p2.X) / 2.0)
+        x_values = [get_grid_center_x(g) for g in grids]
 
         y_min = min([p.Y for p in points])
-        y_dim = y_min - OFFSET
+        y_dim = y_min - offset
 
         start = XYZ(min(x_values), y_dim, z)
         end = XYZ(max(x_values), y_dim, z)
@@ -184,28 +203,75 @@ def create_dimension_chain(grids, vertical, dim_type):
     else:
         # Горизонтальные оси образмериваются вертикальной размерной линией
 
-        y_values = []
-
-        for grid in grids:
-            curve = grid.Curve
-            p1 = curve.GetEndPoint(0)
-            p2 = curve.GetEndPoint(1)
-            y_values.append((p1.Y + p2.Y) / 2.0)
+        y_values = [get_grid_center_y(g) for g in grids]
 
         x_min = min([p.X for p in points])
-        x_dim = x_min - OFFSET
+        x_dim = x_min - offset
 
         start = XYZ(x_dim, min(y_values), z)
         end = XYZ(x_dim, max(y_values), z)
 
     dim_line = Line.CreateBound(start, end)
 
-    # Сначала создаем размер стандартным типом
     dimension = doc.Create.NewDimension(view, dim_line, refs)
+    apply_dimension_type(dimension, dim_type)
 
-    # Потом меняем на выбранный стиль
-    if dim_type:
-        dimension.ChangeTypeId(dim_type.Id)
+    return dimension
+
+
+def create_total_dimension(grids, vertical, dim_type, offset):
+    """
+    Создать общий размер между первой и последней осью
+    """
+
+    if len(grids) < 3:
+        # Если осей только 2, общий размер совпадает с цепочкой
+        return None
+
+    first_grid = grids[0]
+    last_grid = grids[-1]
+
+    refs = ReferenceArray()
+    refs.Append(Reference(first_grid))
+    refs.Append(Reference(last_grid))
+
+    points = []
+
+    for grid in grids:
+        curve = grid.Curve
+        points.append(curve.GetEndPoint(0))
+        points.append(curve.GetEndPoint(1))
+
+    z = points[0].Z
+
+    if vertical:
+        # Общий размер для вертикальных осей
+
+        x1 = get_grid_center_x(first_grid)
+        x2 = get_grid_center_x(last_grid)
+
+        y_min = min([p.Y for p in points])
+        y_dim = y_min - offset
+
+        start = XYZ(x1, y_dim, z)
+        end = XYZ(x2, y_dim, z)
+
+    else:
+        # Общий размер для горизонтальных осей
+
+        y1 = get_grid_center_y(first_grid)
+        y2 = get_grid_center_y(last_grid)
+
+        x_min = min([p.X for p in points])
+        x_dim = x_min - offset
+
+        start = XYZ(x_dim, y1, z)
+        end = XYZ(x_dim, y2, z)
+
+    dim_line = Line.CreateBound(start, end)
+
+    dimension = doc.Create.NewDimension(view, dim_line, refs)
+    apply_dimension_type(dimension, dim_type)
 
     return dimension
 
@@ -239,25 +305,69 @@ for grid in grids:
     else:
         horizontal_grids.append(grid)
 
-created = []
+created_chain = []
+created_total = []
 
 with revit.Transaction("Create Grid Dimensions"):
 
+    # Вертикальные оси
     if len(vertical_grids) >= 2:
         vertical_grids = sort_grids(vertical_grids, True)
-        dim = create_dimension_chain(vertical_grids, True, dim_type)
 
-        if dim:
-            created.append(dim)
+        dim_chain = create_dimension_chain(
+            vertical_grids,
+            True,
+            dim_type,
+            OFFSET
+        )
 
+        if dim_chain:
+            created_chain.append(dim_chain)
+
+        dim_total = create_total_dimension(
+            vertical_grids,
+            True,
+            dim_type,
+            TOTAL_OFFSET
+        )
+
+        if dim_total:
+            created_total.append(dim_total)
+
+    # Горизонтальные оси
     if len(horizontal_grids) >= 2:
         horizontal_grids = sort_grids(horizontal_grids, False)
-        dim = create_dimension_chain(horizontal_grids, False, dim_type)
 
-        if dim:
-            created.append(dim)
+        dim_chain = create_dimension_chain(
+            horizontal_grids,
+            False,
+            dim_type,
+            OFFSET
+        )
+
+        if dim_chain:
+            created_chain.append(dim_chain)
+
+        dim_total = create_total_dimension(
+            horizontal_grids,
+            False,
+            dim_type,
+            TOTAL_OFFSET
+        )
+
+        if dim_total:
+            created_total.append(dim_total)
 
 
 forms.alert(
-    "Готово.\n\nСоздано размерных цепочек: {}".format(len(created))
+    "Готово.\n\n"
+    "Размерных цепочек: {}\n"
+    "Общих размеров: {}\n\n"
+    "Отступ цепочки: {} мм\n"
+    "Отступ общего размера: {} мм".format(
+        len(created_chain),
+        len(created_total),
+        int(OFFSET_MM),
+        int(OFFSET_MM + TOTAL_GAP_MM)
+    )
 )
