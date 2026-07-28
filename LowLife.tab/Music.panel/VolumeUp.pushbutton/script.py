@@ -1,14 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import ctypes
-
-
-VK_VOLUME_UP = 0xAF
-
-
-def press_key(key):
-    ctypes.windll.user32.keybd_event(key, 0, 0, 0)
-    ctypes.windll.user32.keybd_event(key, 0, 2, 0)
-
+from lowlife.media_keys import press_key, VK_VOLUME_UP
 
 press_key(VK_VOLUME_UP)
