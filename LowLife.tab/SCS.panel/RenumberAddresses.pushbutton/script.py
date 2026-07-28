@@ -183,7 +183,7 @@ for line in lines:
 # КОРНИ (ПАНЕЛИ/СТОЯКИ)
 # ------------------------------------------------------------
 
-root_sources = panels + risers
+root_sources = panels if panels else risers
 
 root_real_nodes = []
 
@@ -367,7 +367,7 @@ forms.alert(
     u"Очищено чужих адресов: {}".format(
         level_name,
         floor_code,
-        u"Панели: {}, стояки: {}".format(len(panels), len(risers)),
+        u"Панель" if panels else u"Стояк",
         choice,
         len(route_points),
         len(changed),
