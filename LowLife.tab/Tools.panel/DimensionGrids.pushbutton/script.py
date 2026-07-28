@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+__title__ = "Размеры осей"
+__doc__ = "Образмеривает выбранные оси на виде"
+__author__ = "Pipers"
+
 import clr
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
