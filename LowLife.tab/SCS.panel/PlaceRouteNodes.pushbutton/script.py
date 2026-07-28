@@ -323,16 +323,30 @@ with revit.Transaction("Place Route Nodes"):
             if not is_marked and cable_type_value is None:
                 cable_type_value = detect_cable_type(seg_el)
 
-            if level is None:
-                # Чистый узел маршрута (без устройства/панели/стояка) —
-                # уровень берём с линии трассы (её рабочая плоскость).
-                level = get_element_level(doc, seg_el)
-
-            if line_offset_value is not None and cable_type_value is not None and level is not None:
+            if line_offset_value is not None and cable_type_value is not None:
                 break
 
         if level is None:
-            # Ни у элемента, ни у линии нет связанного уровня — резервный
+            # Уровень рабочей плоскости самой линии ненадёжен (line-based
+            # семейство не всегда привязано к реальному этажу через
+            # LevelId) — берём уровень ближайшего устройства/панели/стояка.
+            nearest_marked = None
+            nearest_marked_dist = None
+
+            for m in marked_points:
+                try:
+                    d = point.DistanceTo(m["point"])
+                except:
+                    continue
+                if nearest_marked_dist is None or d < nearest_marked_dist:
+                    nearest_marked_dist = d
+                    nearest_marked = m
+
+            if nearest_marked is not None:
+                level = get_element_level(doc, nearest_marked["element"])
+
+        if level is None:
+            # Нет ни одного устройства/панели/стояка с уровнем — резервный
             # вариант по высоте точки.
             level = find_level_for_elevation(point.Z, document_levels)
 
