@@ -52,8 +52,6 @@ PARAM_SPECS = [
         False, CAT_DEVICES_ONLY, INSTANCE, TEXT, FOP),
     ("type_code_param", u"Обозначение (тип устройства)",
         False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP),
-    ("circuit_panel_param", u"Панель (параметр цепи)",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
     ("circuit_name_type_param", u"Наименование (цепь)",
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
     ("circuit_number_param", u"Номер цепи",

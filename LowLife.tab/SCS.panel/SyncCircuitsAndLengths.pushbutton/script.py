@@ -37,18 +37,19 @@ if settings is None:
 
 scs_settings.require(settings, [
     "route_type_id", "riser_type_id",
-    "addr_param_name", "addr_prev_param_name", "cable_param_name",
-    "workset_param_name", "workset_filter_key",
-    "circuit_panel_param", "nearest_segment_param",
-    "device_address_param", "type_code_param", "circuit_name_type_param",
-    "circuit_number_param", "circuit_route_param",
-    "wire_length_param", "tray_length_param", "pipe_length_param",
-    "route_method_param", "load_name_param", "segment_loads_param",
+    "workset_filter_key",
     "install_tray_key", "install_pipe_key", "install_pipe_open_key",
     "route_label_pipe_format", "route_label_tray_format", "route_label_pipe_open_format",
     "circuit_key_fo", "circuit_key_utp", "circuit_key_power",
     "horiz_tray_coef", "horiz_pipe_coef", "vertical_coef"
 ])
+# Имена параметров (addr_param_name, cable_param_name, workset_param_name,
+# circuit_panel_param, nearest_segment_param, device_address_param,
+# type_code_param, circuit_name_type_param, circuit_number_param,
+# circuit_route_param, *_length_param, route_method_param,
+# load_name_param, segment_loads_param) здесь не проверяются — их
+# наличие/привязку в проекте проверяет и чинит кнопка «Параметры СКС»
+# (SetupParameters).
 
 ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
 RISER_TYPE_ID = ElementId(int(settings["riser_type_id"]))

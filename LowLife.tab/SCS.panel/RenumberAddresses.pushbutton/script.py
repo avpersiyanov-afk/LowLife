@@ -42,10 +42,10 @@ settings = get_settings_interactive(doc)
 if settings is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 
-scs_settings.require(settings, [
-    "route_type_id", "riser_type_id",
-    "addr_param_name", "addr_prev_param_name"
-])
+scs_settings.require(settings, ["route_type_id", "riser_type_id"])
+# Имена параметров (addr_param_name, addr_prev_param_name) здесь не
+# проверяются — их наличие/привязку в проекте проверяет и чинит кнопка
+# «Параметры СКС» (SetupParameters).
 
 ADDR_PARAM = settings["addr_param_name"]
 ADDR_PREV_PARAM = settings["addr_prev_param_name"]

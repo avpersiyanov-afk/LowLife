@@ -42,10 +42,12 @@ if settings is None:
 
 scs_settings.require(settings, [
     "panel_type_id", "device_type_id", "route_type_id", "riser_type_id",
-    "family_filter", "cable_param_name", "route_param_name",
-    "route_param_value", "route_param_value_riser",
-    "device_cable_type_value", "offset_param_names"
+    "family_filter", "route_param_value", "route_param_value_riser",
+    "device_cable_type_value"
 ])
+# Имена параметров (cable_param_name, route_param_name,
+# offset_param_names) здесь не проверяются — их наличие/привязку в
+# проекте проверяет и чинит кнопка «Параметры СКС» (SetupParameters).
 
 FAMILY_FILTER = settings["family_filter"]
 CABLE_PARAM_NAME = settings["cable_param_name"]
