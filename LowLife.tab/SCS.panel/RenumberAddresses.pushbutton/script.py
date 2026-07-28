@@ -325,6 +325,67 @@ with revit.Transaction("Renumber Route Addresses"):
             skipped.append(p)
 
 
+# ------------------------------------------------------------
+# ПОДРОБНЫЙ ОТЧЁТ (для диагностики порядка нумерации)
+# ------------------------------------------------------------
+
+def mm(v):
+    return u"{:.0f}".format(v * MM_IN_FOOT)
+
+
+def category_label(n):
+    if n["is_panel"]:
+        return u"Панель"
+    if n["is_riser"]:
+        return u"Стояк"
+    return u"Маршрут"
+
+
+def parent_label(n):
+    pid = n.get("parent_id")
+    if pid is None:
+        return u"-"
+    parent_obj = all_points_by_id.get(pid)
+    if parent_obj is None:
+        return u"ID {}".format(pid)
+    return u"{} ({}, ID {})".format(
+        parent_obj.get("addr") or u"без адреса", category_label(parent_obj), pid
+    )
+
+
+from pyrevit import script as pyrevit_script
+output = pyrevit_script.get_output()
+
+output.print_md(u"## Адреса узлов — подробный отчёт")
+
+if panels or risers:
+    output.print_md(u"### Панели и стояки ({})".format(len(panels) + len(risers)))
+    roots_table = []
+    for n in panels + risers:
+        roots_table.append([
+            n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1])
+        ])
+    output.print_table(
+        table_data=roots_table,
+        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм"]
+    )
+
+output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
+nodes_table = []
+for i, n in enumerate(ordered_routes, start=1):
+    nodes_table.append([
+        i, n["id"], mm(n["point"][0]), mm(n["point"][1]),
+        n.get("classification") or u"-",
+        n.get("addr") or u"-",
+        n.get("write_value") or u"-",
+        parent_label(n)
+    ])
+output.print_table(
+    table_data=nodes_table,
+    columns=[u"#", u"ID", u"X, мм", u"Y, мм", u"Классификация", u"Адрес", u"Предыдущий адрес", u"Родитель"]
+)
+
+
 forms.alert(
     u"Готово.\n\n"
     u"Уровень: {}\n"
@@ -334,7 +395,8 @@ forms.alert(
     u"Узлов маршрута всего: {}\n"
     u"Изменено: {}\n"
     u"Пропущено (уже был адрес): {}\n"
-    u"Очищено чужих адресов: {}".format(
+    u"Очищено чужих адресов: {}\n\n"
+    u"Подробности — в окне вывода pyRevit.".format(
         level_name,
         floor_code,
         u"Панель" if panels else u"Стояк",
