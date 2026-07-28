@@ -139,6 +139,22 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 `find_closest_pair_between_sets` — используются, чтобы показать, где
 именно у цепи нет пути до панели).
 
+## scs_parameters.py
+Логика кнопки **SetupParameters** («Параметры СКС»): таблица `PARAM_SPECS`
+(ключ настроек → категории Revit → instance/type → источник) для каждого
+параметра, который читают/пишут три кнопки СКС, и функции проверки/
+привязки этих параметров из **уже подключённого к проекту** файла общих
+параметров (ФОП, `Application.SharedParametersFilename`). Ничего не
+выдумывает — если определения параметра нет ни в проекте, ни в файле
+ФОП, `ensure_binding` возвращает `missing_definition=True`, и кнопка
+только сообщает об этом, не создавая новых определений в файле ФОП.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `find_existing_binding` | `find_existing_binding(doc, name)` | `(definition, binding)` параметра с именем `name`, если он уже привязан хоть к чему-то в проекте |
+| `find_shared_definition` | `find_shared_definition(sp_file, name)` | Определение параметра `name` в открытом файле ФОП (`Application.OpenSharedParameterFile()`), перебором всех групп |
+| `ensure_binding` | `ensure_binding(doc, app, sp_file, name, categories, binding_kind)` | Добавляет параметру `name` привязку ко всем `categories`, которых ему не хватает; `dict` с `added_categories`/`already_ok`/`missing_definition`/`error` |
+
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).
 
