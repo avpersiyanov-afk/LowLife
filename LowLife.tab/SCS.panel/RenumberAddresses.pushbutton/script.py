@@ -12,7 +12,7 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, set_string_param
+from lowlife.params import get_string_param, set_string_param, get_param_any, set_param_any
 from lowlife.scs import classify_element, clear_stray_address_params
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
@@ -22,6 +22,7 @@ from lowlife.scs_addressing import (
     point_to_segment_distance_xy, line_parameter_xy,
     build_shortest_path_tree, depth_first_order
 )
+from lowlife.scs_circuits import norm, clean_text_value, find_nearest_segment_id
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -49,7 +50,10 @@ ROOT_SEARCH_MARGIN = ROOT_SEARCH_MARGIN_MM / MM_IN_FOOT
 
 settings = get_settings_silent()
 
-scs_settings.require(settings, ["route_type_id", "riser_type_id"])
+scs_settings.require(settings, [
+    "route_type_id", "riser_type_id",
+    "workset_filter_key", "circuit_panel_param", "nearest_segment_param"
+])
 # Имена параметров (addr_param_name, addr_prev_param_name) здесь не
 # проверяются — их наличие/привязку в проекте проверяет и чинит кнопка
 # «Параметры СКС» (SetupParameters).
@@ -61,6 +65,43 @@ PANEL_EXCLUDE_KEYWORDS = settings["panel_exclude_keywords"]
 
 ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
 RISER_TYPE_ID = ElementId(int(settings["riser_type_id"]))
+
+WORKSET_PARAM_NAME = settings["workset_param_name"]
+WORKSET_FILTER_KEY = settings["workset_filter_key"]
+EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
+CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
+NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
+
+
+def is_excluded_device(el):
+    """Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства."""
+    try:
+        fam_name = el.Symbol.Family.Name
+    except:
+        return False
+    return any(w.lower() in (fam_name or u"").lower() for w in EXCLUDED_DEVICE_KEYWORDS if w)
+
+
+def get_workset_name(el):
+    val = get_param_any(el, WORKSET_PARAM_NAME)
+    if val:
+        return val
+    try:
+        p = el.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+        if p and p.HasValue:
+            v = p.AsValueString()
+            if v:
+                return v
+    except:
+        pass
+    return None
+
+
+def panel_matches(panel):
+    ws = norm(get_workset_name(panel))
+    if not ws:
+        return False
+    return WORKSET_FILTER_KEY.lower() in ws.lower()
 
 choice = forms.alert(
     u"Перенумеровать все существующие адреса заново, "
@@ -372,6 +413,82 @@ with revit.Transaction("Renumber Route Addresses"):
 
 
 # ------------------------------------------------------------
+# БЛИЖАЙШИЙ УЗЕЛ МАРШРУТА ДЛЯ ПАНЕЛЕЙ И УСТРОЙСТВ
+# ------------------------------------------------------------
+# Раньше это считалось и писалось в SyncCircuitsAndLengths, но логичнее
+# делать это здесь: сначала расставляются узлы (PlaceRouteNodes), потом
+# им всем присваиваются адреса и заодно у панелей/устройств проставляется
+# ближайший адресованный узел (эта кнопка), и только потом
+# SyncCircuitsAndLengths считает по готовым адресам длины/маршруты цепей.
+
+segments_by_addr = {}
+for p in route_points:
+    pt = get_point(p["element"])
+    if pt is None or is_empty(p["addr"]):
+        continue
+    segments_by_addr[p["addr"]] = {"pt": pt}
+
+all_panels = FilteredElementCollector(doc) \
+    .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
+    .WhereElementIsNotElementType() \
+    .ToElements()
+
+target_panels = [p for p in all_panels if panel_matches(p)]
+
+all_circuits = FilteredElementCollector(doc) \
+    .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
+    .WhereElementIsNotElementType() \
+    .ToElements()
+
+target_panels_by_name = {}
+for p in target_panels:
+    pname = norm(p.Name)
+    if pname:
+        target_panels_by_name.setdefault(pname, p)
+
+devices_by_id = {}
+for c in all_circuits:
+    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_el = target_panels_by_name.get(panel_name)
+    if panel_el is None:
+        continue
+
+    try:
+        raw_devs = [x for x in c.Elements if x.Id != panel_el.Id]
+    except:
+        continue
+
+    for d in raw_devs:
+        if is_excluded_device(d):
+            continue
+        devices_by_id[d.Id.IntegerValue] = d
+
+nearest_written = 0
+
+with revit.Transaction("Write Nearest Segment"):
+
+    for panel in target_panels:
+        if clean_text_value(get_string_param(panel, NEAREST_SEGMENT_PARAM)):
+            continue
+        panel_pt = get_point(panel)
+        if panel_pt is None:
+            continue
+        nearest_sid, _ = find_nearest_segment_id(panel_pt, segments_by_addr)
+        if nearest_sid and set_param_any(panel, NEAREST_SEGMENT_PARAM, nearest_sid):
+            nearest_written += 1
+
+    for dev in devices_by_id.values():
+        if clean_text_value(get_string_param(dev, NEAREST_SEGMENT_PARAM)):
+            continue
+        dev_pt = get_point(dev)
+        if dev_pt is None:
+            continue
+        nearest_sid, _ = find_nearest_segment_id(dev_pt, segments_by_addr)
+        if nearest_sid and set_param_any(dev, NEAREST_SEGMENT_PARAM, nearest_sid):
+            nearest_written += 1
+
+
+# ------------------------------------------------------------
 # ПОДРОБНЫЙ ОТЧЁТ (для диагностики порядка нумерации)
 # ------------------------------------------------------------
 
@@ -446,6 +563,7 @@ forms.alert(
     u"Пропущено (уже был адрес): {}\n"
     u"Очищено чужих адресов: {}\n"
     u"Отброшено как слишком далёкие (не корень): {}\n\n"
+    u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n\n"
     u"Подробности — в окне вывода pyRevit.".format(
         level_name,
         floor_code,
@@ -455,6 +573,7 @@ forms.alert(
         len(changed),
         len(skipped),
         len(stray_cleared),
-        len(far_sources)
+        len(far_sources),
+        nearest_written
     )
 )

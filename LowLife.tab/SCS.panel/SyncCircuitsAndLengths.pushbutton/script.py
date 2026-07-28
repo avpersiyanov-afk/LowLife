@@ -19,7 +19,7 @@ from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_circuits import (
     norm, clean_text_value, split_multi_value,
     build_graph, bfs_component, find_closest_pair_between_sets,
-    find_nearest_segment_id, astar_path, calc_lengths, balance_round_parts,
+    astar_path, calc_lengths, balance_round_parts,
     classify_circuit_type, make_load_name, build_segment_list_text
 )
 
@@ -277,12 +277,6 @@ with revit.Transaction("Sync Circuits And Lengths"):
 
         panel_start = clean_text_value(get_string_param(panel, NEAREST_SEGMENT_PARAM))
 
-        if not panel_start and panel_pt:
-            auto_start, _ = find_nearest_segment_id(panel_pt, segments)
-            if auto_start:
-                set_param_any(panel, NEAREST_SEGMENT_PARAM, auto_start)
-                panel_start = auto_start
-
         if not panel_start:
             no_panel_start += 1
             continue
@@ -307,17 +301,7 @@ with revit.Transaction("Sync Circuits And Lengths"):
 
             if dev_id not in processed_devices:
                 dev_pt = get_point(dev)
-                nearest_sid = None
-
-                if dev_pt:
-                    existing = clean_text_value(get_string_param(dev, NEAREST_SEGMENT_PARAM))
-                    if existing:
-                        nearest_sid = existing
-                    else:
-                        nearest_sid, _ = find_nearest_segment_id(dev_pt, segments)
-                        if nearest_sid:
-                            set_param_any(dev, NEAREST_SEGMENT_PARAM, nearest_sid)
-
+                nearest_sid = clean_text_value(get_string_param(dev, NEAREST_SEGMENT_PARAM))
                 processed_devices[dev_id] = (nearest_sid, dev_pt)
 
             end_sid, dev_pt = processed_devices.get(dev_id, (None, None))
