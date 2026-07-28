@@ -33,6 +33,15 @@ OFFSET = 210.0 / MM_IN_FOOT
 MARKED_TOL = 150.0 / MM_IN_FOOT
 END_TOL = 50.0 / MM_IN_FOOT
 
+# Насколько далеко за пределы фактической области узлов маршрута на этом
+# виде может быть панель/стояк, чтобы всё ещё считаться корнем обхода.
+# Без этой проверки панель, случайно подошедшая по ключевым словам, но
+# находящаяся физически в другом конце здания, всё равно "прилипала" бы
+# к ближайшему узлу — там срабатывал резервный поиск без ограничения
+# расстояния (find_nearest_real_node).
+ROOT_SEARCH_MARGIN_MM = 20000.0
+ROOT_SEARCH_MARGIN = ROOT_SEARCH_MARGIN_MM / MM_IN_FOOT
+
 
 # ------------------------------------------------------------
 # НАСТРОЙКИ
@@ -184,7 +193,44 @@ for line in lines:
 # КОРНИ (ПАНЕЛИ/СТОЯКИ)
 # ------------------------------------------------------------
 
-root_sources = panels if panels else risers
+# Область, где реально есть узлы маршрута на этом виде, расширенная на
+# запас — панель/стояк далеко за её пределами в корни не годится, даже
+# если формально у неё "нашёлся" ближайший узел (резервный поиск по
+# find_nearest_real_node ищет вообще без ограничения расстояния).
+if real_nodes:
+    xs = [n["point"][0] for n in real_nodes]
+    ys = [n["point"][1] for n in real_nodes]
+    root_area = (
+        min(xs) - ROOT_SEARCH_MARGIN, max(xs) + ROOT_SEARCH_MARGIN,
+        min(ys) - ROOT_SEARCH_MARGIN, max(ys) + ROOT_SEARCH_MARGIN
+    )
+else:
+    root_area = None
+
+
+def in_root_area(pt):
+    if root_area is None:
+        return True
+    x_min, x_max, y_min, y_max = root_area
+    return x_min <= pt[0] <= x_max and y_min <= pt[1] <= y_max
+
+
+# Панель в приоритете, но если ВСЕ панели оказались далеко за пределами
+# области трассы — это фактически "на этаже нет панели", пробуем стояки.
+near_panels = [p for p in panels if in_root_area(p["point"])]
+near_panel_ids = set(p["id"] for p in near_panels)
+far_panels = [p for p in panels if p["id"] not in near_panel_ids]
+
+if near_panels:
+    root_sources = near_panels
+    far_sources = far_panels
+else:
+    near_risers = [r for r in risers if in_root_area(r["point"])]
+    near_riser_ids = set(r["id"] for r in near_risers)
+    far_risers = [r for r in risers if r["id"] not in near_riser_ids]
+
+    root_sources = near_risers
+    far_sources = far_panels + far_risers
 
 root_real_nodes = []
 
@@ -358,16 +404,19 @@ output = pyrevit_script.get_output()
 
 output.print_md(u"## Адреса узлов — подробный отчёт")
 
+far_ids = set(s["id"] for s in far_sources)
+
 if panels or risers:
     output.print_md(u"### Панели и стояки ({})".format(len(panels) + len(risers)))
     roots_table = []
     for n in panels + risers:
         roots_table.append([
-            n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1])
+            n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1]),
+            u"Слишком далеко — не корень" if n["id"] in far_ids else u"Корень"
         ])
     output.print_table(
         table_data=roots_table,
-        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм"]
+        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Статус"]
     )
 
 output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
@@ -395,15 +444,17 @@ forms.alert(
     u"Узлов маршрута всего: {}\n"
     u"Изменено: {}\n"
     u"Пропущено (уже был адрес): {}\n"
-    u"Очищено чужих адресов: {}\n\n"
+    u"Очищено чужих адресов: {}\n"
+    u"Отброшено как слишком далёкие (не корень): {}\n\n"
     u"Подробности — в окне вывода pyRevit.".format(
         level_name,
         floor_code,
-        u"Панель" if panels else u"Стояк",
+        (u"Панель" if root_sources[0]["is_panel"] else u"Стояк") if root_sources else u"Нет (все далеко)",
         choice,
         len(route_points),
         len(changed),
         len(skipped),
-        len(stray_cleared)
+        len(stray_cleared),
+        len(far_sources)
     )
 )
