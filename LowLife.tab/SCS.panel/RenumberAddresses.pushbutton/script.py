@@ -183,7 +183,7 @@ for line in lines:
 # КОРНИ (ПАНЕЛИ/СТОЯКИ)
 # ------------------------------------------------------------
 
-root_sources = panels if panels else risers
+root_sources = panels + risers
 
 root_real_nodes = []
 
@@ -216,22 +216,44 @@ for root in unique_roots:
     queue.append(root)
     visited.add(root["id"])
 
+# Узлы, не связанные ни с одной панелью/стояком (отдельная связная
+# компонента — например, ветка трассы без своего корня рядом), иначе
+# вообще не попали бы в обход и не получили бы адрес. Берём их по
+# очереди как локальные "корни" (без родителя) и продолжаем BFS.
+remaining_seeds = sorted(
+    [n for n in real_nodes if n["id"] not in visited],
+    key=lambda n: (n["point"][0], n["point"][1], n["id"])
+)
+seed_idx = 0
+
 idx = 0
 ordered_real_nodes = []
 
-while idx < len(queue):
-    current = queue[idx]
-    idx += 1
-    ordered_real_nodes.append(current)
+while True:
+    while idx < len(queue):
+        current = queue[idx]
+        idx += 1
+        ordered_real_nodes.append(current)
 
-    neighbor_objs = [all_points_by_id[nid] for nid in current["neighbor_ids"] if nid in all_points_by_id]
-    neighbor_objs.sort(key=lambda n: (n["point"][0], n["point"][1], n["id"]))
+        neighbor_objs = [all_points_by_id[nid] for nid in current["neighbor_ids"] if nid in all_points_by_id]
+        neighbor_objs.sort(key=lambda n: (n["point"][0], n["point"][1], n["id"]))
 
-    for nb in neighbor_objs:
-        if nb["id"] not in visited:
-            visited.add(nb["id"])
-            nb["parent_id"] = current["id"]
-            queue.append(nb)
+        for nb in neighbor_objs:
+            if nb["id"] not in visited:
+                visited.add(nb["id"])
+                nb["parent_id"] = current["id"]
+                queue.append(nb)
+
+    while seed_idx < len(remaining_seeds) and remaining_seeds[seed_idx]["id"] in visited:
+        seed_idx += 1
+
+    if seed_idx >= len(remaining_seeds):
+        break
+
+    seed = remaining_seeds[seed_idx]
+    seed_idx += 1
+    visited.add(seed["id"])
+    queue.append(seed)
 
 
 # ------------------------------------------------------------
@@ -345,7 +367,7 @@ forms.alert(
     u"Очищено чужих адресов: {}".format(
         level_name,
         floor_code,
-        u"Панель" if panels else u"Стояк",
+        u"Панели: {}, стояки: {}".format(len(panels), len(risers)),
         choice,
         len(route_points),
         len(changed),
