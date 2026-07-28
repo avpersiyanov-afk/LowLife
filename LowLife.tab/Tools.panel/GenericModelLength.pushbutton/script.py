@@ -31,7 +31,7 @@ def show_result_window(text):
 
     win = Window()
     win.Title = "Результат"
-    win.WindowStyle = WindowStyle.None
+    win.WindowStyle = getattr(WindowStyle, "None")
     win.SizeToContent = SizeToContent.WidthAndHeight
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     win.Topmost = True

@@ -1,2 +1,4 @@
 *.local.md
 LowLife.tab/SCS.panel/SeedMySettings.pushbutton/
+__pycache__/
+*.pyc
