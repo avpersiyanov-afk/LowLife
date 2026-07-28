@@ -1,11 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-Окно настроек параметров СКС + их хранение между запусками
-через стандартный конфиг pyRevit (pyRevit_config.ini).
+Окно настроек параметров СКС + их хранение между запусками.
 
-Значения общие для всех кнопок SCS.panel — сохраняются в одной секции
-конфига, поэтому достаточно настроить один раз.
+Хранится в обычном JSON-файле в %APPDATA%\\pyRevit\\LowLifeSCS_settings.json
+(см. _settings_file_path) — простой и однозначно проверяемый способ,
+без зависимости от внутреннего API pyrevit.script.get_config()/save_config()
+(на практике не гарантированно расшаривавшего секцию между разными
+script.py одного расширения).
+
+Значения общие для всех кнопок SCS.panel — сохраняются в одном файле,
+поэтому достаточно настроить один раз.
 """
+
+import os
+import io
+import json
 
 import clr
 clr.AddReference('PresentationFramework')
@@ -14,7 +23,7 @@ clr.AddReference('RevitAPI')
 
 from Autodesk.Revit.DB import ElementId, FilteredElementCollector, Family, BuiltInCategory
 
-from pyrevit import script, forms
+from pyrevit import forms
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -28,7 +37,7 @@ from System.Windows.Media import Brushes
 
 from lowlife import scs as scs_defaults
 
-CONFIG_SECTION = "LowLifeSCS"
+SETTINGS_FILE_NAME = "LowLifeSCS_settings.json"
 
 # (ключ, подпись в окне, значение по умолчанию, список ли это через запятую, обязательное ли поле)
 TEXT_FIELDS = [
@@ -225,29 +234,65 @@ def _type_display_name(doc, id_str):
             return id_str
 
 
-def get_config():
-    return script.get_config(CONFIG_SECTION)
+def _settings_file_path():
+    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+    folder = os.path.join(appdata, "pyRevit")
+
+    if not os.path.isdir(folder):
+        try:
+            os.makedirs(folder)
+        except:
+            pass
+
+    return os.path.join(folder, SETTINGS_FILE_NAME)
+
+
+def _read_all():
+    path = _settings_file_path()
+
+    if not os.path.isfile(path):
+        return {}
+
+    try:
+        with io.open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        if not text.strip():
+            return {}
+        return json.loads(text)
+    except:
+        return {}
+
+
+def _write_all(data):
+    path = _settings_file_path()
+
+    try:
+        with io.open(path, "w", encoding="utf-8") as f:
+            f.write(unicode(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
+    except:
+        forms.alert(
+            u"Не удалось сохранить настройки СКС в файл:\n{}".format(path)
+        )
 
 
 def load_saved_values():
-    """Строковые значения настроек: из конфига, иначе — значения по умолчанию."""
-    cfg = get_config()
+    """Строковые значения настроек: из JSON-файла, иначе — значения по умолчанию."""
+    saved = _read_all()
     values = {}
 
     for key, _, default, _, _ in TEXT_FIELDS:
-        values[key] = cfg.get_option(key, default)
+        values[key] = saved.get(key, default)
 
     for key, _ in TYPE_FIELDS:
-        values[key] = cfg.get_option(key, "")
+        values[key] = saved.get(key, "")
 
     return values
 
 
 def save_values(values):
-    cfg = get_config()
-    for key, value in values.items():
-        setattr(cfg, key, value)
-    script.save_config()
+    data = _read_all()
+    data.update(values)
+    _write_all(data)
 
 
 def _split_list(text):

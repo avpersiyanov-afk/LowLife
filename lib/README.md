@@ -70,9 +70,11 @@ RenumberAddresses / SyncCircuitsAndLengths): выбор **типа для вст
 (панель/устройство/маршрут/стояк — из типов категории «Обобщённые модели»
 в проекте, включая ещё НЕ вставленные — см. `list_generic_model_symbols`
 ниже) + текстовые параметры (`TEXT_FIELDS`, сгруппированы в окне по
-разделам через префикс `"[Раздел] Подпись"`). Всё хранится в конфиге
-pyRevit (`pyRevit_config.ini`, секция `LowLifeSCS`) — **не в
-репозитории**: имена параметров и семейств зависят от проекта
+разделам через префикс `"[Раздел] Подпись"`). Хранится в обычном
+JSON-файле `%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в
+`pyRevit_config.ini` — не полагаемся на `pyrevit.script.get_config()`,
+он не гарантированно расшаривает секцию между разными `script.py`) —
+**не в репозитории**: имена параметров и семейств зависят от проекта
 пользователя, дефолты в `scs.py` намеренно пустые. Требования к
 семействам/параметрам — см. `docs/scs-panel.md`.
 
@@ -85,8 +87,8 @@ pyRevit (`pyRevit_config.ini`, секция `LowLifeSCS`) — **не в
 |---|---|---|
 | `get_settings_interactive` | `get_settings_interactive(doc)` | Показывает окно, сохраняет введённое и возвращает готовый словарь настроек (списки уже разобраны из строк через запятую, id типов — строки); `None`, если нажата «Отмена» |
 | `require` | `require(settings, keys)` | Проверяет, что перечисленные ключи заполнены (списки — что непусты); если нет — `forms.alert(exitscript=True)` со списком недостающих полей. Вызывать сразу после `get_settings_interactive` |
-| `load_saved_values` | `load_saved_values()` | Сырые строковые значения из конфига, иначе — значения по умолчанию из `scs.py` |
-| `save_values` | `save_values(values)` | Записывает словарь строковых значений в конфиг |
+| `load_saved_values` | `load_saved_values()` | Сырые строковые значения из JSON-файла настроек, иначе — значения по умолчанию из `scs.py` |
+| `save_values` | `save_values(values)` | Записывает словарь строковых значений в JSON-файл настроек |
 | `show_settings_form` | `show_settings_form(doc, values)` | Само модальное окно (`ScrollViewer` + кнопки типов через `forms.SelectFromList`); используется внутри `get_settings_interactive` |
 | `to_runtime_settings` | `to_runtime_settings(values)` | Строки → типы (списки через запятую → `list`); id типов не трогает |
 | `list_generic_model_symbols` | `list_generic_model_symbols(doc)` | Все `FamilySymbol` категории «Обобщённые модели», загруженные в проект — обходом `Family`/`GetFamilySymbolIds()`, а не `FilteredElementCollector(...).OfClass(FamilySymbol)`, чтобы не пропустить типы без вставленных экземпляров |
