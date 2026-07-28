@@ -40,8 +40,9 @@ if settings is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 
 scs_settings.require(settings, [
-    "panel_type_id", "device_type_id", "route_type_id",
-    "family_filter", "cable_param_name", "route_param_name", "route_param_value",
+    "panel_type_id", "device_type_id", "route_type_id", "riser_type_id",
+    "family_filter", "cable_param_name", "route_param_name",
+    "route_param_value", "route_param_value_riser",
     "device_cable_type_value", "offset_param_names"
 ])
 
@@ -49,17 +50,21 @@ FAMILY_FILTER = settings["family_filter"]
 CABLE_PARAM_NAME = settings["cable_param_name"]
 ROUTE_PARAM_NAME = settings["route_param_name"]
 ROUTE_PARAM_VALUE = settings["route_param_value"]
+ROUTE_PARAM_VALUE_RISER = settings["route_param_value_riser"]
 DEVICE_CABLE_TYPE_VALUE = settings["device_cable_type_value"]
 DEVICE_KEYWORDS = settings["device_keywords"]
 DEVICE_EXCLUDE_KEYWORDS = settings["device_exclude_keywords"]
 PANEL_KEYWORDS = settings["panel_keywords"]
 PANEL_EXCLUDE_KEYWORDS = settings["panel_exclude_keywords"]
+RISER_KEYWORDS = settings["riser_keywords"]
+RISER_EXCLUDE_KEYWORDS = settings["riser_exclude_keywords"]
 OFFSET_PARAM_NAMES = settings["offset_param_names"]
 
 TYPE_ID_BY_CATEGORY = {
     "panel": ElementId(int(settings["panel_type_id"])),
     "device": ElementId(int(settings["device_type_id"])),
     "route": ElementId(int(settings["route_type_id"])),
+    "riser": ElementId(int(settings["riser_type_id"])),
 }
 
 symbols_by_category = {}
@@ -173,8 +178,8 @@ for s in segments:
         segment_ids_by_node[k1].add(s["id"])
         segment_ids_by_node[k2].add(s["id"])
 
-# Панели и устройства ищем среди одних и тех же категорий элементов,
-# различаем по ключевым словам (classify_element)
+# Панели, устройства и стояки ищем среди одних и тех же категорий
+# элементов, различаем по ключевым словам (classify_element)
 candidate_categories = [
     BuiltInCategory.OST_CommunicationDevices,
     BuiltInCategory.OST_ElectricalFixtures,
@@ -193,6 +198,7 @@ for cat in candidate_categories:
     )
 
 classify_rules = [
+    ("riser", RISER_KEYWORDS, RISER_EXCLUDE_KEYWORDS),
     ("panel", PANEL_KEYWORDS, PANEL_EXCLUDE_KEYWORDS),
     ("device", DEVICE_KEYWORDS, DEVICE_EXCLUDE_KEYWORDS),
 ]
@@ -266,7 +272,7 @@ for el in generic:
 
 created = []
 updated = []
-counts_by_category = {"panel": 0, "device": 0, "route": 0}
+counts_by_category = {"panel": 0, "device": 0, "route": 0, "riser": 0}
 
 with revit.Transaction("Place Route Nodes"):
 
@@ -280,11 +286,13 @@ with revit.Transaction("Place Route Nodes"):
 
         counts_by_category[category] += 1
 
+        route_value = ROUTE_PARAM_VALUE_RISER if category == "riser" else ROUTE_PARAM_VALUE
+
         line_offset_value = None
         cable_type_value = None
 
         device = node.get("device")
-        is_marked = device is not None and category in ("panel", "device")
+        is_marked = device is not None and category in ("panel", "device", "riser")
 
         if is_marked:
             cable_type_value = DEVICE_CABLE_TYPE_VALUE
@@ -320,7 +328,7 @@ with revit.Transaction("Place Route Nodes"):
                 if cable_type_value is not None:
                     set_string_param(el, CABLE_PARAM_NAME, cable_type_value)
 
-                set_string_param(el, ROUTE_PARAM_NAME, ROUTE_PARAM_VALUE)
+                set_string_param(el, ROUTE_PARAM_NAME, route_value)
                 created.append(el)
 
         else:
@@ -335,7 +343,7 @@ with revit.Transaction("Place Route Nodes"):
             if cable_type_value is not None:
                 set_string_param(el, CABLE_PARAM_NAME, cable_type_value)
 
-            set_string_param(el, ROUTE_PARAM_NAME, ROUTE_PARAM_VALUE)
+            set_string_param(el, ROUTE_PARAM_NAME, route_value)
             updated.append(el)
 
 
@@ -345,11 +353,13 @@ forms.alert(
     "Обновлено элементов: {}\n\n"
     "Панелей: {}\n"
     "Устройств: {}\n"
+    "Стояков: {}\n"
     "Узлов маршрута: {}".format(
         len(created),
         len(updated),
         counts_by_category["panel"],
         counts_by_category["device"],
+        counts_by_category["riser"],
         counts_by_category["route"]
     )
 )

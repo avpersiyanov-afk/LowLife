@@ -12,7 +12,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId, FilteredElementCollector, FamilySymbol, BuiltInCategory
+from Autodesk.Revit.DB import ElementId, FilteredElementCollector, Family, BuiltInCategory
 
 from pyrevit import script, forms
 
@@ -38,9 +38,11 @@ TEXT_FIELDS = [
         scs_defaults.CABLE_PARAM_NAME, False, True),
     ("route_param_name", u"Параметр «Тип трассы»",
         scs_defaults.ROUTE_PARAM_NAME, False, True),
-    ("route_param_value", u"Значение параметра «Тип трассы»",
+    ("route_param_value", u"Значение параметра «Тип трассы» (не для стояков)",
         scs_defaults.ROUTE_PARAM_VALUE, False, True),
-    ("device_cable_type_value", u"Тип прокладки кабеля для устройств и панелей",
+    ("route_param_value_riser", u"Значение параметра «Тип трассы» для стояков",
+        scs_defaults.ROUTE_PARAM_VALUE_RISER, False, True),
+    ("device_cable_type_value", u"Тип прокладки кабеля для устройств, панелей и стояков",
         scs_defaults.DEVICE_CABLE_TYPE_VALUE, False, True),
     ("device_keywords", u"Ключевые слова устройств (через запятую)",
         u", ".join(scs_defaults.DEVICE_KEYWORDS), True, False),
@@ -50,6 +52,10 @@ TEXT_FIELDS = [
         u", ".join(scs_defaults.PANEL_KEYWORDS), True, False),
     ("panel_exclude_keywords", u"Слова-исключения панелей (через запятую)",
         u", ".join(scs_defaults.PANEL_EXCLUDE_KEYWORDS), True, False),
+    ("riser_keywords", u"Ключевые слова стояков (через запятую)",
+        u", ".join(scs_defaults.RISER_KEYWORDS), True, False),
+    ("riser_exclude_keywords", u"Слова-исключения стояков (через запятую)",
+        u", ".join(scs_defaults.RISER_EXCLUDE_KEYWORDS), True, False),
     ("offset_param_names", u"Возможные имена параметра отметки (через запятую)",
         u", ".join(scs_defaults.OFFSET_PARAM_NAMES), True, True),
 
@@ -123,7 +129,7 @@ TYPE_FIELDS = [
     ("panel_type_id", u"Тип для точек панелей"),
     ("device_type_id", u"Тип для точек устройств"),
     ("route_type_id", u"Тип для узлов маршрута"),
-    ("riser_type_id", u"[Адресация] Тип для точек стояков"),
+    ("riser_type_id", u"Тип для точек стояков"),
 ]
 
 LIST_FIELDS = set(key for key, _, _, is_list, _req in TEXT_FIELDS if is_list)
@@ -168,12 +174,34 @@ class TypeOption(object):
 
 
 def list_generic_model_symbols(doc):
-    """Все типоразмеры категории «Обобщённые модели» в проекте."""
-    return list(
-        FilteredElementCollector(doc)
-        .OfCategory(BuiltInCategory.OST_GenericModel)
-        .OfClass(FamilySymbol)
-    )
+    """
+    Все загруженные в проект типоразмеры категории «Обобщённые модели» —
+    включая те, у которых ещё нет ни одного вставленного экземпляра.
+
+    FilteredElementCollector(...).OfClass(FamilySymbol) в некоторых
+    случаях пропускает типы без экземпляров, поэтому обходим сами
+    семейства (Family) категории и берём их типоразмеры через
+    GetFamilySymbolIds() — так гарантированно попадают все загруженные.
+    """
+    symbols = []
+
+    families = FilteredElementCollector(doc).OfClass(Family)
+
+    for family in families:
+        try:
+            if family.FamilyCategory is None:
+                continue
+            if family.FamilyCategory.Id != ElementId(BuiltInCategory.OST_GenericModel):
+                continue
+        except:
+            continue
+
+        for symbol_id in family.GetFamilySymbolIds():
+            symbol = doc.GetElement(symbol_id)
+            if symbol:
+                symbols.append(symbol)
+
+    return symbols
 
 
 def _type_display_name(doc, id_str):

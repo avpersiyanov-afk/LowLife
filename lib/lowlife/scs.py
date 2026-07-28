@@ -16,22 +16,26 @@ FAMILY_FILTER = u""
 CABLE_PARAM_NAME = u""
 ROUTE_PARAM_NAME = u""
 ROUTE_PARAM_VALUE = u""
+ROUTE_PARAM_VALUE_RISER = u""
 DEVICE_CABLE_TYPE_VALUE = u""
 
 OFFSET_PARAM_NAMES = []
 
-# Ключевые слова для распознавания устройств/панелей — это просто общая
-# лексика (не привязана к чьим-то внутренним именам параметров), поэтому
-# для них оставлены разумные значения по умолчанию.
+# Ключевые слова для распознавания устройств/панелей/стояков — это просто
+# общая лексика (не привязана к чьим-то внутренним именам параметров),
+# поэтому для них оставлены разумные значения по умолчанию.
 DEVICE_KEYWORDS = [u"коннектор", u"розетка", u"датчик", u"задание"]
 DEVICE_EXCLUDE_KEYWORDS = [u"резервный"]
 
 PANEL_KEYWORDS = [u"панель", u"кросс", u"шкаф"]
 PANEL_EXCLUDE_KEYWORDS = []
 
+RISER_KEYWORDS = [u"стояк"]
+RISER_EXCLUDE_KEYWORDS = []
+
 # Порядок разрешения категории точки, если она попала сразу в несколько
 # (например рядом и панель, и устройство) — первая подошедшая побеждает.
-CATEGORY_PRIORITY = ("panel", "device", "route")
+CATEGORY_PRIORITY = ("riser", "panel", "device", "route")
 
 
 def detect_cable_type(el):

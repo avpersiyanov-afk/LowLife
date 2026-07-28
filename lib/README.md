@@ -48,16 +48,19 @@ from lowlife.geometry import get_point
 `geometry.py`/`params.py`.
 
 Константы: `FAMILY_FILTER`, `CABLE_PARAM_NAME`, `ROUTE_PARAM_NAME`,
-`ROUTE_PARAM_VALUE`, `DEVICE_CABLE_TYPE_VALUE`, `DEVICE_KEYWORDS`,
+`ROUTE_PARAM_VALUE` (для панели/устройства/маршрута), `ROUTE_PARAM_VALUE_RISER`
+(отдельное значение для стояков — например «Вертикальный» вместо
+«Горизонтальный»), `DEVICE_CABLE_TYPE_VALUE`, `DEVICE_KEYWORDS`,
 `DEVICE_EXCLUDE_KEYWORDS`, `PANEL_KEYWORDS`, `PANEL_EXCLUDE_KEYWORDS`,
-`OFFSET_PARAM_NAMES`, `CATEGORY_PRIORITY` (`("panel", "device", "route")`).
+`RISER_KEYWORDS`, `RISER_EXCLUDE_KEYWORDS`, `OFFSET_PARAM_NAMES`,
+`CATEGORY_PRIORITY` (`("riser", "panel", "device", "route")`).
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `detect_cable_type` | `detect_cable_type(el)` | Тип прокладки кабеля («Труба», «Труба открыто», «Лоток») по имени типоразмера/семейства сегмента трассы |
+| `detect_cable_type` | `detect_cable_type(el)` | Тип прокладки кабеля («Труба», «Труба открыто», «Лоток») по имени типоразмера/семейства **сегмента трассы** (линии) — этим определяется значение для примыкающего узла маршрута |
 | `classify_element` | `classify_element(el, categories)` | `categories` — список `(name, keywords, exclude_keywords)`, проверяется по порядку; возвращает `name` первой подошедшей или `None` |
 | `text_match_device` | `text_match_device(el, device_keywords=..., device_exclude_keywords=...)` | Тонкая обёртка над `classify_element` для одной категории "device" (оставлена для обратной совместимости) |
-| `resolve_category` | `resolve_category(categories, priority=CATEGORY_PRIORITY)` | Из списка категорий объединённого узла выбирает одну по приоритету (panel > device > route) |
+| `resolve_category` | `resolve_category(categories, priority=CATEGORY_PRIORITY)` | Из списка категорий объединённого узла выбирает одну по приоритету (riser > panel > device > route) |
 | `merge_nodes` | `merge_nodes(nodes, tol, points_close_fn)` | Объединяет узлы трассы ближе `tol` друг к другу в один, суммируя `categories`, `segment_ids`, `device`; `points_close_fn` обычно — `geometry.points_close` |
 | `clear_stray_address_params` | `clear_stray_address_params(doc, param_names, allowed_type_ids)` | Ищет элементы (Обобщённые модели + категории панелей/устройств), у которых заполнен один из `param_names`, но тип не входит в `allowed_type_ids`, и очищает эти параметры. Нужно вызывать в RenumberAddresses/SyncCircuitsAndLengths перед сбором узлов — иначе застрявший адрес на устройстве (с прежних запусков или ручного ввода) может быть спутан с адресом реального узла маршрута. Вызывать внутри `revit.Transaction` |
 
@@ -65,7 +68,8 @@ from lowlife.geometry import get_point
 **Одно общее окно настроек на все три кнопки `SCS.panel`** (PlaceRouteNodes /
 RenumberAddresses / SyncCircuitsAndLengths): выбор **типа для вставки**
 (панель/устройство/маршрут/стояк — из типов категории «Обобщённые модели»
-в проекте) + текстовые параметры (`TEXT_FIELDS`, сгруппированы в окне по
+в проекте, включая ещё НЕ вставленные — см. `list_generic_model_symbols`
+ниже) + текстовые параметры (`TEXT_FIELDS`, сгруппированы в окне по
 разделам через префикс `"[Раздел] Подпись"`). Всё хранится в конфиге
 pyRevit (`pyRevit_config.ini`, секция `LowLifeSCS`) — **не в
 репозитории**: имена параметров и семейств зависят от проекта
@@ -85,7 +89,7 @@ pyRevit (`pyRevit_config.ini`, секция `LowLifeSCS`) — **не в
 | `save_values` | `save_values(values)` | Записывает словарь строковых значений в конфиг |
 | `show_settings_form` | `show_settings_form(doc, values)` | Само модальное окно (`ScrollViewer` + кнопки типов через `forms.SelectFromList`); используется внутри `get_settings_interactive` |
 | `to_runtime_settings` | `to_runtime_settings(values)` | Строки → типы (списки через запятую → `list`); id типов не трогает |
-| `list_generic_model_symbols` | `list_generic_model_symbols(doc)` | Все `FamilySymbol` категории «Обобщённые модели» в проекте |
+| `list_generic_model_symbols` | `list_generic_model_symbols(doc)` | Все `FamilySymbol` категории «Обобщённые модели», загруженные в проект — обходом `Family`/`GetFamilySymbolIds()`, а не `FilteredElementCollector(...).OfClass(FamilySymbol)`, чтобы не пропустить типы без вставленных экземпляров |
 
 Обычный сценарий использования в кнопке:
 ```python
