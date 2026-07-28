@@ -14,7 +14,7 @@ from pyrevit import revit, forms
 
 from lowlife.geometry import (
     get_point, get_curve_data, point_key, points_close,
-    is_point_on_curve, sort_points
+    is_point_on_curve, sort_points, get_document_levels, find_level_for_elevation
 )
 from lowlife.params import get_double_param, set_double_param, set_string_param
 from lowlife.scs import detect_cable_type, classify_element, merge_nodes, resolve_category
@@ -236,14 +236,16 @@ for el in all_candidates:
 raw_nodes = []
 
 for nk, neighbors in graph.items():
-    if len(neighbors) >= 2:
-        raw_nodes.append({
-            "point": node_points[nk],
-            "node_key": nk,
-            "source_type": "graph_node",
-            "category": "route",
-            "segment_ids": list(segment_ids_by_node.get(nk, []))
-        })
+    # Включая узлы с одним соседом — иначе свободные концы линий
+    # (не примыкающие ни к другой линии, ни к устройству/панели/стояку)
+    # не получают узел маршрута вообще.
+    raw_nodes.append({
+        "point": node_points[nk],
+        "node_key": nk,
+        "source_type": "graph_node",
+        "category": "route",
+        "segment_ids": list(segment_ids_by_node.get(nk, []))
+    })
 
 for m in marked_points:
     raw_nodes.append({
@@ -273,6 +275,10 @@ for el in generic:
 created = []
 updated = []
 counts_by_category = {"panel": 0, "device": 0, "route": 0, "riser": 0}
+
+document_levels = get_document_levels(doc)
+if not document_levels:
+    forms.alert(u"В проекте нет ни одного уровня.", exitscript=True)
 
 with revit.Transaction("Place Route Nodes"):
 
@@ -319,7 +325,8 @@ with revit.Transaction("Place Route Nodes"):
         existing = existing_by_key.get(key)
 
         if existing is None:
-            el = doc.Create.NewFamilyInstance(point, target_symbol, StructuralType.NonStructural)
+            level = find_level_for_elevation(point.Z, document_levels)
+            el = doc.Create.NewFamilyInstance(point, target_symbol, level, StructuralType.NonStructural)
 
             if el:
                 if line_offset_value is not None:

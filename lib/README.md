@@ -20,6 +20,8 @@ from lowlife.geometry import get_point
 | `points_close` | `points_close(p1, p2, tol)` | `True`, если расстояние между точками `<= tol` |
 | `is_point_on_curve` | `is_point_on_curve(curve, pt, tol)` | `(bool, projected_point)` — лежит ли точка на кривой с проекцией |
 | `sort_points` | `sort_points(curve, points)` | Точки, отсортированные по расстоянию от начала кривой |
+| `get_document_levels` | `get_document_levels(doc)` | Все уровни документа, отсортированные по высоте (`Elevation`) |
+| `find_level_for_elevation` | `find_level_for_elevation(z, sorted_levels)` | Уровень, на котором физически находится точка с высотой `z` — ближайший снизу, иначе самый нижний; `sorted_levels` — результат `get_document_levels` |
 
 ## params.py
 Чтение/запись параметров элемента по списку возможных имён (когда параметр

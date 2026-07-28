@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Общие геометрические хелперы для работы с элементами Revit."""
 
-from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line
+from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line, Level, FilteredElementCollector
 
 
 def get_point(el):
@@ -68,3 +68,29 @@ def sort_points(curve, points):
         return sorted(points, key=lambda p: p0.DistanceTo(p))
     except:
         return points
+
+
+def get_document_levels(doc):
+    """Все уровни документа, отсортированные по высоте."""
+    levels = list(FilteredElementCollector(doc).OfClass(Level))
+    return sorted(levels, key=lambda lv: lv.Elevation)
+
+
+def find_level_for_elevation(z, sorted_levels):
+    """
+    Уровень, на котором физически находится точка с высотой z: ближайший
+    снизу (Elevation <= z), иначе — самый нижний уровень из sorted_levels.
+    sorted_levels — результат get_document_levels(doc) (уже отсортирован).
+    """
+    if not sorted_levels:
+        return None
+
+    best = sorted_levels[0]
+
+    for lv in sorted_levels:
+        if lv.Elevation <= z:
+            best = lv
+        else:
+            break
+
+    return best
