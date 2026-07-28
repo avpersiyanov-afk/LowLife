@@ -2,12 +2,14 @@
 """
 Логика нумерации адресов узлов трассы (кнопка RenumberAddresses):
 построение графа по узлам маршрута/стоякам, привязка панелей/стояков
-как корней, обход в ширину (BFS) и присвоение адресов вида "F1.3".
+как корней, кратчайший путь до корня (Дейкстра) и присвоение адресов
+вида "F1.3" в порядке обхода в глубину (DFS) по получившемуся дереву.
 
 Работает с обычными dict-записями (не с Revit-элементами напрямую),
 поэтому не зависит от Revit API и легко проверяется отдельно.
 """
 
+import heapq
 import math
 import re
 
@@ -216,3 +218,111 @@ def find_best_real_node_for_offset(offset_node, lines_by_id, real_nodes, tol):
             best = node
 
     return best
+
+
+def build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2):
+    """
+    Многоисточниковый Дейкстра по графу узлов (сосед — node["neighbor_ids"]),
+    вес ребра — dist_fn(a["point"], b["point"]) (реальное расстояние, а не
+    число шагов графа, как в BFS). Устанавливает node["parent_id"] для
+    каждого достижимого узла на "ближайший по расстоянию" предыдущий узел
+    — родителям (корням) их parent_id не трогает.
+
+    Узлы, не связанные ни с одним из roots (отдельная связная компонента),
+    всё равно получают дерево: по очереди берутся как локальные корни
+    (без родителя) после того, как основной обход исчерпан.
+
+    Возвращает (visited, effective_roots) — множество id посещённых узлов
+    и полный список корней, включая добавленные локальные (нужен для
+    depth_first_order, чтобы не потерять эти узлы при обходе).
+    """
+    dist = {}
+    visited = set()
+    heap = []
+    effective_roots = list(roots)
+
+    def relax_from(node_id, base_dist):
+        current = nodes_by_id[node_id]
+        for nb_id in current.get("neighbor_ids", []):
+            if nb_id not in nodes_by_id or nb_id in visited:
+                continue
+            nb = nodes_by_id[nb_id]
+            candidate = base_dist + dist_fn(current["point"], nb["point"])
+            if candidate < dist.get(nb_id, float("inf")):
+                dist[nb_id] = candidate
+                nb["parent_id"] = node_id
+                heapq.heappush(heap, (candidate, nb_id))
+
+    def drain():
+        while heap:
+            d, node_id = heapq.heappop(heap)
+            if node_id in visited:
+                continue
+            visited.add(node_id)
+            relax_from(node_id, d)
+
+    for r in roots:
+        dist[r["id"]] = 0.0
+        heapq.heappush(heap, (0.0, r["id"]))
+
+    drain()
+
+    remaining = sorted(
+        [n for n in all_nodes if n["id"] not in visited],
+        key=lambda n: (n["point"][0], n["point"][1], n["id"])
+    )
+
+    for seed in remaining:
+        if seed["id"] in visited:
+            continue
+        effective_roots.append(seed)
+        dist[seed["id"]] = 0.0
+        heapq.heappush(heap, (0.0, seed["id"]))
+        drain()
+
+    return visited, effective_roots
+
+
+def depth_first_order(nodes_by_id, roots):
+    """
+    Обход в глубину дерева, заданного node["parent_id"] (например, после
+    build_shortest_path_tree): вдоль каждой ветки — подряд, до конца,
+    только потом переход к следующей ветке. В отличие от обхода в ширину,
+    даёт узлам одной физической ветки последовательные номера, а не
+    вперемешку с соседними ветками.
+
+    roots — узлы, с которых начинать (обычно effective_roots из
+    build_shortest_path_tree). Итеративно (без рекурсии) — безопасно для
+    длинных цепочек узлов.
+    """
+    children_by_id = {}
+
+    for node in nodes_by_id.values():
+        pid = node.get("parent_id")
+        if pid is not None and pid in nodes_by_id:
+            children_by_id.setdefault(pid, []).append(node)
+
+    for kids in children_by_id.values():
+        kids.sort(key=lambda n: (n["point"][0], n["point"][1], n["id"]), reverse=True)
+
+    order = []
+    visited = set()
+
+    for root in roots:
+        if root["id"] in visited:
+            continue
+
+        stack = [root]
+
+        while stack:
+            node = stack.pop()
+            if node["id"] in visited:
+                continue
+            visited.add(node["id"])
+            order.append(node)
+
+            for child in children_by_id.get(node["id"], []):
+                if child["id"] not in visited:
+                    stack.append(child)
+
+    return order

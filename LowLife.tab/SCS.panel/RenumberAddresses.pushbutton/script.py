@@ -17,9 +17,10 @@ from lowlife.scs import classify_element, clear_stray_address_params
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_addressing import (
-    pt2, add_neighbor, get_floor_code_from_view, classify_point,
+    pt2, dist2, add_neighbor, get_floor_code_from_view, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
-    point_to_segment_distance_xy, line_parameter_xy
+    point_to_segment_distance_xy, line_parameter_xy,
+    build_shortest_path_tree, depth_first_order
 )
 
 doc = revit.doc
@@ -206,54 +207,23 @@ for n in root_real_nodes:
 
 
 # ------------------------------------------------------------
-# BFS
+# КРАТЧАЙШИЙ ПУТЬ ДО КОРНЯ (ДЕЙКСТРА) + ПОРЯДОК ОБХОДА (DFS)
 # ------------------------------------------------------------
+# Раньше здесь был обход в ширину (BFS): "предыдущий узел" — тот, кто
+# первым открыл узел в обходе, что при наличии нескольких физических
+# путей к одному узлу могло выбрать более длинный путь как "предыдущий".
+# Дейкстра всегда выбирает родителя по кратчайшему РЕАЛЬНОМУ расстоянию.
+#
+# Нумерация — обходом в глубину (DFS) по уже построенному дереву: одна
+# ветка получает подряд идущие номера от начала до конца, только потом
+# нумеруется следующая ветка (а не вперемешку, как при нумерации в
+# порядке открытия BFS).
 
-queue = []
-visited = set()
+real_nodes_by_id = dict((n["id"], n) for n in real_nodes)
 
-for root in unique_roots:
-    queue.append(root)
-    visited.add(root["id"])
+_, effective_roots = build_shortest_path_tree(real_nodes_by_id, unique_roots, real_nodes, dist2)
 
-# Узлы, не связанные ни с одной панелью/стояком (отдельная связная
-# компонента — например, ветка трассы без своего корня рядом), иначе
-# вообще не попали бы в обход и не получили бы адрес. Берём их по
-# очереди как локальные "корни" (без родителя) и продолжаем BFS.
-remaining_seeds = sorted(
-    [n for n in real_nodes if n["id"] not in visited],
-    key=lambda n: (n["point"][0], n["point"][1], n["id"])
-)
-seed_idx = 0
-
-idx = 0
-ordered_real_nodes = []
-
-while True:
-    while idx < len(queue):
-        current = queue[idx]
-        idx += 1
-        ordered_real_nodes.append(current)
-
-        neighbor_objs = [all_points_by_id[nid] for nid in current["neighbor_ids"] if nid in all_points_by_id]
-        neighbor_objs.sort(key=lambda n: (n["point"][0], n["point"][1], n["id"]))
-
-        for nb in neighbor_objs:
-            if nb["id"] not in visited:
-                visited.add(nb["id"])
-                nb["parent_id"] = current["id"]
-                queue.append(nb)
-
-    while seed_idx < len(remaining_seeds) and remaining_seeds[seed_idx]["id"] in visited:
-        seed_idx += 1
-
-    if seed_idx >= len(remaining_seeds):
-        break
-
-    seed = remaining_seeds[seed_idx]
-    seed_idx += 1
-    visited.add(seed["id"])
-    queue.append(seed)
+ordered_real_nodes = depth_first_order(real_nodes_by_id, effective_roots)
 
 
 # ------------------------------------------------------------
