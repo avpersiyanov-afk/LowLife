@@ -15,7 +15,7 @@ from lowlife.geometry import get_point
 from lowlife.params import get_string_param, set_string_param
 from lowlife.scs import classify_element, clear_stray_address_params
 from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_interactive
+from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_addressing import (
     pt2, add_neighbor, get_floor_code_from_view, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
@@ -37,10 +37,7 @@ END_TOL = 50.0 / MM_IN_FOOT
 # НАСТРОЙКИ
 # ------------------------------------------------------------
 
-settings = get_settings_interactive(doc)
-
-if settings is None:
-    forms.alert(u"Операция отменена.", exitscript=True)
+settings = get_settings_silent()
 
 scs_settings.require(settings, ["route_type_id", "riser_type_id"])
 # Имена параметров (addr_param_name, addr_prev_param_name) здесь не

@@ -15,7 +15,7 @@ from lowlife.geometry import get_point
 from lowlife.params import get_string_param, get_param_any, set_param_any
 from lowlife.scs import clear_stray_address_params
 from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_interactive
+from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_circuits import (
     norm, clean_text_value, split_multi_value,
     build_graph, bfs_component, find_closest_pair_between_sets,
@@ -30,10 +30,7 @@ doc = revit.doc
 # НАСТРОЙКИ
 # ------------------------------------------------------------
 
-settings = get_settings_interactive(doc)
-
-if settings is None:
-    forms.alert(u"Операция отменена.", exitscript=True)
+settings = get_settings_silent()
 
 scs_settings.require(settings, [
     "route_type_id", "riser_type_id",

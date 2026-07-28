@@ -68,28 +68,41 @@ from lowlife.geometry import get_point
 | `clear_stray_address_params` | `clear_stray_address_params(doc, param_names, allowed_type_ids)` | Ищет элементы (Обобщённые модели + категории панелей/устройств), у которых заполнен один из `param_names`, но тип не входит в `allowed_type_ids`, и очищает эти параметры. Нужно вызывать в RenumberAddresses/SyncCircuitsAndLengths перед сбором узлов — иначе застрявший адрес на устройстве (с прежних запусков или ручного ввода) может быть спутан с адресом реального узла маршрута. Вызывать внутри `revit.Transaction` |
 
 ## scs_settings.py
-**Одно общее окно настроек на все три кнопки `SCS.panel`** (PlaceRouteNodes /
-RenumberAddresses / SyncCircuitsAndLengths): выбор **типа для вставки**
-(панель/устройство/маршрут/стояк — из типов категории «Обобщённые модели»
-в проекте, включая ещё НЕ вставленные — см. `list_generic_model_symbols`
-ниже) + текстовые параметры (`TEXT_FIELDS`, сгруппированы в окне по
-разделам через префикс `"[Раздел] Подпись"`). Хранится в обычном
-JSON-файле `%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в
-`pyRevit_config.ini` — не полагаемся на `pyrevit.script.get_config()`,
-он не гарантированно расшаривает секцию между разными `script.py`) —
-**не в репозитории**: имена параметров и семейств зависят от проекта
-пользователя, дефолты в `scs.py` намеренно пустые. Требования к
-семействам/параметрам — см. `docs/scs-panel.md`.
+**Одно общее окно настроек на все четыре кнопки `SCS.panel`** (PlaceRouteNodes /
+RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
+**типа для вставки** (панель/устройство/маршрут/стояк — из типов
+категории «Обобщённые модели» в проекте, включая ещё НЕ вставленные —
+см. `list_generic_model_symbols` ниже) + текстовые параметры
+(`TEXT_FIELDS`, сгруппированы в окне по разделам через префикс
+`"[Раздел] Подпись"`). Хранится в обычном JSON-файле
+`%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в `pyRevit_config.ini` —
+не полагаемся на `pyrevit.script.get_config()`, он не гарантированно
+расшаривает секцию между разными `script.py`) — **не в репозитории**:
+имена параметров и семейств зависят от проекта пользователя, дефолты в
+`scs.py` намеренно пустые. Требования к семействам/параметрам — см.
+`docs/scs-panel.md`.
 
-Так как окно общее, форма **не блокирует** сохранение из-за пустых полей —
-у разных кнопок разный набор нужных полей (RenumberAddresses не
-использует поля SyncCircuitsAndLengths и наоборот). Каждая кнопка сама
-проверяет свой набор через `require()` сразу после получения settings.
+**Форму (`get_settings_interactive`) показывает только кнопка
+«Параметры СКС» (SetupParameters)** — она единственное место, где
+значения редактируются. Остальные три кнопки читают уже сохранённое
+через `get_settings_silent()`, без показа окна — если запустить их до
+первой настройки, `require()` остановит скрипт и попросит сначала
+запустить «Параметры СКС».
+
+Так как настройки общие, `require()` в каждой кнопке проверяет только
+свой набор ключей — у разных кнопок разный набор нужных полей
+(RenumberAddresses не использует поля SyncCircuitsAndLengths и
+наоборот). Имена параметров (`cable_param_name`, `addr_param_name` и
+т.п.) кнопки вообще не требуют через `require()` — их наличие/привязку
+в проекте проверяет и чинит сама «Параметры СКС»; остаются обязательными
+только выбор типов (id) и содержательные значения/ключевые слова,
+которые «Параметры СКС» проверить не может.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `get_settings_interactive` | `get_settings_interactive(doc)` | Показывает окно, сохраняет введённое и возвращает готовый словарь настроек (списки уже разобраны из строк через запятую, id типов — строки); `None`, если нажата «Отмена» |
-| `require` | `require(settings, keys)` | Проверяет, что перечисленные ключи заполнены (списки — что непусты); если нет — `forms.alert(exitscript=True)` со списком недостающих полей. Вызывать сразу после `get_settings_interactive` |
+| `get_settings_interactive` | `get_settings_interactive(doc)` | Показывает окно, сохраняет введённое и возвращает готовый словарь настроек (списки уже разобраны из строк через запятую, id типов — строки); `None`, если нажата «Отмена». Используется только в SetupParameters |
+| `get_settings_silent` | `get_settings_silent()` | Без показа окна — уже сохранённые значения (или дефолты из `scs.py`), сразу через `to_runtime_settings`. Используется в PlaceRouteNodes/RenumberAddresses/SyncCircuitsAndLengths |
+| `require` | `require(settings, keys)` | Проверяет, что перечисленные ключи заполнены (списки — что непусты); если нет — `forms.alert(exitscript=True)` со списком недостающих полей и предложением запустить «Параметры СКС» |
 | `load_saved_values` | `load_saved_values()` | Сырые строковые значения из JSON-файла настроек, иначе — значения по умолчанию из `scs.py` |
 | `save_values` | `save_values(values)` | Записывает словарь строковых значений в JSON-файл настроек |
 | `show_settings_form` | `show_settings_form(doc, values)` | Само модальное окно (`ScrollViewer` + кнопки типов через `forms.SelectFromList`); используется внутри `get_settings_interactive` |
@@ -97,12 +110,12 @@ JSON-файле `%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в
 | `list_generic_model_symbols` | `list_generic_model_symbols(doc)` | Все `FamilySymbol` категории «Обобщённые модели», загруженные в проект — обходом `Family`/`GetFamilySymbolIds()`, а не `FilteredElementCollector(...).OfClass(FamilySymbol)`, чтобы не пропустить типы без вставленных экземпляров |
 | `_safe_element_name` | `_safe_element_name(el)` | `Element.Name.GetValue(el)` вместо прямого `el.Name` — в IronPython у некоторых Revit-элементов (в т.ч. `FamilySymbol`) `.Name` падает с ошибкой неоднозначного связывания, из-за чего в списке типов вместо имени типа показывался его `Id` |
 
-Обычный сценарий использования в кнопке:
+Обычный сценарий использования в рабочей кнопке (не SetupParameters):
 ```python
 from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_interactive
+from lowlife.scs_settings import get_settings_silent
 
-settings = get_settings_interactive(doc)
+settings = get_settings_silent()
 if settings is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 

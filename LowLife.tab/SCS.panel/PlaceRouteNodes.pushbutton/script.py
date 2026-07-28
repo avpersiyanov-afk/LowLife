@@ -20,7 +20,7 @@ from lowlife.geometry import (
 from lowlife.params import get_double_param, set_double_param, set_string_param
 from lowlife.scs import detect_cable_type, classify_element, merge_nodes, resolve_category
 from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_interactive
+from lowlife.scs_settings import get_settings_silent
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -35,10 +35,7 @@ merge_tolerance = 0.1
 # НАСТРОЙКИ
 # ------------------------------------------------------------
 
-settings = get_settings_interactive(doc)
-
-if settings is None:
-    forms.alert(u"Операция отменена.", exitscript=True)
+settings = get_settings_silent()
 
 scs_settings.require(settings, [
     "panel_type_id", "device_type_id", "route_type_id", "riser_type_id",
