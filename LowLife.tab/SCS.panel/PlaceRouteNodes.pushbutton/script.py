@@ -14,7 +14,8 @@ from pyrevit import revit, forms
 
 from lowlife.geometry import (
     get_point, get_curve_data, point_key, points_close,
-    is_point_on_curve, sort_points, get_document_levels, find_level_for_elevation
+    is_point_on_curve, sort_points, get_document_levels, find_level_for_elevation,
+    get_element_level
 )
 from lowlife.params import get_double_param, set_double_param, set_string_param
 from lowlife.scs import detect_cable_type, classify_element, merge_nodes, resolve_category
@@ -296,6 +297,7 @@ with revit.Transaction("Place Route Nodes"):
 
         line_offset_value = None
         cable_type_value = None
+        level = None
 
         device = node.get("device")
         is_marked = device is not None and category in ("panel", "device", "riser")
@@ -305,6 +307,9 @@ with revit.Transaction("Place Route Nodes"):
             dev_el = device.get("element")
             if dev_el is not None:
                 line_offset_value = get_double_param(dev_el, OFFSET_PARAM_NAMES)
+                # Панель/устройство/стояк — уровень берём с самого элемента
+                # (его параметр «Уровень»), а не по высоте точки.
+                level = get_element_level(doc, dev_el)
 
         for sid in node.get("segment_ids", []):
             if sid not in segments_by_id:
@@ -318,14 +323,23 @@ with revit.Transaction("Place Route Nodes"):
             if not is_marked and cable_type_value is None:
                 cable_type_value = detect_cable_type(seg_el)
 
-            if line_offset_value is not None and cable_type_value is not None:
+            if level is None:
+                # Чистый узел маршрута (без устройства/панели/стояка) —
+                # уровень берём с линии трассы (её рабочая плоскость).
+                level = get_element_level(doc, seg_el)
+
+            if line_offset_value is not None and cable_type_value is not None and level is not None:
                 break
+
+        if level is None:
+            # Ни у элемента, ни у линии нет связанного уровня — резервный
+            # вариант по высоте точки.
+            level = find_level_for_elevation(point.Z, document_levels)
 
         key = point_key(point, merge_tolerance)
         existing = existing_by_key.get(key)
 
         if existing is None:
-            level = find_level_for_elevation(point.Z, document_levels)
             el = doc.Create.NewFamilyInstance(point, target_symbol, level, StructuralType.NonStructural)
 
             if el:

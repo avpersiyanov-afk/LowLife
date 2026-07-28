@@ -21,7 +21,8 @@ from lowlife.geometry import get_point
 | `is_point_on_curve` | `is_point_on_curve(curve, pt, tol)` | `(bool, projected_point)` — лежит ли точка на кривой с проекцией |
 | `sort_points` | `sort_points(curve, points)` | Точки, отсортированные по расстоянию от начала кривой |
 | `get_document_levels` | `get_document_levels(doc)` | Все уровни документа, отсортированные по высоте (`Elevation`) |
-| `find_level_for_elevation` | `find_level_for_elevation(z, sorted_levels)` | Уровень, на котором физически находится точка с высотой `z` — ближайший снизу, иначе самый нижний; `sorted_levels` — результат `get_document_levels` |
+| `find_level_for_elevation` | `find_level_for_elevation(z, sorted_levels)` | Уровень, на котором физически находится точка с высотой `z` — ближайший снизу, иначе самый нижний; `sorted_levels` — результат `get_document_levels` (резервный вариант, если у элемента нет связанного уровня) |
+| `get_element_level` | `get_element_level(doc, el)` | Уровень элемента через `Element.LevelId` — покрывает и параметр «Уровень» экземпляра (устройство/панель), и рабочую плоскость линейного элемента, не завися от языка интерфейса Revit; `None`, если не связан ни с каким уровнем |
 
 ## params.py
 Чтение/запись параметров элемента по списку возможных имён (когда параметр

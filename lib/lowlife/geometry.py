@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Общие геометрические хелперы для работы с элементами Revit."""
 
-from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line, Level, FilteredElementCollector
+from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line, Level, FilteredElementCollector, ElementId
 
 
 def get_point(el):
@@ -94,3 +94,26 @@ def find_level_for_elevation(z, sorted_levels):
             break
 
     return best
+
+
+def get_element_level(doc, el):
+    """
+    Уровень, связанный с элементом, через Element.LevelId — это работает
+    и для параметра «Уровень» экземпляра (устройства/панели), и для
+    рабочей плоскости линейного элемента (для линий, размещённых по
+    рабочей плоскости уровня, LevelId ссылается именно на неё), не завися
+    от языка интерфейса Revit (в отличие от поиска параметра по имени).
+    Возвращает None, если у элемента нет связанного уровня.
+    """
+    try:
+        level_id = el.LevelId
+    except:
+        return None
+
+    if not level_id or level_id == ElementId.InvalidElementId:
+        return None
+
+    try:
+        return doc.GetElement(level_id)
+    except:
+        return None
