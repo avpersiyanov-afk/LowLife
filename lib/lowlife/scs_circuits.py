@@ -100,7 +100,18 @@ def find_closest_pair_between_sets(segments, start_set, end_set):
 
 
 def find_nearest_segment_id(point, segments):
-    """Ближайший (по прямой) узел маршрута к произвольной 3D-точке."""
+    """
+    Ближайший узел маршрута к произвольной точке — только по XY, без
+    учёта Z. Линию/устройство подводят друг к другу в плане, а высота
+    подключения (например, розетка на 300мм, узел маршрута на потолке)
+    не должна мешать найти правильный ближайший узел: по 3D-расстоянию
+    другой, чисто случайно более близкий по высоте узел мог выиграть у
+    правильного, находящегося прямо под/над точкой в плане.
+
+    Вертикальная составляющая длины кабеля по-прежнему считается отдельно
+    (см. calc_lengths / raw_vertical_ft в SyncCircuitsAndLengths) — здесь
+    она сознательно игнорируется, только для выбора узла.
+    """
     if point is None or not segments:
         return None, None
 
@@ -111,8 +122,7 @@ def find_nearest_segment_id(point, segments):
         pt = seg["pt"]
         dx = point.X - pt.X
         dy = point.Y - pt.Y
-        dz = point.Z - pt.Z
-        d = (dx * dx + dy * dy + dz * dz) ** 0.5
+        d = (dx * dx + dy * dy) ** 0.5
         if d < nearest_dist:
             nearest_dist = d
             nearest_sid = sid

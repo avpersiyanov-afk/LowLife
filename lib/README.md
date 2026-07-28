@@ -50,27 +50,34 @@ from lowlife.geometry import get_point
 дисциплине — общие геометрические/параметрические вещи должны идти в
 `geometry.py`/`params.py`.
 
+Категории точек, которые PlaceRouteNodes вставляет как отдельные
+семейства — **панель**, **стояк**, **узел маршрута** (обычный проходной/
+концевой узел трассы). Устройства отдельной точкой вставки не считаются
+— реальным устройствам (розетки, датчики и т.п.) в SyncCircuitsAndLengths
+назначается ближайший уже адресованный узел маршрута, без своего
+маркера (см. `docs/scs-panel.md`).
+
 Константы: `FAMILY_FILTER`, `CABLE_PARAM_NAME`, `ROUTE_PARAM_NAME`,
-`ROUTE_PARAM_VALUE` (для панели/устройства/маршрута), `ROUTE_PARAM_VALUE_RISER`
+`ROUTE_PARAM_VALUE` (для панели/маршрута), `ROUTE_PARAM_VALUE_RISER`
 (отдельное значение для стояков — например «Вертикальный» вместо
-«Горизонтальный»), `DEVICE_CABLE_TYPE_VALUE`, `DEVICE_KEYWORDS`,
-`DEVICE_EXCLUDE_KEYWORDS`, `PANEL_KEYWORDS`, `PANEL_EXCLUDE_KEYWORDS`,
-`RISER_KEYWORDS`, `RISER_EXCLUDE_KEYWORDS`, `OFFSET_PARAM_NAMES`,
-`CATEGORY_PRIORITY` (`("riser", "panel", "device", "route")`).
+«Горизонтальный»), `DEVICE_CABLE_TYPE_VALUE` (форсированный тип
+прокладки для панелей/стояков — имя оставлено историческим, к
+устройствам как категории больше не относится), `PANEL_KEYWORDS`,
+`PANEL_EXCLUDE_KEYWORDS`, `RISER_KEYWORDS`, `RISER_EXCLUDE_KEYWORDS`,
+`OFFSET_PARAM_NAMES`, `CATEGORY_PRIORITY` (`("riser", "panel", "route")`).
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `detect_cable_type` | `detect_cable_type(el)` | Тип прокладки кабеля («Труба», «Труба открыто», «Лоток») по имени типоразмера/семейства **сегмента трассы** (линии) — этим определяется значение для примыкающего узла маршрута |
 | `classify_element` | `classify_element(el, categories)` | `categories` — список `(name, keywords, exclude_keywords)`, проверяется по порядку; возвращает `name` первой подошедшей или `None` |
-| `text_match_device` | `text_match_device(el, device_keywords=..., device_exclude_keywords=...)` | Тонкая обёртка над `classify_element` для одной категории "device" (оставлена для обратной совместимости) |
-| `resolve_category` | `resolve_category(categories, priority=CATEGORY_PRIORITY)` | Из списка категорий объединённого узла выбирает одну по приоритету (riser > panel > device > route) |
+| `resolve_category` | `resolve_category(categories, priority=CATEGORY_PRIORITY)` | Из списка категорий объединённого узла выбирает одну по приоритету (riser > panel > route) |
 | `merge_nodes` | `merge_nodes(nodes, tol, points_close_fn)` | Объединяет узлы трассы ближе `tol` друг к другу в один, суммируя `categories`, `segment_ids`, `device`; `points_close_fn` обычно — `geometry.points_close` |
-| `clear_stray_address_params` | `clear_stray_address_params(doc, param_names, allowed_type_ids)` | Ищет элементы (Обобщённые модели + категории панелей/устройств), у которых заполнен один из `param_names`, но тип не входит в `allowed_type_ids`, и очищает эти параметры. Нужно вызывать в RenumberAddresses/SyncCircuitsAndLengths перед сбором узлов — иначе застрявший адрес на устройстве (с прежних запусков или ручного ввода) может быть спутан с адресом реального узла маршрута. Вызывать внутри `revit.Transaction` |
+| `clear_stray_address_params` | `clear_stray_address_params(doc, param_names, allowed_type_ids)` | Ищет элементы (Обобщённые модели + категории устройств/панелей), у которых заполнен один из `param_names`, но тип не входит в `allowed_type_ids`, и очищает эти параметры. Нужно вызывать в RenumberAddresses/SyncCircuitsAndLengths перед сбором узлов — иначе застрявший адрес на устройстве (с прежних запусков или ручного ввода) может быть спутан с адресом реального узла маршрута. Вызывать внутри `revit.Transaction` |
 
 ## scs_settings.py
 **Одно общее окно настроек на все четыре кнопки `SCS.panel`** (PlaceRouteNodes /
 RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
-**типа для вставки** (панель/устройство/маршрут/стояк — из типов
+**типа для вставки** (панель/маршрут/стояк — из типов
 категории «Обобщённые модели» в проекте, включая ещё НЕ вставленные —
 см. `list_generic_model_symbols` ниже) + текстовые параметры
 (`TEXT_FIELDS`, сгруппированы в окне по разделам через префикс
@@ -122,7 +129,7 @@ if settings is None:
 scs_settings.require(settings, ["family_filter", "cable_param_name", "panel_type_id"])
 
 FAMILY_FILTER = settings["family_filter"]
-DEVICE_KEYWORDS = settings["device_keywords"]  # уже list
+PANEL_KEYWORDS = settings["panel_keywords"]  # уже list
 PANEL_TYPE_ID = ElementId(int(settings["panel_type_id"]))
 panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 ```
@@ -158,6 +165,15 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 `build_segment_list_text`), диагностика обрывов графа (`bfs_component`,
 `find_closest_pair_between_sets` — используются, чтобы показать, где
 именно у цепи нет пути до панели).
+
+`find_nearest_segment_id(point, segments)` — ближайший адресованный
+узел маршрута к панели/устройству, **только по XY, без Z**: панель или
+устройство подводится к линии трассы в плане, а разница в высоте
+подключения (розетка на 300мм, узел маршрута на потолке и т.п.) не
+должна перебивать правильный выбор узла. Вертикальная составляющая
+длины кабеля считается отдельно (`raw_vertical_ft` в самом скрипте
+кнопки) — здесь она игнорируется только для выбора узла, не для расчёта
+длины.
 
 ## scs_parameters.py
 Логика кнопки **SetupParameters** («Параметры СКС»): таблица `PARAM_SPECS`

@@ -17,16 +17,16 @@ CABLE_PARAM_NAME = u""
 ROUTE_PARAM_NAME = u""
 ROUTE_PARAM_VALUE = u""
 ROUTE_PARAM_VALUE_RISER = u""
+# Форсированный тип прокладки кабеля для панелей/стояков (не для
+# устройств — устройства больше не отдельная точка вставки, см.
+# PlaceRouteNodes/script.py).
 DEVICE_CABLE_TYPE_VALUE = u""
 
 OFFSET_PARAM_NAMES = []
 
-# Ключевые слова для распознавания устройств/панелей/стояков — это просто
-# общая лексика (не привязана к чьим-то внутренним именам параметров),
-# поэтому для них оставлены разумные значения по умолчанию.
-DEVICE_KEYWORDS = [u"коннектор", u"розетка", u"датчик", u"задание"]
-DEVICE_EXCLUDE_KEYWORDS = [u"резервный"]
-
+# Ключевые слова для распознавания панелей/стояков — это просто общая
+# лексика (не привязана к чьим-то внутренним именам параметров), поэтому
+# для них оставлены разумные значения по умолчанию.
 PANEL_KEYWORDS = [u"панель", u"кросс", u"шкаф"]
 PANEL_EXCLUDE_KEYWORDS = []
 
@@ -34,8 +34,8 @@ RISER_KEYWORDS = [u"стояк"]
 RISER_EXCLUDE_KEYWORDS = []
 
 # Порядок разрешения категории точки, если она попала сразу в несколько
-# (например рядом и панель, и устройство) — первая подошедшая побеждает.
-CATEGORY_PRIORITY = ("riser", "panel", "device", "route")
+# (например рядом и панель, и стояк) — первая подошедшая побеждает.
+CATEGORY_PRIORITY = ("riser", "panel", "route")
 
 
 def detect_cable_type(el):
@@ -98,11 +98,6 @@ def classify_element(el, categories):
             return name
 
     return None
-
-
-def text_match_device(el, device_keywords=DEVICE_KEYWORDS, device_exclude_keywords=DEVICE_EXCLUDE_KEYWORDS):
-    """Похож ли элемент на оконечное устройство трассы по имени/семейству."""
-    return classify_element(el, [("device", device_keywords, device_exclude_keywords)]) == "device"
 
 
 def resolve_category(categories, priority=CATEGORY_PRIORITY):

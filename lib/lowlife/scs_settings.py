@@ -51,12 +51,8 @@ TEXT_FIELDS = [
         scs_defaults.ROUTE_PARAM_VALUE, False, True),
     ("route_param_value_riser", u"Значение параметра «Тип трассы» для стояков",
         scs_defaults.ROUTE_PARAM_VALUE_RISER, False, True),
-    ("device_cable_type_value", u"Тип прокладки кабеля для устройств, панелей и стояков",
+    ("device_cable_type_value", u"Тип прокладки кабеля для панелей и стояков",
         scs_defaults.DEVICE_CABLE_TYPE_VALUE, False, True),
-    ("device_keywords", u"Ключевые слова устройств (через запятую)",
-        u", ".join(scs_defaults.DEVICE_KEYWORDS), True, False),
-    ("device_exclude_keywords", u"Слова-исключения устройств (через запятую)",
-        u", ".join(scs_defaults.DEVICE_EXCLUDE_KEYWORDS), True, False),
     ("panel_keywords", u"Ключевые слова панелей (через запятую)",
         u", ".join(scs_defaults.PANEL_KEYWORDS), True, False),
     ("panel_exclude_keywords", u"Слова-исключения панелей (через запятую)",
@@ -136,7 +132,6 @@ TEXT_FIELDS = [
 # (ключ, подпись) — типы, выбираемые из проекта (категория "Обобщённые модели")
 TYPE_FIELDS = [
     ("panel_type_id", u"Тип для точек панелей"),
-    ("device_type_id", u"Тип для точек устройств"),
     ("route_type_id", u"Тип для узлов маршрута"),
     ("riser_type_id", u"Тип для точек стояков"),
 ]

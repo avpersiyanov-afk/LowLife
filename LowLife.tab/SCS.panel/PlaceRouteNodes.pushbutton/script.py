@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __title__ = "Узлы трассы"
-__doc__ = "Расставляет панели/устройства/узлы маршрута в точках трассы кабеля"
+__doc__ = "Расставляет панели/узлы маршрута/стояки в точках трассы кабеля"
 __author__ = "Pipers"
 
 import clr
@@ -38,7 +38,7 @@ merge_tolerance = 0.1
 settings = get_settings_silent()
 
 scs_settings.require(settings, [
-    "panel_type_id", "device_type_id", "route_type_id", "riser_type_id",
+    "panel_type_id", "route_type_id", "riser_type_id",
     "family_filter", "route_param_value", "route_param_value_riser",
     "device_cable_type_value"
 ])
@@ -51,9 +51,10 @@ CABLE_PARAM_NAME = settings["cable_param_name"]
 ROUTE_PARAM_NAME = settings["route_param_name"]
 ROUTE_PARAM_VALUE = settings["route_param_value"]
 ROUTE_PARAM_VALUE_RISER = settings["route_param_value_riser"]
-DEVICE_CABLE_TYPE_VALUE = settings["device_cable_type_value"]
-DEVICE_KEYWORDS = settings["device_keywords"]
-DEVICE_EXCLUDE_KEYWORDS = settings["device_exclude_keywords"]
+# Форсированный тип прокладки для панелей/стояков (точек-концов, а не
+# узлов посреди трассы) — устройства больше не отдельная категория,
+# семейство в их точках не ставится, поэтому DEVICE в названии не осталось.
+ENDPOINT_CABLE_TYPE_VALUE = settings["device_cable_type_value"]
 PANEL_KEYWORDS = settings["panel_keywords"]
 PANEL_EXCLUDE_KEYWORDS = settings["panel_exclude_keywords"]
 RISER_KEYWORDS = settings["riser_keywords"]
@@ -62,7 +63,6 @@ OFFSET_PARAM_NAMES = settings["offset_param_names"]
 
 TYPE_ID_BY_CATEGORY = {
     "panel": ElementId(int(settings["panel_type_id"])),
-    "device": ElementId(int(settings["device_type_id"])),
     "route": ElementId(int(settings["route_type_id"])),
     "riser": ElementId(int(settings["riser_type_id"])),
 }
@@ -178,8 +178,10 @@ for s in segments:
         segment_ids_by_node[k1].add(s["id"])
         segment_ids_by_node[k2].add(s["id"])
 
-# Панели, устройства и стояки ищем среди одних и тех же категорий
-# элементов, различаем по ключевым словам (classify_element)
+# Панели и стояки ищем среди одних и тех же категорий элементов,
+# различаем по ключевым словам (classify_element). Устройства отдельной
+# точкой вставки больше не считаются — им достаточно ближайшего узла
+# маршрута, а линию к ним подводят прямо (см. SyncCircuitsAndLengths).
 candidate_categories = [
     BuiltInCategory.OST_CommunicationDevices,
     BuiltInCategory.OST_ElectricalFixtures,
@@ -200,7 +202,6 @@ for cat in candidate_categories:
 classify_rules = [
     ("riser", RISER_KEYWORDS, RISER_EXCLUDE_KEYWORDS),
     ("panel", PANEL_KEYWORDS, PANEL_EXCLUDE_KEYWORDS),
-    ("device", DEVICE_KEYWORDS, DEVICE_EXCLUDE_KEYWORDS),
 ]
 
 marked_points = []
@@ -237,7 +238,7 @@ raw_nodes = []
 
 for nk, neighbors in graph.items():
     # Включая узлы с одним соседом — иначе свободные концы линий
-    # (не примыкающие ни к другой линии, ни к устройству/панели/стояку)
+    # (не примыкающие ни к другой линии, ни к панели/стояку)
     # не получают узел маршрута вообще.
     raw_nodes.append({
         "point": node_points[nk],
@@ -274,7 +275,7 @@ for el in generic:
 
 created = []
 updated = []
-counts_by_category = {"panel": 0, "device": 0, "route": 0, "riser": 0}
+counts_by_category = {"panel": 0, "route": 0, "riser": 0}
 
 document_levels = get_document_levels(doc)
 if not document_levels:
@@ -299,14 +300,14 @@ with revit.Transaction("Place Route Nodes"):
         level = None
 
         device = node.get("device")
-        is_marked = device is not None and category in ("panel", "device", "riser")
+        is_marked = device is not None and category in ("panel", "riser")
 
         if is_marked:
-            cable_type_value = DEVICE_CABLE_TYPE_VALUE
+            cable_type_value = ENDPOINT_CABLE_TYPE_VALUE
             dev_el = device.get("element")
             if dev_el is not None:
                 line_offset_value = get_double_param(dev_el, OFFSET_PARAM_NAMES)
-                # Панель/устройство/стояк — уровень берём с самого элемента
+                # Панель/стояк — уровень берём с самого элемента
                 # (его параметр «Уровень»), а не по высоте точки.
                 level = get_element_level(doc, dev_el)
 
@@ -328,7 +329,7 @@ with revit.Transaction("Place Route Nodes"):
         if level is None:
             # Уровень рабочей плоскости самой линии ненадёжен (line-based
             # семейство не всегда привязано к реальному этажу через
-            # LevelId) — берём уровень ближайшего устройства/панели/стояка.
+            # LevelId) — берём уровень ближайшей панели/стояка.
             nearest_marked = None
             nearest_marked_dist = None
 
@@ -345,7 +346,7 @@ with revit.Transaction("Place Route Nodes"):
                 level = get_element_level(doc, nearest_marked["element"])
 
         if level is None:
-            # Нет ни одного устройства/панели/стояка с уровнем — резервный
+            # Нет ни одной панели/стояка с уровнем — резервный
             # вариант по высоте точки.
             level = find_level_for_elevation(point.Z, document_levels)
 
@@ -386,13 +387,11 @@ forms.alert(
     "Создано элементов: {}\n"
     "Обновлено элементов: {}\n\n"
     "Панелей: {}\n"
-    "Устройств: {}\n"
     "Стояков: {}\n"
     "Узлов маршрута: {}".format(
         len(created),
         len(updated),
         counts_by_category["panel"],
-        counts_by_category["device"],
         counts_by_category["riser"],
         counts_by_category["route"]
     )
