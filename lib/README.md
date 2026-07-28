@@ -92,6 +92,7 @@ JSON-файле `%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в
 | `show_settings_form` | `show_settings_form(doc, values)` | Само модальное окно (`ScrollViewer` + кнопки типов через `forms.SelectFromList`); используется внутри `get_settings_interactive` |
 | `to_runtime_settings` | `to_runtime_settings(values)` | Строки → типы (списки через запятую → `list`); id типов не трогает |
 | `list_generic_model_symbols` | `list_generic_model_symbols(doc)` | Все `FamilySymbol` категории «Обобщённые модели», загруженные в проект — обходом `Family`/`GetFamilySymbolIds()`, а не `FilteredElementCollector(...).OfClass(FamilySymbol)`, чтобы не пропустить типы без вставленных экземпляров |
+| `_safe_element_name` | `_safe_element_name(el)` | `Element.Name.GetValue(el)` вместо прямого `el.Name` — в IronPython у некоторых Revit-элементов (в т.ч. `FamilySymbol`) `.Name` падает с ошибкой неоднозначного связывания, из-за чего в списке типов вместо имени типа показывался его `Id` |
 
 Обычный сценарий использования в кнопке:
 ```python

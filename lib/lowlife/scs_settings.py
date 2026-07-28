@@ -21,7 +21,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId, FilteredElementCollector, Family, BuiltInCategory
+from Autodesk.Revit.DB import ElementId, FilteredElementCollector, Family, BuiltInCategory, Element
 
 from pyrevit import forms
 
@@ -160,23 +160,40 @@ for _key, _label in TYPE_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
 
 
+def _safe_element_name(el):
+    """
+    Имя элемента через Element.Name.GetValue(el) — прямой доступ el.Name
+    в IronPython у некоторых типов Revit-элементов (в т.ч. FamilySymbol)
+    падает с ошибкой неоднозначного связывания и незаметно уходит в
+    except, поэтому используем статическое свойство через рефлексию.
+    """
+    try:
+        return Element.Name.GetValue(el)
+    except:
+        try:
+            return el.Name
+        except:
+            return None
+
+
 class TypeOption(object):
     """Обёртка над FamilySymbol для отображения в списке выбора."""
 
     def __init__(self, symbol):
         self.symbol = symbol
 
+        fam_name = None
         try:
-            fam_name = symbol.Family.Name
+            fam_name = _safe_element_name(symbol.Family)
         except:
-            fam_name = u"?"
+            pass
 
-        try:
-            type_name = symbol.Name
-        except:
-            type_name = str(symbol.Id.IntegerValue)
+        type_name = _safe_element_name(symbol)
 
-        self.name = u"{} : {}".format(fam_name, type_name)
+        self.name = u"{} : {}".format(
+            fam_name or u"?",
+            type_name or str(symbol.Id.IntegerValue)
+        )
 
     def __str__(self):
         return self.name
@@ -225,13 +242,18 @@ def _type_display_name(doc, id_str):
     if el is None:
         return u"(не выбран)"
 
+    fam_name = None
     try:
-        return u"{} : {}".format(el.Family.Name, el.Name)
+        fam_name = _safe_element_name(el.Family)
     except:
-        try:
-            return el.Name
-        except:
-            return id_str
+        pass
+
+    type_name = _safe_element_name(el)
+
+    if fam_name and type_name:
+        return u"{} : {}".format(fam_name, type_name)
+
+    return type_name or id_str
 
 
 def _settings_file_path():
@@ -349,7 +371,9 @@ def show_settings_form(doc, values):
     win.Width = 560
     win.Height = 760
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
-    win.Topmost = True
+    # Topmost намеренно НЕ ставим: иначе окно выбора типа
+    # (forms.SelectFromList, отдельное Window) открывается позади этого
+    # окна и его невозможно ни увидеть, ни подвинуть на передний план.
 
     outer = DockPanel()
     outer.LastChildFill = True
