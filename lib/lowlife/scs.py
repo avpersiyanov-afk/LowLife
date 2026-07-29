@@ -159,41 +159,73 @@ def clear_stray_address_params(doc, param_names, allowed_type_ids):
     return cleared
 
 
+def _point_sort_key(pt):
+    return (pt.X, pt.Y, pt.Z)
+
+
+def _pick_cluster_point(members):
+    """
+    Точка кластера должна быть детерминированной (не зависеть от порядка
+    обхода узлов, который между запусками может отличаться) — иначе
+    повторный запуск PlaceRouteNodes мог случайно сместить "эталонную"
+    точку кластера на пару мм и пересечь границу допуска дедупа, создав
+    копию элемента рядом со старым вместо его обновления.
+
+    Приоритет: точка помеченного узла (панель/стояк), если такой есть в
+    кластере — так итоговая точка совпадает с реальным положением
+    элемента, а не узла графа линии. Иначе — точка с наименьшими
+    координатами (X, затем Y, затем Z), одна и та же при любом порядке.
+    """
+    marked = [m for m in members if m.get("device") is not None]
+    pool = marked if marked else members
+    return min((m["point"] for m in pool), key=_point_sort_key)
+
+
 def merge_nodes(nodes, tol, points_close_fn):
     """
     Объединяет узлы трассы, находящиеся на расстоянии <= tol друг от друга,
     в один узел с суммарными данными (категории, id сегментов, устройство/панель).
     """
-    result = []
+    clusters = []
 
     for n in nodes:
         found = None
-        for r in result:
-            if points_close_fn(n["point"], r["point"], tol):
-                found = r
+        for cl in clusters:
+            if points_close_fn(n["point"], cl["point"], tol):
+                found = cl
                 break
 
         if found is None:
-            result.append({
-                "point": n["point"],
-                "node_key": n.get("node_key"),
-                "source_types": [n.get("source_type")],
-                "categories": [n.get("category")],
-                "segment_ids": list(set(n.get("segment_ids", []))),
-                "device": n.get("device")
-            })
+            clusters.append({"point": n["point"], "members": [n]})
         else:
-            found["source_types"].append(n.get("source_type"))
-            found["categories"].append(n.get("category"))
+            found["members"].append(n)
 
+    result = []
+
+    for cl in clusters:
+        members = cl["members"]
+        point = _pick_cluster_point(members)
+
+        node_key = None
+        device = None
+        segment_ids = []
+
+        for n in members:
+            if node_key is None and n.get("node_key") is not None:
+                node_key = n.get("node_key")
+            if device is None and n.get("device") is not None:
+                device = n.get("device")
             for sid in n.get("segment_ids", []):
-                if sid not in found["segment_ids"]:
-                    found["segment_ids"].append(sid)
+                if sid not in segment_ids:
+                    segment_ids.append(sid)
 
-            if found.get("node_key") is None and n.get("node_key") is not None:
-                found["node_key"] = n.get("node_key")
-
-            if found.get("device") is None and n.get("device") is not None:
-                found["device"] = n.get("device")
+        result.append({
+            "point": point,
+            "node_key": node_key,
+            "source_types": [n.get("source_type") for n in members],
+            "categories": [n.get("category") for n in members],
+            "segment_ids": segment_ids,
+            "device": device
+        })
 
     return result

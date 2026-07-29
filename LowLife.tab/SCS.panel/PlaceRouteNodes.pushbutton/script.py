@@ -264,7 +264,16 @@ for node in insert_nodes:
     node["category"] = resolve_category(node.get("categories", []))
 
 existing_by_key = {}
-for el in generic:
+# Дедуп ищет по всему проекту, а не только по активному виду — иначе
+# при повторном запуске кнопки с другого вида (или при изменении
+# видимости/обрезки текущего вида) уже расставленные маркеры не попадают
+# в выборку и считаются отсутствующими, из-за чего создаются копии.
+all_generic_project = FilteredElementCollector(doc) \
+    .OfCategory(BuiltInCategory.OST_GenericModel) \
+    .WhereElementIsNotElementType() \
+    .ToElements()
+
+for el in all_generic_project:
     try:
         if el.GetTypeId().IntegerValue in placed_type_ids:
             pt = get_point(el)
