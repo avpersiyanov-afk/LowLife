@@ -198,6 +198,64 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `find_shared_definition` | `find_shared_definition(sp_file, name)` | Определение параметра `name` в открытом файле ФОП (`Application.OpenSharedParameterFile()`), перебором всех групп |
 | `ensure_binding` | `ensure_binding(doc, app, sp_file, name, categories, binding_kind)` | Добавляет параметру `name` привязку ко всем `categories`, которых ему не хватает; `dict` с `added_categories`/`already_ok`/`missing_definition`/`error` |
 
+## skud.py
+Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —
+по образцу `scs.py`, но независимый модуль (своя дисциплина).
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `is_controller` | `is_controller(el, workset_param_name, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
+| `parse_device_cable_map` | `parse_device_cable_map(text)` | Текст вида `"урд:КабельА, считыватель:КабельБ"` (строки и/или запятые как разделитель) → список пар `(keyword, cable_value)` в исходном порядке — вводится в окне настроек, не хардкодится |
+| `pick_cable_type` | `pick_cable_type(device_el, cable_map_pairs)` | Тип кабеля для устройства — первое совпадение по ключевому слову в имени семейства/типа (переиспользует `scs.classify_element`) |
+| `parse_device_categories` | `parse_device_categories(text)` | Текст вида `"считыватель:считыватель,card reader"` → список `(name, keywords, exclude_keywords)` — формат, ожидаемый `scs.classify_element`/`skud_schematic.device_category_key`, для сопоставления схемных семейств с реальными устройствами по категории |
+| `hypotenuse_length_ft` | `hypotenuse_length_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между двумя точками (в футах) — длина "по катетам" для устройств рядом с контроллером |
+| `is_near_controller` | `is_near_controller(controller_pt, device_pt, threshold_ft)` | `True`, если прямое 3D-расстояние между контроллером и устройством меньше порога |
+
+## skud_settings.py
+Окно настроек СКУД (все кнопки `SKUD.panel`) — независимая копия структуры
+`scs_settings.py` (свой JSON `%APPDATA%\pyRevit\LowLifeSKUD_settings.json`,
+свои `TEXT_FIELDS`/`TYPE_FIELDS`, свои `get_settings_interactive`/
+`get_settings_silent`/`require`). Реэкспортирует
+`list_generic_model_symbols`/`_safe_element_name`/`TypeOption` из
+`scs_settings.py` — эти функции не специфичны для СКС по факту реализации.
+Поддерживает многострочные текстовые поля (`device_cable_map_text`,
+`schematic_device_categories_text`) — `AcceptsReturn`/`TextWrapping` на
+`TextBox`, в отличие от однострочных полей `scs_settings.py`.
+
+Форму показывает только кнопка «Параметры СКУД» (`SetupParameters` в
+`SKUD.panel`) — остальные кнопки читают уже сохранённое через
+`get_settings_silent()`, тот же принцип, что в СКС.
+
+## skud_parameters.py
+Таблица `PARAM_SPECS` для параметров СКУД + проверка/привязка из ФОП.
+Логика привязки (`ensure_binding`, `find_existing_binding`,
+`find_shared_definition`, `get_category`, `binding_has_category`) не
+специфична для СКС — импортируется напрямую из `scs_parameters.py`, здесь
+только своя таблица `PARAM_SPECS` (категории — контроллеры
+`OST_ElectricalEquipment`, устройства СКУД, `OST_ElectricalCircuit`,
+`OST_GenericModel` для узлов трассы/схемы).
+
+## skud_schematic.py
+Логика кнопки **BuildSkudSchematic** («Структурная схема»): размножение
+типовой группы-эталона (готовая Revit `Group` с схемными семействами +
+рамка из линий аннотации, собранная пользователем вручную) по числу
+контроллеров, сопоставление схемных семейств с реальными устройствами по
+категории, копирование адреса.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `find_template_group_type` | `find_template_group_type(doc, group_name)` | `GroupType` с именем `group_name`, или `None` |
+| `group_member_elements` | `group_member_elements(doc, group_instance)` | Элементы (не `ElementId`) — члены экземпляра группы |
+| `device_category_key` | `device_category_key(el, category_rules)` | Категория элемента по правилам `scs.classify_element` |
+| `layout_points` | `layout_points(base_point, count, gap_ft, per_row)` | Точки вставки для `count` копий группы — рядами по `per_row`, с шагом `gap_ft`, от точки клика пользователя (`base_point`) |
+| `match_devices_by_category` | `match_devices_by_category(template_members, real_devices, category_rules)` | Сопоставляет схемные семейства (члены копии группы) с реальными устройствами одного контроллера по категории, в пределах категории — по порядку (оба списка предварительно сортируются вызывающим кодом, например по адресу); возвращает `(pairs, unmatched_real)` |
+
+Линии между контроллером и устройствами на схеме — простые независимые
+`DetailLine` (topология "звезда"), создаются кнопкой поверх уже
+вставленной группы (не как часть самой группы — Revit-группа является
+фиксированным набором элементов, добавить в неё новый элемент после
+`PlaceGroup` нельзя без её пересборки).
+
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).
 
