@@ -326,3 +326,51 @@ def depth_first_order(nodes_by_id, roots):
                     stack.append(child)
 
     return order
+
+
+def select_root_sources(panels, risers, real_nodes, margin):
+    """
+    Выбирает источники корней обхода (панели или стояки) из точек,
+    физически находящихся в пределах области реальных узлов маршрута
+    (плюс margin) — без этой проверки панель, случайно подошедшая по
+    ключевым словам, но находящаяся в другом конце здания/проекта, всё
+    равно "прилипала" бы к ближайшему узлу через резервный поиск без
+    ограничения расстояния (find_nearest_real_node).
+
+    Приоритет — панели: если хотя бы одна панель попадает в область,
+    корнями становятся только близкие панели (далёкие панели просто
+    отбрасываются, даже если они реальные — иначе они бы увели ветку от
+    настоящего корня этажа). Если ни одна панель не попала в область,
+    пробуются стояки по тому же правилу.
+
+    Возвращает (root_sources, far_sources) — источники-корни и
+    отброшенные как слишком далёкие (для отчёта).
+    """
+    if real_nodes:
+        xs = [n["point"][0] for n in real_nodes]
+        ys = [n["point"][1] for n in real_nodes]
+        root_area = (
+            min(xs) - margin, max(xs) + margin,
+            min(ys) - margin, max(ys) + margin
+        )
+    else:
+        root_area = None
+
+    def in_root_area(pt):
+        if root_area is None:
+            return True
+        x_min, x_max, y_min, y_max = root_area
+        return x_min <= pt[0] <= x_max and y_min <= pt[1] <= y_max
+
+    near_panels = [p for p in panels if in_root_area(p["point"])]
+    near_panel_ids = set(p["id"] for p in near_panels)
+    far_panels = [p for p in panels if p["id"] not in near_panel_ids]
+
+    if near_panels:
+        return near_panels, far_panels
+
+    near_risers = [r for r in risers if in_root_area(r["point"])]
+    near_riser_ids = set(r["id"] for r in near_risers)
+    far_risers = [r for r in risers if r["id"] not in near_riser_ids]
+
+    return near_risers, far_panels + far_risers

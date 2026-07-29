@@ -23,7 +23,7 @@ from lowlife.scs_addressing import (
     pt2, dist2, add_neighbor, get_floor_code_from_view, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
     point_to_segment_distance_xy, line_parameter_xy,
-    build_shortest_path_tree, depth_first_order
+    build_shortest_path_tree, depth_first_order, select_root_sources
 )
 from lowlife.scs_circuits import norm, clean_text_value, find_nearest_segment_id
 
@@ -37,12 +37,8 @@ OFFSET = 210.0 / MM_IN_FOOT
 MARKED_TOL = 150.0 / MM_IN_FOOT
 END_TOL = 50.0 / MM_IN_FOOT
 
-# Насколько далеко за пределы фактической области узлов маршрута на этом
-# виде может быть панель/стояк, чтобы всё ещё считаться корнем обхода.
-# Без этой проверки панель, случайно подошедшая по ключевым словам, но
-# находящаяся физически в другом конце здания, всё равно "прилипала" бы
-# к ближайшему узлу — там срабатывал резервный поиск без ограничения
-# расстояния (find_nearest_real_node).
+# Запас вокруг фактической области узлов маршрута для выбора корней
+# обхода — см. select_root_sources в scs_addressing.py.
 ROOT_SEARCH_MARGIN_MM = 20000.0
 ROOT_SEARCH_MARGIN = ROOT_SEARCH_MARGIN_MM / MM_IN_FOOT
 
@@ -206,44 +202,7 @@ for line in lines:
 # КОРНИ (ПАНЕЛИ/СТОЯКИ)
 # ------------------------------------------------------------
 
-# Область, где реально есть узлы маршрута на этом виде, расширенная на
-# запас — панель/стояк далеко за её пределами в корни не годится, даже
-# если формально у неё "нашёлся" ближайший узел (резервный поиск по
-# find_nearest_real_node ищет вообще без ограничения расстояния).
-if real_nodes:
-    xs = [n["point"][0] for n in real_nodes]
-    ys = [n["point"][1] for n in real_nodes]
-    root_area = (
-        min(xs) - ROOT_SEARCH_MARGIN, max(xs) + ROOT_SEARCH_MARGIN,
-        min(ys) - ROOT_SEARCH_MARGIN, max(ys) + ROOT_SEARCH_MARGIN
-    )
-else:
-    root_area = None
-
-
-def in_root_area(pt):
-    if root_area is None:
-        return True
-    x_min, x_max, y_min, y_max = root_area
-    return x_min <= pt[0] <= x_max and y_min <= pt[1] <= y_max
-
-
-# Панель в приоритете, но если ВСЕ панели оказались далеко за пределами
-# области трассы — это фактически "на этаже нет панели", пробуем стояки.
-near_panels = [p for p in panels if in_root_area(p["point"])]
-near_panel_ids = set(p["id"] for p in near_panels)
-far_panels = [p for p in panels if p["id"] not in near_panel_ids]
-
-if near_panels:
-    root_sources = near_panels
-    far_sources = far_panels
-else:
-    near_risers = [r for r in risers if in_root_area(r["point"])]
-    near_riser_ids = set(r["id"] for r in near_risers)
-    far_risers = [r for r in risers if r["id"] not in near_riser_ids]
-
-    root_sources = near_risers
-    far_sources = far_panels + far_risers
+root_sources, far_sources = select_root_sources(panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
 
 root_real_nodes = []
 
