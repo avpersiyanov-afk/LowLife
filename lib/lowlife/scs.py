@@ -109,6 +109,46 @@ def resolve_category(categories, priority=CATEGORY_PRIORITY):
     return priority[-1]
 
 
+def is_excluded_device(el, excluded_keywords):
+    """Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства."""
+    try:
+        fam_name = el.Symbol.Family.Name
+    except:
+        return False
+    return any(w.lower() in (fam_name or u"").lower() for w in excluded_keywords if w)
+
+
+def get_workset_name(el, workset_param_name):
+    """
+    Имя рабочего набора элемента: сперва по имени параметра
+    (workset_param_name — на случай проектов, где рабочий набор продублирован
+    в обычный параметр), иначе — через нативный BuiltInParameter.ELEM_PARTITION_PARAM.
+    """
+    from Autodesk.Revit.DB import BuiltInParameter
+    from lowlife.params import get_param_any
+
+    val = get_param_any(el, workset_param_name)
+    if val:
+        return val
+    try:
+        p = el.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+        if p and p.HasValue:
+            v = p.AsValueString()
+            if v:
+                return v
+    except:
+        pass
+    return None
+
+
+def panel_matches(panel, workset_param_name, workset_filter_key, norm_fn):
+    """Целевая панель — по ключевому слову в имени её рабочего набора."""
+    ws = norm_fn(get_workset_name(panel, workset_param_name))
+    if not ws:
+        return False
+    return workset_filter_key.lower() in ws.lower()
+
+
 def clear_stray_address_params(doc, param_names, allowed_type_ids):
     """
     Находит элементы категорий, где могут стоять маркеры/устройства СКС

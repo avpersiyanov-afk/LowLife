@@ -12,8 +12,8 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, get_param_any, set_param_any
-from lowlife.scs import clear_stray_address_params
+from lowlife.params import get_string_param, set_param_any
+from lowlife.scs import clear_stray_address_params, is_excluded_device, panel_matches
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_circuits import (
@@ -90,37 +90,6 @@ HORIZ_PIPE_COEF = float(settings["horiz_pipe_coef"])
 VERTICAL_COEF = float(settings["vertical_coef"])
 
 
-def is_excluded_device(el):
-    """Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства."""
-    try:
-        fam_name = el.Symbol.Family.Name
-    except:
-        return False
-    return any(w.lower() in (fam_name or u"").lower() for w in EXCLUDED_DEVICE_KEYWORDS if w)
-
-
-def get_workset_name(el):
-    val = get_param_any(el, WORKSET_PARAM_NAME)
-    if val:
-        return val
-    try:
-        p = el.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
-        if p and p.HasValue:
-            v = p.AsValueString()
-            if v:
-                return v
-    except:
-        pass
-    return None
-
-
-def panel_matches(panel):
-    ws = norm(get_workset_name(panel))
-    if not ws:
-        return False
-    return WORKSET_FILTER_KEY.lower() in ws.lower()
-
-
 # ------------------------------------------------------------
 # ОЧИСТКА "ЧУЖИХ" АДРЕСОВ
 # ------------------------------------------------------------
@@ -191,7 +160,7 @@ all_panels = FilteredElementCollector(doc) \
     .WhereElementIsNotElementType() \
     .ToElements()
 
-target_panels = [p for p in all_panels if panel_matches(p)]
+target_panels = [p for p in all_panels if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm)]
 target_panel_names = set(norm(p.Name) for p in target_panels if norm(p.Name))
 
 if not target_panels:
@@ -290,7 +259,7 @@ with revit.Transaction("Sync Circuits And Lengths"):
             except:
                 continue
 
-            normal_devs = [d for d in raw_devs if not is_excluded_device(d)]
+            normal_devs = [d for d in raw_devs if not is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS)]
 
             if not normal_devs:
                 no_device += 1

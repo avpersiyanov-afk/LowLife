@@ -12,8 +12,11 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, set_string_param, get_param_any, set_param_any
-from lowlife.scs import classify_element, clear_stray_address_params
+from lowlife.params import get_string_param, set_string_param, set_param_any
+from lowlife.scs import (
+    classify_element, clear_stray_address_params,
+    is_excluded_device, panel_matches
+)
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_addressing import (
@@ -71,37 +74,6 @@ WORKSET_FILTER_KEY = settings["workset_filter_key"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
-
-
-def is_excluded_device(el):
-    """Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства."""
-    try:
-        fam_name = el.Symbol.Family.Name
-    except:
-        return False
-    return any(w.lower() in (fam_name or u"").lower() for w in EXCLUDED_DEVICE_KEYWORDS if w)
-
-
-def get_workset_name(el):
-    val = get_param_any(el, WORKSET_PARAM_NAME)
-    if val:
-        return val
-    try:
-        p = el.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
-        if p and p.HasValue:
-            v = p.AsValueString()
-            if v:
-                return v
-    except:
-        pass
-    return None
-
-
-def panel_matches(panel):
-    ws = norm(get_workset_name(panel))
-    if not ws:
-        return False
-    return WORKSET_FILTER_KEY.lower() in ws.lower()
 
 choice = forms.alert(
     u"Перенумеровать все существующие адреса заново, "
@@ -433,7 +405,7 @@ all_panels = FilteredElementCollector(doc) \
     .WhereElementIsNotElementType() \
     .ToElements()
 
-target_panels = [p for p in all_panels if panel_matches(p)]
+target_panels = [p for p in all_panels if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm)]
 
 all_circuits = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
@@ -459,7 +431,7 @@ for c in all_circuits:
         continue
 
     for d in raw_devs:
-        if is_excluded_device(d):
+        if is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS):
             continue
         devices_by_id[d.Id.IntegerValue] = d
 
