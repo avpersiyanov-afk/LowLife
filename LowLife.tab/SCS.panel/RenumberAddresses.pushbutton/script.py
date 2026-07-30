@@ -25,7 +25,7 @@ from lowlife.scs_addressing import (
     point_to_segment_distance_xy, line_parameter_xy,
     build_shortest_path_tree, depth_first_order, select_root_sources
 )
-from lowlife.scs_circuits import norm, clean_text_value, find_nearest_segment_id
+from lowlife.scs_circuits import norm, find_nearest_segment_id
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -70,18 +70,6 @@ WORKSET_FILTER_KEY = settings["workset_filter_key"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
-
-choice = forms.alert(
-    u"Перенумеровать все существующие адреса заново, "
-    u"или пронумеровать только узлы с пустым адресом?",
-    title=u"Режим нумерации",
-    options=[u"Перенумеровать все", u"Только новые"]
-)
-
-if not choice:
-    forms.alert(u"Операция отменена.", exitscript=True)
-
-RENUMBER_EXISTING = (choice == u"Перенумеровать все")
 
 
 # ------------------------------------------------------------
@@ -275,29 +263,10 @@ def is_empty(s):
     return s is None or unicode(s).strip() == u""
 
 
-if RENUMBER_EXISTING:
-    num = 1
-    for n in ordered_routes:
-        n["addr"] = u"{}.{}".format(floor_code, num)
-        num += 1
-else:
-    num = 1
-    used_addrs = set()
-
-    for n in ordered_routes:
-        if not is_empty(n["addr_original"]):
-            n["addr"] = n["addr_original"]
-            used_addrs.add(n["addr"])
-
-    for n in ordered_routes:
-        if is_empty(n["addr_original"]):
-            while True:
-                candidate = u"{}.{}".format(floor_code, num)
-                num += 1
-                if candidate not in used_addrs:
-                    n["addr"] = candidate
-                    used_addrs.add(candidate)
-                    break
+num = 1
+for n in ordered_routes:
+    n["addr"] = u"{}.{}".format(floor_code, num)
+    num += 1
 
 for n in real_nodes:
     if n["parent_id"] is not None and n["parent_id"] in all_points_by_id:
@@ -328,19 +297,13 @@ for n in unconnected_nodes:
 # ------------------------------------------------------------
 
 changed = []
-skipped = []
 
 with revit.Transaction("Renumber Route Addresses"):
 
     for p in route_points:
-        do_write = RENUMBER_EXISTING or is_empty(p["addr_original"])
-
-        if do_write:
-            set_string_param(p["element"], ADDR_PARAM, p["addr"] if p["addr"] else u"")
-            set_string_param(p["element"], ADDR_PREV_PARAM, p["write_value"])
-            changed.append(p)
-        else:
-            skipped.append(p)
+        set_string_param(p["element"], ADDR_PARAM, p["addr"] if p["addr"] else u"")
+        set_string_param(p["element"], ADDR_PREV_PARAM, p["write_value"])
+        changed.append(p)
 
 
 # ------------------------------------------------------------
@@ -399,8 +362,6 @@ nearest_written = 0
 with revit.Transaction("Write Nearest Segment"):
 
     for panel in target_panels:
-        if clean_text_value(get_string_param(panel, NEAREST_SEGMENT_PARAM)):
-            continue
         panel_pt = get_point(panel)
         if panel_pt is None:
             continue
@@ -409,8 +370,6 @@ with revit.Transaction("Write Nearest Segment"):
             nearest_written += 1
 
     for dev in devices_by_id.values():
-        if clean_text_value(get_string_param(dev, NEAREST_SEGMENT_PARAM)):
-            continue
         dev_pt = get_point(dev)
         if dev_pt is None:
             continue
@@ -487,11 +446,9 @@ forms.alert(
     u"Готово.\n\n"
     u"Уровень: {}\n"
     u"Код этажа: {}\n"
-    u"Корень: {}\n"
-    u"Режим: {}\n\n"
+    u"Корень: {}\n\n"
     u"Узлов маршрута всего: {}\n"
-    u"Изменено: {}\n"
-    u"Пропущено (уже был адрес): {}\n"
+    u"Перенумеровано: {}\n"
     u"Очищено чужих адресов: {}\n"
     u"Отброшено как слишком далёкие (не корень): {}\n\n"
     u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n\n"
@@ -499,10 +456,8 @@ forms.alert(
         level_name,
         floor_code,
         (u"Панель" if root_sources[0]["is_panel"] else u"Стояк") if root_sources else u"Нет (все далеко)",
-        choice,
         len(route_points),
         len(changed),
-        len(skipped),
         len(stray_cleared),
         len(far_sources),
         nearest_written
