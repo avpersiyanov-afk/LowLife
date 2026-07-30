@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-__title__ = "Длины СКУД"
+__title__ = "Длины и маркировка"
 __doc__ = (
     "Считает длину проводника для каждой цепи контроллер-устройство: по "
     "катетам (с коэффициентом запаса), если устройство рядом с контроллером, "
     "иначе по графу адресованных узлов трассы. Пишет длину в трубе/лотке "
-    "раздельно и способ прокладки."
+    "раздельно, способ прокладки, марку устройств и список цепей на узлах "
+    "маршрута."
 )
 __author__ = "Pipers"
 
@@ -20,8 +21,9 @@ from lowlife.geometry import get_point
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import clear_stray_address_params, is_excluded_device
 from lowlife.scs_circuits import (
-    norm, clean_text_value, build_graph, bfs_component,
-    find_closest_pair_between_sets, astar_path, calc_lengths, balance_round_parts
+    norm, clean_text_value, split_multi_value, build_graph, bfs_component,
+    find_closest_pair_between_sets, astar_path, calc_lengths, balance_round_parts,
+    build_segment_list_text
 )
 from lowlife.skud import is_controller, is_near_controller, hypotenuse_length_ft
 from lowlife import skud_settings
@@ -48,7 +50,8 @@ skud_settings.require(settings, [
     "install_tray_key", "install_pipe_key", "install_pipe_open_key",
     "wire_length_param", "tray_length_param", "pipe_length_param",
     "route_method_param", "circuit_route_param",
-    "route_label_pipe_format", "route_label_tray_format"
+    "route_label_pipe_format", "route_label_tray_format",
+    "device_address_param", "device_marking_param", "segment_loads_param"
 ])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
@@ -84,6 +87,10 @@ CIRCUIT_ROUTE_PARAM = settings["circuit_route_param"]
 
 ROUTE_LABEL_PIPE = settings["route_label_pipe_format"]
 ROUTE_LABEL_TRAY = settings["route_label_tray_format"]
+
+DEVICE_ADDRESS_PARAM = settings["device_address_param"]
+DEVICE_MARKING_PARAM = settings["device_marking_param"]
+SEGMENT_LOADS_PARAM = settings["segment_loads_param"]
 
 
 # ------------------------------------------------------------
@@ -129,7 +136,6 @@ for e in all_generic:
         )
         continue
 
-    from lowlife.scs_circuits import split_multi_value
     parents = split_multi_value(get_string_param(e, ADDR_PREV_PARAM))
 
     segments[sid] = {
@@ -176,8 +182,13 @@ for c in all_circuits:
 
 
 # ------------------------------------------------------------
-# ОСНОВНОЙ ПРОХОД: ДЛИНЫ
+# ОСНОВНОЙ ПРОХОД: ДЛИНЫ И МАРКИРОВКА
 # ------------------------------------------------------------
+# Маркировка идёт здесь же, а не отдельной кнопкой: марка устройства —
+# это просто перенос уже известного адреса, а список цепей на узлах
+# собирается из пути цепи, который на этом шаге уже посчитан как список
+# (отдельной кнопке пришлось бы разбирать его обратно из текста
+# "F1.1 -> F1.2" в параметре «Маршрут цепи»).
 
 processed_circuits = 0
 near_count = 0
@@ -186,8 +197,10 @@ no_device = 0
 no_path = 0
 no_segment = 0
 no_path_report = []
+devices_marked = 0
+segment_info_map = {}
 
-with revit.Transaction("Calc SKUD Lengths"):
+with revit.Transaction("Calc SKUD Lengths And Marking"):
 
     for controller in controllers:
         controller_name = norm(controller.Name)
@@ -217,6 +230,12 @@ with revit.Transaction("Calc SKUD Lengths"):
                 continue
 
             processed_circuits += 1
+
+            device_addr = clean_text_value(get_string_param(dev, DEVICE_ADDRESS_PARAM))
+            if device_addr and set_param_any(dev, DEVICE_MARKING_PARAM, device_addr):
+                devices_marked += 1
+
+            circuit_label = clean_text_value(norm(c.Name)) or u"Circuit {}".format(c.Id.IntegerValue)
 
             if is_near_controller(controller_pt, dev_pt, NEAR_THRESHOLD_FT):
                 near_count += 1
@@ -298,6 +317,21 @@ with revit.Transaction("Calc SKUD Lengths"):
                 set_param_any(c, ROUTE_METHOD_PARAM, u"; ".join(route_parts))
                 set_param_any(c, CIRCUIT_ROUTE_PARAM, u" -> ".join(path))
 
+                # Путь уже есть списком — сразу копим, через какие узлы
+                # проходит эта цепь (записываем после цикла, одним махом).
+                for sid in path:
+                    info = segment_info_map.setdefault(sid, {"loads": set(), "fo": 0, "utp": 0})
+                    info["loads"].add(circuit_label)
+
+    segments_written = 0
+    for sid, info in segment_info_map.items():
+        seg = segments.get(sid)
+        if not seg:
+            continue
+        value = build_segment_list_text(info["loads"], info["fo"], info["utp"])
+        if set_param_any(seg["el"], SEGMENT_LOADS_PARAM, value):
+            segments_written += 1
+
 
 # ------------------------------------------------------------
 # ОТЧЁТ
@@ -331,6 +365,8 @@ forms.alert(
     u"Нет устройства в цепи: {}\n"
     u"Нет узла у контроллера/устройства: {}\n"
     u"Путь не найден: {}\n\n"
+    u"Устройств маркировано: {}\n"
+    u"Узлов со списком цепей: {}\n\n"
     u"Дублирующихся адресов: {}\n"
     u"Очищено чужих адресов: {}\n\n"
     u"{}".format(
@@ -341,6 +377,8 @@ forms.alert(
         no_device,
         no_segment,
         no_path,
+        devices_marked,
+        segments_written,
         len(duplicate_addr_report),
         len(stray_cleared),
         u"Подробности — в окне вывода pyRevit." if (broken_parent_links or no_path_report or duplicate_addr_report) else u""

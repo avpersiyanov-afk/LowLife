@@ -108,7 +108,7 @@ TEXT_FIELDS = [
     ("route_label_tray_format", u"[Длины] Формат метки лотка (используйте {} для метров)",
         u"", False, True, False),
 
-    # --- маркировка (MarkSkudEquipment) ---
+    # --- маркировка (CalcSkudLengths, вместе с длинами) ---
     ("device_marking_param", u"[Маркировка] Параметр «Марка устройства»",
         u"", False, True, False),
     ("segment_loads_param", u"[Маркировка] Параметр узла маршрута «Список цепей»",
