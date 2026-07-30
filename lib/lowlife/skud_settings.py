@@ -28,7 +28,7 @@ from System.Windows import (
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock, ScrollViewer,
-    ScrollBarVisibility, TextWrapping as ControlsTextWrapping
+    ScrollBarVisibility
 )
 from System.Windows.Media import Brushes
 
@@ -407,7 +407,7 @@ def show_settings_form(doc, values):
 
         if multiline:
             box.AcceptsReturn = True
-            box.TextWrapping = ControlsTextWrapping.Wrap
+            box.TextWrapping = TextWrapping.Wrap
             box.Height = 80
             box.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
 

@@ -10,9 +10,6 @@ scs_addressing/scs_circuits, т.к. размещение/поиск элемен
 неотделимо от Revit API.
 """
 
-from lowlife.geometry import get_point
-
-
 def find_template_group_type(doc, group_name):
     """GroupType с именем group_name (первое совпадение), или None."""
     from Autodesk.Revit.DB import FilteredElementCollector, GroupType
@@ -45,27 +42,6 @@ def device_category_key(el, category_rules):
     """
     from lowlife.scs import classify_element
     return classify_element(el, category_rules)
-
-
-def group_bounding_width(doc, group_type):
-    """
-    Примерная ширина типовой группы по X (для шага автораскладки) —
-    диагональ bounding box первого попавшегося экземпляра типа, если он
-    уже есть в проекте; иначе None (вызывающий код использует запасной
-    отступ из настроек).
-    """
-    from Autodesk.Revit.DB import FilteredElementCollector, Group
-
-    for g in FilteredElementCollector(doc).OfClass(Group):
-        try:
-            if g.GroupType.Id == group_type.Id:
-                bbox = g.get_BoundingBox(None)
-                if bbox:
-                    return bbox.Max.X - bbox.Min.X
-        except:
-            continue
-
-    return None
 
 
 def layout_points(base_point, count, gap_ft, per_row):
