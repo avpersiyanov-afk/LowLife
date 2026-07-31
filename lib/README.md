@@ -293,6 +293,73 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 фиксированным набором элементов, добавить в неё новый элемент после
 `PlaceGroup` нельзя без её пересборки).
 
+## fire_alarm.py
+Константы и разбор адресов для **СПС и СОУЭ** (`SPS.panel`/`SOUE.panel`).
+Отличие от СКС/СКУД: отдельных маркеров узлов нет — узлом шлейфа служит
+само устройство, длинных участков нет, а изоляторы начинают ветвь.
+
+Адресация: у панели «Обозначение» = `ARK` и «Адрес устройства» = `3`
+(итого `ARK3`); у устройства «Адрес устройства» = `3.1.2` — панель 3,
+шлейф 1, номер 2.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `parse_device_address` | `parse_device_address(address)` | `"3.1.2"` → `(3, 1, 2)`; `None`, если частей не три или они нечисловые |
+| `parse_panel_address` | `parse_panel_address(address)` | `"3"` → `3`; `None`, если это не одно целое число |
+| `make_full_mark` | `make_full_mark(designation, address)` | `"BTH"` + `"3.1.2"` → `"BTH3.1.2"` |
+| `is_isolator` | `is_isolator(el, isolator_keyword)` | Изолятор/ответвитель — по ключевому слову в имени семейства |
+| `group_devices_by_loop` | `group_devices_by_loop(devices, address_by_id)` | `{(панель, шлейф): [устройства по порядковому номеру]}` |
+
+## fire_alarm_loops.py
+Построение шлейфа и расчёт его длины по координатам (без Revit API —
+как `scs_addressing`).
+
+**Ветви от изоляторов**: нумерация `K` сквозная по шлейфу, поэтому по
+номеру нельзя отличить продолжение магистрали от устройства на ветви.
+Решает геометрия — каждое следующее устройство цепляется к ближайшему из
+кандидатов (предыдущее по порядку либо любой уже размещённый изолятор).
+При равном расстоянии предпочитается изолятор, затем меньший `id`, чтобы
+результат не зависел от порядка перебора.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `build_loop_tree` | `build_loop_tree(nodes, panel_point=None)` | Проставляет `parent_id` каждому узлу; возвращает узлы в порядке обхода |
+| `calc_loop_length_ft` | `calc_loop_length_ft(ordered_nodes, panel_point=None)` | Длина по дереву: каждое ребро один раз, ветви назад не возвращаются |
+| `build_route_text` | `build_route_text(ordered_nodes, address_text_by_id)` | `"3.1.1 -> 3.1.2; 3.1.2 -> 3.1.5"` — вторая пара показывает ветвь |
+| `previous_address_by_id` | `previous_address_by_id(ordered_nodes, address_text_by_id)` | `{id: адрес родителя}` — для записи «Предыдущего адреса» на устройства |
+| `manhattan_ft` | `manhattan_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между точками |
+
+## fire_alarm_circuits.py
+Поиск панелей/устройств СПС/СОУЭ в документе, создание электрических
+цепей и запись длин. Категории устройств берутся через `getattr` —
+набор `BuiltInCategory` отличается между версиями Revit, и отсутствующее
+имя иначе уронило бы модуль на импорте.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `find_panels` | `find_panels(doc, config)` | `{номер панели: элемент}` — по рабочему набору и «Обозначению» |
+| `find_devices` | `find_devices(doc, config)` | `(devices, address_by_id, address_text_by_id, skipped)`; `skipped` — с неразбираемым адресом |
+| `existing_circuits_by_number` | `existing_circuits_by_number(doc, config)` | Уже созданные цепи по «Номеру цепи» — чтобы не пересоздавать |
+| `create_circuit` | `create_circuit(doc, panel_el, device_els)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)` |
+| `build_loop_nodes` | `build_loop_nodes(device_els, address_by_id, isolator_keyword)` | Узлы для `build_loop_tree` из элементов Revit |
+| `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, config)` | Считает и пишет длину и способ прокладки |
+
+## fire_alarm_settings.py
+Настройки СПС/СОУЭ. Один модуль на обе системы, но **разные файлы**:
+`set_system("SPS")` или `set_system("SOUE")` в начале скрипта кнопки
+выбирает, какой JSON читать/писать. Функции те же, что в
+`scs_settings`/`skud_settings` (`get_settings_interactive`,
+`get_settings_silent`, `require`, ...).
+
+## fire_alarm_buttons.py
+Тела кнопок СПС/СОУЭ — общие для обеих систем, чтобы `script.py` остался
+тонким (выбрать систему и вызвать функцию).
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели |
+| `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах |
+
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).
 
