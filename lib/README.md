@@ -198,6 +198,43 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `find_shared_definition` | `find_shared_definition(sp_file, name)` | Определение параметра `name` в открытом файле ФОП (`Application.OpenSharedParameterFile()`), перебором всех групп |
 | `ensure_binding` | `ensure_binding(doc, app, sp_file, name, categories, binding_kind)` | Добавляет параметру `name` привязку ко всем `categories`, которых ему не хватает; `dict` с `added_categories`/`already_ok`/`missing_definition`/`error` |
 
+## route_nodes.py
+Общее тело кнопки «Узлы трассы» для **любой** дисциплины: расстановка
+панелей/узлов маршрута/стояков по линиям сегментов трассы. Дисциплина
+задаётся конфигом (ключевые слова, типы семейств, рабочий набор), а не
+копией скрипта — узлы СКС ведут до шкафа СКС, узлы СКУД от устройств до
+контроллера, дальше появятся СПС/СОУЭ, а логика одна.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `place_route_nodes` | `place_route_nodes(doc, view, config, symbols_by_category, document_levels)` | Полный проход: сбор сегментов, граф линий, панели/стояки, слияние, вставка/обновление маркеров. Транзакцию НЕ открывает — вызывающий оборачивает сам |
+| `collect_segments` | `collect_segments(doc, view, family_filter)` | Линейные элементы-сегменты трассы на виде |
+| `build_line_graph` | `build_line_graph(segments)` | `(node_points, graph, segment_ids_by_node)` — линии режутся на участки в точках примыкания других линий |
+| `collect_marked_points` | `collect_marked_points(doc, view, node_points, classify_rules, workset_param_name, workset_filter_key)` | Панели/стояки по ключевым словам **и** (если задан) по рабочему набору — то, чем дисциплины отличаются на одном плане |
+| `build_insert_nodes` | `build_insert_nodes(node_points, segment_ids_by_node, marked_points)` | Узлы для вставки: точки графа + помеченные точки, слитые по допуску |
+| `find_existing_markers` | `find_existing_markers(generic, placed_type_ids)` | Уже вставленные маркеры по ключу точки — чтобы повторный запуск обновлял, а не плодил копии |
+| `resolve_node_values` | `resolve_node_values(doc, node, segments_by_id, marked_points, config, document_levels)` | Значения параметров и уровень для одного узла |
+
+## route_addressing.py
+Общее тело кнопки «Адреса узлов» для любой дисциплины. Сам алгоритм
+(классификация точек, Дейкстра до корня, обход в глубину) живёт в
+`scs_addressing.py` и от дисциплины не зависит; здесь — сборка элементов
+из документа, применение алгоритма и запись результата.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `renumber_addresses` | `renumber_addresses(doc, view, config, renumber_existing)` | Полный проход нумерации; возвращает dict со всем нужным для записи и отчёта (или `{"error": ...}`). В документ не пишет |
+| `write_addresses` | `write_addresses(route_points, config, renumber_existing)` | Пишет «Адрес узла»/«Предыдущий адрес»; `(changed, skipped)`. Внутри транзакции |
+| `write_nearest_nodes` | `write_nearest_nodes(doc, route_points, targets, config)` | Пишет «Ближайший узел маршрута» переданным панелям/устройствам (по XY); уже заполненное не перезаписывает. Внутри транзакции |
+| `collect_lines_and_points` | `collect_lines_and_points(doc, view, config)` | Линии и точки на виде; панель дополнительно фильтруется по рабочему набору дисциплины |
+| `link_nodes_along_lines` | `link_nodes_along_lines(lines, real_nodes)` | Соседство узлов вдоль каждой линии |
+| `attach_roots` | `attach_roots(root_sources, lines_by_id, real_nodes)` | Привязывает панели/стояки к ближайшим реальным узлам — корни обхода |
+| `assign_addresses` | `assign_addresses(ordered_routes, floor_code, renumber_existing)` | Проставляет адреса: всем заново либо только пустым |
+
+Кнопки `SCS.panel` пока используют свои копии этой логики (СКС работает и
+её не трогали ради рефакторинга) — при следующей правке СКС их стоит
+перевести на эти модули.
+
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —
 по образцу `scs.py`, но независимый модуль (своя дисциплина).
