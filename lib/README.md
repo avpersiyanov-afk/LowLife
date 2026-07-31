@@ -153,11 +153,11 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `build_shortest_path_tree` | `build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2)` | Многоисточниковый Дейкстра: `parent_id` каждого узла — ближайший по **реальному расстоянию** сосед (не по числу шагов графа, как раньше при BFS). Узлы вне досягаемости от `roots` (отдельная связная компонента) добираются локальными "корнями" без родителя. Возвращает `(visited_ids, effective_roots)` — `effective_roots` включает и такие локальные корни |
 | `depth_first_order` | `depth_first_order(nodes_by_id, roots)` | Обход построенного дерева в глубину (итеративно, без рекурсии): одна ветка получает подряд идущие номера, затем следующая — вместо чередования веток, как при обходе в ширину |
 | `select_root_sources` | `select_root_sources(panels, risers, real_nodes, margin)` | Выбирает источники корней обхода: панели в приоритете, но только те, что физически попадают в область реальных узлов маршрута (+`margin`) — иначе панель, случайно подошедшая по ключевым словам, но находящаяся в другом конце проекта, "прилипала" бы к ближайшему узлу без ограничения расстояния. Если ни одна панель не попала в область — пробуются стояки по тому же правилу. Возвращает `(root_sources, far_sources)` |
+| `get_floor_code_for_level` | `get_floor_code_for_level(view, all_levels)` | Код этажа вида `F3`/`F-1` из имени уровня вида. Если в проекте несколько уровней с одинаковым именем на разной отметке (например, два уровня "Этаж -1" в разных секциях), различает их суффиксом по порядку отметки среди одноимённых: самый нижний — `F-1`, следующий — `F-1.1`, следующий — `F-1.2` и т.д. — иначе оба получили бы один и тот же код и адреса узлов совпадали бы между этажами. `all_levels` — результат `geometry.get_document_levels(doc)` |
 
 Остальные ключевые функции: `classify_point`, `add_neighbor`,
 `find_nearest_real_node`, `find_best_real_node_for_offset`,
-`get_floor_code_from_view`, `point_to_segment_distance_xy`,
-`line_parameter_xy`, `matches_keywords`.
+`point_to_segment_distance_xy`, `line_parameter_xy`, `matches_keywords`.
 
 ## scs_circuits.py
 Логика кнопки **SyncCircuitsAndLengths** («Синхронизация цепей»): граф по

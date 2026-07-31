@@ -267,6 +267,11 @@ for node in insert_nodes:
 # трассы (generic) — кнопка расставляет узлы только по активному виду,
 # поэтому и сверяться с существующими нужно в тех же границах.
 #
+# Если в точке уже стоит любой маркер нужного типа (panel/route/riser)
+# — точка полностью пропускается, ничего не создаётся и не
+# перезаписывается (см. цикл ниже). Дедуп нужен только чтобы не
+# создать дубль поверх уже расставленного узла.
+#
 # Ключ по сетке (point_key) группирует по нескольку существующих
 # элементов в одну ячейку (что и нужно для быстрого поиска соседних
 # ячеек), но сам он не используется как единственный критерий
@@ -335,7 +340,7 @@ def consume_existing_element(el, key):
         existing_by_key[key] = [(e, p) for e, p in bucket if e.Id != el.Id]
 
 created = []
-updated = []
+skipped = []
 counts_by_category = {"panel": 0, "route": 0, "riser": 0}
 
 document_levels = get_document_levels(doc)
@@ -348,6 +353,16 @@ with revit.Transaction("Place Route Nodes"):
         point = node["point"]
         category = node["category"]
         target_symbol = symbols_by_category[category]
+
+        # Если в этой точке уже стоит маркер нужного типа — точку
+        # полностью пропускаем: ничего не создаём и не обновляем.
+        key = point_key(point, merge_tolerance)
+        existing, existing_key = find_existing_element(point, key)
+
+        if existing is not None:
+            consume_existing_element(existing, existing_key)
+            skipped.append(existing)
+            continue
 
         if not target_symbol.IsActive:
             target_symbol.Activate()
@@ -411,29 +426,9 @@ with revit.Transaction("Place Route Nodes"):
             # вариант по высоте точки.
             level = find_level_for_elevation(point.Z, document_levels)
 
-        key = point_key(point, merge_tolerance)
-        existing, existing_key = find_existing_element(point, key)
+        el = doc.Create.NewFamilyInstance(point, target_symbol, level, StructuralType.NonStructural)
 
-        if existing is None:
-            el = doc.Create.NewFamilyInstance(point, target_symbol, level, StructuralType.NonStructural)
-
-            if el:
-                if line_offset_value is not None:
-                    set_double_param(el, OFFSET_PARAM_NAMES, line_offset_value)
-
-                if cable_type_value is not None:
-                    set_string_param(el, CABLE_PARAM_NAME, cable_type_value)
-
-                set_string_param(el, ROUTE_PARAM_NAME, route_value)
-                created.append(el)
-
-        else:
-            consume_existing_element(existing, existing_key)
-            el = existing
-
-            if el.Symbol.Id != target_symbol.Id:
-                el.Symbol = target_symbol
-
+        if el:
             if line_offset_value is not None:
                 set_double_param(el, OFFSET_PARAM_NAMES, line_offset_value)
 
@@ -441,18 +436,18 @@ with revit.Transaction("Place Route Nodes"):
                 set_string_param(el, CABLE_PARAM_NAME, cable_type_value)
 
             set_string_param(el, ROUTE_PARAM_NAME, route_value)
-            updated.append(el)
+            created.append(el)
 
 
 forms.alert(
     "Готово.\n\n"
     "Создано элементов: {}\n"
-    "Обновлено элементов: {}\n\n"
+    "Пропущено (уже стоял маркер): {}\n\n"
     "Панелей: {}\n"
     "Стояков: {}\n"
     "Узлов маршрута: {}".format(
         len(created),
-        len(updated),
+        len(skipped),
         counts_by_category["panel"],
         counts_by_category["riser"],
         counts_by_category["route"]

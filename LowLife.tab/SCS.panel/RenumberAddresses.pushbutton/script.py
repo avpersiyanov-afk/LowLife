@@ -11,7 +11,7 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
-from lowlife.geometry import get_point
+from lowlife.geometry import get_point, get_document_levels
 from lowlife.params import get_string_param, set_string_param, set_param_any
 from lowlife.scs import (
     classify_element, clear_stray_address_params,
@@ -20,7 +20,7 @@ from lowlife.scs import (
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_addressing import (
-    pt2, dist2, add_neighbor, get_floor_code_from_view, classify_point,
+    pt2, dist2, add_neighbor, get_floor_code_for_level, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
     point_to_segment_distance_xy, line_parameter_xy,
     build_shortest_path_tree, depth_first_order, select_root_sources
@@ -149,7 +149,8 @@ if not lines:
 # КЛАССИФИКАЦИЯ И ГРАФ
 # ------------------------------------------------------------
 
-floor_code, level_name = get_floor_code_from_view(view)
+document_levels = get_document_levels(doc)
+floor_code, level_name = get_floor_code_for_level(view, document_levels)
 
 for p in points:
     classify_point(p, lines, STRICT, OFFSET, MARKED_TOL, END_TOL)

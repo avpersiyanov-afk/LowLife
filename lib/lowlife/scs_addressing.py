@@ -83,39 +83,80 @@ def add_neighbor(node_a, node_b):
         node_b["neighbor_ids"].append(node_a["id"])
 
 
-def get_floor_code_from_view(view, basement_keyword=u"цоколь", floor_keyword=u"этаж"):
-    """
-    Код этажа вида "F3" / "F-1" из имени уровня (или вида, если уровня нет).
-    """
-    level_name = u""
-
-    try:
-        if hasattr(view, "GenLevel") and view.GenLevel:
-            level_name = view.GenLevel.Name
-    except:
-        pass
-
-    if not level_name:
-        try:
-            level_name = view.Name
-        except:
-            level_name = u""
-
+def _base_floor_code(level_name, basement_keyword=u"цоколь", floor_keyword=u"этаж"):
+    """Код этажа вида "F3" / "F-1" из имени уровня/вида, без учёта отметки."""
     name_lower = level_name.lower()
 
     if basement_keyword and basement_keyword.lower() in name_lower:
-        return u"F-1", level_name
+        return u"F-1"
 
     if floor_keyword:
         m = re.search(re.escape(floor_keyword.lower()) + r'\s*(-?\d+)', name_lower, re.IGNORECASE)
         if m:
-            return u"F{}".format(m.group(1)), level_name
+            return u"F{}".format(m.group(1))
 
     matches = re.findall(r'-?\d+', level_name)
     if matches:
-        return u"F{}".format(matches[0]), level_name
+        return u"F{}".format(matches[0])
 
-    return u"F?", level_name
+    return u"F?"
+
+
+def get_floor_code_for_level(view, all_levels, basement_keyword=u"цоколь", floor_keyword=u"этаж"):
+    """
+    Код этажа вида "F3" / "F-1" из имени уровня вида (или имени вида, если
+    уровня нет) — с суффиксом, различающим несколько уровней с ОДИНАКОВЫМ
+    именем на разной отметке (например, два уровня "Этаж -1" на разных
+    отметках в разных секциях/корпусах). Без такого различения оба уровня
+    получили бы один и тот же код F-1, и адреса узлов на них совпадали бы
+    (что ломает поиск ближайшего узла маршрута — SyncCircuitsAndLengths не
+    может отличить одинаковый адрес на разных этажах).
+
+    Среди всех уровней документа с тем же именем, что и уровень текущего
+    вида, сортирует их по отметке (Elevation) — самый нижний по высоте
+    получает базовый код (F-1), второй по высоте — F-1.1, третий —
+    F-1.2 и т.д. Порядок не зависит от того, с какого из одноимённых
+    уровней запущена кнопка — все они отсортированы одинаково.
+
+    Если у вида нет привязанного уровня (GenLevel) — просто использует
+    имя вида, без суффикса (различать нечего, all_levels не при чём).
+
+    all_levels — результат geometry.get_document_levels(doc) (уже
+    отсортирован по Elevation).
+    """
+    current_level = None
+
+    try:
+        if hasattr(view, "GenLevel") and view.GenLevel:
+            current_level = view.GenLevel
+    except:
+        pass
+
+    if current_level is None:
+        level_name = u""
+        try:
+            level_name = view.Name
+        except:
+            pass
+        return _base_floor_code(level_name, basement_keyword, floor_keyword), level_name
+
+    level_name = current_level.Name
+    base_code = _base_floor_code(level_name, basement_keyword, floor_keyword)
+
+    same_name_levels = sorted(
+        [lv for lv in all_levels if lv.Name == level_name],
+        key=lambda lv: lv.Elevation
+    )
+
+    index = 0
+    for i, lv in enumerate(same_name_levels):
+        if lv.Id == current_level.Id:
+            index = i
+            break
+
+    floor_code = base_code if index == 0 else u"{}.{}".format(base_code, index)
+
+    return floor_code, level_name
 
 
 def classify_point(point, lines, strict_tol, offset_tol, marked_tol, end_tol):
