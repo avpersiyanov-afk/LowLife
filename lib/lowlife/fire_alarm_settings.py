@@ -40,8 +40,20 @@ from lowlife.fire_alarm import ISOLATOR_KEYWORD
 from lowlife.scs_settings import list_generic_model_symbols, _safe_element_name, TypeOption
 
 SYSTEMS = {
-    "SPS": {"file": "LowLifeSPS_settings.json", "title": u"СПС"},
-    "SOUE": {"file": "LowLifeSOUE_settings.json", "title": u"СОУЭ"},
+    "SPS": {
+        "file": "LowLifeSPS_settings.json",
+        "title": u"СПС",
+        # Шлейф СПС — цепь пожарной сигнализации, а не слаботочная Data.
+        "defaults": {"circuit_system_type": u"FireAlarm"},
+    },
+    "SOUE": {
+        "file": "LowLifeSOUE_settings.json",
+        "title": u"СОУЭ",
+        # У СОУЭ тип зависит от того, как заведены семейства в проекте:
+        # оповещатели бывают и в пожарной цепи, и в силовой. Дефолт —
+        # тот же FireAlarm, при необходимости меняется в настройках.
+        "defaults": {"circuit_system_type": u"FireAlarm"},
+    },
 }
 
 _current_system = "SPS"
@@ -84,6 +96,8 @@ TEXT_FIELDS = [
         u"", False, True),
     ("circuit_number_format", u"[Цепи] Формат номера цепи (используйте {} для номера шлейфа)",
         u"ШС-{}", False, True),
+    ("circuit_system_type", u"[Цепи] Тип электрической цепи Revit (FireAlarm, Data, Communication, Security, Power)",
+        u"FireAlarm", False, True),
     ("load_name_param", u"[Цепи] Параметр цепи «Имя нагрузки»",
         u"", False, True),
     ("cable_type_param", u"[Цепи] Параметр цепи «Проводник» (тип кабеля)",
@@ -173,10 +187,13 @@ def _write_all(data):
 
 def load_saved_values():
     saved = _read_all()
+    system_defaults = SYSTEMS[_current_system].get("defaults", {})
     values = {}
 
     for key, _, default, _, _ in TEXT_FIELDS:
-        values[key] = saved.get(key, default)
+        # Дефолт может отличаться между системами (например тип цепи),
+        # поэтому пер-системное значение перекрывает общее из TEXT_FIELDS.
+        values[key] = saved.get(key, system_defaults.get(key, default))
 
     return values
 
@@ -318,8 +335,9 @@ def show_settings_form(doc, values):
     ok_btn.FontWeight = FontWeights.Bold
 
     def on_reset(sender, args):
+        system_defaults = SYSTEMS[_current_system].get("defaults", {})
         for key, _, default, _, _ in TEXT_FIELDS:
-            boxes[key].Text = default
+            boxes[key].Text = system_defaults.get(key, default)
 
     def on_ok(sender, args):
         result["values"] = {key: box.Text for key, box in boxes.items()}

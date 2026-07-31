@@ -94,7 +94,9 @@ def build_loop_circuits(doc, settings):
                 already += 1
                 continue
 
-            circuit, error = create_circuit(doc, panel_el, loop_devices)
+            circuit, error = create_circuit(
+                doc, panel_el, loop_devices, config["circuit_system_type"]
+            )
 
             if circuit is None:
                 errors.append(u"Шлейф {}: {}".format(circuit_number, error))

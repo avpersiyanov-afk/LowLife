@@ -340,7 +340,8 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `find_panels` | `find_panels(doc, config)` | `{номер панели: элемент}` — по рабочему набору и «Обозначению» |
 | `find_devices` | `find_devices(doc, config)` | `(devices, address_by_id, address_text_by_id, skipped)`; `skipped` — с неразбираемым адресом |
 | `existing_circuits_by_number` | `existing_circuits_by_number(doc, config)` | Уже созданные цепи по «Номеру цепи» — чтобы не пересоздавать |
-| `create_circuit` | `create_circuit(doc, panel_el, device_els)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)` |
+| `resolve_system_type` | `resolve_system_type(name)` | `ElectricalSystemType` по имени из настроек (`"FireAlarm"`, `"Data"`, ...); при опечатке — ошибка со списком доступных. Через `getattr`, т.к. набор отличается между версиями Revit |
+| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)`. Тип цепи — из настроек: у СПС пожарная сигнализация, у СОУЭ свой |
 | `build_loop_nodes` | `build_loop_nodes(device_els, address_by_id, isolator_keyword)` | Узлы для `build_loop_tree` из элементов Revit |
 | `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, config)` | Считает и пишет длину и способ прокладки |
 
@@ -350,6 +351,10 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 выбирает, какой JSON читать/писать. Функции те же, что в
 `scs_settings`/`skud_settings` (`get_settings_interactive`,
 `get_settings_silent`, `require`, ...).
+
+У системы могут быть свои значения по умолчанию (`SYSTEMS[...]["defaults"]`)
+— они перекрывают общие из `TEXT_FIELDS`. Так задаётся, например, тип
+электрической цепи: шлейф СПС создаётся как пожарная сигнализация.
 
 ## fire_alarm_buttons.py
 Тела кнопок СПС/СОУЭ — общие для обеих систем, чтобы `script.py` остался
