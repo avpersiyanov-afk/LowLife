@@ -273,6 +273,18 @@ for node in insert_nodes:
 # совпадения — иначе точка ровно на границе ячейки (например, из-за
 # небольшого пересчёта трассы между запусками) считалась бы "другим"
 # ключом, хотя физически ближе tol, и создавала бы дубль.
+#
+# ВАЖНО: раз find_existing_element проверяет соседние ячейки (3x3x3),
+# ячейка, где существующий элемент реально лежит в existing_by_key,
+# может отличаться от ключа искомой (новой) точки. Поэтому
+# consume_existing_element обязательно вызывается с ключом,
+# ВОЗВРАЩЁННЫМ find_existing_element (existing_key), а не с ключом
+# новой точки — иначе элемент удалялся бы не из того бакета, оставался
+# бы формально "свободным" и его мог найти и присвоить себе ещё один
+# узел, из-за чего один и тот же Revit-элемент то и дело менял тип
+# между двумя разными точками (например, панель <-> соседний узел
+# маршрута), а другой узел, у которого элемент был отнят, получал
+# NewFamilyInstance — итог: дубль ровно в точке панели.
 existing_by_key = {}
 for el in generic:
     try:
@@ -289,16 +301,22 @@ def find_existing_element(point, key):
     Ближайший ещё не использованный существующий элемент нужного типа в
     пределах merge_tolerance — по реальному расстоянию, а не только по
     совпадению ключа сетки (соседние ячейки тоже проверяются, чтобы не
-    промахнуться на точке у самой границы ячейки).
+    промахнуться на точке у самой границы ячейки). Возвращает (el, real_key)
+    — real_key это ключ ячейки, под которым el реально лежит в
+    existing_by_key, нужен для consume_existing_element (он может
+    отличаться от ключа искомой точки — именно поэтому и проверяется
+    окрестность 3x3x3, а не только сама ячейка key).
     """
     best_el = None
+    best_key = None
     best_dist = None
 
     kx, ky, kz = key
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
             for dz in (-1, 0, 1):
-                for el, pt in existing_by_key.get((kx + dx, ky + dy, kz + dz), []):
+                bucket_key = (kx + dx, ky + dy, kz + dz)
+                for el, pt in existing_by_key.get(bucket_key, []):
                     try:
                         d = point.DistanceTo(pt)
                     except:
@@ -306,8 +324,9 @@ def find_existing_element(point, key):
                     if d <= merge_tolerance and (best_dist is None or d < best_dist):
                         best_dist = d
                         best_el = el
+                        best_key = bucket_key
 
-    return best_el
+    return best_el, best_key
 
 
 def consume_existing_element(el, key):
@@ -393,7 +412,7 @@ with revit.Transaction("Place Route Nodes"):
             level = find_level_for_elevation(point.Z, document_levels)
 
         key = point_key(point, merge_tolerance)
-        existing = find_existing_element(point, key)
+        existing, existing_key = find_existing_element(point, key)
 
         if existing is None:
             el = doc.Create.NewFamilyInstance(point, target_symbol, level, StructuralType.NonStructural)
@@ -409,7 +428,7 @@ with revit.Transaction("Place Route Nodes"):
                 created.append(el)
 
         else:
-            consume_existing_element(existing, key)
+            consume_existing_element(existing, existing_key)
             el = existing
 
             if el.Symbol.Id != target_symbol.Id:
