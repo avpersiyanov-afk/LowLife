@@ -22,8 +22,8 @@ from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import clear_stray_address_params, is_excluded_device
 from lowlife.scs_circuits import (
     norm, clean_text_value, split_multi_value, build_graph, bfs_component,
-    find_closest_pair_between_sets, astar_path, calc_lengths, balance_round_parts,
-    build_segment_list_text
+    find_closest_pair_between_sets, find_nearest_segment_id, astar_path,
+    calc_lengths, balance_round_parts, build_segment_list_text
 )
 from lowlife.skud import is_controller, is_near_controller, hypotenuse_length_ft
 from lowlife import skud_settings
@@ -94,13 +94,38 @@ SEGMENT_LOADS_PARAM = settings["segment_loads_param"]
 
 
 # ------------------------------------------------------------
-# ОЧИСТКА "ЧУЖИХ" АДРЕСОВ (как в СКС — узлы трассы СКУД свои, отдельные типы)
+# ОЧИСТКА "ЧУЖИХ" АДРЕСОВ
 # ------------------------------------------------------------
+# В СКС такая очистка безопасна: там типы узлов заведомо "свои", и всё,
+# что не они, — мусор с прошлых запусков. В СКУД узлы трассы обычно те же
+# самые, что у СКС (их расставляют кнопки СКС), поэтому чистить здесь
+# нечего, а вот навредить можно: если в настройках СКУД выбран другой тип
+# узла, очистка стёрла бы адреса рабочих узлов СКС.
+#
+# Поэтому чистим только если параметры адреса у СКУД ОТЛИЧАЮТСЯ от
+# настроенных в СКС — то есть у СКУД действительно своя, независимая
+# адресация, и пересечься с чужими узлами она не может.
 
-with revit.Transaction("Clear stray SKUD route addresses"):
-    stray_cleared = clear_stray_address_params(
-        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID])
-    )
+stray_cleared = []
+
+try:
+    from lowlife.scs_settings import get_settings_silent as get_scs_settings
+    scs_conf = get_scs_settings()
+    scs_addr_params = set([
+        clean_text_value(scs_conf.get("addr_param_name")),
+        clean_text_value(scs_conf.get("addr_prev_param_name"))
+    ])
+except:
+    scs_addr_params = set()
+
+skud_addr_params = set([clean_text_value(ADDR_PARAM), clean_text_value(ADDR_PREV_PARAM)])
+shares_params_with_scs = bool(skud_addr_params & scs_addr_params)
+
+if not shares_params_with_scs:
+    with revit.Transaction("Clear stray SKUD route addresses"):
+        stray_cleared = clear_stray_address_params(
+            doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID])
+        )
 
 
 # ------------------------------------------------------------
@@ -182,6 +207,67 @@ for c in all_circuits:
 
 
 # ------------------------------------------------------------
+# БЛИЖАЙШИЙ УЗЕЛ МАРШРУТА ДЛЯ КОНТРОЛЛЕРОВ И УСТРОЙСТВ
+# ------------------------------------------------------------
+# В СКС это делает отдельная кнопка «Адреса узлов» (RenumberAddresses)
+# сразу после нумерации. В СКУД своих кнопок расстановки/нумерации узлов
+# нет — узлы трассы и их адреса общие для проекта (их расставляют кнопки
+# СКС), поэтому здесь остаётся только привязать к ним контроллеры и
+# устройства СКУД: найти ближайший адресованный узел по XY (без Z — см.
+# find_nearest_segment_id) и записать его адрес.
+#
+# Считается только для далёких пар (устройство не рядом с контроллером):
+# у близких пар длина идёт по координатам и узел маршрута не нужен —
+# именно для них условные обозначения стоят друг на друге и линию трассы
+# рисовать негде.
+#
+# Значение пишется, только если параметр ещё пуст (как в СКС) — уже
+# проставленную вручную привязку не перетираем.
+
+nearest_written = 0
+
+if segments:
+    with revit.Transaction("Write SKUD Nearest Segment"):
+
+        for controller in controllers:
+            controller_pt = get_point(controller)
+            if controller_pt is None:
+                continue
+
+            controller_circuits = circuits_by_controller_name.get(norm(controller.Name), [])
+
+            far_devices = []
+            for c in controller_circuits:
+                try:
+                    raw_devs = [x for x in c.Elements if x.Id != controller.Id]
+                except:
+                    continue
+                for d in raw_devs:
+                    if is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS):
+                        continue
+                    d_pt = get_point(d)
+                    if d_pt is None:
+                        continue
+                    if not is_near_controller(controller_pt, d_pt, NEAR_THRESHOLD_FT):
+                        far_devices.append(d)
+
+            if not far_devices:
+                continue
+
+            if not clean_text_value(get_string_param(controller, NEAREST_SEGMENT_PARAM)):
+                nearest_sid, _ = find_nearest_segment_id(controller_pt, segments)
+                if nearest_sid and set_param_any(controller, NEAREST_SEGMENT_PARAM, nearest_sid):
+                    nearest_written += 1
+
+            for dev in far_devices:
+                if clean_text_value(get_string_param(dev, NEAREST_SEGMENT_PARAM)):
+                    continue
+                nearest_sid, _ = find_nearest_segment_id(get_point(dev), segments)
+                if nearest_sid and set_param_any(dev, NEAREST_SEGMENT_PARAM, nearest_sid):
+                    nearest_written += 1
+
+
+# ------------------------------------------------------------
 # ОСНОВНОЙ ПРОХОД: ДЛИНЫ И МАРКИРОВКА
 # ------------------------------------------------------------
 # Маркировка идёт здесь же, а не отдельной кнопкой: марка устройства —
@@ -197,6 +283,7 @@ no_device = 0
 no_path = 0
 no_segment = 0
 no_path_report = []
+no_segment_report = []
 devices_marked = 0
 segment_info_map = {}
 
@@ -261,10 +348,24 @@ with revit.Transaction("Calc SKUD Lengths And Marking"):
 
                 if not controller_start or not dev_end:
                     no_segment += 1
+                    no_segment_report.append(
+                        u"Цепь «{}» (контроллер {}): нет привязки к узлу маршрута "
+                        u"{}.".format(
+                            norm(c.Name) or c.Id.IntegerValue, controller_name,
+                            u"у контроллера" if not controller_start else u"у устройства"
+                        )
+                    )
                     continue
 
                 if controller_start not in segments or dev_end not in segments:
                     no_segment += 1
+                    no_segment_report.append(
+                        u"Цепь «{}» (контроллер {}): узел «{}» не найден среди "
+                        u"адресованных узлов трассы.".format(
+                            norm(c.Name) or c.Id.IntegerValue, controller_name,
+                            controller_start if controller_start not in segments else dev_end
+                        )
+                    )
                     continue
 
                 path = astar_path(segments, graph, controller_start, dev_end)
@@ -337,9 +438,21 @@ with revit.Transaction("Calc SKUD Lengths And Marking"):
 # ОТЧЁТ
 # ------------------------------------------------------------
 
-if broken_parent_links or no_path_report or duplicate_addr_report:
+if broken_parent_links or no_path_report or duplicate_addr_report or no_segment_report:
     from pyrevit import script as pyrevit_script
     output = pyrevit_script.get_output()
+
+    if no_segment_report:
+        output.print_md(u"### Цепи без привязки к узлу маршрута ({})".format(len(no_segment_report)))
+        if not segments:
+            output.print_md(
+                u"**В проекте не найдено ни одного адресованного узла трассы.** "
+                u"Для устройств дальше порога «рядом с контроллером» нужны узлы "
+                u"маршрута с адресами — расставьте их и пронумеруйте кнопками "
+                u"«Узлы трассы» и «Адреса узлов» на панели СКС."
+            )
+        for line in no_segment_report[:100]:
+            output.print_md(u"- {}".format(line))
 
     if duplicate_addr_report:
         output.print_md(u"### Дублирующиеся адреса узлов ({})".format(len(duplicate_addr_report)))
@@ -367,6 +480,7 @@ forms.alert(
     u"Путь не найден: {}\n\n"
     u"Устройств маркировано: {}\n"
     u"Узлов со списком цепей: {}\n\n"
+    u"Записано «Ближайший узел маршрута»: {}\n"
     u"Дублирующихся адресов: {}\n"
     u"Очищено чужих адресов: {}\n\n"
     u"{}".format(
@@ -379,8 +493,9 @@ forms.alert(
         no_path,
         devices_marked,
         segments_written,
+        nearest_written,
         len(duplicate_addr_report),
         len(stray_cleared),
-        u"Подробности — в окне вывода pyRevit." if (broken_parent_links or no_path_report or duplicate_addr_report) else u""
+        u"Подробности — в окне вывода pyRevit." if (broken_parent_links or no_path_report or duplicate_addr_report or no_segment_report) else u""
     )
 )
