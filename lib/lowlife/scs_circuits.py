@@ -40,11 +40,28 @@ def split_multi_value(x):
     return [p for p in parts if p]
 
 
+def is_root_address(addr):
+    """
+    Адрес панели/стояка (вида "F1.P3"/"F1.R2") — RenumberAddresses
+    присваивает такие адреса корням обхода, а не узлам маршрута/стояка
+    в графе. Узел с таким "предыдущим адресом" ссылается на реальный
+    корень (путь до него считается отдельно через «Ближайший узел
+    маршрута»), а не на разорванную ссылку.
+    """
+    if not addr:
+        return False
+    idx = addr.rfind(u".")
+    if idx == -1 or idx + 1 >= len(addr):
+        return False
+    return addr[idx + 1] in (u"P", u"R")
+
+
 def build_graph(segments, parents_by_id):
     """
     segments: {id: {...}}, parents_by_id: {id: [parent_id, ...]}.
     Возвращает (graph, broken_links) — граф смежности и список ссылок
-    на несуществующие родительские адреса.
+    на несуществующие родительские адреса (кроме ссылок на адрес
+    панели/стояка — см. is_root_address, это не ошибка).
     """
     graph = defaultdict(list)
     broken_links = []
@@ -54,7 +71,7 @@ def build_graph(segments, parents_by_id):
             if parent in segments:
                 graph[sid].append(parent)
                 graph[parent].append(sid)
-            else:
+            elif not is_root_address(parent):
                 broken_links.append(u"{} -> {}".format(sid, parent))
 
     return graph, broken_links
