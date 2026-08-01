@@ -275,10 +275,26 @@ for n in ordered_routes:
     n["addr"] = u"{}.{}".format(floor_code, num)
     num += 1
 
+# Панели и стояки — корни обхода, сами не входят в route_points/
+# ordered_routes, но тоже получают адрес: отдельный счётчик на этаж для
+# каждой категории (P для панелей, R для стояков), не связанный со
+# счётчиком обычных узлов маршрута. Порядок — по координатам (как и для
+# offset/unconnected узлов), чтобы результат был стабильным между
+# запусками (порядок коллектора Revit не гарантирован).
+panel_num = 1
+for n in sorted(panels, key=lambda n: (n["point"][0], n["point"][1], n["id"])):
+    n["addr"] = u"{}.P{}".format(floor_code, panel_num)
+    panel_num += 1
+
+riser_num = 1
+for n in sorted(risers, key=lambda n: (n["point"][0], n["point"][1], n["id"])):
+    n["addr"] = u"{}.R{}".format(floor_code, riser_num)
+    riser_num += 1
+
 for n in real_nodes:
     if n["parent_id"] is not None and n["parent_id"] in all_points_by_id:
         parent_obj = all_points_by_id[n["parent_id"]]
-        n["parent_addr"] = parent_obj["addr"] if parent_obj["is_route"] else parent_obj["addr_original"]
+        n["parent_addr"] = parent_obj["addr"]
     else:
         n["parent_addr"] = None
 
@@ -310,6 +326,12 @@ with revit.Transaction("Renumber Route Addresses"):
     for p in route_points:
         set_string_param(p["element"], ADDR_PARAM, p["addr"] if p["addr"] else u"")
         set_string_param(p["element"], ADDR_PREV_PARAM, p["write_value"])
+        changed.append(p)
+
+    # Панели и стояки тоже получают свой адрес (F1.P1/F1.R1) — «Предыдущий
+    # адрес» у них не пишется, они сами корни, родителя у них нет.
+    for p in panels + risers:
+        set_string_param(p["element"], ADDR_PARAM, p["addr"] if p["addr"] else u"")
         changed.append(p)
 
 
@@ -426,11 +448,12 @@ if panels or risers:
     for n in panels + risers:
         roots_table.append([
             n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1]),
+            n.get("addr") or u"-",
             u"Слишком далеко — не корень" if n["id"] in far_ids else u"Корень"
         ])
     output.print_table(
         table_data=roots_table,
-        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Статус"]
+        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Адрес", u"Статус"]
     )
 
 output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
