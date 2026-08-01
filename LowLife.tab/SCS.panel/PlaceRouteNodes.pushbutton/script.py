@@ -463,17 +463,26 @@ with revit.Transaction("Place Route Nodes"):
             created.append(el)
 
 
+existing_route_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TYPE_ID_BY_CATEGORY["route"])
+existing_panel_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TYPE_ID_BY_CATEGORY["panel"])
+existing_riser_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TYPE_ID_BY_CATEGORY["riser"])
+
 forms.alert(
     "Готово.\n\n"
     "Создано элементов: {}\n"
     "Пропущено (уже стоял маркер): {}\n\n"
     "Панелей: {}\n"
     "Стояков: {}\n"
-    "Узлов маршрута: {}".format(
+    "Узлов маршрута: {}\n\n"
+    "[Диагностика] Найдено существующих на виде ДО запуска — "
+    "панелей: {}, стояков: {}, узлов маршрута: {}".format(
         len(created),
         len(skipped),
         counts_by_category["panel"],
         counts_by_category["riser"],
-        counts_by_category["route"]
+        counts_by_category["route"],
+        existing_panel_count,
+        existing_riser_count,
+        existing_route_count
     )
 )
