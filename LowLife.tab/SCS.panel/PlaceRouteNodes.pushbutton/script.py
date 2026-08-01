@@ -18,7 +18,7 @@ from lowlife.geometry import (
     get_element_level
 )
 from lowlife.params import get_double_param, set_double_param, set_string_param
-from lowlife.scs import detect_cable_type, classify_element, merge_nodes, resolve_category
+from lowlife.scs import classify_element, merge_nodes, resolve_category
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
 
@@ -411,6 +411,12 @@ with revit.Transaction("Place Route Nodes"):
                 # аннотации стояка (level_override) — у неё нет LevelId.
                 level = device.get("level_override") or get_element_level(doc, dev_el)
 
+        # Тип прокладки для route-узла НЕ определяется здесь — на стыке
+        # двух сегментов с разным способом прокладки (труба/лоток) нужно
+        # направление "к устройствам", а оно известно только после
+        # построения дерева адресации в RenumberAddresses (см. там же).
+        # Здесь для route оставляем параметр пустым до следующего
+        # запуска «Адреса узлов» — он и перезапишет верное значение.
         for sid in node.get("segment_ids", []):
             if sid not in segments_by_id:
                 continue
@@ -420,10 +426,7 @@ with revit.Transaction("Place Route Nodes"):
             if line_offset_value is None:
                 line_offset_value = get_double_param(seg_el, OFFSET_PARAM_NAMES)
 
-            if not is_marked and cable_type_value is None:
-                cable_type_value = detect_cable_type(seg_el)
-
-            if line_offset_value is not None and cable_type_value is not None:
+            if line_offset_value is not None:
                 break
 
         if level is None:

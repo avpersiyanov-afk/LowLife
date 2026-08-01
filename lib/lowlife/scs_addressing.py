@@ -76,11 +76,22 @@ def line_parameter_xy(pt, a, b):
     return float(apx * abx + apy * aby) / float(ab_len2)
 
 
-def add_neighbor(node_a, node_b):
+def add_neighbor(node_a, node_b, line_id=None):
+    """
+    line_id — id сегмента (линии), физически соединяющего node_a и
+    node_b, если вызывающий код его знает; сохраняется в
+    neighbor_line_by_id узла, чтобы потом можно было определить, через
+    какую линию узел соединён с конкретным соседом (например, чтобы
+    взять тип прокладки исходящего сегмента, а не входящего).
+    """
     if node_b["id"] not in node_a["neighbor_ids"]:
         node_a["neighbor_ids"].append(node_b["id"])
     if node_a["id"] not in node_b["neighbor_ids"]:
         node_b["neighbor_ids"].append(node_a["id"])
+
+    if line_id is not None:
+        node_a.setdefault("neighbor_line_by_id", {})[node_b["id"]] = line_id
+        node_b.setdefault("neighbor_line_by_id", {})[node_a["id"]] = line_id
 
 
 def _base_floor_code(level_name, basement_keyword=u"цоколь", floor_keyword=u"этаж"):

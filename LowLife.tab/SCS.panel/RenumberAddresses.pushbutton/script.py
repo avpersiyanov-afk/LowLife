@@ -15,7 +15,7 @@ from lowlife.geometry import get_point, get_document_levels
 from lowlife.params import get_string_param, set_string_param, set_param_any
 from lowlife.scs import (
     classify_element, clear_stray_address_params,
-    is_excluded_device, panel_matches
+    is_excluded_device, panel_matches, detect_cable_type
 )
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
@@ -59,6 +59,7 @@ scs_settings.require(settings, [
 
 ADDR_PARAM = settings["addr_param_name"]
 ADDR_PREV_PARAM = settings["addr_prev_param_name"]
+CABLE_PARAM_NAME = settings["cable_param_name"]
 PANEL_KEYWORDS = settings["panel_keywords"]
 PANEL_EXCLUDE_KEYWORDS = settings["panel_exclude_keywords"]
 
@@ -190,7 +191,7 @@ for line in lines:
         n1 = pts_on_line[i][1]
         n2 = pts_on_line[i + 1][1]
         if n1["id"] != n2["id"]:
-            add_neighbor(n1, n2)
+            add_neighbor(n1, n2, line["id"])
 
 
 # ------------------------------------------------------------
@@ -237,6 +238,43 @@ real_nodes_by_id = dict((n["id"], n) for n in real_nodes)
 _, effective_roots = build_shortest_path_tree(real_nodes_by_id, unique_roots, real_nodes, dist2)
 
 ordered_real_nodes = depth_first_order(real_nodes_by_id, effective_roots)
+
+
+# ------------------------------------------------------------
+# ТИП ПРОКЛАДКИ КАБЕЛЯ
+# ------------------------------------------------------------
+# Раньше это определялось в PlaceRouteNodes по первому попавшемуся в
+# set() соседнему сегменту — недетерминированно: узел на стыке трубы и
+# лотка мог получить любой из двух типов в зависимости от порядка
+# обхода, из-за чего длина в трубе/лотке считалась неверно.
+#
+# Направление известно только здесь (parent_id уже построен Дейкстрой):
+# берём тип прокладки ИСХОДЯЩЕГО сегмента — того, что ведёт от узла
+# дальше по дереву (к детям), а не от родителя. Это тот же принцип, что
+# в calc_lengths (SyncCircuitsAndLengths): способ прокладки отрезка
+# определяется по параметру узла, В КОТОРЫЙ ПРИХОДИТ отрезок.
+# У тупикового узла (только родительский сегмент, детей нет) — берём
+# тип этого единственного сегмента.
+
+for n in real_nodes:
+    neighbor_line_by_id = n.get("neighbor_line_by_id", {})
+    outgoing_line_id = None
+
+    for neighbor_id in n.get("neighbor_ids", []):
+        if neighbor_id != n.get("parent_id"):
+            outgoing_line_id = neighbor_line_by_id.get(neighbor_id)
+            if outgoing_line_id is not None:
+                break
+
+    if outgoing_line_id is None and n.get("parent_id") is not None:
+        outgoing_line_id = neighbor_line_by_id.get(n["parent_id"])
+
+    line = lines_by_id.get(outgoing_line_id) if outgoing_line_id is not None else None
+
+    if line is not None:
+        cable_type_value = detect_cable_type(line["element"])
+        if cable_type_value is not None:
+            n["cable_type_value"] = cable_type_value
 
 
 # ------------------------------------------------------------
@@ -326,6 +364,9 @@ with revit.Transaction("Renumber Route Addresses"):
     for p in route_points:
         set_string_param(p["element"], ADDR_PARAM, p["addr"] if p["addr"] else u"")
         set_string_param(p["element"], ADDR_PREV_PARAM, p["write_value"])
+        cable_type_value = p.get("cable_type_value")
+        if cable_type_value is not None:
+            set_string_param(p["element"], CABLE_PARAM_NAME, cable_type_value)
         changed.append(p)
 
     # Панели и стояки тоже получают свой адрес (F1.P1/F1.R1) — «Предыдущий
