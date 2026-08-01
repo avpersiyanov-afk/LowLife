@@ -220,7 +220,7 @@ def _point_sort_key(pt):
     return (pt.X, pt.Y, pt.Z)
 
 
-def _pick_cluster_point(members):
+def _pick_cluster_point(members, existing_points, tol, points_close_fn):
     """
     Точка кластера должна быть детерминированной (не зависеть от порядка
     обхода узлов, который между запусками может отличаться) — иначе
@@ -228,20 +228,37 @@ def _pick_cluster_point(members):
     точку кластера на пару мм и пересечь границу допуска дедупа, создав
     копию элемента рядом со старым вместо его обновления.
 
-    Приоритет: точка помеченного узла (панель/стояк), если такой есть в
-    кластере — так итоговая точка совпадает с реальным положением
-    элемента, а не узла графа линии. Иначе — точка с наименьшими
-    координатами (X, затем Y, затем Z), одна и та же при любом порядке.
+    Приоритет:
+    1. Точка уже существующего на виде маркера (existing_points), если
+       хотя бы один из членов кластера физически рядом с ним — иначе при
+       появлении нового близкого узла графа (например, от только что
+       добавленного сегмента трассы) кластер мог "утянуть" итоговую точку
+       на новый узел вместо уже занятой существующим маркером точки,
+       из-за чего дедуп её не находил и создавал дубль рядом.
+    2. Точка помеченного узла (панель/стояк), если такой есть в кластере
+       — совпадает с реальным положением элемента, а не узла графа линии.
+    3. Иначе — точка с наименьшими координатами (X, затем Y, затем Z),
+       одна и та же при любом порядке обхода.
     """
+    if existing_points:
+        for m in members:
+            for ex_point in existing_points:
+                if points_close_fn(m["point"], ex_point, tol):
+                    return ex_point
+
     marked = [m for m in members if m.get("device") is not None]
     pool = marked if marked else members
     return min((m["point"] for m in pool), key=_point_sort_key)
 
 
-def merge_nodes(nodes, tol, points_close_fn):
+def merge_nodes(nodes, tol, points_close_fn, existing_points=None):
     """
     Объединяет узлы трассы, находящиеся на расстоянии <= tol друг от друга,
     в один узел с суммарными данными (категории, id сегментов, устройство/панель).
+
+    existing_points — координаты уже вставленных на виде маркеров
+    (panel/route/riser); если задано, приоритет при выборе итоговой точки
+    кластера (см. _pick_cluster_point).
     """
     clusters = []
 
@@ -261,7 +278,7 @@ def merge_nodes(nodes, tol, points_close_fn):
 
     for cl in clusters:
         members = cl["members"]
-        point = _pick_cluster_point(members)
+        point = _pick_cluster_point(members, existing_points, tol, points_close_fn)
 
         node_key = None
         device = None
