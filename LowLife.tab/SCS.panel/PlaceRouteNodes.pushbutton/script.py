@@ -206,15 +206,8 @@ classify_rules = [
 
 marked_points = []
 
-for el in all_candidates:
-    category = classify_element(el, classify_rules)
-    if category is None:
-        continue
 
-    pt = get_point(el)
-    if pt is None:
-        continue
-
+def add_marked_point(el, pt, category, level_override=None):
     nearest_key = None
     nearest_dist = None
 
@@ -231,8 +224,58 @@ for el in all_candidates:
         "element": el,
         "point": pt,
         "node_key": nearest_key,
-        "category": category
+        "category": category,
+        "level_override": level_override
     })
+
+
+for el in all_candidates:
+    category = classify_element(el, classify_rules)
+    if category is None:
+        continue
+
+    pt = get_point(el)
+    if pt is None:
+        continue
+
+    add_marked_point(el, pt, category)
+
+# Стояки на этом виде также отмечаются типовой аннотацией (со стрелкой
+# подъёма/опуска) вместо реального устройства — аннотация не имеет
+# собственной высоты в модели (видна только на виде), поэтому узел
+# стояка ставится в её точке на плане (X/Y) на условной высоте 3000мм
+# от уровня активного вида.
+RISER_ANNOTATION_OFFSET_MM = 3000.0
+RISER_ANNOTATION_OFFSET_FT = RISER_ANNOTATION_OFFSET_MM / 304.8
+
+view_level = None
+try:
+    if hasattr(view, "GenLevel") and view.GenLevel:
+        view_level = view.GenLevel
+except:
+    pass
+
+if view_level is not None:
+    annotation_elevation = view_level.Elevation + RISER_ANNOTATION_OFFSET_FT
+
+    riser_annotations = FilteredElementCollector(doc, view.Id) \
+        .OfCategory(BuiltInCategory.OST_GenericAnnotation) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+    for el in riser_annotations:
+        if classify_element(el, [("riser", RISER_KEYWORDS, RISER_EXCLUDE_KEYWORDS)]) != "riser":
+            continue
+
+        pt = get_point(el)
+        if pt is None:
+            continue
+
+        riser_pt = XYZ(pt.X, pt.Y, annotation_elevation)
+        # Аннотация — Annotation-элемент, не Model, у неё нет LevelId
+        # (get_element_level(doc, el) ничего не найдёт) — передаём
+        # уровень вида явно, а не полагаемся на резервный поиск по Z.
+        add_marked_point(el, riser_pt, "riser", level_override=view_level)
 
 raw_nodes = []
 
@@ -384,8 +427,9 @@ with revit.Transaction("Place Route Nodes"):
             if dev_el is not None:
                 line_offset_value = get_double_param(dev_el, OFFSET_PARAM_NAMES)
                 # Панель/стояк — уровень берём с самого элемента
-                # (его параметр «Уровень»), а не по высоте точки.
-                level = get_element_level(doc, dev_el)
+                # (его параметр «Уровень»), а не по высоте точки. Кроме
+                # аннотации стояка (level_override) — у неё нет LevelId.
+                level = device.get("level_override") or get_element_level(doc, dev_el)
 
         for sid in node.get("segment_ids", []):
             if sid not in segments_by_id:
@@ -419,7 +463,7 @@ with revit.Transaction("Place Route Nodes"):
                     nearest_marked = m
 
             if nearest_marked is not None:
-                level = get_element_level(doc, nearest_marked["element"])
+                level = nearest_marked.get("level_override") or get_element_level(doc, nearest_marked["element"])
 
         if level is None:
             # Нет ни одной панели/стояка с уровнем — резервный
