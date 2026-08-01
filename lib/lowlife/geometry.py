@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Общие геометрические хелперы для работы с элементами Revit."""
 
-from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line, Level, FilteredElementCollector, ElementId
+from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line, Level, FilteredElementCollector, ElementId, XYZ
 
 
 def get_point(el):
@@ -16,13 +16,38 @@ def get_point(el):
 
 def get_curve_data(el, view):
     """
-    Кривая элемента и её концевые точки.
-    Если у элемента нет LocationCurve, используется диагональ bounding box.
+    Кривая элемента и её концевые точки, в МИРОВЫХ координатах.
+
+    Curve.GetEndPoint() у некоторых line-based Generic Model семейств
+    возвращает точки в системе координат, относительной к рабочей
+    плоскости/уровню-хосту (Z там может быть 0, даже если элемент
+    физически виден на большой высоте) — поэтому Z корректируется
+    смещением между этой относительной кривой и реальным мировым
+    bounding box элемента (тоже в мировых координатах, не зависит от
+    того, как хранится геометрия внутри семейства).
+
+    Если у элемента нет LocationCurve вовсе — используется диагональ
+    bounding box как резервный вариант (уже в мировых координатах).
     """
     try:
         if isinstance(el.Location, LocationCurve):
             c = el.Location.Curve
-            return c, c.GetEndPoint(0), c.GetEndPoint(1)
+            p1 = c.GetEndPoint(0)
+            p2 = c.GetEndPoint(1)
+
+            try:
+                bbox = el.get_BoundingBox(None)
+                if bbox is not None:
+                    curve_min_z = min(p1.Z, p2.Z)
+                    z_offset = bbox.Min.Z - curve_min_z
+                    if abs(z_offset) > 1e-6:
+                        p1 = XYZ(p1.X, p1.Y, p1.Z + z_offset)
+                        p2 = XYZ(p2.X, p2.Y, p2.Z + z_offset)
+                        c = Line.CreateBound(p1, p2)
+            except:
+                pass
+
+            return c, p1, p2
     except:
         pass
     try:
