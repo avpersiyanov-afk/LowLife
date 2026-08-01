@@ -9,8 +9,8 @@ GenericUIComponent.name in pyrevit/extensions/genericcomps.py). Button
 __title__ text is not used for lookup because it is not guaranteed unique
 across panels (SOUE and SPS both have buttons titled "Цепи шлейфов").
 
-SetupParameters buttons are intentionally excluded: each panel keeps its
-own Settings button visible regardless of the selected theme.
+SetupParameters buttons across all disciplines are grouped under their own
+"Settings" theme rather than staying always-visible.
 """
 
 THEMES = {
@@ -34,6 +34,12 @@ THEMES = {
         (u"SPS", u"BuildLoopCircuits"),
         (u"SPS", u"CalcLoopLengths"),
     ],
+    u"Settings": [
+        (u"SCS", u"SetupParameters"),
+        (u"SKUD", u"SetupParameters"),
+        (u"SOUE", u"SetupParameters"),
+        (u"SPS", u"SetupParameters"),
+    ],
     u"General": [
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
@@ -46,7 +52,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"General"]
+THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"Settings", u"General"]
 
 
 def _find_button(pyrevit_tabs, panel_name, button_name):
