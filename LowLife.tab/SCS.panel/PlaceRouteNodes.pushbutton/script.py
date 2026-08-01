@@ -371,6 +371,8 @@ document_levels = get_document_levels(doc)
 if not document_levels:
     forms.alert(u"В проекте нет ни одного уровня.", exitscript=True)
 
+near_miss_report = []
+
 with revit.Transaction("Place Route Nodes"):
 
     for node in insert_nodes:
@@ -386,6 +388,33 @@ with revit.Transaction("Place Route Nodes"):
             consumed_ids.add(existing.Id)
             skipped.append(existing)
             continue
+
+        # [Диагностика] Для первых 5 route-узлов, где дедуп не нашёл
+        # совпадение, ищем ближайший существующий элемент ТОГО ЖЕ ТИПА
+        # без ограничения по merge_tolerance, чтобы увидеть реальное
+        # расстояние и разницу по X/Y/Z.
+        if category == "route" and len(near_miss_report) < 5:
+            nearest_same_type = None
+            nearest_same_type_dist = None
+            for el, pt in existing_list:
+                if el.GetTypeId() != TYPE_ID_BY_CATEGORY["route"]:
+                    continue
+                try:
+                    d = point.DistanceTo(pt)
+                except:
+                    continue
+                if nearest_same_type_dist is None or d < nearest_same_type_dist:
+                    nearest_same_type_dist = d
+                    nearest_same_type = pt
+            if nearest_same_type is not None:
+                dx_mm = (point.X - nearest_same_type.X) * 304.8
+                dy_mm = (point.Y - nearest_same_type.Y) * 304.8
+                dz_mm = (point.Z - nearest_same_type.Z) * 304.8
+                near_miss_report.append(
+                    u"dist={:.1f}мм dx={:.1f} dy={:.1f} dz={:.1f}".format(
+                        nearest_same_type_dist * 304.8, dx_mm, dy_mm, dz_mm
+                    )
+                )
 
         if not target_symbol.IsActive:
             target_symbol.Activate()
@@ -467,15 +496,18 @@ existing_route_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TY
 existing_panel_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TYPE_ID_BY_CATEGORY["panel"])
 existing_riser_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TYPE_ID_BY_CATEGORY["riser"])
 
+near_miss_text = u"\n".join(near_miss_report) if near_miss_report else u"(нет — либо всё создано впервые, либо дедуп сработал)"
+
 forms.alert(
-    "Готово.\n\n"
-    "Создано элементов: {}\n"
-    "Пропущено (уже стоял маркер): {}\n\n"
-    "Панелей: {}\n"
-    "Стояков: {}\n"
-    "Узлов маршрута: {}\n\n"
-    "[Диагностика] Найдено существующих на виде ДО запуска — "
-    "панелей: {}, стояков: {}, узлов маршрута: {}".format(
+    u"Готово.\n\n"
+    u"Создано элементов: {}\n"
+    u"Пропущено (уже стоял маркер): {}\n\n"
+    u"Панелей: {}\n"
+    u"Стояков: {}\n"
+    u"Узлов маршрута: {}\n\n"
+    u"[Диагностика] Найдено существующих на виде ДО запуска — "
+    u"панелей: {}, стояков: {}, узлов маршрута: {}\n\n"
+    u"[Диагностика] Ближайший существующий route той же точки (первые 5 промахов):\n{}".format(
         len(created),
         len(skipped),
         counts_by_category["panel"],
@@ -483,6 +515,7 @@ forms.alert(
         counts_by_category["route"],
         existing_panel_count,
         existing_riser_count,
-        existing_route_count
+        existing_route_count,
+        near_miss_text
     )
 )
