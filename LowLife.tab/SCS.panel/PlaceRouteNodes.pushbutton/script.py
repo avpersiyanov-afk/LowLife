@@ -411,8 +411,12 @@ with revit.Transaction("Place Route Nodes"):
                 dy_mm = (point.Y - nearest_same_type.Y) * 304.8
                 dz_mm = (point.Z - nearest_same_type.Z) * 304.8
                 near_miss_report.append(
-                    u"dist={:.1f}мм dx={:.1f} dy={:.1f} dz={:.1f}".format(
-                        nearest_same_type_dist * 304.8, dx_mm, dy_mm, dz_mm
+                    u"dist={:.1f}мм dx={:.1f} dy={:.1f} dz={:.1f} | "
+                    u"new.Z={:.1f}мм old.Z={:.1f}мм | "
+                    u"source_types={} categories={}".format(
+                        nearest_same_type_dist * 304.8, dx_mm, dy_mm, dz_mm,
+                        point.Z * 304.8, nearest_same_type.Z * 304.8,
+                        node.get("source_types"), node.get("categories")
                     )
                 )
 
