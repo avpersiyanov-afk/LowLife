@@ -55,24 +55,44 @@ THEMES = {
 THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"Settings", u"General"]
 
 
-def _find_button(pyrevit_tabs, panel_name, button_name):
+def _find_panel(pyrevit_tabs, panel_name):
     for tab in pyrevit_tabs:
         panel = tab.find_child(panel_name)
         if panel is not None:
-            button = panel.find_child(button_name)
-            if button is not None:
-                return button
+            return panel
     return None
 
 
 def apply_theme(selected_theme):
-    """Show only the buttons belonging to selected_theme; hide the rest."""
+    """Show only the buttons belonging to selected_theme; hide the rest.
+
+    Panels that end up with no visible button (e.g. SKUD.panel when the
+    General theme is selected) are hidden too, so no empty panel frame
+    is left on the ribbon.
+    """
     from pyrevit.coreutils.ribbon import get_current_ui
 
     pyrevit_tabs = get_current_ui().get_pyrevit_tabs()
+
+    touched_panel_names = set()
+    for button_refs in THEMES.values():
+        for panel_name, _ in button_refs:
+            touched_panel_names.add(panel_name)
+
     for theme_name, button_refs in THEMES.items():
         visible = theme_name == selected_theme
         for panel_name, button_name in button_refs:
-            button = _find_button(pyrevit_tabs, panel_name, button_name)
+            panel = _find_panel(pyrevit_tabs, panel_name)
+            if panel is None:
+                continue
+            button = panel.find_child(button_name)
             if button is not None:
                 button.visible = visible
+
+    for panel_name in touched_panel_names:
+        panel = _find_panel(pyrevit_tabs, panel_name)
+        if panel is None:
+            continue
+        panel.visible = any(
+            child.visible for child in panel if hasattr(child, "visible")
+        )
