@@ -13,7 +13,9 @@ from pyrevit import revit, forms
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, set_param_any
-from lowlife.scs import clear_stray_address_params, is_excluded_device, panel_matches
+from lowlife.scs import (
+    clear_stray_address_params, is_excluded_device, panel_matches, get_workset_name
+)
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
 from lowlife.scs_circuits import (
@@ -95,10 +97,16 @@ VERTICAL_COEF = float(settings["vertical_coef"])
 # ------------------------------------------------------------
 # См. комментарий в RenumberAddresses — устройства/панели могли унаследовать
 # значения ADDR_PARAM/ADDR_PREV_PARAM с прежних запусков или ручного ввода.
+#
+# Ограничено рабочим набором: имена параметров адреса общие с другими
+# дисциплинами (СКУД тоже пишет в SMNX_Сегмент), поэтому без ограничения
+# запуск СКС стирал бы их адреса.
 
 with revit.Transaction("Clear stray route addresses"):
     stray_cleared = clear_stray_address_params(
-        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID])
+        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID]),
+        workset_param_name=WORKSET_PARAM_NAME,
+        workset_filter_key=WORKSET_FILTER_KEY
     )
 
 
@@ -115,9 +123,21 @@ all_generic = FilteredElementCollector(doc) \
     .WhereElementIsNotElementType() \
     .ToElements()
 
+foreign_workset_nodes = 0
+
 for e in all_generic:
     if e.GetTypeId() not in (ROUTE_TYPE_ID, RISER_TYPE_ID):
         continue
+
+    # Сбор идёт по всему документу (в отличие от RenumberAddresses, где
+    # он ограничен активным видом), а имена параметров адреса общие с
+    # другими дисциплинами — поэтому узлы отбираются по рабочему набору,
+    # иначе узел СКУД с тем же адресом попал бы в граф СКС.
+    if WORKSET_FILTER_KEY:
+        node_workset = get_workset_name(e, WORKSET_PARAM_NAME)
+        if not node_workset or WORKSET_FILTER_KEY.lower() not in node_workset.lower():
+            foreign_workset_nodes += 1
+            continue
 
     pt = get_point(e)
     if pt is None:
@@ -420,7 +440,8 @@ forms.alert(
     u"Отсутствует узел в графе: {}\n"
     u"Разорванных ссылок «предыдущий адрес»: {}\n"
     u"Дублирующихся адресов: {}\n"
-    u"Очищено чужих адресов: {}\n\n"
+    u"Очищено чужих адресов: {}\n"
+    u"Узлов чужого рабочего набора пропущено: {}\n\n"
     u"Пронумеровано FO: {}\n"
     u"Пронумеровано силовых: {}\n"
     u"Записано узлов со списком цепей: {}\n\n"
@@ -436,6 +457,7 @@ forms.alert(
         len(broken_parent_links),
         len(duplicate_addr_report),
         len(stray_cleared),
+        foreign_workset_nodes,
         fo_number_written,
         power_number_written,
         segments_written,

@@ -19,7 +19,7 @@ from pyrevit import revit, forms
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, set_param_any
-from lowlife.scs import clear_stray_address_params, is_excluded_device
+from lowlife.scs import clear_stray_address_params, is_excluded_device, get_workset_name
 from lowlife.scs_circuits import (
     norm, clean_text_value, split_multi_value, build_graph, bfs_component,
     find_closest_pair_between_sets, astar_path,
@@ -55,6 +55,10 @@ skud_settings.require(settings, [
 ])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
+# Рабочий набор узлов трассы СКУД. Типы семейств узлов у СКС и СКУД могут
+# быть одни и те же (общий SMNX_Сегмент), поэтому только по типу их не
+# различить — разделение идёт по рабочему набору.
+NODE_WORKSET_FILTER_KEY = settings.get("workset_filter_key")
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
 WORKSET_PARAM_NAME = settings["workset_param_name"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
@@ -96,14 +100,15 @@ SEGMENT_LOADS_PARAM = settings["segment_loads_param"]
 # ------------------------------------------------------------
 # ОЧИСТКА "ЧУЖИХ" АДРЕСОВ
 # ------------------------------------------------------------
-# Узлы трассы СКУД — свои, отдельные от СКС (у СКС узлы ведут до шкафа
-# СКС, у СКУД — до контроллера), поэтому очистка здесь работает так же,
-# как в СКС: всё, что не выбранный тип узла/стояка СКУД, но с заполненным
-# адресом — мусор с прежних запусков или ручного ввода.
+# Очистка ограничена рабочим набором СКУД: параметры адреса общие с СКС
+# (SMNX_Сегмент), поэтому без такого ограничения запуск СКУД стирал бы
+# адреса узлов СКС, и наоборот.
 
 with revit.Transaction("Clear stray SKUD route addresses"):
     stray_cleared = clear_stray_address_params(
-        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID])
+        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID]),
+        workset_param_name=WORKSET_PARAM_NAME,
+        workset_filter_key=NODE_WORKSET_FILTER_KEY
     )
 
 
@@ -120,9 +125,21 @@ all_generic = FilteredElementCollector(doc) \
     .WhereElementIsNotElementType() \
     .ToElements()
 
+foreign_workset_nodes = 0
+
 for e in all_generic:
     if e.GetTypeId() not in (ROUTE_TYPE_ID, RISER_TYPE_ID):
         continue
+
+    # Узлы СКС и СКУД могут быть одного типа семейства и с одинаковыми
+    # именами параметров адреса — различает их только рабочий набор.
+    # Без этой проверки узел СКС с тем же адресом (F1.3 и там, и там)
+    # попал бы в граф СКУД, и путь пошёл бы через чужую трассу.
+    if NODE_WORKSET_FILTER_KEY:
+        node_workset = get_workset_name(e, WORKSET_PARAM_NAME)
+        if not node_workset or NODE_WORKSET_FILTER_KEY.lower() not in node_workset.lower():
+            foreign_workset_nodes += 1
+            continue
 
     pt = get_point(e)
     if pt is None:
@@ -399,7 +416,8 @@ forms.alert(
     u"Устройств маркировано: {}\n"
     u"Узлов со списком цепей: {}\n\n"
     u"Дублирующихся адресов: {}\n"
-    u"Очищено чужих адресов: {}\n\n"
+    u"Очищено чужих адресов: {}\n"
+    u"Узлов чужого рабочего набора пропущено: {}\n\n"
     u"{}".format(
         len(controllers),
         processed_circuits,
@@ -412,6 +430,7 @@ forms.alert(
         segments_written,
         len(duplicate_addr_report),
         len(stray_cleared),
+        foreign_workset_nodes,
         u"Подробности — в окне вывода pyRevit." if (broken_parent_links or no_path_report or duplicate_addr_report or no_segment_report) else u""
     )
 )

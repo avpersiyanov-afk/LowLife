@@ -81,10 +81,16 @@ NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
 # остаться значения ADDR_PARAM/ADDR_PREV_PARAM. Если реальный узел
 # маршрута сошлётся на такой "чужой" адрес, путь до него не найдётся —
 # поэтому чистим их перед сбором элементов.
+#
+# Ограничено рабочим набором: имена параметров адреса общие с другими
+# дисциплинами (СКУД тоже пишет в SMNX_Сегмент), поэтому без ограничения
+# запуск СКС стирал бы их адреса.
 
 with revit.Transaction("Clear stray route addresses"):
     stray_cleared = clear_stray_address_params(
-        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID])
+        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID]),
+        workset_param_name=WORKSET_PARAM_NAME,
+        workset_filter_key=WORKSET_FILTER_KEY
     )
 
 

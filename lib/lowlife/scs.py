@@ -149,7 +149,8 @@ def panel_matches(panel, workset_param_name, workset_filter_key, norm_fn):
     return workset_filter_key.lower() in ws.lower()
 
 
-def clear_stray_address_params(doc, param_names, allowed_type_ids):
+def clear_stray_address_params(doc, param_names, allowed_type_ids,
+                                workset_param_name=None, workset_filter_key=None):
     """
     Находит элементы категорий, где могут стоять маркеры/устройства СКС
     (Обобщённые модели, коммуникационные/электротехнические устройства,
@@ -161,6 +162,12 @@ def clear_stray_address_params(doc, param_names, allowed_type_ids):
     попадали в граф маршрута через ADDR_PREV (устройство могло получить
     такое значение до разделения на отдельные семейства панель/устройство/
     маршрут, или было введено вручную).
+
+    workset_param_name/workset_filter_key — ограничить очистку одним
+    рабочим набором. Нужно, когда несколько дисциплин делят одни и те же
+    имена параметров адреса (например СКС и СКУД на общем SMNX_Сегмент):
+    без этого очистка одной дисциплины стёрла бы адреса другой. Если не
+    заданы, поведение прежнее — по всему документу.
 
     Возвращает список задетых элементов. Вызывать внутри revit.Transaction.
     """
@@ -188,6 +195,11 @@ def clear_stray_address_params(doc, param_names, allowed_type_ids):
                     continue
             except:
                 continue
+
+            if workset_filter_key:
+                ws = get_workset_name(el, workset_param_name)
+                if not ws or workset_filter_key.lower() not in ws.lower():
+                    continue
 
             has_stray_value = any(get_string_param(el, name) for name in param_names)
 
