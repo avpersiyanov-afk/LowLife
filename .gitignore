@@ -1,4 +1,6 @@
 *.local.md
-LowLife.tab/SCS.panel/SeedMySettings.pushbutton/
+# Локальные кнопки «Заполнить мои настройки» — в них реальные имена
+# параметров/семейств проекта, в репозитории им не место.
+SeedMySettings.pushbutton/
 __pycache__/
 *.pyc
