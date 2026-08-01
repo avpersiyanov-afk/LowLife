@@ -61,6 +61,8 @@ TEXT_FIELDS = [
         u", ".join(scs_defaults.RISER_KEYWORDS), True, False),
     ("riser_exclude_keywords", u"Слова-исключения стояков (через запятую)",
         u", ".join(scs_defaults.RISER_EXCLUDE_KEYWORDS), True, False),
+    ("riser_annotation_keywords", u"Ключевые слова аннотации стояка (через запятую)",
+        u", ".join(scs_defaults.RISER_ANNOTATION_KEYWORDS), True, False),
     ("offset_param_names", u"Возможные имена параметра отметки (через запятую)",
         u", ".join(scs_defaults.OFFSET_PARAM_NAMES), True, True),
 

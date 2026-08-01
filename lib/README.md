@@ -64,7 +64,10 @@ from lowlife.geometry import get_point
 прокладки для панелей/стояков — имя оставлено историческим, к
 устройствам как категории больше не относится), `PANEL_KEYWORDS`,
 `PANEL_EXCLUDE_KEYWORDS`, `RISER_KEYWORDS`, `RISER_EXCLUDE_KEYWORDS`,
-`OFFSET_PARAM_NAMES`, `CATEGORY_PRIORITY` (`("riser", "panel", "route")`).
+`RISER_ANNOTATION_KEYWORDS` (отдельные от `RISER_KEYWORDS` — узнают
+типовую аннотацию стояка на виде, не реальное устройство; имя типа
+аннотации обычно не содержит слова «стояк»), `OFFSET_PARAM_NAMES`,
+`CATEGORY_PRIORITY` (`("riser", "panel", "route")`).
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|

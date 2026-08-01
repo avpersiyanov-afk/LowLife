@@ -59,6 +59,7 @@ PANEL_KEYWORDS = settings["panel_keywords"]
 PANEL_EXCLUDE_KEYWORDS = settings["panel_exclude_keywords"]
 RISER_KEYWORDS = settings["riser_keywords"]
 RISER_EXCLUDE_KEYWORDS = settings["riser_exclude_keywords"]
+RISER_ANNOTATION_KEYWORDS = settings["riser_annotation_keywords"]
 OFFSET_PARAM_NAMES = settings["offset_param_names"]
 
 TYPE_ID_BY_CATEGORY = {
@@ -264,7 +265,9 @@ if view_level is not None:
         .ToElements()
 
     for el in riser_annotations:
-        if classify_element(el, [("riser", RISER_KEYWORDS, RISER_EXCLUDE_KEYWORDS)]) != "riser":
+        if not RISER_ANNOTATION_KEYWORDS:
+            continue
+        if classify_element(el, [("riser", RISER_ANNOTATION_KEYWORDS, [])]) != "riser":
             continue
 
         pt = get_point(el)
@@ -315,72 +318,41 @@ for node in insert_nodes:
 # перезаписывается (см. цикл ниже). Дедуп нужен только чтобы не
 # создать дубль поверх уже расставленного узла.
 #
-# Ключ по сетке (point_key) группирует по нескольку существующих
-# элементов в одну ячейку (что и нужно для быстрого поиска соседних
-# ячеек), но сам он не используется как единственный критерий
-# совпадения — иначе точка ровно на границе ячейки (например, из-за
-# небольшого пересчёта трассы между запусками) считалась бы "другим"
-# ключом, хотя физически ближе tol, и создавала бы дубль.
-#
-# ВАЖНО: раз find_existing_element проверяет соседние ячейки (3x3x3),
-# ячейка, где существующий элемент реально лежит в existing_by_key,
-# может отличаться от ключа искомой (новой) точки. Поэтому
-# consume_existing_element обязательно вызывается с ключом,
-# ВОЗВРАЩЁННЫМ find_existing_element (existing_key), а не с ключом
-# новой точки — иначе элемент удалялся бы не из того бакета, оставался
-# бы формально "свободным" и его мог найти и присвоить себе ещё один
-# узел, из-за чего один и тот же Revit-элемент то и дело менял тип
-# между двумя разными точками (например, панель <-> соседний узел
-# маршрута), а другой узел, у которого элемент был отнят, получал
-# NewFamilyInstance — итог: дубль ровно в точке панели.
-existing_by_key = {}
+# Простой линейный перебор без разбивки по сетке — медленнее (O(n²)
+# вместо O(n) на сетке), но однозначно надёжный: раньше сетка/деление
+# на ячейки где-то давало сбой (репортилось как дубль ровно в той же
+# точке, где уже стоял маркер), и разбираться в причине сложнее, чем
+# просто убрать промежуточную структуру данных.
+existing_list = []
 for el in generic:
     try:
         if el.GetTypeId().IntegerValue in placed_type_ids:
             pt = get_point(el)
             if pt is not None:
-                existing_by_key.setdefault(point_key(pt, merge_tolerance), []).append((el, pt))
+                existing_list.append((el, pt))
     except:
         pass
 
+consumed_ids = set()
 
-def find_existing_element(point, key):
-    """
-    Ближайший ещё не использованный существующий элемент нужного типа в
-    пределах merge_tolerance — по реальному расстоянию, а не только по
-    совпадению ключа сетки (соседние ячейки тоже проверяются, чтобы не
-    промахнуться на точке у самой границы ячейки). Возвращает (el, real_key)
-    — real_key это ключ ячейки, под которым el реально лежит в
-    existing_by_key, нужен для consume_existing_element (он может
-    отличаться от ключа искомой точки — именно поэтому и проверяется
-    окрестность 3x3x3, а не только сама ячейка key).
-    """
+
+def find_existing_element(point):
+    """Ближайший ещё не использованный существующий элемент нужного типа в пределах merge_tolerance."""
     best_el = None
-    best_key = None
     best_dist = None
 
-    kx, ky, kz = key
-    for dx in (-1, 0, 1):
-        for dy in (-1, 0, 1):
-            for dz in (-1, 0, 1):
-                bucket_key = (kx + dx, ky + dy, kz + dz)
-                for el, pt in existing_by_key.get(bucket_key, []):
-                    try:
-                        d = point.DistanceTo(pt)
-                    except:
-                        continue
-                    if d <= merge_tolerance and (best_dist is None or d < best_dist):
-                        best_dist = d
-                        best_el = el
-                        best_key = bucket_key
+    for el, pt in existing_list:
+        if el.Id in consumed_ids:
+            continue
+        try:
+            d = point.DistanceTo(pt)
+        except:
+            continue
+        if d <= merge_tolerance and (best_dist is None or d < best_dist):
+            best_dist = d
+            best_el = el
 
-    return best_el, best_key
-
-
-def consume_existing_element(el, key):
-    bucket = existing_by_key.get(key)
-    if bucket is not None:
-        existing_by_key[key] = [(e, p) for e, p in bucket if e.Id != el.Id]
+    return best_el
 
 created = []
 skipped = []
@@ -399,11 +371,10 @@ with revit.Transaction("Place Route Nodes"):
 
         # Если в этой точке уже стоит маркер нужного типа — точку
         # полностью пропускаем: ничего не создаём и не обновляем.
-        key = point_key(point, merge_tolerance)
-        existing, existing_key = find_existing_element(point, key)
+        existing = find_existing_element(point)
 
         if existing is not None:
-            consume_existing_element(existing, existing_key)
+            consumed_ids.add(existing.Id)
             skipped.append(existing)
             continue
 
