@@ -15,14 +15,14 @@ from Autodesk.Revit.DB import (
 
 from lowlife.geometry import get_point, get_document_levels
 from lowlife.params import get_string_param, set_string_param, set_param_any
-from lowlife.scs import classify_element, get_workset_name
+from lowlife.scs import classify_element, get_workset_name, detect_cable_type
 from lowlife.scs_addressing import (
     pt2, dist2, add_neighbor, get_floor_code_for_level, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
     point_to_segment_distance_xy, line_parameter_xy,
     build_shortest_path_tree, depth_first_order, select_root_sources
 )
-from lowlife.scs_circuits import clean_text_value, find_nearest_segment_id
+from lowlife.scs_circuits import find_nearest_segment_id
 
 MM_IN_FOOT = 304.8
 STRICT = 30.0 / MM_IN_FOOT
@@ -130,7 +130,7 @@ def link_nodes_along_lines(lines, real_nodes):
             n1 = pts_on_line[i][1]
             n2 = pts_on_line[i + 1][1]
             if n1["id"] != n2["id"]:
-                add_neighbor(n1, n2)
+                add_neighbor(n1, n2, line["id"])
 
 
 def attach_roots(root_sources, lines_by_id, real_nodes):
@@ -185,6 +185,65 @@ def assign_addresses(ordered_routes, floor_code, renumber_existing):
                     break
 
 
+def assign_root_addresses(panels, risers, floor_code):
+    """
+    Панели/стояки — корни обхода, сами не входят в route_points, но тоже
+    получают адрес: отдельный счётчик на этаж для каждой категории
+    (P для панелей/контроллеров, R для стояков), не связанный со счётчиком
+    обычных узлов маршрута. Порядок — по координатам, чтобы результат был
+    стабильным между запусками (порядок коллектора Revit не гарантирован).
+    Всегда пересчитывается заново (не наследует старое ручное значение).
+    """
+    panel_num = 1
+    for n in sorted(panels, key=lambda n: (n["point"][0], n["point"][1], n["id"])):
+        n["addr"] = u"{}.P{}".format(floor_code, panel_num)
+        panel_num += 1
+
+    riser_num = 1
+    for n in sorted(risers, key=lambda n: (n["point"][0], n["point"][1], n["id"])):
+        n["addr"] = u"{}.R{}".format(floor_code, riser_num)
+        riser_num += 1
+
+
+def assign_cable_types(real_nodes, lines_by_id):
+    """
+    Тип прокладки кабеля узла маршрута — по параметру ИСХОДЯЩЕГО сегмента
+    (того, что ведёт от узла дальше по дереву адресации, к устройствам, а
+    не к родителю/панели). Нужно направление — parent_id уже должен быть
+    построен (build_shortest_path_tree), поэтому вызывать после него.
+
+    На стыке двух сегментов с разным способом прокладки (труба/лоток) без
+    направления результат был бы недетерминирован (порядок обхода
+    segment_ids/neighbor_ids — set()/list, не гарантирующий, какой сосед
+    физически "дальше"): тот же принцип, что в scs_circuits.calc_lengths
+    — способ прокладки отрезка определяется по параметру узла, В КОТОРЫЙ
+    ПРИХОДИТ отрезок. У тупикового узла (только родительский сегмент) —
+    берётся тип этого единственного сегмента.
+
+    Записывает node["cable_type_value"], если сегмент нашёлся и тип
+    определился — write_addresses потом пишет его в параметр.
+    """
+    for n in real_nodes:
+        neighbor_line_by_id = n.get("neighbor_line_by_id", {})
+        outgoing_line_id = None
+
+        for neighbor_id in n.get("neighbor_ids", []):
+            if neighbor_id != n.get("parent_id"):
+                outgoing_line_id = neighbor_line_by_id.get(neighbor_id)
+                if outgoing_line_id is not None:
+                    break
+
+        if outgoing_line_id is None and n.get("parent_id") is not None:
+            outgoing_line_id = neighbor_line_by_id.get(n["parent_id"])
+
+        line = lines_by_id.get(outgoing_line_id) if outgoing_line_id is not None else None
+
+        if line is not None:
+            cable_type_value = detect_cable_type(line["element"])
+            if cable_type_value is not None:
+                n["cable_type_value"] = cable_type_value
+
+
 def renumber_addresses(doc, view, config, renumber_existing):
     """
     Полный проход нумерации: сбор, классификация, граф, корни, Дейкстра,
@@ -227,6 +286,8 @@ def renumber_addresses(doc, view, config, renumber_existing):
     _, effective_roots = build_shortest_path_tree(real_nodes_by_id, unique_roots, real_nodes, dist2)
     ordered_real_nodes = depth_first_order(real_nodes_by_id, effective_roots)
 
+    assign_cable_types(real_nodes, lines_by_id)
+
     ordered_routes = []
     added_ids = set()
 
@@ -246,11 +307,12 @@ def renumber_addresses(doc, view, config, renumber_existing):
             added_ids.add(n["id"])
 
     assign_addresses(ordered_routes, floor_code, renumber_existing)
+    assign_root_addresses(panels, risers, floor_code)
 
     for n in real_nodes:
         if n["parent_id"] is not None and n["parent_id"] in all_points_by_id:
             parent_obj = all_points_by_id[n["parent_id"]]
-            n["parent_addr"] = parent_obj["addr"] if parent_obj["is_route"] else parent_obj["addr_original"]
+            n["parent_addr"] = parent_obj["addr"]
         else:
             n["parent_addr"] = None
 
@@ -283,10 +345,15 @@ def renumber_addresses(doc, view, config, renumber_existing):
     }
 
 
-def write_addresses(route_points, config, renumber_existing):
-    """Пишет адреса и «предыдущий адрес». Вызывать внутри revit.Transaction."""
+def write_addresses(route_points, panels, risers, config, renumber_existing):
+    """
+    Пишет адреса, «предыдущий адрес» и тип прокладки кабеля узлам
+    маршрута, и адрес — панелям/стоякам (у них «предыдущего адреса» нет,
+    они сами корни). Вызывать внутри revit.Transaction.
+    """
     addr_param = config["addr_param_name"]
     addr_prev_param = config["addr_prev_param_name"]
+    cable_param_name = config.get("cable_param_name")
 
     changed = []
     skipped = []
@@ -295,9 +362,16 @@ def write_addresses(route_points, config, renumber_existing):
         if renumber_existing or is_empty(p["addr_original"]):
             set_string_param(p["element"], addr_param, p["addr"] if p["addr"] else u"")
             set_string_param(p["element"], addr_prev_param, p["write_value"])
+            cable_type_value = p.get("cable_type_value")
+            if cable_param_name and cable_type_value is not None:
+                set_string_param(p["element"], cable_param_name, cable_type_value)
             changed.append(p)
         else:
             skipped.append(p)
+
+    for p in panels + risers:
+        set_string_param(p["element"], addr_param, p["addr"] if p["addr"] else u"")
+        changed.append(p)
 
     return changed, skipped
 
@@ -307,7 +381,8 @@ def write_nearest_nodes(doc, route_points, targets, config):
     Пишет «Ближайший узел маршрута» переданным элементам (панели/устройства
     дисциплины) — адрес ближайшего адресованного узла по XY.
 
-    Уже заполненное значение не перезаписывается. Вызывать внутри
+    Всегда пересчитывается и перезаписывается, даже если значение уже
+    было записано раньше (то же поведение, что у СКС). Вызывать внутри
     revit.Transaction.
     """
     nearest_segment_param = config["nearest_segment_param"]
@@ -325,8 +400,6 @@ def write_nearest_nodes(doc, route_points, targets, config):
     written = 0
 
     for el in targets:
-        if clean_text_value(get_string_param(el, nearest_segment_param)):
-            continue
         pt = get_point(el)
         if pt is None:
             continue

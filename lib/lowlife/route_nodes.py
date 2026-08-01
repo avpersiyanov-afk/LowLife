@@ -24,7 +24,7 @@ from lowlife.geometry import (
 )
 from lowlife.params import get_double_param, set_double_param, set_string_param
 from lowlife.scs import (
-    detect_cable_type, classify_element, merge_nodes, resolve_category,
+    classify_element, merge_nodes, resolve_category,
     get_workset_name
 )
 
@@ -198,8 +198,16 @@ def collect_marked_points(doc, view, node_points, classify_rules,
     return marked_points
 
 
-def build_insert_nodes(node_points, segment_ids_by_node, marked_points):
-    """Узлы для вставки: точки графа линий + помеченные точки, слитые по допуску."""
+def build_insert_nodes(node_points, segment_ids_by_node, marked_points, existing_points=None):
+    """
+    Узлы для вставки: точки графа линий + помеченные точки, слитые по
+    допуску. existing_points — координаты уже вставленных на виде
+    маркеров; если заданы, итоговая точка кластера предпочитает точку
+    уже существующего маркера (см. merge_nodes/_pick_cluster_point в
+    scs.py) — иначе появление нового узла графа рядом с уже вставленным
+    маркером могло "утянуть" итоговую точку кластера на новую координату,
+    и повторный запуск не находил старый маркер, создавая дубль рядом.
+    """
     raw_nodes = []
 
     for nk in node_points:
@@ -224,7 +232,7 @@ def build_insert_nodes(node_points, segment_ids_by_node, marked_points):
             "device": m
         })
 
-    insert_nodes = merge_nodes(raw_nodes, MERGE_TOLERANCE, points_close)
+    insert_nodes = merge_nodes(raw_nodes, MERGE_TOLERANCE, points_close, existing_points=existing_points)
 
     for node in insert_nodes:
         node["category"] = resolve_category(node.get("categories", []))
@@ -234,28 +242,62 @@ def build_insert_nodes(node_points, segment_ids_by_node, marked_points):
 
 def find_existing_markers(generic, placed_type_ids):
     """
-    Уже вставленные маркеры выбранных типов, по ключу точки — чтобы
-    повторный запуск обновлял их, а не плодил копии.
+    Уже вставленные маркеры выбранных типов — плоский список (element, point),
+    чтобы повторный запуск обновлял их, а не плодил копии.
+
+    Простой линейный перебор без разбивки по сетке — медленнее (O(n^2)
+    вместо O(n) на сетке), но однозначно надёжный: разбивка по ключу
+    сетки (point_key) считала "другой" точкой то, что физически лежит
+    рядом, но округляется в соседнюю ячейку — из-за чего повторный
+    запуск не находил уже стоящий маркер и плодил дубль в той же точке.
 
     Ищет только среди переданных элементов (у вызывающего — активный вид),
     поэтому запускать кнопку для одной трассы стоит всегда с одного вида.
     """
-    existing_by_key = {}
+    existing_list = []
 
     for el in generic:
         try:
             if el.GetTypeId().IntegerValue in placed_type_ids:
                 pt = get_point(el)
                 if pt is not None:
-                    existing_by_key[point_key(pt, MERGE_TOLERANCE)] = el
+                    existing_list.append((el, pt))
         except:
             pass
 
-    return existing_by_key
+    return existing_list
+
+
+def find_existing_element(existing_list, consumed_ids, point):
+    """Ближайший ещё не использованный существующий элемент нужного типа в пределах MERGE_TOLERANCE."""
+    best_el = None
+    best_dist = None
+
+    for el, pt in existing_list:
+        if el.Id in consumed_ids:
+            continue
+        try:
+            d = point.DistanceTo(pt)
+        except:
+            continue
+        if d <= MERGE_TOLERANCE and (best_dist is None or d < best_dist):
+            best_dist = d
+            best_el = el
+
+    return best_el
 
 
 def resolve_node_values(doc, node, segments_by_id, marked_points, config, document_levels):
-    """Значения параметров и уровень для одного вставляемого узла."""
+    """
+    Значения параметров и уровень для одного вставляемого узла.
+
+    Тип прокладки кабеля НЕ определяется здесь для route-узлов: на стыке
+    двух сегментов с разным способом прокладки (труба/лоток) нужно знать
+    направление "к устройствам", а оно известно только после построения
+    дерева адресации (см. route_addressing.py, assign_cable_types) —
+    иначе узел на стыке недетерминированно получал бы любой из двух
+    типов в зависимости от порядка обхода segment_ids (set()).
+    """
     point = node["point"]
     category = node["category"]
 
@@ -283,10 +325,7 @@ def resolve_node_values(doc, node, segments_by_id, marked_points, config, docume
         if line_offset_value is None:
             line_offset_value = get_double_param(seg_el, config["offset_param_names"])
 
-        if not is_marked and cable_type_value is None:
-            cable_type_value = detect_cable_type(seg_el)
-
-        if line_offset_value is not None and cable_type_value is not None:
+        if line_offset_value is not None:
             break
 
     if level is None:
@@ -332,7 +371,7 @@ def place_route_nodes(doc, view, config, symbols_by_category, document_levels):
     segments, segments_by_id, generic = collect_segments(doc, view, config["family_filter"])
 
     if not segments:
-        return {"segments_found": 0, "created": [], "updated": [],
+        return {"segments_found": 0, "created": [], "skipped": [],
                 "counts_by_category": {"panel": 0, "route": 0, "riser": 0}}
 
     node_points, _graph, segment_ids_by_node = build_line_graph(segments)
@@ -347,19 +386,32 @@ def place_route_nodes(doc, view, config, symbols_by_category, document_levels):
         config.get("workset_param_name"), config.get("workset_filter_key")
     )
 
-    insert_nodes = build_insert_nodes(node_points, segment_ids_by_node, marked_points)
-
     placed_type_ids = set(s.Id.IntegerValue for s in symbols_by_category.values())
-    existing_by_key = find_existing_markers(generic, placed_type_ids)
+    existing_list = find_existing_markers(generic, placed_type_ids)
+    existing_points = [pt for el, pt in existing_list]
 
+    insert_nodes = build_insert_nodes(
+        node_points, segment_ids_by_node, marked_points, existing_points=existing_points
+    )
+
+    consumed_ids = set()
     created = []
-    updated = []
+    skipped = []
     counts_by_category = {"panel": 0, "route": 0, "riser": 0}
 
     for node in insert_nodes:
         point = node["point"]
         category = node["category"]
         target_symbol = symbols_by_category[category]
+
+        # Если в этой точке уже стоит маркер нужного типа — точку
+        # полностью пропускаем: ничего не создаём и не обновляем.
+        existing = find_existing_element(existing_list, consumed_ids, point)
+
+        if existing is not None:
+            consumed_ids.add(existing.Id)
+            skipped.append(existing)
+            continue
 
         if not target_symbol.IsActive:
             target_symbol.Activate()
@@ -370,34 +422,20 @@ def place_route_nodes(doc, view, config, symbols_by_category, document_levels):
             doc, node, segments_by_id, marked_points, config, document_levels
         )
 
-        key = point_key(point, MERGE_TOLERANCE)
-        existing = existing_by_key.get(key)
-
-        if existing is None:
-            el = doc.Create.NewFamilyInstance(
-                point, target_symbol, level, StructuralType.NonStructural
-            )
-            if el:
-                if line_offset_value is not None:
-                    set_double_param(el, config["offset_param_names"], line_offset_value)
-                if cable_type_value is not None:
-                    set_string_param(el, config["cable_param_name"], cable_type_value)
-                set_string_param(el, config["route_param_name"], route_value)
-                created.append(el)
-        else:
-            el = existing
-            if el.Symbol.Id != target_symbol.Id:
-                el.Symbol = target_symbol
+        el = doc.Create.NewFamilyInstance(
+            point, target_symbol, level, StructuralType.NonStructural
+        )
+        if el:
             if line_offset_value is not None:
                 set_double_param(el, config["offset_param_names"], line_offset_value)
             if cable_type_value is not None:
                 set_string_param(el, config["cable_param_name"], cable_type_value)
             set_string_param(el, config["route_param_name"], route_value)
-            updated.append(el)
+            created.append(el)
 
     return {
         "segments_found": len(segments),
         "created": created,
-        "updated": updated,
+        "skipped": skipped,
         "counts_by_category": counts_by_category
     }

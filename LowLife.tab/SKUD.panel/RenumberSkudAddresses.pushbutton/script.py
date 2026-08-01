@@ -59,6 +59,7 @@ config = {
     "riser_type_id": RISER_TYPE_ID,
     "addr_param_name": ADDR_PARAM,
     "addr_prev_param_name": ADDR_PREV_PARAM,
+    "cable_param_name": settings["cable_param_name"],
     "nearest_segment_param": settings["nearest_segment_param"],
     "panel_keywords": settings["panel_keywords"],
     "panel_exclude_keywords": settings["panel_exclude_keywords"],
@@ -92,7 +93,9 @@ if result.get("error"):
     forms.alert(result["error"], exitscript=True)
 
 with revit.Transaction("Renumber SKUD Route Addresses"):
-    changed, skipped = write_addresses(result["route_points"], config, RENUMBER_EXISTING)
+    changed, skipped = write_addresses(
+        result["route_points"], result["panels"], result["risers"], config, RENUMBER_EXISTING
+    )
 
 
 # ------------------------------------------------------------

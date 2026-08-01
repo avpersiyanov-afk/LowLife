@@ -98,13 +98,13 @@ forms.alert(
     u"Готово.\n\n"
     u"Сегментов трассы: {}\n"
     u"Создано элементов: {}\n"
-    u"Обновлено элементов: {}\n\n"
+    u"Пропущено (уже стоял маркер): {}\n\n"
     u"Панелей/контроллеров: {}\n"
     u"Стояков: {}\n"
     u"Узлов маршрута: {}".format(
         result["segments_found"],
         len(result["created"]),
-        len(result["updated"]),
+        len(result["skipped"]),
         counts["panel"],
         counts["riser"],
         counts["route"]
