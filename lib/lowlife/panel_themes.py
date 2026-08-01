@@ -93,6 +93,13 @@ def apply_theme(selected_theme):
         panel = _find_panel(pyrevit_tabs, panel_name)
         if panel is None:
             continue
-        panel.visible = any(
+        panel_visible = any(
             child.visible for child in panel if hasattr(child, "visible")
         )
+        panel.visible = panel_visible
+        # RibbonPanel.Visible alone can leave an empty strip on the ribbon
+        # until the layout is rebuilt; the underlying Autodesk.Windows
+        # panel's IsVisible is what the ribbon actually renders from.
+        adwindows_panel = panel.get_adwindows_object()
+        if adwindows_panel is not None:
+            adwindows_panel.IsVisible = panel_visible
