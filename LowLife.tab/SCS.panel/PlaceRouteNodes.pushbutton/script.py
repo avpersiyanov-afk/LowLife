@@ -93,6 +93,7 @@ generic = FilteredElementCollector(doc, view.Id) \
 
 segments = []
 segments_by_id = {}
+segment_diag = []
 
 for el in generic:
     try:
@@ -103,9 +104,17 @@ for el in generic:
     if FAMILY_FILTER not in fam_name:
         continue
 
+    has_location_curve = isinstance(el.Location, LocationCurve)
     curve, p1, p2 = get_curve_data(el, view)
     if curve is None:
         continue
+
+    if len(segment_diag) < 5:
+        segment_diag.append(
+            u"id={} hasLocationCurve={} p1.Z={:.1f}мм p2.Z={:.1f}мм".format(
+                el.Id.IntegerValue, has_location_curve, p1.Z * 304.8, p2.Z * 304.8
+            )
+        )
 
     data = {
         "element": el,
@@ -501,6 +510,7 @@ existing_panel_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TY
 existing_riser_count = sum(1 for el, pt in existing_list if el.GetTypeId() == TYPE_ID_BY_CATEGORY["riser"])
 
 near_miss_text = u"\n".join(near_miss_report) if near_miss_report else u"(нет — либо всё создано впервые, либо дедуп сработал)"
+segment_diag_text = u"\n".join(segment_diag) if segment_diag else u"(нет сегментов)"
 
 forms.alert(
     u"Готово.\n\n"
@@ -511,7 +521,8 @@ forms.alert(
     u"Узлов маршрута: {}\n\n"
     u"[Диагностика] Найдено существующих на виде ДО запуска — "
     u"панелей: {}, стояков: {}, узлов маршрута: {}\n\n"
-    u"[Диагностика] Ближайший существующий route той же точки (первые 5 промахов):\n{}".format(
+    u"[Диагностика] Ближайший существующий route той же точки (первые 5 промахов):\n{}\n\n"
+    u"[Диагностика] Первые 5 сегментов трассы:\n{}".format(
         len(created),
         len(skipped),
         counts_by_category["panel"],
@@ -520,6 +531,7 @@ forms.alert(
         existing_panel_count,
         existing_riser_count,
         existing_route_count,
-        near_miss_text
+        near_miss_text,
+        segment_diag_text
     )
 )
