@@ -203,9 +203,17 @@ def astar_path(segments, graph, start, end):
 
 def calc_lengths(segments, path, install_tray_key, install_pipe_key, install_pipe_open_key):
     """
-    Суммарная длина пути (в метрах) и её разбивка по способу прокладки,
-    определяемому по параметру "install" узла, В КОТОРЫЙ ПРИХОДИТ отрезок
-    (т.е. install следующего по пути узла).
+    Суммарная длина пути (в метрах) и её разбивка по способу прокладки.
+
+    path идёт от панели (path[0]) к устройству (path[-1]). Способ
+    прокладки отрезка "path[i] -> path[i+1]" определяется по параметру
+    "install" узла path[i] — того, ИЗ КОТОРОГО отрезок выходит (ближе к
+    панели), а не в который приходит. Так способ прокладки на стыке двух
+    разных сегментов (например, труба переходит в лоток) меняется ровно
+    в точке стыка, а не на следующем узле: отрезок ДО стыка ещё в трубе,
+    отрезок ПОСЛЕ стыка уже в лотке — согласовано с assign_cable_types в
+    scs_addressing.py, который пишет на узел тип сегмента к родителю
+    (в сторону панели), а не исходящего к устройствам.
     """
     total_ft = 0.0
     tray_ft = 0.0
@@ -219,7 +227,7 @@ def calc_lengths(segments, path, install_tray_key, install_pipe_key, install_pip
         d = abs(a.X - b.X) + abs(a.Y - b.Y) + abs(a.Z - b.Z)
         total_ft += d
 
-        install = (segments[path[i + 1]]["install"] or "").strip()
+        install = (segments[path[i]]["install"] or "").strip()
 
         if install_pipe_open_key and install_pipe_open_key in install:
             pipe_open_ft += d

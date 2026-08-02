@@ -207,36 +207,37 @@ def assign_root_addresses(panels, risers, floor_code):
 
 def assign_cable_types(real_nodes, lines_by_id):
     """
-    Тип прокладки кабеля узла маршрута — по параметру ИСХОДЯЩЕГО сегмента
-    (того, что ведёт от узла дальше по дереву адресации, к устройствам, а
-    не к родителю/панели). Нужно направление — parent_id уже должен быть
-    построен (build_shortest_path_tree), поэтому вызывать после него.
+    Тип прокладки кабеля узла маршрута — по параметру сегмента К
+    РОДИТЕЛЮ (в сторону панели), не от него. Нужно направление —
+    parent_id уже должен быть построен (build_shortest_path_tree),
+    поэтому вызывать после него.
 
-    На стыке двух сегментов с разным способом прокладки (труба/лоток) без
-    направления результат был бы недетерминирован (порядок обхода
-    segment_ids/neighbor_ids — set()/list, не гарантирующий, какой сосед
-    физически "дальше"): тот же принцип, что в scs_circuits.calc_lengths
-    — способ прокладки отрезка определяется по параметру узла, В КОТОРЫЙ
-    ПРИХОДИТ отрезок. У тупикового узла (только родительский сегмент) —
-    берётся тип этого единственного сегмента.
+    Способ прокладки на стыке (например, труба переходит в лоток) должен
+    смениться ровно в точке стыка, а не позже: если узел B стоит на
+    стыке "труба(A-B) -> лоток(B-...)", отрезок A-B ещё в трубе, а
+    отрезок от B дальше — уже в лотке. Сохраняя на B тип сегмента к
+    родителю (A-B, труба), scs_circuits.calc_lengths — отрезок
+    "предыдущий узел -> B" по install узла, ИЗ КОТОРОГО тот выходит —
+    получает правильный тип. У корневого узла (ближайшего к панели,
+    своего родителя в дереве нет) — берётся любой примыкающий сегмент,
+    отдельного сегмента к родителю там просто не существует.
 
     Записывает node["cable_type_value"], если сегмент нашёлся и тип
     определился — write_addresses потом пишет его в параметр.
     """
     for n in real_nodes:
         neighbor_line_by_id = n.get("neighbor_line_by_id", {})
-        outgoing_line_id = None
+        parent_id = n.get("parent_id")
 
-        for neighbor_id in n.get("neighbor_ids", []):
-            if neighbor_id != n.get("parent_id"):
-                outgoing_line_id = neighbor_line_by_id.get(neighbor_id)
-                if outgoing_line_id is not None:
+        line_id = neighbor_line_by_id.get(parent_id) if parent_id is not None else None
+
+        if line_id is None:
+            for neighbor_id in n.get("neighbor_ids", []):
+                line_id = neighbor_line_by_id.get(neighbor_id)
+                if line_id is not None:
                     break
 
-        if outgoing_line_id is None and n.get("parent_id") is not None:
-            outgoing_line_id = neighbor_line_by_id.get(n["parent_id"])
-
-        line = lines_by_id.get(outgoing_line_id) if outgoing_line_id is not None else None
+        line = lines_by_id.get(line_id) if line_id is not None else None
 
         if line is not None:
             cable_type_value = detect_cable_type(line["element"])

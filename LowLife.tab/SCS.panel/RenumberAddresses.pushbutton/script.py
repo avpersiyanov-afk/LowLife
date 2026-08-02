@@ -249,27 +249,30 @@ ordered_real_nodes = depth_first_order(real_nodes_by_id, effective_roots)
 # обхода, из-за чего длина в трубе/лотке считалась неверно.
 #
 # Направление известно только здесь (parent_id уже построен Дейкстрой):
-# берём тип прокладки ИСХОДЯЩЕГО сегмента — того, что ведёт от узла
-# дальше по дереву (к детям), а не от родителя. Это тот же принцип, что
-# в calc_lengths (SyncCircuitsAndLengths): способ прокладки отрезка
-# определяется по параметру узла, В КОТОРЫЙ ПРИХОДИТ отрезок.
-# У тупикового узла (только родительский сегмент, детей нет) — берём
-# тип этого единственного сегмента.
+# берём тип прокладки сегмента К РОДИТЕЛЮ (в сторону панели), а не от
+# него. Способ прокладки на стыке (например, труба переходит в лоток)
+# должен смениться ровно в точке стыка, а не позже — если узел B стоит
+# на стыке "труба(A-B) -> лоток(B-...)", отрезок A-B ещё в трубе, а
+# отрезок от B дальше — уже в лотке; сохраняя на B тип сегмента к
+# родителю (A-B, труба), get calc_lengths (SyncCircuitsAndLengths)
+# отрезок "предыдущий узел -> B" по install узла, ИЗ КОТОРОГО тот
+# выходит, получает правильный тип. У корневого узла (ближайшего к
+# панели, своего родителя в дереве нет) — берём любой примыкающий
+# сегмент, отдельного сегмента к родителю там просто не существует.
 
 for n in real_nodes:
     neighbor_line_by_id = n.get("neighbor_line_by_id", {})
-    outgoing_line_id = None
+    parent_id = n.get("parent_id")
 
-    for neighbor_id in n.get("neighbor_ids", []):
-        if neighbor_id != n.get("parent_id"):
-            outgoing_line_id = neighbor_line_by_id.get(neighbor_id)
-            if outgoing_line_id is not None:
+    line_id = neighbor_line_by_id.get(parent_id) if parent_id is not None else None
+
+    if line_id is None:
+        for neighbor_id in n.get("neighbor_ids", []):
+            line_id = neighbor_line_by_id.get(neighbor_id)
+            if line_id is not None:
                 break
 
-    if outgoing_line_id is None and n.get("parent_id") is not None:
-        outgoing_line_id = neighbor_line_by_id.get(n["parent_id"])
-
-    line = lines_by_id.get(outgoing_line_id) if outgoing_line_id is not None else None
+    line = lines_by_id.get(line_id) if line_id is not None else None
 
     if line is not None:
         cable_type_value = detect_cable_type(line["element"])
