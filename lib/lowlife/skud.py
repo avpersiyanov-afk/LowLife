@@ -66,30 +66,45 @@ def pick_cable_type(device_el, cable_map_pairs):
     return classify_element(device_el, categories)
 
 
-def parse_device_categories(text):
+def parse_category_names(text):
     """
-    "считыватель:считыватель,card reader\nзамок:замок,урд" ->
-    [(u"считыватель", [u"считыватель", u"card reader"], []),
-     (u"замок", [u"замок", u"урд"], [])]
-    — формат, ожидаемый scs.classify_element (categories argument).
+    "контроллер\nсчитыватель\nзамок" -> [u"контроллер", u"считыватель", u"замок"]
+    — имена категорий устройств схемы, по одной на строку. Сопоставление
+    категории с реальными устройствами идёт по точному типу семейства
+    (см. category_by_type_id), не по ключевым словам.
     """
-    categories = []
+    names = []
     if not text:
-        return categories
+        return names
 
     raw_items = text.replace(u"\r\n", u"\n").split(u"\n")
 
     for item in raw_items:
-        item = item.strip()
-        if not item or u":" not in item:
-            continue
-        name, _, keywords_text = item.partition(u":")
-        name = name.strip()
-        keywords = [k.strip() for k in keywords_text.split(u",") if k.strip()]
-        if name and keywords:
-            categories.append((name, keywords, []))
+        name = item.strip()
+        if name and name not in names:
+            names.append(name)
 
-    return categories
+    return names
+
+
+def category_by_type_id(el, category_type_ids):
+    """
+    Категория реального устройства по точному совпадению ElementId его
+    типа (category_type_ids — {имя_категории: set(int)} из настроек,
+    см. skud_settings.get_schematic_category_device_type_ids). Заменяет
+    сопоставление по ключевым словам — категория определяется явным
+    выбором типов в настройках, а не текстовым совпадением имени.
+    """
+    try:
+        type_id = el.GetTypeId().IntegerValue
+    except:
+        return None
+
+    for name, type_ids in category_type_ids.items():
+        if type_id in type_ids:
+            return name
+
+    return None
 
 
 def hypotenuse_length_ft(pt_a, pt_b):

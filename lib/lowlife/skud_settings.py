@@ -18,7 +18,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId, Element
+from Autodesk.Revit.DB import ElementId, Element, BuiltInCategory
 
 from pyrevit import forms
 
@@ -28,12 +28,16 @@ from System.Windows import (
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock, ScrollViewer,
-    ScrollBarVisibility
+    ScrollBarVisibility, Canvas
 )
-from System.Windows.Media import Brushes
+from System.Windows.Media import Brushes, SolidColorBrush, Colors
+from System.Windows.Shapes import Ellipse
 
 from lowlife import skud as skud_defaults
-from lowlife.scs_settings import list_generic_model_symbols, _safe_element_name, TypeOption
+from lowlife.skud import parse_category_names
+from lowlife.scs_settings import (
+    list_generic_model_symbols, list_symbols_by_categories, _safe_element_name, TypeOption
+)
 
 SETTINGS_FILE_NAME = "LowLifeSKUD_settings.json"
 
@@ -143,15 +147,15 @@ TEXT_FIELDS = [
         u"", False, True, False),
 
     # --- структурная схема (BuildSkudSchematic) ---
-    ("schematic_template_group_name", u"[Схема] Имя типовой группы-эталона",
-        u"", False, True, False),
     ("schematic_address_param", u"[Схема] Параметр адреса на схемном семействе",
         u"", False, True, False),
-    ("schematic_layout_gap_m", u"[Схема] Отступ между узлами схемы при автораскладке, м",
+    ("schematic_layout_gap_m", u"[Схема] Отступ между контроллерами при автораскладке, м",
         u"5", False, True, False),
-    ("schematic_layout_per_row", u"[Схема] Число узлов схемы в ряду при автораскладке",
+    ("schematic_layout_per_row", u"[Схема] Число контроллеров в ряду при автораскладке",
         u"5", False, True, False),
-    ("schematic_device_categories_text", u"[Схема] Категории устройств для сопоставления схема-модель (по одной на строку, формат имя:ключевые_слова через запятую)",
+    ("schematic_layout_step_mm", u"[Схема] Шаг между устройствами одной категории у одного контроллера, мм",
+        u"10", False, True, False),
+    ("schematic_device_categories_text", u"[Схема] Категории устройств схемы (по одной на строку)",
         u"", False, True, True),
 ]
 
@@ -161,6 +165,27 @@ TYPE_FIELDS = [
     ("route_type_id", u"Тип для узлов маршрута СКУД"),
     ("riser_type_id", u"Тип для точек стояков СКУД"),
 ]
+
+# Отдельный ключ в JSON-файле настроек: {имя_категории_схемы: "id_типа"} —
+# по типу семейства на каждую категорию устройств из
+# schematic_device_categories_text (список категорий динамический, поэтому
+# не помещается в статический TYPE_FIELDS).
+SCHEMATIC_CATEGORY_TYPES_KEY = "schematic_category_type_ids"
+
+# {имя_категории: ["id_типа1", "id_типа2", ...]} — реальные типы устройств
+# модели, которые относятся к этой категории (замена сопоставлению по
+# ключевым словам: категория реального устройства определяется точным
+# совпадением типа с одним из выбранных здесь).
+SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
+
+# {имя_категории: [dx_mm, dy_mm]} — смещение точки вставки категории от
+# точки контроллера (0,0), используется структурной схемой и превью в
+# окне настроек.
+SCHEMATIC_CATEGORY_LAYOUT_KEY = "schematic_category_layout_mm"
+
+# Категории BuiltInCategory, из которых предлагается выбор типов реальных
+# устройств СКУД для сопоставления схема-модель.
+SCHEMATIC_DEVICE_SOURCE_CATEGORIES = ("OST_SecurityDevices", "OST_ElectricalEquipment")
 
 LIST_FIELDS = set(key for key, _, _, is_list, _req, _multiline in TEXT_FIELDS if is_list)
 MULTILINE_FIELDS = set(key for key, _, _, _is_list, _req, multiline in TEXT_FIELDS if multiline)
@@ -262,9 +287,123 @@ def load_saved_values():
     return values
 
 
+def load_schematic_category_type_ids():
+    """{имя_категории: "id_типа"} — сохранённые типы схемных семейств по категории."""
+    saved = _read_all()
+    return dict(saved.get(SCHEMATIC_CATEGORY_TYPES_KEY, {}))
+
+
+def load_schematic_category_device_type_ids():
+    """{имя_категории: ["id_типа", ...]} — реальные типы устройств модели по категории."""
+    saved = _read_all()
+    return dict(saved.get(SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY, {}))
+
+
+def load_schematic_category_layout_mm():
+    """{имя_категории: [dx_mm, dy_mm]} — смещение категории от точки контроллера."""
+    saved = _read_all()
+    return dict(saved.get(SCHEMATIC_CATEGORY_LAYOUT_KEY, {}))
+
+
+def get_schematic_category_symbols(doc, settings):
+    """
+    {имя_категории: FamilySymbol} для категорий из
+    schematic_device_categories_text, у которых в настройках выбран
+    существующий в проекте тип схемного семейства. Категории без
+    выбранного/валидного типа в словарь не попадают — вызывающий код
+    должен сам решить, что делать с устройствами таких категорий
+    (например, отчитаться как unmatched).
+    """
+    categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
+    type_ids = load_schematic_category_type_ids()
+
+    symbols = {}
+    for name in categories:
+        id_str = type_ids.get(name)
+        if not id_str:
+            continue
+        try:
+            symbol = doc.GetElement(ElementId(int(id_str)))
+        except:
+            symbol = None
+        if symbol is not None:
+            symbols[name] = symbol
+
+    return symbols
+
+
+def get_schematic_category_device_type_ids(settings):
+    """
+    {имя_категории: set(int)} — целочисленные ElementId реальных типов
+    устройств модели, отнесённых к каждой категории (для
+    skud.category_by_type_id). Категории без выбранных типов в словарь
+    не попадают.
+    """
+    categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
+    saved = load_schematic_category_device_type_ids()
+
+    result = {}
+    for name in categories:
+        id_strs = saved.get(name) or []
+        ids = set()
+        for id_str in id_strs:
+            try:
+                ids.add(int(id_str))
+            except:
+                continue
+        if ids:
+            result[name] = ids
+
+    return result
+
+
+def get_schematic_category_layout_ft(settings):
+    """
+    {имя_категории: (dx_ft, dy_ft)} — смещение категории от точки
+    контроллера, для skud_schematic.device_layout_point. Категории без
+    заданного смещения получают (0.0, 0.0) при использовании (см.
+    device_layout_point) и в этот словарь не попадают.
+    """
+    categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
+    saved = load_schematic_category_layout_mm()
+
+    MM_TO_FT = 1.0 / (0.3048 * 1000.0)
+
+    result = {}
+    for name in categories:
+        pair = saved.get(name)
+        if not pair or len(pair) != 2:
+            continue
+        try:
+            dx_mm, dy_mm = float(pair[0]), float(pair[1])
+        except:
+            continue
+        result[name] = (dx_mm * MM_TO_FT, dy_mm * MM_TO_FT)
+
+    return result
+
+
 def save_values(values):
     data = _read_all()
     data.update(values)
+    _write_all(data)
+
+
+def save_schematic_category_type_ids(type_ids):
+    data = _read_all()
+    data[SCHEMATIC_CATEGORY_TYPES_KEY] = dict(type_ids)
+    _write_all(data)
+
+
+def save_schematic_category_device_type_ids(type_ids):
+    data = _read_all()
+    data[SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY] = dict(type_ids)
+    _write_all(data)
+
+
+def save_schematic_category_layout_mm(layout):
+    data = _read_all()
+    data[SCHEMATIC_CATEGORY_LAYOUT_KEY] = dict(layout)
     _write_all(data)
 
 
@@ -413,6 +552,223 @@ def show_settings_form(doc, values):
     boxes = {}
     current_section = None
 
+    category_type_ids = load_schematic_category_type_ids()
+    category_device_type_ids = load_schematic_category_device_type_ids()
+    category_layout_mm = load_schematic_category_layout_mm()
+
+    category_type_labels = {}
+    category_device_labels = {}
+    category_layout_boxes = {}
+    category_types_panel = StackPanel()
+    layout_preview_canvas = Canvas()
+    layout_preview_canvas.Height = 220
+    layout_preview_canvas.Background = Brushes.Transparent
+
+    PREVIEW_SCALE = 0.4  # пикселей на мм
+    PREVIEW_CENTER = (300, 110)
+
+    def redraw_layout_preview(sender=None, args=None):
+        layout_preview_canvas.Children.Clear()
+
+        cx, cy = PREVIEW_CENTER
+
+        controller_dot = Ellipse()
+        controller_dot.Width = 10
+        controller_dot.Height = 10
+        controller_dot.Fill = SolidColorBrush(Colors.OrangeRed)
+        Canvas.SetLeft(controller_dot, cx - 5)
+        Canvas.SetTop(controller_dot, cy - 5)
+        layout_preview_canvas.Children.Add(controller_dot)
+
+        controller_label = TextBlock()
+        controller_label.Text = u"контроллер"
+        controller_label.FontSize = 10
+        Canvas.SetLeft(controller_label, cx + 8)
+        Canvas.SetTop(controller_label, cy - 8)
+        layout_preview_canvas.Children.Add(controller_label)
+
+        for name, (dx_box, dy_box) in category_layout_boxes.items():
+            try:
+                dx_mm = float(dx_box.Text)
+                dy_mm = float(dy_box.Text)
+            except:
+                continue
+
+            dot = Ellipse()
+            dot.Width = 8
+            dot.Height = 8
+            dot.Fill = SolidColorBrush(Colors.DodgerBlue)
+            x = cx + dx_mm * PREVIEW_SCALE
+            y = cy - dy_mm * PREVIEW_SCALE
+            Canvas.SetLeft(dot, x - 4)
+            Canvas.SetTop(dot, y - 4)
+            layout_preview_canvas.Children.Add(dot)
+
+            label = TextBlock()
+            label.Text = name
+            label.FontSize = 10
+            Canvas.SetLeft(label, x + 6)
+            Canvas.SetTop(label, y - 7)
+            layout_preview_canvas.Children.Add(label)
+
+    def rebuild_category_type_pickers(sender=None, args=None):
+        category_types_panel.Children.Clear()
+        category_type_labels.clear()
+        category_device_labels.clear()
+        category_layout_boxes.clear()
+
+        categories = parse_category_names(boxes["schematic_device_categories_text"].Text)
+
+        if not categories:
+            hint2 = TextBlock()
+            hint2.Text = u"(нет категорий — заполните поле выше и нажмите «Обновить список»)"
+            hint2.FontSize = 11
+            hint2.Foreground = Brushes.Gray
+            category_types_panel.Children.Add(hint2)
+            redraw_layout_preview()
+            return
+
+        for name in categories:
+            group_title = TextBlock()
+            group_title.Text = u"Категория «{}»".format(name)
+            group_title.FontWeight = FontWeights.Bold
+            group_title.Margin = Thickness(0, 12, 0, 2)
+            category_types_panel.Children.Add(group_title)
+
+            # --- схемное семейство для вставки ---
+
+            label = TextBlock()
+            label.Text = u"Схемное семейство (для вставки)"
+            label.Margin = Thickness(0, 4, 0, 2)
+            category_types_panel.Children.Add(label)
+
+            row = StackPanel()
+            row.Orientation = Orientation.Horizontal
+
+            value_label = TextBlock()
+            value_label.Text = _type_display_name(doc, category_type_ids.get(name, ""))
+            value_label.VerticalAlignment = VerticalAlignment.Center
+            value_label.Width = 280
+            value_label.TextWrapping = TextWrapping.Wrap
+            category_type_labels[name] = value_label
+
+            pick_btn = Button()
+            pick_btn.Content = u"Выбрать..."
+            pick_btn.Padding = Thickness(8, 2, 8, 2)
+            pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+            def on_pick_schematic(sender, args, name=name):
+                symbols = list_generic_model_symbols(doc)
+                if not symbols:
+                    forms.alert(u"В проекте нет типов категории «Обобщённые модели».")
+                    return
+
+                options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Схемное семейство для категории «{}»".format(name),
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+
+                if selected:
+                    category_type_ids[name] = str(selected.symbol.Id.IntegerValue)
+                    category_type_labels[name].Text = selected.name
+
+            pick_btn.Click += on_pick_schematic
+
+            row.Children.Add(value_label)
+            row.Children.Add(pick_btn)
+            category_types_panel.Children.Add(row)
+
+            # --- реальные типы устройств модели, относящиеся к категории ---
+
+            label2 = TextBlock()
+            label2.Text = u"Реальные типы устройств этой категории (в модели)"
+            label2.Margin = Thickness(0, 6, 0, 2)
+            category_types_panel.Children.Add(label2)
+
+            row2 = StackPanel()
+            row2.Orientation = Orientation.Horizontal
+
+            device_ids = category_device_type_ids.get(name, [])
+            device_label = TextBlock()
+            device_label.Text = u"выбрано типов: {}".format(len(device_ids))
+            device_label.VerticalAlignment = VerticalAlignment.Center
+            device_label.Width = 280
+            device_label.TextWrapping = TextWrapping.Wrap
+            category_device_labels[name] = device_label
+
+            pick_btn2 = Button()
+            pick_btn2.Content = u"Выбрать..."
+            pick_btn2.Padding = Thickness(8, 2, 8, 2)
+            pick_btn2.Margin = Thickness(8, 0, 0, 0)
+
+            def on_pick_devices(sender, args, name=name):
+                source_categories = [
+                    getattr(BuiltInCategory, key)
+                    for key in SCHEMATIC_DEVICE_SOURCE_CATEGORIES
+                ]
+                symbols = list_symbols_by_categories(doc, source_categories)
+                if not symbols:
+                    forms.alert(u"В проекте нет типов в категориях «Охранная сигнализация»/«Электрооборудование».")
+                    return
+
+                options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Типы устройств для категории «{}»".format(name),
+                    button_name=u"Выбрать",
+                    multiselect=True
+                )
+
+                if selected is not None:
+                    category_device_type_ids[name] = [
+                        str(o.symbol.Id.IntegerValue) for o in selected
+                    ]
+                    category_device_labels[name].Text = u"выбрано типов: {}".format(len(selected))
+
+            pick_btn2.Click += on_pick_devices
+
+            row2.Children.Add(device_label)
+            row2.Children.Add(pick_btn2)
+            category_types_panel.Children.Add(row2)
+
+            # --- координаты (dx, dy от точки контроллера, мм) ---
+
+            label3 = TextBlock()
+            label3.Text = u"Координаты (dx, dy от контроллера, мм)"
+            label3.Margin = Thickness(0, 6, 0, 2)
+            category_types_panel.Children.Add(label3)
+
+            row3 = StackPanel()
+            row3.Orientation = Orientation.Horizontal
+
+            saved_pair = category_layout_mm.get(name, [0, 0])
+
+            dx_box = TextBox()
+            dx_box.Text = str(saved_pair[0]) if len(saved_pair) > 0 else u"0"
+            dx_box.Width = 80
+            dx_box.Padding = Thickness(4)
+
+            dy_box = TextBox()
+            dy_box.Text = str(saved_pair[1]) if len(saved_pair) > 1 else u"0"
+            dy_box.Width = 80
+            dy_box.Padding = Thickness(4)
+            dy_box.Margin = Thickness(8, 0, 0, 0)
+
+            category_layout_boxes[name] = (dx_box, dy_box)
+
+            dx_box.TextChanged += redraw_layout_preview
+            dy_box.TextChanged += redraw_layout_preview
+
+            row3.Children.Add(dx_box)
+            row3.Children.Add(dy_box)
+            category_types_panel.Children.Add(row3)
+
+        redraw_layout_preview()
+
     for key, label_text, _, _, required, multiline in TEXT_FIELDS:
         section, plain_label = _split_section(label_text)
 
@@ -442,6 +798,32 @@ def show_settings_form(doc, values):
 
         root.Children.Add(box)
         boxes[key] = box
+
+        if key == "schematic_device_categories_text":
+            refresh_btn = Button()
+            refresh_btn.Content = u"Обновить список категорий ниже"
+            refresh_btn.Padding = Thickness(8, 2, 8, 2)
+            refresh_btn.HorizontalAlignment = HorizontalAlignment.Left
+            refresh_btn.Margin = Thickness(0, 4, 0, 0)
+            refresh_btn.Click += rebuild_category_type_pickers
+            root.Children.Add(refresh_btn)
+
+            category_types_title = TextBlock()
+            category_types_title.Text = u"Категории структурной схемы: семейства, устройства, координаты"
+            category_types_title.FontWeight = FontWeights.Bold
+            category_types_title.Margin = Thickness(0, 12, 0, 4)
+            category_types_title.TextWrapping = TextWrapping.Wrap
+            root.Children.Add(category_types_title)
+
+            preview_title = TextBlock()
+            preview_title.Text = u"Превью раскладки (от точки контроллера)"
+            preview_title.FontWeight = FontWeights.Bold
+            preview_title.Margin = Thickness(0, 8, 0, 2)
+            root.Children.Add(preview_title)
+            root.Children.Add(layout_preview_canvas)
+
+            root.Children.Add(category_types_panel)
+            rebuild_category_type_pickers()
 
     required_hint = TextBlock()
     required_hint.Text = u"* обязательные поля — без них соответствующая кнопка не сможет найти элементы или записать параметры"
@@ -482,6 +864,17 @@ def show_settings_form(doc, values):
         combined = {key: box.Text for key, box in boxes.items()}
         combined.update(type_values)
         result["values"] = combined
+        save_schematic_category_type_ids(category_type_ids)
+        save_schematic_category_device_type_ids(category_device_type_ids)
+
+        layout_to_save = {}
+        for name, (dx_box, dy_box) in category_layout_boxes.items():
+            try:
+                layout_to_save[name] = [float(dx_box.Text), float(dy_box.Text)]
+            except:
+                continue
+        save_schematic_category_layout_mm(layout_to_save)
+
         win.Close()
 
     def on_cancel(sender, args):

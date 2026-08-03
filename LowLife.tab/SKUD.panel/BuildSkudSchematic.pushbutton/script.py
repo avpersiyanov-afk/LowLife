@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 __title__ = "Структурная\nсхема"
 __doc__ = (
-    "Размножает типовую группу-эталон структурной схемы по числу "
-    "контроллеров СКУД (от точки, указанной кликом на виде), сопоставляет "
-    "схемные семейства с реальными устройствами по категории и копирует "
-    "адрес; соединяет контроллер с устройствами линиями детализации."
+    "Строит структурную схему СКУД по цепям контроллеров (от точки, "
+    "указанной кликом на виде): вставляет схемные семейства контроллеров и "
+    "их устройств (тип семейства и координаты — по категории устройства, "
+    "из настроек СКУД), копирует адреса и соединяет контроллер с "
+    "устройствами линиями детализации."
 )
 __author__ = "Pipers"
 
@@ -16,17 +17,17 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
-from lowlife.geometry import get_point
+from lowlife.geometry import get_document_levels
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import is_excluded_device
 from lowlife.scs_circuits import norm, clean_text_value
-from lowlife.skud import is_controller, parse_device_categories
-from lowlife.skud_schematic import (
-    find_template_group_type, group_member_elements, layout_points,
-    match_devices_by_category, device_category_key
-)
+from lowlife.skud import is_controller, parse_category_names, category_by_type_id
+from lowlife.skud_schematic import layout_points, device_layout_point
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import (
+    get_settings_silent, get_schematic_category_symbols,
+    get_schematic_category_device_type_ids, get_schematic_category_layout_ft
+)
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -34,6 +35,7 @@ view = doc.ActiveView
 
 FT_TO_M = 0.3048
 M_TO_FT = 1.0 / FT_TO_M
+MM_TO_FT = M_TO_FT / 1000.0
 
 
 # ------------------------------------------------------------
@@ -45,8 +47,8 @@ settings = get_settings_silent()
 skud_settings.require(settings, [
     "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
     "circuit_panel_param", "device_address_param",
-    "schematic_template_group_name", "schematic_address_param",
-    "schematic_layout_gap_m", "schematic_layout_per_row",
+    "schematic_address_param",
+    "schematic_layout_gap_m", "schematic_layout_per_row", "schematic_layout_step_mm",
     "schematic_device_categories_text"
 ])
 
@@ -58,35 +60,52 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 
-TEMPLATE_GROUP_NAME = settings["schematic_template_group_name"]
 SCHEMATIC_ADDRESS_PARAM = settings["schematic_address_param"]
 LAYOUT_GAP_FT = float(settings["schematic_layout_gap_m"]) * M_TO_FT
 LAYOUT_PER_ROW = max(1, int(settings["schematic_layout_per_row"]))
+CATEGORY_STEP_FT = float(settings["schematic_layout_step_mm"]) * MM_TO_FT
 
-DEVICE_CATEGORIES = parse_device_categories(settings["schematic_device_categories_text"])
+DEVICE_CATEGORY_NAMES = parse_category_names(settings["schematic_device_categories_text"])
 
-if not DEVICE_CATEGORIES:
+if not DEVICE_CATEGORY_NAMES:
     forms.alert(
-        u"Не заданы категории устройств для сопоставления схема-модель.\n\n"
-        u"Заполните поле «Категории устройств для сопоставления» в настройках СКУД "
-        u"(формат «имя:ключевые_слова», по одному на строку).",
+        u"Не заданы категории устройств схемы.\n\n"
+        u"Заполните поле «Категории устройств схемы» в настройках СКУД "
+        u"(по одному имени категории на строку).",
         exitscript=True
     )
 
+CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
-# ------------------------------------------------------------
-# ТИПОВАЯ ГРУППА
-# ------------------------------------------------------------
-
-template_group_type = find_template_group_type(doc, TEMPLATE_GROUP_NAME)
-
-if template_group_type is None:
+if not CATEGORY_SYMBOLS:
     forms.alert(
-        u"Не найден тип группы «{}» в проекте.\n\n"
-        u"Соберите эталонную группу (устройства + рамка) и укажите её точное "
-        u"имя в настройках СКУД.".format(TEMPLATE_GROUP_NAME),
+        u"Не выбран ни один тип семейства для категорий устройств схемы.\n\n"
+        u"Откройте «Параметры СКУД», обновите список категорий и выберите "
+        u"схемное семейство для каждой из них (включая категорию «контроллер»).",
         exitscript=True
     )
+
+CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
+CATEGORY_LAYOUT_FT = get_schematic_category_layout_ft(settings)
+
+CONTROLLER_CATEGORY_NAME = next(
+    (n for n in DEVICE_CATEGORY_NAMES if n.lower() == u"контроллер"), None
+)
+
+if not CONTROLLER_CATEGORY_NAME or CONTROLLER_CATEGORY_NAME not in CATEGORY_SYMBOLS:
+    forms.alert(
+        u"Не задан тип семейства для категории «контроллер».\n\n"
+        u"Добавьте в «Категории устройств схемы» строку «контроллер» и "
+        u"выберите для неё схемное семейство в настройках СКУД.",
+        exitscript=True
+    )
+
+CONTROLLER_SYMBOL = CATEGORY_SYMBOLS[CONTROLLER_CATEGORY_NAME]
+
+document_levels = get_document_levels(doc)
+if not document_levels:
+    forms.alert(u"В проекте нет ни одного уровня.", exitscript=True)
+INSERT_LEVEL = view.GenLevel or document_levels[0]
 
 
 # ------------------------------------------------------------
@@ -122,10 +141,12 @@ for c in all_circuits:
         circuits_by_controller_name.setdefault(panel_name, []).append(c)
 
 controllers_with_devices = []
+controllers_without_address = []
 
 for controller in controllers:
     controller_addr = clean_text_value(get_string_param(controller, DEVICE_ADDRESS_PARAM))
     if not controller_addr:
+        controllers_without_address.append(controller.Name)
         continue
 
     controller_name = norm(controller.Name)
@@ -149,7 +170,7 @@ if not controllers_with_devices:
 
 
 # ------------------------------------------------------------
-# ТОЧКА ВСТАВКИ (клик на виде)
+# ТОЧКА ВСТАВКИ (клик на виде — начало координат схемы)
 # ------------------------------------------------------------
 
 try:
@@ -161,90 +182,115 @@ insert_points = layout_points(base_point, len(controllers_with_devices), LAYOUT_
 
 
 # ------------------------------------------------------------
-# РАЗМНОЖЕНИЕ ГРУППЫ + СОПОСТАВЛЕНИЕ + КОПИРОВАНИЕ АДРЕСА + ЛИНИИ
+# ВСТАВКА КОНТРОЛЛЕРОВ И УСТРОЙСТВ + АДРЕСА + ЛИНИИ
 # ------------------------------------------------------------
 
-groups_placed = 0
+controllers_placed = 0
+devices_placed = 0
 addresses_copied = 0
 lines_created = 0
 unmatched_report = []
 
+if not CONTROLLER_SYMBOL.IsActive:
+    CONTROLLER_SYMBOL.Activate()
+
 with revit.Transaction("Build SKUD Schematic"):
 
     for (controller, controller_addr, devices), insert_pt in zip(controllers_with_devices, insert_points):
-        group_instance = doc.Create.PlaceGroup(insert_pt, template_group_type)
-        if group_instance is None:
+        controller_el = doc.Create.NewFamilyInstance(
+            insert_pt, CONTROLLER_SYMBOL, INSERT_LEVEL, StructuralType.NonStructural
+        )
+        if controller_el is None:
             continue
 
-        groups_placed += 1
-        template_members = group_member_elements(doc, group_instance)
+        controllers_placed += 1
+        if set_param_any(controller_el, SCHEMATIC_ADDRESS_PARAM, controller_addr):
+            addresses_copied += 1
 
-        pairs, unmatched_real = match_devices_by_category(template_members, devices, DEVICE_CATEGORIES)
+        unmatched_devices = []
+        device_points = []
+        index_by_category = {}
 
-        if unmatched_real:
+        for device in devices:
+            category = category_by_type_id(device, CATEGORY_DEVICE_TYPE_IDS)
+            symbol = CATEGORY_SYMBOLS.get(category) if category else None
+
+            if symbol is None:
+                unmatched_devices.append(device)
+                continue
+
+            if not symbol.IsActive:
+                symbol.Activate()
+
+            index_in_category = index_by_category.get(category, 0)
+            device_pt = device_layout_point(
+                insert_pt, CATEGORY_LAYOUT_FT, category, index_in_category, CATEGORY_STEP_FT
+            )
+            index_by_category[category] = index_in_category + 1
+
+            device_el = doc.Create.NewFamilyInstance(
+                device_pt, symbol, INSERT_LEVEL, StructuralType.NonStructural
+            )
+            if device_el is None:
+                unmatched_devices.append(device)
+                continue
+
+            devices_placed += 1
+            device_points.append(device_pt)
+
+            real_addr = clean_text_value(get_string_param(device, DEVICE_ADDRESS_PARAM))
+            if real_addr and set_param_any(device_el, SCHEMATIC_ADDRESS_PARAM, real_addr):
+                addresses_copied += 1
+
+        if unmatched_devices:
             unmatched_report.append(
-                u"Контроллер {} — не хватило схемных мест для {} устройств.".format(
-                    controller_addr, len(unmatched_real)
+                u"Контроллер {} — не найдена категория/тип семейства для {} устройств.".format(
+                    controller_addr, len(unmatched_devices)
                 )
             )
 
-        controller_schematic_el = None
-        controller_categories = [c for c in DEVICE_CATEGORIES if c[0].lower() == u"контроллер"]
-        if controller_categories:
-            for el in template_members:
-                if device_category_key(el, controller_categories):
-                    controller_schematic_el = el
-                    break
-
-        if controller_schematic_el is not None:
-            if set_param_any(controller_schematic_el, SCHEMATIC_ADDRESS_PARAM, controller_addr):
-                addresses_copied += 1
-
-        for schematic_el, real_el in pairs:
-            real_addr = clean_text_value(get_string_param(real_el, DEVICE_ADDRESS_PARAM))
-            if real_addr and set_param_any(schematic_el, SCHEMATIC_ADDRESS_PARAM, real_addr):
-                addresses_copied += 1
-
-        if controller_schematic_el is not None:
-            controller_schematic_pt = get_point(controller_schematic_el)
-
-            if controller_schematic_pt is not None:
-                for schematic_el, _ in pairs:
-                    device_pt = get_point(schematic_el)
-                    if device_pt is None:
-                        continue
-                    try:
-                        line = Line.CreateBound(controller_schematic_pt, device_pt)
-                        doc.Create.NewDetailCurve(view, line)
-                        lines_created += 1
-                    except:
-                        pass
+        for device_pt in device_points:
+            try:
+                line = Line.CreateBound(insert_pt, device_pt)
+                doc.Create.NewDetailCurve(view, line)
+                lines_created += 1
+            except:
+                pass
 
 
 # ------------------------------------------------------------
 # ОТЧЁТ
 # ------------------------------------------------------------
 
+from pyrevit import script as pyrevit_script
+output = pyrevit_script.get_output()
+
+if controllers_without_address:
+    output.print_md(u"### Контроллеры без адреса, пропущены ({})".format(len(controllers_without_address)))
+    for name in controllers_without_address:
+        output.print_md(u"- {}".format(name))
+
 if unmatched_report:
-    from pyrevit import script as pyrevit_script
-    output = pyrevit_script.get_output()
-    output.print_md(u"### Не хватило схемных мест ({})".format(len(unmatched_report)))
+    output.print_md(u"### Не найдена категория/тип семейства для устройств ({})".format(len(unmatched_report)))
     for line in unmatched_report:
         output.print_md(u"- {}".format(line))
 
 forms.alert(
     u"Готово.\n\n"
     u"Контроллеров с адресом и устройствами: {}\n"
-    u"Групп размещено: {}\n"
+    u"Контроллеров без адреса (пропущено): {}\n"
+    u"Контроллеров размещено: {}\n"
+    u"Устройств размещено: {}\n"
     u"Адресов скопировано: {}\n"
     u"Линий создано: {}\n"
-    u"Предупреждений (не хватило схемных мест): {}\n\n"
-    u"{}".format(
+    u"Предупреждений (не найдена категория/тип): {}\n\n"
+    u"Подробности — в окне вывода pyRevit.".format(
         len(controllers_with_devices),
-        groups_placed,
+        len(controllers_without_address),
+        controllers_placed,
+        devices_placed,
         addresses_copied,
         lines_created,
-        len(unmatched_report),
-        u"Подробности — в окне вывода pyRevit." if unmatched_report else u""
+        len(unmatched_report)
     )
 )

@@ -227,6 +227,34 @@ def list_generic_model_symbols(doc):
     return symbols
 
 
+def list_symbols_by_categories(doc, builtin_categories):
+    """
+    Все загруженные в проект типоразмеры для перечисленных
+    BuiltInCategory (включая типы без вставленных экземпляров, см.
+    list_generic_model_symbols).
+    """
+    category_ids = set(ElementId(bic) for bic in builtin_categories)
+    symbols = []
+
+    families = FilteredElementCollector(doc).OfClass(Family)
+
+    for family in families:
+        try:
+            if family.FamilyCategory is None:
+                continue
+            if family.FamilyCategory.Id not in category_ids:
+                continue
+        except:
+            continue
+
+        for symbol_id in family.GetFamilySymbolIds():
+            symbol = doc.GetElement(symbol_id)
+            if symbol:
+                symbols.append(symbol)
+
+    return symbols
+
+
 def _type_display_name(doc, id_str):
     if not id_str:
         return u"(не выбран)"

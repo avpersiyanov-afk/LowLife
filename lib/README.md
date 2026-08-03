@@ -247,7 +247,8 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `is_controller` | `is_controller(el, workset_param_name, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
 | `parse_device_cable_map` | `parse_device_cable_map(text)` | Текст вида `"урд:КабельА, считыватель:КабельБ"` (строки и/или запятые как разделитель) → список пар `(keyword, cable_value)` в исходном порядке — вводится в окне настроек, не хардкодится |
 | `pick_cable_type` | `pick_cable_type(device_el, cable_map_pairs)` | Тип кабеля для устройства — первое совпадение по ключевому слову в имени семейства/типа (переиспользует `scs.classify_element`) |
-| `parse_device_categories` | `parse_device_categories(text)` | Текст вида `"считыватель:считыватель,card reader"` → список `(name, keywords, exclude_keywords)` — формат, ожидаемый `scs.classify_element`/`skud_schematic.device_category_key`, для сопоставления схемных семейств с реальными устройствами по категории |
+| `parse_category_names` | `parse_category_names(text)` | Текст вида `"контроллер\nсчитыватель\nзамок"` → список имён категорий устройств схемы (по одной на строку) |
+| `category_by_type_id` | `category_by_type_id(el, category_type_ids)` | Категория реального устройства по точному совпадению `ElementId` его типа с одним из `category_type_ids` (`{имя: set(int)}` из настроек) — заменяет сопоставление по ключевым словам |
 | `hypotenuse_length_ft` | `hypotenuse_length_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между двумя точками (в футах) — длина "по катетам" для устройств рядом с контроллером |
 | `is_near_controller` | `is_near_controller(controller_pt, device_pt, threshold_ft)` | `True`, если прямое 3D-расстояние между контроллером и устройством меньше порога |
 
@@ -261,6 +262,15 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 Поддерживает многострочные текстовые поля (`device_cable_map_text`,
 `schematic_device_categories_text`) — `AcceptsReturn`/`TextWrapping` на
 `TextBox`, в отличие от однострочных полей `scs_settings.py`.
+
+Для каждой категории из `schematic_device_categories_text` окно хранит
+(отдельно от `TEXT_FIELDS`, прямыми ключами в JSON):
+`schematic_category_type_ids` (схемное семейство для вставки),
+`schematic_category_device_type_ids` (список реальных типов устройств
+модели, отнесённых к категории — мультивыбор из `OST_SecurityDevices` +
+`OST_ElectricalEquipment`, см. `list_symbols_by_categories` в
+`scs_settings.py`) и `schematic_category_layout_mm` (смещение `dx, dy` от
+точки контроллера, мм) — с превью раскладки прямо в окне настроек.
 
 Форму показывает только кнопка «Параметры СКУД» (`SetupParameters` в
 `SKUD.panel`) — остальные кнопки читают уже сохранённое через
@@ -276,25 +286,26 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 `OST_GenericModel` для узлов трассы/схемы).
 
 ## skud_schematic.py
-Логика кнопки **BuildSkudSchematic** («Структурная схема»): размножение
-типовой группы-эталона (готовая Revit `Group` с схемными семействами +
-рамка из линий аннотации, собранная пользователем вручную) по числу
-контроллеров, сопоставление схемных семейств с реальными устройствами по
-категории, копирование адреса.
+Логика кнопки **BuildSkudSchematic** («Структурная схема»): без
+группы-эталона — каждый контроллер и каждое его устройство вставляются
+как отдельный экземпляр типа, назначенного в настройках СКУД для
+соответствующей категории (реальное устройство сопоставляется с
+категорией по точному типу — `skud.category_by_type_id`, не по ключевым
+словам), в точке, вычисленной от точки контроллера.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `find_template_group_type` | `find_template_group_type(doc, group_name)` | `GroupType` с именем `group_name`, или `None` |
-| `group_member_elements` | `group_member_elements(doc, group_instance)` | Элементы (не `ElementId`) — члены экземпляра группы |
-| `device_category_key` | `device_category_key(el, category_rules)` | Категория элемента по правилам `scs.classify_element` |
-| `layout_points` | `layout_points(base_point, count, gap_ft, per_row)` | Точки вставки для `count` копий группы — рядами по `per_row`, с шагом `gap_ft`, от точки клика пользователя (`base_point`) |
-| `match_devices_by_category` | `match_devices_by_category(template_members, real_devices, category_rules)` | Сопоставляет схемные семейства (члены копии группы) с реальными устройствами одного контроллера по категории, в пределах категории — по порядку (оба списка предварительно сортируются вызывающим кодом, например по адресу); возвращает `(pairs, unmatched_real)` |
+| `layout_points` | `layout_points(base_point, count, gap_ft, per_row)` | Точки вставки для `count` контроллеров — рядами по `per_row`, с шагом `gap_ft`, от точки клика пользователя (`base_point`) |
+| `device_layout_point` | `device_layout_point(insert_pt, category_layout, category, index_in_category, step_ft)` | Точка вставки устройства: точка контроллера (`insert_pt`) + смещение `(dx, dy)` категории из `category_layout` (`{имя: (dx_ft, dy_ft)}`, из настроек) + шаг `step_ft` вправо по X на каждый следующий экземпляр той же категории у этого контроллера |
+
+Координаты (dx, dy от контроллера) и шаг между однотипными устройствами,
+а также сопоставление категория→реальные типы устройств и
+категория→схемное семейство для вставки — настраиваются в окне
+«Параметры СКУД» (`skud_settings.py`), включая превью раскладки.
 
 Линии между контроллером и устройствами на схеме — простые независимые
-`DetailLine` (topология "звезда"), создаются кнопкой поверх уже
-вставленной группы (не как часть самой группы — Revit-группа является
-фиксированным набором элементов, добавить в неё новый элемент после
-`PlaceGroup` нельзя без её пересборки).
+`DetailLine` (топология "звезда"), создаются кнопкой сразу после вставки
+каждой пары точек.
 
 ## fire_alarm.py
 Константы и разбор адресов для **СПС и СОУЭ** (`SPS.panel`/`SOUE.panel`).
