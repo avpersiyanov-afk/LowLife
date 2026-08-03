@@ -9,4 +9,9 @@ from pyrevit import forms
 forms.alert("Корпоративный инструмент кажется пока работает! 🎉",
             title="LowLifeWife")
 
-forms.alert(str(inspect.getargspec(forms.SelectFromList.show)), title="SelectFromList.show signature")
+try:
+    source = inspect.getsource(forms.SelectFromList.show)
+except Exception as e:
+    source = "getsource failed: {}".format(e)
+
+forms.alert(source, title="SelectFromList.show source")
