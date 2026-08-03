@@ -184,8 +184,14 @@ SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
 SCHEMATIC_CATEGORY_LAYOUT_KEY = "schematic_category_layout_mm"
 
 # Категории BuiltInCategory, из которых предлагается выбор типов реальных
-# устройств СКУД для сопоставления схема-модель.
+# устройств СКУД для сопоставления схема-модель (контроллер — электро-
+# оборудование, остальные устройства — охранная сигнализация).
 SCHEMATIC_DEVICE_SOURCE_CATEGORIES = ("OST_SecurityDevices", "OST_ElectricalEquipment")
+
+# Категория BuiltInCategory схемных семейств («элементы узлов» структурной
+# схемы) — Detail Items, отдельная от «Обобщённых моделей» узлов трассы
+# (panel_type_id/route_type_id/riser_type_id).
+SCHEMATIC_FAMILY_SOURCE_CATEGORIES = ("OST_DetailComponents",)
 
 LIST_FIELDS = set(key for key, _, _, is_list, _req, _multiline in TEXT_FIELDS if is_list)
 MULTILINE_FIELDS = set(key for key, _, _, _is_list, _req, multiline in TEXT_FIELDS if multiline)
@@ -658,9 +664,13 @@ def show_settings_form(doc, values):
             pick_btn.Margin = Thickness(8, 0, 0, 0)
 
             def on_pick_schematic(sender, args, name=name):
-                symbols = list_generic_model_symbols(doc)
+                schematic_categories = [
+                    getattr(BuiltInCategory, key)
+                    for key in SCHEMATIC_FAMILY_SOURCE_CATEGORIES
+                ]
+                symbols = list_symbols_by_categories(doc, schematic_categories)
                 if not symbols:
-                    forms.alert(u"В проекте нет типов категории «Обобщённые модели».")
+                    forms.alert(u"В проекте нет типов категории «Элементы узлов».")
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
