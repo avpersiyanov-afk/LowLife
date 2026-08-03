@@ -4,7 +4,7 @@ __doc__ = "Тестовая кнопка LowLife"
 __author__ = "Pipers"
 
 import inspect
-from pyrevit import forms
+from pyrevit import forms, script as pyrevit_script
 
 forms.alert("Корпоративный инструмент кажется пока работает! 🎉",
             title="LowLifeWife")
@@ -14,4 +14,6 @@ try:
 except Exception as e:
     source = "getsource failed: {}".format(e)
 
-forms.alert(source, title="SelectFromList.show source")
+output = pyrevit_script.get_output()
+output.print_md("### SelectFromList.show source")
+output.print_code(source)
