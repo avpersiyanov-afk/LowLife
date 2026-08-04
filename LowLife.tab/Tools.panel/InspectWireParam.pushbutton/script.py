@@ -226,7 +226,10 @@ try:
         except Exception as ex2:
             output.print_md(u"Definition.Id FAILED: {}".format(ex2))
 
-        # Собираем все остальные элементы через тот же get_Parameter по BuiltInParameter, если он нашёлся
+        # Собираем все остальные элементы через тот же get_Parameter по BuiltInParameter,
+        # отфильтрованные по наличию SMNX_Марка (тот же признак, что у 623487) —
+        # REF_TABLE_ELEM_NAME общий для ВСЕХ ключевых спецификаций документа,
+        # поэтому просто по нему фильтровать нельзя (найдёт чужие справочники).
         try:
             bip = key_name_param.Definition.BuiltInParameter
             all_instances_els = FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements()
@@ -234,13 +237,20 @@ try:
             for el in all_instances_els:
                 try:
                     p3 = el.get_Parameter(bip)
-                    if p3 and p3.HasValue:
-                        key_elements.append((el, p3.AsString()))
+                    if not (p3 and p3.HasValue):
+                        continue
+                    marka_p = el.LookupParameter(u"SMNX_Марка")
+                    if marka_p is None:
+                        continue
+                    key_elements.append((el, p3.AsString()))
                 except:
                     continue
-            output.print_md(u"Найдено элементов с непустым «Ключевое имя» через этот BuiltInParameter: {}".format(len(key_elements)))
-            for el, key_val in key_elements[:40]:
+            output.print_md(u"Найдено элементов с «Ключевое имя» И параметром SMNX_Марка: {}".format(len(key_elements)))
+            for el, key_val in key_elements[:60]:
                 output.print_md(u"- ID {}: KeyName=`{}`".format(el.Id.IntegerValue, key_val))
+            output.print_md(u"ID 623487 среди них: {}".format(
+                any(el.Id.IntegerValue == 623487 for el, _ in key_elements)
+            ))
         except Exception as ex2:
             output.print_md(u"Сбор по BuiltInParameter FAILED: {}".format(ex2))
 except Exception as ex:
