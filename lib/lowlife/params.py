@@ -1,7 +1,28 @@
 # -*- coding: utf-8 -*-
 """Общие хелперы чтения/записи параметров элементов Revit."""
 
-from Autodesk.Revit.DB import StorageType
+from Autodesk.Revit.DB import StorageType, ElementId
+
+
+def set_element_id_param(el, name, element_id):
+    """
+    Записывает ElementId в параметр типа StorageType.ElementId (например
+    «Проводник» электрической цепи — ссылка на WireType, выбирается в
+    Revit выпадающим списком, а не текстом/SetValueString). Возвращает
+    True, если запись удалась.
+    """
+    try:
+        if el is None or element_id is None:
+            return False
+
+        p = el.LookupParameter(name)
+        if not p or p.IsReadOnly or p.StorageType != StorageType.ElementId:
+            return False
+
+        p.Set(element_id)
+        return True
+    except:
+        return False
 
 
 def get_double_param(el, names):

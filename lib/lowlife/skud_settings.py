@@ -400,32 +400,31 @@ def get_schematic_category_layout_ft(settings):
     return result
 
 
-def get_schematic_category_wire_names(doc, settings):
+def get_schematic_category_wire_type_elem_ids(doc, settings):
     """
-    {имя_категории: имя_WireType} для категорий из
+    {имя_категории: ElementId} для категорий из
     schematic_device_categories_text, у которых в настройках выбран
-    существующий в проекте тип проводника. Имя (не id) — потому что
-    значение записывается в текстовый параметр цепи «Проводник» через
-    set_param_any, как и раньше со свободным текстовым словарём.
+    существующий в проекте тип проводника (WireType).
+
+    Параметр цепи «Проводник» хранится как StorageType.ElementId (ссылка
+    на WireType, выбирается в Revit выпадающим списком) — записывать
+    нужно сам ElementId через params.set_element_id_param, а не строку
+    через set_param_any/SetValueString.
     """
     categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
     wire_type_ids = load_schematic_category_wire_type_ids()
 
-    names = {}
+    result = {}
     for name in categories:
         id_str = wire_type_ids.get(name)
         if not id_str:
             continue
-        try:
-            wire_type = doc.GetElement(ElementId(int(id_str)))
-        except:
-            wire_type = None
+        element_id = ElementId(int(id_str))
+        wire_type = doc.GetElement(element_id)
         if wire_type is not None:
-            wire_name = _safe_element_name(wire_type)
-            if wire_name:
-                names[name] = wire_name
+            result[name] = element_id
 
-    return names
+    return result
 
 
 def save_values(values):

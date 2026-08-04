@@ -16,13 +16,14 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
-from lowlife.params import get_string_param, set_param_any
+from lowlife.params import get_string_param, set_param_any, set_element_id_param
 from lowlife.scs import is_excluded_device
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.skud import is_controller, category_by_type_id
 from lowlife import skud_settings
 from lowlife.skud_settings import (
-    get_settings_silent, get_schematic_category_device_type_ids, get_schematic_category_wire_names
+    get_settings_silent, get_schematic_category_device_type_ids,
+    get_schematic_category_wire_type_elem_ids
 )
 
 doc = revit.doc
@@ -55,9 +56,9 @@ CONTROLLER_MARKING_PARAM = settings["controller_marking_param"]
 CABLE_TYPE_PARAM = settings["cable_type_param"]
 
 CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
-CATEGORY_WIRE_NAMES = get_schematic_category_wire_names(doc, settings)
+CATEGORY_WIRE_TYPE_IDS = get_schematic_category_wire_type_elem_ids(doc, settings)
 
-if not CATEGORY_DEVICE_TYPE_IDS or not CATEGORY_WIRE_NAMES:
+if not CATEGORY_DEVICE_TYPE_IDS or not CATEGORY_WIRE_TYPE_IDS:
     forms.alert(
         u"Не заданы категории устройств с типом проводника.\n\n"
         u"В настройках СКУД, в разделе «Категории устройств схемы», для "
@@ -168,10 +169,10 @@ with revit.Transaction("Assign SKUD Circuits And Cables"):
                 load_names_written += 1
 
             device_category = category_by_type_id(dev, CATEGORY_DEVICE_TYPE_IDS)
-            cable_value = CATEGORY_WIRE_NAMES.get(device_category) if device_category else None
+            wire_type_id = CATEGORY_WIRE_TYPE_IDS.get(device_category) if device_category else None
 
-            if cable_value:
-                if set_param_any(c, CABLE_TYPE_PARAM, cable_value):
+            if wire_type_id is not None:
+                if set_element_id_param(c, CABLE_TYPE_PARAM, wire_type_id):
                     cables_written += 1
             else:
                 no_cable_match.append(
