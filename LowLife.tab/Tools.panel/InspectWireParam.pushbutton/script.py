@@ -117,9 +117,54 @@ all_equipment = FilteredElementCollector(doc) \
     .ToElements()
 
 wire_types = list_wire_types(doc)
-output.print_md(u"### list_wire_types(doc) — найдено {}".format(len(wire_types)))
+output.print_md(u"### Способ 1: FilteredElementCollector(doc).OfClass(WireType) — найдено {}".format(len(wire_types)))
 for wt in wire_types:
     output.print_md(u"- ID {}: name=`{}`".format(wt.Id.IntegerValue, _safe_element_name(wt)))
+
+output.print_md(u"### Способ 2: OfCategory(OST_Wire).WhereElementIsElementType()")
+try:
+    wire_types_2 = list(
+        FilteredElementCollector(doc)
+        .OfCategory(BuiltInCategory.OST_Wire)
+        .WhereElementIsElementType()
+        .ToElements()
+    )
+    output.print_md(u"Найдено {}".format(len(wire_types_2)))
+    for wt in wire_types_2:
+        output.print_md(u"- ID {}: name=`{}` class={}".format(
+            wt.Id.IntegerValue, _safe_element_name(wt), type(wt).__name__
+        ))
+except Exception as ex:
+    output.print_md(u"FAILED: {}".format(ex))
+
+output.print_md(u"### Способ 3: сам ElementId 623487 через doc.GetElement")
+try:
+    wt_623487 = doc.GetElement(ElementId(623487))
+    output.print_md(u"class={} name=`{}` Category=`{}`".format(
+        type(wt_623487).__name__,
+        _safe_element_name(wt_623487),
+        wt_623487.Category.Name if wt_623487.Category else None
+    ))
+except Exception as ex:
+    output.print_md(u"FAILED: {}".format(ex))
+
+output.print_md(u"### Способ 4: FilteredElementCollector без OfClass/OfCategory, фильтр по Category.Id == OST_Wire")
+try:
+    wire_cat_id = ElementId(BuiltInCategory.OST_Wire)
+    all_types_candidates = FilteredElementCollector(doc).WhereElementIsElementType().ToElements()
+    wire_types_4 = [
+        t for t in all_types_candidates
+        if t.Category is not None and t.Category.Id == wire_cat_id
+    ]
+    output.print_md(u"Найдено {} (из {} всего типов в документе)".format(
+        len(wire_types_4), len(all_types_candidates)
+    ))
+    for wt in wire_types_4:
+        output.print_md(u"- ID {}: name=`{}` class={}".format(
+            wt.Id.IntegerValue, _safe_element_name(wt), type(wt).__name__
+        ))
+except Exception as ex:
+    output.print_md(u"FAILED: {}".format(ex))
 
 output.print_md(u"### Настройки поиска контроллера")
 output.print_md(u"- workset_param_name: `{}`".format(WORKSET_PARAM_NAME))
