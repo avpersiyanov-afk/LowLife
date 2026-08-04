@@ -25,7 +25,7 @@ from lowlife.geometry import (
 from lowlife.params import get_double_param, set_double_param, set_string_param
 from lowlife.scs import (
     classify_element, merge_nodes, resolve_category,
-    get_workset_name
+    get_workset_name, safe_element_name
 )
 
 TOLERANCE = 0.01
@@ -54,11 +54,11 @@ def collect_segments(doc, view, family_filter):
 
     for el in generic:
         try:
-            fam_name = el.Symbol.Family.Name
+            fam_name = safe_element_name(el.Symbol.Family)
         except:
             continue
 
-        if family_filter not in fam_name:
+        if not fam_name or family_filter not in fam_name:
             continue
 
         curve, p1, p2 = get_curve_data(el, view)

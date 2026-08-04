@@ -43,19 +43,38 @@ RISER_ANNOTATION_KEYWORDS = []
 CATEGORY_PRIORITY = ("riser", "panel", "route")
 
 
+def safe_element_name(el):
+    """
+    Имя элемента через Element.Name.GetValue(el) — прямой доступ el.Name
+    в IronPython у некоторых типов Revit-элементов (в т.ч. FamilySymbol)
+    падает с ошибкой неоднозначного связывания свойства и уходит в
+    except, поэтому используем статическое свойство через рефлексию.
+    Возвращает None, если имя получить не удалось никаким способом.
+    """
+    from Autodesk.Revit.DB import Element
+
+    try:
+        return Element.Name.GetValue(el)
+    except:
+        try:
+            return el.Name
+        except:
+            return None
+
+
 def detect_cable_type(el):
     """Тип прокладки кабеля по имени типоразмера/семейства сегмента трассы."""
     names = []
     try:
-        names.append((el.Symbol.Name or "").lower())
+        names.append((safe_element_name(el.Symbol) or "").lower())
     except:
         pass
     try:
-        names.append((el.Name or "").lower())
+        names.append((safe_element_name(el) or "").lower())
     except:
         pass
     try:
-        names.append((el.Symbol.Family.Name or "").lower())
+        names.append((safe_element_name(el.Symbol.Family) or "").lower())
     except:
         pass
 
@@ -72,15 +91,15 @@ def detect_cable_type(el):
 def _element_text(el):
     values = []
     try:
-        values.append((el.Name or "").lower())
+        values.append((safe_element_name(el) or "").lower())
     except:
         pass
     try:
-        values.append((el.Symbol.Name or "").lower())
+        values.append((safe_element_name(el.Symbol) or "").lower())
     except:
         pass
     try:
-        values.append((el.Symbol.Family.Name or "").lower())
+        values.append((safe_element_name(el.Symbol.Family) or "").lower())
     except:
         pass
     return " | ".join(values)
@@ -117,7 +136,7 @@ def resolve_category(categories, priority=CATEGORY_PRIORITY):
 def is_excluded_device(el, excluded_keywords):
     """Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства."""
     try:
-        fam_name = el.Symbol.Family.Name
+        fam_name = safe_element_name(el.Symbol.Family)
     except:
         return False
     return any(w.lower() in (fam_name or u"").lower() for w in excluded_keywords if w)

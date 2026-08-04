@@ -108,7 +108,7 @@ WORKSET_PARAM_NAME = settings["workset_param_name"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 CABLE_TYPE_PARAM = settings["cable_type_param"]
 
-from lowlife.scs import get_workset_name
+from lowlife.scs import get_workset_name, safe_element_name
 
 all_equipment = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
@@ -124,7 +124,7 @@ output.print_md(u"### Все элементы OST_ElectricalEquipment ({})".form
 for e in all_equipment:
     ws = get_workset_name(e, WORKSET_PARAM_NAME)
     try:
-        type_name = e.Symbol.Name
+        type_name = safe_element_name(e.Symbol)
     except Exception as ex:
         type_name = "FAILED: {}".format(ex)
     try:

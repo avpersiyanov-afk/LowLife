@@ -7,7 +7,7 @@
 сохраняются в %APPDATA%\\pyRevit\\LowLifeSKUD_settings.json.
 """
 
-from lowlife.scs import get_workset_name
+from lowlife.scs import get_workset_name, safe_element_name
 
 
 CONTROLLER_WORKSET_KEYWORD = u""
@@ -21,7 +21,7 @@ def is_controller(el, workset_param_name, workset_keyword, type_keyword):
         return False
 
     try:
-        type_name = el.Symbol.Name or u""
+        type_name = safe_element_name(el.Symbol) or u""
     except:
         return False
 
