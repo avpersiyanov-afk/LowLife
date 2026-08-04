@@ -167,6 +167,32 @@ try:
         output.print_md(u"ELEM_CATEGORY_PARAM: {}".format(bic.AsValueString() if bic else None))
     except Exception as ex2:
         output.print_md(u"ELEM_CATEGORY_PARAM FAILED: {}".format(ex2))
+
+    output.print_md(u"Все параметры этого элемента:")
+    try:
+        for p2 in wt_623487.Parameters:
+            try:
+                pname2 = p2.Definition.Name
+                pval2 = p2.AsValueString() or p2.AsString()
+            except:
+                pname2, pval2 = "?", "?"
+            output.print_md(u"  - {} = {}".format(pname2, pval2))
+    except Exception as ex2:
+        output.print_md(u"  Parameters iteration FAILED: {}".format(ex2))
+
+    output.print_md(u"В списке всех WhereElementIsElementType() присутствует ли этот ID?")
+    try:
+        all_types = FilteredElementCollector(doc).WhereElementIsElementType().ToElementIds()
+        output.print_md(u"ID 623487 in all element types: {}".format(ElementId(623487) in all_types))
+    except Exception as ex2:
+        output.print_md(u"FAILED: {}".format(ex2))
+
+    output.print_md(u"В списке всех WhereElementIsNotElementType() присутствует ли этот ID (т.е. это экземпляр, не тип)?")
+    try:
+        all_instances = FilteredElementCollector(doc).WhereElementIsNotElementType().ToElementIds()
+        output.print_md(u"ID 623487 in all instances: {}".format(ElementId(623487) in all_instances))
+    except Exception as ex2:
+        output.print_md(u"FAILED: {}".format(ex2))
 except Exception as ex:
     output.print_md(u"FAILED: {}".format(ex))
 
