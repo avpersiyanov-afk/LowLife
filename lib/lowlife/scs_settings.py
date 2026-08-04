@@ -228,7 +228,10 @@ def list_generic_model_symbols(doc):
 
 
 class WireTypeOption(object):
-    """Обёртка над WireType для отображения в списке выбора (нет Family, в отличие от FamilySymbol)."""
+    """
+    Обёртка над строкой ключевой спецификации кабелей для отображения в
+    списке выбора (не WireType — см. list_wire_catalog_items).
+    """
 
     def __init__(self, wire_type):
         self.wire_type = wire_type
@@ -238,11 +241,37 @@ class WireTypeOption(object):
         return self.name
 
 
-def list_wire_types(doc):
-    """Все типы проводника (WireType) проекта — значения параметра «Тип проводника» цепи."""
-    from Autodesk.Revit.DB.Electrical import WireType
+def list_wire_catalog_items(doc, marker_param_name):
+    """
+    Строки ключевой спецификации кабелей, используемой параметром цепи
+    «Проводник» (StorageType.ElementId — Revit хранит там ссылку на
+    строку ключевой спецификации, а не на Autodesk.Revit.DB.Electrical.WireType).
 
-    return list(FilteredElementCollector(doc).OfClass(WireType))
+    Ключевое имя строки хранится в BuiltInParameter.REF_TABLE_ELEM_NAME,
+    общем для ВСЕХ ключевых спецификаций документа — поэтому дополнительно
+    фильтруем по наличию marker_param_name (произвольный параметр,
+    присутствующий только у строк нужного справочника кабелей, например
+    "SMNX_Марка" — задаётся пользователем в настройках, т.к. это
+    соглашение конкретного проекта).
+    """
+    from Autodesk.Revit.DB import BuiltInParameter
+
+    if not marker_param_name:
+        return []
+
+    items = []
+    for el in FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements():
+        try:
+            key_param = el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME)
+            if not key_param or not key_param.HasValue:
+                continue
+            if el.LookupParameter(marker_param_name) is None:
+                continue
+        except:
+            continue
+        items.append(el)
+
+    return items
 
 
 def list_symbols_by_categories(doc, builtin_categories):

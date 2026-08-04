@@ -36,7 +36,7 @@ from System.Windows.Shapes import Ellipse
 from lowlife import skud as skud_defaults
 from lowlife.skud import parse_category_names
 from lowlife.scs_settings import (
-    list_generic_model_symbols, list_symbols_by_categories, list_wire_types,
+    list_generic_model_symbols, list_symbols_by_categories, list_wire_catalog_items,
     _safe_element_name, TypeOption, WireTypeOption
 )
 
@@ -67,6 +67,8 @@ TEXT_FIELDS = [
     ("controller_marking_param", u"[Контроллеры] Параметр «Маркировка контроллера»",
         u"", False, True, False),
     ("cable_type_param", u"[Контроллеры] Параметр цепи «Проводник» (тип кабеля)",
+        u"", False, True, False),
+    ("wire_catalog_marker_param", u"[Контроллеры] Параметр-признак строки справочника кабелей (например «SMNX_Марка»)",
         u"", False, True, False),
 
     # --- узлы трассы СКУД (PlaceRouteNodes) ---
@@ -182,10 +184,12 @@ SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
 # окне настроек.
 SCHEMATIC_CATEGORY_LAYOUT_KEY = "schematic_category_layout_mm"
 
-# {имя_категории: "id_WireType"} — тип проводника (параметр цепи «Проводник»)
-# для устройств этой категории (AssignCircuitsAndCables). Категории — те же
-# имена, что и schematic_device_categories_text (одна общая таблица
-# категорий на схему и на подбор кабеля).
+# {имя_категории: "id_элемента_справочника_кабелей"} — тип проводника
+# (параметр цепи «Проводник», ссылка на строку ключевой спецификации, см.
+# scs_settings.list_wire_catalog_items) для устройств этой категории
+# (AssignCircuitsAndCables). Категории — те же имена, что и
+# schematic_device_categories_text (одна общая таблица категорий на схему
+# и на подбор кабеля).
 SCHEMATIC_CATEGORY_WIRE_TYPES_KEY = "schematic_category_wire_type_ids"
 
 # Категории BuiltInCategory, из которых предлагается выбор типов реальных
@@ -317,7 +321,7 @@ def load_schematic_category_layout_mm():
 
 
 def load_schematic_category_wire_type_ids():
-    """{имя_категории: "id_WireType"} — тип проводника по категории устройства."""
+    """{имя_категории: "id_строки_справочника_кабелей"} — тип проводника по категории устройства."""
     saved = _read_all()
     return dict(saved.get(SCHEMATIC_CATEGORY_WIRE_TYPES_KEY, {}))
 
@@ -404,12 +408,14 @@ def get_schematic_category_wire_type_elem_ids(doc, settings):
     """
     {имя_категории: ElementId} для категорий из
     schematic_device_categories_text, у которых в настройках выбран
-    существующий в проекте тип проводника (WireType).
+    существующий в проекте тип проводника.
 
-    Параметр цепи «Проводник» хранится как StorageType.ElementId (ссылка
-    на WireType, выбирается в Revit выпадающим списком) — записывать
-    нужно сам ElementId через params.set_element_id_param, а не строку
-    через set_param_any/SetValueString.
+    Параметр цепи «Проводник» хранится как StorageType.ElementId — но
+    ссылается не на Autodesk.Revit.DB.Electrical.WireType, а на строку
+    ключевой спецификации (справочник кабельной продукции проекта, см.
+    scs_settings.list_wire_catalog_items), выбирается в Revit выпадающим
+    списком. Записывать нужно сам ElementId через
+    params.set_element_id_param, а не строку через set_param_any/SetValueString.
     """
     categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
     wire_type_ids = load_schematic_category_wire_type_ids()
@@ -792,7 +798,7 @@ def show_settings_form(doc, values):
             row2.Children.Add(pick_btn2)
             category_types_panel.Children.Add(row2)
 
-            # --- тип проводника (WireType) для устройств категории ---
+            # --- тип проводника (строка справочника кабелей) для устройств категории ---
 
             label4 = TextBlock()
             label4.Text = u"Тип проводника (для параметра «Проводник» цепи)"
@@ -815,12 +821,25 @@ def show_settings_form(doc, values):
             pick_btn4.Margin = Thickness(8, 0, 0, 0)
 
             def on_pick_wire(sender, args, name=name):
-                wire_types = list_wire_types(doc)
-                if not wire_types:
-                    forms.alert(u"В проекте нет типов проводника (WireType).")
+                marker_param_name = boxes["wire_catalog_marker_param"].Text.strip()
+                if not marker_param_name:
+                    forms.alert(
+                        u"Сначала заполните поле «Параметр-признак строки справочника "
+                        u"кабелей» в разделе «Контроллеры»."
+                    )
                     return
 
-                options = sorted([WireTypeOption(w) for w in wire_types], key=lambda o: o.name)
+                wire_items = list_wire_catalog_items(doc, marker_param_name)
+                if not wire_items:
+                    forms.alert(
+                        u"Не найдено строк справочника кабелей (ни один элемент документа "
+                        u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
+                            marker_param_name
+                        )
+                    )
+                    return
+
+                options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
                 selected = forms.SelectFromList.show(
                     options,
                     title=u"Тип проводника для категории «{}»".format(name),

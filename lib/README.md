@@ -271,10 +271,23 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 `schematic_category_device_type_ids` (список реальных типов устройств
 модели, отнесённых к категории — мультивыбор из `OST_SecurityDevices` +
 `OST_ElectricalEquipment`), `schematic_category_wire_type_ids` (тип
-проводника — `WireType` проекта, `list_wire_types` в `scs_settings.py`,
-используется `AssignCircuitsAndCables` при записи параметра цепи
-«Проводник») и `schematic_category_layout_mm` (смещение `dx, dy` от
-точки контроллера, мм) — с превью раскладки прямо в окне настроек.
+проводника) и `schematic_category_layout_mm` (смещение `dx, dy` от точки
+контроллера, мм) — с превью раскладки прямо в окне настроек.
+
+Параметр цепи «Проводник» (`cable_type_param`) хранится как
+`StorageType.ElementId`, но ссылается НЕ на
+`Autodesk.Revit.DB.Electrical.WireType`, а на строку ключевой
+спецификации — справочник кабельной продукции проекта (в наблюдаемом
+проекте: отдельный вид спецификации со строками-«изделиями», у каждой
+свои параметры вроде `SMNX_Марка`/`SMNX_Наименование`). Ключевое имя
+строки читается через `BuiltInParameter.REF_TABLE_ELEM_NAME` — общий для
+ВСЕХ ключевых спецификаций документа, поэтому `list_wire_catalog_items`
+(в `scs_settings.py`) дополнительно фильтрует по наличию параметра
+`wire_catalog_marker_param` (настраивается в окне СКУД, например
+`SMNX_Марка`) — единственный надёжный способ отличить нужный справочник
+от прочих ключевых спецификаций в проекте. Запись — `params.set_element_id_param`
+(`p.Set(ElementId)`), не `set_param_any`/`SetValueString` — тот путь
+для ElementId-параметров молча не срабатывал.
 
 Форму показывает только кнопка «Параметры СКУД» (`SetupParameters` в
 `SKUD.panel`) — остальные кнопки читают уже сохранённое через
