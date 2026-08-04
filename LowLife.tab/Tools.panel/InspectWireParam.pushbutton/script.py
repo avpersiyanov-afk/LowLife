@@ -196,6 +196,38 @@ try:
 except Exception as ex:
     output.print_md(u"FAILED: {}".format(ex))
 
+output.print_md(u"### Способ 5: все элементы документа с параметром «Ключевое имя»")
+try:
+    key_name_bip = None
+    for bip_name in ["KEY_NAME", "KEYNOTE_KEY", "KEYSCHEDULE_KEY"]:
+        try:
+            key_name_bip = getattr(BuiltInParameter, bip_name)
+            output.print_md(u"BuiltInParameter.{} существует".format(bip_name))
+            break
+        except:
+            output.print_md(u"BuiltInParameter.{} НЕ существует".format(bip_name))
+
+    if key_name_bip is not None:
+        all_instances_els = FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements()
+        key_elements = []
+        for el in all_instances_els:
+            try:
+                p = el.get_Parameter(key_name_bip)
+                if p and p.HasValue:
+                    key_elements.append((el, p.AsString()))
+            except:
+                continue
+        output.print_md(u"Найдено элементов с непустым «Ключевое имя»: {}".format(len(key_elements)))
+        for el, key_val in key_elements[:30]:
+            output.print_md(u"- ID {}: KeyName=`{}` class={}".format(
+                el.Id.IntegerValue, key_val, type(el).__name__
+            ))
+        output.print_md(u"ID 623487 среди них: {}".format(
+            any(el.Id.IntegerValue == 623487 for el, _ in key_elements)
+        ))
+except Exception as ex:
+    output.print_md(u"Способ 5 FAILED: {}".format(ex))
+
 output.print_md(u"### Способ 4: FilteredElementCollector без OfClass/OfCategory, фильтр по Category.Id == OST_Wire")
 try:
     wire_cat_id = ElementId(BuiltInCategory.OST_Wire)
