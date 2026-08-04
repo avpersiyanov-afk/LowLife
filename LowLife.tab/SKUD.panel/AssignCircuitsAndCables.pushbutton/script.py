@@ -2,8 +2,9 @@
 __title__ = "Цепи\nи кабели"
 __doc__ = (
     "Находит контроллеры СКУД и их цепи, назначает подключённым устройствам "
-    "адрес по маске \"адрес контроллера.N\", выбирает тип кабеля по словарю "
-    "\"тип устройства -> тип кабеля\", пишет имя нагрузки и маркирует контроллеры."
+    "адрес по маске \"адрес контроллера.N\", выбирает тип проводника по "
+    "категории устройства (из настроек СКУД), пишет имя нагрузки и "
+    "маркирует контроллеры."
 )
 __author__ = "Pipers"
 
@@ -18,9 +19,11 @@ from pyrevit import revit, forms
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import is_excluded_device
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
-from lowlife.skud import is_controller, parse_device_cable_map, pick_cable_type
+from lowlife.skud import is_controller, category_by_type_id
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import (
+    get_settings_silent, get_schematic_category_device_type_ids, get_schematic_category_wire_names
+)
 
 doc = revit.doc
 
@@ -35,7 +38,7 @@ skud_settings.require(settings, [
     "controller_workset_keyword", "controller_type_keyword",
     "workset_param_name", "circuit_panel_param",
     "device_address_param", "type_code_param", "load_name_param",
-    "controller_marking_param", "cable_type_param", "device_cable_map_text"
+    "controller_marking_param", "cable_type_param", "schematic_device_categories_text"
 ])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
@@ -51,13 +54,15 @@ LOAD_NAME_PARAM = settings["load_name_param"]
 CONTROLLER_MARKING_PARAM = settings["controller_marking_param"]
 CABLE_TYPE_PARAM = settings["cable_type_param"]
 
-CABLE_MAP_PAIRS = parse_device_cable_map(settings["device_cable_map_text"])
+CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
+CATEGORY_WIRE_NAMES = get_schematic_category_wire_names(doc, settings)
 
-if not CABLE_MAP_PAIRS:
+if not CATEGORY_DEVICE_TYPE_IDS or not CATEGORY_WIRE_NAMES:
     forms.alert(
-        u"Словарь «тип устройства : тип кабеля» пуст или не удалось разобрать.\n\n"
-        u"Заполните поле в формате «ключевое_слово:тип_кабеля», по одному на строку, "
-        u"в настройках СКУД.",
+        u"Не заданы категории устройств с типом проводника.\n\n"
+        u"В настройках СКУД, в разделе «Категории устройств схемы», для "
+        u"каждой категории выберите реальные типы устройств и тип "
+        u"проводника.",
         exitscript=True
     )
 
@@ -162,14 +167,15 @@ with revit.Transaction("Assign SKUD Circuits And Cables"):
             if load_name and set_param_any(c, LOAD_NAME_PARAM, load_name):
                 load_names_written += 1
 
-            cable_value = pick_cable_type(dev, CABLE_MAP_PAIRS)
+            device_category = category_by_type_id(dev, CATEGORY_DEVICE_TYPE_IDS)
+            cable_value = CATEGORY_WIRE_NAMES.get(device_category) if device_category else None
 
             if cable_value:
                 if set_param_any(c, CABLE_TYPE_PARAM, cable_value):
                     cables_written += 1
             else:
                 no_cable_match.append(
-                    u"Цепь «{}» (контроллер {}, устройство ID {}) — не найден тип кабеля по словарю.".format(
+                    u"Цепь «{}» (контроллер {}, устройство ID {}) — не найдена категория/тип проводника.".format(
                         norm(c.Name) or c.Id.IntegerValue, controller_name, dev.Id.IntegerValue
                     )
                 )
@@ -182,7 +188,7 @@ with revit.Transaction("Assign SKUD Circuits And Cables"):
 if no_cable_match:
     from pyrevit import script as pyrevit_script
     output = pyrevit_script.get_output()
-    output.print_md(u"### Цепи без найденного кабеля по словарю ({})".format(len(no_cable_match)))
+    output.print_md(u"### Цепи без найденной категории/типа проводника ({})".format(len(no_cable_match)))
     for line in no_cable_match:
         output.print_md(u"- {}".format(line))
 
@@ -197,7 +203,7 @@ forms.alert(
     u"Имён нагрузки записано: {}\n"
     u"Типов кабеля записано: {}\n"
     u"Маркировок контроллеров записано: {}\n"
-    u"Не найден кабель по словарю: {}\n\n"
+    u"Не найдена категория/тип проводника: {}\n\n"
     u"{}".format(
         len(controllers),
         processed_controllers,

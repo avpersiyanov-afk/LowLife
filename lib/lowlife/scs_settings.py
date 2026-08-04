@@ -227,6 +227,24 @@ def list_generic_model_symbols(doc):
     return symbols
 
 
+class WireTypeOption(object):
+    """Обёртка над WireType для отображения в списке выбора (нет Family, в отличие от FamilySymbol)."""
+
+    def __init__(self, wire_type):
+        self.wire_type = wire_type
+        self.name = _safe_element_name(wire_type) or str(wire_type.Id.IntegerValue)
+
+    def __str__(self):
+        return self.name
+
+
+def list_wire_types(doc):
+    """Все типы проводника (WireType) проекта — значения параметра «Тип проводника» цепи."""
+    from Autodesk.Revit.DB.Electrical import WireType
+
+    return list(FilteredElementCollector(doc).OfClass(WireType))
+
+
 def list_symbols_by_categories(doc, builtin_categories):
     """
     Все загруженные в проект типоразмеры для перечисленных

@@ -36,7 +36,8 @@ from System.Windows.Shapes import Ellipse
 from lowlife import skud as skud_defaults
 from lowlife.skud import parse_category_names
 from lowlife.scs_settings import (
-    list_generic_model_symbols, list_symbols_by_categories, _safe_element_name, TypeOption
+    list_generic_model_symbols, list_symbols_by_categories, list_wire_types,
+    _safe_element_name, TypeOption, WireTypeOption
 )
 
 SETTINGS_FILE_NAME = "LowLifeSKUD_settings.json"
@@ -67,8 +68,6 @@ TEXT_FIELDS = [
         u"", False, True, False),
     ("cable_type_param", u"[Контроллеры] Параметр цепи «Проводник» (тип кабеля)",
         u"", False, True, False),
-    ("device_cable_map_text", u"[Контроллеры] Словарь «тип устройства : тип кабеля» (по одному на строку, формат ключ:значение)",
-        u"", False, True, True),
 
     # --- узлы трассы СКУД (PlaceRouteNodes) ---
     # Узлы СКУД — свои, отдельные от СКС: узлы СКС ведут до шкафа СКС,
@@ -182,6 +181,12 @@ SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
 # точки контроллера (0,0), используется структурной схемой и превью в
 # окне настроек.
 SCHEMATIC_CATEGORY_LAYOUT_KEY = "schematic_category_layout_mm"
+
+# {имя_категории: "id_WireType"} — тип проводника (параметр цепи «Проводник»)
+# для устройств этой категории (AssignCircuitsAndCables). Категории — те же
+# имена, что и schematic_device_categories_text (одна общая таблица
+# категорий на схему и на подбор кабеля).
+SCHEMATIC_CATEGORY_WIRE_TYPES_KEY = "schematic_category_wire_type_ids"
 
 # Категории BuiltInCategory, из которых предлагается выбор типов реальных
 # устройств СКУД для сопоставления схема-модель (контроллер — электро-
@@ -311,6 +316,12 @@ def load_schematic_category_layout_mm():
     return dict(saved.get(SCHEMATIC_CATEGORY_LAYOUT_KEY, {}))
 
 
+def load_schematic_category_wire_type_ids():
+    """{имя_категории: "id_WireType"} — тип проводника по категории устройства."""
+    saved = _read_all()
+    return dict(saved.get(SCHEMATIC_CATEGORY_WIRE_TYPES_KEY, {}))
+
+
 def get_schematic_category_symbols(doc, settings):
     """
     {имя_категории: FamilySymbol} для категорий из
@@ -389,6 +400,34 @@ def get_schematic_category_layout_ft(settings):
     return result
 
 
+def get_schematic_category_wire_names(doc, settings):
+    """
+    {имя_категории: имя_WireType} для категорий из
+    schematic_device_categories_text, у которых в настройках выбран
+    существующий в проекте тип проводника. Имя (не id) — потому что
+    значение записывается в текстовый параметр цепи «Проводник» через
+    set_param_any, как и раньше со свободным текстовым словарём.
+    """
+    categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
+    wire_type_ids = load_schematic_category_wire_type_ids()
+
+    names = {}
+    for name in categories:
+        id_str = wire_type_ids.get(name)
+        if not id_str:
+            continue
+        try:
+            wire_type = doc.GetElement(ElementId(int(id_str)))
+        except:
+            wire_type = None
+        if wire_type is not None:
+            wire_name = _safe_element_name(wire_type)
+            if wire_name:
+                names[name] = wire_name
+
+    return names
+
+
 def save_values(values):
     data = _read_all()
     data.update(values)
@@ -410,6 +449,12 @@ def save_schematic_category_device_type_ids(type_ids):
 def save_schematic_category_layout_mm(layout):
     data = _read_all()
     data[SCHEMATIC_CATEGORY_LAYOUT_KEY] = dict(layout)
+    _write_all(data)
+
+
+def save_schematic_category_wire_type_ids(wire_type_ids):
+    data = _read_all()
+    data[SCHEMATIC_CATEGORY_WIRE_TYPES_KEY] = dict(wire_type_ids)
     _write_all(data)
 
 
@@ -561,10 +606,12 @@ def show_settings_form(doc, values):
     category_type_ids = load_schematic_category_type_ids()
     category_device_type_ids = load_schematic_category_device_type_ids()
     category_layout_mm = load_schematic_category_layout_mm()
+    category_wire_type_ids = load_schematic_category_wire_type_ids()
 
     category_type_labels = {}
     category_device_labels = {}
     category_layout_boxes = {}
+    category_wire_labels = {}
     category_types_panel = StackPanel()
     layout_preview_canvas = Canvas()
     layout_preview_canvas.Height = 220
@@ -622,6 +669,7 @@ def show_settings_form(doc, values):
         category_type_labels.clear()
         category_device_labels.clear()
         category_layout_boxes.clear()
+        category_wire_labels.clear()
 
         categories = parse_category_names(boxes["schematic_device_categories_text"].Text)
 
@@ -744,6 +792,52 @@ def show_settings_form(doc, values):
             row2.Children.Add(device_label)
             row2.Children.Add(pick_btn2)
             category_types_panel.Children.Add(row2)
+
+            # --- тип проводника (WireType) для устройств категории ---
+
+            label4 = TextBlock()
+            label4.Text = u"Тип проводника (для параметра «Проводник» цепи)"
+            label4.Margin = Thickness(0, 6, 0, 2)
+            category_types_panel.Children.Add(label4)
+
+            row4 = StackPanel()
+            row4.Orientation = Orientation.Horizontal
+
+            wire_value_label = TextBlock()
+            wire_value_label.Text = _type_display_name(doc, category_wire_type_ids.get(name, ""))
+            wire_value_label.VerticalAlignment = VerticalAlignment.Center
+            wire_value_label.Width = 280
+            wire_value_label.TextWrapping = TextWrapping.Wrap
+            category_wire_labels[name] = wire_value_label
+
+            pick_btn4 = Button()
+            pick_btn4.Content = u"Выбрать..."
+            pick_btn4.Padding = Thickness(8, 2, 8, 2)
+            pick_btn4.Margin = Thickness(8, 0, 0, 0)
+
+            def on_pick_wire(sender, args, name=name):
+                wire_types = list_wire_types(doc)
+                if not wire_types:
+                    forms.alert(u"В проекте нет типов проводника (WireType).")
+                    return
+
+                options = sorted([WireTypeOption(w) for w in wire_types], key=lambda o: o.name)
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Тип проводника для категории «{}»".format(name),
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+
+                if selected:
+                    category_wire_type_ids[name] = str(selected.wire_type.Id.IntegerValue)
+                    category_wire_labels[name].Text = selected.name
+
+            pick_btn4.Click += on_pick_wire
+
+            row4.Children.Add(wire_value_label)
+            row4.Children.Add(pick_btn4)
+            category_types_panel.Children.Add(row4)
 
             # --- координаты (dx, dy от точки контроллера, мм) ---
 
@@ -876,6 +970,7 @@ def show_settings_form(doc, values):
         result["values"] = combined
         save_schematic_category_type_ids(category_type_ids)
         save_schematic_category_device_type_ids(category_device_type_ids)
+        save_schematic_category_wire_type_ids(category_wire_type_ids)
 
         layout_to_save = {}
         for name, (dx_box, dy_box) in category_layout_boxes.items():

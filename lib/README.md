@@ -245,9 +245,7 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `is_controller` | `is_controller(el, workset_param_name, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
-| `parse_device_cable_map` | `parse_device_cable_map(text)` | Текст вида `"урд:КабельА, считыватель:КабельБ"` (строки и/или запятые как разделитель) → список пар `(keyword, cable_value)` в исходном порядке — вводится в окне настроек, не хардкодится |
-| `pick_cable_type` | `pick_cable_type(device_el, cable_map_pairs)` | Тип кабеля для устройства — первое совпадение по ключевому слову в имени семейства/типа (переиспользует `scs.classify_element`) |
-| `parse_category_names` | `parse_category_names(text)` | Текст вида `"контроллер\nсчитыватель\nзамок"` → список имён категорий устройств схемы (по одной на строку) |
+| `parse_category_names` | `parse_category_names(text)` | Текст вида `"контроллер\nсчитыватель\nзамок"` → список имён категорий устройств (по одной на строку) — общие категории для схемы (BuildSkudSchematic) и подбора проводника (AssignCircuitsAndCables) |
 | `category_by_type_id` | `category_by_type_id(el, category_type_ids)` | Категория реального устройства по точному совпадению `ElementId` его типа с одним из `category_type_ids` (`{имя: set(int)}` из настроек) — заменяет сопоставление по ключевым словам |
 | `hypotenuse_length_ft` | `hypotenuse_length_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между двумя точками (в футах) — длина "по катетам" для устройств рядом с контроллером |
 | `is_near_controller` | `is_near_controller(controller_pt, device_pt, threshold_ft)` | `True`, если прямое 3D-расстояние между контроллером и устройством меньше порога |
@@ -259,17 +257,23 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 `get_settings_silent`/`require`). Реэкспортирует
 `list_generic_model_symbols`/`_safe_element_name`/`TypeOption` из
 `scs_settings.py` — эти функции не специфичны для СКС по факту реализации.
-Поддерживает многострочные текстовые поля (`device_cable_map_text`,
-`schematic_device_categories_text`) — `AcceptsReturn`/`TextWrapping` на
-`TextBox`, в отличие от однострочных полей `scs_settings.py`.
+Поддерживает многострочные текстовые поля (`schematic_device_categories_text`)
+— `AcceptsReturn`/`TextWrapping` на `TextBox`, в отличие от однострочных
+полей `scs_settings.py`.
 
-Для каждой категории из `schematic_device_categories_text` окно хранит
+Категории из `schematic_device_categories_text` — общая таблица для
+структурной схемы (BuildSkudSchematic) и подбора типа проводника
+(AssignCircuitsAndCables): один список категорий, одно сопоставление
+«категория → реальные типы устройств». Для каждой категории окно хранит
 (отдельно от `TEXT_FIELDS`, прямыми ключами в JSON):
-`schematic_category_type_ids` (схемное семейство для вставки),
+`schematic_category_type_ids` (схемное семейство для вставки — из
+категории Detail Items, `list_symbols_by_categories`),
 `schematic_category_device_type_ids` (список реальных типов устройств
 модели, отнесённых к категории — мультивыбор из `OST_SecurityDevices` +
-`OST_ElectricalEquipment`, см. `list_symbols_by_categories` в
-`scs_settings.py`) и `schematic_category_layout_mm` (смещение `dx, dy` от
+`OST_ElectricalEquipment`), `schematic_category_wire_type_ids` (тип
+проводника — `WireType` проекта, `list_wire_types` в `scs_settings.py`,
+используется `AssignCircuitsAndCables` при записи параметра цепи
+«Проводник») и `schematic_category_layout_mm` (смещение `dx, dy` от
 точки контроллера, мм) — с превью раскладки прямо в окне настроек.
 
 Форму показывает только кнопка «Параметры СКУД» (`SetupParameters` в
