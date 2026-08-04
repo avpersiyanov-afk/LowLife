@@ -19,6 +19,7 @@ from lowlife.scs_circuits import norm
 from lowlife.skud import is_controller
 from lowlife import skud_settings
 from lowlife.skud_settings import get_settings_silent
+from lowlife.scs_settings import list_wire_types, _safe_element_name
 
 doc = revit.doc
 output = pyrevit_script.get_output()
@@ -114,6 +115,11 @@ all_equipment = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
     .WhereElementIsNotElementType() \
     .ToElements()
+
+wire_types = list_wire_types(doc)
+output.print_md(u"### list_wire_types(doc) — найдено {}".format(len(wire_types)))
+for wt in wire_types:
+    output.print_md(u"- ID {}: name=`{}`".format(wt.Id.IntegerValue, _safe_element_name(wt)))
 
 output.print_md(u"### Настройки поиска контроллера")
 output.print_md(u"- workset_param_name: `{}`".format(WORKSET_PARAM_NAME))
