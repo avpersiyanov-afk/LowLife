@@ -15,6 +15,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
+from Autodesk.Revit.DB.Structure import StructuralType
 from pyrevit import revit, forms
 
 from lowlife.geometry import get_document_levels
