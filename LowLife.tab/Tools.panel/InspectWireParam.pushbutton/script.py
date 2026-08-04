@@ -196,35 +196,53 @@ try:
 except Exception as ex:
     output.print_md(u"FAILED: {}".format(ex))
 
-output.print_md(u"### Способ 5: все элементы документа с параметром «Ключевое имя»")
+output.print_md(u"### Способ 5: найти BuiltInParameter параметра «Ключевое имя» через сам элемент 623487")
 try:
-    key_name_bip = None
-    for bip_name in ["KEY_NAME", "KEYNOTE_KEY", "KEYSCHEDULE_KEY"]:
+    el_623487 = doc.GetElement(ElementId(623487))
+    key_name_param = None
+    for p2 in el_623487.Parameters:
         try:
-            key_name_bip = getattr(BuiltInParameter, bip_name)
-            output.print_md(u"BuiltInParameter.{} существует".format(bip_name))
-            break
+            if p2.Definition.Name == u"Ключевое имя":
+                key_name_param = p2
+                break
         except:
-            output.print_md(u"BuiltInParameter.{} НЕ существует".format(bip_name))
+            continue
 
-    if key_name_bip is not None:
-        all_instances_els = FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements()
-        key_elements = []
-        for el in all_instances_els:
-            try:
-                p = el.get_Parameter(key_name_bip)
-                if p and p.HasValue:
-                    key_elements.append((el, p.AsString()))
-            except:
-                continue
-        output.print_md(u"Найдено элементов с непустым «Ключевое имя»: {}".format(len(key_elements)))
-        for el, key_val in key_elements[:30]:
-            output.print_md(u"- ID {}: KeyName=`{}` class={}".format(
-                el.Id.IntegerValue, key_val, type(el).__name__
-            ))
-        output.print_md(u"ID 623487 среди них: {}".format(
-            any(el.Id.IntegerValue == 623487 for el, _ in key_elements)
-        ))
+    if key_name_param is None:
+        output.print_md(u"Не нашли параметр «Ключевое имя» перебором Parameters.")
+    else:
+        output.print_md(u"Нашли параметр «Ключевое имя»: {}".format(key_name_param.AsValueString() or key_name_param.AsString()))
+        try:
+            output.print_md(u"Definition class: {}".format(type(key_name_param.Definition).__name__))
+        except:
+            pass
+        try:
+            bip_id = key_name_param.Definition.BuiltInParameter
+            output.print_md(u"Definition.BuiltInParameter: {}".format(bip_id))
+        except Exception as ex2:
+            output.print_md(u"Definition.BuiltInParameter FAILED: {}".format(ex2))
+        try:
+            output.print_md(u"Definition.Id: {}".format(key_name_param.Definition.Id.IntegerValue))
+        except Exception as ex2:
+            output.print_md(u"Definition.Id FAILED: {}".format(ex2))
+
+        # Собираем все остальные элементы через тот же get_Parameter по BuiltInParameter, если он нашёлся
+        try:
+            bip = key_name_param.Definition.BuiltInParameter
+            all_instances_els = FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements()
+            key_elements = []
+            for el in all_instances_els:
+                try:
+                    p3 = el.get_Parameter(bip)
+                    if p3 and p3.HasValue:
+                        key_elements.append((el, p3.AsString()))
+                except:
+                    continue
+            output.print_md(u"Найдено элементов с непустым «Ключевое имя» через этот BuiltInParameter: {}".format(len(key_elements)))
+            for el, key_val in key_elements[:40]:
+                output.print_md(u"- ID {}: KeyName=`{}`".format(el.Id.IntegerValue, key_val))
+        except Exception as ex2:
+            output.print_md(u"Сбор по BuiltInParameter FAILED: {}".format(ex2))
 except Exception as ex:
     output.print_md(u"Способ 5 FAILED: {}".format(ex))
 
