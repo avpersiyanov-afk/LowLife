@@ -312,7 +312,7 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `layout_points` | `layout_points(base_point, count, gap_ft, per_row)` | Точки вставки для `count` контроллеров — рядами по `per_row`, с шагом `gap_ft`, от точки клика пользователя (`base_point`) |
+| `layout_points_by_level` | `layout_points_by_level(base_point, level_elevations, gap_ft)` | Точки вставки контроллеров, сгруппированных по этажу (`level_elevations` — Elevation уровня каждого контроллера, тот же порядок, что список контроллеров): один этаж — один сплошной горизонтальный ряд по X с шагом `gap_ft`, без ограничения длины; следующий этаж — со сдвигом вверх по Y на `gap_ft`, от точки клика пользователя (`base_point`) |
 | `device_layout_point` | `device_layout_point(insert_pt, category_layout, category, index_in_category, step_ft)` | Точка вставки устройства: точка контроллера (`insert_pt`) + смещение `(dx, dy)` категории из `category_layout` (`{имя: (dx_ft, dy_ft)}`, из настроек) + шаг `step_ft` вправо по X на каждый следующий экземпляр той же категории у этого контроллера |
 
 Координаты (dx, dy от контроллера) и шаг между однотипными устройствами,

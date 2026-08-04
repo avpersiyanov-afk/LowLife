@@ -17,11 +17,12 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
+from lowlife.geometry import get_element_level
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import is_excluded_device
 from lowlife.scs_circuits import norm, clean_text_value
 from lowlife.skud import is_controller, parse_category_names, category_by_type_id
-from lowlife.skud_schematic import layout_points, device_layout_point
+from lowlife.skud_schematic import layout_points_by_level, device_layout_point
 from lowlife import skud_settings
 from lowlife.skud_settings import (
     get_settings_silent, get_schematic_category_symbols,
@@ -47,7 +48,7 @@ skud_settings.require(settings, [
     "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
     "circuit_panel_param", "device_address_param",
     "schematic_address_param",
-    "schematic_layout_gap_m", "schematic_layout_per_row", "schematic_layout_step_mm",
+    "schematic_layout_gap_m", "schematic_layout_step_mm",
     "schematic_device_categories_text"
 ])
 
@@ -61,7 +62,6 @@ DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 
 SCHEMATIC_ADDRESS_PARAM = settings["schematic_address_param"]
 LAYOUT_GAP_FT = float(settings["schematic_layout_gap_m"]) * M_TO_FT
-LAYOUT_PER_ROW = max(1, int(settings["schematic_layout_per_row"]))
 CATEGORY_STEP_FT = float(settings["schematic_layout_step_mm"]) * MM_TO_FT
 
 DEVICE_CATEGORY_NAMES = parse_category_names(settings["schematic_device_categories_text"])
@@ -157,10 +157,14 @@ for controller in controllers:
 
     if devices:
         devices.sort(key=lambda d: clean_text_value(get_string_param(d, DEVICE_ADDRESS_PARAM)) or u"")
-        controllers_with_devices.append((controller, controller_addr, devices))
+        level = get_element_level(doc, controller)
+        elevation = level.Elevation if level is not None else 0.0
+        controllers_with_devices.append((controller, controller_addr, devices, elevation))
 
 if not controllers_with_devices:
     forms.alert(u"Не найдено ни одного контроллера с адресом и подключёнными устройствами.", exitscript=True)
+
+controllers_with_devices.sort(key=lambda item: (item[3], item[1]))
 
 
 # ------------------------------------------------------------
@@ -172,7 +176,8 @@ try:
 except:
     forms.alert(u"Операция отменена.", exitscript=True)
 
-insert_points = layout_points(base_point, len(controllers_with_devices), LAYOUT_GAP_FT, LAYOUT_PER_ROW)
+level_elevations = [item[3] for item in controllers_with_devices]
+insert_points = layout_points_by_level(base_point, level_elevations, LAYOUT_GAP_FT)
 
 
 # ------------------------------------------------------------
@@ -190,7 +195,7 @@ if not CONTROLLER_SYMBOL.IsActive:
 
 with revit.Transaction("Build SKUD Schematic"):
 
-    for (controller, controller_addr, devices), insert_pt in zip(controllers_with_devices, insert_points):
+    for (controller, controller_addr, devices, _elevation), insert_pt in zip(controllers_with_devices, insert_points):
         controller_el = doc.Create.NewFamilyInstance(insert_pt, CONTROLLER_SYMBOL, view)
         if controller_el is None:
             continue

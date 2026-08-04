@@ -150,9 +150,7 @@ TEXT_FIELDS = [
     # --- структурная схема (BuildSkudSchematic) ---
     ("schematic_address_param", u"[Схема] Параметр адреса на схемном семействе",
         u"", False, True, False),
-    ("schematic_layout_gap_m", u"[Схема] Отступ между контроллерами при автораскладке, м",
-        u"5", False, True, False),
-    ("schematic_layout_per_row", u"[Схема] Число контроллеров в ряду при автораскладке",
+    ("schematic_layout_gap_m", u"[Схема] Шаг между контроллерами по X и между этажами по Y при автораскладке, м",
         u"5", False, True, False),
     ("schematic_layout_step_mm", u"[Схема] Шаг между устройствами одной категории у одного контроллера, мм",
         u"10", False, True, False),

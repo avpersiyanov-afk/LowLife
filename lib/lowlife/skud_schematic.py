@@ -8,21 +8,32 @@
 """
 
 
-def layout_points(base_point, count, gap_ft, per_row):
+def layout_points_by_level(base_point, level_elevations, gap_ft):
     """
-    Точки вставки для count контроллеров, рядами по per_row штук,
-    начиная от base_point, с шагом gap_ft по X (внутри ряда) и по Y
-    (между рядами, вниз).
+    Точки вставки для контроллеров, сгруппированных по этажам:
+    level_elevations — список elevation (float, в футах), один элемент на
+    контроллер, в том же порядке, что и сам список контроллеров.
+
+    Этажи сортируются по elevation по возрастанию; первый (нижний) этаж
+    располагается в base_point, следующие — со сдвигом вверх по Y на
+    gap_ft за каждый этаж. Внутри одного этажа все точки идут единым
+    горизонтальным рядом по X с шагом gap_ft, без ограничения длины ряда
+    — контроллеров на одном этаже может быть сколько угодно.
     """
     from Autodesk.Revit.DB import XYZ
 
+    distinct_elevations = sorted(set(level_elevations))
+    row_index_by_elevation = {elev: row for row, elev in enumerate(distinct_elevations)}
+
     points = []
-    for i in range(count):
-        row = i // per_row
-        col = i % per_row
+    col_by_row = {}
+    for elev in level_elevations:
+        row = row_index_by_elevation[elev]
+        col = col_by_row.get(row, 0)
+        col_by_row[row] = col + 1
         points.append(XYZ(
             base_point.X + col * gap_ft,
-            base_point.Y - row * gap_ft,
+            base_point.Y + row * gap_ft,
             base_point.Z
         ))
     return points
