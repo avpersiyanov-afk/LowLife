@@ -108,10 +108,32 @@ WORKSET_PARAM_NAME = settings["workset_param_name"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 CABLE_TYPE_PARAM = settings["cable_type_param"]
 
+from lowlife.scs import get_workset_name
+
 all_equipment = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
     .WhereElementIsNotElementType() \
     .ToElements()
+
+output.print_md(u"### Настройки поиска контроллера")
+output.print_md(u"- workset_param_name: `{}`".format(WORKSET_PARAM_NAME))
+output.print_md(u"- controller_workset_keyword: `{}`".format(CONTROLLER_WORKSET_KEYWORD))
+output.print_md(u"- controller_type_keyword: `{}`".format(CONTROLLER_TYPE_KEYWORD))
+
+output.print_md(u"### Все элементы OST_ElectricalEquipment ({})".format(len(all_equipment)))
+for e in all_equipment:
+    ws = get_workset_name(e, WORKSET_PARAM_NAME)
+    try:
+        type_name = e.Symbol.Name
+    except Exception as ex:
+        type_name = "FAILED: {}".format(ex)
+    try:
+        is_ctrl = is_controller(e, WORKSET_PARAM_NAME, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
+    except Exception as ex:
+        is_ctrl = "FAILED: {}".format(ex)
+    output.print_md(u"- ID {}: name=`{}` workset=`{}` type_name=`{}` is_controller={}".format(
+        e.Id.IntegerValue, e.Name, ws, type_name, is_ctrl
+    ))
 
 controllers = [
     e for e in all_equipment
@@ -119,7 +141,7 @@ controllers = [
 ]
 
 if not controllers:
-    forms.alert(u"Не найдено ни одного контроллера СКУД.", exitscript=True)
+    forms.alert(u"Не найдено ни одного контроллера СКУД. Смотрите таблицу в окне вывода.", exitscript=True)
 
 controller = controllers[0]
 controller_name = norm(controller.Name)
