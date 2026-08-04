@@ -15,10 +15,8 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from Autodesk.Revit.DB.Structure import StructuralType
 from pyrevit import revit, forms
 
-from lowlife.geometry import get_document_levels
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import is_excluded_device
 from lowlife.scs_circuits import norm, clean_text_value
@@ -102,11 +100,6 @@ if not CONTROLLER_CATEGORY_NAME or CONTROLLER_CATEGORY_NAME not in CATEGORY_SYMB
     )
 
 CONTROLLER_SYMBOL = CATEGORY_SYMBOLS[CONTROLLER_CATEGORY_NAME]
-
-document_levels = get_document_levels(doc)
-if not document_levels:
-    forms.alert(u"В проекте нет ни одного уровня.", exitscript=True)
-INSERT_LEVEL = view.GenLevel or document_levels[0]
 
 
 # ------------------------------------------------------------
@@ -198,9 +191,7 @@ if not CONTROLLER_SYMBOL.IsActive:
 with revit.Transaction("Build SKUD Schematic"):
 
     for (controller, controller_addr, devices), insert_pt in zip(controllers_with_devices, insert_points):
-        controller_el = doc.Create.NewFamilyInstance(
-            insert_pt, CONTROLLER_SYMBOL, INSERT_LEVEL, StructuralType.NonStructural
-        )
+        controller_el = doc.Create.NewFamilyInstance(insert_pt, CONTROLLER_SYMBOL, view)
         if controller_el is None:
             continue
 
@@ -229,9 +220,7 @@ with revit.Transaction("Build SKUD Schematic"):
             )
             index_by_category[category] = index_in_category + 1
 
-            device_el = doc.Create.NewFamilyInstance(
-                device_pt, symbol, INSERT_LEVEL, StructuralType.NonStructural
-            )
+            device_el = doc.Create.NewFamilyInstance(device_pt, symbol, view)
             if device_el is None:
                 unmatched_devices.append(device)
                 continue
