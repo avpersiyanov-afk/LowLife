@@ -145,6 +145,28 @@ try:
         _safe_element_name(wt_623487),
         wt_623487.Category.Name if wt_623487.Category else None
     ))
+    try:
+        output.print_md(u"GetType().FullName: {}".format(wt_623487.GetType().FullName))
+    except Exception as ex2:
+        output.print_md(u"GetType().FullName FAILED: {}".format(ex2))
+    try:
+        output.print_md(u"IsElementType(): {}".format(wt_623487.GetType()))
+    except:
+        pass
+    try:
+        fam = wt_623487.Family
+        output.print_md(u"Family: {}".format(_safe_element_name(fam)))
+    except Exception as ex2:
+        output.print_md(u"Family FAILED/unavailable: {}".format(ex2))
+    try:
+        output.print_md(u"UniqueId: {}".format(wt_623487.UniqueId))
+    except:
+        pass
+    try:
+        bic = wt_623487.get_Parameter(BuiltInParameter.ELEM_CATEGORY_PARAM)
+        output.print_md(u"ELEM_CATEGORY_PARAM: {}".format(bic.AsValueString() if bic else None))
+    except Exception as ex2:
+        output.print_md(u"ELEM_CATEGORY_PARAM FAILED: {}".format(ex2))
 except Exception as ex:
     output.print_md(u"FAILED: {}".format(ex))
 
