@@ -235,7 +235,8 @@ class WireTypeOption(object):
 
     def __init__(self, wire_type):
         self.wire_type = wire_type
-        self.name = _safe_element_name(wire_type) or str(wire_type.Id.IntegerValue)
+        base_name = _safe_element_name(wire_type) or str(wire_type.Id.IntegerValue)
+        self.name = u"{} (ID {})".format(base_name, wire_type.Id.IntegerValue)
 
     def __str__(self):
         return self.name
