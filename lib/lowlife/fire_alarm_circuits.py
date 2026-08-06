@@ -12,7 +12,7 @@ from Autodesk.Revit.DB import (
 from Autodesk.Revit.DB.Electrical import ElectricalSystem, ElectricalSystemType
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, set_param_any
+from lowlife.params import get_string_param, get_type_string_param, set_param_any
 from lowlife.scs import is_excluded_device, get_workset_name
 from lowlife.scs_circuits import clean_text_value, balance_round_parts
 from lowlife.fire_alarm import (
@@ -99,7 +99,7 @@ def find_panels(doc, config):
         if not in_workset(el, config["workset_param_name"], config["workset_filter_key"]):
             continue
 
-        designation = clean_text_value(get_string_param(el, designation_param))
+        designation = clean_text_value(get_type_string_param(doc, el, designation_param))
         if not designation or designation.lower() != panel_key:
             continue
 

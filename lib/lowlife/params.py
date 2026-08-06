@@ -69,6 +69,22 @@ def get_string_param(el, name):
         return None
 
 
+def get_type_string_param(doc, el, name):
+    """
+    Строковое значение параметра типа элемента (Type Parameter — например
+    «Обозначение», общее у всех экземпляров одного типа семейства).
+    el.LookupParameter ищет только среди параметров экземпляра и не видит
+    параметры типа, поэтому здесь явно берём тип через GetTypeId().
+    """
+    try:
+        type_el = doc.GetElement(el.GetTypeId())
+    except:
+        return None
+    if type_el is None:
+        return None
+    return get_string_param(type_el, name)
+
+
 def get_param_any(el, name):
     """
     Строковое представление значения параметра любого типа хранения

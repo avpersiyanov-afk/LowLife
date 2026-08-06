@@ -10,7 +10,7 @@
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, set_param_any, set_element_id_param
+from lowlife.params import get_string_param, get_type_string_param, set_param_any, set_element_id_param
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.fire_alarm import make_full_mark, group_devices_by_loop
 from lowlife.fire_alarm_loops import (
@@ -108,7 +108,7 @@ def build_loop_circuits(doc, settings):
             set_param_any(circuit, config["circuit_panel_param"], norm(panel_el.Name))
 
             first = loop_devices[0]
-            designation = clean_text_value(get_string_param(first, config["designation_param"]))
+            designation = clean_text_value(get_type_string_param(doc, first, config["designation_param"]))
             load_name = make_load_name(
                 designation, address_text_by_id.get(first.Id.IntegerValue)
             )
@@ -196,7 +196,7 @@ def calc_loop_lengths(doc, settings):
                 for node in ordered:
                     el = node["element"]
                     designation = clean_text_value(
-                        get_string_param(el, config["designation_param"])
+                        get_type_string_param(doc, el, config["designation_param"])
                     )
                     mark = make_full_mark(designation, address_text_by_id.get(node["id"]))
                     if mark and set_param_any(el, config["device_marking_param"], mark):
