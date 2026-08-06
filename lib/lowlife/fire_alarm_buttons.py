@@ -10,16 +10,15 @@
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, set_param_any
+from lowlife.params import get_string_param, set_param_any, set_element_id_param
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
-from lowlife.skud import parse_device_cable_map, pick_cable_type
 from lowlife.fire_alarm import make_full_mark, group_devices_by_loop
 from lowlife.fire_alarm_loops import (
     build_loop_tree, build_route_text, previous_address_by_id
 )
 from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
-    build_loop_nodes, write_loop_length
+    build_loop_nodes, write_loop_length, device_category_id
 )
 from lowlife import fire_alarm_settings
 
@@ -67,7 +66,10 @@ def build_loop_circuits(doc, settings):
     number_format = config["circuit_number_format"]
     existing = existing_circuits_by_number(doc, config)
 
-    cable_pairs = parse_device_cable_map(config.get("device_cable_map_text") or u"")
+    category_wire_type_ids = (
+        fire_alarm_settings.get_category_wire_type_elem_ids(doc)
+        if config.get("cable_type_param") else {}
+    )
 
     created = 0
     already = 0
@@ -113,10 +115,11 @@ def build_loop_circuits(doc, settings):
             if load_name:
                 set_param_any(circuit, config["load_name_param"], load_name)
 
-            if cable_pairs and config.get("cable_type_param"):
-                cable_value = pick_cable_type(first, cable_pairs)
-                if cable_value:
-                    set_param_any(circuit, config["cable_type_param"], cable_value)
+            if category_wire_type_ids:
+                cat_id = device_category_id(first)
+                wire_type_id = category_wire_type_ids.get(cat_id) if cat_id is not None else None
+                if wire_type_id is not None:
+                    set_element_id_param(circuit, config["cable_type_param"], wire_type_id)
 
             created += 1
 

@@ -23,6 +23,11 @@ from lowlife.fire_alarm_loops import calc_loop_length_ft, FT_TO_M
 # Категории, среди которых ищутся устройства СПС/СОУЭ. Берём через
 # getattr: набор BuiltInCategory отличается между версиями Revit, и
 # отсутствующее имя иначе уронило бы модуль на импорте.
+#
+# Те же имена используются для подбора типа проводника по категории
+# устройства (см. get_category_wire_type_elem_ids в fire_alarm_settings.py) —
+# категории здесь фиксированы кодом, а не настраиваются текстом, как в
+# SKUD (там категории устройств произвольные и задаются пользователем).
 _CATEGORY_NAMES = [
     "OST_FireAlarmDevices",
     "OST_CommunicationDevices",
@@ -32,11 +37,36 @@ _CATEGORY_NAMES = [
     "OST_NurseCallDevices",
 ]
 
+_CATEGORY_TITLES = {
+    "OST_FireAlarmDevices": u"Пожарная сигнализация",
+    "OST_CommunicationDevices": u"Устройства связи",
+    "OST_ElectricalFixtures": u"Электроустановочные устройства",
+    "OST_DataDevices": u"Устройства передачи данных",
+    "OST_SecurityDevices": u"Охранная сигнализация",
+    "OST_NurseCallDevices": u"Устройства вызова и оповещения",
+}
+
 DEVICE_CATEGORIES = []
+CATEGORY_TITLE_BY_ID = {}
 for _name in _CATEGORY_NAMES:
     _cat = getattr(BuiltInCategory, _name, None)
     if _cat is not None:
         DEVICE_CATEGORIES.append(_cat)
+        CATEGORY_TITLE_BY_ID[int(_cat)] = _CATEGORY_TITLES[_name]
+
+
+def category_title(builtin_category):
+    """Читаемое название фиксированной категории устройств СПС/СОУЭ."""
+    return CATEGORY_TITLE_BY_ID.get(int(builtin_category), unicode(builtin_category))
+
+
+def device_category_id(el):
+    """int(BuiltInCategory) устройства, если это одна из DEVICE_CATEGORIES, иначе None."""
+    try:
+        cat_id = el.Category.Id.IntegerValue
+    except:
+        return None
+    return cat_id if cat_id in CATEGORY_TITLE_BY_ID else None
 
 
 def in_workset(el, workset_param_name, workset_filter_key):
