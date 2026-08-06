@@ -17,9 +17,9 @@ import json
 from Autodesk.Revit.DB import (
     ElementId, BuiltInCategory, BuiltInParameter, UnitUtils, UnitTypeId, SpecTypeId,
     FilteredElementCollector, Level, XYZ, Line, HermiteSpline,
-    LocationPoint, LocationCurve, Conduit, MEPCurve,
+    LocationPoint, LocationCurve, MEPCurve,
 )
-from Autodesk.Revit.DB.Electrical import CableTray
+from Autodesk.Revit.DB.Electrical import CableTray, Conduit
 from Autodesk.Revit.DB.Plumbing import FlexPipe
 from Autodesk.Revit.DB.ExtensibleStorage import Schema, SchemaBuilder, Entity, AccessLevel
 from Autodesk.Revit.UI.Selection import ISelectionFilter

@@ -12,11 +12,10 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import (
-    BuiltInCategory, CableTray, Conduit, FamilyInstance
+    BuiltInCategory, FamilyInstance, FilteredElementCollector
 )
 from Autodesk.Revit.DB.Mechanical import Duct
-from Autodesk.Revit.DB.Electrical import ElectricalSystem
-from Autodesk.Revit.DB import FilteredElementCollector
+from Autodesk.Revit.DB.Electrical import ElectricalSystem, CableTray, Conduit
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
 
