@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 __title__ = "Соединение\nпо линии"
-__doc__ = "Подключает выбранные приборы электрооборудования в последовательную цепь в порядке их расположения вдоль выбранной линии."
+__doc__ = "Подключает выбранные элементы (любой категории, с электрическим коннектором) в последовательную цепь в порядке их расположения вдоль выбранной линии."
 __author__ = "Pipers"
 
 import clr
@@ -21,7 +21,7 @@ from pyrevit import revit, forms
 
 import System
 
-from lowlife.connection_by_line import ElectricalEquipmentSelectionFilter, get_mark
+from lowlife.connection_by_line import ElectricalConnectableSelectionFilter, get_mark
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -169,8 +169,8 @@ try:
 
     forms.alert(u"Внимание! Выберите приборы для подключения, затем подтвердите выбор", title=u"Выбор элементов")
     equip_refs = uidoc.Selection.PickObjects(
-        ObjectType.Element, ElectricalEquipmentSelectionFilter(),
-        u"Выберите электрооборудование для подключения"
+        ObjectType.Element, ElectricalConnectableSelectionFilter(),
+        u"Выберите элементы для подключения"
     )
     equip_ids = [r.ElementId for r in equip_refs]
 

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Хелперы кнопки Tools/ConnectionByLine — подключение выделенных приборов
-электрооборудования в последовательную цепь в порядке их расположения
-вдоль эскизной линии (Detail или Model Curve).
+в последовательную цепь в порядке их расположения вдоль эскизной линии
+(Detail или Model Curve).
 
 Перенесено из C#-плагина CableSchedule (namespace СableSchedule,
 класс ConnectionByLine) — единственная часть того плагина, оставленная
@@ -11,20 +11,28 @@
 принятые в проекте подходы (адресация узлов, свой расчёт длин).
 """
 
-from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter
+from Autodesk.Revit.DB import BuiltInParameter
 from Autodesk.Revit.UI.Selection import ISelectionFilter
 
 
-class ElectricalEquipmentSelectionFilter(ISelectionFilter):
-    """Фильтр выбора: только категория «Электрооборудование», не из связанного файла."""
+class ElectricalConnectableSelectionFilter(ISelectionFilter):
+    """
+    Фильтр выбора: любая категория (не ограничиваем «Электрооборудованием»),
+    но только экземпляры семейств с электрическим коннектором — иначе их
+    физически не получится включить в ElectricalSystem — и не из связанного файла.
+    """
 
     def AllowElement(self, elem):
         try:
-            if elem is None or elem.Category is None:
+            if elem is None or elem.Document.IsLinked:
                 return False
-            if elem.Category.Id.IntegerValue != int(BuiltInCategory.OST_ElectricalEquipment):
+
+            mep_model = getattr(elem, "MEPModel", None)
+            connector_mgr = mep_model.ConnectorManager if mep_model else None
+            if connector_mgr is None:
                 return False
-            return not elem.Document.IsLinked
+
+            return any(int(c.Domain) == 2 for c in connector_mgr.Connectors)
         except:
             return False
 
