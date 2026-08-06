@@ -217,7 +217,12 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     if system_type is None:
         return None, error
 
+    # Revit требует, чтобы среди переданных элементов был хотя бы один,
+    # способный "создать" цепь заданного типа — это панель, а не нагрузки:
+    # без неё ElectricalSystem.Create падает с electComponents, даже если
+    # панель потом отдельно назначается через SelectPanel.
     ids = List[ElementId]()
+    ids.Add(panel_el.Id)
     for el in device_els:
         ids.Add(el.Id)
 
