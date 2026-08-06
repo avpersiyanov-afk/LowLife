@@ -15,7 +15,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB.Electrical import ElectricalSystemType
-from Autodesk.Revit.UI.Selection import ObjectType
+from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script as pyrevit_script
 
@@ -60,13 +60,13 @@ def describe_element(el, label):
             conn_type = u"?"
         try:
             sys_class = c.MEPSystem.SystemType if c.MEPSystem else None
-        except:
-            sys_class = None
+        except Exception as ex:
+            sys_class = u"(ошибка: {})".format(ex)
 
         try:
-            sys_classification = c.SystemClassification if domain == Domain.DomainElectrical else None
-        except:
-            sys_classification = u"?"
+            sys_classification = c.SystemClassification
+        except Exception as ex:
+            sys_classification = u"(ошибка: {})".format(ex)
 
         output.print_md(
             u"- Коннектор {}: Domain=`{}`, ConnectorType=`{}`, SystemClassification=`{}`, MEPSystem.SystemType=`{}`".format(
@@ -75,11 +75,26 @@ def describe_element(el, label):
         )
 
 
+class NotLinkedSelectionFilter(ISelectionFilter):
+    """Отсекает элементы связанных файлов — PickObject/PickObjects иначе даёт их выбрать."""
+
+    def AllowElement(self, elem):
+        try:
+            return not elem.Document.IsLinked
+        except:
+            return True
+
+    def AllowReference(self, reference, position):
+        return True
+
+
 try:
-    panel_ref = uidoc.Selection.PickObject(ObjectType.Element, u"Выберите панель")
+    not_linked = NotLinkedSelectionFilter()
+
+    panel_ref = uidoc.Selection.PickObject(ObjectType.Element, not_linked, u"Выберите панель (в текущем документе, не в связанном файле)")
     panel_el = doc.GetElement(panel_ref)
 
-    device_refs = uidoc.Selection.PickObjects(ObjectType.Element, u"Выберите устройства шлейфа (подтвердите Enter)")
+    device_refs = uidoc.Selection.PickObjects(ObjectType.Element, not_linked, u"Выберите устройства шлейфа (подтвердите Enter)")
     device_els = [doc.GetElement(r) for r in device_refs]
 
     describe_element(panel_el, u"Панель")
