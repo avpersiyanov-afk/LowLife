@@ -46,7 +46,14 @@ def collect_circuit_param_names():
     return sorted(names)
 
 
-class SettingsWindow(Window):
+class SettingsWindow(object):
+    """
+    Не наследуется от System.Windows.Window — композиция вместо
+    наследования: IronPython ненадёжно инициализирует .NET WPF-классы
+    через class X(Window) без явного Window.__init__(self), из-за чего
+    окно молча не открывается (pyRevit тогда показывает пустой отчёт
+    вместо диалога). См. lowlife/scs_settings.py — тот же паттерн.
+    """
 
     def __init__(self, settings, all_params):
         self._settings = settings
@@ -54,6 +61,8 @@ class SettingsWindow(Window):
 
         source = sorted(all_params, key=lambda p: p.lower())
         self._view = CollectionViewSource.GetDefaultView(source)
+
+        self.win = Window()
 
         grid = Grid()
         grid.Margin = Thickness(14)
@@ -116,12 +125,12 @@ class SettingsWindow(Window):
         Grid.SetRow(buttons, 4)
         grid.Children.Add(buttons)
 
-        self.Title = u"Настройки плагина — Кабельный журнал"
-        self.Width = 530
-        self.Height = 160
-        self.ResizeMode = ResizeMode.NoResize
-        self.WindowStartupLocation = WindowStartupLocation.CenterScreen
-        self.Content = grid
+        self.win.Title = u"Настройки плагина — Кабельный журнал"
+        self.win.Width = 530
+        self.win.Height = 160
+        self.win.ResizeMode = ResizeMode.NoResize
+        self.win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+        self.win.Content = grid
 
     def _on_key_up(self, sender, e):
         if e.Key in (Key.Down, Key.Up, Key.Return, Key.Escape):
@@ -142,12 +151,15 @@ class SettingsWindow(Window):
 
     def _on_save(self, sender, e):
         self._settings["cable_mark_parameter"] = self._combo.Text
-        self.DialogResult = True
+        self.win.DialogResult = True
+
+    def show_dialog(self):
+        return self.win.ShowDialog()
 
 
 settings = load_settings()
 param_names = collect_circuit_param_names()
 
 window = SettingsWindow(settings, param_names)
-if window.ShowDialog():
+if window.show_dialog():
     save_settings(settings)
