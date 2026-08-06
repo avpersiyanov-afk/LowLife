@@ -9,10 +9,9 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import (
-    BuiltInParameter, DetailCurve, ModelCurve, CurveElement, Transaction, XYZ
+    BuiltInParameter, DetailCurve, ModelCurve, CurveElement, Transaction, XYZ, ElementId
 )
 from Autodesk.Revit.DB.Electrical import ElectricalSetting, ElectricalSystem, ElectricalSystemType
-from Autodesk.Revit.DB import FamilyInstance
 from Autodesk.Revit.DB import FilteredElementCollector
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
@@ -20,8 +19,11 @@ from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
 from pyrevit import revit, forms
 
 import System
+from System.Collections.Generic import List
 
-from lowlife.connection_by_line import ElectricalConnectableSelectionFilter, get_mark
+from lowlife.connection_by_line import (
+    ElectricalConnectableSelectionFilter, ElectricalPanelSelectionFilter, get_mark
+)
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -99,6 +101,12 @@ try:
     height_mm = ask_height_mm(current_height_mm)
     if height_mm is None:
         forms.alert(u"Отменено.", exitscript=True)
+
+    panel_ref = uidoc.Selection.PickObject(
+        ObjectType.Element, ElectricalPanelSelectionFilter(),
+        u"Выберите щит/панель (категория «Электрооборудование»)"
+    )
+    panel = doc.GetElement(panel_ref)
 
     curve_filter = CurveElementSelectionFilter()
     ref = uidoc.Selection.PickObject(ObjectType.Element, curve_filter, u"Выберите линию (Detail или Model)")
@@ -209,49 +217,39 @@ try:
 
     ordered_ids = [eid for eid, _ in sorted(ordered, key=lambda t: t[1])]
 
+    if not ordered_ids:
+        forms.alert(u"Ни один из выбранных элементов не пересекает линию.", exitscript=True)
+
     with revit.Transaction(u"Подключение приборов по линии"):
         electrical_settings.CircuitPathOffset = height_mm / 304.8
 
-        instances = [doc.GetElement(eid) for eid in ordered_ids]
-        instances = [fi for fi in instances if isinstance(fi, FamilyInstance)]
+        # Одна цепь: щит (BaseEquipment) + все устройства по порядку вдоль
+        # линии — так же, как обычное выделение всех элементов шлейфа сразу
+        # и "Create System" на ленте Revit. Топологию (кто к кому физически
+        # подключён) Revit строит сам по геометрической близости коннекторов.
+        element_ids = List[ElementId]([panel.Id] + ordered_ids)
 
-        for i in range(len(instances) - 1):
-            panel = instances[i]
-            load = instances[i + 1]
-
-            mep_model = load.MEPModel
-            connector_mgr = mep_model.ConnectorManager if mep_model else None
-            load_connector = None
-            if connector_mgr:
-                for c in connector_mgr.Connectors:
-                    if int(c.Domain) == 2 and int(c.ConnectorType) == 1:
-                        load_connector = c
-                        break
-
-            if load_connector is None:
-                forms.alert(u"Не удалось найти разъём у элемента {}".format(load.Id), exitscript=True)
-
-            existing_systems = FilteredElementCollector(doc).OfClass(ElectricalSystem).ToElements()
-            for s in existing_systems:
-                base_eq = s.BaseEquipment
-                if base_eq is None or base_eq.Id != panel.Id:
-                    continue
-                if any(e.Id == load.Id for e in s.Elements):
+        existing_systems = FilteredElementCollector(doc).OfClass(ElectricalSystem).ToElements()
+        for s in existing_systems:
+            base_eq = s.BaseEquipment
+            if base_eq is not None and base_eq.Id == panel.Id:
+                if any(e.Id in ordered_ids for e in s.Elements):
                     doc.Delete(s.Id)
 
-            new_system = ElectricalSystem.Create(load_connector, ElectricalSystemType.PowerCircuit)
-            if new_system is None:
-                forms.alert(u"Не удалось создать цепь для элемента {}".format(load.Id), exitscript=True)
+        new_system = ElectricalSystem.Create(doc, element_ids, ElectricalSystemType.PowerCircuit)
+        if new_system is None:
+            forms.alert(u"Не удалось создать цепь.", exitscript=True)
 
-            new_system.SelectPanel(panel)
+        new_system.SelectPanel(panel)
 
-            panel_mark = get_mark(panel) or u"Без_марки_панели"
-            load_mark = get_mark(load) or u"Без_марки_нагрузки"
-            load_name = panel_mark + u"/" + load_mark
+        last_load = doc.GetElement(ordered_ids[-1])
+        panel_mark = get_mark(panel) or u"Без_марки_панели"
+        load_mark = get_mark(last_load) or u"Без_марки_нагрузки"
+        load_name = panel_mark + u"/" + load_mark
 
-            load_name_param = new_system.get_Parameter(_CIRCUIT_LOAD_NAME_PARAM)
-            if load_name_param is not None and not load_name_param.IsReadOnly:
-                load_name_param.Set(load_name)
+        load_name_param = new_system.get_Parameter(_CIRCUIT_LOAD_NAME_PARAM)
+        if load_name_param is not None and not load_name_param.IsReadOnly:
+            load_name_param.Set(load_name)
 
     forms.alert(u"Плагин отработал", title=u"Подключение по линии")
 
