@@ -5,25 +5,11 @@ __doc__ = "Настройка параметров проекта, исполь�
 __author__ = "Pipers"
 
 import clr
-clr.AddReference('PresentationFramework')
-clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
-from Autodesk.Revit.DB.Electrical import ElectricalSystem
 
-from pyrevit import revit
-
-from System.Windows import (
-    Window, WindowStartupLocation, Thickness, GridLength, GridUnitType,
-    HorizontalAlignment, VerticalAlignment, FontWeights, ResizeMode
-)
-from System.Windows.Controls import (
-    Grid, RowDefinition, ColumnDefinition, Label, ComboBox, TextBlock,
-    StackPanel, Button, Orientation
-)
-from System.Windows.Data import CollectionViewSource
-from System.Windows.Input import Key
+from pyrevit import revit, forms
 
 from lowlife.cable_schedule import load_settings, save_settings
 
@@ -46,120 +32,34 @@ def collect_circuit_param_names():
     return sorted(names)
 
 
-class SettingsWindow(object):
-    """
-    Не наследуется от System.Windows.Window — композиция вместо
-    наследования: IronPython ненадёжно инициализирует .NET WPF-классы
-    через class X(Window) без явного Window.__init__(self), из-за чего
-    окно молча не открывается (pyRevit тогда показывает пустой отчёт
-    вместо диалога). См. lowlife/scs_settings.py — тот же паттерн.
-    """
-
-    def __init__(self, settings, all_params):
-        self._settings = settings
-        self._last_filter_text = ""
-
-        source = sorted(all_params, key=lambda p: p.lower())
-        self._view = CollectionViewSource.GetDefaultView(source)
-
-        self.win = Window()
-
-        grid = Grid()
-        grid.Margin = Thickness(14)
-        grid.RowDefinitions.Add(RowDefinition(Height=GridLength.Auto))
-        grid.RowDefinitions.Add(RowDefinition(Height=GridLength(10)))
-        grid.RowDefinitions.Add(RowDefinition(Height=GridLength.Auto))
-        grid.RowDefinitions.Add(RowDefinition(Height=GridLength(14)))
-        grid.RowDefinitions.Add(RowDefinition(Height=GridLength.Auto))
-
-        title = TextBlock()
-        title.Text = u"Настройка параметров цепей"
-        title.FontWeight = FontWeights.SemiBold
-        title.FontSize = 13
-        Grid.SetRow(title, 0)
-        grid.Children.Add(title)
-
-        row = Grid()
-        row.ColumnDefinitions.Add(ColumnDefinition(Width=GridLength(190)))
-        row.ColumnDefinitions.Add(ColumnDefinition(Width=GridLength(1, GridUnitType.Star)))
-
-        label = Label()
-        label.Content = u"Марка кабеля, провода:"
-        label.VerticalAlignment = VerticalAlignment.Center
-        label.Padding = Thickness(0, 0, 8, 0)
-        Grid.SetColumn(label, 0)
-        row.Children.Add(label)
-
-        self._combo = ComboBox()
-        self._combo.IsEditable = True
-        self._combo.IsTextSearchEnabled = False
-        self._combo.StaysOpenOnEdit = True
-        self._combo.ItemsSource = self._view
-        self._combo.Text = settings["cable_mark_parameter"]
-        self._combo.VerticalAlignment = VerticalAlignment.Center
-        self._combo.KeyUp += self._on_key_up
-        Grid.SetColumn(self._combo, 1)
-        row.Children.Add(self._combo)
-
-        Grid.SetRow(row, 2)
-        grid.Children.Add(row)
-
-        buttons = StackPanel()
-        buttons.Orientation = Orientation.Horizontal
-        buttons.HorizontalAlignment = HorizontalAlignment.Right
-
-        save_btn = Button()
-        save_btn.Content = u"Сохранить"
-        save_btn.Width = 100
-        save_btn.Margin = Thickness(0, 0, 8, 0)
-        save_btn.IsDefault = True
-        save_btn.Click += self._on_save
-        buttons.Children.Add(save_btn)
-
-        cancel_btn = Button()
-        cancel_btn.Content = u"Отмена"
-        cancel_btn.Width = 80
-        cancel_btn.IsCancel = True
-        buttons.Children.Add(cancel_btn)
-
-        Grid.SetRow(buttons, 4)
-        grid.Children.Add(buttons)
-
-        self.win.Title = u"Настройки плагина — Кабельный журнал"
-        self.win.Width = 530
-        self.win.Height = 160
-        self.win.ResizeMode = ResizeMode.NoResize
-        self.win.WindowStartupLocation = WindowStartupLocation.CenterScreen
-        self.win.Content = grid
-
-    def _on_key_up(self, sender, e):
-        if e.Key in (Key.Down, Key.Up, Key.Return, Key.Escape):
-            return
-
-        text = self._combo.Text
-        if text == self._last_filter_text:
-            return
-        self._last_filter_text = text
-
-        if text:
-            self._view.Filter = lambda item: text.lower() in item.lower()
-        else:
-            self._view.Filter = None
-
-        self._combo.Text = text
-        self._combo.IsDropDownOpen = any(True for _ in self._view)
-
-    def _on_save(self, sender, e):
-        self._settings["cable_mark_parameter"] = self._combo.Text
-        self.win.DialogResult = True
-
-    def show_dialog(self):
-        return self.win.ShowDialog()
-
-
 settings = load_settings()
 param_names = collect_circuit_param_names()
 
-window = SettingsWindow(settings, param_names)
-if window.show_dialog():
+current = settings["cable_mark_parameter"]
+options = param_names if current in param_names else [current] + param_names
+
+selected = forms.SelectFromList.show(
+    options,
+    title=u"Марка кабеля, провода",
+    button_name=u"Выбрать",
+    multiselect=False
+)
+
+if selected is None:
+    # пользователь отменил — но, возможно, нужного параметра нет в списке
+    if forms.alert(
+        u"Нужного параметра нет в списке?\n\n"
+        u"Можно ввести имя параметра вручную.",
+        yes=True, no=True
+    ):
+        typed = forms.ask_for_string(
+            default=current,
+            prompt=u"Имя параметра цепи, хранящего марку кабеля/провода:",
+            title=u"Настройки плагина — Кабельный журнал"
+        )
+        if typed:
+            settings["cable_mark_parameter"] = typed
+            save_settings(settings)
+else:
+    settings["cable_mark_parameter"] = selected
     save_settings(settings)
