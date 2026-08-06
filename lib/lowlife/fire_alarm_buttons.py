@@ -101,7 +101,12 @@ def build_loop_circuits(doc, settings):
             )
 
             if circuit is None:
-                errors.append(u"Шлейф {}: {}".format(circuit_number, error))
+                errors.append(
+                    u"Шлейф {}: {} [панель ID {}, устройств {}: {}]".format(
+                        circuit_number, error, panel_el.Id.IntegerValue, len(loop_devices),
+                        u", ".join(str(d.Id.IntegerValue) for d in loop_devices)
+                    )
+                )
                 continue
 
             set_param_any(circuit, config["circuit_number_param"], circuit_number)
