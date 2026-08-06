@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 __title__ = "Соединение\nпо линии"
-__doc__ = "Подключает все элементы в последовательную цепь."
+__doc__ = "Подключает выбранные приборы электрооборудования в последовательную цепь в порядке их расположения вдоль выбранной линии."
 __author__ = "Pipers"
 
 import clr
@@ -21,14 +21,13 @@ from pyrevit import revit, forms
 
 import System
 
-from lowlife.cable_schedule import ElectricalEquipmentSelectionFilter, get_mark
+from lowlife.connection_by_line import ElectricalEquipmentSelectionFilter, get_mark
 
 doc = revit.doc
 uidoc = revit.uidoc
 
 # BuiltInParameter без официального публичного имени в API этой версии
-# Revit (используется тем же raw-значением, что и в оригинальном
-# C#-плагине) — параметр "Имя нагрузки" электрической цепи.
+# Revit — параметр "Имя нагрузки" электрической цепи.
 _CIRCUIT_LOAD_NAME_PARAM = System.Enum.ToObject(BuiltInParameter, -1140089)
 
 
