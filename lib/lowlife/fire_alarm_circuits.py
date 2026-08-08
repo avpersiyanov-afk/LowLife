@@ -35,6 +35,11 @@ _CATEGORY_NAMES = [
     "OST_DataDevices",
     "OST_SecurityDevices",
     "OST_NurseCallDevices",
+    # Изоляторы шлейфа тоже смоделированы в этой категории — та же, что и
+    # панель. Панель и изолятор различаются по адресу (find_panels ищет
+    # одно число, обычные устройства/изоляторы — «панель.шлейф.номер»),
+    # поэтому включение категории сюда не путает их местами.
+    "OST_ElectricalEquipment",
 ]
 
 _CATEGORY_TITLES = {
@@ -44,6 +49,7 @@ _CATEGORY_TITLES = {
     "OST_DataDevices": u"Устройства передачи данных",
     "OST_SecurityDevices": u"Охранная сигнализация",
     "OST_NurseCallDevices": u"Устройства вызова и оповещения",
+    "OST_ElectricalEquipment": u"Электрооборудование (изоляторы)",
 }
 
 DEVICE_CATEGORIES = []
@@ -147,7 +153,11 @@ def find_devices(doc, config):
             parsed = parse_device_address(raw)
 
             if parsed is None:
-                if raw:
+                # Панели попадают в этот перебор тоже (та же категория,
+                # что и изоляторы), но их адрес — одно число, а не
+                # «панель.шлейф.номер»: это не ошибка, а ожидаемый вид
+                # адреса панели, поэтому в отчёт о нечитаемых не пишем.
+                if raw and parse_panel_address(raw) is None:
                     skipped.append((el, raw))
                 continue
 
