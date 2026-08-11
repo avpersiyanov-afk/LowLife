@@ -44,6 +44,31 @@ from lowlife.geometry import get_point
 |---|---|---|
 | `get_single_selection` | `get_single_selection(doc, uidoc, empty_message=..., multiple_message=...)` | Возвращает единственный выбранный элемент; если выделено 0 или >1 — показывает `forms.alert` и останавливает скрипт (`exitscript=True`) |
 
+## electrical_circuits.py
+Создание электрических цепей Revit — без привязки к дисциплине. Вынесен из
+`fire_alarm_circuits.py`, чтобы кнопки ручного построения цепей на
+`Circuits.panel` (СКС/СКУД/СПА) и цепи «изолятор-устройства» СПС
+(`fire_alarm_isolator_circuits.py`) не копировали одну и ту же логику.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `resolve_system_type` | `resolve_system_type(name)` | `ElectricalSystemType` по имени из настроек (`"FireAlarm"`, `"Data"`, ...); при опечатке — ошибка со списком доступных. Через `getattr`, т.к. набор отличается между версиями Revit |
+| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)` |
+
+## manual_circuits.py
+Тело кнопок «Цепи X» на `Circuits.panel` для дисциплин без собственной
+адресации (СКС, СКУД, заготовка СПА): пользователь сам выбирает панель и
+устройства, кнопка создаёт по отдельной цепи на каждое устройство
+(«домашний прогон»). Не зависит от дисциплины — различаются только подписи
+и тип цепи по умолчанию, передаваемые из `script.py`.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `pick_panel_and_devices` | `pick_panel_and_devices(uidoc, doc, panel_prompt, devices_prompt)` | Выбор одной панели, затем нескольких устройств (`PickObject`/`PickObjects`, отсекая связанные файлы); останавливает скрипт при отмене или пустом выборе |
+| `pick_system_type` | `pick_system_type(default_name)` | Диалог выбора `ElectricalSystemType` из доступных в текущей версии Revit, с предустановленным значением |
+| `build_device_circuits` | `build_device_circuits(doc, panel_el, device_els, system_type_name, transaction_name)` | Создаёт по цепи на каждое устройство; `(created_count, errors)` |
+| `run_manual_circuit_button` | `run_manual_circuit_button(discipline_title, default_system_type)` | Весь сценарий кнопки: выбор → создание → отчёт |
+
 ## scs.py
 Константы и логика, специфичные для СКС / телекоммуникационных трасс
 (`SCS.panel`). Сюда добавлять только то, что относится именно к этой
@@ -366,13 +391,17 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 набор `BuiltInCategory` отличается между версиями Revit, и отсутствующее
 имя иначе уронило бы модуль на импорте.
 
+`resolve_system_type`/`create_circuit` здесь больше не определены — они
+переехали в `electrical_circuits.py` (не специфичны для СПС/СОУЭ), но
+по-прежнему импортируются в этот модуль для обратной совместимости
+(`fire_alarm_buttons.py` берёт `create_circuit` отсюда же).
+
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `find_panels` | `find_panels(doc, config)` | `{номер панели: элемент}` — по рабочему набору и «Обозначению» |
 | `find_devices` | `find_devices(doc, config)` | `(devices, address_by_id, address_text_by_id, skipped)`; `skipped` — с неразбираемым адресом |
 | `existing_circuits_by_number` | `existing_circuits_by_number(doc, config)` | Уже созданные цепи по «Номеру цепи» — чтобы не пересоздавать |
-| `resolve_system_type` | `resolve_system_type(name)` | `ElectricalSystemType` по имени из настроек (`"FireAlarm"`, `"Data"`, ...); при опечатке — ошибка со списком доступных. Через `getattr`, т.к. набор отличается между версиями Revit |
-| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)`. Тип цепи — из настроек: у СПС пожарная сигнализация, у СОУЭ свой |
+| `device_category_id` | `device_category_id(el)` | `int(BuiltInCategory)` устройства, если это одна из `DEVICE_CATEGORIES`, иначе `None` — для подбора типа проводника по категории |
 | `build_loop_nodes` | `build_loop_nodes(device_els, address_by_id, isolator_keyword)` | Узлы для `build_loop_tree` из элементов Revit |
 | `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, config)` | Считает и пишет длину и способ прокладки |
 
@@ -395,6 +424,25 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 |---|---|---|
 | `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели |
 | `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах |
+
+## fire_alarm_isolator_circuits.py
+Тело кнопки «Цепи изолятор-устройства СПС» (`Circuits.panel`): в отличие
+от `build_loop_circuits` (весь шлейф целиком по адресации), состав каждой
+цепи здесь выбирается вручную — сначала устройства пожарной сигнализации
+(категория `OST_FireAlarmDevices`), затем изолятор (`OST_ElectricalEquipment`).
+
+Правила группировки: каждое устройство ручного пуска (ИПР, слово «ручной»
+в имени типа) — отдельная цепь; остальные выбранные устройства — одна
+общая цепь. Если так получается больше `MAX_CIRCUITS_PER_ISOLATOR` (2)
+цепей — жёсткий лимит: ничего не создаётся, кнопка показывает
+предупреждение.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `pick_devices_and_isolator` | `pick_devices_and_isolator(uidoc, doc)` | Выбор с фильтром по категории: устройства (`PickObjects`), затем один изолятор (`PickObject`); останавливает скрипт при отмене или пустом выборе |
+| `is_manual_device` | `is_manual_device(el)` | Устройство ручного пуска — по слову «ручной» в имени семейства/типа |
+| `split_manual_devices` | `split_manual_devices(device_els)` | `(ручные, остальные)` |
+| `build_isolator_device_circuits` | `build_isolator_device_circuits(doc, device_els, isolator_el, settings)` | Строит цепи по правилам группировки, проставляет «Панель», «Имя нагрузки», «Проводник»; `(created_circuits, error_message)` |
 
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).

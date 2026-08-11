@@ -7,7 +7,11 @@ disk under LowLife.tab (without the .panel/.pushbutton suffix), which is
 what pyRevit uses as the internal component name (see
 GenericUIComponent.name in pyrevit/extensions/genericcomps.py). Button
 __title__ text is not used for lookup because it is not guaranteed unique
-across panels (SOUE and SPS both have buttons titled "Цепи шлейфов").
+across panels (e.g. every discipline has its own SetupParameters button).
+
+Circuits.panel hosts buttons from several disciplines (СКС/СКУД/СПС/СПА) —
+each button belongs to its own discipline's theme, same as any other panel;
+Circuits.panel itself just aggregates them so "Цепи X" is one place to look.
 
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
@@ -18,6 +22,7 @@ THEMES = {
         (u"SCS", u"PlaceRouteNodes"),
         (u"SCS", u"RenumberAddresses"),
         (u"SCS", u"SyncCircuitsAndLengths"),
+        (u"Circuits", u"BuildCircuitsSCS"),
     ],
     u"ACS": [
         (u"SKUD", u"PlaceSkudRouteNodes"),
@@ -26,15 +31,20 @@ THEMES = {
         (u"SKUD", u"CalcSkudLengths"),
         (u"SKUD", u"BuildSkudSchematic"),
         (u"SKUD", u"InspectSchematicDevices"),
+        (u"Circuits", u"BuildCircuitsSKUD"),
     ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
         (u"SOUE", u"CalcLoopLengths"),
     ],
     u"FAD": [
-        (u"SPS", u"BuildLoopCircuits"),
+        (u"Circuits", u"BuildLoopCircuitsSPS"),
         (u"SPS", u"CalcLoopLengths"),
         (u"SPS", u"InspectConnectors"),
+        (u"Circuits", u"BuildIsolatorCircuitsSPS"),
+    ],
+    u"SPA": [
+        (u"Circuits", u"BuildCircuitsSPA"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
@@ -54,7 +64,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"Settings", u"General"]
+THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"Settings", u"General"]
 
 
 def _find_panel(pyrevit_tabs, panel_name):
