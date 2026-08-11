@@ -46,8 +46,8 @@ from lowlife.geometry import get_point
 
 ## electrical_circuits.py
 Создание электрических цепей Revit — без привязки к дисциплине. Вынесен из
-`fire_alarm_circuits.py`, чтобы кнопки ручного построения цепей на
-`Circuits.panel` (СКС/СКУД/СПА) и цепи «изолятор-устройства» СПС
+`fire_alarm_circuits.py`, чтобы кнопки ручного построения цепей на панелях
+CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устройства» СПС
 (`fire_alarm_isolator_circuits.py`) не копировали одну и ту же логику.
 
 | Функция | Сигнатура | Что делает |
@@ -56,8 +56,8 @@ from lowlife.geometry import get_point
 | `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)` |
 
 ## manual_circuits.py
-Тело кнопок «Цепи X» на `Circuits.panel` для дисциплин без собственной
-адресации (СКС, СКУД, заготовка СПА): пользователь сам выбирает панель и
+Тело кнопок «Цепи X» на панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA — для
+дисциплин без собственной адресации (СКС, СКУД, заготовка СПА): пользователь сам выбирает панель и
 устройства, кнопка создаёт по отдельной цепи на каждое устройство
 («домашний прогон»). Не зависит от дисциплины — различаются только подписи
 и тип цепи по умолчанию, передаваемые из `script.py`.
@@ -426,7 +426,7 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах |
 
 ## fire_alarm_isolator_circuits.py
-Тело кнопки «Цепи изолятор-устройства СПС» (`Circuits.panel`): в отличие
+Тело кнопки «Цепи изолятор-устройства СПС» (`CircuitsSPS.panel`): в отличие
 от `build_loop_circuits` (весь шлейф целиком по адресации), состав каждой
 цепи здесь выбирается вручную — сначала устройства пожарной сигнализации
 (категория `OST_FireAlarmDevices`), затем изолятор (`OST_ElectricalEquipment`).

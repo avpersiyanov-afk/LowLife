@@ -9,9 +9,12 @@ GenericUIComponent.name in pyrevit/extensions/genericcomps.py). Button
 __title__ text is not used for lookup because it is not guaranteed unique
 across panels (e.g. every discipline has its own SetupParameters button).
 
-Circuits.panel hosts buttons from several disciplines (СКС/СКУД/СПС/СПА) —
-each button belongs to its own discipline's theme, same as any other panel;
-Circuits.panel itself just aggregates them so "Цепи X" is one place to look.
+Circuit-building buttons for each discipline live on their own dedicated
+panel (CircuitsSCS.panel "Цепи СКС", CircuitsSKUD.panel "Цепи СКУД",
+CircuitsSPS.panel "Цепи СПС", CircuitsSPA.panel "Цепи СПА"), separate from
+that discipline's main panel (SCS.panel, SKUD.panel, SPS.panel) — each
+belongs to its own discipline's theme like any other panel, so it shows/
+hides together with the rest of that discipline's buttons.
 
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
@@ -22,7 +25,7 @@ THEMES = {
         (u"SCS", u"PlaceRouteNodes"),
         (u"SCS", u"RenumberAddresses"),
         (u"SCS", u"SyncCircuitsAndLengths"),
-        (u"Circuits", u"BuildCircuitsSCS"),
+        (u"CircuitsSCS", u"BuildCircuitsSCS"),
     ],
     u"ACS": [
         (u"SKUD", u"PlaceSkudRouteNodes"),
@@ -31,20 +34,20 @@ THEMES = {
         (u"SKUD", u"CalcSkudLengths"),
         (u"SKUD", u"BuildSkudSchematic"),
         (u"SKUD", u"InspectSchematicDevices"),
-        (u"Circuits", u"BuildCircuitsSKUD"),
+        (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
     ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
         (u"SOUE", u"CalcLoopLengths"),
     ],
     u"FAD": [
-        (u"Circuits", u"BuildLoopCircuitsSPS"),
+        (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"SPS", u"CalcLoopLengths"),
         (u"SPS", u"InspectConnectors"),
-        (u"Circuits", u"BuildIsolatorCircuitsSPS"),
+        (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
     ],
     u"SPA": [
-        (u"Circuits", u"BuildCircuitsSPA"),
+        (u"CircuitsSPA", u"BuildCircuitsSPA"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
