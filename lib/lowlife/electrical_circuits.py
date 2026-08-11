@@ -70,20 +70,23 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     # выглядит замкнутой ("кольцевой": панель одновременно и источник, и
     # потребитель).
     system, create_error = _try_create(doc, device_ids, system_type, system_type_name)
+    panel_forced_into_elements = False
 
     if system is None:
         # Некоторые семейства панелей (например СПС) не могут "создать"
         # цепь заданного типа сами по себе — Revit падает с electComponents,
         # если среди переданных элементов нет ни одного способного её
-        # создать. Тогда как запасной вариант пробуем ещё раз, включив
-        # панель в список: цепь получится с тем же дефектом (панель как
-        # элемент цепи), но это лучше, чем вообще не создать цепь.
+        # создать (обычно значит, что у устройств этой категории нет
+        # коннектора нужного домена/классификации — см. кнопку
+        # «Диагностика коннекторов»/InspectConnectors). Как запасной
+        # вариант пробуем ещё раз, включив панель в список.
         with_panel_ids = List[ElementId]()
         with_panel_ids.Add(panel_el.Id)
         for el in device_els:
             with_panel_ids.Add(el.Id)
 
         system, create_error = _try_create(doc, with_panel_ids, system_type, system_type_name)
+        panel_forced_into_elements = system is not None
 
     if system is None:
         return None, create_error
@@ -92,5 +95,20 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
         system.SelectPanel(panel_el)
     except Exception as ex:
         return system, u"цепь создана, но не подключена к панели: {}".format(ex)
+
+    if panel_forced_into_elements:
+        # Панель по-прежнему числится элементом цепи (см. комментарий выше)
+        # — теперь, когда она назначена источником через SelectPanel,
+        # пробуем убрать её из состава элементов, чтобы цепь не выглядела
+        # замкнутой. Если Revit это не позволяет (метод недоступен для
+        # ElectricalSystem в этой версии/случае) — не критично: цепь всё
+        # равно создана и подключена к панели правильно, просто панель
+        # останется видна как элемент цепи в спецификации.
+        try:
+            remove_ids = List[ElementId]()
+            remove_ids.Add(panel_el.Id)
+            system.Remove(remove_ids)
+        except:
+            pass
 
     return system, None
