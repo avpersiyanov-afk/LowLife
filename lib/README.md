@@ -53,7 +53,7 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `resolve_system_type` | `resolve_system_type(name)` | `ElectricalSystemType` по имени из настроек (`"FireAlarm"`, `"Data"`, ...); при опечатке — ошибка со списком доступных. Через `getattr`, т.к. набор отличается между версиями Revit |
-| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)` |
+| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create(device_els)` + `SelectPanel(panel_el)`; панель НЕ передаётся в список элементов цепи (иначе цепь выглядит "кольцевой" — панель одновременно источник и нагрузка), только как запасной вариант, если создание без неё падает с `electComponents`. `(цепь, текст ошибки)` |
 
 ## manual_circuits.py
 Тело кнопок «Цепи X» на панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA:

@@ -35,6 +35,18 @@ def resolve_system_type(name):
     return system_type, None
 
 
+def _try_create(doc, ids, system_type, system_type_name):
+    try:
+        system = ElectricalSystem.Create(doc, ids, system_type)
+    except Exception as ex:
+        return None, u"не удалось создать цепь типа «{}»: {}".format(system_type_name, ex)
+
+    if system is None:
+        return None, u"Revit не создал цепь"
+
+    return system, None
+
+
 def create_circuit(doc, panel_el, device_els, system_type_name):
     """
     Создаёт электрическую цепь из устройств и подключает её к панели.
@@ -47,22 +59,34 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     if system_type is None:
         return None, error
 
-    # Revit требует, чтобы среди переданных элементов был хотя бы один,
-    # способный "создать" цепь заданного типа — это панель, а не нагрузки:
-    # без неё ElectricalSystem.Create падает с electComponents, даже если
-    # панель потом отдельно назначается через SelectPanel.
-    ids = List[ElementId]()
-    ids.Add(panel_el.Id)
+    device_ids = List[ElementId]()
     for el in device_els:
-        ids.Add(el.Id)
+        device_ids.Add(el.Id)
 
-    try:
-        system = ElectricalSystem.Create(doc, ids, system_type)
-    except Exception as ex:
-        return None, u"не удалось создать цепь типа «{}»: {}".format(system_type_name, ex)
+    # Панель НЕ передаём в список элементов цепи — только устройства,
+    # панель назначается отдельно через SelectPanel ниже. Иначе панель
+    # становится ещё и "элементом" (нагрузкой) собственной цепи, а не
+    # только источником — из-за этого цепь на плане/в спецификации
+    # выглядит замкнутой ("кольцевой": панель одновременно и источник, и
+    # потребитель).
+    system, create_error = _try_create(doc, device_ids, system_type, system_type_name)
 
     if system is None:
-        return None, u"Revit не создал цепь"
+        # Некоторые семейства панелей (например СПС) не могут "создать"
+        # цепь заданного типа сами по себе — Revit падает с electComponents,
+        # если среди переданных элементов нет ни одного способного её
+        # создать. Тогда как запасной вариант пробуем ещё раз, включив
+        # панель в список: цепь получится с тем же дефектом (панель как
+        # элемент цепи), но это лучше, чем вообще не создать цепь.
+        with_panel_ids = List[ElementId]()
+        with_panel_ids.Add(panel_el.Id)
+        for el in device_els:
+            with_panel_ids.Add(el.Id)
+
+        system, create_error = _try_create(doc, with_panel_ids, system_type, system_type_name)
+
+    if system is None:
+        return None, create_error
 
     try:
         system.SelectPanel(panel_el)
