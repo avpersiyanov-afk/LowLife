@@ -2,29 +2,26 @@
 __title__ = "Цепи\nСКС"
 __doc__ = (
     "Строит электрические цепи СКС между панелью и устройствами. Нажмите "
-    "кнопку, выберите тип проводника (кабеля) из справочника — он "
-    "проставится в параметр «Проводник» всех созданных цепей, — затем "
-    "выберите панель, затем выберите все устройства. На каждое устройство "
-    "создаётся отдельная электрическая цепь типа Data, подключённая "
-    "напрямую к панели («домашний прогон», без промежуточных узлов и "
-    "адресации). Тип цепи всегда Data — у СКС других не бывает."
+    "кнопку, выберите проводник (кабель) из списка — он проставится в "
+    "параметр «Проводник» всех созданных цепей, — затем выберите панель, "
+    "затем выберите все устройства. На каждое устройство создаётся "
+    "отдельная электрическая цепь типа Data, подключённая напрямую к "
+    "панели («домашний прогон», без промежуточных узлов и адресации). Тип "
+    "цепи всегда Data — у СКС других не бывает. Список проводников — это "
+    "варианты, уже выбранные хотя бы в одной цепи проекта (Revit не даёт "
+    "получить список строк справочника кабелей напрямую)."
 )
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script as pyrevit_script
 
-from lowlife import scs_settings
 from lowlife.manual_circuits import pick_panel_and_devices
-from lowlife.scs_manual_circuits import pick_wire_type, build_scs_manual_circuits
+from lowlife.scs_manual_circuits import pick_conductor, build_scs_manual_circuits
 
 doc = revit.doc
 uidoc = revit.uidoc
 
-settings = scs_settings.get_settings_silent()
-
-scs_settings.require(settings, ["cable_type_param", "wire_catalog_marker_param"])
-
-wire_type_el = pick_wire_type(doc, settings["wire_catalog_marker_param"])
+conductor_id = pick_conductor(doc)
 
 panel_el, device_els = pick_panel_and_devices(
     uidoc, doc,
@@ -32,9 +29,7 @@ panel_el, device_els = pick_panel_and_devices(
     u"Выберите устройства СКС (подтвердите Enter)"
 )
 
-created, errors = build_scs_manual_circuits(
-    doc, panel_el, device_els, wire_type_el, settings["cable_type_param"]
-)
+created, errors = build_scs_manual_circuits(doc, panel_el, device_els, conductor_id)
 
 if errors:
     output = pyrevit_script.get_output()

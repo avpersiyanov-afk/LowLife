@@ -75,15 +75,18 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 ## scs_manual_circuits.py
 Тело кнопки «Цепи СКС» (`CircuitsSCS.panel`): панель -> устройства, тип
 цепи всегда `Data` (у СКС других не бывает — не запрашивается в диалоге,
-в отличие от СКУД/СПА). Перед выбором панели/устройств кнопка просит
-выбрать тип проводника (кабеля) из справочника
-(`scs_settings.list_wire_catalog_items`) — он проставляется в параметр
-цепи «Проводник» на каждую созданную цепь.
+в отличие от СКУД/СПА). Параметр «Проводник» (встроенный параметр
+электрической цепи Revit, ссылка на строку ключевой спецификации) — имя
+`CONDUCTOR_PARAM_NAME = u"Проводник"` зашито в код, а не в настройки СКС:
+это не project-specific SMNX_-параметр. Revit не даёт получить список
+строк справочника напрямую, поэтому список для выбора — значения,
+**уже проставленные хотя бы у одной электрической цепи документа**.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `pick_wire_type` | `pick_wire_type(doc, marker_param_name)` | Диалог выбора типа проводника из справочника кабелей; останавливает скрипт, если справочник пуст или выбор отменён |
-| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, wire_type_el, cable_type_param)` | Создаёт по цепи типа Data на каждое устройство и проставляет «Проводник»; `(created_count, errors)` |
+| `list_used_conductors` | `list_used_conductors(doc)` | `{имя элемента-проводника: ElementId}` — по параметру «Проводник» уже существующих `ElectricalSystem` |
+| `pick_conductor` | `pick_conductor(doc)` | Диалог выбора из `list_used_conductors`; останавливает скрипт, если список пуст (ни у одной цепи проводник ещё не выбран) или выбор отменён |
+| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id)` | Создаёт по цепи типа Data на каждое устройство и проставляет «Проводник»; `(created_count, errors)` |
 
 ## scs.py
 Константы и логика, специфичные для СКС / телекоммуникационных трасс
@@ -136,10 +139,8 @@ RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
 `scs.py` намеренно пустые. Требования к семействам/параметрам — см.
 `docs/scs-panel.md`.
 
-Этот же файл настроек читает и кнопка «Цепи СКС» на `CircuitsSCS.panel`
-(два поля раздела `[Ручные цепи]` — `cable_type_param`,
-`wire_catalog_marker_param`), хотя физически она на другой панели —
-дисциплина СКС всё равно одна и настройки общие.
+Кнопка «Цепи СКС» на `CircuitsSCS.panel` эти настройки НЕ использует — у
+неё нет своих project-specific параметров, см. `scs_manual_circuits.py`.
 
 **Форму (`get_settings_interactive`) показывает только кнопка
 «Параметры СКС» (SetupParameters)** — она единственное место, где
