@@ -12,9 +12,12 @@ across panels (e.g. every discipline has its own SetupParameters button).
 Circuit-building buttons for each discipline live on their own dedicated
 panel (CircuitsSCS.panel "Цепи СКС", CircuitsSKUD.panel "Цепи СКУД",
 CircuitsSPS.panel "Цепи СПС", CircuitsSPA.panel "Цепи СПА"), separate from
-that discipline's main panel (SCS.panel, SKUD.panel, SPS.panel) — each
-belongs to its own discipline's theme like any other panel, so it shows/
-hides together with the rest of that discipline's buttons.
+that discipline's main panel (SCS.panel, SKUD.panel, SPS.panel). Each of
+these buttons is listed under BOTH its own discipline's theme AND the
+cross-discipline "Circuits" theme ("Электрические цепи" in the ComboBox) —
+so picking a discipline theme shows that discipline's circuit button among
+its other tools, while picking "Электрические цепи" shows all of them
+together regardless of discipline.
 
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
@@ -49,6 +52,13 @@ THEMES = {
     u"SPA": [
         (u"CircuitsSPA", u"BuildCircuitsSPA"),
     ],
+    u"Circuits": [
+        (u"CircuitsSCS", u"BuildCircuitsSCS"),
+        (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
+        (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
+        (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
+        (u"CircuitsSPA", u"BuildCircuitsSPA"),
+    ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
         (u"SKUD", u"SetupParameters"),
@@ -67,7 +77,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"Settings", u"General"]
+THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"Circuits", u"Settings", u"General"]
 
 
 def _find_panel(pyrevit_tabs, panel_name):
@@ -81,6 +91,15 @@ def _find_panel(pyrevit_tabs, panel_name):
 def apply_theme(selected_theme):
     """Show only the buttons belonging to selected_theme; hide the rest.
 
+    A button can be listed under more than one theme (e.g. every
+    CircuitsSCS/SKUD/SPS/SPA button is listed both under its own
+    discipline's theme and under the cross-discipline "Circuits" theme).
+    Visibility is computed as a union across all entries a button appears
+    in — set True if ANY of its entries matches selected_theme — rather
+    than overwritten per entry, because plain dict iteration order isn't
+    guaranteed and a naive "last entry processed wins" would make such a
+    button's final state depend on that order.
+
     Panels that end up with no visible button (e.g. SKUD.panel when the
     General theme is selected) are hidden too, so no empty panel frame
     is left on the ribbon.
@@ -89,20 +108,20 @@ def apply_theme(selected_theme):
 
     pyrevit_tabs = get_current_ui().get_pyrevit_tabs()
 
-    touched_panel_names = set()
-    for button_refs in THEMES.values():
-        for panel_name, _ in button_refs:
-            touched_panel_names.add(panel_name)
-
+    visibility = {}
     for theme_name, button_refs in THEMES.items():
-        visible = theme_name == selected_theme
-        for panel_name, button_name in button_refs:
-            panel = _find_panel(pyrevit_tabs, panel_name)
-            if panel is None:
-                continue
-            button = panel.find_child(button_name)
-            if button is not None:
-                button.visible = visible
+        for ref in button_refs:
+            visibility[ref] = visibility.get(ref, False) or (theme_name == selected_theme)
+
+    touched_panel_names = set(panel_name for panel_name, _ in visibility)
+
+    for (panel_name, button_name), visible in visibility.items():
+        panel = _find_panel(pyrevit_tabs, panel_name)
+        if panel is None:
+            continue
+        button = panel.find_child(button_name)
+        if button is not None:
+            button.visible = visible
 
     for panel_name in touched_panel_names:
         panel = _find_panel(pyrevit_tabs, panel_name)
