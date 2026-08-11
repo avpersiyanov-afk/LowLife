@@ -4,89 +4,13 @@ __title__ = "Длина\nлиний"
 __doc__ = "Сумма длин выбранных обобщённых моделей по типам"
 __author__ = "Pipers"
 
-from pyrevit import revit, DB
-
-from System.Windows import Window, WindowStyle, WindowStartupLocation, SizeToContent, Thickness
-from System.Windows.Controls import StackPanel, TextBlock, Border
-from System.Windows.Media import Brushes
-from System.Windows import CornerRadius
-from System.Windows import FontWeights
-
+from pyrevit import revit, DB, script as pyrevit_script
 
 doc = revit.doc
 selection = revit.get_selection()
+output = pyrevit_script.get_output()
 
 generic_cat_id = DB.ElementId(DB.BuiltInCategory.OST_GenericModel)
-
-
-def show_result_window(text):
-    """
-    Окно без крестика.
-    Закрывается кликом мыши по окну.
-    С видимой рамкой и округлыми краями.
-    """
-
-    if not text:
-        text = "Нет данных для вывода."
-
-    win = Window()
-    win.Title = "Результат"
-    win.WindowStyle = getattr(WindowStyle, "None")
-    win.SizeToContent = SizeToContent.WidthAndHeight
-    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
-    win.Topmost = True
-    win.MinWidth = 300
-    win.MaxWidth = 650
-
-    # Важно для округлых краёв
-    win.AllowsTransparency = True
-    win.Background = Brushes.Transparent
-
-    border = Border()
-    border.Background = Brushes.White
-
-    # Более заметная рамка
-    border.BorderBrush = Brushes.Black
-    border.BorderThickness = Thickness(2)
-
-    # Округление углов
-    border.CornerRadius = CornerRadius(10)
-
-    border.Padding = Thickness(20)
-
-    panel = StackPanel()
-
-    title = TextBlock()
-    title.Text = "Длина по типам"
-    title.FontSize = 16
-    title.FontWeight = FontWeights.Bold
-    title.Foreground = Brushes.Black
-    title.Margin = Thickness(0, 0, 0, 12)
-
-    body = TextBlock()
-    body.Text = text
-    body.FontSize = 14
-    body.Foreground = Brushes.Black
-    body.Margin = Thickness(0, 0, 0, 10)
-
-    hint = TextBlock()
-    hint.Text = "Кликните мышью, чтобы закрыть"
-    hint.FontSize = 11
-    hint.Foreground = Brushes.Gray
-
-    panel.Children.Add(title)
-    panel.Children.Add(body)
-    panel.Children.Add(hint)
-
-    border.Child = panel
-    win.Content = border
-
-    def close_window(sender, args):
-        win.Close()
-
-    win.MouseLeftButtonDown += close_window
-
-    win.ShowDialog()
 
 
 def get_type_name(el):
@@ -145,7 +69,7 @@ except:
 
 
 if not selected:
-    show_result_window("Сначала выберите обобщённые модели.")
+    output.print_md(u"Сначала выберите обобщённые модели.")
 else:
     totals = {}
 
@@ -165,21 +89,17 @@ else:
         totals[type_name] += length_ft
 
     if not totals:
-        show_result_window("Среди выбранных элементов нет обобщённых моделей.")
+        output.print_md(u"Среди выбранных элементов нет обобщённых моделей.")
     else:
         total_ft = 0.0
-        lines = []
+
+        output.print_md(u"### Длина по типам")
 
         for type_name in sorted(totals.keys()):
             length_ft = totals[type_name]
             total_ft += length_ft
 
             length_m = length_ft * 0.3048
-            lines.append("{} - {:.2f} м".format(type_name, length_m))
+            output.print_md(u"- {} — {:.2f} м".format(type_name, length_m))
 
-        lines.append("")
-        lines.append("Общая длина - {:.2f} м".format(total_ft * 0.3048))
-
-        result_text = "\n".join(lines)
-
-        show_result_window(result_text)
+        output.print_md(u"**Общая длина — {:.2f} м**".format(total_ft * 0.3048))

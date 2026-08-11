@@ -25,6 +25,7 @@ THEMES = {
         (u"SKUD", u"AssignCircuitsAndCables"),
         (u"SKUD", u"CalcSkudLengths"),
         (u"SKUD", u"BuildSkudSchematic"),
+        (u"SKUD", u"InspectSchematicDevices"),
     ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
@@ -33,6 +34,7 @@ THEMES = {
     u"FAD": [
         (u"SPS", u"BuildLoopCircuits"),
         (u"SPS", u"CalcLoopLengths"),
+        (u"SPS", u"InspectConnectors"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),

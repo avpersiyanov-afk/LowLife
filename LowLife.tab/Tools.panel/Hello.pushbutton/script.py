@@ -5,5 +5,4 @@ __author__ = "Pipers"
 
 from pyrevit import forms
 
-forms.alert("Корпоративный инструмент кажется пока работает! 🎉",
-            title="LowLifeWife")
+forms.alert("Расширение LowLife работает.", title="LowLife")
