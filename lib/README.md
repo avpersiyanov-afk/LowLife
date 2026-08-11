@@ -56,11 +56,14 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 | `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create` + `SelectPanel`; `(цепь, текст ошибки)` |
 
 ## manual_circuits.py
-Тело кнопок «Цепи X» на панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA — для
-дисциплин без собственной адресации (СКС, СКУД, заготовка СПА): пользователь сам выбирает панель и
-устройства, кнопка создаёт по отдельной цепи на каждое устройство
-(«домашний прогон»). Не зависит от дисциплины — различаются только подписи
-и тип цепи по умолчанию, передаваемые из `script.py`.
+Тело кнопок «Цепи X» на панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA:
+пользователь сам выбирает панель и устройства, кнопка создаёт по
+отдельной цепи на каждое устройство («домашний прогон»). Используется
+целиком (`run_manual_circuit_button`) кнопками СКУД/СПА — различаются
+только подписи и тип цепи по умолчанию, передаваемые из `script.py`. СКС —
+особый случай (см. `scs_manual_circuits.py`): её кнопка берёт отсюда
+только `pick_panel_and_devices`, т.к. тип цепи у неё фиксирован и
+добавлен выбор проводника.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -68,6 +71,19 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 | `pick_system_type` | `pick_system_type(default_name)` | Диалог выбора `ElectricalSystemType` из доступных в текущей версии Revit, с предустановленным значением |
 | `build_device_circuits` | `build_device_circuits(doc, panel_el, device_els, system_type_name, transaction_name)` | Создаёт по цепи на каждое устройство; `(created_count, errors)` |
 | `run_manual_circuit_button` | `run_manual_circuit_button(discipline_title, default_system_type)` | Весь сценарий кнопки: выбор → создание → отчёт |
+
+## scs_manual_circuits.py
+Тело кнопки «Цепи СКС» (`CircuitsSCS.panel`): панель -> устройства, тип
+цепи всегда `Data` (у СКС других не бывает — не запрашивается в диалоге,
+в отличие от СКУД/СПА). Перед выбором панели/устройств кнопка просит
+выбрать тип проводника (кабеля) из справочника
+(`scs_settings.list_wire_catalog_items`) — он проставляется в параметр
+цепи «Проводник» на каждую созданную цепь.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `pick_wire_type` | `pick_wire_type(doc, marker_param_name)` | Диалог выбора типа проводника из справочника кабелей; останавливает скрипт, если справочник пуст или выбор отменён |
+| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, wire_type_el, cable_type_param)` | Создаёт по цепи типа Data на каждое устройство и проставляет «Проводник»; `(created_count, errors)` |
 
 ## scs.py
 Константы и логика, специфичные для СКС / телекоммуникационных трасс
@@ -119,6 +135,11 @@ RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
 имена параметров и семейств зависят от проекта пользователя, дефолты в
 `scs.py` намеренно пустые. Требования к семействам/параметрам — см.
 `docs/scs-panel.md`.
+
+Этот же файл настроек читает и кнопка «Цепи СКС» на `CircuitsSCS.panel`
+(два поля раздела `[Ручные цепи]` — `cable_type_param`,
+`wire_catalog_marker_param`), хотя физически она на другой панели —
+дисциплина СКС всё равно одна и настройки общие.
 
 **Форму (`get_settings_interactive`) показывает только кнопка
 «Параметры СКС» (SetupParameters)** — она единственное место, где
