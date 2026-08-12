@@ -12,10 +12,8 @@ from pyrevit import revit, forms, script as pyrevit_script
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, get_type_string_param, set_param_any, set_element_id_param
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
-from lowlife.fire_alarm import make_full_mark, group_devices_by_loop
-from lowlife.fire_alarm_loops import (
-    build_loop_tree, build_route_text, previous_address_by_id, split_branch_devices
-)
+from lowlife.fire_alarm import make_full_mark, group_devices_by_loop, is_isolator
+from lowlife.fire_alarm_loops import build_loop_tree, build_route_text, previous_address_by_id
 from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
     build_loop_nodes, write_loop_length, device_category_id, circuit_membership_map
@@ -57,11 +55,24 @@ def _collect(doc, config):
 def build_loop_circuits(doc, settings):
     """
     Создаёт по одной электрической цепи на каждый шлейф и подключает её к
-    своей панели. Устройства на ветках изоляторов (см.
-    fire_alarm_loops.split_branch_devices) в магистральную цепь не
-    включаются — электрически они "за" изолятором, а не на магистрали;
-    для их подключения отдельно есть кнопка «Цепи изолятор-устройства».
-    Уже созданные цепи (по «Номеру цепи») не трогает.
+    своей панели. Устройства, уже подключённые к изолятору отдельной
+    цепью (кнопка «Цепи изолятор-устройства»), в магистральную цепь не
+    включаются — они электрически "за" изолятором. Уже созданные цепи
+    (по «Номеру цепи») не трогает.
+
+    Раньше состав "магистраль vs ветка" определялся геометрической
+    догадкой (ближайший сосед по расстоянию, fire_alarm_loops.
+    build_loop_tree/split_branch_devices) — она ошибалась в обе стороны:
+    то оставляла в магистрали устройства, которые на самом деле уже
+    подключены к изолятору отдельной цепью (ловили electComponents), то
+    наоборот исключала из магистрали обычные устройства без адреса на
+    изоляторе, которые ошибочно оказывались "ближе" к изолятору чисто по
+    координатам. Единственный надёжный источник истины — это то, что
+    Revit уже знает сам: реальное членство устройства в существующей
+    электрической цепи. Поэтому исключение теперь только одно —
+    устройство, уже состоящее в какой-либо цепи документа (см.
+    fire_alarm_circuits.circuit_membership_map); всё остальное из шлейфа
+    (включая изоляторы) идёт в магистраль.
     """
     config = _config_from(settings)
 
@@ -82,7 +93,6 @@ def build_loop_circuits(doc, settings):
     already = 0
     errors = []
     no_panel = []
-    branch_excluded_total = 0
     already_circuited_total = 0
 
     output = pyrevit_script.get_output()
@@ -90,7 +100,7 @@ def build_loop_circuits(doc, settings):
     output.print_md(
         u"Ключевое слово изолятора: «{}»{}".format(
             isolator_keyword or u"",
-            u" — **ПУСТО, is_isolator() всегда вернёт False, ветки не определятся!**"
+            u" — **ПУСТО, is_isolator() всегда вернёт False!**"
             if not isolator_keyword else u""
         )
     )
@@ -115,70 +125,41 @@ def build_loop_circuits(doc, settings):
                 already += 1
                 continue
 
-            # Магистраль vs ветки изоляторов — та же топология, что и в
-            # calc_loop_lengths, но здесь используется ДО создания цепи,
-            # а не только для расчёта длины.
-            nodes = build_loop_nodes(loop_devices, address_by_id, isolator_keyword)
-            panel_point = get_point(panel_el)
-            ordered_nodes = build_loop_tree(nodes, panel_point)
-            trunk_nodes, branch_nodes = split_branch_devices(ordered_nodes)
-            branch_excluded_total += len(branch_nodes)
+            isolator_count = sum(1 for el in loop_devices if is_isolator(el, isolator_keyword))
 
-            trunk_devices = [n["element"] for n in trunk_nodes]
-
-            isolator_count = sum(1 for n in nodes if n["is_isolator"])
-            output.print_md(
-                u"Шлейф {}: всего {}, с точкой {}, изоляторов {}, магистраль {}, ветки {}".format(
-                    circuit_number, len(loop_devices), len(nodes), isolator_count,
-                    len(trunk_nodes), len(branch_nodes)
-                )
-            )
-
-            if not trunk_devices:
-                no_panel.append(
-                    u"Шлейф {}: все устройства оказались на ветках изоляторов — "
-                    u"магистральная цепь не создана (используйте «Цепи "
-                    u"изолятор-устройства» для веток).".format(circuit_number)
-                )
-                continue
-
-            # Устройство, уже состоящее в ЛЮБОЙ электрической цепи (не
-            # обязательно этой дисциплины) — как правило, это устройство
-            # на ветке изолятора, которое геометрическая эвристика
-            # build_loop_tree не распознала как ветку (расстояние до
-            # "предыдущего по адресу" оказалось меньше, чем до изолятора),
-            # но оно уже подключено отдельной цепью через «Цепи
-            # изолятор-устройства». Существующие цепи документа — более
-            # надёжный источник истины, чем геометрия: исключаем такие
-            # устройства из магистрали (Revit всё равно не дал бы добавить
-            # их ещё в одну цепь — та же ошибка electComponents, без
-            # внятного текста о причине), а не блокируем весь шлейф.
+            # Единственное исключение из магистрали: устройство уже
+            # состоит в какой-либо электрической цепи документа (обычно —
+            # подключено к своему изолятору через «Цепи
+            # изолятор-устройства»). Revit не даёт добавить такой элемент
+            # ещё в одну цепь — без этой проверки та же ошибка
+            # electComponents, без внятного текста о причине.
             already_in_circuit = [
                 (el, membership[el.Id.IntegerValue])
-                for el in trunk_devices
+                for el in loop_devices
                 if el.Id.IntegerValue in membership
             ]
+            already_ids = set(el.Id.IntegerValue for el, _ in already_in_circuit)
+            trunk_devices = [el for el in loop_devices if el.Id.IntegerValue not in already_ids]
+
+            output.print_md(
+                u"Шлейф {}: всего {}, изоляторов {}, в магистрали {}, уже в другой цепи {}".format(
+                    circuit_number, len(loop_devices), isolator_count,
+                    len(trunk_devices), len(already_in_circuit)
+                )
+            )
             if already_in_circuit:
                 already_circuited_total += len(already_in_circuit)
-                output.print_md(
-                    u"Шлейф {}: {} устройств магистрали уже в другой цепи — исключены:".format(
-                        circuit_number, len(already_in_circuit)
-                    )
-                )
                 for el, (existing_number, circ_id) in already_in_circuit:
                     output.print_md(
                         u"- ID {} уже в цепи ID {} (Номер цепи «{}»)".format(
                             el.Id.IntegerValue, circ_id, existing_number or u"—"
                         )
                     )
-                already_ids = set(el.Id.IntegerValue for el, _ in already_in_circuit)
-                trunk_devices = [el for el in trunk_devices if el.Id.IntegerValue not in already_ids]
 
             if not trunk_devices:
                 no_panel.append(
-                    u"Шлейф {}: все устройства магистрали оказались либо на ветках "
-                    u"изоляторов, либо уже состоят в других цепях — цепь не "
-                    u"создана.".format(circuit_number)
+                    u"Шлейф {}: все устройства уже состоят в других цепях — "
+                    u"магистральная цепь не создана.".format(circuit_number)
                 )
                 continue
 
@@ -245,12 +226,11 @@ def build_loop_circuits(doc, settings):
         u"Ошибок создания: {}\n"
         u"Шлейфов без панели: {}\n"
         u"Устройств с нечитаемым адресом: {}\n"
-        u"Устройств на ветках изоляторов (исключены из магистральной цепи): {}\n"
         u"Устройств, уже состоявших в другой цепи (исключены из магистральной цепи): {}\n\n"
         u"{}".format(
             len(panels), len(devices), len(loops),
             created, already, len(errors), len(no_panel), len(skipped),
-            branch_excluded_total, already_circuited_total,
+            already_circuited_total,
             u"Подробности — в окне вывода pyRevit." if (skipped or no_panel or errors) else u""
         )
     )
