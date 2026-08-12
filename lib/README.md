@@ -405,6 +405,7 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 | `calc_loop_length_ft` | `calc_loop_length_ft(ordered_nodes, panel_point=None)` | Длина по дереву: каждое ребро один раз, ветви назад не возвращаются |
 | `build_route_text` | `build_route_text(ordered_nodes, address_text_by_id)` | `"3.1.1 -> 3.1.2; 3.1.2 -> 3.1.5"` — вторая пара показывает ветвь |
 | `previous_address_by_id` | `previous_address_by_id(ordered_nodes, address_text_by_id)` | `{id: адрес родителя}` — для записи «Предыдущего адреса» на устройства |
+| `split_branch_devices` | `split_branch_devices(ordered_nodes)` | `(trunk_nodes, branch_nodes)` — узел считается веткой, если его родитель изолятор, но не непосредственно предыдущий по адресу узел. Используется `build_loop_circuits`, чтобы не включать ветки в магистральную цепь |
 | `manhattan_ft` | `manhattan_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между точками |
 
 ## fire_alarm_circuits.py
@@ -444,7 +445,7 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели |
+| `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели. Устройства-ветки изоляторов (`split_branch_devices`) в цепь не включаются |
 | `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах |
 
 ## fire_alarm_isolator_circuits.py

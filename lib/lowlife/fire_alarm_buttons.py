@@ -14,7 +14,7 @@ from lowlife.params import get_string_param, get_type_string_param, set_param_an
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.fire_alarm import make_full_mark, group_devices_by_loop
 from lowlife.fire_alarm_loops import (
-    build_loop_tree, build_route_text, previous_address_by_id
+    build_loop_tree, build_route_text, previous_address_by_id, split_branch_devices
 )
 from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
@@ -57,7 +57,11 @@ def _collect(doc, config):
 def build_loop_circuits(doc, settings):
     """
     Создаёт по одной электрической цепи на каждый шлейф и подключает её к
-    своей панели. Уже созданные цепи (по «Номеру цепи») не трогает.
+    своей панели. Устройства на ветках изоляторов (см.
+    fire_alarm_loops.split_branch_devices) в магистральную цепь не
+    включаются — электрически они "за" изолятором, а не на магистрали;
+    для их подключения отдельно есть кнопка «Цепи изолятор-устройства».
+    Уже созданные цепи (по «Номеру цепи») не трогает.
     """
     config = _config_from(settings)
 
@@ -71,10 +75,13 @@ def build_loop_circuits(doc, settings):
         if config.get("cable_type_param") else {}
     )
 
+    isolator_keyword = config.get("isolator_keyword")
+
     created = 0
     already = 0
     errors = []
     no_panel = []
+    branch_excluded_total = 0
 
     with revit.Transaction("Build {} Loop Circuits".format(fire_alarm_settings.current_title())):
 
@@ -96,15 +103,34 @@ def build_loop_circuits(doc, settings):
                 already += 1
                 continue
 
+            # Магистраль vs ветки изоляторов — та же топология, что и в
+            # calc_loop_lengths, но здесь используется ДО создания цепи,
+            # а не только для расчёта длины.
+            nodes = build_loop_nodes(loop_devices, address_by_id, isolator_keyword)
+            panel_point = get_point(panel_el)
+            ordered_nodes = build_loop_tree(nodes, panel_point)
+            trunk_nodes, branch_nodes = split_branch_devices(ordered_nodes)
+            branch_excluded_total += len(branch_nodes)
+
+            trunk_devices = [n["element"] for n in trunk_nodes]
+
+            if not trunk_devices:
+                no_panel.append(
+                    u"Шлейф {}: все устройства оказались на ветках изоляторов — "
+                    u"магистральная цепь не создана (используйте «Цепи "
+                    u"изолятор-устройства» для веток).".format(circuit_number)
+                )
+                continue
+
             circuit, error = create_circuit(
-                doc, panel_el, loop_devices, config["circuit_system_type"]
+                doc, panel_el, trunk_devices, config["circuit_system_type"]
             )
 
             if circuit is None:
                 errors.append(
                     u"Шлейф {}: {} [панель ID {}, устройств {}: {}]".format(
-                        circuit_number, error, panel_el.Id.IntegerValue, len(loop_devices),
-                        u", ".join(str(d.Id.IntegerValue) for d in loop_devices)
+                        circuit_number, error, panel_el.Id.IntegerValue, len(trunk_devices),
+                        u", ".join(str(d.Id.IntegerValue) for d in trunk_devices)
                     )
                 )
                 continue
@@ -112,7 +138,7 @@ def build_loop_circuits(doc, settings):
             set_param_any(circuit, config["circuit_number_param"], circuit_number)
             set_param_any(circuit, config["circuit_panel_param"], norm(panel_el.Name))
 
-            first = loop_devices[0]
+            first = trunk_devices[0]
             designation = clean_text_value(get_type_string_param(doc, first, config["designation_param"]))
             load_name = make_load_name(
                 designation, address_text_by_id.get(first.Id.IntegerValue)
@@ -142,10 +168,12 @@ def build_loop_circuits(doc, settings):
         u"Уже существовали: {}\n"
         u"Ошибок создания: {}\n"
         u"Шлейфов без панели: {}\n"
-        u"Устройств с нечитаемым адресом: {}\n\n"
+        u"Устройств с нечитаемым адресом: {}\n"
+        u"Устройств на ветках изоляторов (исключены из магистральной цепи): {}\n\n"
         u"{}".format(
             len(panels), len(devices), len(loops),
             created, already, len(errors), len(no_panel), len(skipped),
+            branch_excluded_total,
             u"Подробности — в окне вывода pyRevit." if (skipped or no_panel or errors) else u""
         )
     )
