@@ -112,13 +112,20 @@ def classify_element(el, categories):
     categories — список (name, keywords, exclude_keywords), проверяется
     по порядку; возвращает name первой подошедшей категории или None,
     если не одна не подошла (или подошли только слова-исключения).
+
+    Ключевые слова приводятся к нижнему регистру здесь же (а не только
+    "text", который уже lower()) — они часто приходят из пользовательских
+    настроек (например «Ключевое слово изолятора») и могут быть введены с
+    большой буквы; без этого сравнение "Слово" in "текст в нижнем
+    регистре" никогда не совпадает, и классификация молча не срабатывает
+    ни для одного элемента.
     """
     text = _element_text(el)
 
     for name, keywords, exclude_keywords in categories:
-        if any(word in text for word in exclude_keywords):
+        if any(word.lower() in text for word in exclude_keywords if word):
             continue
-        if any(word in text for word in keywords):
+        if any(word.lower() in text for word in keywords if word):
             return name
 
     return None
