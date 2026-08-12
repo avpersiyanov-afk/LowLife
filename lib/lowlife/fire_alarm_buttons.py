@@ -18,7 +18,7 @@ from lowlife.fire_alarm_loops import (
 )
 from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
-    build_loop_nodes, write_loop_length, device_category_id
+    build_loop_nodes, write_loop_length, device_category_id, circuit_membership_map
 )
 from lowlife import fire_alarm_settings
 
@@ -69,6 +69,7 @@ def build_loop_circuits(doc, settings):
 
     number_format = config["circuit_number_format"]
     existing = existing_circuits_by_number(doc, config)
+    membership = circuit_membership_map(doc, config["circuit_number_param"])
 
     category_wire_type_ids = (
         fire_alarm_settings.get_category_wire_type_elem_ids(doc)
@@ -137,6 +138,38 @@ def build_loop_circuits(doc, settings):
                     u"Шлейф {}: все устройства оказались на ветках изоляторов — "
                     u"магистральная цепь не создана (используйте «Цепи "
                     u"изолятор-устройства» для веток).".format(circuit_number)
+                )
+                continue
+
+            # Устройство, уже состоящее в ЛЮБОЙ электрической цепи (не
+            # обязательно этой дисциплины — например, оставшаяся ручная
+            # тестовая цепь или цепь "изолятор-устройства"), нельзя
+            # добавить ещё в одну — Revit откажет с тем же самым
+            # electComponents, без внятного текста о причине. Проверяем
+            # это явно и ДО попытки создания, чтобы не гадать.
+            already_in_circuit = [
+                (el, membership[el.Id.IntegerValue])
+                for el in trunk_devices
+                if el.Id.IntegerValue in membership
+            ]
+            if already_in_circuit:
+                output.print_md(
+                    u"#### Шлейф {}: {} устройств магистрали уже состоят в другой цепи:".format(
+                        circuit_number, len(already_in_circuit)
+                    )
+                )
+                for el, (existing_number, circ_id) in already_in_circuit:
+                    output.print_md(
+                        u"- ID {} уже в цепи ID {} (Номер цепи «{}»)".format(
+                            el.Id.IntegerValue, circ_id, existing_number or u"—"
+                        )
+                    )
+                errors.append(
+                    u"Шлейф {}: {} устройств магистрали уже состоят в другой электрической "
+                    u"цепи — Revit не даёт добавить их ещё в одну. Найдите и удалите/проверьте "
+                    u"эти цепи (см. ID выше) и запустите кнопку заново.".format(
+                        circuit_number, len(already_in_circuit)
+                    )
                 )
                 continue
 

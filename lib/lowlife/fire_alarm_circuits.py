@@ -187,6 +187,37 @@ def existing_circuits_by_number(doc, config):
     return result
 
 
+def circuit_membership_map(doc, number_param):
+    """
+    {ID устройства: (номер цепи, ElementId цепи)} для устройств, которые
+    УЖЕ состоят в какой-либо электрической цепи документа — любой, не
+    только этой дисциплины (ручные тестовые цепи, цепи «изолятор-
+    устройства» и т.п.).
+
+    Revit не даёт добавить элемент, уже входящий в одну цепь, в другую —
+    ошибка при этом та же самая electComponents, без внятного текста про
+    причину, поэтому перед созданием новой цепи стоит явно проверить
+    состав по этой карте.
+    """
+    result = {}
+
+    circuits = FilteredElementCollector(doc) \
+        .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+    for c in circuits:
+        number = clean_text_value(get_string_param(c, number_param))
+        try:
+            members = c.Elements
+        except:
+            continue
+        for m in members:
+            result[m.Id.IntegerValue] = (number, c.Id.IntegerValue)
+
+    return result
+
+
 def build_loop_nodes(device_els, address_by_id, isolator_keyword):
     """Узлы шлейфа для build_loop_tree — из элементов Revit."""
     nodes = []
