@@ -462,7 +462,7 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `pick_devices_and_isolator` | `pick_devices_and_isolator(uidoc, doc)` | Выбор с фильтром по категории: устройства (`PickObjects`), затем один изолятор (`PickObject`); останавливает скрипт при отмене или пустом выборе |
+| `pick_devices_and_isolator` | `pick_devices_and_isolator(uidoc, doc)` | Один `PickObjects` на устройства и изолятор вместе (фильтр по обеим категориям); при отмене (Esc) возвращает `(None, None)`, при неверном составе (не ровно один изолятор / нет устройств) просит повторить выбор |
 | `is_manual_device` | `is_manual_device(el)` | Устройство ручного пуска — по слову «ручной» в имени семейства/типа |
 | `split_manual_devices` | `split_manual_devices(device_els)` | `(ручные, остальные)` |
 | `build_isolator_device_circuits` | `build_isolator_device_circuits(doc, device_els, isolator_el, settings)` | Строит цепи по правилам группировки, проставляет «Панель», «Имя нагрузки», «Проводник»; `(created_circuits, error_message)` |

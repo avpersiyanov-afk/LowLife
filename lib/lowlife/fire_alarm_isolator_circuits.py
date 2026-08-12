@@ -4,8 +4,9 @@
 
 В отличие от build_loop_circuits (fire_alarm_buttons.py) — весь шлейф целиком
 по адресации панель.шлейф.номер — здесь состав каждой цепи выбирается
-вручную: сначала устройства пожарной сигнализации, затем изолятор
-(электрооборудование), к которому их нужно подключить.
+вручную: устройства пожарной сигнализации и изолятор (электрооборудование,
+к которому их нужно подключить) выбираются вместе, одним PickObjects — среди
+выбранного должен быть ровно один изолятор.
 
 Правила группировки (см. docs/fire-alarm-panels.md):
 - Каждое устройство ручного пуска (ИПР, «ручной» в имени типа) — отдельная
@@ -39,11 +40,11 @@ MANUAL_DEVICE_KEYWORD = u"ручной"
 MAX_CIRCUITS_PER_ISOLATOR = 2
 
 
-class _CategorySelectionFilter(ISelectionFilter):
-    """Разрешает выбирать только элементы указанной категории текущего документа (не связанного файла)."""
+class _CombinedSelectionFilter(ISelectionFilter):
+    """Разрешает выбирать элементы из нескольких категорий текущего документа (не связанного файла)."""
 
-    def __init__(self, category):
-        self._category_id = int(category)
+    def __init__(self, categories):
+        self._category_ids = set(int(c) for c in categories)
 
     def AllowElement(self, elem):
         try:
@@ -52,7 +53,7 @@ class _CategorySelectionFilter(ISelectionFilter):
         except:
             pass
         try:
-            return elem.Category is not None and elem.Category.Id.IntegerValue == self._category_id
+            return elem.Category is not None and elem.Category.Id.IntegerValue in self._category_ids
         except:
             return False
 
@@ -60,33 +61,55 @@ class _CategorySelectionFilter(ISelectionFilter):
         return True
 
 
+def _is_isolator(el):
+    try:
+        return el.Category.Id.IntegerValue == int(BuiltInCategory.OST_ElectricalEquipment)
+    except:
+        return False
+
+
 def pick_devices_and_isolator(uidoc, doc):
     """
-    Выбор для новой цепи: сначала устройства пожарной сигнализации, затем
-    один изолятор (электрооборудование). Останавливает скрипт, если
-    пользователь отменил выбор (Esc) или не выбрал ни одного устройства.
+    Выбор для новой цепи одним шагом: устройства пожарной сигнализации и
+    изолятор (электрооборудование) вместе — рамкой и/или кликами с
+    подтверждением Enter/«Готово». Среди выбранного должен быть ровно один
+    изолятор; если это не так или не выбрано ни одного устройства, просит
+    повторить выбор (тот же вызов, без отдельного запуска кнопки).
+
+    Возвращает (device_els, isolator_el) либо (None, None), если
+    пользователь отменил выбор (Esc) — это сигнал закончить цикл выбора
+    (не ошибка).
     """
-    device_filter = _CategorySelectionFilter(BuiltInCategory.OST_FireAlarmDevices)
-    equipment_filter = _CategorySelectionFilter(BuiltInCategory.OST_ElectricalEquipment)
+    combined_filter = _CombinedSelectionFilter([
+        BuiltInCategory.OST_FireAlarmDevices, BuiltInCategory.OST_ElectricalEquipment
+    ])
 
-    try:
-        device_refs = uidoc.Selection.PickObjects(
-            ObjectType.Element, device_filter,
-            u"Выберите устройства пожарной сигнализации (подтвердите Enter)"
-        )
-        isolator_ref = uidoc.Selection.PickObject(
-            ObjectType.Element, equipment_filter,
-            u"Выберите изолятор (электрооборудование)"
-        )
-    except OperationCanceledException:
-        forms.alert(u"Операция отменена.", exitscript=True)
-        return None, None
+    while True:
+        try:
+            refs = uidoc.Selection.PickObjects(
+                ObjectType.Element, combined_filter,
+                u"Выберите устройства и изолятор (панель) одним выбором — "
+                u"подтвердите Enter/«Готово», Esc — закончить"
+            )
+        except OperationCanceledException:
+            return None, None
 
-    device_els = [doc.GetElement(r) for r in device_refs]
-    if not device_els:
-        forms.alert(u"Не выбрано ни одного устройства.", exitscript=True)
+        els = [doc.GetElement(r) for r in refs]
+        isolators = [el for el in els if _is_isolator(el)]
+        device_els = [el for el in els if not _is_isolator(el)]
 
-    return device_els, doc.GetElement(isolator_ref)
+        if len(isolators) != 1:
+            forms.alert(
+                u"В выборе должен быть ровно один изолятор (электрооборудование), "
+                u"а выбрано {}. Повторите выбор.".format(len(isolators))
+            )
+            continue
+
+        if not device_els:
+            forms.alert(u"Не выбрано ни одного устройства. Повторите выбор.")
+            continue
+
+        return device_els, isolators[0]
 
 
 def is_manual_device(el):
