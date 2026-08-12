@@ -26,8 +26,15 @@ def resolve_system_type(name):
 
     system_type = getattr(ElectricalSystemType, value, None)
 
-    if system_type is None:
-        available = [a for a in dir(ElectricalSystemType) if not a.startswith("_")]
+    # dir(ElectricalSystemType) вперемешку с реальными значениями (Data,
+    # FireAlarm, ...) выдаёт унаследованные от Enum методы (CompareTo,
+    # Equals, Parse, ...) — отфильтровываем и то, и другое через isinstance,
+    # иначе getattr мог бы случайно вернуть метод вместо None.
+    if not isinstance(system_type, ElectricalSystemType):
+        available = [
+            a for a in dir(ElectricalSystemType)
+            if not a.startswith("_") and isinstance(getattr(ElectricalSystemType, a, None), ElectricalSystemType)
+        ]
         return None, u"неизвестный тип цепи «{}». Доступные: {}".format(
             value, u", ".join(sorted(available))
         )

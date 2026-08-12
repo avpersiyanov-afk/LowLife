@@ -63,7 +63,14 @@ def pick_system_type(default_name):
     (значение по умолчанию для дисциплины — первым в списке). Останавливает
     скрипт, если пользователь отменил выбор.
     """
-    available = sorted(a for a in dir(ElectricalSystemType) if not a.startswith("_"))
+    # dir(ElectricalSystemType) вперемешку с реальными значениями (Data,
+    # Security, ...) выдаёт унаследованные от Enum методы (CompareTo,
+    # Equals, Parse, ...) — отфильтровываем через isinstance, иначе они
+    # тоже попали бы в список выбора.
+    available = sorted(
+        a for a in dir(ElectricalSystemType)
+        if not a.startswith("_") and isinstance(getattr(ElectricalSystemType, a, None), ElectricalSystemType)
+    )
 
     if not available:
         return default_name

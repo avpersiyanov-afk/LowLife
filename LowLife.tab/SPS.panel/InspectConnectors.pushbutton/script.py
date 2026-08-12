@@ -2,9 +2,13 @@
 __title__ = "Диагностика\nконнекторов"
 __doc__ = (
     "Тестовая кнопка: выберите панель, затем несколько устройств шлейфа. "
-    "Показывает электрические коннекторы каждого элемента (Domain, "
-    "SystemClassification, ConnectorType) — помогает понять, почему "
-    "ElectricalSystem.Create отказывается создавать цепь заданного типа."
+    "Показывает категорию и электрические коннекторы каждого элемента "
+    "(Domain, ConnectorType) — помогает понять, почему ElectricalSystem.Create "
+    "отказывается создавать цепь заданного типа: как правило, среди "
+    "переданных элементов должен быть хотя бы один категории "
+    "«Электрооборудование» (OST_ElectricalEquipment) — обычные устройства "
+    "(датчики и т.п.) сами по себе цепь создать не могут, только быть "
+    "нагрузкой в ней."
 )
 __author__ = "Pipers"
 
@@ -35,6 +39,18 @@ def describe_element(el, label):
     except Exception as ex:
         output.print_md(u"Не удалось получить семейство/тип: {}".format(ex))
 
+    try:
+        cat_name = el.Category.Name if el.Category else u"?"
+        is_equipment = bool(el.Category and el.Category.Id == ElementId(BuiltInCategory.OST_ElectricalEquipment))
+        output.print_md(
+            u"Категория: **{}**{}".format(
+                cat_name,
+                u" — «Электрооборудование», может быть источником цепи" if is_equipment else u""
+            )
+        )
+    except Exception as ex:
+        output.print_md(u"Не удалось получить категорию: {}".format(ex))
+
     mep_model = getattr(el, "MEPModel", None)
     connector_mgr = mep_model.ConnectorManager if mep_model else None
 
@@ -59,18 +75,13 @@ def describe_element(el, label):
         except:
             conn_type = u"?"
         try:
-            sys_class = c.MEPSystem.SystemType if c.MEPSystem else None
+            sys_type = c.MEPSystem.SystemType if c.MEPSystem else None
         except Exception as ex:
-            sys_class = u"(ошибка: {})".format(ex)
-
-        try:
-            sys_classification = c.SystemClassification
-        except Exception as ex:
-            sys_classification = u"(ошибка: {})".format(ex)
+            sys_type = u"(ошибка: {})".format(ex)
 
         output.print_md(
-            u"- Коннектор {}: Domain=`{}`, ConnectorType=`{}`, SystemClassification=`{}`, MEPSystem.SystemType=`{}`".format(
-                i, domain, conn_type, sys_classification, sys_class
+            u"- Коннектор {}: Domain=`{}`, ConnectorType=`{}`, MEPSystem.SystemType=`{}`".format(
+                i, domain, conn_type, sys_type
             )
         )
 
@@ -104,7 +115,11 @@ try:
 
     output.print_md(u"---")
     output.print_md(u"### Доступные ElectricalSystemType в этой версии Revit")
-    output.print_md(u", ".join(sorted(a for a in dir(ElectricalSystemType) if not a.startswith("_"))))
+    real_values = [
+        a for a in dir(ElectricalSystemType)
+        if not a.startswith("_") and isinstance(getattr(ElectricalSystemType, a, None), ElectricalSystemType)
+    ]
+    output.print_md(u", ".join(sorted(real_values)))
 
 except OperationCanceledException:
     pass
