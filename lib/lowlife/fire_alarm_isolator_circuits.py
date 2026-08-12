@@ -88,8 +88,10 @@ def pick_devices_and_isolator(uidoc, doc):
         try:
             refs = uidoc.Selection.PickObjects(
                 ObjectType.Element, combined_filter,
-                u"Выберите устройства и изолятор (панель) одним выбором — "
-                u"подтвердите Enter/«Готово», Esc — закончить"
+                u"Выберите устройства и изолятор (панель) — рамкой и/или кликами; "
+                u"для КАЖДОЙ следующей рамки держите Ctrl, иначе она заменит "
+                u"предыдущий выбор (так работает выделение в Revit). "
+                u"Enter/«Готово» — подтвердить, Esc — закончить"
             )
         except OperationCanceledException:
             return None, None
