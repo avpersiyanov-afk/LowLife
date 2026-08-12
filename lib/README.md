@@ -285,6 +285,18 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 её не трогали ради рефакторинга) — при следующей правке СКС их стоит
 перевести на эти модули.
 
+## route_export.py
+Запись таблицы адресов СКС в xlsx через `openpyxl`. Вынесен из
+`route_addressing.py` в отдельный модуль намеренно: `openpyxl` —
+CPython-only зависимость (импортируется внутри функции, не на уровне
+модуля), а `route_addressing.py` используется и IronPython2-кнопками,
+которым эта зависимость не нужна. Импортируется только из кнопок,
+объявивших `#! python3` в `script.py` (сейчас — `ExportAddressesToExcel`).
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `export_addressing_to_excel` | `export_addressing_to_excel(rows, file_path)` | Пишет лист `"Адреса СКС"` с жирным заголовком и автошириной колонок; `rows` — список dict с ключами `id/category/x_mm/y_mm/addr/addr_prev/cable_type` (см. `COLUMNS`) |
+
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —
 по образцу `scs.py`, но независимый модуль (своя дисциплина).
