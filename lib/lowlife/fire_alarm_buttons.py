@@ -83,6 +83,16 @@ def build_loop_circuits(doc, settings):
     no_panel = []
     branch_excluded_total = 0
 
+    output = pyrevit_script.get_output()
+    output.print_md(u"## Отладка «Цепи шлейфов»")
+    output.print_md(
+        u"Ключевое слово изолятора: «{}»{}".format(
+            isolator_keyword or u"",
+            u" — **ПУСТО, is_isolator() всегда вернёт False, ветки не определятся!**"
+            if not isolator_keyword else u""
+        )
+    )
+
     with revit.Transaction("Build {} Loop Circuits".format(fire_alarm_settings.current_title())):
 
         for (panel_num, loop_num) in sorted(loops.keys()):
@@ -114,6 +124,14 @@ def build_loop_circuits(doc, settings):
 
             trunk_devices = [n["element"] for n in trunk_nodes]
 
+            isolator_count = sum(1 for n in nodes if n["is_isolator"])
+            output.print_md(
+                u"Шлейф {}: всего {}, с точкой {}, изоляторов {}, магистраль {}, ветки {}".format(
+                    circuit_number, len(loop_devices), len(nodes), isolator_count,
+                    len(trunk_nodes), len(branch_nodes)
+                )
+            )
+
             if not trunk_devices:
                 no_panel.append(
                     u"Шлейф {}: все устройства оказались на ветках изоляторов — "
@@ -133,6 +151,22 @@ def build_loop_circuits(doc, settings):
                         u", ".join(str(d.Id.IntegerValue) for d in trunk_devices)
                     )
                 )
+                output.print_md(u"#### Шлейф {} — не удалось создать цепь, состав магистрали:".format(circuit_number))
+                for i, el in enumerate(trunk_devices):
+                    try:
+                        cat_name = el.Category.Name if el.Category else u"?"
+                    except:
+                        cat_name = u"?"
+                    try:
+                        type_el = doc.GetElement(el.GetTypeId())
+                        fam_name = type_el.Family.Name if type_el and type_el.Family else u"?"
+                    except:
+                        fam_name = u"?"
+                    output.print_md(
+                        u"{}. ID {}: категория «{}», семейство «{}»".format(
+                            i + 1, el.Id.IntegerValue, cat_name, fam_name
+                        )
+                    )
                 continue
 
             set_param_any(circuit, config["circuit_number_param"], circuit_number)
