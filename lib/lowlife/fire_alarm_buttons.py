@@ -83,6 +83,7 @@ def build_loop_circuits(doc, settings):
     errors = []
     no_panel = []
     branch_excluded_total = 0
+    already_circuited_total = 0
 
     output = pyrevit_script.get_output()
     output.print_md(u"## Отладка «Цепи шлейфов»")
@@ -142,19 +143,25 @@ def build_loop_circuits(doc, settings):
                 continue
 
             # Устройство, уже состоящее в ЛЮБОЙ электрической цепи (не
-            # обязательно этой дисциплины — например, оставшаяся ручная
-            # тестовая цепь или цепь "изолятор-устройства"), нельзя
-            # добавить ещё в одну — Revit откажет с тем же самым
-            # electComponents, без внятного текста о причине. Проверяем
-            # это явно и ДО попытки создания, чтобы не гадать.
+            # обязательно этой дисциплины) — как правило, это устройство
+            # на ветке изолятора, которое геометрическая эвристика
+            # build_loop_tree не распознала как ветку (расстояние до
+            # "предыдущего по адресу" оказалось меньше, чем до изолятора),
+            # но оно уже подключено отдельной цепью через «Цепи
+            # изолятор-устройства». Существующие цепи документа — более
+            # надёжный источник истины, чем геометрия: исключаем такие
+            # устройства из магистрали (Revit всё равно не дал бы добавить
+            # их ещё в одну цепь — та же ошибка electComponents, без
+            # внятного текста о причине), а не блокируем весь шлейф.
             already_in_circuit = [
                 (el, membership[el.Id.IntegerValue])
                 for el in trunk_devices
                 if el.Id.IntegerValue in membership
             ]
             if already_in_circuit:
+                already_circuited_total += len(already_in_circuit)
                 output.print_md(
-                    u"#### Шлейф {}: {} устройств магистрали уже состоят в другой цепи:".format(
+                    u"Шлейф {}: {} устройств магистрали уже в другой цепи — исключены:".format(
                         circuit_number, len(already_in_circuit)
                     )
                 )
@@ -164,12 +171,14 @@ def build_loop_circuits(doc, settings):
                             el.Id.IntegerValue, circ_id, existing_number or u"—"
                         )
                     )
-                errors.append(
-                    u"Шлейф {}: {} устройств магистрали уже состоят в другой электрической "
-                    u"цепи — Revit не даёт добавить их ещё в одну. Найдите и удалите/проверьте "
-                    u"эти цепи (см. ID выше) и запустите кнопку заново.".format(
-                        circuit_number, len(already_in_circuit)
-                    )
+                already_ids = set(el.Id.IntegerValue for el, _ in already_in_circuit)
+                trunk_devices = [el for el in trunk_devices if el.Id.IntegerValue not in already_ids]
+
+            if not trunk_devices:
+                no_panel.append(
+                    u"Шлейф {}: все устройства магистрали оказались либо на ветках "
+                    u"изоляторов, либо уже состоят в других цепях — цепь не "
+                    u"создана.".format(circuit_number)
                 )
                 continue
 
@@ -236,11 +245,12 @@ def build_loop_circuits(doc, settings):
         u"Ошибок создания: {}\n"
         u"Шлейфов без панели: {}\n"
         u"Устройств с нечитаемым адресом: {}\n"
-        u"Устройств на ветках изоляторов (исключены из магистральной цепи): {}\n\n"
+        u"Устройств на ветках изоляторов (исключены из магистральной цепи): {}\n"
+        u"Устройств, уже состоявших в другой цепи (исключены из магистральной цепи): {}\n\n"
         u"{}".format(
             len(panels), len(devices), len(loops),
             created, already, len(errors), len(no_panel), len(skipped),
-            branch_excluded_total,
+            branch_excluded_total, already_circuited_total,
             u"Подробности — в окне вывода pyRevit." if (skipped or no_panel or errors) else u""
         )
     )
