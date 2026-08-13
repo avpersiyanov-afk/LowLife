@@ -78,15 +78,27 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 в отличие от СКУД/СПА). Параметр «Проводник» (встроенный параметр
 электрической цепи Revit, ссылка на строку ключевой спецификации) — имя
 `CONDUCTOR_PARAM_NAME = u"Проводник"` зашито в код, а не в настройки СКС:
-это не project-specific SMNX_-параметр. Revit не даёт получить список
-строк справочника напрямую, поэтому список для выбора — значения,
-**уже проставленные хотя бы у одной электрической цепи документа**.
+это не project-specific SMNX_-параметр. Но само ЗНАЧЕНИЕ (какую строку
+справочника кабелей проставлять) выбирается один раз в окне настроек
+(«Параметры СКС», раздел «Проводник для цепей СКС», использует
+`scs_settings.list_wire_catalog_items`/`WireTypeOption`) и читается из
+`settings["conductor_type_id"]` при каждом запуске — аналогично подбору
+типа проводника по категории устройства в СПС
+(`fire_alarm_settings.get_category_wire_type_elem_ids`), только без
+разбивки по категориям: у СКС один проводник на все цепи, создаваемые за
+один запуск кнопки.
+
+После создания каждой цепи также заполняется параметр «Имя нагрузки»
+(`settings["load_name_param"]`) — из параметра типа устройства
+«Обозначение» (`settings["type_code_param"]`) и параметра экземпляра
+«Адрес устройства» (`settings["device_address_param"]`), см.
+`scs_circuits.make_load_name`. Те же три настройки уже использует
+SyncCircuitsAndLengths.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `list_used_conductors` | `list_used_conductors(doc)` | `{имя элемента-проводника: ElementId}` — по параметру «Проводник» уже существующих `ElectricalSystem` |
-| `pick_conductor` | `pick_conductor(doc)` | Диалог выбора из `list_used_conductors`; останавливает скрипт, если список пуст (ни у одной цепи проводник ещё не выбран) или выбор отменён |
-| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id)` | Создаёт по цепи типа Data на каждое устройство и проставляет «Проводник»; `(created_count, errors)` |
+| `get_conductor_id` | `get_conductor_id(doc, settings)` | `ElementId` проводника из `settings["conductor_type_id"]`; останавливает скрипт, если в настройках ничего не выбрано или элемент больше не существует в проекте |
+| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)` | Создаёт по цепи типа Data на каждое устройство, проставляет «Проводник» и (если `type_code_param`/`device_address_param`/`load_name_param` заданы) «Имя нагрузки»; `(created_count, errors)` |
 
 ## scs.py
 Константы и логика, специфичные для СКС / телекоммуникационных трасс
@@ -139,8 +151,10 @@ RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
 `scs.py` намеренно пустые. Требования к семействам/параметрам — см.
 `docs/scs-panel.md`.
 
-Кнопка «Цепи СКС» на `CircuitsSCS.panel` эти настройки НЕ использует — у
-неё нет своих project-specific параметров, см. `scs_manual_circuits.py`.
+Кнопка «Цепи СКС» на `CircuitsSCS.panel` тоже читает эти настройки (через
+`get_settings_silent()`, без показа окна) — ей нужны `conductor_type_id`
+(проводник), `type_code_param`, `device_address_param` и `load_name_param`
+(для «Имя нагрузки»), см. `scs_manual_circuits.py`.
 
 **Форму (`get_settings_interactive`) показывает только кнопка
 «Параметры СКС» (SetupParameters)** — она единственное место, где
@@ -477,7 +491,7 @@ CPython-only зависимость (импортируется внутри ф�
 | `pick_devices_and_isolator` | `pick_devices_and_isolator(uidoc, doc)` | Один `PickObjects` на устройства и изолятор вместе (фильтр по обеим категориям); при отмене (Esc) возвращает `(None, None)`, при неверном составе (не ровно один изолятор / нет устройств) просит повторить выбор |
 | `is_manual_device` | `is_manual_device(el)` | Устройство ручного пуска — по слову «ручной» в имени семейства/типа |
 | `split_manual_devices` | `split_manual_devices(device_els)` | `(ручные, остальные)` |
-| `build_isolator_device_circuits` | `build_isolator_device_circuits(doc, device_els, isolator_el, settings)` | Строит цепи по правилам группировки, проставляет «Панель», «Имя нагрузки», «Проводник», длину/способ прокладки; заодно (если настроено) подписывает «Именем нагрузки» линии проводки рядом с устройствами/изолятором; `(created_circuits, error_message)` |
+| `build_isolator_device_circuits` | `build_isolator_device_circuits(doc, device_els, isolator_el, settings)` | Строит цепи по правилам группировки, проставляет «Панель», «Имя нагрузки», «Проводник», длину/способ прокладки; заодно (если настроено) подписывает собственным именем Revit цепи (`circuit.Name`) линии проводки рядом с устройствами/изолятором; `(created_circuits, error_message)` |
 
 ## fire_alarm_wire_marks.py
 Подпись линий проводки СПС/СОУЭ (line-based Generic Model, тем же способом,

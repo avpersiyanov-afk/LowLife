@@ -22,10 +22,11 @@
 устройства. Также сразу проставляется режим траектории Revit «Все
 устройства» и, по получившейся длине цепи, «Длина проводника» и «Способ
 прокладки» (см. _apply_circuit_length). Если в настройках заполнены поля
-для линий проводки, «Именем нагрузки» подписываются уже нарисованные
-вручную линии рядом с устройствами/изолятором цепи (см.
-lowlife.fire_alarm_wire_marks.mark_wire_lines) — у этой кнопки нет
-«Номера цепи», как у build_loop_circuits, поэтому подпись — «Имя нагрузки».
+для линий проводки, собственным именем Revit цепи (circuit.Name,
+например «Цепь 1») подписываются уже нарисованные вручную линии рядом с
+устройствами/изолятором цепи (см. lowlife.fire_alarm_wire_marks.mark_wire_lines)
+— у этой кнопки нет «Номера цепи», как у build_loop_circuits (там на
+линию идёт именно он), поэтому подпись — имя элемента цепи в Revit.
 """
 
 from Autodesk.Revit.DB import BuiltInCategory
@@ -161,18 +162,12 @@ def _pick_load_device(device_els, address_param):
 
 
 def _apply_circuit_labels(doc, circuit, member_devices, isolator_el, config):
-    """
-    Проставляет цепи «Панель», «Имя нагрузки» и (если задан) «Проводник»
-    по категории. Возвращает записанное «Имя нагрузки» (или None) — у
-    цепи «изолятор-устройства» нет «Номера цепи», поэтому именно оно
-    используется как подпись для линий проводки (см. build_isolator_device_circuits).
-    """
+    """Проставляет цепи «Панель», «Имя нагрузки» и (если задан) «Проводник» по категории."""
     set_param_any(
         circuit, config["circuit_panel_param"],
         clean_text_value(safe_element_name(isolator_el)) or u""
     )
 
-    load_name = None
     load_device = _pick_load_device(member_devices, config["device_address_param"])
     if load_device is not None:
         designation = clean_text_value(get_type_string_param(doc, load_device, config["designation_param"]))
@@ -187,8 +182,6 @@ def _apply_circuit_labels(doc, circuit, member_devices, isolator_el, config):
         wire_type_id = category_wire_type_ids.get(cat_id) if cat_id is not None else None
         if wire_type_id is not None:
             set_element_id_param(circuit, config["cable_type_param"], wire_type_id)
-
-    return load_name
 
 
 def _apply_circuit_length(doc, circuit, config):
@@ -281,18 +274,19 @@ def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
                 ))
                 continue
 
-            load_name = _apply_circuit_labels(doc, circuit, group, isolator_el, config)
+            _apply_circuit_labels(doc, circuit, group, isolator_el, config)
             _apply_circuit_length(doc, circuit, config)
 
             # Подпись уже нарисованных вручную линий проводки рядом с
-            # устройствами/изолятором цепи — «Именем нагрузки» (у цепи
-            # «изолятор-устройства» нет «Номера цепи», в отличие от
-            # магистральных шлейфов).
-            if load_name and config.get("wire_mark_param") and config.get("wire_line_family_filter"):
+            # устройствами/изолятором цепи — собственным именем Revit цепи
+            # (circuit.Name, например «Цепь 1»): у «изолятор-устройства»
+            # нет «Номера цепи», в отличие от магистральных шлейфов, там
+            # на линию идёт именно он (см. calc_loop_lengths).
+            if config.get("wire_mark_param") and config.get("wire_line_family_filter"):
                 try:
                     member_points = collect_member_points(group, isolator_el)
                     mark_wire_lines(
-                        doc, doc.ActiveView, member_points, load_name,
+                        doc, doc.ActiveView, member_points, circuit.Name,
                         config["wire_line_family_filter"], config["wire_mark_param"]
                     )
                 except Exception as ex:
