@@ -359,11 +359,17 @@ def calc_loop_lengths(doc, settings):
             # Подпись уже нарисованных вручную линий проводки рядом с
             # устройствами шлейфа номером цепи — необязательная надстройка,
             # сбой здесь не должен прерывать обработку остальных шлейфов.
+            # Значение берётся не из локально собранной строки circuit_number,
+            # а читается с самой цепи (config["circuit_number_param"]) — так
+            # на линию попадёт то, что реально стоит в «Номере цепи» (в т.ч.
+            # если его вручную поправил проектировщик).
             if config.get("wire_mark_param") and config.get("wire_line_family_filter"):
                 try:
+                    circuit_number_value = get_string_param(circuit, config["circuit_number_param"]) \
+                        or circuit_number
                     member_points = collect_member_points(loop_devices, panel_el)
                     wire_lines_marked += mark_wire_lines(
-                        doc, view, member_points, circuit_number,
+                        doc, view, member_points, circuit_number_value,
                         config["wire_line_family_filter"], config["wire_mark_param"]
                     )
                 except Exception as ex:
