@@ -209,11 +209,22 @@ def _apply_circuit_length(doc, circuit, config):
                 )
     except Exception as ex:
         try:
-            pyrevit_script.get_output().print_md(
+            output = pyrevit_script.get_output()
+            output.print_md(
                 u"Цепь ID {}: не удалось проставить режим траектории/длину — {}: {}".format(
                     circuit.Id.IntegerValue, type(ex).__name__, ex
                 )
             )
+            # Временная диагностика: имя CircuitPathMode не резолвится в
+            # этой версии Revit API — печатаем реальные свойства цепи,
+            # похожие на путь/длину, чтобы подобрать правильное имя.
+            members = sorted(
+                a for a in dir(circuit)
+                if not a.startswith("_") and (u"path" in a.lower() or u"length" in a.lower())
+            )
+            output.print_md(u"Отладка: свойства цепи с «path»/«length» — {}".format(
+                u", ".join(members) if members else u"(ничего не найдено)"
+            ))
         except:
             pass
 

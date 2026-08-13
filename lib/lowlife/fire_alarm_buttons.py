@@ -94,6 +94,7 @@ def build_loop_circuits(doc, settings):
     errors = []
     no_panel = []
     already_circuited_total = 0
+    path_debug_printed = [False]
 
     output = pyrevit_script.get_output()
     output.print_md(u"## Отладка «Цепи шлейфов»")
@@ -238,6 +239,19 @@ def build_loop_circuits(doc, settings):
                             circuit_number, type(ex).__name__, ex
                         )
                     )
+                    # Временная диагностика (один раз за запуск): имя
+                    # CircuitPathMode не резолвится в этой версии Revit
+                    # API — печатаем реальные свойства цепи, похожие на
+                    # путь/длину, чтобы подобрать правильное имя.
+                    if not path_debug_printed[0]:
+                        path_debug_printed[0] = True
+                        members = sorted(
+                            a for a in dir(circuit)
+                            if not a.startswith("_") and (u"path" in a.lower() or u"length" in a.lower())
+                        )
+                        output.print_md(u"Отладка: свойства цепи с «path»/«length» — {}".format(
+                            u", ".join(members) if members else u"(ничего не найдено)"
+                        ))
                 except:
                     pass
 
