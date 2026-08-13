@@ -19,8 +19,20 @@ so picking a discipline theme shows that discipline's circuit button among
 its other tools, while picking "Электрические цепи" shows all of them
 together regardless of discipline.
 
+DeleteViewCircuits lives on its own CircuitsDelete.panel ("Удаление") and
+is cross-discipline (deletes any circuit type), so it is only listed under
+"Circuits", not under a specific discipline theme.
+
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
+
+Every button in every panel referenced below MUST have an entry in some
+theme's list. apply_theme() defaults any button it finds in a touched panel
+but can't find in `visibility` to hidden — so a forgotten registration
+makes the button disappear (safe, obvious) rather than making the whole
+panel permanently visible regardless of the selected theme (the bug this
+replaced: ExportAddressesToExcel and DeleteViewCircuits were missing from
+THEMES, which pinned SCS.panel and Tools.panel visible under every theme).
 """
 
 THEMES = {
@@ -28,6 +40,7 @@ THEMES = {
         (u"SCS", u"PlaceRouteNodes"),
         (u"SCS", u"RenumberAddresses"),
         (u"SCS", u"SyncCircuitsAndLengths"),
+        (u"SCS", u"ExportAddressesToExcel"),
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
     ],
     u"ACS": [
@@ -58,6 +71,7 @@ THEMES = {
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
         (u"CircuitsSPA", u"BuildCircuitsSPA"),
+        (u"CircuitsDelete", u"DeleteViewCircuits"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
@@ -100,6 +114,14 @@ def apply_theme(selected_theme):
     guaranteed and a naive "last entry processed wins" would make such a
     button's final state depend on that order.
 
+    Every actual child of a touched panel is visited (not just the ones
+    listed in THEMES) and defaults to hidden if it has no entry in
+    `visibility`. A button accidentally left out of THEMES therefore just
+    disappears from the ribbon instead of staying permanently visible,
+    which would otherwise pin its whole panel visible under every theme
+    (any(child.visible for child in panel) is True forever once one
+    untracked child never gets its .visible turned off).
+
     Panels that end up with no visible button (e.g. SKUD.panel when the
     General theme is selected) are hidden too, so no empty panel frame
     is left on the ribbon.
@@ -115,21 +137,17 @@ def apply_theme(selected_theme):
 
     touched_panel_names = set(panel_name for panel_name, _ in visibility)
 
-    for (panel_name, button_name), visible in visibility.items():
-        panel = _find_panel(pyrevit_tabs, panel_name)
-        if panel is None:
-            continue
-        button = panel.find_child(button_name)
-        if button is not None:
-            button.visible = visible
-
     for panel_name in touched_panel_names:
         panel = _find_panel(pyrevit_tabs, panel_name)
         if panel is None:
             continue
-        panel_visible = any(
-            child.visible for child in panel if hasattr(child, "visible")
-        )
+        panel_visible = False
+        for child in panel:
+            if not hasattr(child, "visible"):
+                continue
+            child_visible = visibility.get((panel_name, child.name), False)
+            child.visible = child_visible
+            panel_visible = panel_visible or child_visible
         panel.visible = panel_visible
         # RibbonPanel.Visible alone can leave an empty strip on the ribbon
         # until the layout is rebuilt; the underlying Autodesk.Windows
