@@ -94,7 +94,6 @@ def build_loop_circuits(doc, settings):
     errors = []
     no_panel = []
     already_circuited_total = 0
-    path_debug_printed = [False]
 
     output = pyrevit_script.get_output()
     output.print_md(u"## Отладка «Цепи шлейфов»")
@@ -217,8 +216,18 @@ def build_loop_circuits(doc, settings):
             # сбой здесь не должен откатывать всю транзакцию (в ней —
             # цепи ВСЕХ шлейфов набора, не только текущего).
             try:
-                from Autodesk.Revit.DB.Electrical import CircuitPathMode
-                circuit.CircuitPathMode = CircuitPathMode.AllDevices
+                # CircuitPathMode — свойство самого экземпляра
+                # ElectricalSystem (подтверждено через dir(circuit) в
+                # Revit 2024), но не резолвится как отдельный импортируемый
+                # тип по стандартному пути
+                # Autodesk.Revit.DB.Electrical.CircuitPathMode. Берём
+                # enum-тип прямо из текущего значения свойства — так не
+                # нужно знать точный путь импорта/вложенность типа в этой
+                # сборке Revit API.
+                path_mode_type = type(circuit.CircuitPathMode)
+                all_devices_mode = getattr(path_mode_type, "AllDevices", None)
+                if all_devices_mode is not None:
+                    circuit.CircuitPathMode = all_devices_mode
                 # Length ниже читается сразу в этой же транзакции — без
                 # регенерации он ещё отражал бы путь по старому режиму.
                 doc.Regenerate()
@@ -239,19 +248,6 @@ def build_loop_circuits(doc, settings):
                             circuit_number, type(ex).__name__, ex
                         )
                     )
-                    # Временная диагностика (один раз за запуск): имя
-                    # CircuitPathMode не резолвится в этой версии Revit
-                    # API — печатаем реальные свойства цепи, похожие на
-                    # путь/длину, чтобы подобрать правильное имя.
-                    if not path_debug_printed[0]:
-                        path_debug_printed[0] = True
-                        members = sorted(
-                            a for a in dir(circuit)
-                            if not a.startswith("_") and (u"path" in a.lower() or u"length" in a.lower())
-                        )
-                        output.print_md(u"Отладка: свойства цепи с «path»/«length» — {}".format(
-                            u", ".join(members) if members else u"(ничего не найдено)"
-                        ))
                 except:
                     pass
 

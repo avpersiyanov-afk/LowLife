@@ -193,8 +193,16 @@ def _apply_circuit_length(doc, circuit, config):
     транзакции на все цепи набора).
     """
     try:
-        from Autodesk.Revit.DB.Electrical import CircuitPathMode
-        circuit.CircuitPathMode = CircuitPathMode.AllDevices
+        # CircuitPathMode — свойство самого экземпляра ElectricalSystem
+        # (подтверждено через dir(circuit) в Revit 2024), но не резолвится
+        # как отдельный импортируемый тип по стандартному пути
+        # Autodesk.Revit.DB.Electrical.CircuitPathMode. Берём enum-тип
+        # прямо из текущего значения свойства — так не нужно знать точный
+        # путь импорта/вложенность типа в этой сборке Revit API.
+        path_mode_type = type(circuit.CircuitPathMode)
+        all_devices_mode = getattr(path_mode_type, "AllDevices", None)
+        if all_devices_mode is not None:
+            circuit.CircuitPathMode = all_devices_mode
         # Без регенерации Length ниже ещё отражал бы путь по старому режиму.
         doc.Regenerate()
 
@@ -209,22 +217,11 @@ def _apply_circuit_length(doc, circuit, config):
                 )
     except Exception as ex:
         try:
-            output = pyrevit_script.get_output()
-            output.print_md(
+            pyrevit_script.get_output().print_md(
                 u"Цепь ID {}: не удалось проставить режим траектории/длину — {}: {}".format(
                     circuit.Id.IntegerValue, type(ex).__name__, ex
                 )
             )
-            # Временная диагностика: имя CircuitPathMode не резолвится в
-            # этой версии Revit API — печатаем реальные свойства цепи,
-            # похожие на путь/длину, чтобы подобрать правильное имя.
-            members = sorted(
-                a for a in dir(circuit)
-                if not a.startswith("_") and (u"path" in a.lower() or u"length" in a.lower())
-            )
-            output.print_md(u"Отладка: свойства цепи с «path»/«length» — {}".format(
-                u", ".join(members) if members else u"(ничего не найдено)"
-            ))
         except:
             pass
 
