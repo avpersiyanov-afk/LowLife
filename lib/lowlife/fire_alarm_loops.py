@@ -81,6 +81,44 @@ def build_loop_tree(nodes, panel_point=None):
     return ordered
 
 
+def split_branch_devices(ordered_nodes):
+    """
+    Делит узлы шлейфа (после build_loop_tree) на магистральные и
+    ветвевые — те, что подключены к изолятору.
+
+    Узел — ветвевой, если его "parent_id" ведёт к изолятору — независимо
+    от того, идёт ли этот изолятор непосредственно перед узлом по номеру
+    адреса. Изолятор физически разделяет магистраль и ветвь: всё, что
+    висит на нём, электрически "за" изолятором, а не продолжает
+    магистраль, даже если по номеру адреса устройство идёт сразу после
+    изолятора. Такие устройства уже подключены отдельной цепью через
+    кнопку «Цепи изолятор-устройства» — включение их ещё и в
+    магистральную цепь ловит electComponents (элемент нельзя добавить в
+    две цепи одновременно). Сам изолятор в ветвевые не попадает — он
+    остаётся в магистрали (это на нём "висит" ветвь, а не он сам
+    куда-то ответвляется).
+
+    Возвращает (trunk_nodes, branch_nodes), оба в порядке "index".
+    """
+    by_id = dict((n["id"], n) for n in ordered_nodes)
+
+    trunk = []
+    branch = []
+
+    for node in ordered_nodes:
+        parent_id = node.get("parent_id")
+        parent = by_id.get(parent_id) if parent_id is not None else None
+
+        is_branch = parent is not None and parent.get("is_isolator")
+
+        if is_branch:
+            branch.append(node)
+        else:
+            trunk.append(node)
+
+    return trunk, branch
+
+
 def calc_loop_length_ft(ordered_nodes, panel_point=None):
     """
     Суммарная длина шлейфа по дереву (в футах): каждое ребро

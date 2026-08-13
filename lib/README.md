@@ -417,6 +417,7 @@ CPython-only зависимость (импортируется внутри ф�
 | `calc_loop_length_ft` | `calc_loop_length_ft(ordered_nodes, panel_point=None)` | Длина по дереву: каждое ребро один раз, ветви назад не возвращаются |
 | `build_route_text` | `build_route_text(ordered_nodes, address_text_by_id)` | `"3.1.1 -> 3.1.2; 3.1.2 -> 3.1.5"` — вторая пара показывает ветвь |
 | `previous_address_by_id` | `previous_address_by_id(ordered_nodes, address_text_by_id)` | `{id: адрес родителя}` — для записи «Предыдущего адреса» на устройства |
+| `split_branch_devices` | `split_branch_devices(ordered_nodes)` | `(trunk_nodes, branch_nodes)` — узел считается веткой, если его родитель изолятор, но не непосредственно предыдущий по адресу узел. Используется `build_loop_circuits`, чтобы не включать ветки в магистральную цепь |
 | `manhattan_ft` | `manhattan_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между точками |
 
 ## fire_alarm_circuits.py
@@ -435,7 +436,6 @@ CPython-only зависимость (импортируется внутри ф�
 | `find_panels` | `find_panels(doc, config)` | `{номер панели: элемент}` — по рабочему набору и «Обозначению» |
 | `find_devices` | `find_devices(doc, config)` | `(devices, address_by_id, address_text_by_id, skipped)`; `skipped` — с неразбираемым адресом |
 | `existing_circuits_by_number` | `existing_circuits_by_number(doc, config)` | Уже созданные цепи по «Номеру цепи» — чтобы не пересоздавать |
-| `circuit_membership_map` | `circuit_membership_map(doc, number_param)` | `{id элемента: (номер цепи, id цепи)}` по ВСЕМ цепям документа — устройство, уже входящее в цепь, нельзя добавить в другую |
 | `device_category_id` | `device_category_id(el)` | `int(BuiltInCategory)` устройства, если это одна из `DEVICE_CATEGORIES`, иначе `None` — для подбора типа проводника по категории |
 | `build_loop_nodes` | `build_loop_nodes(device_els, address_by_id, isolator_keyword)` | Узлы для `build_loop_tree` из элементов Revit |
 | `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, config)` | Считает и пишет длину и способ прокладки |
@@ -457,7 +457,7 @@ CPython-only зависимость (импортируется внутри ф�
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели. Устройства, уже состоящие в другой цепи документа (`fire_alarm_circuits.circuit_membership_map` — обычно уже подключены к изолятору отдельной цепью), в магистраль не включаются |
+| `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели. Устройства-ветки изоляторов (`split_branch_devices`) в цепь не включаются |
 | `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах |
 
 ## fire_alarm_isolator_circuits.py
