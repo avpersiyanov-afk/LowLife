@@ -19,20 +19,24 @@
 Каждой созданной цепи проставляются «Панель» (имя изолятора), «Имя нагрузки»
 (обозначение + адрес устройства с наибольшим порядковым номером в цепи) и,
 если в настройках задан параметр «Проводник», тип кабеля по категории
-устройства — тем же способом, что и build_loop_circuits.
+устройства. Также сразу проставляется режим траектории Revit «Все
+устройства» и, по получившейся длине цепи, «Длина проводника» и «Способ
+прокладки» (см. _apply_circuit_length).
 """
 
 from Autodesk.Revit.DB import BuiltInCategory
+from Autodesk.Revit.DB.Electrical import CircuitPathMode
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.scs import safe_element_name, classify_element
 from lowlife.scs_circuits import clean_text_value, make_load_name
 from lowlife.params import get_type_string_param, get_string_param, set_param_any, set_element_id_param
 from lowlife.electrical_circuits import create_circuit
 from lowlife.fire_alarm_circuits import device_category_id
+from lowlife.fire_alarm_loops import FT_TO_M
 from lowlife import fire_alarm_settings
 
 MANUAL_DEVICE_KEYWORD = u"ручной"
@@ -175,6 +179,42 @@ def _apply_circuit_labels(doc, circuit, member_devices, isolator_el, config):
             set_element_id_param(circuit, config["cable_type_param"], wire_type_id)
 
 
+def _apply_circuit_length(doc, circuit, config):
+    """
+    Режим траектории Revit «Все устройства» (CircuitPathMode.AllDevices) —
+    чтобы Revit сам посчитал Length цепи по фактическому положению
+    устройств, без ручной прорисовки проводки. По этой длине пишутся
+    «Длина проводника» (Length в футах -> метры, x коэффициент запаса из
+    настроек, округление до целого) и, если задан формат, «Способ
+    прокладки».
+
+    Всё целиком в одном try/except: это необязательная надстройка над уже
+    созданной цепью — её сбой не должен приводить к потере самой цепи
+    (особенно раз create_circuit вызывается в цикле внутри одной
+    транзакции на все цепи набора).
+    """
+    try:
+        circuit.CircuitPathMode = CircuitPathMode.AllDevices
+        # Без регенерации Length ниже ещё отражал бы путь по старому режиму.
+        doc.Regenerate()
+
+        if config.get("wire_length_param"):
+            total = int(round(circuit.Length * FT_TO_M * float(config["length_coef"])))
+            set_param_any(circuit, config["wire_length_param"], total)
+
+            if config.get("route_method_param") and config.get("route_label_pipe_format") and total > 0:
+                set_param_any(
+                    circuit, config["route_method_param"],
+                    config["route_label_pipe_format"].format(total)
+                )
+    except Exception as ex:
+        pyrevit_script.get_output().print_md(
+            u"Цепь ID {}: не удалось проставить режим траектории/длину — {}".format(
+                circuit.Id.IntegerValue, ex
+            )
+        )
+
+
 def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
     """
     Строит цепи «изолятор -> устройства» по правилам группировки.
@@ -218,6 +258,7 @@ def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
                 continue
 
             _apply_circuit_labels(doc, circuit, group, isolator_el, config)
+            _apply_circuit_length(doc, circuit, config)
             created.append(circuit)
 
             if error:
