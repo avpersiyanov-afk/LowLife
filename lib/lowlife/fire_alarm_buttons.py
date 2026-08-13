@@ -7,13 +7,15 @@
 только настройки.
 """
 
+from Autodesk.Revit.DB.Electrical import CircuitPathMode
+
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, get_type_string_param, set_param_any, set_element_id_param
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.fire_alarm import make_full_mark, group_devices_by_loop, is_isolator
-from lowlife.fire_alarm_loops import build_loop_tree, build_route_text, previous_address_by_id
+from lowlife.fire_alarm_loops import build_loop_tree, build_route_text, previous_address_by_id, FT_TO_M
 from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
     build_loop_nodes, write_loop_length, device_category_id, circuit_membership_map
@@ -208,6 +210,34 @@ def build_loop_circuits(doc, settings):
                 wire_type_id = category_wire_type_ids.get(cat_id) if cat_id is not None else None
                 if wire_type_id is not None:
                     set_element_id_param(circuit, config["cable_type_param"], wire_type_id)
+
+            # Режим траектории Revit «Все устройства» + «Длина проводника»/
+            # «Способ прокладки» по получившейся Length — тем же способом,
+            # что и build_isolator_device_circuits
+            # (fire_alarm_isolator_circuits.py). Всё в одном try/except:
+            # сбой здесь не должен откатывать всю транзакцию (в ней —
+            # цепи ВСЕХ шлейфов набора, не только текущего).
+            try:
+                circuit.CircuitPathMode = CircuitPathMode.AllDevices
+                # Length ниже читается сразу в этой же транзакции — без
+                # регенерации он ещё отражал бы путь по старому режиму.
+                doc.Regenerate()
+
+                if config.get("wire_length_param"):
+                    total = int(round(circuit.Length * FT_TO_M * float(config["length_coef"])))
+                    set_param_any(circuit, config["wire_length_param"], total)
+
+                    if config.get("route_method_param") and config.get("route_label_pipe_format") and total > 0:
+                        set_param_any(
+                            circuit, config["route_method_param"],
+                            config["route_label_pipe_format"].format(total)
+                        )
+            except Exception as ex:
+                output.print_md(
+                    u"Шлейф {}: не удалось проставить режим траектории/длину — {}".format(
+                        circuit_number, ex
+                    )
+                )
 
             created += 1
 
