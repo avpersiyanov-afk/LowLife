@@ -124,11 +124,23 @@ if not out_path:
 try:
     export_addressing_to_excel(rows, out_path)
 except ImportError:
+    import sys
+
+    output = script.get_output()
+    output.print_md(u"## openpyxl не найден")
+    output.print_md(
+        u"Скрипт сейчас выполняется вот этим интерпретатором CPython "
+        u"(именно в него нужно ставить пакет — не в любой Python в системе):"
+    )
+    output.print_code(sys.executable)
+    output.print_md(u"Версия: `{}`".format(sys.version))
+    output.print_md(u"Установите пакет ИМЕННО этим интерпретатором, например (замените путь на выведенный выше):")
+    output.print_code(u'"{}" -m pip install openpyxl'.format(sys.executable))
+
     forms.alert(
         u"Не найден пакет openpyxl в CPython-окружении pyRevit.\n\n"
-        u"Установите его тем же интерпретатором, что выбран в настройках "
-        u"pyRevit (pyRevit -> Settings -> CPython Engine), например:\n"
-        u"py -3 -m pip install openpyxl\n\n"
+        u"Точный путь к интерпретатору и готовая команда установки — в "
+        u"окне вывода pyRevit (за этим окном).\n\n"
         u"После установки перезапустите Revit.",
         exitscript=True
     )
