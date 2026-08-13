@@ -32,7 +32,7 @@ fire_alarm_settings.require(settings, [
     "designation_param", "device_address_param", "panel_designation_key",
     "circuit_panel_param", "circuit_number_param", "circuit_number_format",
     "circuit_system_type",
-    "load_name_param",
+    "load_name_param", "wire_length_param",
 ])
 
 build_loop_circuits(doc, settings)
