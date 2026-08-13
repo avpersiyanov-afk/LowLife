@@ -458,7 +458,7 @@ CPython-only зависимость (импортируется внутри ф�
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `build_loop_circuits` | `build_loop_circuits(doc, settings)` | Кнопка «Цепи шлейфов»: цепь на каждый шлейф + подключение к панели. Устройства, уже состоящие в другой цепи документа (`fire_alarm_circuits.circuit_membership_map` — обычно уже подключены к изолятору отдельной цепью), в магистраль не включаются |
-| `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах |
+| `calc_loop_lengths` | `calc_loop_lengths(doc, settings)` | Кнопка «Длины шлейфов»: длина по координатам, марка и «предыдущий адрес» на устройствах; заодно (если настроено) подписывает номером цепи линии проводки рядом с устройствами шлейфа (`fire_alarm_wire_marks.mark_wire_lines`) |
 
 ## fire_alarm_isolator_circuits.py
 Тело кнопки «Цепи изолятор-устройства СПС» (`CircuitsSPS.panel`): в отличие
@@ -477,7 +477,24 @@ CPython-only зависимость (импортируется внутри ф�
 | `pick_devices_and_isolator` | `pick_devices_and_isolator(uidoc, doc)` | Один `PickObjects` на устройства и изолятор вместе (фильтр по обеим категориям); при отмене (Esc) возвращает `(None, None)`, при неверном составе (не ровно один изолятор / нет устройств) просит повторить выбор |
 | `is_manual_device` | `is_manual_device(el)` | Устройство ручного пуска — по слову «ручной» в имени семейства/типа |
 | `split_manual_devices` | `split_manual_devices(device_els)` | `(ручные, остальные)` |
-| `build_isolator_device_circuits` | `build_isolator_device_circuits(doc, device_els, isolator_el, settings)` | Строит цепи по правилам группировки, проставляет «Панель», «Имя нагрузки», «Проводник»; `(created_circuits, error_message)` |
+| `build_isolator_device_circuits` | `build_isolator_device_circuits(doc, device_els, isolator_el, settings)` | Строит цепи по правилам группировки, проставляет «Панель», «Имя нагрузки», «Проводник», длину/способ прокладки; заодно (если настроено) подписывает «Именем нагрузки» линии проводки рядом с устройствами/изолятором; `(created_circuits, error_message)` |
+
+## fire_alarm_wire_marks.py
+Подпись линий проводки СПС/СОУЭ (line-based Generic Model, тем же способом,
+что и трассы СКС — `route_nodes.collect_segments`) номером/именем цепи.
+Провод рисуется в модели вручную; эти функции только находят уже
+нарисованные линии рядом с устройствами цепи (по геометрической близости
+конца линии к точке устройства) и подписывают им параметр «Марка» —
+ничего сами не рисуют. Используется из `fire_alarm_buttons.calc_loop_lengths`
+и `fire_alarm_isolator_circuits.build_isolator_device_circuits`.
+
+Константа: `DEVICE_MATCH_TOLERANCE_FT` (1.0 фут ≈ 300 мм) — допуск
+«конец линии рядом с устройством».
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `collect_member_points` | `collect_member_points(devices, extra_el=None)` | Точки устройств цепи (+ панели/изолятора, если задан) |
+| `mark_wire_lines` | `mark_wire_lines(doc, view, member_points, label, family_filter, mark_param)` | Находит на `view` линии (имя семейства содержит `family_filter`) с концом рядом с одной из `member_points`, пишет им `label` в `mark_param`; `0`, если `family_filter`/`mark_param`/точки не заданы |
 
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).

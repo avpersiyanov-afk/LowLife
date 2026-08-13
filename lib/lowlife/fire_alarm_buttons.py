@@ -18,6 +18,7 @@ from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
     build_loop_nodes, write_loop_length, device_category_id, circuit_membership_map
 )
+from lowlife.fire_alarm_wire_marks import collect_member_points, mark_wire_lines
 from lowlife import fire_alarm_settings
 
 
@@ -282,6 +283,11 @@ def calc_loop_lengths(doc, settings):
     """
     Считает длину каждого шлейфа по координатам устройств и записывает её
     в цепь, а также маршрут шлейфа и «Предыдущий адрес» на устройствах.
+
+    Заодно (если в настройках заполнены «Ключевое слово в имени семейства
+    линии провода» и «Параметр линии «Марка»») подписывает номером цепи
+    уже нарисованные вручную на активном виде линии проводки рядом с
+    устройствами шлейфа — см. fire_alarm_wire_marks.mark_wire_lines.
     """
     config = _config_from(settings)
 
@@ -296,6 +302,8 @@ def calc_loop_lengths(doc, settings):
     no_circuit = []
     marked = 0
     prev_written = 0
+    wire_lines_marked = 0
+    view = doc.ActiveView
 
     with revit.Transaction("Calc {} Loop Lengths".format(fire_alarm_settings.current_title())):
 
@@ -348,6 +356,26 @@ def calc_loop_lengths(doc, settings):
                 set_param_any(circuit, config["circuit_route_param"],
                               build_route_text(ordered, address_text_by_id))
 
+            # Подпись уже нарисованных вручную линий проводки рядом с
+            # устройствами шлейфа номером цепи — необязательная надстройка,
+            # сбой здесь не должен прерывать обработку остальных шлейфов.
+            if config.get("wire_mark_param") and config.get("wire_line_family_filter"):
+                try:
+                    member_points = collect_member_points(loop_devices, panel_el)
+                    wire_lines_marked += mark_wire_lines(
+                        doc, view, member_points, circuit_number,
+                        config["wire_line_family_filter"], config["wire_mark_param"]
+                    )
+                except Exception as ex:
+                    try:
+                        pyrevit_script.get_output().print_md(
+                            u"Шлейф {}: не удалось подписать линии проводки — {}: {}".format(
+                                circuit_number, type(ex).__name__, ex
+                            )
+                        )
+                    except:
+                        pass
+
             processed += 1
 
     _report_collect_problems(skipped, no_circuit, [])
@@ -361,10 +389,11 @@ def calc_loop_lengths(doc, settings):
         u"Шлейфов без цепи: {}\n"
         u"Устройств маркировано: {}\n"
         u"«Предыдущий адрес» записан: {}\n"
+        u"Линий проводки подписано: {}\n"
         u"Устройств с нечитаемым адресом: {}\n\n"
         u"{}".format(
             len(panels), len(devices), len(loops),
-            processed, len(no_circuit), marked, prev_written, len(skipped),
+            processed, len(no_circuit), marked, prev_written, wire_lines_marked, len(skipped),
             u"Подробности — в окне вывода pyRevit." if (skipped or no_circuit) else u""
         )
     )

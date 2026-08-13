@@ -131,6 +131,13 @@ TEXT_FIELDS = [
         u"", False, False),
     ("addr_prev_param_name", u"[Маркировка] Параметр устройства «Предыдущий адрес»",
         u"", False, False),
+
+    # --- линии проводки ---
+    ("wire_line_family_filter", u"[Линии проводки] Ключевое слово в имени семейства линии "
+        u"провода (line-based Generic Model, как в СКС)",
+        u"", False, False),
+    ("wire_mark_param", u"[Линии проводки] Параметр линии «Марка» (пишется номер/имя цепи)",
+        u"", False, False),
 ]
 
 TYPE_FIELDS = []
