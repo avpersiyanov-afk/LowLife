@@ -6,16 +6,8 @@
 панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA («Цепи СКС/СКУД/СПА»).
 """
 
-from Autodesk.Revit.DB import BuiltInCategory, ElementId
+from Autodesk.Revit.DB import ElementId
 from Autodesk.Revit.DB.Electrical import ElectricalSystem, ElectricalSystemType
-
-
-def _is_equipment(el):
-    """Категория «Электрооборудование» — панели и изоляторы шлейфов СПС/СОУЭ."""
-    try:
-        return el.Category is not None and el.Category.Id == ElementId(BuiltInCategory.OST_ElectricalEquipment)
-    except:
-        return False
 
 
 def resolve_system_type(name):
@@ -74,15 +66,12 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     if system_type is None:
         return None, error
 
-    # Если среди устройств есть элемент категории «Электрооборудование»
-    # (например, изолятор шлейфа СПС) — ставим его первым в списке. По
-    # наблюдению именно порядок имеет значение для Create(): даже если
-    # такой элемент есть где-то в списке, Revit может отказаться создавать
-    # цепь ("electComponents"), если он не идёт первым.
-    ordered_devices = sorted(device_els, key=lambda el: 0 if _is_equipment(el) else 1)
-
+    # Порядок элементов сохраняется как передал вызывающий код — для
+    # шлейфов СПС/СОУЭ это порядок по адресу устройства (build_loop_
+    # circuits передаёт уже отсортированный список), чтобы подключение в
+    # цепи шло по факту прохождения шлейфа, а не как попало.
     device_ids = List[ElementId]()
-    for el in ordered_devices:
+    for el in device_els:
         device_ids.Add(el.Id)
 
     # Панель НЕ передаём в список элементов цепи — только устройства,
@@ -95,15 +84,15 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     panel_forced_into_elements = False
 
     if system is None:
-        # Не помогло даже с изолятором первым (если он был) — как запасной
-        # вариант пробуем ещё раз, включив панель в список первым
-        # элементом. По наблюдению панель сама по себе обычно НЕ помогает
-        # (только реальный элемент категории «Электрооборудование» внутри
-        # шлейфа, например изолятор), но это дешёвая попытка на случай
-        # других семейств/проектов, где включение панели всё же нужно.
+        # Не помогло — как запасной вариант пробуем ещё раз, включив
+        # панель в список первым элементом. По наблюдению панель сама по
+        # себе обычно НЕ помогает (нужен реальный элемент категории
+        # «Электрооборудование» среди устройств, например изолятор), но
+        # это дешёвая попытка на случай других семейств/проектов, где
+        # включение панели всё же нужно.
         with_panel_ids = List[ElementId]()
         with_panel_ids.Add(panel_el.Id)
-        for el in ordered_devices:
+        for el in device_els:
             with_panel_ids.Add(el.Id)
 
         system, create_error = _try_create(doc, with_panel_ids, system_type, system_type_name)
