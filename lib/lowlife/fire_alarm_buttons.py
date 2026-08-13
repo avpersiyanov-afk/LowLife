@@ -7,8 +7,6 @@
 только настройки.
 """
 
-from Autodesk.Revit.DB.Electrical import CircuitPathMode
-
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.geometry import get_point
@@ -218,6 +216,7 @@ def build_loop_circuits(doc, settings):
             # сбой здесь не должен откатывать всю транзакцию (в ней —
             # цепи ВСЕХ шлейфов набора, не только текущего).
             try:
+                from Autodesk.Revit.DB.Electrical import CircuitPathMode
                 circuit.CircuitPathMode = CircuitPathMode.AllDevices
                 # Length ниже читается сразу в этой же транзакции — без
                 # регенерации он ещё отражал бы путь по старому режиму.
@@ -233,11 +232,14 @@ def build_loop_circuits(doc, settings):
                             config["route_label_pipe_format"].format(total)
                         )
             except Exception as ex:
-                output.print_md(
-                    u"Шлейф {}: не удалось проставить режим траектории/длину — {}".format(
-                        circuit_number, ex
+                try:
+                    output.print_md(
+                        u"Шлейф {}: не удалось проставить режим траектории/длину — {}: {}".format(
+                            circuit_number, type(ex).__name__, ex
+                        )
                     )
-                )
+                except:
+                    pass
 
             created += 1
 

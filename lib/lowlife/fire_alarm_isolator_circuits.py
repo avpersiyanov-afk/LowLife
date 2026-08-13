@@ -25,7 +25,6 @@
 """
 
 from Autodesk.Revit.DB import BuiltInCategory
-from Autodesk.Revit.DB.Electrical import CircuitPathMode
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
@@ -194,6 +193,7 @@ def _apply_circuit_length(doc, circuit, config):
     транзакции на все цепи набора).
     """
     try:
+        from Autodesk.Revit.DB.Electrical import CircuitPathMode
         circuit.CircuitPathMode = CircuitPathMode.AllDevices
         # Без регенерации Length ниже ещё отражал бы путь по старому режиму.
         doc.Regenerate()
@@ -208,11 +208,14 @@ def _apply_circuit_length(doc, circuit, config):
                     config["route_label_pipe_format"].format(total)
                 )
     except Exception as ex:
-        pyrevit_script.get_output().print_md(
-            u"Цепь ID {}: не удалось проставить режим траектории/длину — {}".format(
-                circuit.Id.IntegerValue, ex
+        try:
+            pyrevit_script.get_output().print_md(
+                u"Цепь ID {}: не удалось проставить режим траектории/длину — {}: {}".format(
+                    circuit.Id.IntegerValue, type(ex).__name__, ex
+                )
             )
-        )
+        except:
+            pass
 
 
 def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
