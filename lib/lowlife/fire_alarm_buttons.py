@@ -226,23 +226,19 @@ def build_loop_circuits(doc, settings):
             # Length цепи по фактическому положению всех устройств шлейфа
             # (а не только до самого дальнего), без ручной прорисовки
             # проводки. От этой длины считаются «Длина проводника» и
-            # «Способ прокладки» ниже.
+            # «Способ прокладки» ниже. Всё целиком в одном try/except: это
+            # необязательная надстройка над созданием цепи — если что-то
+            # здесь упадёт (несовместимая версия Revit API, кривой формат
+            # в настройках и т.п.), это не должно откатывать всю транзакцию
+            # и терять уже созданные цепи шлейфов.
             try:
                 circuit.CircuitPathMode = CircuitPathMode.AllDevices
                 # Length ниже читается сразу в этой же транзакции — без
                 # регенерации он ещё отражал бы путь по старому режиму.
                 doc.Regenerate()
-            except:
-                pass
 
-            if config.get("wire_length_param"):
-                try:
-                    length_m = circuit.Length * FT_TO_M * float(config["length_coef"])
-                except:
-                    length_m = None
-
-                if length_m is not None:
-                    total = int(round(length_m))
+                if config.get("wire_length_param"):
+                    total = int(round(circuit.Length * FT_TO_M * float(config["length_coef"])))
                     set_param_any(circuit, config["wire_length_param"], total)
 
                     if config.get("route_method_param") and config.get("route_label_pipe_format") and total > 0:
@@ -250,6 +246,12 @@ def build_loop_circuits(doc, settings):
                             circuit, config["route_method_param"],
                             config["route_label_pipe_format"].format(total)
                         )
+            except Exception as ex:
+                output.print_md(
+                    u"Шлейф {}: не удалось проставить режим траектории/длину — {}".format(
+                        circuit_number, ex
+                    )
+                )
 
             created += 1
 
