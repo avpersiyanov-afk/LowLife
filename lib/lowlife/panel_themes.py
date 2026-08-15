@@ -127,6 +127,7 @@ def apply_theme(selected_theme):
     is left on the ribbon.
     """
     from pyrevit.coreutils.ribbon import get_current_ui
+    from pyrevit import script as pyrevit_script  # TEMP debug import — remove with the block below
 
     pyrevit_tabs = get_current_ui().get_pyrevit_tabs()
 
@@ -137,8 +138,17 @@ def apply_theme(selected_theme):
 
     touched_panel_names = set(panel_name for panel_name, _ in visibility)
 
+    # ---- TEMP DEBUG: remove this block once the visibility bug is found ----
+    debug_out = pyrevit_script.get_output()
+    debug_out.print_md(u"### apply_theme(`{}`)".format(selected_theme))
+    # ---- end TEMP DEBUG block ----
+
     for panel_name in touched_panel_names:
         panel = _find_panel(pyrevit_tabs, panel_name)
+        # ---- TEMP DEBUG ----
+        debug_out.print_md(u"- panel `{}`: {}".format(
+            panel_name, u"FOUND" if panel is not None else u"NOT FOUND"))
+        # ---- end TEMP DEBUG ----
         if panel is None:
             continue
         panel_visible = False
@@ -148,6 +158,9 @@ def apply_theme(selected_theme):
             child_visible = visibility.get((panel_name, child.name), False)
             child.visible = child_visible
             panel_visible = panel_visible or child_visible
+            # ---- TEMP DEBUG ----
+            debug_out.print_md(u"  - `{}` -> visible={}".format(child.name, child_visible))
+            # ---- end TEMP DEBUG ----
         panel.visible = panel_visible
         # RibbonPanel.Visible alone can leave an empty strip on the ribbon
         # until the layout is rebuilt; the underlying Autodesk.Windows
@@ -155,3 +168,7 @@ def apply_theme(selected_theme):
         adwindows_panel = panel.get_adwindows_object()
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
+        # ---- TEMP DEBUG ----
+        debug_out.print_md(u"  panel.visible set to {}, adwindows_panel={}".format(
+            panel_visible, u"present" if adwindows_panel is not None else u"MISSING"))
+        # ---- end TEMP DEBUG ----
