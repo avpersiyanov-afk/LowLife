@@ -93,10 +93,27 @@ THEMES = {
 
 THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"Circuits", u"Settings", u"General"]
 
+# A pyRevit RibbonPanel's runtime .name mirrors the Revit API RibbonPanel.Name,
+# which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
+# its bundle folder name — the two only coincide when a panel has no bundle.yaml
+# title override (confirmed via pyrevit/coreutils/ribbon.py: CreateRibbonPanel is
+# called with the title string, and _PyRevitRibbonPanel has no separate field that
+# preserves the folder name). Every panel below has a `title:` in its bundle.yaml,
+# so find_child(folder_name) can never match it; this maps folder name -> title so
+# _find_panel can look panels up by what they are actually named at runtime.
+PANEL_RIBBON_NAMES = {
+    u"CircuitsSCS": u"Цепи СКС",
+    u"CircuitsSKUD": u"Цепи СКУД",
+    u"CircuitsSPS": u"Цепи СПС",
+    u"CircuitsSPA": u"Цепи СПА",
+    u"CircuitsDelete": u"Удаление",
+}
+
 
 def _find_panel(pyrevit_tabs, panel_name):
+    ribbon_name = PANEL_RIBBON_NAMES.get(panel_name, panel_name)
     for tab in pyrevit_tabs:
-        panel = tab.find_child(panel_name)
+        panel = tab.find_child(ribbon_name)
         if panel is not None:
             return panel
     return None
@@ -127,7 +144,6 @@ def apply_theme(selected_theme):
     is left on the ribbon.
     """
     from pyrevit.coreutils.ribbon import get_current_ui
-    from pyrevit import script as pyrevit_script  # TEMP debug import — remove with the block below
 
     pyrevit_tabs = get_current_ui().get_pyrevit_tabs()
 
@@ -138,17 +154,8 @@ def apply_theme(selected_theme):
 
     touched_panel_names = set(panel_name for panel_name, _ in visibility)
 
-    # ---- TEMP DEBUG: remove this block once the visibility bug is found ----
-    debug_out = pyrevit_script.get_output()
-    debug_out.print_md(u"### apply_theme(`{}`)".format(selected_theme))
-    # ---- end TEMP DEBUG block ----
-
     for panel_name in touched_panel_names:
         panel = _find_panel(pyrevit_tabs, panel_name)
-        # ---- TEMP DEBUG ----
-        debug_out.print_md(u"- panel `{}`: {}".format(
-            panel_name, u"FOUND" if panel is not None else u"NOT FOUND"))
-        # ---- end TEMP DEBUG ----
         if panel is None:
             continue
         panel_visible = False
@@ -158,9 +165,6 @@ def apply_theme(selected_theme):
             child_visible = visibility.get((panel_name, child.name), False)
             child.visible = child_visible
             panel_visible = panel_visible or child_visible
-            # ---- TEMP DEBUG ----
-            debug_out.print_md(u"  - `{}` -> visible={}".format(child.name, child_visible))
-            # ---- end TEMP DEBUG ----
         panel.visible = panel_visible
         # RibbonPanel.Visible alone can leave an empty strip on the ribbon
         # until the layout is rebuilt; the underlying Autodesk.Windows
@@ -168,7 +172,3 @@ def apply_theme(selected_theme):
         adwindows_panel = panel.get_adwindows_object()
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
-        # ---- TEMP DEBUG ----
-        debug_out.print_md(u"  panel.visible set to {}, adwindows_panel={}".format(
-            panel_visible, u"present" if adwindows_panel is not None else u"MISSING"))
-        # ---- end TEMP DEBUG ----
