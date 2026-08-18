@@ -103,6 +103,9 @@ TEXT_FIELDS = [
         u"", False, True),
     ("load_name_param", u"[Цепи] Параметр цепи «Имя нагрузки»",
         u"", False, True),
+    ("wire_catalog_marker_param", u"[Цепи] Параметр-признак строки справочника кабелей "
+        u"(нужен для подбора проводника для цепей СКС кнопкой ниже)",
+        u"", False, False),
     ("segment_loads_param", u"[Цепи] Параметр узла маршрута «Список цепей»",
         u"", False, True),
     ("install_tray_key", u"[Цепи] Значение «Тип прокладки» = лоток",
@@ -138,6 +141,13 @@ TYPE_FIELDS = [
     ("riser_type_id", u"Тип для точек стояков"),
 ]
 
+# (ключ, подпись) — строка справочника кабелей (см. list_wire_catalog_items),
+# выбирается отдельным пикером, а не текстом; хранится и читается так же,
+# как TYPE_FIELDS, но источник списка для выбора другой.
+CONDUCTOR_FIELDS = [
+    ("conductor_type_id", u"Проводник (тип кабеля) для цепей СКС"),
+]
+
 LIST_FIELDS = set(key for key, _, _, is_list, _req in TEXT_FIELDS if is_list)
 
 
@@ -154,6 +164,8 @@ PLAIN_LABELS = {}
 for _key, _label, _default, _is_list, _required in TEXT_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
 for _key, _label in TYPE_FIELDS:
+    PLAIN_LABELS[_key] = _split_section(_label)[1]
+for _key, _label in CONDUCTOR_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
 
 
@@ -381,6 +393,9 @@ def load_saved_values():
     for key, _ in TYPE_FIELDS:
         values[key] = saved.get(key, "")
 
+    for key, _ in CONDUCTOR_FIELDS:
+        values[key] = saved.get(key, "")
+
     return values
 
 
@@ -561,6 +576,81 @@ def show_settings_form(doc, values):
         root.Children.Add(box)
         boxes[key] = box
 
+    # --- проводник для цепей СКС (кнопка «Цепи СКС») ---
+
+    conductor_section_title = TextBlock()
+    conductor_section_title.Text = u"Проводник для цепей СКС"
+    conductor_section_title.FontWeight = FontWeights.Bold
+    conductor_section_title.Margin = Thickness(0, 16, 0, 4)
+    root.Children.Add(conductor_section_title)
+
+    conductor_hint = TextBlock()
+    conductor_hint.Text = (
+        u"Опционально: если задан «Параметр-признак строки справочника кабелей» "
+        u"выше, здесь можно выбрать проводник из справочника — он будет "
+        u"проставлен всем цепям, создаваемым кнопкой «Цепи СКС», без запроса "
+        u"при каждом запуске."
+    )
+    conductor_hint.FontSize = 11
+    conductor_hint.Foreground = Brushes.Gray
+    conductor_hint.TextWrapping = TextWrapping.Wrap
+    conductor_hint.Margin = Thickness(0, 0, 0, 8)
+    root.Children.Add(conductor_hint)
+
+    conductor_values = {key: values.get(key, "") for key, _ in CONDUCTOR_FIELDS}
+    conductor_key, conductor_label_text = CONDUCTOR_FIELDS[0]
+
+    conductor_row = StackPanel()
+    conductor_row.Orientation = Orientation.Horizontal
+
+    conductor_value_label = TextBlock()
+    conductor_value_label.Text = _type_display_name(doc, conductor_values[conductor_key])
+    conductor_value_label.VerticalAlignment = VerticalAlignment.Center
+    conductor_value_label.Width = 300
+    conductor_value_label.TextWrapping = TextWrapping.Wrap
+    conductor_row.Children.Add(conductor_value_label)
+
+    conductor_pick_btn = Button()
+    conductor_pick_btn.Content = u"Выбрать..."
+    conductor_pick_btn.Padding = Thickness(8, 2, 8, 2)
+    conductor_pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+    def on_pick_conductor(sender, args):
+        marker_param_name = boxes["wire_catalog_marker_param"].Text.strip()
+        if not marker_param_name:
+            forms.alert(
+                u"Сначала заполните поле «Параметр-признак строки справочника "
+                u"кабелей» в разделе «Цепи»."
+            )
+            return
+
+        wire_items = list_wire_catalog_items(doc, marker_param_name)
+        if not wire_items:
+            forms.alert(
+                u"Не найдено строк справочника кабелей (ни один элемент документа "
+                u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
+                    marker_param_name
+                )
+            )
+            return
+
+        options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
+        selected = forms.SelectFromList.show(
+            options,
+            title=conductor_label_text,
+            button_name=u"Выбрать",
+            multiselect=False
+        )
+
+        if selected:
+            conductor_values[conductor_key] = str(selected.wire_type.Id.IntegerValue)
+            conductor_value_label.Text = selected.name
+
+    conductor_pick_btn.Click += on_pick_conductor
+
+    conductor_row.Children.Add(conductor_pick_btn)
+    root.Children.Add(conductor_row)
+
     required_hint = TextBlock()
     required_hint.Text = u"* обязательные поля — без них соответствующая кнопка не сможет найти элементы или записать параметры"
     required_hint.FontSize = 11
@@ -602,6 +692,7 @@ def show_settings_form(doc, values):
         # получения settings. Здесь просто сохраняем то, что введено.
         combined = {key: box.Text for key, box in boxes.items()}
         combined.update(type_values)
+        combined.update(conductor_values)
         result["values"] = combined
         win.Close()
 

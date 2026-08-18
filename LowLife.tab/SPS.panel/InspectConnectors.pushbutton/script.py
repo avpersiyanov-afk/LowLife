@@ -79,9 +79,24 @@ def describe_element(el, label):
         except Exception as ex:
             sys_type = u"(ошибка: {})".format(ex)
 
+        # ElectricalSystemType самого коннектора (для Domain=DomainElectrical) —
+        # под какой(ие) тип(ы) системы он сконфигурирован в семействе
+        # (Data/Power/Telephone/Communication и т.п.), а не то, к какой
+        # системе он ФАКТИЧЕСКИ подключён сейчас (это MEPSystem.SystemType
+        # выше — None, пока цепь не создана). ElectricalSystem.Create(...,
+        # type) требует среди элементов хотя бы один коннектор,
+        # сконфигурированный под именно ЭТОТ system type — несовпадение
+        # даёт ту же ошибку electComponents, что и отсутствие коннектора
+        # вообще.
+        try:
+            electrical_system_type = c.ElectricalSystemType
+        except Exception as ex:
+            electrical_system_type = u"(нет/ошибка: {})".format(ex)
+
         output.print_md(
-            u"- Коннектор {}: Domain=`{}`, ConnectorType=`{}`, MEPSystem.SystemType=`{}`".format(
-                i, domain, conn_type, sys_type
+            u"- Коннектор {}: Domain=`{}`, ConnectorType=`{}`, "
+            u"ElectricalSystemType=`{}`, MEPSystem.SystemType=`{}`".format(
+                i, domain, conn_type, electrical_system_type, sys_type
             )
         )
 

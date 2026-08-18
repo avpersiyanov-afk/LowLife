@@ -6,8 +6,54 @@
 панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA («Цепи СКС/СКУД/СПА»).
 """
 
-from Autodesk.Revit.DB import ElementId
+from Autodesk.Revit.DB import ElementId, Domain
 from Autodesk.Revit.DB.Electrical import ElectricalSystem, ElectricalSystemType
+
+
+def detect_electrical_system_type(el):
+    """
+    ElectricalSystemType первого коннектора элемента с Domain=DomainElectrical
+    — тип системы, под который коннектор сконфигурирован в самом семействе
+    (не тот, к которому он ФАКТИЧЕСКИ подключён сейчас — это отдельное,
+    MEPSystem.SystemType, у ещё не закреплённого в цепь элемента всегда
+    None). Именно этот тип Revit молча подставляет сам при ручном создании
+    цепи через UI («Создать электрическую цепь») — а API
+    ElectricalSystem.Create() требует его явно и отказывает с
+    electComponents при малейшем несовпадении (например если у устройства
+    коннектор сконфигурирован под Communication/Telephone, а вызывающий
+    код запросил Data).
+
+    Возвращает None, если у элемента нет электрических коннекторов или тип
+    определить не удалось — тогда вызывающий код сам решает, что подставить
+    по умолчанию.
+    """
+    mep_model = getattr(el, "MEPModel", None)
+    connector_mgr = getattr(mep_model, "ConnectorManager", None) if mep_model else None
+
+    if connector_mgr is None:
+        return None
+
+    try:
+        connectors = list(connector_mgr.Connectors)
+    except:
+        return None
+
+    for c in connectors:
+        try:
+            if c.Domain != Domain.DomainElectrical:
+                continue
+        except:
+            continue
+
+        try:
+            system_type = c.ElectricalSystemType
+        except:
+            continue
+
+        if isinstance(system_type, ElectricalSystemType):
+            return system_type
+
+    return None
 
 
 def resolve_system_type(name):
@@ -58,11 +104,20 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     """
     Создаёт электрическую цепь из устройств и подключает её к панели.
 
+    system_type_name — либо имя типа строкой (тогда резолвится через
+    resolve_system_type, как раньше), либо уже готовый ElectricalSystemType
+    (например от detect_electrical_system_type) — тогда используется как
+    есть, без резолва по имени.
+
     Возвращает (цепь, текст ошибки).
     """
     from System.Collections.Generic import List
 
-    system_type, error = resolve_system_type(system_type_name)
+    if isinstance(system_type_name, ElectricalSystemType):
+        system_type, error = system_type_name, None
+    else:
+        system_type, error = resolve_system_type(system_type_name)
+
     if system_type is None:
         return None, error
 
@@ -101,24 +156,26 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     if system is None:
         return None, create_error
 
-    try:
-        system.SelectPanel(panel_el)
-    except Exception as ex:
-        return system, u"цепь создана, но не подключена к панели: {}".format(ex)
-
     if panel_forced_into_elements:
-        # Панель по-прежнему числится элементом цепи (см. комментарий выше)
-        # — теперь, когда она назначена источником через SelectPanel,
-        # пробуем убрать её из состава элементов, чтобы цепь не выглядела
-        # замкнутой. Если Revit это не позволяет (метод недоступен для
-        # ElectricalSystem в этой версии/случае) — не критично: цепь всё
-        # равно создана и подключена к панели правильно, просто панель
-        # останется видна как элемент цепи в спецификации.
+        # Панель числится элементом цепи (см. комментарий выше) — убираем
+        # её оттуда ДО SelectPanel, а не после: пока панель одновременно и
+        # элемент/нагрузка цепи, и её источник, Revit отказывает с
+        # "Not allow circular connection..." прямо в SelectPanel, и до
+        # Remove дело не доходит (а без Remove цепь остаётся без
+        # назначенной панели). Если Remove недоступен для ElectricalSystem
+        # в этой версии/случае — не критично: SelectPanel ниже всё равно
+        # попробует назначить панель, просто она может остаться видна и
+        # как элемент цепи в спецификации.
         try:
             remove_ids = List[ElementId]()
             remove_ids.Add(panel_el.Id)
             system.Remove(remove_ids)
         except:
             pass
+
+    try:
+        system.SelectPanel(panel_el)
+    except Exception as ex:
+        return system, u"цепь создана, но не подключена к панели: {}".format(ex)
 
     return system, None

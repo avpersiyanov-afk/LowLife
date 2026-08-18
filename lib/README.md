@@ -52,30 +52,43 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
+| `detect_electrical_system_type` | `detect_electrical_system_type(el)` | `ElectricalSystemType`, под который сконфигурирован первый коннектор элемента с `Domain=DomainElectrical` (`Connector.ElectricalSystemType` — тип из семейства, а не тот, к которому коннектор фактически подключён сейчас). Ровно этот тип Revit сам подставляет при ручном создании цепи через UI; `None`, если электрических коннекторов нет |
 | `resolve_system_type` | `resolve_system_type(name)` | `ElectricalSystemType` по имени из настроек (`"FireAlarm"`, `"Data"`, ...); при опечатке — ошибка со списком доступных. Через `getattr`, т.к. набор отличается между версиями Revit |
-| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `ElectricalSystem.Create(device_els)` + `SelectPanel(panel_el)`; панель НЕ передаётся в список элементов цепи (иначе цепь выглядит "кольцевой" — панель одновременно источник и нагрузка). Элемент категории «Электрооборудование» среди `device_els` (например изолятор шлейфа СПС) ставится первым в списке — по наблюдению порядок важен для `Create()`. Если создание без панели всё равно падает с `electComponents`, повторяет попытку с панелью первым элементом, затем пробует `system.Remove([panel_el.Id])`, чтобы убрать её из состава элементов после `SelectPanel`. `(цепь, текст ошибки)` |
+| `create_circuit` | `create_circuit(doc, panel_el, device_els, system_type_name)` | `system_type_name` — имя строкой (резолвится через `resolve_system_type`) или уже готовый `ElectricalSystemType` (например от `detect_electrical_system_type`, используется как есть). `ElectricalSystem.Create(device_els)` + `SelectPanel(panel_el)`; панель НЕ передаётся в список элементов цепи (иначе цепь выглядит "кольцевой" — панель одновременно источник и нагрузка). `Create()` требует, чтобы среди переданных элементов был хотя бы один коннектор, сконфигурированный именно под запрошенный `system_type_name` — иначе падает с `electComponents` (в т.ч. если единственный электрический коннектор устройства сконфигурирован под другой тип, например `Communication` вместо `Data` — тогда вручную через Revit UI цепь создаётся нормально, а через API с зафиксированным типом нет; см. `detect_electrical_system_type`). Также `electComponents` бывает при отсутствии среди элементов категории «Электрооборудование» (`OST_ElectricalEquipment`, например изолятор шлейфа СПС) — тогда повторяет попытку с панелью первым элементом. В этом случае перед `SelectPanel` пробует `system.Remove([panel_el.Id])`, чтобы убрать панель из состава элементов ДО назначения её источником — иначе `SelectPanel` падает с "circular connection" (панель одновременно и элемент, и источник), Remove до неё не доходит, и цепь остаётся без панели. `(цепь, текст ошибки)` |
 
 ## manual_circuits.py
 Тело кнопок «Цепи X» на панелях CircuitsSCS/CircuitsSKUD/CircuitsSPA:
-пользователь сам выбирает панель и устройства, кнопка создаёт по
-отдельной цепи на каждое устройство («домашний прогон»). Используется
+пользователь выбирает панель и устройства одним общим выбором (рамкой
+и/или кликами, без определённого порядка — какой из выбранных элементов
+панель, определяется автоматически по категории «Электрооборудование»,
+`OST_ElectricalEquipment`, тем же способом, что и выбор изолятора в
+`fire_alarm_isolator_circuits.pick_devices_and_isolator`), кнопка создаёт
+по отдельной цепи на каждое устройство («домашний прогон»). Используется
 целиком (`run_manual_circuit_button`) кнопками СКУД/СПА — различаются
 только подписи и тип цепи по умолчанию, передаваемые из `script.py`. СКС —
 особый случай (см. `scs_manual_circuits.py`): её кнопка берёт отсюда
-только `pick_panel_and_devices`, т.к. тип цепи у неё фиксирован и
-добавлен выбор проводника.
+только `pick_panel_and_devices`, т.к. тип цепи определяется по коннектору
+устройства, а не запрашивается в диалоге, и добавлен выбор проводника.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `pick_panel_and_devices` | `pick_panel_and_devices(uidoc, doc, panel_prompt, devices_prompt)` | Выбор одной панели, затем нескольких устройств (`PickObject`/`PickObjects`, отсекая связанные файлы); останавливает скрипт при отмене или пустом выборе |
+| `pick_panel_and_devices` | `pick_panel_and_devices(uidoc, doc, prompt)` | Один `PickObjects` на панель и устройства вместе (отсекая связанные файлы); панелью считается элемент категории «Электрооборудование» — в выборе должен быть ровно один; останавливает скрипт, если панель не одна, устройств нет, или выбор отменён |
 | `pick_system_type` | `pick_system_type(default_name)` | Диалог выбора `ElectricalSystemType` из доступных в текущей версии Revit, с предустановленным значением |
 | `build_device_circuits` | `build_device_circuits(doc, panel_el, device_els, system_type_name, transaction_name)` | Создаёт по цепи на каждое устройство; `(created_count, errors)` |
 | `run_manual_circuit_button` | `run_manual_circuit_button(discipline_title, default_system_type)` | Весь сценарий кнопки: выбор → создание → отчёт |
 
 ## scs_manual_circuits.py
 Тело кнопки «Цепи СКС» (`CircuitsSCS.panel`): панель -> устройства, тип
-цепи всегда `Data` (у СКС других не бывает — не запрашивается в диалоге,
-в отличие от СКУД/СПА). Параметр «Проводник» (встроенный параметр
+цепи не запрашивается в диалоге (в отличие от СКУД/СПА) — определяется
+автоматически по электрическому коннектору самого устройства
+(`electrical_circuits.detect_electrical_system_type`), `CIRCUIT_SYSTEM_TYPE
+= "Data"` — только запасное значение, если у устройства не нашлось
+электрического коннектора. Раньше тип был жёстко зашит как `Data` для всех
+устройств СКС, что ломало создание цепи (`electComponents`) для устройств,
+чей коннектор в проекте сконфигурирован под другой тип системы (например
+`Communication`/`Telephone` у розеток связи) — хотя вручную через Revit UI
+цепь с той же панелью создаётся нормально, т.к. Revit сам берёт тип с
+коннектора. Параметр «Проводник» (встроенный параметр
 электрической цепи Revit, ссылка на строку ключевой спецификации) — имя
 `CONDUCTOR_PARAM_NAME = u"Проводник"` зашито в код, а не в настройки СКС:
 это не project-specific SMNX_-параметр. Но само ЗНАЧЕНИЕ (какую строку
@@ -98,7 +111,7 @@ SyncCircuitsAndLengths.
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `get_conductor_id` | `get_conductor_id(doc, settings)` | `ElementId` проводника из `settings["conductor_type_id"]`; останавливает скрипт, если в настройках ничего не выбрано или элемент больше не существует в проекте |
-| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)` | Создаёт по цепи типа Data на каждое устройство, проставляет «Проводник» и (если `type_code_param`/`device_address_param`/`load_name_param` заданы) «Имя нагрузки»; `(created_count, errors)` |
+| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)` | Создаёт по цепи на каждое устройство (тип — по `detect_electrical_system_type(dev)`, запасной `CIRCUIT_SYSTEM_TYPE`), проставляет «Проводник» и (если `type_code_param`/`device_address_param`/`load_name_param` заданы) «Имя нагрузки»; `(created_count, errors)` |
 
 ## scs.py
 Константы и логика, специфичные для СКС / телекоммуникационных трасс

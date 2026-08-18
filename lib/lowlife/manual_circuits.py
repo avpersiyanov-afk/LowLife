@@ -1,18 +1,23 @@
 # -*- coding: utf-8 -*-
 """
 Тело кнопок ручного построения цепей «панель -> устройства» на панелях
-CircuitsSCS/CircuitsSKUD/CircuitsSPA: пользователь сам выбирает панель и
-устройства, кнопка создаёт по одной отдельной цепи на каждое устройство
-(аналог «home run» — без промежуточных узлов и адресации).
+CircuitsSCS/CircuitsSKUD/CircuitsSPA: пользователь выбирает панель и
+устройства одним общим выбором (рамкой и/или кликами, без определённого
+порядка), кнопка создаёт по одной отдельной цепи на каждое устройство
+(аналог «home run» — без промежуточных узлов и адресации). Какой из
+выбранных элементов панель, определяется автоматически по категории
+«Электрооборудование» (OST_ElectricalEquipment) — тем же способом, что и
+выбор изолятора в fire_alarm_isolator_circuits.pick_devices_and_isolator.
 
 Логика не зависит от дисциплины — используется целиком (run_manual_circuit_button)
 кнопками СКУД/СПА, различаются только подписи и тип цепи по умолчанию (его
 в любом случае можно поменять в диалоге при запуске). СКС — особый случай:
-тип цепи у неё всегда фиксирован (Data) и добавлен выбор проводника, поэтому
-её кнопка использует только pick_panel_and_devices отсюда, а остальное — из
-lowlife.scs_manual_circuits.
+тип цепи определяется по коннектору устройства, а не запрашивается в
+диалоге, и добавлен выбор проводника, поэтому её кнопка использует только
+pick_panel_and_devices отсюда, а остальное — из lowlife.scs_manual_circuits.
 """
 
+from Autodesk.Revit.DB import BuiltInCategory
 from Autodesk.Revit.DB.Electrical import ElectricalSystemType
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -35,26 +40,47 @@ class _NotLinkedSelectionFilter(ISelectionFilter):
         return True
 
 
-def pick_panel_and_devices(uidoc, doc, panel_prompt, devices_prompt):
+def _is_panel(el):
+    try:
+        return el.Category.Id.IntegerValue == int(BuiltInCategory.OST_ElectricalEquipment)
+    except:
+        return False
+
+
+def pick_panel_and_devices(uidoc, doc, prompt):
     """
-    Просит выбрать одну панель, затем несколько устройств. Останавливает
-    скрипт (forms.alert exitscript), если пользователь отменил выбор (Esc)
-    или не выбрал ни одного устройства.
+    Просит выбрать панель и устройства вместе, одним PickObjects (рамкой
+    и/или кликами, подтверждение Enter/«Готово») — без определённого
+    порядка. Среди выбранного панелью считается элемент категории
+    «Электрооборудование» (OST_ElectricalEquipment), остальные —
+    устройствами. Останавливает скрипт (forms.alert exitscript), если
+    пользователь отменил выбор (Esc), если панель в выборе не ровно одна,
+    или если не выбрано ни одного устройства.
     """
     selection_filter = _NotLinkedSelectionFilter()
 
     try:
-        panel_ref = uidoc.Selection.PickObject(ObjectType.Element, selection_filter, panel_prompt)
-        device_refs = uidoc.Selection.PickObjects(ObjectType.Element, selection_filter, devices_prompt)
+        refs = uidoc.Selection.PickObjects(ObjectType.Element, selection_filter, prompt)
     except OperationCanceledException:
         forms.alert(u"Операция отменена.", exitscript=True)
         return None, None
 
-    device_els = [doc.GetElement(r) for r in device_refs]
+    els = [doc.GetElement(r) for r in refs]
+    panels = [el for el in els if _is_panel(el)]
+    device_els = [el for el in els if not _is_panel(el)]
+
+    if len(panels) != 1:
+        forms.alert(
+            u"В выборе должна быть ровно одна панель (категория "
+            u"«Электрооборудование»), а выбрано {}.".format(len(panels)),
+            exitscript=True
+        )
+        return None, None
+
     if not device_els:
         forms.alert(u"Не выбрано ни одного устройства.", exitscript=True)
 
-    return doc.GetElement(panel_ref), device_els
+    return panels[0], device_els
 
 
 def pick_system_type(default_name):
@@ -125,8 +151,8 @@ def run_manual_circuit_button(discipline_title, default_system_type):
 
     panel_el, device_els = pick_panel_and_devices(
         uidoc, doc,
-        u"Выберите панель {}".format(discipline_title),
-        u"Выберите устройства {} (подтвердите Enter)".format(discipline_title)
+        u"Выберите панель и устройства {} вместе — рамкой и/или кликами, "
+        u"без порядка (подтвердите Enter/«Готово»)".format(discipline_title)
     )
 
     system_type_name = pick_system_type(default_system_type)

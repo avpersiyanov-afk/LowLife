@@ -1,116 +1,108 @@
 # -*- coding: utf-8 -*-
 """
 Тело кнопки «Цепи СКС» (CircuitsSCS.panel): ручное построение цепей
-панель -> устройства, всегда типа Data (СКС — структурированная кабельная
-система, других типов цепи здесь не бывает, в отличие от СКУД/СПА).
+панель -> устройства.
 
-Перед выбором панели/устройств кнопка просит выбрать проводник (кабель)
-для параметра цепи «Проводник» — это встроенный параметр электрической
-цепи Revit (выпадающий список — ссылка на строку ключевой спецификации),
-а не project-specific SMNX_-параметр, поэтому его имя зашито в код, а не
-берётся из настроек СКС (там ему не место).
+Тип электрической цепи Revit определяется по коннектору самого устройства
+(detect_electrical_system_type) — тем же способом, каким его молча
+подставляет сам Revit при ручном создании цепи через UI. У СКС встречаются
+устройства разных категорий (розетки RJ-45 категории «Устройства связи»,
+оптические кроссы и т.п.), и их коннекторы в проекте могут быть
+сконфигурированы под разные типы (Data, Communication, Telephone...) —
+раньше здесь был жёстко зашит один тип Data для всех, из-за чего
+ElectricalSystem.Create падал с electComponents для устройств с другим
+типом коннектора, хотя вручную через Revit UI цепь с той же панелью
+создаётся нормально. CIRCUIT_SYSTEM_TYPE остаётся запасным значением — на
+случай, если у устройства не нашлось электрического коннектора для
+автоопределения.
 
-Revit не даёт получить список строк справочника кабелей напрямую (в
-отличие, например, от списка типов категории), поэтому список для выбора
-собирается из значений, уже проставленных хотя бы у одной электрической
-цепи документа — тот же приём, что и в исходном Dynamo-скрипте
-пользователя (там имя проводника вводилось вручную текстом в IN[0], здесь
-— выбирается из списка уже использованных).
+Проводник (кабель) для параметра цепи «Проводник» — это встроенный
+параметр электрической цепи Revit (выпадающий список — ссылка на строку
+ключевой спецификации), а не project-specific SMNX_-параметр, поэтому его
+имя зашито в код (CONDUCTOR_PARAM_NAME), а не берётся из настроек СКС (там
+ему не место). Но САМО значение — какую строку справочника кабелей
+проставлять — выбирается один раз в окне настроек («Параметры СКС», раздел
+«Проводник для цепей СКС», см. scs_settings.py) и оттуда читается при
+каждом запуске кнопки, а не запрашивается заново, аналогично тому, как это
+сделано для типа проводника по категории устройства в СПС
+(fire_alarm_settings.get_category_wire_type_elem_ids).
+
+После создания каждой цепи заполняется и параметр «Имя нагрузки» (его имя
+берётся из настроек, load_name_param) — из параметра типа устройства
+«Обозначение» (type_code_param) и параметра экземпляра «Адрес устройства»
+(device_address_param), см. scs_circuits.make_load_name. Те же настройки
+уже используются кнопкой «Расчёт длины цепи» (SyncCircuitsAndLengths).
 """
 
-from Autodesk.Revit.DB import FilteredElementCollector
-from Autodesk.Revit.DB.Electrical import ElectricalSystem
+from Autodesk.Revit.DB import ElementId
 
 from pyrevit import revit, forms
 
-from lowlife.electrical_circuits import create_circuit
-from lowlife.params import set_element_id_param
-from lowlife.scs import safe_element_name
+from lowlife.electrical_circuits import create_circuit, detect_electrical_system_type
+from lowlife.params import set_element_id_param, get_type_string_param, get_string_param, set_param_any
+from lowlife.scs_circuits import clean_text_value, make_load_name
 
+# Запасной тип цепи — только если у устройства не нашлось электрического
+# коннектора для detect_electrical_system_type (обычный случай — Data).
 CIRCUIT_SYSTEM_TYPE = "Data"
 CONDUCTOR_PARAM_NAME = u"Проводник"
 
 
-def list_used_conductors(doc):
+def get_conductor_id(doc, settings):
     """
-    {имя элемента-проводника: ElementId} — по значениям параметра
-    «Проводник», уже проставленным хотя бы у одной электрической цепи
-    документа (ElectricalSystem).
+    ElementId проводника (строки справочника кабелей) для цепей СКС — берётся
+    из настроек СКС (кнопка «Параметры СКС»), а не выбирается заново при
+    каждом запуске. Останавливает скрипт, если в настройках ничего не
+    выбрано или выбранный элемент больше не существует в проекте.
     """
-    conductors = {}
+    id_str = settings.get("conductor_type_id")
 
-    systems = FilteredElementCollector(doc).OfClass(ElectricalSystem).ToElements()
-
-    for s in systems:
-        p = s.LookupParameter(CONDUCTOR_PARAM_NAME)
-        if not p:
-            continue
-
-        try:
-            elem_id = p.AsElementId()
-        except:
-            continue
-
-        if elem_id is None or elem_id.IntegerValue == -1:
-            continue
-
-        elem = doc.GetElement(elem_id)
-        if elem is None:
-            continue
-
-        name = safe_element_name(elem) or unicode(elem_id.IntegerValue)
-        conductors[name] = elem_id
-
-    return conductors
-
-
-def pick_conductor(doc):
-    """
-    Даёт выбрать проводник из уже использованных в проекте. Останавливает
-    скрипт, если ни у одной цепи документа проводник ещё не выбран, или
-    если пользователь отменил выбор.
-    """
-    conductors = list_used_conductors(doc)
-
-    if not conductors:
+    if not id_str:
         forms.alert(
-            u"В проекте пока ни у одной электрической цепи не выбран "
-            u"проводник — Revit не даёт получить список строк справочника "
-            u"кабелей напрямую, поэтому кнопка берёт варианты из уже "
-            u"использованных значений. Выберите проводник вручную в "
-            u"свойствах любой электрической цепи хотя бы один раз, затем "
-            u"запустите кнопку снова.",
+            u"В настройках СКС не выбран проводник для цепей.\n\n"
+            u"Запустите кнопку «Параметры СКС» и выберите его в разделе "
+            u"«Проводник для цепей СКС».",
             exitscript=True
         )
 
-    names = sorted(conductors.keys())
+    element_id = None
+    try:
+        element_id = ElementId(int(id_str))
+    except:
+        element_id = None
 
-    selected_name = forms.SelectFromList.show(
-        names,
-        title=u"Проводник для цепей СКС",
-        button_name=u"Выбрать",
-        multiselect=False
-    )
+    if element_id is None or doc.GetElement(element_id) is None:
+        forms.alert(
+            u"Проводник, выбранный в настройках СКС, не найден в проекте "
+            u"(возможно, был удалён). Запустите кнопку «Параметры СКС» и "
+            u"выберите его заново.",
+            exitscript=True
+        )
 
-    if not selected_name:
-        forms.alert(u"Операция отменена.", exitscript=True)
-
-    return conductors[selected_name]
+    return element_id
 
 
-def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id):
+def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings):
     """
-    Создаёт по одной цепи типа Data на каждое устройство, подключая его
-    напрямую к панели, и проставляет каждой цепи параметр «Проводник».
+    Создаёт по одной цепи на каждое устройство (тип — по коннектору самого
+    устройства, см. detect_electrical_system_type), подключая его напрямую
+    к панели, и проставляет каждой цепи параметры «Проводник» и «Имя
+    нагрузки» (последний — из «Обозначение» типа устройства + «Адрес
+    устройства», если оба заполнены и заданы в настройках).
 
     Возвращает (created_count, errors).
     """
+    type_code_param = settings.get("type_code_param")
+    device_address_param = settings.get("device_address_param")
+    load_name_param = settings.get("load_name_param")
+
     created = 0
     errors = []
 
     with revit.Transaction(u"Построение цепей СКС"):
         for dev in device_els:
-            circuit, error = create_circuit(doc, panel_el, [dev], CIRCUIT_SYSTEM_TYPE)
+            system_type = detect_electrical_system_type(dev) or CIRCUIT_SYSTEM_TYPE
+            circuit, error = create_circuit(doc, panel_el, [dev], system_type)
 
             if circuit is None:
                 errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
@@ -122,5 +114,13 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id):
                 errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
 
             set_element_id_param(circuit, CONDUCTOR_PARAM_NAME, conductor_id)
+
+            if type_code_param and device_address_param and load_name_param:
+                type_code = clean_text_value(get_type_string_param(doc, dev, type_code_param))
+                device_address = clean_text_value(get_string_param(dev, device_address_param))
+                load_name = make_load_name(type_code, device_address)
+
+                if load_name:
+                    set_param_any(circuit, load_name_param, load_name)
 
     return created, errors
