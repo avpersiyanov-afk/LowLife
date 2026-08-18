@@ -27,16 +27,10 @@ SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
 
 Tray*.panel ("Лестничный лоток"/"Неперфорированный лоток"/"Перфорированный
-лоток"/"Проволочный лоток"/"Лотки на кровле") are deliberately NOT listed
-anywhere below. Cable trays are shared infrastructure used while routing
-any discipline (SCS/SKUD/SPS/...), not a single discipline's tool, so they
-should stay visible no matter which theme is selected. apply_theme() only
-touches panels that appear as a key in `visibility` (built from THEMES) —
-a panel never referenced here is never touched at all and keeps whatever
-visibility it already has (visible by default), which is exactly the
-"always shown" behavior wanted here. This is a deliberate omission, not
-the forgotten-registration bug described below (that bug is about a
-button missing from an otherwise-touched panel).
+лоток"/"Проволочный лоток"/"Лотки на кровле") are grouped under their own
+theme, "КНК" — named after the workset every one of their buttons switches
+to (see lowlife.cable_tray.DEFAULT_WORKSET_FILTER), not after a discipline,
+since tray creation isn't tied to one specific discipline's devices.
 
 Every button in every panel referenced below MUST have an entry in some
 theme's list. apply_theme() defaults any button it finds in a touched panel
@@ -77,6 +71,28 @@ THEMES = {
     u"SPA": [
         (u"CircuitsSPA", u"BuildCircuitsSPA"),
     ],
+    u"КНК": [
+        (u"TrayLadder", u"TraySPZo"),
+        (u"TrayLadder", u"TraySPZp"),
+        (u"TrayLadder", u"TraySB"),
+        (u"TrayLadder", u"TraySS"),
+        (u"TrayUnperforated", u"TraySPZo"),
+        (u"TrayUnperforated", u"TraySPZp"),
+        (u"TrayUnperforated", u"TraySB"),
+        (u"TrayUnperforated", u"TraySS"),
+        (u"TrayPerforated", u"TraySPZo"),
+        (u"TrayPerforated", u"TraySPZp"),
+        (u"TrayPerforated", u"TraySB"),
+        (u"TrayPerforated", u"TraySS"),
+        (u"TrayWire", u"TraySPZo"),
+        (u"TrayWire", u"TraySPZp"),
+        (u"TrayWire", u"TraySB"),
+        (u"TrayWire", u"TraySS"),
+        (u"TrayRoof", u"TraySPZo"),
+        (u"TrayRoof", u"TraySPZp"),
+        (u"TrayRoof", u"TraySB"),
+        (u"TrayRoof", u"TraySS"),
+    ],
     u"Circuits": [
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
         (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
@@ -103,7 +119,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"Circuits", u"Settings", u"General"]
+THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"КНК", u"Circuits", u"Settings", u"General"]
 
 # A pyRevit RibbonPanel's runtime .name mirrors the Revit API RibbonPanel.Name,
 # which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
@@ -119,6 +135,11 @@ PANEL_RIBBON_NAMES = {
     u"CircuitsSPS": u"Цепи СПС",
     u"CircuitsSPA": u"Цепи СПА",
     u"CircuitsDelete": u"Удаление",
+    u"TrayLadder": u"Лестничный лоток",
+    u"TrayUnperforated": u"Неперфорированный лоток",
+    u"TrayPerforated": u"Перфорированный лоток",
+    u"TrayWire": u"Проволочный лоток",
+    u"TrayRoof": u"Лотки на кровле",
 }
 
 
