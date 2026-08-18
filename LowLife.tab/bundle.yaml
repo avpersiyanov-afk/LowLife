@@ -9,5 +9,10 @@ layout:
   - CircuitsSPS
   - CircuitsSPA
   - CircuitsDelete
+  - TrayLadder
+  - TrayUnperforated
+  - TrayPerforated
+  - TrayWire
+  - TrayRoof
   - Tools
   - Music

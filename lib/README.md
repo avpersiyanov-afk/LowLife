@@ -523,6 +523,24 @@ CPython-only зависимость (импортируется внутри ф�
 | `collect_member_points` | `collect_member_points(devices, extra_el=None)` | Точки устройств цепи (+ панели/изолятора, если задан) |
 | `mark_wire_lines` | `mark_wire_lines(doc, view, member_points, label, family_filter, mark_param)` | Находит на `view` линии (имя семейства содержит `family_filter`) с концом рядом с одной из `member_points`, пишет им `label` в `mark_param`; `0`, если `family_filter`/`mark_param`/точки не заданы |
 
+## cable_tray.py
+Тело кнопок «Лоток ...» на панелях `Tray*.panel` (Лестничный/Неперфорированный/
+Перфорированный/Проволочный/Лотки на кровле). Кабельный лоток — системное
+семейство (`Autodesk.Revit.DB.Electrical.CableTrayType`), а не загружаемое —
+типы перечисляются через `FilteredElementCollector(doc).OfClass(CableTrayType)`,
+а не через `Family.GetFamilySymbolIds()` (тот путь — для загружаемых семейств,
+см. `scs_settings.list_generic_model_symbols`). Не привязан к дисциплине,
+поэтому не имеет своего `*_settings.py` — тип лотка и ключевое слово рабочего
+набора передаются кнопкой напрямую (тип — уникален для кнопки, ключевое слово
+рабочего набора одно на все кнопки, `DEFAULT_WORKSET_FILTER = u"КНК"`).
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `find_cable_tray_types` | `find_cable_tray_types(doc, name_filter)` | Все `CableTrayType`, у которых `name_filter` входит в имя |
+| `find_worksets` | `find_worksets(doc, name_filter)` | Все пользовательские `Workset` (`WorksetKind.UserWorkset`), у которых `name_filter` входит в имя |
+| `set_active_workset` | `set_active_workset(doc, workset)` | `WorksetTable.SetActiveWorksetId` — новые элементы будут создаваться в этом рабочем наборе |
+| `run_create_cable_tray_button` | `run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DEFAULT_WORKSET_FILTER)` | Весь сценарий кнопки: находит ровно один подходящий тип лотка и ровно один подходящий рабочий набор (иначе `forms.alert(exitscript=True)` с пояснением), переключает активный рабочий набор, затем `UIDocument.PostRequestForElementTypePlacement(tray_type)` — запускает штатный интерактивный инструмент вставки лотка Revit уже с этим типом, без имитации кликов по селектору типов. Если API `PostRequestForElementTypePlacement` недоступен (старая версия Revit) — сообщает, что рабочий набор уже переключён, и просит запустить инструмент «Лоток» вручную |
+
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).
 

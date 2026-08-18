@@ -26,6 +26,18 @@ is cross-discipline (deletes any circuit type), so it is only listed under
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
 
+Tray*.panel ("Лестничный лоток"/"Неперфорированный лоток"/"Перфорированный
+лоток"/"Проволочный лоток"/"Лотки на кровле") are deliberately NOT listed
+anywhere below. Cable trays are shared infrastructure used while routing
+any discipline (SCS/SKUD/SPS/...), not a single discipline's tool, so they
+should stay visible no matter which theme is selected. apply_theme() only
+touches panels that appear as a key in `visibility` (built from THEMES) —
+a panel never referenced here is never touched at all and keeps whatever
+visibility it already has (visible by default), which is exactly the
+"always shown" behavior wanted here. This is a deliberate omission, not
+the forgotten-registration bug described below (that bug is about a
+button missing from an otherwise-touched panel).
+
 Every button in every panel referenced below MUST have an entry in some
 theme's list. apply_theme() defaults any button it finds in a touched panel
 but can't find in `visibility` to hidden — so a forgotten registration

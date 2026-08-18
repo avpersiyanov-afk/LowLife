@@ -1,0 +1,17 @@
+# -*- coding: utf-8 -*-
+__title__ = "Лоток\nСПЗп"
+__doc__ = (
+    u"Лоток СПЗп (Неперфорированный, тип содержит «СПЗп_ЛН_1.5_СЦ») — "
+    u"переключает активный рабочий набор на содержащий «КНК» и запускает "
+    u"вставку кабельного лотка этого типа."
+)
+__author__ = "Pipers"
+
+from pyrevit import revit
+
+from lowlife.cable_tray import run_create_cable_tray_button
+
+doc = revit.doc
+uidoc = revit.uidoc
+
+run_create_cable_tray_button(doc, uidoc, u"СПЗп_ЛН_1.5_СЦ")
