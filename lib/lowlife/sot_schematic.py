@@ -12,6 +12,7 @@
 """
 
 import math
+import re
 
 from Autodesk.Revit.DB import (
     XYZ, Line, TextNote, TextNoteType, TextNoteOptions,
@@ -39,6 +40,29 @@ LEVEL_LINE_3_OFFSET_MM = 10.0
 LEVEL_VERTICAL_LINE_LENGTH_MM = 51.0
 CONTINUOUS_TOP_LINE_OFFSET_MM = 5.0
 RIGHT_VERTICAL_LINE_OFFSET_MM = 5.0
+
+_ROOM_NUMBER_RE = re.compile(r"\((\d+)\)\s*$")
+_ANY_NUMBER_RE = re.compile(r"\d+")
+
+
+def _room_sort_key(room_key):
+    """
+    Ключ сортировки групп помещений внутри этажа: сначала помещения с
+    номером — по возрастанию (номер берётся из хвостового "(Номер)", как
+    пишет room_info.format_room_value, иначе — первое число в строке),
+    затем всё остальное (включая "(пусто)") — по алфавиту.
+    """
+    text = room_key or u""
+
+    match = _ROOM_NUMBER_RE.search(text)
+    if match:
+        return (0, int(match.group(1)), text)
+
+    match = _ANY_NUMBER_RE.search(text)
+    if match:
+        return (0, int(match.group(0)), text)
+
+    return (1, 0, text)
 
 
 # ------------------------------------------------------------
@@ -350,7 +374,8 @@ def build_level_block(doc, view, level_key, room_groups, category_symbols,
     placed_room_groups = 0
     report_rows = []
 
-    for room_key, devices in room_groups.items():
+    for room_key in sorted(room_groups.keys(), key=_room_sort_key):
+        devices = room_groups[room_key]
         valid_devices = []
 
         for device in devices:
