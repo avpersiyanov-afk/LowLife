@@ -32,15 +32,32 @@ from System.Windows.Media import Brushes
 
 SETTINGS_FILE_NAME = "LowLifeRoomInfo_settings.json"
 
-# (ключ, подпись в окне, значение по умолчанию, обязательное ли поле)
+# (ключ, заголовок раздела, подпись поля, пояснение под полем,
+#  значение по умолчанию, обязательное ли поле)
+#
+# Два поля легко перепутать, т.к. оба про «параметр помещения» — но
+# относятся к РАЗНЫМ документам: первое пишет в текущую модель, второе
+# читает из модели-связи. Поэтому в окне разнесены по разделам с ①/②,
+# а не просто друг под другом.
 TEXT_FIELDS = [
-    ("target_param_name", u"Параметр элемента для записи результата (например «SMNX_Помещение»)",
-        u"", True),
-    ("room_number_param_name", u"Параметр номера помещения в связанной модели (например «SMNX_Номер помещения»)",
-        u"", True),
+    (
+        "target_param_name",
+        u"① Куда записывать — в этой модели",
+        u"Параметр элемента",
+        u"Сюда запишется «Имя (Номер)». Например «SMNX_Помещение».",
+        u"", True
+    ),
+    (
+        "room_number_param_name",
+        u"② Откуда брать номер — в связанной модели",
+        u"Параметр помещения (Room) в связи",
+        u"Общий параметр Room в файле связи, физически хранящий номер. "
+        u"Например «SMNX_Номер помещения».",
+        u"", True
+    ),
 ]
 
-PLAIN_LABELS = {key: label for key, label, _default, _required in TEXT_FIELDS}
+PLAIN_LABELS = {key: label for key, _section, label, _hint, _default, _required in TEXT_FIELDS}
 
 
 def _settings_file_path():
@@ -87,7 +104,7 @@ def _write_all(data):
 def load_saved_values():
     """Строковые значения настроек: из JSON-файла, иначе — значения по умолчанию."""
     saved = _read_all()
-    return {key: saved.get(key, default) for key, _, default, _ in TEXT_FIELDS}
+    return {key: saved.get(key, default) for key, _section, _label, _hint, default, _required in TEXT_FIELDS}
 
 
 def save_values(values):
@@ -125,8 +142,8 @@ def show_settings_form(values):
 
     win = Window()
     win.Title = u"Настройки: Помещение из связи"
-    win.Width = 520
-    win.Height = 300
+    win.Width = 560
+    win.Height = 380
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
@@ -151,10 +168,16 @@ def show_settings_form(values):
 
     boxes = {}
 
-    for key, label_text, _, required in TEXT_FIELDS:
+    for key, section_title, label_text, hint_text, _, required in TEXT_FIELDS:
+        section = TextBlock()
+        section.Text = section_title
+        section.FontWeight = FontWeights.Bold
+        section.Margin = Thickness(0, 16, 0, 2)
+        root.Children.Add(section)
+
         label = TextBlock()
         label.Text = label_text + (u" *" if required else u"")
-        label.Margin = Thickness(0, 8, 0, 2)
+        label.Margin = Thickness(0, 2, 0, 2)
         label.TextWrapping = TextWrapping.Wrap
         root.Children.Add(label)
 
@@ -163,6 +186,14 @@ def show_settings_form(values):
         box.Padding = Thickness(4)
         root.Children.Add(box)
         boxes[key] = box
+
+        hint = TextBlock()
+        hint.Text = hint_text
+        hint.FontSize = 11
+        hint.Foreground = Brushes.Gray
+        hint.TextWrapping = TextWrapping.Wrap
+        hint.Margin = Thickness(0, 2, 0, 0)
+        root.Children.Add(hint)
 
     required_hint = TextBlock()
     required_hint.Text = u"* обязательные поля"
