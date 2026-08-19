@@ -58,6 +58,9 @@ THEMES = {
         (u"SKUD", u"InspectSchematicDevices"),
         (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
     ],
+    u"SOT": [
+        (u"SOT", u"BuildSotSchematic"),
+    ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
         (u"SOUE", u"CalcLoopLengths"),
@@ -106,6 +109,7 @@ THEMES = {
         (u"SKUD", u"SetupParameters"),
         (u"SOUE", u"SetupParameters"),
         (u"SPS", u"SetupParameters"),
+        (u"SOT", u"SetupParameters"),
         (u"Tools", u"RoomInfoSettings"),
     ],
     u"General": [
@@ -121,7 +125,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"FAS", u"FAD", u"SPA", u"КНК", u"Circuits", u"Settings", u"General"]
+THEME_NAMES = [u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"КНК", u"Circuits", u"Settings", u"General"]
 
 # A pyRevit RibbonPanel's runtime .name mirrors the Revit API RibbonPanel.Name,
 # which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
