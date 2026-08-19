@@ -1,18 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-Классификация и сортировка этажей для структурной схемы СОТ.
+Разбор, сортировка и подпись этажей для структурной схемы СОТ.
 
-Реальный Level.Elevation не всегда доступен/надёжен (отображаемое имя
-этажа может браться из текстового параметра-override, не связанного с
-геометрией), поэтому порядок в первую очередь определяется по имени
-(число в имени, признак подземного этажа), а Elevation используется
-только как резервный критерий, когда числа в имени нет.
+Имя уровня в проекте всегда содержит две вещи: "Этаж N" (номер этажа) и
+отметку — число вида "X,YYY"/"XX,YYY" с запятой, может быть отрицательным
+("-X,YYY"/"-XX,YYY"). Знак отметки — это и есть признак подземного этажа:
+отрицательная отметка -> этаж под землёй, положительная (без "-") -> над
+землёй. Оба куска разбираются из имени уровня регулярками
+(parse_level_mark), и по ним же строится подпись на схеме — "Этаж N
+(отметка)" (get_level_label) — вместо того чтобы писать на схему сырое
+имя уровня.
 
-Признак подземного этажа — имя начинается с "-" и цифры (например "-1",
-"-2 этаж") либо с буквы-маркера (по умолчанию "П", настраивается в
-sot_settings). Подземные этажи всегда идут после наземных; при нескольких
-подземных — глубже (например "-3") оказывается ниже на схеме, чем мельче
-("-1").
+Сортировка идёт по числовому значению отметки, по убыванию: чем выше
+отметка — тем выше этаж на схеме; отрицательные отметки автоматически
+оказываются ниже положительных, а среди отрицательных более глубокая
+(например -12,000) — ниже более мелкой (-4,000). Отдельный признак
+"подземный/наземный" для этого не нужен — знак отметки уже всё определяет.
+
+Если у уровня отметку по маске найти не удалось (имя не соответствует
+формату) — используется реальная Elevation связанного Level как резерв,
+чтобы такой этаж всё равно встал в разумное место, а не потерялся.
 """
 
 import re
@@ -26,52 +33,65 @@ except ImportError:
     OrderedDict = dict
 
 
-_NUMBER_RE = re.compile(r"\d+")
-_DASH_DEPTH_RE = re.compile(r"^-\s*(\d+)")
+_ETAZH_RE = re.compile(u"Этаж\\s*(-?\\d+)", re.IGNORECASE | re.UNICODE)
+_MARK_RE = re.compile(r"(-?\d{1,2},\d{3})")
 
 
-def classify_level_name(name, underground_prefix=u"П"):
+def parse_level_mark(name):
     """
-    (is_underground, number) для имени этажа.
-
-    "-N" (N — число) в начале имени -> подземный, number = N.
-    Имя начинается с underground_prefix (регистронезависимо) -> подземный,
-    number = первое число в имени, иначе 1.
-    Иначе -> наземный, number = первое число в имени (или None, если в
-    имени вообще нет цифр).
+    Разбирает имя уровня по маске проекта "... Этаж N ... X,YYY ..." ->
+    (floor_num, mark_str, mark_value); floor_num/mark_str — как найдено в
+    тексте (строки), mark_value — то же число как float (запятая заменена
+    на точку, знак сохранён). Если "Этаж N" и/или отметка не нашлись —
+    (None, None, None).
     """
-    text = (name or u"").strip()
+    text = name or u""
 
-    dash_match = _DASH_DEPTH_RE.match(text)
-    if dash_match:
-        return True, int(dash_match.group(1))
+    floor_match = _ETAZH_RE.search(text)
+    mark_match = _MARK_RE.search(text)
 
-    if underground_prefix and text.upper().startswith(underground_prefix.upper()):
-        number_match = _NUMBER_RE.search(text)
-        return True, (int(number_match.group(0)) if number_match else 1)
+    if not floor_match or not mark_match:
+        return None, None, None
 
-    number_match = _NUMBER_RE.search(text)
-    return False, (int(number_match.group(0)) if number_match else None)
+    floor_num = floor_match.group(1)
+    mark_str = mark_match.group(1)
+
+    try:
+        mark_value = float(mark_str.replace(u",", u"."))
+    except ValueError:
+        return None, None, None
+
+    return floor_num, mark_str, mark_value
 
 
-def level_sort_key(name, elevation, order_index, underground_prefix=u"П"):
+def get_level_label(name):
     """
-    Ключ сортировки для порядка отрисовки этажей сверху вниз на схеме.
-
-    Наземные этажи идут раньше подземных. Среди наземных — выше номер
-    этажа (или больше elevation, если номера в имени нет) — раньше, т.е.
-    выше на схеме. Среди подземных — меньшая глубина (-1) раньше большей
-    (-3), поэтому "-3" оказывается самым нижним.
+    Подпись уровня для схемы: "Этаж N (X,YYY)", если имя разобралось по
+    маске проекта, иначе — исходное имя как есть (резерв для уровней,
+    названных не по этой маске).
     """
-    is_underground, number = classify_level_name(name, underground_prefix)
-    elevation = elevation if elevation is not None else 0.0
+    floor_num, mark_str, _mark_value = parse_level_mark(name)
 
-    if is_underground:
-        depth = number if number is not None else 0
-        return (1, depth, elevation, order_index)
+    if floor_num is not None and mark_str is not None:
+        return u"Этаж {} ({})".format(floor_num, mark_str)
 
-    primary = -number if number is not None else -elevation
-    return (0, primary, -elevation, order_index)
+    return name or u""
+
+
+def level_sort_key(name, elevation, order_index):
+    """
+    Ключ сортировки для порядка отрисовки этажей сверху вниз на схеме —
+    по убыванию эффективной высоты (выше — раньше, т.е. выше на схеме).
+
+    Эффективная высота — отметка по маске проекта (parse_level_mark), если
+    в имени уровня она нашлась; иначе — реальная Elevation связанного
+    Level (в футах — единицы другие, чем у отметки в метрах, но для
+    относительного порядка это неважно).
+    """
+    _floor_num, _mark_str, mark_value = parse_level_mark(name)
+    effective_height = mark_value if mark_value is not None else (elevation or 0.0)
+
+    return (-effective_height, order_index)
 
 
 def get_level_display_name(doc, el, level_param_name):
@@ -120,13 +140,13 @@ def group_elements_by_level(doc, elements, level_param_name):
     return groups
 
 
-def sorted_level_names(level_groups, underground_prefix=u"П"):
+def sorted_level_names(level_groups):
     """Имена групп из group_elements_by_level, отсортированные level_sort_key."""
 
     def key(name):
         info = level_groups[name]
         level = info["level"]
         elevation = level.Elevation if level is not None else 0.0
-        return level_sort_key(name, elevation, info["order"], underground_prefix)
+        return level_sort_key(name, elevation, info["order"])
 
     return sorted(level_groups.keys(), key=key)
