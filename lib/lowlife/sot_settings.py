@@ -21,7 +21,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId, BuiltInCategory
+from Autodesk.Revit.DB import ElementId, BuiltInCategory, FilteredElementCollector
 
 from pyrevit import forms
 
@@ -84,6 +84,51 @@ def _split_section(label_text):
 
 for _key, _label, _default, _required, _multiline in TEXT_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
+
+
+def list_used_symbols_by_categories(doc, builtin_categories):
+    """
+    Только типы, у которых в проекте есть хотя бы один размещённый
+    экземпляр — в отличие от scs_settings.list_symbols_by_categories
+    (все загруженные типы, включая никогда не использованные), чтобы
+    список выбора реальных устройств СОТ не засорялся типами, которых
+    нет на модели. Для схемных семейств (ещё не вставленных на схему)
+    по-прежнему используется list_symbols_by_categories.
+    """
+    seen_ids = set()
+    symbols = []
+
+    for bic in builtin_categories:
+        try:
+            instances = FilteredElementCollector(doc).OfCategory(bic).WhereElementIsNotElementType().ToElements()
+        except:
+            continue
+
+        for el in instances:
+            try:
+                type_id = el.GetTypeId()
+            except:
+                continue
+
+            if type_id is None or type_id == ElementId.InvalidElementId:
+                continue
+
+            if type_id.IntegerValue in seen_ids:
+                continue
+
+            symbol = doc.GetElement(type_id)
+            if symbol is not None:
+                seen_ids.add(type_id.IntegerValue)
+                symbols.append(symbol)
+
+    return symbols
+
+
+def _type_names_display(doc, id_strs):
+    """Отображаемое имя списка выбранных типов (id-строки) через "; ", либо "(не выбрано)"."""
+    if not id_strs:
+        return u"(не выбрано)"
+    return u"; ".join(_type_display_name(doc, s) for s in id_strs)
 
 
 def _type_display_name(doc, id_str):
@@ -383,7 +428,7 @@ def show_settings_form(doc, values):
 
             device_ids = category_device_type_ids.get(name, [])
             device_label = TextBlock()
-            device_label.Text = u"выбрано типов: {}".format(len(device_ids))
+            device_label.Text = _type_names_display(doc, device_ids)
             device_label.VerticalAlignment = VerticalAlignment.Center
             device_label.Width = 300
             device_label.TextWrapping = TextWrapping.Wrap
@@ -396,9 +441,9 @@ def show_settings_form(doc, values):
 
             def on_pick_devices(sender, args, name=name):
                 source_categories = [getattr(BuiltInCategory, key) for key in SOURCE_CATEGORIES]
-                symbols = list_symbols_by_categories(doc, source_categories)
+                symbols = list_used_symbols_by_categories(doc, source_categories)
                 if not symbols:
-                    forms.alert(u"В проекте нет типов в категориях устройств СОТ.")
+                    forms.alert(u"В проекте нет размещённых экземпляров в категориях устройств СОТ.")
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
@@ -411,7 +456,7 @@ def show_settings_form(doc, values):
 
                 if selected is not None:
                     category_device_type_ids[name] = [str(o.symbol.Id.IntegerValue) for o in selected]
-                    category_device_labels[name].Text = u"выбрано типов: {}".format(len(selected))
+                    category_device_labels[name].Text = _type_names_display(doc, category_device_type_ids[name])
 
             pick_btn2.Click += on_pick_devices
 
