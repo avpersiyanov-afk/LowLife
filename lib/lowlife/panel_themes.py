@@ -106,11 +106,13 @@ THEMES = {
         (u"SKUD", u"SetupParameters"),
         (u"SOUE", u"SetupParameters"),
         (u"SPS", u"SetupParameters"),
+        (u"Tools", u"RoomInfoSettings"),
     ],
     u"General": [
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
         (u"Tools", u"Hello"),
+        (u"Tools", u"RoomInfo"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),
