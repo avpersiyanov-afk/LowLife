@@ -35,7 +35,6 @@ from lowlife.sot_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names
 from lowlife.sot_schematic import build_level_block, get_unique_view_name
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
-from lowlife.room_info_settings import load_saved_values as load_room_info_settings
 
 doc = revit.doc
 output = pyrevit_script.get_output()
@@ -48,19 +47,15 @@ output = pyrevit_script.get_output()
 settings = get_settings_silent()
 
 sot_settings.require(settings, [
-    "underground_prefix", "room_param_name", "address_param_name",
+    "underground_prefix", "room_param_name", "room_number_param_name", "address_param_name",
     "schematic_device_categories_text"
 ])
 
 LEVEL_PARAM_NAME = settings["level_param_name"]
 UNDERGROUND_PREFIX = settings["underground_prefix"]
 ROOM_PARAM_NAME = settings["room_param_name"]
+ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
-
-# Параметр номера помещения в связанной модели — тот же, что уже настроен
-# для кнопки «Помещение из связи» (Tools.panel/RoomInfo), чтобы не вводить
-# его повторно в настройках СОТ.
-ROOM_NUMBER_PARAM_NAME = load_room_info_settings().get("room_number_param_name", u"")
 
 CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
