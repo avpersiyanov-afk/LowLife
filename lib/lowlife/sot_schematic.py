@@ -340,7 +340,13 @@ def _resolve(doc, id_int):
 
 
 def translate_elements(doc, element_ids, dx, dy):
-    """Двигает элементы (список int id) на вектор (dx, dy), в футах. Нерезолвящиеся id пропускает."""
+    """
+    Двигает элементы (список int id) на вектор (dx, dy), в футах.
+    Нерезолвящиеся id пропускает. Марки (IndependentTag) без выноски не
+    переезжают вместе с помеченным элементом через ElementTransformUtils
+    (их позиция — TagHeadPosition, отдельное свойство, а не Location) —
+    поэтому для них сдвигается TagHeadPosition, а не Location.
+    """
     if abs(dx) < _TOLERANCE_FT and abs(dy) < _TOLERANCE_FT:
         return
 
@@ -351,7 +357,10 @@ def translate_elements(doc, element_ids, dx, dy):
         if el is None:
             continue
         try:
-            ElementTransformUtils.MoveElement(doc, el.Id, vector)
+            if isinstance(el, IndependentTag):
+                el.TagHeadPosition = el.TagHeadPosition + vector
+            else:
+                ElementTransformUtils.MoveElement(doc, el.Id, vector)
         except:
             pass
 
@@ -624,6 +633,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                 uid = device.UniqueId
                 old_dev = prev_record["devices"][uid]
                 instance = _resolve(doc, old_dev["instance_id"])
+                new_x = old_dev["x"] + dx
 
                 address_value = get_string_param(device, address_param_name)
                 if instance is not None and address_value:
@@ -633,10 +643,22 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                 if instance is not None and room_value:
                     set_param_any(instance, room_param_name, room_value)
 
+                # марки без выноски не переезжают сами при сдвиге узла и не
+                # создаются задним числом для узлов, размещённых до того,
+                # как в настройках выбрали марку — добираем недостающие.
+                tag_id = old_dev.get("tag_id")
+                if tag_id is None and instance is not None:
+                    new_tag = place_node_annotation(
+                        doc, view, instance, annotation_symbol, new_x, current_level_y, label_offset_mm
+                    )
+                    if new_tag is not None:
+                        tag_id = new_tag.Id.IntegerValue
+                        _bump(stats, "tags_added")
+
                 new_devices_state[uid] = {
-                    "x": old_dev["x"] + dx,
+                    "x": new_x,
                     "instance_id": old_dev["instance_id"],
-                    "tag_id": old_dev.get("tag_id")
+                    "tag_id": tag_id
                 }
                 report_rows.append((room_key, address_value or u""))
 

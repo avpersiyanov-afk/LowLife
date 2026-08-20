@@ -251,6 +251,12 @@ output.print_md(
         sync_stats.get("rooms_removed", 0)
     )
 )
+if sync_stats.get("tags_added", 0):
+    output.print_md(
+        u"Добавлено марок задним числом на уже стоявшие узлы (раньше не было — "
+        u"например, марка не была выбрана в настройках при первом запуске): "
+        u"**{}**.".format(sync_stats["tags_added"])
+    )
 output.print_md(
     u"Этажи: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
         sync_stats.get("levels_unchanged", 0), sync_stats.get("levels_moved", 0),
