@@ -59,8 +59,21 @@ LEVEL_STEP_MM = (-BOTTOM_LINE_MM) + LEVEL_SEPARATOR_OFFSET_MM + LEVEL_NEXT_GAP_M
 
 _ROOM_NUMBER_RE = re.compile(r"\((\d+)\)\s*$")
 _ANY_NUMBER_RE = re.compile(r"\d+")
+_SPLIT_NUMBER_RE = re.compile(r"(\d+)")
 
 _TOLERANCE_FT = 1e-6
+
+
+def _natural_sort_key(text):
+    """
+    Ключ "естественной" сортировки текста адреса: числовые куски
+    сравниваются как числа, а не как строки, поэтому адрес "3.1.10" идёт
+    после "3.1.2", а не перед ним (как было бы при обычном строковом
+    сравнении — "1" < "2" посимвольно). Нечисловые куски сравниваются
+    как есть.
+    """
+    parts = _SPLIT_NUMBER_RE.split(text or u"")
+    return tuple(int(part) if part.isdigit() else part for part in parts)
 
 
 def _room_sort_key(room_key):
@@ -589,7 +602,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
         if not valid_devices:
             continue
 
-        valid_devices.sort(key=lambda pair: get_string_param(pair[0], address_param_name) or u"")
+        valid_devices.sort(key=lambda pair: _natural_sort_key(get_string_param(pair[0], address_param_name)))
 
         desired_uids = set(device.UniqueId for device, _symbol in valid_devices)
         prev_record = previous_rooms_state.get(room_key)
