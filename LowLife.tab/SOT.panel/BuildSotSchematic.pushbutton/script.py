@@ -304,7 +304,7 @@ with revit.Transaction(u"Sync SOT Schematic"):
         old_cable_line_ids = previous_state.get("cable_line_ids", [])
         new_state["cable_line_ids"] = sync_cable_connections(doc, view, new_state, old_cable_line_ids, CABINET_UID)
 
-    save_state(view, LAYOUT_PARAM_NAME, new_state)
+    state_saved = save_state(view, LAYOUT_PARAM_NAME, new_state)
 
 
 # ------------------------------------------------------------
@@ -312,6 +312,19 @@ with revit.Transaction(u"Sync SOT Schematic"):
 # ------------------------------------------------------------
 
 output.print_md(u"### Структурная схема СОТ: {}".format(view_name))
+
+if not state_saved:
+    output.print_md(
+        u"### ⚠ Раскладка НЕ сохранена в параметр вида «{}»\n\n"
+        u"Скорее всего, в проекте нет текстового параметра с таким именем, "
+        u"привязанного к категории «Виды» (экземпляра) — Управление → Параметры "
+        u"проекта → Добавить, Тип параметра — Текст, Категории — «Виды». Без "
+        u"этого параметра повторный запуск не найдёт сегодняшнюю раскладку и "
+        u"нарисует все узлы/помещения/этажи заново поверх уже существующих "
+        u"(дублирование). Добавьте параметр и запустите кнопку ещё раз — "
+        u"текущий вид она найдёт по имени и обновит.".format(LAYOUT_PARAM_NAME)
+    )
+
 if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
     output.print_md(u"Корпус/секция (фильтр): **{}**".format(BUILDING_FILTER_VALUE))
 
@@ -376,6 +389,7 @@ if unmatched_report:
         output.print_md(u"- {} / {} — {} (ID {})".format(level_label, room_key, device_name, device.Id.IntegerValue))
 
 forms.alert(
+    u"{}"
     u"Готово.\n\n"
     u"Вид: {} ({})\n"
     u"Этажей: {}\n"
@@ -383,6 +397,10 @@ forms.alert(
     u"Не размещено (нет категории/схемного семейства): {}\n\n"
     u"Подробности (включая статистику "
     u"не тронуто/сдвинуто/создано/перерисовано/удалено) — в окне вывода pyRevit.".format(
+        (u"ВНИМАНИЕ: раскладка НЕ сохранена в параметр вида «{}» — параметра нет в "
+         u"проекте или он недоступен. Подробности в окне вывода pyRevit; без этого "
+         u"параметра следующий запуск продублирует схему.\n\n".format(LAYOUT_PARAM_NAME)
+         if not state_saved else u""),
         view_name, (u"новый" if is_new_view else u"обновлён"),
         len(level_order), len(all_report_rows), len(unmatched_report)
     )
