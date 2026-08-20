@@ -69,6 +69,7 @@ THEMES = {
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"SPS", u"CalcLoopLengths"),
         (u"SPS", u"InspectConnectors"),
+        (u"SPS", u"BuildSpsSchematic"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
     ],
     u"SPA": [

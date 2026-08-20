@@ -22,7 +22,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId
+from Autodesk.Revit.DB import ElementId, BuiltInCategory
 
 from pyrevit import forms
 
@@ -40,7 +40,11 @@ from lowlife.fire_alarm import ISOLATOR_KEYWORD
 from lowlife.fire_alarm_circuits import DEVICE_CATEGORIES, category_title
 from lowlife.scs_settings import (
     list_generic_model_symbols, _safe_element_name, TypeOption,
-    list_wire_catalog_items, WireTypeOption, _type_display_name
+    list_wire_catalog_items, WireTypeOption, _type_display_name,
+    list_symbols_by_categories
+)
+from lowlife.sot_settings import (
+    SCHEMATIC_CATEGORIES, NODE_ANNOTATION_CATEGORIES, list_used_symbols_by_categories
 )
 
 SYSTEMS = {
@@ -73,6 +77,19 @@ def set_system(system_key):
 
 def current_title():
     return SYSTEMS[_current_system]["title"]
+
+
+# Категории источника устройств для структурной схемы — фиксированные кодом
+# (в отличие от СОТ/СКУД, где список категорий вводится текстом в
+# настройках): пожарная сигнализация и электрооборудование (панели,
+# изоляторы), как и в остальных инструментах СПС (см. DEVICE_CATEGORIES в
+# fire_alarm_circuits.py — здесь только подмножество из двух категорий,
+# нужное именно схеме).
+SCHEMATIC_SOURCE_CATEGORIES = ("OST_FireAlarmDevices", "OST_ElectricalEquipment")
+SCHEMATIC_CATEGORY_TITLES = {
+    "OST_FireAlarmDevices": u"Пожарная сигнализация",
+    "OST_ElectricalEquipment": u"Электрооборудование",
+}
 
 
 # (ключ, подпись, значение по умолчанию, список ли через запятую, обязательное)
@@ -138,14 +155,47 @@ TEXT_FIELDS = [
         u"", False, False),
     ("wire_mark_param", u"[Линии проводки] Параметр линии «Марка» (пишется номер/имя цепи)",
         u"", False, False),
+
+    # --- структурная схема ---
+    ("level_param_name", u"[Структурная схема] Параметр «Уровень» на устройстве (необязательно; "
+        u"если пусто — берётся реальный уровень элемента). Имя уровня должно содержать "
+        u"«Этаж N» и отметку вида «X,YYY» (может быть отрицательной для подземных этажей) — "
+        u"по ним строится подпись и порядок этажей на схеме.",
+        u"", False, False),
+    ("room_param_name", u"[Структурная схема] Параметр, в который записываем помещение "
+        u"(на устройстве и на схемном семействе)",
+        u"", False, True),
+    ("room_number_param_name", u"[Структурная схема] Параметр номера помещения в связанной "
+        u"модели (используется, если параметр помещения на устройстве ещё пуст)",
+        u"", False, True),
+    ("node_label_offset_mm", u"[Структурная схема] Смещение марки узла вверх от точки вставки, мм",
+        u"5", False, True),
+    ("layout_param_name", u"[Структурная схема] Служебный параметр вида для хранения раскладки "
+        u"схемы (текстовый, привязан к категории «Виды», JSON — не редактируется вручную)",
+        u"", False, True),
+    ("device_uid_param_name", u"[Структурная схема] Служебный параметр схемного семейства для "
+        u"UniqueId исходного устройства (текстовый, привязан к категории схемных семейств — "
+        u"нужен, чтобы при повторном запуске узнавать «то же самое устройство»)",
+        u"", False, True),
 ]
 
-TYPE_FIELDS = []
+TYPE_FIELDS = [
+    ("node_annotation_type_id", u"Марка узла на структурной схеме (тип «Обозначение, Адрес», "
+        u"ставится над каждым схемным семейством)"),
+]
 
 # {int(BuiltInCategory): "id_строки_справочника_кабелей"} — тип проводника
 # по категории устройства (DEVICE_CATEGORIES), отдельный ключ в JSON
 # настроек системы, не в TEXT_FIELDS (выбирается пикером, не текстом).
 CATEGORY_WIRE_TYPES_KEY = "category_wire_type_ids"
+
+# {имя_категории (из SCHEMATIC_SOURCE_CATEGORIES): "id_типа"} — схемное
+# семейство (OST_DetailComponents) для категории структурной схемы.
+SCHEMATIC_CATEGORY_TYPES_KEY = "schematic_category_type_ids"
+
+# {имя_категории: ["id_типа1", ...]} — реальные типы устройств модели этой
+# категории, попадающие на структурную схему.
+SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
 
 LIST_FIELDS = set(key for key, _, _, is_list, _req in TEXT_FIELDS if is_list)
 MULTILINE_FIELDS = set()
@@ -212,6 +262,9 @@ def load_saved_values():
         # поэтому пер-системное значение перекрывает общее из TEXT_FIELDS.
         values[key] = saved.get(key, system_defaults.get(key, default))
 
+    for key, _label in TYPE_FIELDS:
+        values[key] = saved.get(key, "")
+
     return values
 
 
@@ -263,6 +316,89 @@ def get_category_wire_type_elem_ids(doc):
             result[int(cat)] = element_id
 
     return result
+
+
+def load_schematic_category_type_ids():
+    saved = _read_all()
+    return dict(saved.get(SCHEMATIC_CATEGORY_TYPES_KEY, {}))
+
+
+def load_schematic_category_device_type_ids():
+    saved = _read_all()
+    return dict(saved.get(SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY, {}))
+
+
+def save_schematic_category_type_ids(type_ids):
+    data = _read_all()
+    data[SCHEMATIC_CATEGORY_TYPES_KEY] = dict(type_ids)
+    _write_all(data)
+
+
+def save_schematic_category_device_type_ids(type_ids):
+    data = _read_all()
+    data[SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY] = dict(type_ids)
+    _write_all(data)
+
+
+def get_node_annotation_symbol(doc, settings):
+    """FamilySymbol марки узла (node_annotation_type_id из настроек) или None, если не выбран/не найден."""
+    id_str = settings.get("node_annotation_type_id")
+    if not id_str:
+        return None
+
+    try:
+        return doc.GetElement(ElementId(int(id_str)))
+    except:
+        return None
+
+
+def get_schematic_category_symbols(doc):
+    """
+    {имя_категории: FamilySymbol} для SCHEMATIC_SOURCE_CATEGORIES с
+    выбранным существующим в проекте схемным типом. Категории без
+    выбранного/валидного типа в словарь не попадают.
+    """
+    type_ids = load_schematic_category_type_ids()
+
+    symbols = {}
+    for name in SCHEMATIC_SOURCE_CATEGORIES:
+        id_str = type_ids.get(name)
+        if not id_str:
+            continue
+        try:
+            symbol = doc.GetElement(ElementId(int(id_str)))
+        except:
+            symbol = None
+        if symbol is not None:
+            symbols[name] = symbol
+
+    return symbols
+
+
+def get_schematic_category_device_type_ids():
+    """{имя_категории: set(int)} — id реальных типов устройств категории."""
+    saved = load_schematic_category_device_type_ids()
+
+    result = {}
+    for name in SCHEMATIC_SOURCE_CATEGORIES:
+        id_strs = saved.get(name) or []
+        ids = set()
+        for id_str in id_strs:
+            try:
+                ids.add(int(id_str))
+            except:
+                continue
+        if ids:
+            result[name] = ids
+
+    return result
+
+
+def _type_names_display(doc, id_strs):
+    """Отображаемое имя списка выбранных типов (id-строки) через "; ", либо "(не выбрано)"."""
+    if not id_strs:
+        return u"(не выбрано)"
+    return u"; ".join(_type_display_name(doc, s) for s in id_strs)
 
 
 def _split_list(text):
@@ -334,6 +470,65 @@ def show_settings_form(doc, values):
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
 
+    # --- тип марки узла структурной схемы (одиночный выбор) ---
+
+    type_values = dict((key, values.get(key, "")) for key, _ in TYPE_FIELDS)
+    type_labels = {}
+
+    if TYPE_FIELDS:
+        type_section_title = TextBlock()
+        type_section_title.Text = u"Марка узла"
+        type_section_title.FontWeight = FontWeights.Bold
+        type_section_title.Margin = Thickness(0, 0, 0, 4)
+        root.Children.Add(type_section_title)
+
+    for key, label_text in TYPE_FIELDS:
+        label = TextBlock()
+        label.Text = label_text
+        label.Margin = Thickness(0, 8, 0, 2)
+        label.TextWrapping = TextWrapping.Wrap
+        root.Children.Add(label)
+
+        row = StackPanel()
+        row.Orientation = Orientation.Horizontal
+
+        value_label = TextBlock()
+        value_label.Text = _type_display_name(doc, type_values[key])
+        value_label.VerticalAlignment = VerticalAlignment.Center
+        value_label.Width = 300
+        value_label.TextWrapping = TextWrapping.Wrap
+        type_labels[key] = value_label
+
+        pick_btn = Button()
+        pick_btn.Content = u"Выбрать..."
+        pick_btn.Padding = Thickness(8, 2, 8, 2)
+        pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_annotation_type(sender, args, key=key):
+            annotation_categories = [getattr(BuiltInCategory, c) for c in NODE_ANNOTATION_CATEGORIES]
+            symbols = list_symbols_by_categories(doc, annotation_categories)
+            if not symbols:
+                forms.alert(u"В проекте нет типов категории «Марки элементов узла».")
+                return
+
+            options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options,
+                title=u"Марка узла",
+                button_name=u"Выбрать",
+                multiselect=False
+            )
+
+            if selected:
+                type_values[key] = str(selected.symbol.Id.IntegerValue)
+                type_labels[key].Text = selected.name
+
+        pick_btn.Click += on_pick_annotation_type
+
+        row.Children.Add(value_label)
+        row.Children.Add(pick_btn)
+        root.Children.Add(row)
+
     boxes = {}
     current_section = None
 
@@ -366,6 +561,137 @@ def show_settings_form(doc, values):
 
         root.Children.Add(box)
         boxes[key] = box
+
+    # --- структурная схема: схемное семейство + реальные типы устройств по категории ---
+
+    schematic_section_title = TextBlock()
+    schematic_section_title.Text = u"Структурная схема: категории устройств"
+    schematic_section_title.FontWeight = FontWeights.Bold
+    schematic_section_title.Margin = Thickness(0, 16, 0, 4)
+    root.Children.Add(schematic_section_title)
+
+    schematic_hint = TextBlock()
+    schematic_hint.Text = (
+        u"Для каждой из двух категорий структурной схемы выберите схемное "
+        u"семейство (чем рисуется узел) и реальные типы устройств модели, "
+        u"которые на неё попадают."
+    )
+    schematic_hint.FontSize = 11
+    schematic_hint.Foreground = Brushes.Gray
+    schematic_hint.TextWrapping = TextWrapping.Wrap
+    schematic_hint.Margin = Thickness(0, 0, 0, 8)
+    root.Children.Add(schematic_hint)
+
+    schematic_category_type_ids = load_schematic_category_type_ids()
+    schematic_category_device_type_ids = load_schematic_category_device_type_ids()
+    schematic_category_type_labels = {}
+    schematic_category_device_labels = {}
+
+    for name in SCHEMATIC_SOURCE_CATEGORIES:
+        cat_title = SCHEMATIC_CATEGORY_TITLES[name]
+
+        group_title = TextBlock()
+        group_title.Text = u"Категория «{}»".format(cat_title)
+        group_title.FontWeight = FontWeights.Bold
+        group_title.Margin = Thickness(0, 12, 0, 2)
+        root.Children.Add(group_title)
+
+        # --- схемное семейство для вставки ---
+
+        label = TextBlock()
+        label.Text = u"Схемное семейство (для вставки)"
+        label.Margin = Thickness(0, 4, 0, 2)
+        root.Children.Add(label)
+
+        row = StackPanel()
+        row.Orientation = Orientation.Horizontal
+
+        value_label = TextBlock()
+        value_label.Text = _type_display_name(doc, schematic_category_type_ids.get(name, ""))
+        value_label.VerticalAlignment = VerticalAlignment.Center
+        value_label.Width = 300
+        value_label.TextWrapping = TextWrapping.Wrap
+        schematic_category_type_labels[name] = value_label
+
+        pick_btn = Button()
+        pick_btn.Content = u"Выбрать..."
+        pick_btn.Padding = Thickness(8, 2, 8, 2)
+        pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_schematic(sender, args, name=name, cat_title=cat_title):
+            schematic_categories = [getattr(BuiltInCategory, key) for key in SCHEMATIC_CATEGORIES]
+            symbols = list_symbols_by_categories(doc, schematic_categories)
+            if not symbols:
+                forms.alert(u"В проекте нет типов категории «Элементы узлов».")
+                return
+
+            options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options,
+                title=u"Схемное семейство для категории «{}»".format(cat_title),
+                button_name=u"Выбрать",
+                multiselect=False
+            )
+
+            if selected:
+                schematic_category_type_ids[name] = str(selected.symbol.Id.IntegerValue)
+                schematic_category_type_labels[name].Text = selected.name
+
+        pick_btn.Click += on_pick_schematic
+
+        row.Children.Add(value_label)
+        row.Children.Add(pick_btn)
+        root.Children.Add(row)
+
+        # --- реальные типы устройств модели, относящиеся к категории ---
+
+        label2 = TextBlock()
+        label2.Text = u"Реальные типы устройств этой категории (в модели)"
+        label2.Margin = Thickness(0, 6, 0, 2)
+        root.Children.Add(label2)
+
+        row2 = StackPanel()
+        row2.Orientation = Orientation.Horizontal
+
+        device_ids = schematic_category_device_type_ids.get(name, [])
+        device_label = TextBlock()
+        device_label.Text = _type_names_display(doc, device_ids)
+        device_label.VerticalAlignment = VerticalAlignment.Center
+        device_label.Width = 300
+        device_label.TextWrapping = TextWrapping.Wrap
+        schematic_category_device_labels[name] = device_label
+
+        pick_btn2 = Button()
+        pick_btn2.Content = u"Выбрать..."
+        pick_btn2.Padding = Thickness(8, 2, 8, 2)
+        pick_btn2.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_devices(sender, args, name=name, cat_title=cat_title):
+            source_categories = [getattr(BuiltInCategory, key) for key in SCHEMATIC_SOURCE_CATEGORIES]
+            symbols = list_used_symbols_by_categories(doc, source_categories)
+            if not symbols:
+                forms.alert(u"В проекте нет размещённых экземпляров в категориях устройств структурной схемы.")
+                return
+
+            options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options,
+                title=u"Типы устройств для категории «{}»".format(cat_title),
+                button_name=u"Выбрать",
+                multiselect=True
+            )
+
+            if selected is not None:
+                schematic_category_device_type_ids[name] = [str(o.symbol.Id.IntegerValue) for o in selected]
+                schematic_category_device_labels[name].Text = _type_names_display(
+                    doc, schematic_category_device_type_ids[name]
+                )
+
+        pick_btn2.Click += on_pick_devices
+
+        row2.Children.Add(device_label)
+        row2.Children.Add(pick_btn2)
+        root.Children.Add(row2)
 
     # --- тип проводника по категории устройства (для параметра «Проводник») ---
 
@@ -487,8 +813,12 @@ def show_settings_form(doc, values):
             boxes[key].Text = system_defaults.get(key, default)
 
     def on_ok(sender, args):
-        result["values"] = {key: box.Text for key, box in boxes.items()}
+        combined = {key: box.Text for key, box in boxes.items()}
+        combined.update(type_values)
+        result["values"] = combined
         save_category_wire_type_ids(category_wire_type_ids)
+        save_schematic_category_type_ids(schematic_category_type_ids)
+        save_schematic_category_device_type_ids(schematic_category_device_type_ids)
         win.Close()
 
     def on_cancel(sender, args):
