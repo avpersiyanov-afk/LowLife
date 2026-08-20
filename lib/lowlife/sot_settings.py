@@ -35,6 +35,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
+from lowlife.params import get_string_param
 from lowlife.skud import parse_category_names
 from lowlife.scs_settings import list_symbols_by_categories, _safe_element_name, TypeOption
 
@@ -76,12 +77,16 @@ TEXT_FIELDS = [
         u"(на устройстве и на схемном семействе)",
         u"", True, False),
     ("building_param_name", u"[Схема] Параметр корпуса/секции на устройстве (необязательно — "
-        u"если задан, при запуске кнопки нужно будет выбрать корпус/секцию, схема строится "
-        u"только для выбранного, отдельным видом на каждый)",
+        u"нужен только вместе с полем «Значение корпуса/секции для фильтрации» ниже)",
+        u"", False, False),
+    ("building_filter_value", u"[Схема] Значение корпуса/секции для фильтрации (необязательно — "
+        u"если параметр корпуса выше задан, а это поле пусто, схема строится по всем корпусам "
+        u"сразу; чтобы ограничиться одним корпусом, впишите сюда его точное значение и задайте "
+        u"для него своё имя вида выше — так у каждого корпуса будет свой отдельный вид)",
         u"", False, False),
     ("schematic_view_name", u"[Схема] Имя чертёжного вида структурной схемы (создаётся с этим "
-        u"именем; при повторных запусках обновляется только вид с этим именем; если выбран "
-        u"корпус/секция — к имени добавляется его название)",
+        u"именем; при повторных запусках обновляется только вид с этим именем — чтобы вести "
+        u"несколько схем параллельно, например по одной на корпус, задавайте разные имена)",
         u"Структурная схема СОТ", True, False),
     ("node_label_offset_mm", u"[Схема] Смещение марки узла вверх от точки вставки, мм",
         u"5", True, False),
@@ -144,6 +149,32 @@ class ViewTemplateOption(object):
     def __init__(self, view):
         self.view = view
         self.name = _safe_element_name(view) or u"?"
+
+
+def list_distinct_param_values(doc, builtin_categories, param_name):
+    """
+    Отсортированный список различных непустых значений параметра
+    param_name среди размещённых экземпляров категорий — для пикера
+    "Значение корпуса/секции для фильтрации" в окне настроек (чтобы не
+    вписывать значение руками и не ошибиться в написании).
+    """
+    if not param_name:
+        return []
+
+    values = set()
+
+    for bic in builtin_categories:
+        try:
+            instances = FilteredElementCollector(doc).OfCategory(bic).WhereElementIsNotElementType().ToElements()
+        except:
+            continue
+
+        for el in instances:
+            value = get_string_param(el, param_name)
+            if value and value.strip():
+                values.add(value.strip())
+
+    return sorted(values)
 
 
 def list_used_symbols_by_categories(doc, builtin_categories):
@@ -656,6 +687,41 @@ def show_settings_form(doc, values):
 
         root.Children.Add(box)
         boxes[key] = box
+
+        if key == "building_filter_value":
+            pick_building_btn = Button()
+            pick_building_btn.Content = u"Выбрать из модели..."
+            pick_building_btn.Padding = Thickness(8, 2, 8, 2)
+            pick_building_btn.HorizontalAlignment = HorizontalAlignment.Left
+            pick_building_btn.Margin = Thickness(0, 4, 0, 0)
+
+            def on_pick_building(sender, args):
+                param_name = boxes["building_param_name"].Text.strip()
+                if not param_name:
+                    forms.alert(u"Сначала заполните поле «Параметр корпуса/секции на устройстве» выше.")
+                    return
+
+                source_categories = [getattr(BuiltInCategory, c) for c in SOURCE_CATEGORIES]
+                values = list_distinct_param_values(doc, source_categories, param_name)
+                if not values:
+                    forms.alert(
+                        u"В модели не нашлось ни одного устройства с заполненным "
+                        u"параметром «{}».".format(param_name)
+                    )
+                    return
+
+                selected = forms.SelectFromList.show(
+                    values,
+                    title=u"Значение корпуса/секции для фильтрации",
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+
+                if selected:
+                    boxes["building_filter_value"].Text = selected
+
+            pick_building_btn.Click += on_pick_building
+            root.Children.Add(pick_building_btn)
 
         if key == "schematic_device_categories_text":
             refresh_btn = Button()

@@ -46,7 +46,7 @@ from lowlife.scs_settings import (
 )
 from lowlife.sot_settings import (
     SCHEMATIC_CATEGORIES, NODE_ANNOTATION_CATEGORIES, list_used_symbols_by_categories,
-    list_drafting_view_templates, ViewTemplateOption
+    list_drafting_view_templates, ViewTemplateOption, list_distinct_param_values
 )
 
 SYSTEMS = {
@@ -175,12 +175,19 @@ TEXT_FIELDS = [
         u"модели (используется, если параметр помещения на устройстве ещё пуст)",
         u"", False, True),
     ("building_param_name", u"[Структурная схема] Параметр корпуса/секции на устройстве "
-        u"(необязательно — если задан, при запуске кнопки нужно будет выбрать корпус/секцию, "
-        u"схема строится только для выбранного, отдельным видом на каждый)",
+        u"(необязательно — нужен только вместе с полем «Значение корпуса/секции для "
+        u"фильтрации» ниже)",
+        u"", False, False),
+    ("building_filter_value", u"[Структурная схема] Значение корпуса/секции для фильтрации "
+        u"(необязательно — если параметр корпуса выше задан, а это поле пусто, схема строится "
+        u"по всем корпусам сразу; чтобы ограничиться одним корпусом, впишите сюда его точное "
+        u"значение и задайте для него своё имя вида ниже — так у каждого корпуса будет свой "
+        u"отдельный вид)",
         u"", False, False),
     ("schematic_view_name", u"[Структурная схема] Имя чертёжного вида структурной схемы "
-        u"(создаётся с этим именем; при повторных запусках обновляется только вид с этим именем; "
-        u"если выбран корпус/секция — к имени добавляется его название)",
+        u"(создаётся с этим именем; при повторных запусках обновляется только вид с этим "
+        u"именем — чтобы вести несколько схем параллельно, например по одной на корпус, "
+        u"задавайте разные имена)",
         u"Структурная схема", False, True),
     ("node_label_offset_mm", u"[Структурная схема] Смещение марки узла вверх от точки вставки, мм",
         u"5", False, True),
@@ -738,6 +745,41 @@ def show_settings_form(doc, values):
 
         root.Children.Add(box)
         boxes[key] = box
+
+        if key == "building_filter_value":
+            pick_building_btn = Button()
+            pick_building_btn.Content = u"Выбрать из модели..."
+            pick_building_btn.Padding = Thickness(8, 2, 8, 2)
+            pick_building_btn.HorizontalAlignment = HorizontalAlignment.Left
+            pick_building_btn.Margin = Thickness(0, 4, 0, 0)
+
+            def on_pick_building(sender, args):
+                param_name = boxes["building_param_name"].Text.strip()
+                if not param_name:
+                    forms.alert(u"Сначала заполните поле «Параметр корпуса/секции на устройстве» выше.")
+                    return
+
+                source_categories = [getattr(BuiltInCategory, c) for c in SCHEMATIC_SOURCE_CATEGORIES]
+                values_found = list_distinct_param_values(doc, source_categories, param_name)
+                if not values_found:
+                    forms.alert(
+                        u"В модели не нашлось ни одного устройства с заполненным "
+                        u"параметром «{}».".format(param_name)
+                    )
+                    return
+
+                selected = forms.SelectFromList.show(
+                    values_found,
+                    title=u"Значение корпуса/секции для фильтрации",
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+
+                if selected:
+                    boxes["building_filter_value"].Text = selected
+
+            pick_building_btn.Click += on_pick_building
+            root.Children.Add(pick_building_btn)
 
         if key == "schematic_device_categories_text":
             refresh_btn = Button()
