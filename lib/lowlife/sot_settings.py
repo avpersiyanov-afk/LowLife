@@ -21,7 +21,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId, BuiltInCategory, FilteredElementCollector
+from Autodesk.Revit.DB import ElementId, BuiltInCategory, FilteredElementCollector, View, ViewType
 
 from pyrevit import forms
 
@@ -55,6 +55,8 @@ NODE_ANNOTATION_CATEGORIES = ("OST_DetailComponentTags",)
 TYPE_FIELDS = [
     ("node_annotation_type_id", u"Марка узла на схеме (тип «Обозначение, Адрес», ставится "
         u"над каждым схемным семейством)"),
+    ("view_template_id", u"Шаблон вида для структурной схемы (необязательно — "
+        u"применяется к виду при каждом запуске, «(не выбран)» — вид без шаблона)"),
 ]
 
 # (ключ, подпись в окне, значение по умолчанию, обязательное ли поле, многострочное ли поле)
@@ -73,6 +75,9 @@ TEXT_FIELDS = [
     ("address_param_name", u"[Параметры] Параметр, в который записываем адрес устройства "
         u"(на устройстве и на схемном семействе)",
         u"", True, False),
+    ("schematic_view_name", u"[Схема] Имя чертёжного вида структурной схемы (создаётся с этим "
+        u"именем; при повторных запусках обновляется только вид с этим именем)",
+        u"Структурная схема СОТ", True, False),
     ("node_label_offset_mm", u"[Схема] Смещение марки узла вверх от точки вставки, мм",
         u"5", True, False),
     ("layout_param_name", u"[Схема] Служебный параметр вида для хранения раскладки схемы "
@@ -107,6 +112,33 @@ def _split_section(label_text):
 
 for _key, _label, _default, _required, _multiline in TEXT_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
+
+
+def list_drafting_view_templates(doc):
+    """Шаблоны видов, применимые к чертёжным видам (ViewType.DraftingView, IsTemplate)."""
+    templates = []
+
+    try:
+        views = FilteredElementCollector(doc).OfClass(View).ToElements()
+    except:
+        return templates
+
+    for view in views:
+        try:
+            if view.IsTemplate and view.ViewType == ViewType.DraftingView:
+                templates.append(view)
+        except:
+            continue
+
+    return templates
+
+
+class ViewTemplateOption(object):
+    """Обёртка над View-шаблоном для отображения в списке выбора (аналог TypeOption для семейств)."""
+
+    def __init__(self, view):
+        self.view = view
+        self.name = _safe_element_name(view) or u"?"
 
 
 def list_used_symbols_by_categories(doc, builtin_categories):
@@ -232,6 +264,18 @@ def load_saved_values():
 def get_node_annotation_symbol(doc, settings):
     """FamilySymbol марки узла (node_annotation_type_id из настроек) или None, если не выбран/не найден."""
     id_str = settings.get("node_annotation_type_id")
+    if not id_str:
+        return None
+
+    try:
+        return doc.GetElement(ElementId(int(id_str)))
+    except:
+        return None
+
+
+def get_view_template(doc, settings):
+    """Шаблон вида (view_template_id из настроек) или None, если не выбран/не найден."""
+    id_str = settings.get("view_template_id")
     if not id_str:
         return None
 
@@ -374,13 +418,13 @@ def show_settings_form(doc, values):
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
 
-    # --- тип марки узла (одиночный выбор) ---
+    # --- марка узла + шаблон вида (одиночный выбор каждое) ---
 
     type_values = {key: values.get(key, "") for key, _ in TYPE_FIELDS}
     type_labels = {}
 
     type_section_title = TextBlock()
-    type_section_title.Text = u"Марка узла"
+    type_section_title.Text = u"Марка узла и шаблон вида"
     type_section_title.FontWeight = FontWeights.Bold
     type_section_title.Margin = Thickness(0, 0, 0, 4)
     root.Children.Add(type_section_title)
@@ -407,7 +451,26 @@ def show_settings_form(doc, values):
         pick_btn.Padding = Thickness(8, 2, 8, 2)
         pick_btn.Margin = Thickness(8, 0, 0, 0)
 
-        def on_pick_annotation_type(sender, args, key=key):
+        def on_pick_type(sender, args, key=key):
+            if key == "view_template_id":
+                templates = list_drafting_view_templates(doc)
+                if not templates:
+                    forms.alert(u"В проекте нет шаблонов вида, применимых к чертёжным видам.")
+                    return
+
+                options = sorted([ViewTemplateOption(v) for v in templates], key=lambda o: o.name)
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Шаблон вида для структурной схемы",
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+
+                if selected:
+                    type_values[key] = str(selected.view.Id.IntegerValue)
+                    type_labels[key].Text = selected.name
+                return
+
             annotation_categories = [getattr(BuiltInCategory, c) for c in NODE_ANNOTATION_CATEGORIES]
             symbols = list_symbols_by_categories(doc, annotation_categories)
             if not symbols:
@@ -426,7 +489,7 @@ def show_settings_form(doc, values):
                 type_values[key] = str(selected.symbol.Id.IntegerValue)
                 type_labels[key].Text = selected.name
 
-        pick_btn.Click += on_pick_annotation_type
+        pick_btn.Click += on_pick_type
 
         row.Children.Add(value_label)
         row.Children.Add(pick_btn)

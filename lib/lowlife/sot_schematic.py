@@ -26,7 +26,7 @@ import re
 
 from Autodesk.Revit.DB import (
     XYZ, Line, ElementId, TextNote, TextNoteType, TextNoteOptions,
-    HorizontalTextAlignment, FilteredElementCollector, View,
+    HorizontalTextAlignment, FilteredElementCollector,
     ElementTransformUtils, IndependentTag, TagOrientation, Reference
 )
 
@@ -84,31 +84,8 @@ def _room_sort_key(room_key):
 
 
 # ------------------------------------------------------------
-# ИМЯ ВИДА / ТИП ТЕКСТА
+# ТИП ТЕКСТА
 # ------------------------------------------------------------
-
-def get_unique_view_name(doc, base_name):
-    existing_names = set()
-
-    try:
-        for view in FilteredElementCollector(doc).OfClass(View).ToElements():
-            try:
-                existing_names.add(view.Name)
-            except:
-                pass
-    except:
-        pass
-
-    if base_name not in existing_names:
-        return base_name
-
-    counter = 1
-    while True:
-        candidate = u"{}_{}".format(base_name, counter)
-        if candidate not in existing_names:
-            return candidate
-        counter += 1
-
 
 def get_text_note_type(doc):
     try:

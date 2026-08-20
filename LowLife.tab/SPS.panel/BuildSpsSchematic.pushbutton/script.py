@@ -7,12 +7,14 @@ __doc__ = (
     "группирует их по этажу (подпись — «Этаж N (отметка)», порядок по "
     "отметке: отрицательные — внизу схемы, глубже — ниже; положительные — "
     "выше, чем больше отметка) и по помещению.\n\n"
-    "Повторный запуск не пересоздаёт схему с нуля: раскладка предыдущего "
-    "запуска хранится в служебном параметре вида, поэтому обновляются "
-    "только этаж/помещение/устройство, где реально что-то изменилось "
-    "(добавилось/пропало/переехало) — остальное остаётся как было, теми же "
-    "элементами. Соседи справа/ниже места изменения сдвигаются, чтобы "
-    "закрыть/освободить место."
+    "Повторный запуск не пересоздаёт схему с нуля: обновляется вид с именем "
+    "из настроек СПС (создаётся с этим именем, если его ещё нет), раскладка "
+    "предыдущего запуска хранится в служебном параметре этого вида — "
+    "обновляются только этаж/помещение/устройство, где реально что-то "
+    "изменилось (добавилось/пропало/переехало), остальное остаётся как было, "
+    "теми же элементами. Соседи справа/ниже места изменения сдвигаются, "
+    "чтобы закрыть/освободить место. Шаблон вида (если выбран в настройках) "
+    "применяется на каждом запуске."
 )
 __author__ = "Pipers"
 
@@ -21,7 +23,9 @@ import clr
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
-from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ViewFamilyType, ViewFamily, ViewDrafting
+from Autodesk.Revit.DB import (
+    ElementId, FilteredElementCollector, BuiltInCategory, ViewFamilyType, ViewFamily, ViewDrafting
+)
 from pyrevit import revit, forms, script as pyrevit_script
 
 try:
@@ -34,10 +38,10 @@ from lowlife.skud import category_by_type_id
 from lowlife import fire_alarm_settings
 from lowlife.fire_alarm_settings import (
     get_settings_silent, get_schematic_category_symbols, get_schematic_category_device_type_ids,
-    get_node_annotation_symbol, SCHEMATIC_SOURCE_CATEGORIES
+    get_node_annotation_symbol, get_view_template, SCHEMATIC_SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import sync_levels, get_unique_view_name
+from lowlife.sot_schematic import sync_levels
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 
@@ -55,7 +59,7 @@ settings = get_settings_silent()
 
 fire_alarm_settings.require(settings, [
     "room_param_name", "room_number_param_name", "device_address_param",
-    "node_label_offset_mm", "layout_param_name", "device_uid_param_name",
+    "node_label_offset_mm", "schematic_view_name", "layout_param_name", "device_uid_param_name",
     "schematic_device_categories_text",
 ])
 
@@ -63,6 +67,7 @@ LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["device_address_param"]
+SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
 LAYOUT_PARAM_NAME = settings["layout_param_name"]
 DEVICE_UID_PARAM_NAME = settings["device_uid_param_name"]
 
@@ -72,6 +77,7 @@ except (ValueError, AttributeError):
     NODE_LABEL_OFFSET_MM = 5.0
 
 ANNOTATION_SYMBOL = get_node_annotation_symbol(doc, settings)
+VIEW_TEMPLATE = get_view_template(doc, settings)
 
 if ANNOTATION_SYMBOL is None:
     forms.alert(
@@ -175,10 +181,20 @@ def resolve_room_value(doc, el, counters):
 
 
 # ------------------------------------------------------------
-# ЧЕРТЁЖНЫЙ ВИД: ищем существующую схему (для обновления), иначе создаём
+# ЧЕРТЁЖНЫЙ ВИД: ищем вид с именем из настроек (для обновления), иначе создаём
 # ------------------------------------------------------------
 
-view, previous_state = find_layout_view(doc, LAYOUT_PARAM_NAME)
+view, previous_state, name_conflict = find_layout_view(doc, SCHEMATIC_VIEW_NAME, LAYOUT_PARAM_NAME)
+
+if name_conflict:
+    forms.alert(
+        u"В проекте уже есть вид с именем «{}», но это не чертёжный вид — "
+        u"структурную схему СПС туда поставить нельзя.\n\n"
+        u"Переименуйте существующий вид либо измените имя вида в «Параметры "
+        u"СПС».".format(SCHEMATIC_VIEW_NAME),
+        exitscript=True
+    )
+
 is_new_view = view is None
 
 if is_new_view:
@@ -223,12 +239,16 @@ with revit.Transaction(u"Sync SPS Schematic"):
         level_room_groups[level_name] = room_groups
 
     if is_new_view:
-        view_name = get_unique_view_name(doc, u"Структурная схема СПС")
         view = ViewDrafting.Create(doc, drafting_type_id)
-        view.Name = view_name
+        view.Name = SCHEMATIC_VIEW_NAME
         view.Scale = 1
-    else:
-        view_name = view.Name
+
+    view_name = view.Name
+
+    try:
+        view.ViewTemplateId = VIEW_TEMPLATE.Id if VIEW_TEMPLATE is not None else ElementId.InvalidElementId
+    except:
+        pass
 
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,

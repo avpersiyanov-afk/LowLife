@@ -3,7 +3,9 @@
 Хранение "базы" раскладки структурной схемы СОТ между запусками кнопки
 «Структурная схема» — JSON в текстовом параметре самого чертёжного вида
 (layout_param_name из настроек СОТ), а не в файле на диске: едет вместе
-с моделью, доступен всем, кто открывает проект.
+с моделью, доступен всем, кто открывает проект. Вид, который обновляется,
+определяется по имени (schematic_view_name из настроек СОТ) — см.
+find_layout_view.
 
 Структура state (после load_state):
 {
@@ -36,7 +38,7 @@
 
 import json
 
-from Autodesk.Revit.DB import FilteredElementCollector, ViewDrafting
+from Autodesk.Revit.DB import FilteredElementCollector, View, ViewDrafting
 
 from lowlife.params import get_string_param, set_param_any
 
@@ -62,36 +64,48 @@ def _parse_state(text):
     return data
 
 
-def find_layout_view(doc, layout_param_name):
+def find_layout_view(doc, view_name, layout_param_name):
     """
-    Среди ViewDrafting документа ищет вид, у которого layout_param_name
-    непустой и парсится как раскладка СОТ. Возвращает (view, state) —
-    первый подходящий; (None, None), если такого вида нет (первый запуск
-    кнопки, либо раскладка была стёрта/повреждена — тогда просто строим
-    заново, как в первый раз).
+    Ищет вид с точным именем view_name (имя из настроек СОТ, а не
+    "первый вид с непустой раскладкой" — так раскладка не зависит от
+    случайного порядка обхода и не путается с дублированными видами:
+    "Дублировать вид" в Revit копирует и параметр раскладки, поэтому
+    поиск по заполненности параметра был бы неоднозначным).
+
+    Возвращает (view, state, name_conflict):
+      - вид с этим именем есть и это ViewDrafting -> (view, его раскладка
+        (пустая, если параметр ещё не заполнен), False);
+      - вид с этим именем есть, но не ViewDrafting -> (None, None, True) —
+        конфликт имени, вызывающий код должен остановиться и попросить
+        переименовать вид/сменить имя в настройках;
+      - вида с таким именем нет -> (None, None, False) — первый запуск,
+        создаём новый.
     """
-    if not layout_param_name:
-        return None, None
+    if not view_name:
+        return None, None, False
 
     try:
-        views = FilteredElementCollector(doc).OfClass(ViewDrafting).ToElements()
+        views = FilteredElementCollector(doc).OfClass(View).ToElements()
     except:
-        return None, None
+        return None, None, False
 
+    existing = None
     for view in views:
         try:
-            if view.IsTemplate:
-                continue
+            name = view.Name
         except:
-            pass
+            continue
+        if name == view_name:
+            existing = view
+            break
 
-        text = get_string_param(view, layout_param_name)
-        state = _parse_state(text)
+    if existing is None:
+        return None, None, False
 
-        if state is not None:
-            return view, state
+    if not isinstance(existing, ViewDrafting):
+        return None, None, True
 
-    return None, None
+    return existing, load_state(existing, layout_param_name), False
 
 
 def load_state(view, layout_param_name):
