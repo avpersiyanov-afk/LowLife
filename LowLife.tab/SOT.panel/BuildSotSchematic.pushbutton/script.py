@@ -17,7 +17,12 @@ __doc__ = (
     "Если в настройках заданы параметр корпуса/секции и значение для "
     "фильтрации — берутся только устройства с этим значением (остальные "
     "игнорируются). Чтобы вести отдельную схему по каждому корпусу, "
-    "задайте для каждого своё имя вида и своё значение фильтра в настройках."
+    "задайте для каждого своё имя вида и своё значение фильтра в настройках.\n\n"
+    "Если в настройках задана категория «Шкаф» — от каждого узла схемы "
+    "(кроме самого шкафа) рисуется линия к нему: горизонтально до стояка "
+    "(слева от рамок этажа), по стояку вертикально до уровня шкафа, затем "
+    "горизонтально до шкафа. Эти линии не редактируются вручную — на "
+    "каждом запуске перерисовываются заново по актуальным позициям."
 )
 __author__ = "Pipers"
 
@@ -44,7 +49,7 @@ from lowlife.sot_settings import (
     get_node_annotation_symbol, get_view_template, SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import sync_levels
+from lowlife.sot_schematic import sync_levels, sync_cable_connections
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 
@@ -73,6 +78,7 @@ BUILDING_FILTER_VALUE = settings["building_filter_value"].strip()
 SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
 LAYOUT_PARAM_NAME = settings["layout_param_name"]
 DEVICE_UID_PARAM_NAME = settings["device_uid_param_name"]
+CABINET_CATEGORY_NAME = settings["cabinet_category_name"].strip()
 
 try:
     NODE_LABEL_OFFSET_MM = float(settings["node_label_offset_mm"].replace(u",", u"."))
@@ -164,6 +170,22 @@ if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
             u"фильтрации».".format(BUILDING_FILTER_VALUE),
             exitscript=True
         )
+
+
+# ------------------------------------------------------------
+# ШКАФ — линии от остальных узлов к нему (см. sync_cable_connections)
+# ------------------------------------------------------------
+
+CABINET_UID = None
+cabinet_extra_count = 0
+
+if CABINET_CATEGORY_NAME:
+    cabinet_elements = [el for el in elements if category_for_device(el) == CABINET_CATEGORY_NAME]
+
+    if cabinet_elements:
+        cabinet_elements.sort(key=lambda el: get_string_param(el, ADDRESS_PARAM_NAME) or u"")
+        CABINET_UID = cabinet_elements[0].UniqueId
+        cabinet_extra_count = len(cabinet_elements) - 1
 
 
 # ------------------------------------------------------------
@@ -278,6 +300,10 @@ with revit.Transaction(u"Sync SOT Schematic"):
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
     )
 
+    if CABINET_CATEGORY_NAME:
+        old_cable_line_ids = previous_state.get("cable_line_ids", [])
+        new_state["cable_line_ids"] = sync_cable_connections(doc, view, new_state, old_cable_line_ids, CABINET_UID)
+
     save_state(view, LAYOUT_PARAM_NAME, new_state)
 
 
@@ -288,6 +314,21 @@ with revit.Transaction(u"Sync SOT Schematic"):
 output.print_md(u"### Структурная схема СОТ: {}".format(view_name))
 if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
     output.print_md(u"Корпус/секция (фильтр): **{}**".format(BUILDING_FILTER_VALUE))
+
+if CABINET_CATEGORY_NAME:
+    if CABINET_UID is None:
+        output.print_md(
+            u"⚠ Категория «Шкаф» задана («{}»), но среди устройств на схеме такого нет — "
+            u"линии не нарисованы.".format(CABINET_CATEGORY_NAME)
+        )
+    else:
+        cable_count = len(new_state.get("cable_line_ids", []))
+        output.print_md(u"Линий к шкафу нарисовано: **{}**".format(cable_count))
+        if cabinet_extra_count:
+            output.print_md(
+                u"Найдено ещё {} устройств категории «Шкаф» кроме первого — "
+                u"линии рисуются только к одному (по алфавиту адреса).".format(cabinet_extra_count)
+            )
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
     u"Вид создан заново" if is_new_view else u"Вид обновлён",
     len(level_order), len(all_report_rows)

@@ -51,6 +51,13 @@ LEVEL_VERTICAL_LINE_LENGTH_MM = 51.0
 CONTINUOUS_TOP_LINE_OFFSET_MM = 5.0
 RIGHT_VERTICAL_LINE_OFFSET_MM = 5.0
 
+# X линий "устройство -> шкаф" на вертикальном участке (стояк) — тот же X,
+# что у первой (ближайшей к рамкам помещений) левой вертикальной линии
+# рамки уровня (first_level_line_x при group_left=0, а он всегда 0 — см.
+# sync_cable_connections). Так вертикальный участок визуально идёт "внутри"
+# уже нарисованного стояка, а не отдельной линией где-то ещё.
+CABLE_RISER_OFFSET_MM = LEVEL_LINE_1_OFFSET_MM
+
 # Вертикальный шаг между "начальной" Y одного этажа и следующего — не
 # зависит от содержимого (только от констант выше), поэтому вставка/
 # удаление целого этажа — это ровно сдвиг нижестоящих на этот шаг, без
@@ -278,6 +285,20 @@ def draw_horizontal_line(doc, view, x_start, x_end, y):
     try:
         start = XYZ(x_start, y, 0.0)
         end = XYZ(x_end, y, 0.0)
+        if start.DistanceTo(end) < 0.001:
+            return None
+        return doc.Create.NewDetailCurve(view, Line.CreateBound(start, end))
+    except:
+        return None
+
+
+def draw_segment(doc, view, x1, y1, x2, y2):
+    """Произвольный отрезок между двумя точками (для линий "устройство -> шкаф")."""
+    if view is None:
+        return None
+    try:
+        start = XYZ(x1, y1, 0.0)
+        end = XYZ(x2, y2, 0.0)
         if start.DistanceTo(end) < 0.001:
             return None
         return doc.Create.NewDetailCurve(view, Line.CreateBound(start, end))
@@ -776,3 +797,67 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
         _bump(stats, "levels_removed")
 
     return {"v": 1, "levels": new_levels_state}, report_rows
+
+
+# ------------------------------------------------------------
+# ЛИНИИ "УСТРОЙСТВО -> ШКАФ"
+# ------------------------------------------------------------
+
+def _iter_state_devices(state):
+    """(uid, x, level_y) для каждого устройства, размещённого на схеме (по итоговому state)."""
+    for level_record in state.get("levels", {}).values():
+        y = level_record.get("y", 0.0)
+        for room_record in level_record.get("rooms", {}).values():
+            for uid, dev in room_record.get("devices", {}).items():
+                yield uid, dev.get("x", 0.0), y
+
+
+def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid):
+    """
+    Линии "устройство -> шкаф": от каждого узла (кроме самого шкафа)
+    горизонтально до стояка (CABLE_RISER_OFFSET_MM левее рамок помещений),
+    по стояку вертикально до уровня шкафа, затем горизонтально до шкафа —
+    ломаная из трёх отрезков, без диагоналей.
+
+    В отличие от помещений/этажей эти линии не редактируются руками и
+    полностью выводятся из уже посчитанных позиций узлов, поэтому диффинг
+    для них не нужен: на каждом запуске старые (old_cable_line_ids —
+    state["cable_line_ids"] из предыдущего запуска) удаляются и рисуются
+    заново по актуальным позициям из new_state (уже посчитанному
+    sync_levels на этом запуске) — дешевле и надёжнее частичного
+    обновления.
+
+    cabinet_uid — UniqueId реального устройства категории "шкаф" (или
+    None/не найден на схеме — тогда линии не рисуются вовсе, только
+    удаляются старые). Возвращает новый список id линий (для state).
+    """
+    delete_elements(doc, old_cable_line_ids)
+
+    if not cabinet_uid:
+        return []
+
+    devices = list(_iter_state_devices(new_state))
+    device_by_uid = dict((uid, (x, y)) for uid, x, y in devices)
+
+    cabinet_pos = device_by_uid.get(cabinet_uid)
+    if cabinet_pos is None:
+        return []
+
+    cabinet_x, cabinet_y = cabinet_pos
+    riser_x = -CABLE_RISER_OFFSET_MM * MM_TO_FT
+
+    new_ids = []
+
+    for uid, device_x, device_y in devices:
+        if uid == cabinet_uid:
+            continue
+
+        for elem in (
+            draw_segment(doc, view, device_x, device_y, riser_x, device_y),
+            draw_segment(doc, view, riser_x, device_y, riser_x, cabinet_y),
+            draw_segment(doc, view, riser_x, cabinet_y, cabinet_x, cabinet_y),
+        ):
+            if elem is not None:
+                new_ids.append(elem.Id.IntegerValue)
+
+    return new_ids
