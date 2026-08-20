@@ -9,8 +9,9 @@ __doc__ = (
     "чем больше отметка) и по помещению (если параметр помещения на "
     "устройстве ещё не заполнен — ищет помещение в связанной модели сама "
     "и записывает найденное значение), рисует рамку на каждую группу, "
-    "вставляет схемное семейство на месте каждого устройства и копирует "
-    "на него адрес и помещение."
+    "вставляет схемное семейство на месте каждого устройства, копирует на "
+    "него адрес и помещение и подписывает узел сверху по центру (тип из "
+    "параметра «Обозначение» схемного семейства + адрес)."
 )
 __author__ = "Pipers"
 
@@ -57,6 +58,7 @@ LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
+TYPE_CODE_PARAM_NAME = settings["type_code_param_name"]
 
 CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
@@ -205,7 +207,7 @@ with revit.Transaction(u"Build SOT Schematic"):
 
         current_level_y, report_rows = build_level_block(
             doc, view, level_label, room_groups, CATEGORY_SYMBOLS, category_for_device,
-            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, unmatched_report
+            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, TYPE_CODE_PARAM_NAME, unmatched_report
         )
 
         all_report_rows.extend(report_rows)

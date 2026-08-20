@@ -40,6 +40,7 @@ LEVEL_LINE_3_OFFSET_MM = 10.0
 LEVEL_VERTICAL_LINE_LENGTH_MM = 51.0
 CONTINUOUS_TOP_LINE_OFFSET_MM = 5.0
 RIGHT_VERTICAL_LINE_OFFSET_MM = 5.0
+NODE_LABEL_OFFSET_MM = 3.0
 
 _ROOM_NUMBER_RE = re.compile(r"\((\d+)\)\s*$")
 _ANY_NUMBER_RE = re.compile(r"\d+")
@@ -285,11 +286,17 @@ def draw_horizontal_line(doc, view, x_start, x_end, y):
 # ------------------------------------------------------------
 
 def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbols,
-                       room_param_name, address_param_name, current_level_y, report_rows):
+                       room_param_name, address_param_name, type_code_param_name,
+                       current_level_y, report_rows):
     """
     Возвращает (group_left_x, group_right_x, devices_placed) — валидные
     устройства уже отфильтрованы по наличию схемного символа у вызывающего
     кода (build_level_block), поэтому здесь всегда есть что размещать.
+
+    Над каждым узлом создаётся горизонтальная надпись по центру, на
+    NODE_LABEL_OFFSET_MM выше точки вставки — "Обозначение Адрес" (тип
+    схемного семейства + адрес реального устройства), либо только одно из
+    двух, если другого нет; если пусты оба — надпись не создаётся.
     """
     offset = LINE_OFFSET_MM * MM_TO_FT
     step = STEP_MM * MM_TO_FT
@@ -347,6 +354,14 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbol
 
             report_rows.append((room_key, address_value or u""))
 
+            type_code_value = get_string_param(symbol, type_code_param_name) if type_code_param_name else None
+            label_parts = [p for p in (type_code_value, address_value) if p]
+            label_text = u" ".join(label_parts)
+
+            if label_text:
+                label_y = current_level_y + NODE_LABEL_OFFSET_MM * MM_TO_FT
+                create_room_text(doc, view, label_text, x_elem, label_y)
+
         x_elem += step
 
     return group_left_x, group_right_x, devices_placed
@@ -358,7 +373,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbol
 
 def build_level_block(doc, view, level_key, room_groups, category_symbols,
                        category_for_device, current_level_y, room_param_name,
-                       address_param_name, unmatched_report):
+                       address_param_name, type_code_param_name, unmatched_report):
     """
     room_groups — OrderedDict(room_key -> [device, ...]).
     category_for_device(device) -> имя категории или None.
@@ -391,7 +406,7 @@ def build_level_block(doc, view, level_key, room_groups, category_symbols,
 
         group_left_x, group_right_x, _placed = _place_room_group(
             doc, view, x_pos, room_key, valid_devices, category_symbols,
-            room_param_name, address_param_name, current_level_y, report_rows
+            room_param_name, address_param_name, type_code_param_name, current_level_y, report_rows
         )
 
         level_group_left = group_left_x if level_group_left is None else min(level_group_left, group_left_x)
