@@ -56,6 +56,7 @@ settings = get_settings_silent()
 fire_alarm_settings.require(settings, [
     "room_param_name", "room_number_param_name", "device_address_param",
     "node_label_offset_mm", "layout_param_name", "device_uid_param_name",
+    "schematic_device_categories_text",
 ])
 
 LEVEL_PARAM_NAME = settings["level_param_name"]
@@ -79,18 +80,18 @@ if ANNOTATION_SYMBOL is None:
         u"Откройте «Параметры СПС» и выберите марку узла, чтобы включить их."
     )
 
-CATEGORY_SYMBOLS = get_schematic_category_symbols(doc)
+CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
 if not CATEGORY_SYMBOLS:
     forms.alert(
         u"Не выбран ни один тип схемного семейства для категорий устройств "
         u"структурной схемы СПС.\n\n"
-        u"Откройте «Параметры СПС» и выберите схемное семейство для каждой "
-        u"из категорий («Пожарная сигнализация» и «Электрооборудование»).",
+        u"Откройте «Параметры СПС», обновите список категорий и выберите "
+        u"схемное семейство для каждой из них.",
         exitscript=True
     )
 
-CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids()
+CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
 
 if not CATEGORY_DEVICE_TYPE_IDS:
     forms.alert(
