@@ -120,13 +120,41 @@ def load_state(view, layout_param_name):
 
 
 def save_state(view, layout_param_name, state):
-    """Пишет state обратно в параметр вида. Вызывать внутри транзакции."""
-    if view is None or not layout_param_name:
-        return False
+    """
+    Пишет state обратно в параметр вида. Вызывать внутри транзакции.
+    Возвращает (ok, reason) — reason=None при успехе, иначе короткое
+    пояснение, ПОЧЕМУ запись не удалась (параметр не найден на этом
+    конкретном элементе через LookupParameter, доступен только для
+    чтения, или сам Set() бросил исключение) — чтобы не гадать: параметр
+    может быть виден в панели "Свойства" и при этом не резолвиться через
+    API (не тот StorageType, залочен шаблоном вида и т.п.).
+    """
+    if view is None:
+        return False, u"вид не найден"
+
+    if not layout_param_name:
+        return False, u"имя параметра раскладки не задано в настройках"
 
     try:
         text = json.dumps(state, ensure_ascii=False)
-    except:
-        return False
+    except Exception as e:
+        return False, u"не удалось сериализовать раскладку в JSON: {}".format(e)
 
-    return set_param_any(view, layout_param_name, text)
+    try:
+        p = view.LookupParameter(layout_param_name)
+    except Exception as e:
+        return False, u"LookupParameter упал с ошибкой: {}".format(e)
+
+    if p is None:
+        return False, u"LookupParameter('{}') вернул None на этом виде".format(layout_param_name)
+
+    try:
+        if p.IsReadOnly:
+            return False, u"параметр «{}» на этом виде доступен только для чтения (IsReadOnly)".format(layout_param_name)
+    except Exception as e:
+        return False, u"не удалось проверить IsReadOnly: {}".format(e)
+
+    if not set_param_any(view, layout_param_name, text):
+        return False, u"set_param_any не смог записать значение (см. StorageType параметра)"
+
+    return True, None
