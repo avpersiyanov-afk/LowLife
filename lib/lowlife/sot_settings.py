@@ -48,6 +48,15 @@ SOURCE_CATEGORIES = ("OST_SecurityDevices", "OST_ElectricalEquipment", "OST_Data
 # Категория схемных семейств (детализация) — та же, что у СКУД.
 SCHEMATIC_CATEGORIES = ("OST_DetailComponents",)
 
+# Категория марки узла (аннотация "Обозначение, Адрес" над схемным семейством).
+NODE_ANNOTATION_CATEGORIES = ("OST_DetailComponentTags",)
+
+# (ключ, подпись) — тип, выбираемый из проекта (одиночный выбор, вне таблицы категорий).
+TYPE_FIELDS = [
+    ("node_annotation_type_id", u"Марка узла на схеме (тип «Обозначение, Адрес», ставится "
+        u"над каждым схемным семейством)"),
+]
+
 # (ключ, подпись в окне, значение по умолчанию, обязательное ли поле, многострочное ли поле)
 TEXT_FIELDS = [
     ("level_param_name", u"[Уровень] Параметр «Уровень» на устройстве (необязательно; "
@@ -64,10 +73,6 @@ TEXT_FIELDS = [
     ("address_param_name", u"[Параметры] Параметр, в который записываем адрес устройства "
         u"(на устройстве и на схемном семействе)",
         u"", True, False),
-    ("type_code_param_name", u"[Схема] Параметр типа схемного семейства «Обозначение» "
-        u"(для надписи над узлом на схеме; необязательно — если пусто, надпись "
-        u"будет только с адресом)",
-        u"", False, False),
     ("schematic_device_categories_text", u"[Схема] Категории устройств схемы (по одной на строку)",
         u"", True, True),
 ]
@@ -210,7 +215,21 @@ def load_saved_values():
     values = {}
     for key, _, default, _req, _multiline in TEXT_FIELDS:
         values[key] = saved.get(key, default)
+    for key, _label in TYPE_FIELDS:
+        values[key] = saved.get(key, "")
     return values
+
+
+def get_node_annotation_symbol(doc, settings):
+    """FamilySymbol марки узла (node_annotation_type_id из настроек) или None, если не выбран/не найден."""
+    id_str = settings.get("node_annotation_type_id")
+    if not id_str:
+        return None
+
+    try:
+        return doc.GetElement(ElementId(int(id_str)))
+    except:
+        return None
 
 
 def load_schematic_category_type_ids():
@@ -345,6 +364,64 @@ def show_settings_form(doc, values):
     hint.Foreground = Brushes.Gray
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
+
+    # --- тип марки узла (одиночный выбор) ---
+
+    type_values = {key: values.get(key, "") for key, _ in TYPE_FIELDS}
+    type_labels = {}
+
+    type_section_title = TextBlock()
+    type_section_title.Text = u"Марка узла"
+    type_section_title.FontWeight = FontWeights.Bold
+    type_section_title.Margin = Thickness(0, 0, 0, 4)
+    root.Children.Add(type_section_title)
+
+    for key, label_text in TYPE_FIELDS:
+        label = TextBlock()
+        label.Text = label_text
+        label.Margin = Thickness(0, 8, 0, 2)
+        label.TextWrapping = TextWrapping.Wrap
+        root.Children.Add(label)
+
+        row = StackPanel()
+        row.Orientation = Orientation.Horizontal
+
+        value_label = TextBlock()
+        value_label.Text = _type_display_name(doc, type_values[key])
+        value_label.VerticalAlignment = VerticalAlignment.Center
+        value_label.Width = 300
+        value_label.TextWrapping = TextWrapping.Wrap
+        type_labels[key] = value_label
+
+        pick_btn = Button()
+        pick_btn.Content = u"Выбрать..."
+        pick_btn.Padding = Thickness(8, 2, 8, 2)
+        pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_annotation_type(sender, args, key=key):
+            annotation_categories = [getattr(BuiltInCategory, c) for c in NODE_ANNOTATION_CATEGORIES]
+            symbols = list_symbols_by_categories(doc, annotation_categories)
+            if not symbols:
+                forms.alert(u"В проекте нет типов категории «Марки элементов узла».")
+                return
+
+            options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options,
+                title=u"Марка узла",
+                button_name=u"Выбрать",
+                multiselect=False
+            )
+
+            if selected:
+                type_values[key] = str(selected.symbol.Id.IntegerValue)
+                type_labels[key].Text = selected.name
+
+        pick_btn.Click += on_pick_annotation_type
+
+        row.Children.Add(value_label)
+        row.Children.Add(pick_btn)
+        root.Children.Add(row)
 
     boxes = {}
     current_section = None
@@ -559,6 +636,7 @@ def show_settings_form(doc, values):
 
     def on_ok(sender, args):
         combined = {key: box.Text for key, box in boxes.items()}
+        combined.update(type_values)
         result["values"] = combined
         save_schematic_category_type_ids(category_type_ids)
         save_schematic_category_device_type_ids(category_device_type_ids)

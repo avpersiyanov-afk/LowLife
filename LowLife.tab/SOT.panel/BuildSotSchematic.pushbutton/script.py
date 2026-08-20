@@ -10,8 +10,8 @@ __doc__ = (
     "устройстве ещё не заполнен — ищет помещение в связанной модели сама "
     "и записывает найденное значение), рисует рамку на каждую группу, "
     "вставляет схемное семейство на месте каждого устройства, копирует на "
-    "него адрес и помещение и подписывает узел сверху по центру (тип из "
-    "параметра «Обозначение» схемного семейства + адрес)."
+    "него адрес и помещение и ставит над узлом марку («Обозначение, "
+    "Адрес» — тип марки выбирается в настройках СОТ)."
 )
 __author__ = "Pipers"
 
@@ -33,7 +33,7 @@ from lowlife.skud import category_by_type_id
 from lowlife import sot_settings
 from lowlife.sot_settings import (
     get_settings_silent, get_schematic_category_symbols, get_schematic_category_device_type_ids,
-    SOURCE_CATEGORIES
+    get_node_annotation_symbol, SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import build_level_block, get_unique_view_name
@@ -58,7 +58,15 @@ LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
-TYPE_CODE_PARAM_NAME = settings["type_code_param_name"]
+
+ANNOTATION_SYMBOL = get_node_annotation_symbol(doc, settings)
+
+if ANNOTATION_SYMBOL is None:
+    forms.alert(
+        u"Не выбрана марка узла в настройках СОТ — марки над схемными "
+        u"семействами ставиться не будут.\n\n"
+        u"Откройте «Параметры СОТ» и выберите марку узла, чтобы включить их."
+    )
 
 CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
@@ -207,7 +215,7 @@ with revit.Transaction(u"Build SOT Schematic"):
 
         current_level_y, report_rows = build_level_block(
             doc, view, level_label, room_groups, CATEGORY_SYMBOLS, category_for_device,
-            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, TYPE_CODE_PARAM_NAME, unmatched_report
+            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, ANNOTATION_SYMBOL, unmatched_report
         )
 
         all_report_rows.extend(report_rows)

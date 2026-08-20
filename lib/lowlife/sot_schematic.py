@@ -4,7 +4,10 @@
 устройств сеткой по этажам и помещениям — рамка на каждую группу
 "этаж/помещение" линиями детализации, подпись помещения текстом, подпись
 этажа вертикальным текстом слева, схемное семейство на месте каждого
-реального устройства (тип — по категории устройства, из настроек СОТ).
+реального устройства (тип — по категории устройства, из настроек СОТ), и
+марка (IndependentTag) над каждым узлом — сама читает "Обозначение"/"Адрес"
+с помеченного схемного семейства через свои поля-метки (см.
+place_node_annotation), ничего в код для этого зашивать не нужно.
 
 Портировано из рабочего Dynamo-скрипта построения структурной схемы СОТ:
 геометрия (шаги, отступы, длины линий) сохранена без изменений — это
@@ -17,7 +20,7 @@ import re
 from Autodesk.Revit.DB import (
     XYZ, Line, TextNote, TextNoteType, TextNoteOptions,
     HorizontalTextAlignment, FilteredElementCollector, View,
-    ElementTransformUtils
+    ElementTransformUtils, IndependentTag, TagOrientation, Reference
 )
 
 from lowlife.params import get_string_param, set_param_any
@@ -282,21 +285,49 @@ def draw_horizontal_line(doc, view, x_start, x_end, y):
 
 
 # ------------------------------------------------------------
+# МАРКА УЗЛА (аннотация "Обозначение, Адрес" над схемным семейством)
+# ------------------------------------------------------------
+
+def place_node_annotation(doc, view, node_instance, annotation_symbol, x, current_level_y):
+    """
+    Ставит марку (IndependentTag) типа annotation_symbol на node_instance —
+    марка сама читает "Обозначение"/"Адрес" с помеченного элемента через
+    свои поля-метки, ничего сюда передавать/копировать не нужно. Марка —
+    горизонтальная (TagOrientation.Horizontal), без выноски, головка по
+    центру узла на NODE_LABEL_OFFSET_MM выше точки вставки.
+    """
+    if annotation_symbol is None or node_instance is None:
+        return None
+
+    try:
+        if not annotation_symbol.IsActive:
+            annotation_symbol.Activate()
+            doc.Regenerate()
+
+        point = XYZ(x, current_level_y + NODE_LABEL_OFFSET_MM * MM_TO_FT, 0.0)
+
+        return IndependentTag.Create(
+            doc, annotation_symbol.Id, view.Id, Reference(node_instance),
+            False, TagOrientation.Horizontal, point
+        )
+    except:
+        return None
+
+
+# ------------------------------------------------------------
 # ГРУППА ПОМЕЩЕНИЯ (ряд узлов + рамка) ВНУТРИ УРОВНЯ
 # ------------------------------------------------------------
 
 def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbols,
-                       room_param_name, address_param_name, type_code_param_name,
+                       room_param_name, address_param_name, annotation_symbol,
                        current_level_y, report_rows):
     """
     Возвращает (group_left_x, group_right_x, devices_placed) — валидные
     устройства уже отфильтрованы по наличию схемного символа у вызывающего
     кода (build_level_block), поэтому здесь всегда есть что размещать.
 
-    Над каждым узлом создаётся горизонтальная надпись по центру, на
-    NODE_LABEL_OFFSET_MM выше точки вставки — "Обозначение Адрес" (тип
-    схемного семейства + адрес реального устройства), либо только одно из
-    двух, если другого нет; если пусты оба — надпись не создаётся.
+    Над каждым узлом ставится марка annotation_symbol (см.
+    place_node_annotation), если она задана в настройках.
     """
     offset = LINE_OFFSET_MM * MM_TO_FT
     step = STEP_MM * MM_TO_FT
@@ -354,13 +385,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbol
 
             report_rows.append((room_key, address_value or u""))
 
-            type_code_value = get_string_param(symbol, type_code_param_name) if type_code_param_name else None
-            label_parts = [p for p in (type_code_value, address_value) if p]
-            label_text = u" ".join(label_parts)
-
-            if label_text:
-                label_y = current_level_y + NODE_LABEL_OFFSET_MM * MM_TO_FT
-                create_room_text(doc, view, label_text, x_elem, label_y)
+            place_node_annotation(doc, view, node_instance, annotation_symbol, x_elem, current_level_y)
 
         x_elem += step
 
@@ -373,7 +398,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbol
 
 def build_level_block(doc, view, level_key, room_groups, category_symbols,
                        category_for_device, current_level_y, room_param_name,
-                       address_param_name, type_code_param_name, unmatched_report):
+                       address_param_name, annotation_symbol, unmatched_report):
     """
     room_groups — OrderedDict(room_key -> [device, ...]).
     category_for_device(device) -> имя категории или None.
@@ -406,7 +431,7 @@ def build_level_block(doc, view, level_key, room_groups, category_symbols,
 
         group_left_x, group_right_x, _placed = _place_room_group(
             doc, view, x_pos, room_key, valid_devices, category_symbols,
-            room_param_name, address_param_name, type_code_param_name, current_level_y, report_rows
+            room_param_name, address_param_name, annotation_symbol, current_level_y, report_rows
         )
 
         level_group_left = group_left_x if level_group_left is None else min(level_group_left, group_left_x)
