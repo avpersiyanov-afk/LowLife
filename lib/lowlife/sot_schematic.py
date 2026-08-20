@@ -808,12 +808,33 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
 # ------------------------------------------------------------
 
 def _iter_state_devices(state):
-    """(uid, x, level_y) для каждого устройства, размещённого на схеме (по итоговому state)."""
+    """(uid, x, level_y, instance_id) для каждого устройства, размещённого на схеме (по итоговому state)."""
     for level_record in state.get("levels", {}).values():
         y = level_record.get("y", 0.0)
         for room_record in level_record.get("rooms", {}).values():
             for uid, dev in room_record.get("devices", {}).items():
-                yield uid, dev.get("x", 0.0), y
+                yield uid, dev.get("x", 0.0), y, dev.get("instance_id")
+
+
+def _node_bottom_y(doc, view, instance_id, fallback_y):
+    """
+    Y нижней границы УГО узла (bounding box схемного семейства в этом
+    виде) — вертикальный отвод должен начинаться от границы значка, а не
+    из его точки вставки (обычно это центр). Если элемент не резолвится
+    или бокс недоступен — fallback_y (точка вставки), чтобы линия всё
+    равно нарисовалась, а не пропала.
+    """
+    el = _resolve(doc, instance_id)
+    if el is None:
+        return fallback_y
+
+    try:
+        bbox = el.get_BoundingBox(view)
+        if bbox is None:
+            return fallback_y
+        return bbox.Min.Y
+    except:
+        return fallback_y
 
 
 def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid):
@@ -828,7 +849,9 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
       нижней границей рамки помещения и разделительной линией этажа —
       место там уже есть, ничего не перекрывает);
     - от каждого узла этого этажа (включая шкаф, если он на этом же этаже)
-      — короткий вертикальный отрезок вниз, до коллектора;
+      — короткий вертикальный отрезок вниз, до коллектора; начинается не
+      из точки вставки узла (обычно это центр УГО), а от нижней границы
+      его bounding box в этом виде (см. _node_bottom_y);
     - коллектор дотягивается по X до стояка (CABLE_RISER_OFFSET_MM левее
       рамок помещений);
     - один общий вертикальный стояк на всю схему — от самого верхнего до
@@ -855,25 +878,28 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
         return []
 
     devices = list(_iter_state_devices(new_state))
-    device_by_uid = dict((uid, (x, y)) for uid, x, y in devices)
+    device_by_uid = dict((uid, (x, y)) for uid, x, y, _iid in devices)
 
     if cabinet_uid not in device_by_uid:
         return []
+
+    doc.Regenerate()
 
     riser_x = -CABLE_RISER_OFFSET_MM * MM_TO_FT
     drop_offset = CABLE_DROP_OFFSET_MM * MM_TO_FT
 
     by_level_y = {}
-    for uid, x, y in devices:
-        by_level_y.setdefault(y, []).append(x)
+    for uid, x, y, instance_id in devices:
+        by_level_y.setdefault(y, []).append((x, instance_id))
 
     new_ids = []
     collector_ys = []
 
-    for level_y, xs in by_level_y.items():
+    for level_y, x_instance_list in by_level_y.items():
         collector_y = level_y - drop_offset
         collector_ys.append(collector_y)
 
+        xs = [x for x, _iid in x_instance_list]
         x_min = min(xs + [riser_x])
         x_max = max(xs + [riser_x])
 
@@ -881,8 +907,9 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
         if elem is not None:
             new_ids.append(elem.Id.IntegerValue)
 
-        for x in xs:
-            elem = draw_segment(doc, view, x, level_y, x, collector_y)
+        for x, instance_id in x_instance_list:
+            drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
+            elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
 
