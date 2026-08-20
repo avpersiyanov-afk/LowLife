@@ -58,6 +58,10 @@ RIGHT_VERTICAL_LINE_OFFSET_MM = 5.0
 # уже нарисованного стояка, а не отдельной линией где-то ещё.
 CABLE_RISER_OFFSET_MM = LEVEL_LINE_1_OFFSET_MM
 
+# Насколько ниже узлов проходит общий горизонтальный сборный участок
+# (коллектор) на каждом этаже — см. sync_cable_connections.
+CABLE_DROP_OFFSET_MM = 15.0
+
 # Вертикальный шаг между "начальной" Y одного этажа и следующего — не
 # зависит от содержимого (только от констант выше), поэтому вставка/
 # удаление целого этажа — это ровно сдвиг нижестоящих на этот шаг, без
@@ -814,10 +818,24 @@ def _iter_state_devices(state):
 
 def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid):
     """
-    Линии "устройство -> шкаф": от каждого узла (кроме самого шкафа)
-    горизонтально до стояка (CABLE_RISER_OFFSET_MM левее рамок помещений),
-    по стояку вертикально до уровня шкафа, затем горизонтально до шкафа —
-    ломаная из трёх отрезков, без диагоналей.
+    Линии "устройство -> шкаф" — шинная топология вместо звезды от каждого
+    узла (та была рабочей, но давала три отдельных отрезка на каждое
+    устройство, и на схемах с десятками узлов превращалась в кашу из
+    накладывающихся линий):
+
+    - на каждом этаже, где есть узлы, — один общий горизонтальный
+      "коллектор", на CABLE_DROP_OFFSET_MM ниже узлов этого этажа (между
+      нижней границей рамки помещения и разделительной линией этажа —
+      место там уже есть, ничего не перекрывает);
+    - от каждого узла этого этажа (включая шкаф, если он на этом же этаже)
+      — короткий вертикальный отрезок вниз, до коллектора;
+    - коллектор дотягивается по X до стояка (CABLE_RISER_OFFSET_MM левее
+      рамок помещений);
+    - один общий вертикальный стояк на всю схему — от самого верхнего до
+      самого нижнего задействованного коллектора, через все этажи разом.
+
+    Итого на этаж — 1 горизонтальная + по одной короткой вертикальной на
+    узел, и один стояк на всю схему — вместо трёх отрезков на каждый узел.
 
     В отличие от помещений/этажей эти линии не редактируются руками и
     полностью выводятся из уже посчитанных позиций узлов, поэтому диффинг
@@ -839,25 +857,38 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
     devices = list(_iter_state_devices(new_state))
     device_by_uid = dict((uid, (x, y)) for uid, x, y in devices)
 
-    cabinet_pos = device_by_uid.get(cabinet_uid)
-    if cabinet_pos is None:
+    if cabinet_uid not in device_by_uid:
         return []
 
-    cabinet_x, cabinet_y = cabinet_pos
     riser_x = -CABLE_RISER_OFFSET_MM * MM_TO_FT
+    drop_offset = CABLE_DROP_OFFSET_MM * MM_TO_FT
+
+    by_level_y = {}
+    for uid, x, y in devices:
+        by_level_y.setdefault(y, []).append(x)
 
     new_ids = []
+    collector_ys = []
 
-    for uid, device_x, device_y in devices:
-        if uid == cabinet_uid:
-            continue
+    for level_y, xs in by_level_y.items():
+        collector_y = level_y - drop_offset
+        collector_ys.append(collector_y)
 
-        for elem in (
-            draw_segment(doc, view, device_x, device_y, riser_x, device_y),
-            draw_segment(doc, view, riser_x, device_y, riser_x, cabinet_y),
-            draw_segment(doc, view, riser_x, cabinet_y, cabinet_x, cabinet_y),
-        ):
+        x_min = min(xs + [riser_x])
+        x_max = max(xs + [riser_x])
+
+        elem = draw_segment(doc, view, x_min, collector_y, x_max, collector_y)
+        if elem is not None:
+            new_ids.append(elem.Id.IntegerValue)
+
+        for x in xs:
+            elem = draw_segment(doc, view, x, level_y, x, collector_y)
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
+
+    if collector_ys:
+        elem = draw_segment(doc, view, riser_x, min(collector_ys), riser_x, max(collector_ys))
+        if elem is not None:
+            new_ids.append(elem.Id.IntegerValue)
 
     return new_ids
