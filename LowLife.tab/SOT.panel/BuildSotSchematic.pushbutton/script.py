@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 __title__ = "Структурная\nсхема"
 __doc__ = (
-    "Строит структурную схему СОТ (охранное телевидение): создаёт новый "
-    "чертёжный вид, сама находит на модели все устройства, тип которых "
-    "сопоставлен категории в настройках СОТ, группирует их по этажу "
-    "(подпись этажа на схеме — «Этаж N (отметка)», порядок по отметке: "
-    "отрицательные — внизу схемы, глубже — ниже; положительные — выше, "
-    "чем больше отметка) и по помещению (если параметр помещения на "
-    "устройстве ещё не заполнен — ищет помещение в связанной модели сама "
-    "и записывает найденное значение), рисует рамку на каждую группу, "
-    "вставляет схемное семейство на месте каждого устройства, копирует на "
-    "него адрес и помещение и ставит над узлом марку («Обозначение, "
-    "Адрес» — тип марки выбирается в настройках СОТ)."
+    "Строит/обновляет структурную схему СОТ (охранное телевидение). Сама "
+    "находит на модели все устройства, тип которых сопоставлен категории в "
+    "настройках СОТ, группирует их по этажу (подпись — «Этаж N (отметка)», "
+    "порядок по отметке: отрицательные — внизу схемы, глубже — ниже; "
+    "положительные — выше, чем больше отметка) и по помещению.\n\n"
+    "Повторный запуск не пересоздаёт схему с нуля: раскладка предыдущего "
+    "запуска хранится в служебном параметре вида, поэтому обновляются "
+    "только этаж/помещение/устройство, где реально что-то изменилось "
+    "(добавилось/пропало/переехало) — остальное остаётся как было, теми же "
+    "элементами. Соседи справа/ниже места изменения сдвигаются, чтобы "
+    "закрыть/освободить место."
 )
 __author__ = "Pipers"
 
@@ -36,7 +36,8 @@ from lowlife.sot_settings import (
     get_node_annotation_symbol, SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import build_level_block, get_unique_view_name
+from lowlife.sot_schematic import sync_levels, get_unique_view_name
+from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 
 doc = revit.doc
@@ -51,13 +52,16 @@ settings = get_settings_silent()
 
 sot_settings.require(settings, [
     "room_param_name", "room_number_param_name", "address_param_name",
-    "node_label_offset_mm", "schematic_device_categories_text"
+    "node_label_offset_mm", "layout_param_name", "device_uid_param_name",
+    "schematic_device_categories_text"
 ])
 
 LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
+LAYOUT_PARAM_NAME = settings["layout_param_name"]
+DEVICE_UID_PARAM_NAME = settings["device_uid_param_name"]
 
 try:
     NODE_LABEL_OFFSET_MM = float(settings["node_label_offset_mm"].replace(u",", u"."))
@@ -136,6 +140,7 @@ if not elements:
 
 level_groups = group_elements_by_level(doc, elements, LEVEL_PARAM_NAME)
 level_order = sorted_level_names(level_groups)
+level_labels = dict((name, get_level_label(name)) for name in level_order)
 
 
 def resolve_room_value(doc, el, counters):
@@ -166,32 +171,38 @@ def resolve_room_value(doc, el, counters):
 
 
 # ------------------------------------------------------------
-# ЧЕРТЁЖНЫЙ ВИД
+# ЧЕРТЁЖНЫЙ ВИД: ищем существующую схему (для обновления), иначе создаём
 # ------------------------------------------------------------
 
-drafting_type_id = None
+view, previous_state = find_layout_view(doc, LAYOUT_PARAM_NAME)
+is_new_view = view is None
 
-for vft in FilteredElementCollector(doc).OfClass(ViewFamilyType).ToElements():
-    try:
-        if vft.ViewFamily == ViewFamily.Drafting:
-            drafting_type_id = vft.Id
-            break
-    except:
-        continue
+if is_new_view:
+    drafting_type_id = None
 
-if drafting_type_id is None:
-    forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).", exitscript=True)
+    for vft in FilteredElementCollector(doc).OfClass(ViewFamilyType).ToElements():
+        try:
+            if vft.ViewFamily == ViewFamily.Drafting:
+                drafting_type_id = vft.Id
+                break
+        except:
+            continue
+
+    if drafting_type_id is None:
+        forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).", exitscript=True)
+
+    previous_state = {"v": 1, "levels": {}}
 
 
 # ------------------------------------------------------------
-# ПОСТРОЕНИЕ
+# СИНХРОНИЗАЦИЯ
 # ------------------------------------------------------------
 
 unmatched_report = []
-all_report_rows = []
 room_counters = {"already_set": 0, "looked_up": 0, "not_found": 0}
+sync_stats = {}
 
-with revit.Transaction(u"Build SOT Schematic"):
+with revit.Transaction(u"Sync SOT Schematic"):
     level_room_groups = OrderedDict()
 
     for level_name in level_order:
@@ -207,24 +218,21 @@ with revit.Transaction(u"Build SOT Schematic"):
 
         level_room_groups[level_name] = room_groups
 
-    view_name = get_unique_view_name(doc, u"Структурная схема СОТ")
-    view = ViewDrafting.Create(doc, drafting_type_id)
-    view.Name = view_name
-    view.Scale = 1
+    if is_new_view:
+        view_name = get_unique_view_name(doc, u"Структурная схема СОТ")
+        view = ViewDrafting.Create(doc, drafting_type_id)
+        view.Name = view_name
+        view.Scale = 1
+    else:
+        view_name = view.Name
 
-    current_level_y = 0.0
+    new_state, all_report_rows = sync_levels(
+        doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
+        ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
+        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
+    )
 
-    for level_name in level_order:
-        room_groups = level_room_groups[level_name]
-        level_label = get_level_label(level_name)
-
-        current_level_y, report_rows = build_level_block(
-            doc, view, level_label, room_groups, CATEGORY_SYMBOLS, category_for_device,
-            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, ANNOTATION_SYMBOL,
-            NODE_LABEL_OFFSET_MM, unmatched_report
-        )
-
-        all_report_rows.extend(report_rows)
+    save_state(view, LAYOUT_PARAM_NAME, new_state)
 
 
 # ------------------------------------------------------------
@@ -232,9 +240,26 @@ with revit.Transaction(u"Build SOT Schematic"):
 # ------------------------------------------------------------
 
 output.print_md(u"### Структурная схема СОТ: {}".format(view_name))
-output.print_md(u"Этажей: {}, устройств размещено: {}".format(len(level_order), len(all_report_rows)))
+output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
+    u"Вид создан заново" if is_new_view else u"Вид обновлён",
+    len(level_order), len(all_report_rows)
+))
 output.print_md(
-    u"Помещение: уже было заполнено — {}, найдено в связи — {}, не найдено — {}".format(
+    u"Помещения: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
+        sync_stats.get("rooms_unchanged", 0), sync_stats.get("rooms_moved", 0),
+        sync_stats.get("rooms_created", 0), sync_stats.get("rooms_redrawn", 0),
+        sync_stats.get("rooms_removed", 0)
+    )
+)
+output.print_md(
+    u"Этажи: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
+        sync_stats.get("levels_unchanged", 0), sync_stats.get("levels_moved", 0),
+        sync_stats.get("levels_created", 0), sync_stats.get("levels_redrawn", 0),
+        sync_stats.get("levels_removed", 0)
+    )
+)
+output.print_md(
+    u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, не найдено — {}".format(
         room_counters["already_set"], room_counters["looked_up"], room_counters["not_found"]
     )
 )
@@ -248,23 +273,22 @@ if room_counters["not_found"]:
 
 if unmatched_report:
     output.print_md(u"### Не размещено (нет категории/схемного семейства) — {}".format(len(unmatched_report)))
-    for level_name, room_key, device in unmatched_report:
+    for level_label, room_key, device in unmatched_report:
         try:
             device_name = device.Name
         except:
             device_name = u"?"
-        output.print_md(u"- {} / {} — {} (ID {})".format(level_name, room_key, device_name, device.Id.IntegerValue))
+        output.print_md(u"- {} / {} — {} (ID {})".format(level_label, room_key, device_name, device.Id.IntegerValue))
 
 forms.alert(
     u"Готово.\n\n"
-    u"Вид: {}\n"
+    u"Вид: {} ({})\n"
     u"Этажей: {}\n"
-    u"Устройств размещено: {}\n"
-    u"Помещение: уже было / найдено в связи / не найдено — {} / {} / {}\n"
+    u"Устройств на схеме: {}\n"
     u"Не размещено (нет категории/схемного семейства): {}\n\n"
-    u"Подробности — в окне вывода pyRevit.".format(
-        view_name, len(level_order), len(all_report_rows),
-        room_counters["already_set"], room_counters["looked_up"], room_counters["not_found"],
-        len(unmatched_report)
+    u"Подробности (включая статистику "
+    u"не тронуто/сдвинуто/создано/перерисовано/удалено) — в окне вывода pyRevit.".format(
+        view_name, (u"новый" if is_new_view else u"обновлён"),
+        len(level_order), len(all_report_rows), len(unmatched_report)
     )
 )
