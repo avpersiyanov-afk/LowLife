@@ -51,13 +51,18 @@ settings = get_settings_silent()
 
 sot_settings.require(settings, [
     "room_param_name", "room_number_param_name", "address_param_name",
-    "schematic_device_categories_text"
+    "node_label_offset_mm", "schematic_device_categories_text"
 ])
 
 LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
+
+try:
+    NODE_LABEL_OFFSET_MM = float(settings["node_label_offset_mm"].replace(u",", u"."))
+except (ValueError, AttributeError):
+    NODE_LABEL_OFFSET_MM = 5.0
 
 ANNOTATION_SYMBOL = get_node_annotation_symbol(doc, settings)
 
@@ -215,7 +220,8 @@ with revit.Transaction(u"Build SOT Schematic"):
 
         current_level_y, report_rows = build_level_block(
             doc, view, level_label, room_groups, CATEGORY_SYMBOLS, category_for_device,
-            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, ANNOTATION_SYMBOL, unmatched_report
+            current_level_y, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, ANNOTATION_SYMBOL,
+            NODE_LABEL_OFFSET_MM, unmatched_report
         )
 
         all_report_rows.extend(report_rows)

@@ -43,7 +43,6 @@ LEVEL_LINE_3_OFFSET_MM = 10.0
 LEVEL_VERTICAL_LINE_LENGTH_MM = 51.0
 CONTINUOUS_TOP_LINE_OFFSET_MM = 5.0
 RIGHT_VERTICAL_LINE_OFFSET_MM = 5.0
-NODE_LABEL_OFFSET_MM = 3.0
 
 _ROOM_NUMBER_RE = re.compile(r"\((\d+)\)\s*$")
 _ANY_NUMBER_RE = re.compile(r"\d+")
@@ -288,13 +287,14 @@ def draw_horizontal_line(doc, view, x_start, x_end, y):
 # МАРКА УЗЛА (аннотация "Обозначение, Адрес" над схемным семейством)
 # ------------------------------------------------------------
 
-def place_node_annotation(doc, view, node_instance, annotation_symbol, x, current_level_y):
+def place_node_annotation(doc, view, node_instance, annotation_symbol, x, current_level_y, label_offset_mm):
     """
     Ставит марку (IndependentTag) типа annotation_symbol на node_instance —
     марка сама читает "Обозначение"/"Адрес" с помеченного элемента через
     свои поля-метки, ничего сюда передавать/копировать не нужно. Марка —
     горизонтальная (TagOrientation.Horizontal), без выноски, головка по
-    центру узла на NODE_LABEL_OFFSET_MM выше точки вставки.
+    центру узла на label_offset_mm выше точки вставки (настройка СОТ
+    "Смещение марки узла вверх от точки вставки, мм").
     """
     if annotation_symbol is None or node_instance is None:
         return None
@@ -304,7 +304,7 @@ def place_node_annotation(doc, view, node_instance, annotation_symbol, x, curren
             annotation_symbol.Activate()
             doc.Regenerate()
 
-        point = XYZ(x, current_level_y + NODE_LABEL_OFFSET_MM * MM_TO_FT, 0.0)
+        point = XYZ(x, current_level_y + label_offset_mm * MM_TO_FT, 0.0)
 
         return IndependentTag.Create(
             doc, annotation_symbol.Id, view.Id, Reference(node_instance),
@@ -319,7 +319,7 @@ def place_node_annotation(doc, view, node_instance, annotation_symbol, x, curren
 # ------------------------------------------------------------
 
 def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbols,
-                       room_param_name, address_param_name, annotation_symbol,
+                       room_param_name, address_param_name, annotation_symbol, label_offset_mm,
                        current_level_y, report_rows):
     """
     Возвращает (group_left_x, group_right_x, devices_placed) — валидные
@@ -385,7 +385,9 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbol
 
             report_rows.append((room_key, address_value or u""))
 
-            place_node_annotation(doc, view, node_instance, annotation_symbol, x_elem, current_level_y)
+            place_node_annotation(
+                doc, view, node_instance, annotation_symbol, x_elem, current_level_y, label_offset_mm
+            )
 
         x_elem += step
 
@@ -398,7 +400,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, category_symbol
 
 def build_level_block(doc, view, level_key, room_groups, category_symbols,
                        category_for_device, current_level_y, room_param_name,
-                       address_param_name, annotation_symbol, unmatched_report):
+                       address_param_name, annotation_symbol, label_offset_mm, unmatched_report):
     """
     room_groups — OrderedDict(room_key -> [device, ...]).
     category_for_device(device) -> имя категории или None.
@@ -431,7 +433,8 @@ def build_level_block(doc, view, level_key, room_groups, category_symbols,
 
         group_left_x, group_right_x, _placed = _place_room_group(
             doc, view, x_pos, room_key, valid_devices, category_symbols,
-            room_param_name, address_param_name, annotation_symbol, current_level_y, report_rows
+            room_param_name, address_param_name, annotation_symbol, label_offset_mm,
+            current_level_y, report_rows
         )
 
         level_group_left = group_left_x if level_group_left is None else min(level_group_left, group_left_x)
