@@ -14,7 +14,11 @@ __doc__ = (
     "изменилось (добавилось/пропало/переехало), остальное остаётся как было, "
     "теми же элементами. Соседи справа/ниже места изменения сдвигаются, "
     "чтобы закрыть/освободить место. Шаблон вида (если выбран в настройках) "
-    "применяется на каждом запуске."
+    "применяется на каждом запуске.\n\n"
+    "Если в настройках задан параметр корпуса/секции — перед построением "
+    "просит выбрать, для какого корпуса/секции строить схему (если значений "
+    "больше одного); имя вида получает суффикс с названием корпуса, так что "
+    "у каждого корпуса — свой отдельный вид и своя раскладка."
 )
 __author__ = "Pipers"
 
@@ -67,6 +71,7 @@ LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
 ADDRESS_PARAM_NAME = settings["device_address_param"]
+BUILDING_PARAM_NAME = settings["building_param_name"]
 SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
 LAYOUT_PARAM_NAME = settings["layout_param_name"]
 DEVICE_UID_PARAM_NAME = settings["device_uid_param_name"]
@@ -143,6 +148,43 @@ if not elements:
         u"в настройках СПС.",
         exitscript=True
     )
+
+
+# ------------------------------------------------------------
+# ФИЛЬТР ПО КОРПУСУ/СЕКЦИИ — схема строится только на выбранный
+# ------------------------------------------------------------
+
+selected_building = None
+
+
+def _element_building(el):
+    value = get_string_param(el, BUILDING_PARAM_NAME)
+    return value.strip() if value and value.strip() else u"(без корпуса)"
+
+
+if BUILDING_PARAM_NAME:
+    building_options = sorted(set(_element_building(el) for el in elements))
+
+    if len(building_options) > 1:
+        selected_building = forms.SelectFromList.show(
+            building_options,
+            title=u"Выберите корпус/секцию для структурной схемы СПС",
+            button_name=u"Построить",
+            multiselect=False
+        )
+        if not selected_building:
+            forms.alert(u"Операция отменена.", exitscript=True)
+    else:
+        selected_building = building_options[0]
+
+    elements = [el for el in elements if _element_building(el) == selected_building]
+    SCHEMATIC_VIEW_NAME = u"{} - {}".format(SCHEMATIC_VIEW_NAME, selected_building)
+
+    if not elements:
+        forms.alert(
+            u"После фильтрации по корпусу/секции «{}» не осталось устройств.".format(selected_building),
+            exitscript=True
+        )
 
 
 # ------------------------------------------------------------
@@ -264,6 +306,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
 # ------------------------------------------------------------
 
 output.print_md(u"### Структурная схема СПС: {}".format(view_name))
+if selected_building is not None:
+    output.print_md(u"Корпус/секция: **{}**".format(selected_building))
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
     u"Вид создан заново" if is_new_view else u"Вид обновлён",
     len(level_order), len(all_report_rows)
