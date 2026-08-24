@@ -44,6 +44,13 @@ def test_is_root_address(addr, expected):
     assert sc.is_root_address(addr) is expected
 
 
+def test_parse_route_path():
+    assert sc.parse_route_path(u"F1.2 -> F1.3 -> F1.4") == [u"F1.2", u"F1.3", u"F1.4"]
+    assert sc.parse_route_path(u"F1.2") == [u"F1.2"]
+    assert sc.parse_route_path(u"") == []
+    assert sc.parse_route_path(None) == []
+
+
 def test_build_graph_links_nodes_and_reports_broken_links():
     segments = {"a": {}, "b": {}, "c": {}}
     parents_by_id = {

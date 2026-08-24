@@ -56,6 +56,36 @@ def detect_electrical_system_type(el):
     return None
 
 
+def count_electrical_connectors(el):
+    """
+    Число коннекторов элемента с Domain=DomainElectrical — сколько
+    независимых электрических цепей теоретически можно завести на этот
+    элемент (например розетка с 2 гнёздами RJ-45 в одном экземпляре
+    семейства = 2 коннектора). Возвращает 0, если у элемента нет
+    MEPModel/ConnectorManager.
+    """
+    mep_model = getattr(el, "MEPModel", None)
+    connector_mgr = getattr(mep_model, "ConnectorManager", None) if mep_model else None
+
+    if connector_mgr is None:
+        return 0
+
+    try:
+        connectors = list(connector_mgr.Connectors)
+    except:
+        return 0
+
+    count = 0
+    for c in connectors:
+        try:
+            if c.Domain == Domain.DomainElectrical:
+                count += 1
+        except:
+            continue
+
+    return count
+
+
 def resolve_system_type(name):
     """
     ElectricalSystemType по имени из настроек ("FireAlarm", "Data",

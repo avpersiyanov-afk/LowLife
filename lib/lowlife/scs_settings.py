@@ -53,10 +53,6 @@ TEXT_FIELDS = [
         scs_defaults.ROUTE_PARAM_VALUE_RISER, False, True),
     ("device_cable_type_value", u"Тип прокладки кабеля для панелей и стояков",
         scs_defaults.DEVICE_CABLE_TYPE_VALUE, False, True),
-    ("panel_keywords", u"Ключевые слова панелей (через запятую)",
-        u", ".join(scs_defaults.PANEL_KEYWORDS), True, False),
-    ("panel_exclude_keywords", u"Слова-исключения панелей (через запятую)",
-        u", ".join(scs_defaults.PANEL_EXCLUDE_KEYWORDS), True, False),
     ("riser_keywords", u"Ключевые слова стояков (через запятую)",
         u", ".join(scs_defaults.RISER_KEYWORDS), True, False),
     ("riser_exclude_keywords", u"Слова-исключения стояков (через запятую)",
@@ -72,11 +68,23 @@ TEXT_FIELDS = [
     ("addr_prev_param_name", u"[Адресация] Параметр «Предыдущий адрес»",
         u"", False, True),
 
-    # --- расчёт цепей и длин (SyncCircuitsAndLengths) ---
-    ("workset_param_name", u"[Цепи] Параметр рабочего набора элемента",
+    # --- критерии определения панели/шкафа — используются РАЗНЫМИ кнопками
+    # для РАЗНЫХ целей (см. пояснение в окне настроек): ключевые слова —
+    # для расстановки узлов и корней адресации (PlaceRouteNodes/
+    # RenumberAddresses), рабочий набор — для выбора целевых панелей,
+    # для которых считаются цепи (SyncCircuitsAndLengths). Элемент должен
+    # подходить под оба критерия, чтобы полноценно участвовать во всех
+    # трёх кнопках — если что-то из этого не работает, проверьте оба поля.
+    ("panel_keywords", u"[Критерии панели] Ключевые слова панелей (через запятую)",
+        u", ".join(scs_defaults.PANEL_KEYWORDS), True, False),
+    ("panel_exclude_keywords", u"[Критерии панели] Слова-исключения панелей (через запятую)",
+        u", ".join(scs_defaults.PANEL_EXCLUDE_KEYWORDS), True, False),
+    ("workset_param_name", u"[Критерии панели] Параметр рабочего набора элемента",
         u"Рабочий набор", False, True),
-    ("workset_filter_key", u"[Цепи] Ключевое слово рабочего набора целевых панелей",
+    ("workset_filter_key", u"[Критерии панели] Ключевое слово рабочего набора целевых панелей",
         u"", False, True),
+
+    # --- расчёт цепей и длин (SyncCircuitsAndLengths) ---
     ("excluded_device_keywords", u"[Цепи] Ключевые слова резервных портов, исключаемых из расчёта (через запятую)",
         u"", True, False),
     ("circuit_panel_param", u"[Цепи] Параметр цепи «Панель»",
@@ -552,6 +560,7 @@ def show_settings_form(doc, values):
 
     boxes = {}
     current_section = None
+    panel_criteria_hint_shown = [False]
 
     for key, label_text, _, _, required in TEXT_FIELDS:
         section, plain_label = _split_section(label_text)
@@ -563,6 +572,26 @@ def show_settings_form(doc, values):
             section_title.FontWeight = FontWeights.Bold
             section_title.Margin = Thickness(0, 16, 0, 4)
             root.Children.Add(section_title)
+
+            if section == u"Критерии панели" and not panel_criteria_hint_shown[0]:
+                panel_criteria_hint_shown[0] = True
+                panel_hint = TextBlock()
+                panel_hint.Text = (
+                    u"Это два независимых критерия одной и той же панели/шкафа. "
+                    u"«Ключевые слова панелей» определяют, что считается панелью на "
+                    u"плане — для расстановки узлов и как корень адресации (кнопки "
+                    u"«Узлы трассы» и «Адреса узлов»). «Рабочий набор» отдельно "
+                    u"определяет целевые панели категории «Электрооборудование», для "
+                    u"которых строятся и считаются цепи (кнопка «Расчёт длины цепи»). "
+                    u"Элемент должен подходить под ОБА критерия, иначе он может "
+                    u"появиться на схеме узлом, но выпасть из расчёта цепей — или "
+                    u"наоборот."
+                )
+                panel_hint.FontSize = 11
+                panel_hint.Foreground = Brushes.Gray
+                panel_hint.TextWrapping = TextWrapping.Wrap
+                panel_hint.Margin = Thickness(0, 0, 0, 8)
+                root.Children.Add(panel_hint)
 
         label = TextBlock()
         label.Text = plain_label + (u" *" if required else u"")

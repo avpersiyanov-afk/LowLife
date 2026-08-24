@@ -40,6 +40,19 @@ def split_multi_value(x):
     return [p for p in parts if p]
 
 
+def parse_route_path(route_text):
+    """"F1.2 -> F1.3 -> F1.4" -> ["F1.2", "F1.3", "F1.4"] — обратный разбор
+    текста параметра «Маршрут цепи» (CIRCUIT_ROUTE_PARAM), записанного как
+    u" -> ".join(path) в SyncCircuitsAndLengths. Используется кнопкой
+    «Маршрут цепи» (ShowCircuitRoute), чтобы найти по адресам сами
+    элементы узлов маршрута."""
+    text = norm(route_text)
+    if not text:
+        return []
+    parts = [norm(p) for p in text.split(u"->")]
+    return [p for p in parts if p]
+
+
 def is_root_address(addr):
     """
     Адрес панели/стояка (вида "F1.P3"/"F1.R2") — RenumberAddresses

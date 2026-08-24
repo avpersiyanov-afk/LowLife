@@ -479,6 +479,44 @@ def parent_label(n):
     )
 
 
+def find_root_source(n):
+    """
+    Идёт вверх по цепочке parent_id до панели/стояка (корня обхода) — в
+    отличие от parent_label (только непосредственный родитель), показывает
+    ИТОГОВЫЙ шкаф/стояк, к которому в итоге отнесена вся ветка узла. Нужно
+    для проверки, когда на этаже несколько шкафов: build_shortest_path_tree
+    относит каждый узел к БЛИЖАЙШЕМУ по РЕАЛЬНОЙ длине трассы шкафу/стояку
+    (не по прямой) — эта функция показывает, к какому именно, чтобы можно
+    было сверить с ожиданием и найти обрыв связности, если авто-выбор
+    выглядит неверным.
+    """
+    seen = set()
+    current = n
+    while True:
+        pid = current.get("parent_id")
+        if pid is None or pid in seen:
+            return None
+        seen.add(pid)
+        if pid in real_nodes_by_id:
+            current = real_nodes_by_id[pid]
+            continue
+        return all_points_by_id.get(pid)
+
+
+def root_source_label(n):
+    src = find_root_source(n)
+    if src is None:
+        return u"-"
+    return u"{} ({})".format(src.get("addr") or u"без адреса", category_label(src))
+
+
+branch_size_by_root_id = {}
+for n in real_nodes:
+    src = find_root_source(n)
+    if src is not None:
+        branch_size_by_root_id[src["id"]] = branch_size_by_root_id.get(src["id"], 0) + 1
+
+
 from pyrevit import script as pyrevit_script
 output = pyrevit_script.get_output()
 
@@ -493,11 +531,12 @@ if panels or risers:
         roots_table.append([
             n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1]),
             n.get("addr") or u"-",
-            u"Слишком далеко — не корень" if n["id"] in far_ids else u"Корень"
+            u"Слишком далеко — не корень" if n["id"] in far_ids else u"Корень",
+            branch_size_by_root_id.get(n["id"], 0)
         ])
     output.print_table(
         table_data=roots_table,
-        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Адрес", u"Статус"]
+        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Адрес", u"Статус", u"Узлов в ветке"]
     )
 
 output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
@@ -508,11 +547,15 @@ for i, n in enumerate(ordered_routes, start=1):
         n.get("classification") or u"-",
         n.get("addr") or u"-",
         n.get("write_value") or u"-",
-        parent_label(n)
+        parent_label(n),
+        root_source_label(n)
     ])
 output.print_table(
     table_data=nodes_table,
-    columns=[u"#", u"ID", u"X, мм", u"Y, мм", u"Классификация", u"Адрес", u"Предыдущий адрес", u"Родитель"]
+    columns=[
+        u"#", u"ID", u"X, мм", u"Y, мм", u"Классификация", u"Адрес", u"Предыдущий адрес",
+        u"Родитель", u"Итоговый шкаф/стояк"
+    ]
 )
 
 

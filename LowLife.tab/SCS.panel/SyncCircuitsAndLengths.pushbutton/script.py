@@ -326,16 +326,34 @@ with revit.Transaction("Sync Circuits And Lengths"):
             start_seg_pt = segments[panel_start]["pt"]
             end_seg_pt = segments[end_sid]["pt"]
 
+            # Отрезки "панель -> первый узел" и "устройство -> последний
+            # узел" не смоделированы реальной линией трассы (это просто
+            # привязка по NEAREST_SEGMENT_PARAM) — их длина считается по
+            # катетам (Manhattan, как и calc_lengths между узлами), отдельно
+            # по осям XY (горизонталь) и Z (вертикаль). Раньше здесь
+            # учитывалась только вертикаль (raw_vertical_ft) — горизонтальное
+            # смещение устройства/панели относительно ближайшего узла
+            # маршрута вообще не попадало в длину цепи, из-за чего она
+            # оказывалась заниженной на горизонтальное расстояние до розетки/
+            # панели. Считаем как трубу (endpoint_horiz_m наравне с
+            # vertical_m) — по тому же соглашению, что и ENDPOINT_CABLE_TYPE_VALUE
+            # в PlaceRouteNodes форсирует тип прокладки "труба" у панелей/
+            # стояков: последний отрезок к устройству/панели — это подрозетник/
+            # ввод в шкаф, а не лоток.
             raw_vertical_ft = 0.0
+            raw_endpoint_horiz_ft = 0.0
             if panel_pt:
                 raw_vertical_ft += abs(panel_pt.Z - start_seg_pt.Z)
+                raw_endpoint_horiz_ft += abs(panel_pt.X - start_seg_pt.X) + abs(panel_pt.Y - start_seg_pt.Y)
             if dev_pt:
                 raw_vertical_ft += abs(dev_pt.Z - end_seg_pt.Z)
+                raw_endpoint_horiz_ft += abs(dev_pt.X - end_seg_pt.X) + abs(dev_pt.Y - end_seg_pt.Y)
 
             vertical_m = raw_vertical_ft * 0.3048
+            endpoint_horiz_m = raw_endpoint_horiz_ft * 0.3048
 
             final_tray_m = horiz_tray_m * HORIZ_TRAY_COEF
-            final_pipe_m = (horiz_pipe_m * HORIZ_PIPE_COEF) + (vertical_m * VERTICAL_COEF)
+            final_pipe_m = ((horiz_pipe_m + endpoint_horiz_m) * HORIZ_PIPE_COEF) + (vertical_m * VERTICAL_COEF)
             final_pipe_open_m = horiz_pipe_open_m * HORIZ_PIPE_COEF
             final_total_m = final_tray_m + final_pipe_m + final_pipe_open_m
 
