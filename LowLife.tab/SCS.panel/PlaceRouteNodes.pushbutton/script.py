@@ -581,6 +581,81 @@ with revit.Transaction("Place Route Nodes"):
             created.append(el)
 
 
+# ------------------------------------------------------------
+# ДИАГНОСТИКА: ЭЛЕМЕНТЫ, РЕАЛЬНО ОКАЗАВШИЕСЯ РЯДОМ ПОСЛЕ РАССТАНОВКИ
+# ------------------------------------------------------------
+# Отчёт по кластерам выше (largest_cluster_size) показывает только то, что
+# видел merge_nodes ДО создания — если он посчитал каждую точку своим
+# кластером из 1 элемента, крупных кластеров там не будет, даже если по
+# факту два РАЗНЫХ кластера в итоге создали элементы почти/точно друг на
+# друге (например, оба "прилипли" к одной уже существующей точке — тогда
+# find_existing_element находит и пропускает только первый из них,
+# consumed_ids не даёт второму найти тот же существующий элемент второй
+# раз, и второй создаётся заново рядом/поверх). Поэтому здесь — прямая
+# проверка ПОСЛЕ расстановки: перебираются все маркеры нужных типов,
+# реально стоящие на виде (и новые, и уже бывшие), и находятся пары точек
+# ближе DUPLICATE_SCAN_RADIUS_MM друг к другу — это как раз то, что видит
+# Revit в предупреждении "В одном и том же месте имеются идентичные
+# экземпляры".
+DUPLICATE_SCAN_RADIUS_MM = 150.0
+DUPLICATE_SCAN_RADIUS_FT = DUPLICATE_SCAN_RADIUS_MM / MM_PER_FT
+
+all_placed_after = []
+for el in FilteredElementCollector(doc, view.Id) \
+        .OfCategory(BuiltInCategory.OST_GenericModel) \
+        .WhereElementIsNotElementType():
+    try:
+        if el.GetTypeId().IntegerValue in placed_type_ids:
+            pt = get_point(el)
+            if pt is not None:
+                all_placed_after.append((el, pt))
+    except:
+        continue
+
+created_ids_set = set(el.Id.IntegerValue for el in created)
+
+duplicate_pairs = []
+count_placed = len(all_placed_after)
+for i in range(count_placed):
+    el_i, pt_i = all_placed_after[i]
+    for j in range(i + 1, count_placed):
+        el_j, pt_j = all_placed_after[j]
+        try:
+            d = pt_i.DistanceTo(pt_j)
+        except:
+            continue
+        if d <= DUPLICATE_SCAN_RADIUS_FT:
+            duplicate_pairs.append((el_i, el_j, d))
+
+if duplicate_pairs:
+    from pyrevit import script as pyrevit_script
+    output = pyrevit_script.get_output()
+
+    output.print_md(
+        u"### Элементы почти/точно в одной точке после расстановки ({})".format(len(duplicate_pairs))
+    )
+    output.print_md(
+        u"Пары маркеров ближе {:.0f}мм друг к другу — независимо от того, из "
+        u"какого кластера merge_nodes они пришли. «Новый»/«уже был» — создан "
+        u"этим запуском кнопки или существовал до него.".format(DUPLICATE_SCAN_RADIUS_MM)
+    )
+
+    duplicate_pairs_table = []
+    for el_i, el_j, d in sorted(duplicate_pairs, key=lambda t: t[2]):
+        duplicate_pairs_table.append([
+            el_i.Id.IntegerValue,
+            u"новый" if el_i.Id.IntegerValue in created_ids_set else u"уже был",
+            el_j.Id.IntegerValue,
+            u"новый" if el_j.Id.IntegerValue in created_ids_set else u"уже был",
+            u"{:.1f}".format(d * MM_PER_FT)
+        ])
+
+    output.print_table(
+        table_data=duplicate_pairs_table,
+        columns=[u"ID 1", u"1", u"ID 2", u"2", u"Расстояние, мм"]
+    )
+
+
 forms.alert(
     u"Готово.\n\n"
     u"Создано элементов: {}\n"
@@ -590,6 +665,7 @@ forms.alert(
     u"Стояков: {}\n"
     u"Узлов маршрута: {}\n\n"
     u"Наибольший кластер (элементов слито в одну точку): {}\n"
+    u"Пар маркеров почти/точно в одной точке после расстановки: {}\n\n"
     u"{}".format(
         len(created),
         len(skipped),
@@ -598,6 +674,7 @@ forms.alert(
         counts_by_category["riser"],
         counts_by_category["route"],
         largest_cluster_size,
-        u"Подробности по крупным кластерам — в окне вывода pyRevit." if large_clusters else u""
+        len(duplicate_pairs),
+        u"Подробности — в окне вывода pyRevit." if (large_clusters or duplicate_pairs) else u""
     )
 )
