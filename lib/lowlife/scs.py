@@ -307,31 +307,60 @@ def _pick_cluster_point(members, existing_points, tol, points_close_fn):
 
 def merge_nodes(nodes, tol, points_close_fn, existing_points=None):
     """
-    Объединяет узлы трассы, находящиеся на расстоянии <= tol друг от друга,
-    в один узел с суммарными данными (категории, id сегментов, устройство/панель).
+    Объединяет узлы трассы в кластеры по ТРАНЗИТИВНОЙ близости: два узла
+    попадают в один кластер, если между ними есть цепочка узлов, где
+    каждая соседняя пара — на расстоянии <= tol (не только когда каждый
+    узел близок непосредственно к первому узлу своего кластера).
+
+    Раньше новый узел сравнивался только с ПЕРВЫМ узлом, вошедшим в
+    кластер (его точка "застывала" как точка сравнения и не обновлялась
+    по мере добавления следующих членов) — если три и более узла стоят
+    почти вплотную цепочкой (A-B ближе tol, B-C ближе tol), но голова и
+    хвост цепочки (A-C) дальше tol друг от друга, C не присоединялся к
+    кластеру A-B и создавал рядом СВОЙ отдельный кластер/маркер, хотя
+    физически это один узел стыка/пересечения трасс (просто с небольшим
+    разбросом координат из-за неточного черчения/привязки). Проявлялось
+    нестабильно ("иногда") — порядок узлов при переборе graph.items()
+    (обычный dict) в IronPython не гарантирован, поэтому одна и та же
+    геометрия то сливалась в один маркер, то давала два в зависимости от
+    случайного порядка перебора.
+
+    Вместо "первый узел кластера — эталон для сравнения" здесь строится
+    граф близости между ВСЕМИ парами узлов (union-find) — результат
+    зависит только от геометрии, не от порядка узлов во входном списке.
 
     existing_points — координаты уже вставленных на виде маркеров
     (panel/route/riser); если задано, приоритет при выборе итоговой точки
     кластера (см. _pick_cluster_point).
     """
-    clusters = []
+    count = len(nodes)
+    parent = list(range(count))
 
-    for n in nodes:
-        found = None
-        for cl in clusters:
-            if points_close_fn(n["point"], cl["point"], tol):
-                found = cl
-                break
+    def find(i):
+        root = i
+        while parent[root] != root:
+            root = parent[root]
+        while parent[i] != root:
+            parent[i], i = root, parent[i]
+        return root
 
-        if found is None:
-            clusters.append({"point": n["point"], "members": [n]})
-        else:
-            found["members"].append(n)
+    def union(i, j):
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[ri] = rj
+
+    for i in range(count):
+        for j in range(i + 1, count):
+            if points_close_fn(nodes[i]["point"], nodes[j]["point"], tol):
+                union(i, j)
+
+    members_by_root = {}
+    for i in range(count):
+        members_by_root.setdefault(find(i), []).append(nodes[i])
 
     result = []
 
-    for cl in clusters:
-        members = cl["members"]
+    for members in members_by_root.values():
         point = _pick_cluster_point(members, existing_points, tol, points_close_fn)
 
         node_key = None

@@ -14,9 +14,16 @@
   открыто), согласованное округление.
 - `fire_alarm_loops.py` — построение дерева шлейфа СПС/СОУЭ (включая ветви
   от изоляторов) и расчёт его длины.
+- `scs.py` (частично) — только `merge_nodes`/`_pick_cluster_point`
+  (кластеризация узлов трассы по близости при расстановке маркеров,
+  PlaceRouteNodes/route_nodes.py): эти функции работают с обычными
+  dict/точками и не вызывают `classify_element`/`safe_element_name`
+  (единственное, что в scs.py трогает Revit API). Остальной scs.py
+  (`classify_element`, `get_workset_name`, `clear_stray_address_params`,
+  ...) по-прежнему не тестируется вне Revit.
 
 Не покрыто и не может быть протестировано вне Revit: `route_nodes.py`,
-`route_addressing.py`, `scs.py`, `skud.py`, `fire_alarm.py`,
+`route_addressing.py`, `skud.py`, `fire_alarm.py`,
 `fire_alarm_circuits.py`, `geometry.py`, `params.py`, `selection.py` —
 все они напрямую импортируют `Autodesk.Revit.DB`. Также не покрыты сами
 кнопки (`LowLife.tab/**/script.py`) — они оркестрируют вызовы в Revit и не
