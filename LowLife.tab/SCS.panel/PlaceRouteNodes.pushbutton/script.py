@@ -361,6 +361,92 @@ insert_nodes = merge_nodes(raw_nodes, merge_tolerance, points_close, existing_po
 for node in insert_nodes:
     node["category"] = resolve_category(node.get("categories", []))
 
+
+# ------------------------------------------------------------
+# ДИАГНОСТИКА: КРУПНЫЕ КЛАСТЕРЫ (много элементов слито в одну точку)
+# ------------------------------------------------------------
+# merge_nodes сливает узлы по ТРАНЗИТИВНОЙ близости (см. scs.merge_nodes):
+# если рядом идёт цепочка узлов, каждый на расстоянии <= merge_tolerance
+# (30мм) от соседнего, весь ряд становится ОДНИМ кластером — у такого
+# слияния нет верхнего предела на общий разброс, если сама цепочка длинная
+# (например, узлы через каждые 20-25мм на протяжении нескольких метров).
+# Это не обязательно баг: если 46 узлов реально сошлись в одной физической
+# точке (например разброс всего 10-50мм) — это верно, просто плотная
+# развязка. А если разброс — метры, то это, скорее всего, "цепочка"
+# близко идущих, но РАЗНЫХ узлов, которая не должна была схлопнуться в
+# одну точку — тогда см. ID сегментов ниже, чтобы найти этот участок
+# трассы в модели и разобраться, откуда там столько близких узлов.
+LARGE_CLUSTER_THRESHOLD = 3
+MM_PER_FT = 304.8
+
+
+def _mm(v):
+    return u"{:.0f}".format(v * MM_PER_FT)
+
+
+def _count_by(values):
+    counts = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    return u", ".join(u"{}: {}".format(k, v) for k, v in sorted(counts.items()))
+
+
+large_clusters = [n for n in insert_nodes if len(n.get("source_types", [])) >= LARGE_CLUSTER_THRESHOLD]
+_cluster_sizes = [len(n.get("source_types", [])) for n in insert_nodes]
+largest_cluster_size = max(_cluster_sizes) if _cluster_sizes else 0
+
+if large_clusters:
+    from pyrevit import script as pyrevit_script
+    output = pyrevit_script.get_output()
+
+    output.print_md(
+        u"### Крупные кластеры узлов — {} и более элементов в одной точке ({})".format(
+            LARGE_CLUSTER_THRESHOLD, len(large_clusters)
+        )
+    )
+    output.print_md(
+        u"«Разброс X x Y x Z» — размер условного параллелепипеда вокруг всех "
+        u"узлов кластера ДО слияния в одну точку. Единицы-десятки мм — "
+        u"реально одна точка, просто неточно начерчено. Метры — вероятно, "
+        u"цепочка близко идущих, но разных узлов; см. ID сегментов трассы."
+    )
+
+    large_clusters_table = []
+    for n in sorted(large_clusters, key=lambda n: -len(n.get("source_types", []))):
+        member_points = n.get("member_points") or []
+        xs = [p.X for p in member_points]
+        ys = [p.Y for p in member_points]
+        zs = [p.Z for p in member_points]
+        spread = u"{} x {} x {}".format(
+            _mm(max(xs) - min(xs)) if xs else u"0",
+            _mm(max(ys) - min(ys)) if ys else u"0",
+            _mm(max(zs) - min(zs)) if zs else u"0"
+        )
+
+        segment_ids = n.get("segment_ids", [])
+        segment_ids_text = u", ".join(str(sid) for sid in segment_ids[:30])
+        if len(segment_ids) > 30:
+            segment_ids_text += u", ... ещё {}".format(len(segment_ids) - 30)
+
+        large_clusters_table.append([
+            _mm(n["point"].X), _mm(n["point"].Y), _mm(n["point"].Z),
+            len(n.get("source_types", [])),
+            spread,
+            n.get("category") or u"-",
+            _count_by(n.get("source_types", [])),
+            _count_by(n.get("categories", [])),
+            segment_ids_text or u"-"
+        ])
+
+    output.print_table(
+        table_data=large_clusters_table,
+        columns=[
+            u"X, мм", u"Y, мм", u"Z, мм", u"Элементов", u"Разброс X x Y x Z, мм",
+            u"Итог. категория", u"Источники", u"Категории членов", u"ID сегментов трассы"
+        ]
+    )
+
+
 # Если в точке уже стоит любой маркер нужного типа (panel/route/riser)
 # — точка полностью пропускается, ничего не создаётся и не
 # перезаписывается (см. цикл ниже). Дедуп нужен только чтобы не
@@ -502,12 +588,16 @@ forms.alert(
     u"Пропущено аннотаций стояка (рядом уже отмечено реальное устройство): {}\n\n"
     u"Панелей: {}\n"
     u"Стояков: {}\n"
-    u"Узлов маршрута: {}".format(
+    u"Узлов маршрута: {}\n\n"
+    u"Наибольший кластер (элементов слито в одну точку): {}\n"
+    u"{}".format(
         len(created),
         len(skipped),
         riser_annotations_skipped,
         counts_by_category["panel"],
         counts_by_category["riser"],
-        counts_by_category["route"]
+        counts_by_category["route"],
+        largest_cluster_size,
+        u"Подробности по крупным кластерам — в окне вывода pyRevit." if large_clusters else u""
     )
 )

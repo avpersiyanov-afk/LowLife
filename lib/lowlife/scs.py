@@ -382,7 +382,15 @@ def merge_nodes(nodes, tol, points_close_fn, existing_points=None):
             "source_types": [n.get("source_type") for n in members],
             "categories": [n.get("category") for n in members],
             "segment_ids": segment_ids,
-            "device": device
+            "device": device,
+            # Точки всех членов кластера ДО выбора итоговой точки — не
+            # используется существующими вызывающими скриптами напрямую,
+            # нужно для диагностики (см. PlaceRouteNodes): по разбросу
+            # этих точек видно, кластер ли это "одна точка, слегка
+            # неточно начерченная" (разброс единицы-десятки мм) или
+            # "длинная цепочка близко идущих, но разных узлов" (разброс
+            # может быть метры — см. комментарий в теле функции выше).
+            "member_points": [n["point"] for n in members]
         })
 
     return result

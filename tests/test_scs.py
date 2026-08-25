@@ -92,6 +92,15 @@ def test_merge_nodes_aggregates_segment_ids_and_device():
     assert sorted(cluster["segment_ids"]) == [1, 2]
 
 
+def test_merge_nodes_exposes_member_points_for_diagnostics():
+    nodes = [_node(0, 0), _node(0.05, 0), _node(0.02, 0.02)]
+    result = scs.merge_nodes(nodes, 0.1, points_close)
+    assert len(result) == 1
+    assert sorted((p.X, p.Y) for p in result[0]["member_points"]) == [
+        (0, 0), (0.02, 0.02), (0.05, 0)
+    ]
+
+
 def test_merge_nodes_snaps_to_existing_point_within_tolerance():
     existing = FakeXYZ(10, 10, 0)
     nodes = [_node(10.02, 10, device={"element": "dev"})]
