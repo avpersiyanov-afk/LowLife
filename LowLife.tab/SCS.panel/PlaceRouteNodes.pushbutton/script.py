@@ -10,6 +10,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB.Structure import StructuralType
+from System.Collections.Generic import List
 from pyrevit import revit, forms
 
 from lowlife.geometry import (
@@ -631,21 +632,33 @@ if duplicate_pairs:
     from pyrevit import script as pyrevit_script
     output = pyrevit_script.get_output()
 
+    def _link(el):
+        """Кликабельная ссылка на элемент (выделяет и показывает его в Revit
+        при клике в окне вывода pyRevit) — если linkify недоступен в этой
+        версии pyRevit, откатывается на обычный текст с ID."""
+        try:
+            return output.linkify([el.Id], title=str(el.Id.IntegerValue))
+        except:
+            return str(el.Id.IntegerValue)
+
     output.print_md(
         u"### Элементы почти/точно в одной точке после расстановки ({})".format(len(duplicate_pairs))
     )
     output.print_md(
         u"Пары маркеров ближе {:.0f}мм друг к другу — независимо от того, из "
         u"какого кластера merge_nodes они пришли. «Новый»/«уже был» — создан "
-        u"этим запуском кнопки или существовал до него.".format(DUPLICATE_SCAN_RADIUS_MM)
+        u"этим запуском кнопки или существовал до него. Клик по ID — "
+        u"выделяет и показывает элемент в модели. Все элементы из пар ниже "
+        u"также сразу выделены в модели — используйте «Zoom to Fit "
+        u"Selection», чтобы увидеть их расположение целиком.".format(DUPLICATE_SCAN_RADIUS_MM)
     )
 
     duplicate_pairs_table = []
     for el_i, el_j, d in sorted(duplicate_pairs, key=lambda t: t[2]):
         duplicate_pairs_table.append([
-            el_i.Id.IntegerValue,
+            _link(el_i),
             u"новый" if el_i.Id.IntegerValue in created_ids_set else u"уже был",
-            el_j.Id.IntegerValue,
+            _link(el_j),
             u"новый" if el_j.Id.IntegerValue in created_ids_set else u"уже был",
             u"{:.1f}".format(d * MM_PER_FT)
         ])
@@ -654,6 +667,21 @@ if duplicate_pairs:
         table_data=duplicate_pairs_table,
         columns=[u"ID 1", u"1", u"ID 2", u"2", u"Расстояние, мм"]
     )
+
+    # Выделяем разом все элементы, участвующие хоть в одной близкой паре —
+    # чтобы посмотреть их расположение целиком (Zoom to Fit Selection),
+    # а не переходить по ссылкам одну пару за раз.
+    dup_selection_ids = List[ElementId]()
+    seen_dup_ids = set()
+    for el_i, el_j, _d in duplicate_pairs:
+        for el in (el_i, el_j):
+            if el.Id.IntegerValue not in seen_dup_ids:
+                seen_dup_ids.add(el.Id.IntegerValue)
+                dup_selection_ids.Add(el.Id)
+    try:
+        uidoc.Selection.SetElementIds(dup_selection_ids)
+    except:
+        pass
 
 
 forms.alert(
