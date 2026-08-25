@@ -9,6 +9,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
+from System.Collections.Generic import List
 from pyrevit import revit, forms
 
 from lowlife.geometry import get_point, get_document_levels
@@ -458,6 +459,22 @@ all_panels = FilteredElementCollector(doc, view.Id) \
 
 target_panels = [p for p in all_panels if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm)]
 
+# Только для диагностики ниже: панели, подходящие под критерий панели
+# ПО ВСЕМУ документу — чтобы отличить "панель не подходит под критерий
+# вообще" от "подходит, но не на этом виде" (частый случай: панель/щит
+# показан на отдельном виде электрики, а устройства — на архитектурном
+# плане, где и запускается эта кнопка).
+all_panels_doc = FilteredElementCollector(doc) \
+    .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
+    .WhereElementIsNotElementType() \
+    .ToElements()
+target_panels_doc_by_name = {}
+for p in all_panels_doc:
+    if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm):
+        pname = norm(p.Name)
+        if pname:
+            target_panels_doc_by_name.setdefault(pname, p)
+
 all_circuits = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
     .WhereElementIsNotElementType() \
@@ -470,10 +487,30 @@ for p in target_panels:
         target_panels_by_name.setdefault(pname, p)
 
 devices_by_id = {}
+# Устройства, которые сами на активном виде, но пропущены из-за того,
+# что их панель — не на этом виде (см. комментарий выше). Показываются
+# в отчёте отдельно, чтобы было видно: это не "не найдено", а
+# "пропущено из-за вида панели".
+devices_excluded_panel_not_on_view = []
+# Устройства, у которых панель на активном виде, но сами они — нет.
+devices_excluded_device_not_on_view = []
+
 for c in all_circuits:
     panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
     panel_el = target_panels_by_name.get(panel_name)
+
     if panel_el is None:
+        panel_el_doc = target_panels_doc_by_name.get(panel_name)
+        if panel_el_doc is not None:
+            try:
+                raw_devs_doc = [x for x in c.Elements if x.Id != panel_el_doc.Id]
+            except:
+                raw_devs_doc = []
+            for d in raw_devs_doc:
+                if is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS):
+                    continue
+                if d.Id.IntegerValue in visible_on_view_ids:
+                    devices_excluded_panel_not_on_view.append(d)
         continue
 
     try:
@@ -485,28 +522,118 @@ for c in all_circuits:
         if is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS):
             continue
         if d.Id.IntegerValue not in visible_on_view_ids:
+            devices_excluded_device_not_on_view.append(d)
             continue
         devices_by_id[d.Id.IntegerValue] = d
 
 nearest_written = 0
+# Причины, по которым для панели/устройства НЕ записано значение —
+# отдельно от "исключено ещё до этого цикла" (devices_excluded_*): здесь
+# элемент дошёл до попытки записи, но она не удалась.
+nearest_failed_no_point = []
+nearest_failed_no_nearest = []
+nearest_failed_param_write = []
+
+
+def _try_write_nearest(el):
+    pt = get_point(el)
+    if pt is None:
+        nearest_failed_no_point.append(el)
+        return False
+
+    nearest_sid, _ = find_nearest_segment_id(pt, segments_by_addr)
+    if not nearest_sid:
+        nearest_failed_no_nearest.append(el)
+        return False
+
+    if not set_param_any(el, NEAREST_SEGMENT_PARAM, nearest_sid):
+        nearest_failed_param_write.append(el)
+        return False
+
+    return True
+
 
 with revit.Transaction("Write Nearest Segment"):
 
     for panel in target_panels:
-        panel_pt = get_point(panel)
-        if panel_pt is None:
-            continue
-        nearest_sid, _ = find_nearest_segment_id(panel_pt, segments_by_addr)
-        if nearest_sid and set_param_any(panel, NEAREST_SEGMENT_PARAM, nearest_sid):
+        if _try_write_nearest(panel):
             nearest_written += 1
 
     for dev in devices_by_id.values():
-        dev_pt = get_point(dev)
-        if dev_pt is None:
-            continue
-        nearest_sid, _ = find_nearest_segment_id(dev_pt, segments_by_addr)
-        if nearest_sid and set_param_any(dev, NEAREST_SEGMENT_PARAM, nearest_sid):
+        if _try_write_nearest(dev):
             nearest_written += 1
+
+
+# ------------------------------------------------------------
+# ДИАГНОСТИКА: КОМУ НЕ ЗАПИСАН "БЛИЖАЙШИЙ УЗЕЛ МАРШРУТА" И ПОЧЕМУ
+# ------------------------------------------------------------
+# find_nearest_segment_id не имеет порога расстояния вообще — она всегда
+# возвращает ближайший узел, каким бы далёким он ни был, пока
+# segments_by_addr не пуст. Поэтому "не записалось" — это не про
+# расстояние, а про одну из явных причин ниже.
+
+any_nearest_issues = any([
+    devices_excluded_panel_not_on_view, devices_excluded_device_not_on_view,
+    nearest_failed_no_point, nearest_failed_no_nearest, nearest_failed_param_write
+])
+
+if any_nearest_issues:
+    from pyrevit import script as pyrevit_script
+    output = pyrevit_script.get_output()
+
+    def _link_dev(el):
+        try:
+            return output.linkify([el.Id], title=str(el.Id.IntegerValue))
+        except:
+            return str(el.Id.IntegerValue)
+
+    output.print_md(u"### «Ближайший узел маршрута» — кому и почему не записано")
+
+    def _report_list(title, elements, explanation):
+        if not elements:
+            return
+        output.print_md(u"**{}** ({}): {}".format(title, len(elements), explanation))
+        output.print_md(u", ".join(_link_dev(el) for el in elements[:100]))
+
+    _report_list(
+        u"Устройство на этом виде, но его панель — нет",
+        devices_excluded_panel_not_on_view,
+        u"панель подходит под критерий (рабочий набор), но не видна на активном виде — "
+        u"вся цепь с этим устройством пропущена, т.к. панель тоже требуется на активном виде"
+    )
+    _report_list(
+        u"Панель на этом виде, но устройство — нет",
+        devices_excluded_device_not_on_view,
+        u"устройство не видно на активном виде (другой этаж/скрыто настройками вида)"
+    )
+    _report_list(
+        u"Нет точки расположения",
+        nearest_failed_no_point,
+        u"get_point() не нашёл LocationPoint у элемента"
+    )
+    _report_list(
+        u"Нет ни одного адресованного узла маршрута",
+        nearest_failed_no_nearest,
+        u"segments_by_addr пуст — на активном виде нет ни одного узла с адресом"
+    )
+    _report_list(
+        u"Не удалось записать параметр",
+        nearest_failed_param_write,
+        u"NEAREST_SEGMENT_PARAM не найден на элементе или доступен только для чтения"
+    )
+
+    # Выделяем всё разом, чтобы посмотреть расположение целиком.
+    nearest_issue_ids = List[ElementId]()
+    for group in (
+        devices_excluded_panel_not_on_view, devices_excluded_device_not_on_view,
+        nearest_failed_no_point, nearest_failed_no_nearest, nearest_failed_param_write
+    ):
+        for el in group:
+            nearest_issue_ids.Add(el.Id)
+    try:
+        uidoc.Selection.SetElementIds(nearest_issue_ids)
+    except:
+        pass
 
 
 # ------------------------------------------------------------
@@ -638,7 +765,9 @@ forms.alert(
     u"Очищено чужих адресов: {}\n"
     u"Отброшено как слишком далёкие (не корень): {}\n"
     u"Панелей ниже приоритета слова (не корень): {}\n\n"
-    u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n\n"
+    u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n"
+    u"— из них не записано (устройство на виде, панель — нет): {}\n"
+    u"— не записано (панель на виде, устройство — нет): {}\n\n"
     u"Подробности — в окне вывода pyRevit.".format(
         level_name,
         floor_code,
@@ -648,6 +777,8 @@ forms.alert(
         len(stray_cleared),
         len(far_sources),
         len(demoted_panels),
-        nearest_written
+        nearest_written,
+        len(devices_excluded_panel_not_on_view),
+        len(devices_excluded_device_not_on_view)
     )
 )
