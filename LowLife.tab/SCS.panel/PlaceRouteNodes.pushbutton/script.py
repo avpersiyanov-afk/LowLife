@@ -241,13 +241,26 @@ for el in all_candidates:
 
     add_marked_point(el, pt, category)
 
-# Стояки на этом виде также отмечаются типовой аннотацией (со стрелкой
+# Стояки на этом виде МОГУТ отмечаться типовой аннотацией (со стрелкой
 # подъёма/опуска) вместо реального устройства — аннотация не имеет
 # собственной высоты в модели (видна только на виде), поэтому узел
 # стояка ставится в её точке на плане (X/Y) на условной высоте 3000мм
 # от уровня активного вида.
+#
+# "Вместо" — это ожидание, а не гарантия: если для одного и того же
+# стояка в проекте есть И реальное устройство (уже отмечено выше, на
+# своей настоящей высоте), И эта аннотация, получаются 2 точки с
+# одинаковым X/Y, но разной высотой (аннотация — искусственные +3000мм
+# от уровня, устройство — реальная отметка) — merge_nodes их не сливает
+# (проверяет полное 3D-расстояние), и на плане ставится 2 маркера друг
+# на друге. Поэтому аннотацию пропускаем, если рядом в плане уже есть
+# точка реального устройства-стояка — её высота настоящая, ей и
+# доверяем.
 RISER_ANNOTATION_OFFSET_MM = 3000.0
 RISER_ANNOTATION_OFFSET_FT = RISER_ANNOTATION_OFFSET_MM / 304.8
+
+RISER_ANNOTATION_DEDUP_RADIUS_MM = 500.0
+RISER_ANNOTATION_DEDUP_RADIUS_FT = RISER_ANNOTATION_DEDUP_RADIUS_MM / 304.8
 
 view_level = None
 try:
@@ -255,6 +268,8 @@ try:
         view_level = view.GenLevel
 except:
     pass
+
+riser_annotations_skipped = 0
 
 if view_level is not None:
     annotation_elevation = view_level.Elevation + RISER_ANNOTATION_OFFSET_FT
@@ -264,6 +279,11 @@ if view_level is not None:
         .WhereElementIsNotElementType() \
         .ToElements()
 
+    # Точки уже отмеченных РЕАЛЬНЫХ устройств-стояков (marked_points на
+    # этот момент содержит только их — аннотации добавляются ниже, в
+    # этом же цикле) — с ними и сверяем каждую аннотацию.
+    real_riser_points = [m["point"] for m in marked_points if m["category"] == "riser"]
+
     for el in riser_annotations:
         if not RISER_ANNOTATION_KEYWORDS:
             continue
@@ -272,6 +292,15 @@ if view_level is not None:
 
         pt = get_point(el)
         if pt is None:
+            continue
+
+        dedup_radius_sq = RISER_ANNOTATION_DEDUP_RADIUS_FT ** 2
+        already_marked_nearby = any(
+            (rp.X - pt.X) ** 2 + (rp.Y - pt.Y) ** 2 <= dedup_radius_sq
+            for rp in real_riser_points
+        )
+        if already_marked_nearby:
+            riser_annotations_skipped += 1
             continue
 
         riser_pt = XYZ(pt.X, pt.Y, annotation_elevation)
@@ -469,12 +498,14 @@ with revit.Transaction("Place Route Nodes"):
 forms.alert(
     u"Готово.\n\n"
     u"Создано элементов: {}\n"
-    u"Пропущено (уже стоял маркер): {}\n\n"
+    u"Пропущено (уже стоял маркер): {}\n"
+    u"Пропущено аннотаций стояка (рядом уже отмечено реальное устройство): {}\n\n"
     u"Панелей: {}\n"
     u"Стояков: {}\n"
     u"Узлов маршрута: {}".format(
         len(created),
         len(skipped),
+        riser_annotations_skipped,
         counts_by_category["panel"],
         counts_by_category["riser"],
         counts_by_category["route"]
