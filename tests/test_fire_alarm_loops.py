@@ -96,3 +96,28 @@ def test_build_route_text_shows_branch_from_isolator():
         u"ARK1.1.2 -> ARK1.1.3; "
         u"ARK1.1.2 -> ARK1.1.4"
     )
+
+
+def test_parse_route_edges_is_the_inverse_of_build_route_text():
+    ordered = fal.build_loop_tree(_isolator_branch_nodes())
+    address_text_by_id = {
+        1: u"ARK1.1.1",
+        2: u"ARK1.1.2",
+        3: u"ARK1.1.3",
+        4: u"ARK1.1.4",
+    }
+
+    text = fal.build_route_text(ordered, address_text_by_id)
+    edges = fal.parse_route_edges(text)
+
+    assert edges == [
+        (None, u"ARK1.1.1"),
+        (u"ARK1.1.1", u"ARK1.1.2"),
+        (u"ARK1.1.2", u"ARK1.1.3"),
+        (u"ARK1.1.2", u"ARK1.1.4"),
+    ]
+
+
+def test_parse_route_edges_empty_text():
+    assert fal.parse_route_edges(u"") == []
+    assert fal.parse_route_edges(None) == []

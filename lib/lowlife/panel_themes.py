@@ -46,6 +46,7 @@ THEMES = {
         (u"SCS", u"PlaceRouteNodes"),
         (u"SCS", u"RenumberAddresses"),
         (u"SCS", u"SyncCircuitsAndLengths"),
+        (u"SCS", u"ShowCircuitRoute"),
         (u"SCS", u"ExportAddressesToExcel"),
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
     ],
@@ -54,6 +55,7 @@ THEMES = {
         (u"SKUD", u"RenumberSkudAddresses"),
         (u"SKUD", u"AssignCircuitsAndCables"),
         (u"SKUD", u"CalcSkudLengths"),
+        (u"SKUD", u"ShowCircuitRoute"),
         (u"SKUD", u"BuildSkudSchematic"),
         (u"SKUD", u"InspectSchematicDevices"),
         (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
@@ -68,6 +70,7 @@ THEMES = {
     u"FAD": [
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"SPS", u"CalcLoopLengths"),
+        (u"SPS", u"ShowCircuitRoute"),
         (u"SPS", u"InspectConnectors"),
         (u"SPS", u"BuildSpsSchematic"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),

@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 __title__ = "Маршрут\nцепи"
 __doc__ = (
-    "Показывает маршрут выбранной цепи СКС на модели — для визуальной "
+    "Показывает маршрут выбранной цепи СКУД на модели — для визуальной "
     "проверки, что маршрут выбран правильно. Выберите устройство, входящее "
     "в интересующую цепь (если оно состоит в нескольких цепях — предложит "
     "выбрать нужную из списка). Строит временную линию (Detail Line на "
-    "активном виде) через устройство, все узлы/стояки маршрута (по данным "
-    "параметра «Маршрут цепи», записанного кнопкой «Расчёт длины цепи») и "
-    "панель, и выделяет все эти элементы в модели, чтобы их было видно "
-    "отдельно от линии. Линии временные: при повторном запуске кнопки "
-    "(в т.ч. кнопки СКУД/СПС с той же функцией) прошлые линии удаляются."
+    "активном виде) через устройство, узлы/стояки маршрута (по данным "
+    "параметра «Маршрут цепи», записанного кнопкой «Длины и маркировка») и "
+    "контроллер, и выделяет все эти элементы в модели. Для устройств рядом "
+    "с контроллером (когда цепь посчитана по катетам, без узлов маршрута) "
+    "строит прямую линию устройство -> контроллер. Линии временные: при "
+    "повторном запуске кнопки (в т.ч. кнопки СКС/СПС с той же функцией) "
+    "прошлые линии удаляются."
 )
 __author__ = "Pipers"
 
@@ -25,8 +27,8 @@ from pyrevit import revit, forms
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param
 from lowlife.scs import is_excluded_device
-from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_silent
+from lowlife import skud_settings
+from lowlife.skud_settings import get_settings_silent
 from lowlife.scs_circuits import norm, clean_text_value, parse_route_path
 from lowlife.route_preview import pick_circuit, create_route_lines, select_elements
 
@@ -49,11 +51,11 @@ if view.ViewType == ViewType.ThreeD:
 
 settings = get_settings_silent()
 
-scs_settings.require(settings, [
+skud_settings.require(settings, [
     "route_type_id", "riser_type_id", "circuit_panel_param", "circuit_route_param"
 ])
 # addr_param_name здесь не проверяется отдельно — её наличие/привязку в
-# проекте проверяет и чинит кнопка «Параметры СКС» (SetupParameters).
+# проекте проверяет и чинит кнопка «Параметры СКУД» (SetupParameters).
 
 ADDR_PARAM = settings["addr_param_name"]
 ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
@@ -68,23 +70,21 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 # ------------------------------------------------------------
 
 picked, circuit = pick_circuit(
-    uidoc, doc, u"Выберите устройство, входящее в интересующую цепь СКС", CIRCUIT_PANEL_PARAM
+    uidoc, doc, u"Выберите устройство, входящее в интересующую цепь СКУД", CIRCUIT_PANEL_PARAM
 )
 
 
 # ------------------------------------------------------------
-# ТОЧКИ МАРШРУТА: УСТРОЙСТВО -> УЗЛЫ/СТОЯКИ -> ПАНЕЛЬ
+# ТОЧКИ МАРШРУТА: УСТРОЙСТВО -> УЗЛЫ/СТОЯКИ -> КОНТРОЛЛЕР
 # ------------------------------------------------------------
+# Пустой параметр «Маршрут цепи» — не ошибка, а штатный случай для
+# устройств рядом с контроллером (CalcSkudLengths считает такие по
+# катетам, без узлов маршрута, и пишет туда ""). Для них строим прямую
+# линию устройство -> контроллер.
 
 route_text = clean_text_value(get_string_param(circuit, CIRCUIT_ROUTE_PARAM))
-if not route_text:
-    forms.alert(
-        u"У цепи не заполнен маршрут (параметр «{}»). Сначала запустите "
-        u"кнопку «Расчёт длины цепи» — она считает и записывает маршрут.".format(CIRCUIT_ROUTE_PARAM),
-        exitscript=True
-    )
-
-route_addrs = parse_route_path(route_text)
+route_addrs = parse_route_path(route_text) if route_text else []
+is_near_controller = not route_addrs
 
 panel_name = norm(get_string_param(circuit, CIRCUIT_PANEL_PARAM))
 
@@ -141,12 +141,19 @@ for el in route_elements:
     if pt is not None:
         points.append(pt)
 
+if len(points) < 2:
+    forms.alert(
+        u"Недостаточно данных, чтобы построить маршрут (найдено точек: {}). "
+        u"Сначала запустите кнопку «Длины и маркировка».".format(len(points)),
+        exitscript=True
+    )
+
 
 # ------------------------------------------------------------
 # ПОСТРОЕНИЕ ЛИНИИ + ВЫДЕЛЕНИЕ
 # ------------------------------------------------------------
 
-with revit.Transaction(u"Показать маршрут цепи СКС"):
+with revit.Transaction(u"Показать маршрут цепи СКУД"):
     created_ids = create_route_lines(doc, view, points)
 
 select_elements(uidoc, route_elements, created_ids)
@@ -154,12 +161,14 @@ select_elements(uidoc, route_elements, created_ids)
 forms.alert(
     u"Готово.\n\n"
     u"Цепь: {}\n"
+    u"{}"
     u"Элементов в маршруте: {}\n"
     u"Построено отрезков линии: {}\n"
     u"Не найдено узлов по адресу: {}\n\n"
     u"{}"
-    u"Устройство, узлы и панель выделены в модели.".format(
+    u"Устройство, узлы и контроллер выделены в модели.".format(
         norm(circuit.Name) or circuit.Id.IntegerValue,
+        u"Рядом с контроллером — прямая линия (без узлов маршрута)\n" if is_near_controller else u"",
         len(route_elements),
         len(created_ids),
         len(missing_addrs),

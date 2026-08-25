@@ -136,6 +136,39 @@ def build_route_text(ordered_nodes, address_text_by_id):
     return u"; ".join(parts)
 
 
+def parse_route_edges(route_text):
+    """
+    Обратный разбор текста маршрута шлейфа (build_route_text) — список
+    (parent_addr, child_addr) для отрисовки маршрута кнопкой «Маршрут
+    цепи»: parent_addr is None у корневого звена (подключено к панели
+    напрямую, без родителя-устройства).
+
+    "ARK1.1.1; ARK1.1.1 -> ARK1.1.2" ->
+        [(None, "ARK1.1.1"), ("ARK1.1.1", "ARK1.1.2")]
+    """
+    text = (route_text or u"").strip()
+    if not text:
+        return []
+
+    edges = []
+
+    for part in text.split(u";"):
+        part = part.strip()
+        if not part:
+            continue
+
+        if u"->" in part:
+            parent, child = part.split(u"->", 1)
+            parent = parent.strip()
+            child = child.strip()
+            if child:
+                edges.append((parent or None, child))
+        else:
+            edges.append((None, part))
+
+    return edges
+
+
 def previous_address_by_id(ordered_nodes, address_text_by_id):
     """
     {id устройства: адрес его родителя} — для записи «Предыдущий адрес» на
