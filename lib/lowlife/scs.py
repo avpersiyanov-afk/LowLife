@@ -131,6 +131,34 @@ def classify_element(el, categories):
     return None
 
 
+def keyword_match_rank(el, keywords, exclude_keywords=None):
+    """
+    Индекс (с 0) первого подошедшего слова из keywords в тексте имени/
+    семейства/типа элемента — чем меньше индекс, тем выше приоритет.
+    None, если не подошло ни одно слово (или подошло только слово-
+    исключение).
+
+    Нужно, когда среди elements, подходящих под classify_element по ЛЮБОМУ
+    из нескольких ключевых слов, требуется выбрать только тех, кто подошёл
+    под САМОЕ ПРИОРИТЕТНОЕ слово в списке — например PANEL_KEYWORDS может
+    содержать несколько слов ("шкаф СКС", "щит") для разных типов
+    оборудования, которые на плане иногда рядом; RenumberAddresses
+    использует это, чтобы на этаже с несколькими такими "панелями" в
+    корни адресации попадал только тип, перечисленный в настройках первым
+    (см. ROOT_SEARCH_MARGIN / select_root_sources).
+    """
+    text = _element_text(el)
+
+    if exclude_keywords and any(word.lower() in text for word in exclude_keywords if word):
+        return None
+
+    for i, word in enumerate(keywords):
+        if word and word.lower() in text:
+            return i
+
+    return None
+
+
 def resolve_category(categories, priority=CATEGORY_PRIORITY):
     """Из списка категорий, собранных для объединённого узла, выбирает одну по приоритету."""
     present = set(c for c in categories if c)

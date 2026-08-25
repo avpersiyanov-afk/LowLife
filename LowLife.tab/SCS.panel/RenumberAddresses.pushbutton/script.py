@@ -15,7 +15,7 @@ from lowlife.geometry import get_point, get_document_levels
 from lowlife.params import get_string_param, set_string_param, set_param_any
 from lowlife.scs import (
     classify_element, clear_stray_address_params,
-    is_excluded_device, panel_matches, detect_cable_type
+    is_excluded_device, panel_matches, detect_cable_type, keyword_match_rank
 )
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
@@ -131,6 +131,13 @@ for el in collector:
     if not (is_route or is_riser or is_panel):
         continue
 
+    # Индекс подошедшего слова в PANEL_KEYWORDS (0 = самое приоритетное) —
+    # используется ниже, чтобы на этаже с несколькими видами "панелей"
+    # (например разные шкафы, оба подходящие под общий список ключевых
+    # слов) корнями адресации становился только один вид — тот, чьё слово
+    # стоит в списке раньше (см. блок «КОРНИ» ниже).
+    panel_keyword_rank = keyword_match_rank(el, PANEL_KEYWORDS, PANEL_EXCLUDE_KEYWORDS) if is_panel else None
+
     points.append({
         "id": el.Id.IntegerValue,
         "element": el,
@@ -138,6 +145,7 @@ for el in collector:
         "is_route": is_route,
         "is_riser": is_riser,
         "is_panel": is_panel,
+        "panel_keyword_rank": panel_keyword_rank,
         "addr_original": get_string_param(el, ADDR_PARAM),
         "addr": get_string_param(el, ADDR_PARAM),
         "classification": None,
@@ -197,8 +205,25 @@ for line in lines:
 # ------------------------------------------------------------
 # КОРНИ (ПАНЕЛИ/СТОЯКИ)
 # ------------------------------------------------------------
+# Если на этаже панели разных видов (подошли под разные слова из
+# PANEL_KEYWORDS — например помимо целевого шкафа СКС рядом стоит и
+# силовой щит, у которого в имени тоже случайно есть общее слово),
+# кандидатами в корень идёт только вид с самым приоритетным словом
+# (наименьший panel_keyword_rank) — остальные виды панелей на этом этаже
+# из кандидатов в корень исключаются (но остаются панелями: адрес вида
+# "F1.P2" получают как обычно, см. блок «АДРЕСА» ниже — просто не
+# участвуют в выборе корня и не являются веткой дерева).
+panel_ranks_present = [p["panel_keyword_rank"] for p in panels if p["panel_keyword_rank"] is not None]
+best_panel_rank = min(panel_ranks_present) if panel_ranks_present else None
 
-root_sources, far_sources = select_root_sources(panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
+root_candidate_panels = [
+    p for p in panels
+    if best_panel_rank is None or p["panel_keyword_rank"] == best_panel_rank
+]
+root_candidate_ids = set(p["id"] for p in root_candidate_panels)
+demoted_panels = [p for p in panels if p["id"] not in root_candidate_ids]
+
+root_sources, far_sources = select_root_sources(root_candidate_panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
 
 root_real_nodes = []
 
@@ -523,6 +548,16 @@ output = pyrevit_script.get_output()
 output.print_md(u"## Адреса узлов — подробный отчёт")
 
 far_ids = set(s["id"] for s in far_sources)
+demoted_ids = set(p["id"] for p in demoted_panels)
+
+
+def root_status_label(n):
+    if n["id"] in demoted_ids:
+        return u"Ниже приоритета слова панели — не корень"
+    if n["id"] in far_ids:
+        return u"Слишком далеко — не корень"
+    return u"Корень"
+
 
 if panels or risers:
     output.print_md(u"### Панели и стояки ({})".format(len(panels) + len(risers)))
@@ -531,12 +566,13 @@ if panels or risers:
         roots_table.append([
             n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1]),
             n.get("addr") or u"-",
-            u"Слишком далеко — не корень" if n["id"] in far_ids else u"Корень",
+            n.get("panel_keyword_rank") if n.get("panel_keyword_rank") is not None else u"-",
+            root_status_label(n),
             branch_size_by_root_id.get(n["id"], 0)
         ])
     output.print_table(
         table_data=roots_table,
-        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Адрес", u"Статус", u"Узлов в ветке"]
+        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Адрес", u"Приоритет слова", u"Статус", u"Узлов в ветке"]
     )
 
 output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
@@ -567,7 +603,8 @@ forms.alert(
     u"Узлов маршрута всего: {}\n"
     u"Перенумеровано: {}\n"
     u"Очищено чужих адресов: {}\n"
-    u"Отброшено как слишком далёкие (не корень): {}\n\n"
+    u"Отброшено как слишком далёкие (не корень): {}\n"
+    u"Панелей ниже приоритета слова (не корень): {}\n\n"
     u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n\n"
     u"Подробности — в окне вывода pyRevit.".format(
         level_name,
@@ -577,6 +614,7 @@ forms.alert(
         len(changed),
         len(stray_cleared),
         len(far_sources),
+        len(demoted_panels),
         nearest_written
     )
 )
