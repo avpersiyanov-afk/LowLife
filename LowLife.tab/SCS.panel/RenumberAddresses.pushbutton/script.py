@@ -50,7 +50,7 @@ ROOT_SEARCH_MARGIN = ROOT_SEARCH_MARGIN_MM / MM_IN_FOOT
 settings = get_settings_silent()
 
 scs_settings.require(settings, [
-    "route_type_id", "riser_type_id",
+    "route_type_id", "riser_type_id", "panel_type_id",
     "workset_filter_key", "circuit_panel_param", "nearest_segment_param"
 ])
 # Имена параметров (addr_param_name, addr_prev_param_name) здесь не
@@ -65,6 +65,7 @@ PANEL_EXCLUDE_KEYWORDS = settings["panel_exclude_keywords"]
 
 ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
 RISER_TYPE_ID = ElementId(int(settings["riser_type_id"]))
+PANEL_TYPE_ID = ElementId(int(settings["panel_type_id"]))
 
 WORKSET_PARAM_NAME = settings["workset_param_name"]
 WORKSET_FILTER_KEY = settings["workset_filter_key"]
@@ -89,7 +90,7 @@ NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
 
 with revit.Transaction("Clear stray route addresses"):
     stray_cleared = clear_stray_address_params(
-        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID]),
+        doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID, PANEL_TYPE_ID]),
         workset_param_name=WORKSET_PARAM_NAME,
         workset_filter_key=WORKSET_FILTER_KEY
     )
@@ -126,7 +127,18 @@ for el in collector:
     type_id = el.GetTypeId()
     is_route = (type_id == ROUTE_TYPE_ID)
     is_riser = (type_id == RISER_TYPE_ID)
-    is_panel = classify_element(el, [("panel", PANEL_KEYWORDS, PANEL_EXCLUDE_KEYWORDS)]) == "panel"
+    # Совпадение с PANEL_TYPE_ID — основной, надёжный признак: именно этим
+    # типом PlaceRouteNodes реально расставляет маркеры панелей, и route/
+    # riser определяются точно так же, по ElementId типа. Ключевые слова
+    # (classify_element) — запасной вариант, оставлен для проектов, где
+    # тип панели ещё не выбран/отличается: раньше это был ЕДИНСТВЕННЫЙ
+    # признак панели, из-за чего маркер, чьё имя семейства/типа не
+    # содержит ни одного слова из PANEL_KEYWORDS, вообще не попадал в
+    # список панелей — и, соответственно, никогда не мог стать корнем
+    # адресации, даже если он расставлен верно.
+    is_panel = (type_id == PANEL_TYPE_ID) or (
+        classify_element(el, [("panel", PANEL_KEYWORDS, PANEL_EXCLUDE_KEYWORDS)]) == "panel"
+    )
 
     if not (is_route or is_riser or is_panel):
         continue
@@ -213,12 +225,17 @@ for line in lines:
 # из кандидатов в корень исключаются (но остаются панелями: адрес вида
 # "F1.P2" получают как обычно, см. блок «АДРЕСА» ниже — просто не
 # участвуют в выборе корня и не являются веткой дерева).
+# panel_keyword_rank is None — панель распознана по PANEL_TYPE_ID, а не
+# по слову из PANEL_KEYWORDS (см. сбор точек выше): у приоритета "нет
+# мнения" про такую панель, поэтому она никогда не демоутится этим
+# фильтром — демоутятся только панели, у которых само слово нашлось, но
+# оно НЕ самое приоритетное среди найденных на этаже.
 panel_ranks_present = [p["panel_keyword_rank"] for p in panels if p["panel_keyword_rank"] is not None]
 best_panel_rank = min(panel_ranks_present) if panel_ranks_present else None
 
 root_candidate_panels = [
     p for p in panels
-    if best_panel_rank is None or p["panel_keyword_rank"] == best_panel_rank
+    if p["panel_keyword_rank"] is None or best_panel_rank is None or p["panel_keyword_rank"] == best_panel_rank
 ]
 root_candidate_ids = set(p["id"] for p in root_candidate_panels)
 demoted_panels = [p for p in panels if p["id"] not in root_candidate_ids]
