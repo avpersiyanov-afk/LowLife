@@ -437,7 +437,21 @@ for p in route_points:
         continue
     segments_by_addr[p["addr"]] = {"pt": pt}
 
-all_panels = FilteredElementCollector(doc) \
+# Ближайший узел ищется только среди узлов маршрута АКТИВНОГО ВИДА
+# (segments_by_addr выше построен из route_points — тоже view.Id-
+# коллектор). Раньше панели/устройства для этого шага собирались по ВСЕМУ
+# документу — устройство с другого этажа могло получить "ближайший узел"
+# с текущего этажа просто по XY-расстоянию (find_nearest_segment_id
+# сознательно игнорирует Z, см. её docstring), хотя физически относится к
+# другой, отдельно адресованной трассе. Теперь панели и устройства для
+# этого шага тоже ограничены активным видом — только к нему относится
+# посчитанный здесь граф узлов.
+visible_on_view_ids = set(
+    eid.IntegerValue for eid in
+    FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElementIds()
+)
+
+all_panels = FilteredElementCollector(doc, view.Id) \
     .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
     .WhereElementIsNotElementType() \
     .ToElements()
@@ -469,6 +483,8 @@ for c in all_circuits:
 
     for d in raw_devs:
         if is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS):
+            continue
+        if d.Id.IntegerValue not in visible_on_view_ids:
             continue
         devices_by_id[d.Id.IntegerValue] = d
 
