@@ -713,6 +713,23 @@ if duplicate_pairs:
             seg_text += u", ..."
         return u"{} узл. / сегм.: {}".format(len(node.get("source_types", [])), seg_text or u"-")
 
+    def _raw_distance_text(el_i, el_j):
+        """Расстояние между ИСХОДНЫМИ точками (node["point"] ДО создания
+        элемента) — если обе стороны пары из этого запуска. Отличие от
+        итогового расстояния покажет, изменилась ли точка между
+        кластеризацией (merge_nodes) и фактическим созданием элемента
+        (NewFamilyInstance) — то есть где именно две разные точки
+        "слиплись" в одну."""
+        node_i = created_origin_by_id.get(el_i.Id.IntegerValue)
+        node_j = created_origin_by_id.get(el_j.Id.IntegerValue)
+        if node_i is None or node_j is None:
+            return u"-"
+        try:
+            raw_d = node_i["point"].DistanceTo(node_j["point"])
+        except:
+            return u"?"
+        return u"{:.1f}".format(raw_d * MM_PER_FT)
+
     duplicate_pairs_table = []
     for el_i, el_j, d in sorted(duplicate_pairs, key=lambda t: t[2]):
         duplicate_pairs_table.append([
@@ -723,6 +740,7 @@ if duplicate_pairs:
             u"новый" if el_j.Id.IntegerValue in created_ids_set else u"уже был",
             _origin_text(el_j),
             u"{:.1f}".format(d * MM_PER_FT),
+            _raw_distance_text(el_i, el_j),
             u"точно" if d <= EXACT_DUPLICATE_RADIUS_FT else u"рядом"
         ])
 
@@ -731,7 +749,7 @@ if duplicate_pairs:
         columns=[
             u"ID 1", u"1", u"Происхождение 1",
             u"ID 2", u"2", u"Происхождение 2",
-            u"Расстояние, мм", u"Точно/рядом"
+            u"Расстояние, мм", u"Расстояние ДО создания, мм", u"Точно/рядом"
         ]
     )
 
