@@ -598,11 +598,26 @@ with revit.Transaction("Place Route Nodes"):
 # ближе DUPLICATE_SCAN_RADIUS_MM друг к другу — это как раз то, что видит
 # Revit в предупреждении "В одном и том же месте имеются идентичные
 # экземпляры".
+#
+# ВАЖНО: сканируем ВЕСЬ ДОКУМЕНТ, а не только активный вид — предупреждение
+# Revit "идентичные экземпляры" не привязано к виду, оно про весь проект
+# целиком (в отличие от расстановки/дедупа самой кнопки, которые
+# намеренно ограничены активным видом). Если раньше отчёт считал только
+# по текущему виду, его число пар могло не совпадать с числом
+# предупреждений Revit — не потому что расчёт неверный, а потому что
+# они считали разные множества элементов.
 DUPLICATE_SCAN_RADIUS_MM = 150.0
 DUPLICATE_SCAN_RADIUS_FT = DUPLICATE_SCAN_RADIUS_MM / MM_PER_FT
 
+# Пары в пределах этого допуска считаются "точным" совпадением (похоже
+# на то, что реально видит Revit под "идентичные экземпляры") — отдельно
+# от более широкого DUPLICATE_SCAN_RADIUS_MM, который ловит и просто
+# "подозрительно близко", не обязательно то же самое предупреждение.
+EXACT_DUPLICATE_RADIUS_MM = 5.0
+EXACT_DUPLICATE_RADIUS_FT = EXACT_DUPLICATE_RADIUS_MM / MM_PER_FT
+
 all_placed_after = []
-for el in FilteredElementCollector(doc, view.Id) \
+for el in FilteredElementCollector(doc) \
         .OfCategory(BuiltInCategory.OST_GenericModel) \
         .WhereElementIsNotElementType():
     try:
@@ -616,6 +631,7 @@ for el in FilteredElementCollector(doc, view.Id) \
 created_ids_set = set(el.Id.IntegerValue for el in created)
 
 duplicate_pairs = []
+exact_duplicate_pairs = []
 count_placed = len(all_placed_after)
 for i in range(count_placed):
     el_i, pt_i = all_placed_after[i]
@@ -627,6 +643,8 @@ for i in range(count_placed):
             continue
         if d <= DUPLICATE_SCAN_RADIUS_FT:
             duplicate_pairs.append((el_i, el_j, d))
+            if d <= EXACT_DUPLICATE_RADIUS_FT:
+                exact_duplicate_pairs.append((el_i, el_j, d))
 
 if duplicate_pairs:
     from pyrevit import script as pyrevit_script
@@ -642,15 +660,23 @@ if duplicate_pairs:
             return str(el.Id.IntegerValue)
 
     output.print_md(
-        u"### Элементы почти/точно в одной точке после расстановки ({})".format(len(duplicate_pairs))
+        u"### Элементы почти/точно в одной точке после расстановки — весь документ ({})".format(
+            len(duplicate_pairs)
+        )
     )
     output.print_md(
-        u"Пары маркеров ближе {:.0f}мм друг к другу — независимо от того, из "
-        u"какого кластера merge_nodes они пришли. «Новый»/«уже был» — создан "
-        u"этим запуском кнопки или существовал до него. Клик по ID — "
-        u"выделяет и показывает элемент в модели. Все элементы из пар ниже "
-        u"также сразу выделены в модели — используйте «Zoom to Fit "
-        u"Selection», чтобы увидеть их расположение целиком.".format(DUPLICATE_SCAN_RADIUS_MM)
+        u"Считано по ВСЕМУ документу (все виды/уровни), не только по активному "
+        u"виду — предупреждение Revit «идентичные экземпляры» тоже не привязано "
+        u"к виду, так что числа теперь должны быть сравнимы. Из них ближе "
+        u"{:.0f}мм (похоже на то, что видит сам Revit): **{}**.\n\n"
+        u"Пары ближе {:.0f}мм друг к другу — независимо от того, из какого "
+        u"кластера merge_nodes они пришли. «Новый»/«уже был» — создан этим "
+        u"запуском кнопки или существовал до него. Клик по ID — выделяет и "
+        u"показывает элемент в модели. Все элементы из пар ниже также сразу "
+        u"выделены в модели — используйте «Zoom to Fit Selection», чтобы "
+        u"увидеть их расположение целиком.".format(
+            EXACT_DUPLICATE_RADIUS_MM, len(exact_duplicate_pairs), DUPLICATE_SCAN_RADIUS_MM
+        )
     )
 
     duplicate_pairs_table = []
@@ -660,12 +686,13 @@ if duplicate_pairs:
             u"новый" if el_i.Id.IntegerValue in created_ids_set else u"уже был",
             _link(el_j),
             u"новый" if el_j.Id.IntegerValue in created_ids_set else u"уже был",
-            u"{:.1f}".format(d * MM_PER_FT)
+            u"{:.1f}".format(d * MM_PER_FT),
+            u"точно" if d <= EXACT_DUPLICATE_RADIUS_FT else u"рядом"
         ])
 
     output.print_table(
         table_data=duplicate_pairs_table,
-        columns=[u"ID 1", u"1", u"ID 2", u"2", u"Расстояние, мм"]
+        columns=[u"ID 1", u"1", u"ID 2", u"2", u"Расстояние, мм", u"Точно/рядом"]
     )
 
     # Выделяем разом все элементы, участвующие хоть в одной близкой паре —
@@ -693,7 +720,8 @@ forms.alert(
     u"Стояков: {}\n"
     u"Узлов маршрута: {}\n\n"
     u"Наибольший кластер (элементов слито в одну точку): {}\n"
-    u"Пар маркеров почти/точно в одной точке после расстановки: {}\n\n"
+    u"Пар маркеров рядом (весь документ, до {:.0f}мм): {}\n"
+    u"— из них точных совпадений (до {:.0f}мм, как у Revit): {}\n\n"
     u"{}".format(
         len(created),
         len(skipped),
@@ -702,7 +730,10 @@ forms.alert(
         counts_by_category["riser"],
         counts_by_category["route"],
         largest_cluster_size,
+        DUPLICATE_SCAN_RADIUS_MM,
         len(duplicate_pairs),
+        EXACT_DUPLICATE_RADIUS_MM,
+        len(exact_duplicate_pairs),
         u"Подробности — в окне вывода pyRevit." if (large_clusters or duplicate_pairs) else u""
     )
 )
