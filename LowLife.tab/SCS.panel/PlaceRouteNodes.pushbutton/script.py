@@ -496,6 +496,11 @@ def find_existing_element(point):
 created = []
 skipped = []
 counts_by_category = {"panel": 0, "route": 0, "riser": 0}
+# ElementId.IntegerValue созданного элемента -> кластер insert_nodes, из
+# которого он создан — нужно для диагностики дублей ниже (см. блок
+# "ЭЛЕМЕНТЫ, РЕАЛЬНО ОКАЗАВШИЕСЯ РЯДОМ"): показать, из каких сегментов/
+# скольки исходных узлов получилась именно эта точка.
+created_origin_by_id = {}
 
 document_levels = get_document_levels(doc)
 if not document_levels:
@@ -594,6 +599,7 @@ with revit.Transaction("Place Route Nodes"):
 
             set_string_param(el, ROUTE_PARAM_NAME, route_value)
             created.append(el)
+            created_origin_by_id[el.Id.IntegerValue] = node
 
 
 # ------------------------------------------------------------
@@ -693,20 +699,40 @@ if duplicate_pairs:
         )
     )
 
+    def _origin_text(el):
+        """Из какого(их) сегмента(ов) трассы и скольки исходных узлов
+        получилась точка этого элемента — только для созданных этим
+        запуском (для "уже был" происхождение неизвестно, элемент не из
+        insert_nodes этого прогона)."""
+        node = created_origin_by_id.get(el.Id.IntegerValue)
+        if node is None:
+            return u"-"
+        seg_ids = node.get("segment_ids", [])
+        seg_text = u", ".join(str(s) for s in seg_ids[:10])
+        if len(seg_ids) > 10:
+            seg_text += u", ..."
+        return u"{} узл. / сегм.: {}".format(len(node.get("source_types", [])), seg_text or u"-")
+
     duplicate_pairs_table = []
     for el_i, el_j, d in sorted(duplicate_pairs, key=lambda t: t[2]):
         duplicate_pairs_table.append([
             _link(el_i),
             u"новый" if el_i.Id.IntegerValue in created_ids_set else u"уже был",
+            _origin_text(el_i),
             _link(el_j),
             u"новый" if el_j.Id.IntegerValue in created_ids_set else u"уже был",
+            _origin_text(el_j),
             u"{:.1f}".format(d * MM_PER_FT),
             u"точно" if d <= EXACT_DUPLICATE_RADIUS_FT else u"рядом"
         ])
 
     output.print_table(
         table_data=duplicate_pairs_table,
-        columns=[u"ID 1", u"1", u"ID 2", u"2", u"Расстояние, мм", u"Точно/рядом"]
+        columns=[
+            u"ID 1", u"1", u"Происхождение 1",
+            u"ID 2", u"2", u"Происхождение 2",
+            u"Расстояние, мм", u"Точно/рядом"
+        ]
     )
 
     # Выделяем разом все элементы, участвующие хоть в одной близкой паре —
