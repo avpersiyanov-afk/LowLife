@@ -20,7 +20,8 @@ from lowlife.scs_addressing import (
     pt2, dist2, add_neighbor, get_floor_code_for_level, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
     point_to_segment_distance_xy, line_parameter_xy,
-    build_shortest_path_tree, depth_first_order, select_root_sources
+    build_shortest_path_tree, depth_first_order, select_root_sources,
+    attach_roots
 )
 from lowlife.scs_circuits import find_nearest_segment_id
 
@@ -131,30 +132,6 @@ def link_nodes_along_lines(lines, real_nodes):
             n2 = pts_on_line[i + 1][1]
             if n1["id"] != n2["id"]:
                 add_neighbor(n1, n2, line["id"])
-
-
-def attach_roots(root_sources, lines_by_id, real_nodes):
-    """Привязывает панели/стояки к ближайшим реальным узлам — это корни обхода."""
-    root_real_nodes = []
-
-    for src in root_sources:
-        best_real = find_best_real_node_for_offset(src, lines_by_id, real_nodes, OFFSET)
-
-        if best_real is None:
-            best_real, _ = find_nearest_real_node(src, real_nodes)
-
-        if best_real and best_real["parent_id"] is None:
-            best_real["parent_id"] = src["id"]
-            root_real_nodes.append(best_real)
-
-    root_ids = set()
-    unique_roots = []
-    for n in root_real_nodes:
-        if n["id"] not in root_ids:
-            root_ids.add(n["id"])
-            unique_roots.append(n)
-
-    return unique_roots
 
 
 def assign_addresses(ordered_routes, floor_code, renumber_existing):
@@ -280,11 +257,14 @@ def renumber_addresses(doc, view, config, renumber_existing):
 
     link_nodes_along_lines(lines, real_nodes)
 
-    root_sources, far_sources = select_root_sources(panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
-    unique_roots = attach_roots(root_sources, lines_by_id, real_nodes)
+    root_sources, far_sources, fallback_risers = select_root_sources(panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
+    unique_roots = attach_roots(root_sources, lines_by_id, real_nodes, OFFSET)
+    fallback_roots = attach_roots(fallback_risers, lines_by_id, real_nodes, OFFSET)
 
     real_nodes_by_id = dict((n["id"], n) for n in real_nodes)
-    _, effective_roots = build_shortest_path_tree(real_nodes_by_id, unique_roots, real_nodes, dist2)
+    _, effective_roots = build_shortest_path_tree(
+        real_nodes_by_id, unique_roots, real_nodes, dist2, fallback_roots=fallback_roots
+    )
     ordered_real_nodes = depth_first_order(real_nodes_by_id, effective_roots)
 
     assign_cable_types(real_nodes, lines_by_id)

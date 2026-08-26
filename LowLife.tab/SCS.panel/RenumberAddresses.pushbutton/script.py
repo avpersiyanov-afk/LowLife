@@ -24,7 +24,8 @@ from lowlife.scs_addressing import (
     pt2, dist2, add_neighbor, get_floor_code_for_level, classify_point,
     find_nearest_real_node, find_best_real_node_for_offset,
     point_to_segment_distance_xy, line_parameter_xy,
-    build_shortest_path_tree, depth_first_order, select_root_sources
+    build_shortest_path_tree, depth_first_order, select_root_sources,
+    attach_roots
 )
 from lowlife.scs_circuits import norm, find_nearest_segment_id
 
@@ -241,26 +242,17 @@ root_candidate_panels = [
 root_candidate_ids = set(p["id"] for p in root_candidate_panels)
 demoted_panels = [p for p in panels if p["id"] not in root_candidate_ids]
 
-root_sources, far_sources = select_root_sources(root_candidate_panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
+root_sources, far_sources, fallback_risers = select_root_sources(root_candidate_panels, risers, real_nodes, ROOT_SEARCH_MARGIN)
 
-root_real_nodes = []
+unique_roots = attach_roots(root_sources, lines_by_id, real_nodes, OFFSET)
 
-for src in root_sources:
-    best_real = find_best_real_node_for_offset(src, lines_by_id, real_nodes, OFFSET)
-
-    if best_real is None:
-        best_real, _ = find_nearest_real_node(src, real_nodes)
-
-    if best_real and best_real["parent_id"] is None:
-        best_real["parent_id"] = src["id"]
-        root_real_nodes.append(best_real)
-
-root_ids = set()
-unique_roots = []
-for n in root_real_nodes:
-    if n["id"] not in root_ids:
-        root_ids.add(n["id"])
-        unique_roots.append(n)
+# Стояки, не попавшие в root_sources только из-за приоритета панели —
+# используются НЕ как конкурирующие корни (см. docstring select_root_sources),
+# а только запасным корнем для узлов, которые обход от панели физически
+# не достиг (например, второй стояк на этаже с отдельной, не связанной с
+# панелью веткой трассы) — build_shortest_path_tree(fallback_roots=...)
+# пробует их только после основного обхода из unique_roots.
+fallback_roots = attach_roots(fallback_risers, lines_by_id, real_nodes, OFFSET)
 
 
 # ------------------------------------------------------------
@@ -278,7 +270,9 @@ for n in root_real_nodes:
 
 real_nodes_by_id = dict((n["id"], n) for n in real_nodes)
 
-_, effective_roots = build_shortest_path_tree(real_nodes_by_id, unique_roots, real_nodes, dist2)
+_, effective_roots = build_shortest_path_tree(
+    real_nodes_by_id, unique_roots, real_nodes, dist2, fallback_roots=fallback_roots
+)
 
 ordered_real_nodes = depth_first_order(real_nodes_by_id, effective_roots)
 
@@ -694,12 +688,23 @@ output.print_md(u"## Адреса узлов — подробный отчёт")
 far_ids = set(s["id"] for s in far_sources)
 demoted_ids = set(p["id"] for p in demoted_panels)
 
+# Стояки из fallback_roots, чей привязанный реальный узел реально
+# понадобился (то есть его не достиг основной обход от панели — см.
+# select_root_sources/build_shortest_path_tree) — это спасённая отдельная
+# ветка, не связанная линиями с сетью панели.
+effective_root_ids = set(r["id"] for r in effective_roots)
+used_fallback_riser_ids = set(
+    n["parent_id"] for n in fallback_roots if n["id"] in effective_root_ids
+)
+
 
 def root_status_label(n):
     if n["id"] in demoted_ids:
         return u"Ниже приоритета слова панели — не корень"
     if n["id"] in far_ids:
         return u"Слишком далеко — не корень"
+    if n["id"] in used_fallback_riser_ids:
+        return u"Запасной корень — спасена отдельная ветка"
     return u"Корень"
 
 
@@ -748,7 +753,8 @@ forms.alert(
     u"Перенумеровано: {}\n"
     u"Очищено чужих адресов: {}\n"
     u"Отброшено как слишком далёкие (не корень): {}\n"
-    u"Панелей ниже приоритета слова (не корень): {}\n\n"
+    u"Панелей ниже приоритета слова (не корень): {}\n"
+    u"Стояков — запасных корней (спасены отдельные ветки): {}\n\n"
     u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n"
     u"— не записано (устройство не на активном виде): {}\n\n"
     u"Подробности — в окне вывода pyRevit.".format(
@@ -760,6 +766,7 @@ forms.alert(
         len(stray_cleared),
         len(far_sources),
         len(demoted_panels),
+        len(used_fallback_riser_ids),
         nearest_written,
         len(devices_excluded_device_not_on_view)
     )

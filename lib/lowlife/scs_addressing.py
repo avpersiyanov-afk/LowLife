@@ -272,7 +272,7 @@ def find_best_real_node_for_offset(offset_node, lines_by_id, real_nodes, tol):
     return best
 
 
-def build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2):
+def build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2, fallback_roots=None):
     """
     Многоисточниковый Дейкстра по графу узлов (сосед — node["neighbor_ids"]),
     вес ребра — dist_fn(a["point"], b["point"]) (реальное расстояние, а не
@@ -280,13 +280,24 @@ def build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2):
     каждого достижимого узла на "ближайший по расстоянию" предыдущий узел
     — родителям (корням) их parent_id не трогает.
 
-    Узлы, не связанные ни с одним из roots (отдельная связная компонента),
-    всё равно получают дерево: по очереди берутся как локальные корни
-    (без родителя) после того, как основной обход исчерпан.
+    fallback_roots (например, стояки, не попавшие в roots только из-за
+    приоритета панели — см. select_root_sources) пробуются ПОСЛЕ основного
+    обхода из roots, и только для узлов, которые тот не достиг — то есть
+    не конкурируют с roots за узлы, которые и так связаны с ними линиями
+    (иначе стояк, стоящий на уже связанной с панелью линии, мог бы
+    "перетянуть" на себя часть сети через Дейкстру и разорвать её на два
+    дерева без физической причины). Нужны именно как отдельный проход, а
+    не через сам параметр roots — иначе они бы участвовали в основной
+    Дейкстре наравне с панелями с самого начала.
+
+    Узлы, не связанные ни с roots, ни с fallback_roots (отдельная связная
+    компонента без единого явного корня рядом), всё равно получают дерево:
+    по очереди берутся как локальные корни (без родителя) после того, как
+    и основной обход, и fallback_roots исчерпаны.
 
     Возвращает (visited, effective_roots) — множество id посещённых узлов
-    и полный список корней, включая добавленные локальные (нужен для
-    depth_first_order, чтобы не потерять эти узлы при обходе).
+    и полный список корней, включая добавленные fallback/локальные (нужен
+    для depth_first_order, чтобы не потерять эти узлы при обходе).
     """
     dist = {}
     visited = set()
@@ -318,6 +329,14 @@ def build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2):
         heapq.heappush(heap, (0.0, r["id"]))
 
     drain()
+
+    for fb in (fallback_roots or []):
+        if fb["id"] in visited:
+            continue
+        effective_roots.append(fb)
+        dist[fb["id"]] = 0.0
+        heapq.heappush(heap, (0.0, fb["id"]))
+        drain()
 
     remaining = sorted(
         [n for n in all_nodes if n["id"] not in visited],
@@ -390,13 +409,25 @@ def select_root_sources(panels, risers, real_nodes, margin):
     ограничения расстояния (find_nearest_real_node).
 
     Приоритет — панели: если хотя бы одна панель попадает в область,
-    корнями становятся только близкие панели (далёкие панели просто
-    отбрасываются, даже если они реальные — иначе они бы увели ветку от
-    настоящего корня этажа). Если ни одна панель не попала в область,
-    пробуются стояки по тому же правилу.
+    основными корнями становятся только близкие панели (далёкие панели
+    просто отбрасываются, даже если они реальные — иначе они бы увели
+    ветку от настоящего корня этажа). Если ни одна панель не попала в
+    область, пробуются стояки по тому же правилу.
 
-    Возвращает (root_sources, far_sources) — источники-корни и
-    отброшенные как слишком далёкие (для отчёта).
+    Возвращает (root_sources, far_sources, fallback_risers):
+    - root_sources — основные корни обхода;
+    - far_sources — отброшенные как слишком далёкие (для отчёта);
+    - fallback_risers — стояки в пределах области, не попавшие в
+      root_sources только из-за приоритета панели (непусто, только когда
+      root_sources — панели). Это НЕ конкурирующие корни наравне с
+      панелями (иначе стояк, стоящий прямо на уже связанной с панелью
+      линии, мог бы Дейкстрой "отрезать" от неё кусок сети — она всегда
+      выбирает ближайший по реальному расстоянию корень, а не "панель
+      побеждает по умолчанию") — используются только как запасной корень
+      для узлов, которые обход от панелей физически не достиг вообще
+      (см. build_shortest_path_tree(fallback_roots=...)) — то есть для
+      ветки, реально не связанной линиями с сетью панели (например,
+      второй стояк на этаже, ведущий по отдельной трассе).
     """
     if real_nodes:
         xs = [n["point"][0] for n in real_nodes]
@@ -418,11 +449,45 @@ def select_root_sources(panels, risers, real_nodes, margin):
     near_panel_ids = set(p["id"] for p in near_panels)
     far_panels = [p for p in panels if p["id"] not in near_panel_ids]
 
-    if near_panels:
-        return near_panels, far_panels
-
     near_risers = [r for r in risers if in_root_area(r["point"])]
     near_riser_ids = set(r["id"] for r in near_risers)
     far_risers = [r for r in risers if r["id"] not in near_riser_ids]
 
-    return near_risers, far_panels + far_risers
+    if near_panels:
+        return near_panels, far_panels, near_risers
+
+    return near_risers, far_panels + far_risers, []
+
+
+def attach_roots(root_sources, lines_by_id, real_nodes, offset_tol):
+    """
+    Привязывает панели/стояки (root_sources) к ближайшим реальным узлам —
+    получившиеся реальные узлы и есть корни обхода для
+    build_shortest_path_tree. Реальный узел, уже занятый более ранним
+    вызовом (например, основными панельными корнями), второй раз не
+    занимается — так fallback_risers из select_root_sources безопасно
+    привязывать этой же функцией уже ПОСЛЕ основных root_sources.
+
+    offset_tol — допуск "точка рядом с линией" (тот же tol, что и в
+    classify_point/find_best_real_node_for_offset вызывающего кода).
+    """
+    root_real_nodes = []
+
+    for src in root_sources:
+        best_real = find_best_real_node_for_offset(src, lines_by_id, real_nodes, offset_tol)
+
+        if best_real is None:
+            best_real, _ = find_nearest_real_node(src, real_nodes)
+
+        if best_real and best_real["parent_id"] is None:
+            best_real["parent_id"] = src["id"]
+            root_real_nodes.append(best_real)
+
+    root_ids = set()
+    unique_roots = []
+    for n in root_real_nodes:
+        if n["id"] not in root_ids:
+            root_ids.add(n["id"])
+            unique_roots.append(n)
+
+    return unique_roots
