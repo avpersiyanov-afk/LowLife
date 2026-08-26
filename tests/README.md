@@ -32,7 +32,7 @@
 ## Требования
 
 **Python 2.7**, не Python 3. Это намеренно — сам код в `lib/lowlife/`
-написан для IronPython/CPython 2 внутри Revit (см. `PROJECT_GUIDE.md`,
+написан для IronPython/CPython 2 внутри Revit (см. `CLAUDE.md`,
 раздел про `unicode(...)`/`u"..."`), и `scs_circuits.py`/`fire_alarm_loops.py`
 используют встроенную функцию `unicode()`, которой нет в Python 3 — тесты
 для них упадут с `NameError` под Python 3. (`scs_addressing.py` встроенных
