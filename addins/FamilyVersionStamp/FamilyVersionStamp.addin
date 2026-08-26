@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Name>Штамп версии семейства</Name>
+    <Assembly>C:\project\LowLife\addins\FamilyVersionStamp\bin\Release\FamilyVersionStamp.dll</Assembly>
+    <AddInId>82C8194C-D215-463C-B5C1-3C4F3B24480B</AddInId>
+    <FullClassName>FamilyVersionStamp.Command</FullClassName>
+    <VendorId>LWLF</VendorId>
+    <VendorDescription>LowLife</VendorDescription>
+    <Text>Штамп версии семейства</Text>
+    <Description>Проставляет параметры "Дата"/"Версия" в открытом семействе и сохраняет файл</Description>
+  </AddIn>
+</RevitAddIns>

@@ -5,3 +5,7 @@ SeedMySettings.pushbutton/
 SeedAllSettings.pushbutton/
 __pycache__/
 *.pyc
+
+# .NET build output for addins/*
+addins/*/bin/
+addins/*/obj/
