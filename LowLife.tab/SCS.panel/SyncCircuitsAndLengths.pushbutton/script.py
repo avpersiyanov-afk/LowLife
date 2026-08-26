@@ -387,6 +387,13 @@ with revit.Transaction("Sync Circuits And Lengths"):
                     pass
 
                 type_code = clean_text_value(get_string_param(type_el, TYPE_CODE_PARAM)) if type_el else None
+                if not type_code:
+                    # «Обозначение» обычно параметр типа, но в части проектов
+                    # заведён как параметр экземпляра — на типе его тогда не
+                    # найти (LookupParameter не видит параметры экземпляра на
+                    # type_el), поэтому при пустом результате пробуем прочитать
+                    # то же имя параметра прямо с устройства.
+                    type_code = clean_text_value(get_string_param(dev, TYPE_CODE_PARAM))
                 device_address = clean_text_value(get_string_param(dev, DEVICE_ADDRESS_PARAM))
                 load_name = make_load_name(type_code, device_address)
 
