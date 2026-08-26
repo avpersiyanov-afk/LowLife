@@ -239,3 +239,56 @@ def test_attach_roots_skips_real_node_already_claimed():
     assert [n["id"] for n in primary] == ["n1"]
     assert real_nodes[0]["parent_id"] == "p1"
     assert fallback == []  # n1 уже занят панелью, riser не получает корня
+
+
+def test_compute_prev_address_values_simple_chain_only_has_parent():
+    # Обычная цепочка панель(A) -> B -> C: write_value = только родитель,
+    # без "шума" — соседи B (A и C) полностью покрыты деревом (родитель и
+    # ребёнок), лишних адресов быть не должно.
+    b = {"id": "B", "addr": "F1.1", "parent_id": "A", "neighbor_ids": ["A", "C"]}
+    c = {"id": "C", "addr": "F1.2", "parent_id": "B", "neighbor_ids": ["B"]}
+    real_nodes = [b, c]
+    real_nodes_by_id = {"B": b, "C": c}
+    all_points_by_id = {"A": {"id": "A", "addr": "F1.P1"}, "B": b, "C": c}
+
+    sa.compute_prev_address_values(real_nodes, real_nodes_by_id, all_points_by_id)
+
+    assert b["write_value"] == u"F1.P1"
+    assert c["write_value"] == u"F1.1"
+
+
+def test_compute_prev_address_values_adds_extra_neighbor_across_panel_boundary():
+    # Баг: единая физическая линия PA-X-Y-PB, но на этаже две панели — у
+    # X родитель PA, у Y родитель PB (Дейкстра поделила сеть на границе
+    # X-Y). X и Y физические соседи, но друг другу не родитель/ребёнок —
+    # эта связь должна попасть в write_value ДОПОЛНИТЕЛЬНО к родителю,
+    # иначе SyncCircuitsAndLengths не найдёт путь через границу панелей.
+    x = {"id": "X", "addr": "F1.1", "parent_id": "PA", "neighbor_ids": ["Y"]}
+    y = {"id": "Y", "addr": "F1.2", "parent_id": "PB", "neighbor_ids": ["X"]}
+    real_nodes = [x, y]
+    real_nodes_by_id = {"X": x, "Y": y}
+    all_points_by_id = {
+        "PA": {"id": "PA", "addr": "F1.PA"},
+        "PB": {"id": "PB", "addr": "F1.PB"},
+        "X": x, "Y": y,
+    }
+
+    sa.compute_prev_address_values(real_nodes, real_nodes_by_id, all_points_by_id)
+
+    assert x["write_value"] == u"F1.PA,F1.2"
+    assert y["write_value"] == u"F1.PB,F1.1"
+
+
+def test_compute_prev_address_values_branch_children_not_duplicated():
+    root = {"id": "R", "addr": "F1.0", "parent_id": None, "neighbor_ids": ["C1", "C2"]}
+    c1 = {"id": "C1", "addr": "F1.1", "parent_id": "R", "neighbor_ids": ["R"]}
+    c2 = {"id": "C2", "addr": "F1.2", "parent_id": "R", "neighbor_ids": ["R"]}
+    real_nodes = [root, c1, c2]
+    real_nodes_by_id = {"R": root, "C1": c1, "C2": c2}
+    all_points_by_id = dict(real_nodes_by_id)
+
+    sa.compute_prev_address_values(real_nodes, real_nodes_by_id, all_points_by_id)
+
+    assert root["write_value"] == u""
+    assert c1["write_value"] == u"F1.0"
+    assert c2["write_value"] == u"F1.0"

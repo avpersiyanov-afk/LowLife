@@ -399,6 +399,65 @@ def depth_first_order(nodes_by_id, roots):
     return order
 
 
+def compute_prev_address_values(real_nodes, real_nodes_by_id, all_points_by_id):
+    """
+    Проставляет node["parent_addr"] (адрес родителя по дереву обхода — как
+    и раньше, используется для отчёта и для направления типа прокладки,
+    см. assign_cable_types) и node["write_value"] — то, что реально
+    пишется в параметр «Предыдущий адрес». Вызывать после
+    build_shortest_path_tree и после того, как всем real_nodes уже
+    присвоен addr (нумерация).
+
+    write_value — это parent_addr плюс любые ФИЗИЧЕСКИЕ соседи по трассе
+    (node["neighbor_ids"]), не покрытые деревом обхода (не родитель и не
+    ребёнок). Простой цепочке/дереву это ничего не добавляет — родитель и
+    дети и так исчерпывают neighbor_ids обычного узла.
+
+    Разница проявляется, когда на этаже несколько панелей: Дейкстра
+    (build_shortest_path_tree) делит одну физически связанную сеть на
+    непересекающиеся поддеревья — по одному на панель, без ребра между
+    ними (у корня нет родителя). Для нумерации это правильно и ожидаемо,
+    но SyncCircuitsAndLengths строит граф ТОЛЬКО по цепочке «Предыдущий
+    адрес» (split_multi_value поддерживает несколько значений через
+    запятую — параметр это документированно умеет, но раньше сюда
+    писался только один родитель) — то есть без этой добавки сеть для
+    него выглядела бы разорванной ровно на границе между "зонами" разных
+    панелей, хотя физически трасса непрерывна, и устройство, чья цепь
+    принадлежит одной панели, а ближайший узел геометрически оказался в
+    "зоне" другой панели, осталось бы без пути.
+    """
+    children_ids_by_id = {}
+    for n in real_nodes:
+        pid = n.get("parent_id")
+        if pid is not None:
+            children_ids_by_id.setdefault(pid, set()).add(n["id"])
+
+    for n in real_nodes:
+        pid = n.get("parent_id")
+        if pid is not None and pid in all_points_by_id:
+            n["parent_addr"] = all_points_by_id[pid]["addr"]
+        else:
+            n["parent_addr"] = None
+
+        addrs = []
+        seen = set()
+        if n["parent_addr"]:
+            addrs.append(n["parent_addr"])
+            seen.add(n["parent_addr"])
+
+        node_children = children_ids_by_id.get(n["id"], set())
+        for nb_id in n.get("neighbor_ids", []):
+            if nb_id == pid or nb_id in node_children:
+                continue
+            nb = real_nodes_by_id.get(nb_id)
+            nb_addr = nb.get("addr") if nb else None
+            if nb_addr and nb_addr not in seen:
+                addrs.append(nb_addr)
+                seen.add(nb_addr)
+
+        n["write_value"] = u",".join(addrs)
+
+
 def select_root_sources(panels, risers, real_nodes, margin):
     """
     Выбирает источники корней обхода (панели или стояки) из точек,

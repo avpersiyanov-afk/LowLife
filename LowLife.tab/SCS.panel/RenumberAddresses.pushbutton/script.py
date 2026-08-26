@@ -25,7 +25,7 @@ from lowlife.scs_addressing import (
     find_nearest_real_node, find_best_real_node_for_offset,
     point_to_segment_distance_xy, line_parameter_xy,
     build_shortest_path_tree, depth_first_order, select_root_sources,
-    attach_roots
+    attach_roots, compute_prev_address_values
 )
 from lowlife.scs_circuits import norm, find_nearest_segment_id
 
@@ -369,14 +369,7 @@ for n in sorted(risers, key=lambda n: (n["point"][0], n["point"][1], n["id"])):
     n["addr"] = u"{}.R{}".format(floor_code, riser_num)
     riser_num += 1
 
-for n in real_nodes:
-    if n["parent_id"] is not None and n["parent_id"] in all_points_by_id:
-        parent_obj = all_points_by_id[n["parent_id"]]
-        n["parent_addr"] = parent_obj["addr"]
-    else:
-        n["parent_addr"] = None
-
-    n["write_value"] = n["parent_addr"] if n["parent_addr"] is not None else u""
+compute_prev_address_values(real_nodes, real_nodes_by_id, all_points_by_id)
 
 for n in offset_nodes:
     best_real = find_best_real_node_for_offset(n, lines_by_id, real_nodes, OFFSET)
