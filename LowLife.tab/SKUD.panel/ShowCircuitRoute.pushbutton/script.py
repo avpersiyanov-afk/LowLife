@@ -9,7 +9,8 @@ __doc__ = (
     "параметра «Маршрут цепи», записанного кнопкой «Длины и маркировка») и "
     "контроллер, и выделяет все эти элементы в модели. Для устройств рядом "
     "с контроллером (когда цепь посчитана по катетам, без узлов маршрута) "
-    "строит прямую линию устройство -> контроллер. Линия временная: "
+    "строит прямую линию устройство -> контроллер. Вид сам масштабируется, "
+    "чтобы весь маршрут поместился целиком. Линия временная: "
     "удаляется сама через несколько секунд, а также при повторном запуске "
     "кнопки (в т.ч. кнопки СКС/СПС с той же функцией) — прошлая линия "
     "удаляется в любом случае."
@@ -31,7 +32,7 @@ from lowlife.scs import is_excluded_device
 from lowlife import skud_settings
 from lowlife.skud_settings import get_settings_silent
 from lowlife.scs_circuits import norm, clean_text_value, parse_route_path
-from lowlife.route_preview import pick_circuit, create_route_lines, select_elements, schedule_preview_cleanup
+from lowlife.route_preview import pick_circuit, create_route_lines, select_elements, schedule_preview_cleanup, zoom_to_fit_points
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -158,6 +159,7 @@ with revit.Transaction(u"Показать маршрут цепи СКУД"):
     created_ids = create_route_lines(doc, view, points)
 
 select_elements(uidoc, route_elements, created_ids)
+zoom_to_fit_points(uidoc, view, points)
 schedule_preview_cleanup(uidoc.Application, doc, created_ids)
 
 forms.alert(

@@ -14,7 +14,7 @@
 
 import time
 
-from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, ElementId, Line, Transaction
+from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, ElementId, Line, Transaction, XYZ
 from Autodesk.Revit.DB import FilteredElementCollector
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -251,3 +251,48 @@ def schedule_preview_cleanup(uiapp, doc, created_ids, delay_seconds=DEFAULT_PREV
                 pass
 
     uiapp.Idling += _on_idling
+
+
+def zoom_to_fit_points(uidoc, view, points, margin_ratio=0.15, min_margin_ft=3.0):
+    """
+    Вписывает активный вид в прямоугольник, охватывающий все points (список
+    XYZ, None пропускаются) — чтобы построенный маршрут сразу было видно
+    целиком, не пришлось искать его на виде вручную/уменьшать масштаб самим.
+
+    Отступ от крайних точек — margin_ratio от диагонали (в плане, по XY)
+    охвата, но не меньше min_margin_ft — иначе короткий маршрут (например
+    из одного отрезка) прижался бы вплотную к границам вида.
+
+    Не критично для работы кнопки — это только удобство, поэтому при любой
+    проблеме (вид не открыт ни в одном UIView, наприм. если он на листе, и
+    т.п.) просто ничего не делает, ошибку не показывает.
+    """
+    pts = [p for p in points if p is not None]
+    if not pts:
+        return
+
+    min_x = min(p.X for p in pts)
+    max_x = max(p.X for p in pts)
+    min_y = min(p.Y for p in pts)
+    max_y = max(p.Y for p in pts)
+    min_z = min(p.Z for p in pts)
+    max_z = max(p.Z for p in pts)
+
+    dx = max_x - min_x
+    dy = max_y - min_y
+    diag = (dx * dx + dy * dy) ** 0.5
+    margin = max(diag * margin_ratio, min_margin_ft)
+
+    p1 = XYZ(min_x - margin, min_y - margin, min_z)
+    p2 = XYZ(max_x + margin, max_y + margin, max_z)
+
+    try:
+        ui_view = None
+        for uv in uidoc.GetOpenUIViews():
+            if uv.ViewId == view.Id:
+                ui_view = uv
+                break
+        if ui_view is not None:
+            ui_view.ZoomAndCenterRectangle(p1, p2)
+    except:
+        pass
