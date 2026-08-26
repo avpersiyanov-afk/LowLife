@@ -272,6 +272,55 @@ def find_best_real_node_for_offset(offset_node, lines_by_id, real_nodes, tol):
     return best
 
 
+def find_real_nodes_near_root(root, lines_by_id, real_nodes, tol):
+    """
+    Находит реальные узлы для привязки панели/стояка (root) — по одному
+    ближайшему узлу с КАЖДОЙ линии трассы, физически проходящей рядом с
+    root (в пределах tol), а не только с единственной "ближайшей" линии
+    (root["nearest_line_id"] — classify_point запоминает только одну,
+    минимальную по расстоянию, даже если рядом проходит несколько
+    линий). Обычной панели/стояку, к которым физически подходит только
+    один участок трассы, это ничего не меняет — вернётся тот же один
+    узел, что и раньше.
+
+    Нужно, когда к одной панели физически сходятся НЕСКОЛЬКО отдельных
+    (не связанных друг с другом линиями) участков трассы — например,
+    стояки слева и справа здания, оба ведущие к одной панели. Раньше
+    find_best_real_node_for_offset привязывал панель только к ближайшему
+    из них — второй участок при этом не получал корня вообще (его первый
+    узел уходил в анонимный "локальный корень" build_shortest_path_tree)
+    и оставался без пути в графе SyncCircuitsAndLengths/CalcSkudLengths,
+    хотя адресация выглядела полностью корректной.
+
+    Если ни одна линия не оказалась в пределах tol — как и раньше,
+    запасной вариант: просто ближайший реальный узел по прямому
+    расстоянию (без учёта линий).
+    """
+    root_pt = root["point"]
+    found = []
+    found_ids = set()
+
+    for line in lines_by_id.values():
+        d, _ = point_to_segment_distance_xy(root_pt, line["p1"], line["p2"])
+        if d > tol:
+            continue
+
+        candidates = real_nodes_on_line(line, real_nodes, tol)
+        if not candidates:
+            continue
+
+        best = min(candidates, key=lambda tn: dist2(root_pt, tn[1]["point"]))[1]
+        if best["id"] not in found_ids:
+            found_ids.add(best["id"])
+            found.append(best)
+
+    if found:
+        return found
+
+    best, _ = find_nearest_real_node(root, real_nodes)
+    return [best] if best else []
+
+
 def build_shortest_path_tree(nodes_by_id, roots, all_nodes, dist_fn=dist2, fallback_roots=None):
     """
     Многоисточниковый Дейкстра по графу узлов (сосед — node["neighbor_ids"]),
@@ -522,25 +571,25 @@ def attach_roots(root_sources, lines_by_id, real_nodes, offset_tol):
     """
     Привязывает панели/стояки (root_sources) к ближайшим реальным узлам —
     получившиеся реальные узлы и есть корни обхода для
-    build_shortest_path_tree. Реальный узел, уже занятый более ранним
-    вызовом (например, основными панельными корнями), второй раз не
-    занимается — так fallback_risers из select_root_sources безопасно
-    привязывать этой же функцией уже ПОСЛЕ основных root_sources.
+    build_shortest_path_tree. Одна панель/стояк может привязаться сразу к
+    НЕСКОЛЬКИМ реальным узлам, если к ней физически подходит несколько
+    отдельных участков трассы (см. find_real_nodes_near_root) — иначе
+    только один из них получал бы путь до панели. Реальный узел, уже
+    занятый более ранним вызовом (например, основными панельными
+    корнями), второй раз не занимается — так fallback_risers из
+    select_root_sources безопасно привязывать этой же функцией уже ПОСЛЕ
+    основных root_sources.
 
     offset_tol — допуск "точка рядом с линией" (тот же tol, что и в
-    classify_point/find_best_real_node_for_offset вызывающего кода).
+    classify_point/find_real_nodes_near_root вызывающего кода).
     """
     root_real_nodes = []
 
     for src in root_sources:
-        best_real = find_best_real_node_for_offset(src, lines_by_id, real_nodes, offset_tol)
-
-        if best_real is None:
-            best_real, _ = find_nearest_real_node(src, real_nodes)
-
-        if best_real and best_real["parent_id"] is None:
-            best_real["parent_id"] = src["id"]
-            root_real_nodes.append(best_real)
+        for best_real in find_real_nodes_near_root(src, lines_by_id, real_nodes, offset_tol):
+            if best_real and best_real["parent_id"] is None:
+                best_real["parent_id"] = src["id"]
+                root_real_nodes.append(best_real)
 
     root_ids = set()
     unique_roots = []

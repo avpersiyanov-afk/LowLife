@@ -292,3 +292,90 @@ def test_compute_prev_address_values_branch_children_not_duplicated():
     assert root["write_value"] == u""
     assert c1["write_value"] == u"F1.0"
     assert c2["write_value"] == u"F1.0"
+
+
+def test_find_real_nodes_near_root_single_line_unchanged():
+    line = {"id": "L1", "p1": (0, 0), "p2": (10, 0)}
+    lines_by_id = {"L1": line}
+    n1 = {"id": "n1", "point": (1, 0)}
+    real_nodes = [n1]
+    panel = {"id": "p1", "point": (0.1, 0)}
+
+    result = sa.find_real_nodes_near_root(panel, lines_by_id, real_nodes, tol=0.5)
+
+    assert [n["id"] for n in result] == ["n1"]
+
+
+def test_find_real_nodes_near_root_multiple_converging_lines():
+    # Баг: панель, к которой физически подходят ДВЕ отдельные линии
+    # (например, стояки слева и справа здания) — раньше привязывалась
+    # только к ближайшей из них (nearest_line_id — единственная линия).
+    line_left = {"id": "L_left", "p1": (0, 0), "p2": (-10, 0)}
+    line_right = {"id": "L_right", "p1": (0, 0), "p2": (10, 0)}
+    lines_by_id = {"L_left": line_left, "L_right": line_right}
+
+    n_left = {"id": "n_left", "point": (-1, 0)}
+    n_right = {"id": "n_right", "point": (1, 0)}
+    real_nodes = [n_left, n_right]
+
+    panel = {"id": "p1", "point": (0, 0)}
+
+    result = sa.find_real_nodes_near_root(panel, lines_by_id, real_nodes, tol=0.5)
+
+    assert set(n["id"] for n in result) == set(["n_left", "n_right"])
+
+
+def test_find_real_nodes_near_root_falls_back_to_nearest_when_no_line_close():
+    n1 = {"id": "n1", "point": (0, 0)}
+    n2 = {"id": "n2", "point": (10, 0)}
+    real_nodes = [n1, n2]
+    root = {"id": "r1", "point": (1, 0)}
+
+    result = sa.find_real_nodes_near_root(root, {}, real_nodes, tol=0.5)
+
+    assert [n["id"] for n in result] == ["n1"]
+
+
+def test_attach_roots_attaches_panel_to_multiple_converging_branches():
+    # То же самое, что и find_real_nodes_near_root, но через attach_roots
+    # целиком — оба узла должны реально получить parent_id панели.
+    line_left = {"id": "L_left", "p1": (0, 0), "p2": (-10, 0)}
+    line_right = {"id": "L_right", "p1": (0, 0), "p2": (10, 0)}
+    lines_by_id = {"L_left": line_left, "L_right": line_right}
+
+    n_left = {"id": "n_left", "point": (-1, 0), "parent_id": None}
+    n_right = {"id": "n_right", "point": (1, 0), "parent_id": None}
+    real_nodes = [n_left, n_right]
+
+    panel = {"id": "p1", "point": (0, 0)}
+
+    roots = sa.attach_roots([panel], lines_by_id, real_nodes, offset_tol=0.5)
+
+    assert set(n["id"] for n in roots) == set(["n_left", "n_right"])
+    assert n_left["parent_id"] == "p1"
+    assert n_right["parent_id"] == "p1"
+
+
+def test_build_shortest_path_tree_reaches_both_branches_from_multi_attached_panel():
+    # Полная цепочка: панель привязана к двум отдельным веткам (как выше)
+    # -> обе ветки реально попадают в дерево и получают путь до панели,
+    # а не только та, что "выиграла" бы при старой однозначной привязке.
+    n_left = {"id": "n_left", "point": (-1, 0), "parent_id": "p1", "neighbor_ids": ["n_left2"]}
+    n_left2 = {"id": "n_left2", "point": (-2, 0), "parent_id": None, "neighbor_ids": ["n_left"]}
+    n_right = {"id": "n_right", "point": (1, 0), "parent_id": "p1", "neighbor_ids": ["n_right2"]}
+    n_right2 = {"id": "n_right2", "point": (2, 0), "parent_id": None, "neighbor_ids": ["n_right"]}
+
+    nodes_by_id = {
+        "n_left": n_left, "n_left2": n_left2,
+        "n_right": n_right, "n_right2": n_right2,
+    }
+    roots = [n_left, n_right]
+    all_nodes = list(nodes_by_id.values())
+
+    visited, effective_roots = sa.build_shortest_path_tree(nodes_by_id, roots, all_nodes)
+
+    assert visited == set(["n_left", "n_left2", "n_right", "n_right2"])
+    assert n_left2["parent_id"] == "n_left"
+    assert n_right2["parent_id"] == "n_right"
+    assert n_left["parent_id"] == "p1"
+    assert n_right["parent_id"] == "p1"
