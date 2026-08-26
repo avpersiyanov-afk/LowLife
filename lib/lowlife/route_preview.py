@@ -12,7 +12,9 @@
 (см. SPS.panel/ShowCircuitRoute, fire_alarm_loops.parse_route_edges).
 """
 
-from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, ElementId, Line
+import time
+
+from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, ElementId, Line, Transaction
 from Autodesk.Revit.DB import FilteredElementCollector
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -21,6 +23,12 @@ from System.Collections.Generic import List
 from pyrevit import forms
 
 from lowlife.params import get_string_param
+
+# Сколько секунд держать линию предпросмотра маршрута на виде, прежде чем
+# она удалит себя сама (см. schedule_preview_cleanup) — достаточно, чтобы
+# рассмотреть маршрут, но не настолько долго, чтобы линия успела помешать
+# следующему действию в модели.
+DEFAULT_PREVIEW_LIFETIME_SECONDS = 6.0
 
 # Метка во встроенном параметре "Комментарии" временных линий, которые
 # рисует эта кнопка — BuiltInParameter, а не имя параметра текстом, чтобы
@@ -181,3 +189,65 @@ def select_elements(uidoc, elements, extra_ids=None):
         uidoc.Selection.SetElementIds(selection_ids)
     except:
         pass
+
+
+def schedule_preview_cleanup(uiapp, doc, created_ids, delay_seconds=DEFAULT_PREVIEW_LIFETIME_SECONDS):
+    """
+    Планирует самоудаление временных линий предпросмотра маршрута — Revit
+    не умеет рисовать по-настоящему "временную", ничего не сохраняющую в
+    документе графику для произвольного набора точек (в отличие от
+    подсветки уже существующих элементов через OverrideGraphicSettings,
+    здесь линии — это реальные DetailCurve, их всё равно нужно явно
+    удалять). Вместо блокирующего ожидания подписывается на
+    UIApplication.Idling — это событие Revit сам вызывает в перерывах
+    между действиями пользователя, и как раз в этот момент безопасно
+    менять документ. Пока не пройдёт delay_seconds (отсчёт стартует по
+    факту — Idling не срабатывает, пока открыт модальный диалог), каждый
+    тик просто выходит и ждёт следующего; как только время вышло — удаляет
+    ИМЕННО эти created_ids (а не "текущие помеченные линии на виде" — если
+    кнопку успели запустить повторно, старый предпросмотр к этому моменту
+    уже мог быть удалён и заменён новым явным вызовом
+    create_route_line(s), и трогать его нельзя) и отписывается.
+
+    Не гарантирует удаление на 100% (документ/Revit может закрыться раньше
+    delay_seconds) — это просто "лучшее, что можно сделать" без хрупких
+    фоновых потоков; на случай пропуска остаётся штатная подстраховка:
+    следующий запуск любой из кнопок «Маршрут цепи» всё равно подчищает
+    прошлые линии по MARKER_TEXT (см. create_route_line_segments).
+    """
+    ids_snapshot = list(created_ids)
+    if not ids_snapshot:
+        return
+
+    deadline = time.time() + delay_seconds
+
+    def _on_idling(sender, args):
+        if time.time() < deadline:
+            return
+
+        try:
+            to_delete = List[ElementId]()
+            for eid in ids_snapshot:
+                try:
+                    if doc.GetElement(eid) is not None:
+                        to_delete.Add(eid)
+                except:
+                    pass
+
+            if to_delete.Count > 0:
+                t = Transaction(doc, u"Убрать временный маршрут цепи")
+                t.Start()
+                try:
+                    doc.Delete(to_delete)
+                    t.Commit()
+                except:
+                    t.RollBack()
+        except:
+            pass
+        finally:
+            try:
+                sender.Idling -= _on_idling
+            except:
+                pass
+
+    uiapp.Idling += _on_idling

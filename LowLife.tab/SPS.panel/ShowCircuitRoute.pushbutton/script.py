@@ -9,8 +9,9 @@ __doc__ = (
     "устройство и родитель -> устройство для каждого звена (не непрерывная "
     "цепочка, как у СКС/СКУД: у СПС узлом шлейфа служит само устройство, а "
     "ветви от изоляторов не возвращаются в магистраль) — и выделяет все эти "
-    "устройства в модели. Линии временные: при повторном запуске кнопки "
-    "(в т.ч. кнопки СКС/СКУД с той же функцией) прошлые линии удаляются."
+    "устройства в модели. Линии временные: удаляются сами через несколько "
+    "секунд, а также при повторном запуске кнопки (в т.ч. кнопки СКС/СКУД "
+    "с той же функцией) — прошлые линии удаляются в любом случае."
 )
 __author__ = "Pipers"
 
@@ -29,7 +30,7 @@ from lowlife.scs_circuits import norm, clean_text_value
 from lowlife import fire_alarm_settings
 from lowlife.fire_alarm_circuits import find_devices
 from lowlife.fire_alarm_loops import parse_route_edges
-from lowlife.route_preview import pick_circuit, create_route_line_segments, select_elements
+from lowlife.route_preview import pick_circuit, create_route_line_segments, select_elements, schedule_preview_cleanup
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -148,6 +149,7 @@ with revit.Transaction(u"Показать маршрут шлейфа СПС"):
     created_ids = create_route_line_segments(doc, view, segments)
 
 select_elements(uidoc, route_elements, created_ids)
+schedule_preview_cleanup(uidoc.Application, doc, created_ids)
 
 forms.alert(
     u"Готово.\n\n"
