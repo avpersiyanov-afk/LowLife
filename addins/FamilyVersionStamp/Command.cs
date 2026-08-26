@@ -7,16 +7,17 @@ using Autodesk.Revit.UI;
 namespace FamilyVersionStamp
 {
     /// <summary>
-    /// Проставляет в открытом семействе параметры "Дата" (текущая дата) и
-    /// "Версия" (ver.N -> ver.(N+1), пусто -> ver.1), затем сохраняет файл
-    /// семейства. Работает только с документом семейства (Family Editor).
+    /// Проставляет в открытом семействе параметры "SMNX_Дата семейства"
+    /// (текущая дата) и "SMNX_Версия семейства" (ver.N -> ver.(N+1), пусто ->
+    /// ver.1), затем сохраняет файл семейства. Работает только с документом
+    /// семейства (Family Editor).
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
     public class Command : IExternalCommand
     {
-        private const string DateParamName = "Дата";
-        private const string VersionParamName = "Версия";
+        private const string DateParamName = "SMNX_Дата семейства";
+        private const string VersionParamName = "SMNX_Версия семейства";
         private static readonly Regex VersionPattern =
             new Regex(@"^\s*ver\.(\d+)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
