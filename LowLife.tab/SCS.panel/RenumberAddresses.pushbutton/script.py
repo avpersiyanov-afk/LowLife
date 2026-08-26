@@ -440,59 +440,58 @@ for p in route_points:
 
 # Ближайший узел ищется только среди узлов маршрута АКТИВНОГО ВИДА
 # (segments_by_addr выше построен из route_points — тоже view.Id-
-# коллектор). Раньше панели/устройства для этого шага собирались по ВСЕМУ
+# коллектор). Раньше УСТРОЙСТВА для этого шага собирались по ВСЕМУ
 # документу — устройство с другого этажа могло получить "ближайший узел"
 # с текущего этажа просто по XY-расстоянию (find_nearest_segment_id
 # сознательно игнорирует Z, см. её docstring), хотя физически относится к
-# другой, отдельно адресованной трассе. Теперь панели и устройства для
-# этого шага тоже ограничены активным видом — только к нему относится
-# посчитанный здесь граф узлов.
+# другой, отдельно адресованной трассе. Теперь устройство обязано быть
+# видно на активном виде (visible_on_view_ids ниже) — а вот ЕГО ПАНЕЛЬ
+# видеть на этом же виде не обязательно (см. комментарий ниже, про
+# топологию через стояк).
 visible_on_view_ids = set(
     eid.IntegerValue for eid in
     FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElementIds()
 )
 
-all_panels = FilteredElementCollector(doc, view.Id) \
-    .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
-    .WhereElementIsNotElementType() \
-    .ToElements()
-
-target_panels = [p for p in all_panels if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm)]
-
-# Только для диагностики ниже: панели, подходящие под критерий панели
-# ПО ВСЕМУ документу — чтобы отличить "панель не подходит под критерий
-# вообще" от "подходит, но не на этом виде" (частый случай: панель/щит
-# показан на отдельном виде электрики, а устройства — на архитектурном
-# плане, где и запускается эта кнопка).
+# Критерий "эта цепь — наша" (панель проходит panel_matches, по имени
+# в CIRCUIT_PANEL_PARAM) — по ВСЕМУ документу, не по активному виду:
+# панель устройства может физически стоять на СОВСЕМ ДРУГОМ этаже
+# (типовая топология "этаж со стояком -> стояк -> магистраль -> панель
+# в серверной на другом этаже") — устройство при этом абсолютно законно
+# адресуется через стояк ЭТОГО вида, и не должно выпадать только
+# из-за того, что его панель физически в другом месте. Раньше здесь
+# требовалось, чтобы панель ТОЖЕ была на активном виде — из-за этого
+# на этажах, где панели нет вовсе (только стояк), у всех устройств
+# переставал записываться "ближайший узел маршрута".
 all_panels_doc = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
     .WhereElementIsNotElementType() \
     .ToElements()
-target_panels_doc_by_name = {}
+
+target_panels_by_name = {}
 for p in all_panels_doc:
     if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm):
         pname = norm(p.Name)
         if pname:
-            target_panels_doc_by_name.setdefault(pname, p)
+            target_panels_by_name.setdefault(pname, p)
+
+# А вот "ближайший узел" самой ПАНЕЛИ (см. цикл ниже) осмысленно писать
+# только для панелей, реально показанных на активном виде — считать его
+# по графу узлов ЭТОГО вида для панели с другого этажа было бы неверно
+# (её настоящий ближайший узел — на её собственном виде).
+target_panels_on_view = [
+    p for p in target_panels_by_name.values()
+    if p.Id.IntegerValue in visible_on_view_ids
+]
 
 all_circuits = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
     .WhereElementIsNotElementType() \
     .ToElements()
 
-target_panels_by_name = {}
-for p in target_panels:
-    pname = norm(p.Name)
-    if pname:
-        target_panels_by_name.setdefault(pname, p)
-
 devices_by_id = {}
-# Устройства, которые сами на активном виде, но пропущены из-за того,
-# что их панель — не на этом виде (см. комментарий выше). Показываются
-# в отчёте отдельно, чтобы было видно: это не "не найдено", а
-# "пропущено из-за вида панели".
-devices_excluded_panel_not_on_view = []
-# Устройства, у которых панель на активном виде, но сами они — нет.
+# Устройства, у которых панель нашлась (по всему документу), но сами
+# они не видны на активном виде — не наш случай в этом прогоне.
 devices_excluded_device_not_on_view = []
 
 for c in all_circuits:
@@ -500,17 +499,6 @@ for c in all_circuits:
     panel_el = target_panels_by_name.get(panel_name)
 
     if panel_el is None:
-        panel_el_doc = target_panels_doc_by_name.get(panel_name)
-        if panel_el_doc is not None:
-            try:
-                raw_devs_doc = [x for x in c.Elements if x.Id != panel_el_doc.Id]
-            except:
-                raw_devs_doc = []
-            for d in raw_devs_doc:
-                if is_excluded_device(d, EXCLUDED_DEVICE_KEYWORDS):
-                    continue
-                if d.Id.IntegerValue in visible_on_view_ids:
-                    devices_excluded_panel_not_on_view.append(d)
         continue
 
     try:
@@ -555,7 +543,7 @@ def _try_write_nearest(el):
 
 with revit.Transaction("Write Nearest Segment"):
 
-    for panel in target_panels:
+    for panel in target_panels_on_view:
         if _try_write_nearest(panel):
             nearest_written += 1
 
@@ -573,7 +561,7 @@ with revit.Transaction("Write Nearest Segment"):
 # расстояние, а про одну из явных причин ниже.
 
 any_nearest_issues = any([
-    devices_excluded_panel_not_on_view, devices_excluded_device_not_on_view,
+    devices_excluded_device_not_on_view,
     nearest_failed_no_point, nearest_failed_no_nearest, nearest_failed_param_write
 ])
 
@@ -596,15 +584,11 @@ if any_nearest_issues:
         output.print_md(u", ".join(_link_dev(el) for el in elements[:100]))
 
     _report_list(
-        u"Устройство на этом виде, но его панель — нет",
-        devices_excluded_panel_not_on_view,
-        u"панель подходит под критерий (рабочий набор), но не видна на активном виде — "
-        u"вся цепь с этим устройством пропущена, т.к. панель тоже требуется на активном виде"
-    )
-    _report_list(
-        u"Панель на этом виде, но устройство — нет",
+        u"Устройство не на активном виде",
         devices_excluded_device_not_on_view,
-        u"устройство не видно на активном виде (другой этаж/скрыто настройками вида)"
+        u"панель найдена (по всему документу — она может быть на другом этаже, "
+        u"это нормально), но само устройство не видно на активном виде "
+        u"(другой этаж/скрыто настройками вида)"
     )
     _report_list(
         u"Нет точки расположения",
@@ -625,7 +609,7 @@ if any_nearest_issues:
     # Выделяем всё разом, чтобы посмотреть расположение целиком.
     nearest_issue_ids = List[ElementId]()
     for group in (
-        devices_excluded_panel_not_on_view, devices_excluded_device_not_on_view,
+        devices_excluded_device_not_on_view,
         nearest_failed_no_point, nearest_failed_no_nearest, nearest_failed_param_write
     ):
         for el in group:
@@ -766,8 +750,7 @@ forms.alert(
     u"Отброшено как слишком далёкие (не корень): {}\n"
     u"Панелей ниже приоритета слова (не корень): {}\n\n"
     u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n"
-    u"— из них не записано (устройство на виде, панель — нет): {}\n"
-    u"— не записано (панель на виде, устройство — нет): {}\n\n"
+    u"— не записано (устройство не на активном виде): {}\n\n"
     u"Подробности — в окне вывода pyRevit.".format(
         level_name,
         floor_code,
@@ -778,7 +761,6 @@ forms.alert(
         len(far_sources),
         len(demoted_panels),
         nearest_written,
-        len(devices_excluded_panel_not_on_view),
         len(devices_excluded_device_not_on_view)
     )
 )
