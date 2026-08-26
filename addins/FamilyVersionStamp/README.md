@@ -40,20 +40,33 @@ dotnet build -c Release -p:RevitInstallDir="C:\Program Files\Autodesk\Revit 2025
 
 ## Установка в Revit
 
-`FamilyVersionStamp.addin` (манифест) уже скопирован в
-`%APPDATA%\Autodesk\Revit\Addins\2024\FamilyVersionStamp.addin` на
-этой машине — путь к DLL внутри указан абсолютный, на
-`bin\Release\FamilyVersionStamp.dll` в этой же папке репозитория.
+Revit не сканирует папки на DLL сам — аддин появляется, только если в
+`%APPDATA%\Autodesk\Revit\Addins\<версия>\` (или `%ProgramData%\...`
+для всех пользователей) лежит `.addin`-манифест с **абсолютным** путём
+до DLL. Просто скопировать DLL в другую папку недостаточно — нужен
+манифест с правильным путём именно на этой машине.
 
-При переносе на другую машину или под другую версию Revit:
+Проще всего — скрипт `install.ps1`: собирает DLL (если её ещё нет) и
+кладёт манифест с уже подставленным реальным путём в нужную папку
+Addins:
 
-1. Собрать DLL под нужную версию (см. выше).
-2. Скопировать `FamilyVersionStamp.addin` в
-   `%APPDATA%\Autodesk\Revit\Addins\<версия>\` (или
-   `%ProgramData%\Autodesk\Revit\Addins\<версия>\` для всех
-   пользователей).
-3. В скопированном манифесте поправить путь в `<Assembly>` на реальный
-   путь к собранной DLL на этой машине.
+```powershell
+cd addins/FamilyVersionStamp
+./install.ps1                      # Revit 2024, для текущего пользователя
+./install.ps1 -RevitVersion 2025   # под другую версию Revit
+./install.ps1 -AllUsers            # в %ProgramData% (нужны права администратора)
+```
+
+После — перезапустить Revit, команда появится в
+**Надстройки → Внешние инструменты**.
+
+На этой машине манифест уже установлен в
+`%APPDATA%\Autodesk\Revit\Addins\2024\FamilyVersionStamp.addin`.
+
+Перенос на другую машину: склонировать репозиторий, выполнить
+`install.ps1` (с нужным `-RevitVersion`, если там не 2024) — DLL при
+необходимости соберётся сама, путь в манифесте пропишется под этот
+компьютер автоматически.
 
 Чтобы отключить — удалить `.addin`-файл из папки Addins (сама DLL и
 исходники в репозитории не мешают).
