@@ -20,7 +20,41 @@
    разу не сохранялось на диск — выводит предупреждение и просит
    сохранить вручную (Save As), путь придумывать не пытается.
 
-## Сборка
+## Установка одним запуском (без .NET SDK)
+
+В репозитории лежит уже собранная DLL (`dist/FamilyVersionStamp.dll`,
+под Revit API 2024) — .NET SDK коллеге ставить не нужно.
+
+1. Склонировать/скопировать репозиторий (или просто папку
+   `addins/FamilyVersionStamp`) на нужную машину.
+2. Двойной клик по **`Install.bat`**.
+
+Скрипт (`install.ps1` внутри `Install.bat`) сам:
+
+- находит все установленные версии Revit (по папкам
+  `C:\Program Files\Autodesk\Revit <год>`);
+- копирует DLL в стабильную папку
+  `%LOCALAPPDATA%\LowLife\FamilyVersionStamp\` (не зависит от того,
+  куда склонирован репозиторий — репозиторий после установки можно
+  даже удалить);
+- кладёт `.addin`-манифест с уже правильным путём в
+  `%APPDATA%\Autodesk\Revit\Addins\<версия>\` для каждой найденной
+  версии Revit.
+
+После — перезапустить Revit, команда появится в
+**Надстройки → Внешние инструменты**.
+
+**Важно:** `dist/FamilyVersionStamp.dll` собрана под Revit API **2024**.
+Между мажорными версиями RevitAPI.dll бывает несовместим — если на
+машине стоит другая версия Revit, готовая DLL может не загрузиться.
+В этом случае поставьте .NET SDK 8 и запустите `install.ps1` — он сам
+соберёт DLL под нужную версию (см. ниже).
+
+Чтобы отключить — удалить `.addin`-файл из
+`%APPDATA%\Autodesk\Revit\Addins\<версия>\` (сама DLL в
+`%LOCALAPPDATA%` не мешает, можно удалить и её).
+
+## Пересборка DLL (при правках кода / другая версия Revit)
 
 Нужен .NET SDK 8 (устанавливался в `%USERPROFILE%\.dotnet` — если его
 нет в `PATH`, добавить временно: `$env:PATH = "$env:USERPROFILE\.dotnet;$env:PATH"`).
@@ -38,40 +72,24 @@ Revit — по умолчанию `C:\Program Files\Autodesk\Revit 2024`. Для
 dotnet build -c Release -p:RevitInstallDir="C:\Program Files\Autodesk\Revit 2025"
 ```
 
-Результат: `bin\Release\FamilyVersionStamp.dll`.
-
-## Установка в Revit
-
-Revit не сканирует папки на DLL сам — аддин появляется, только если в
-`%APPDATA%\Autodesk\Revit\Addins\<версия>\` (или `%ProgramData%\...`
-для всех пользователей) лежит `.addin`-манифест с **абсолютным** путём
-до DLL. Просто скопировать DLL в другую папку недостаточно — нужен
-манифест с правильным путём именно на этой машине.
-
-Проще всего — скрипт `install.ps1`: собирает DLL (если её ещё нет) и
-кладёт манифест с уже подставленным реальным путём в нужную папку
-Addins:
+Результат: `bin\Release\FamilyVersionStamp.dll` (`install.ps1` при
+следующем запуске использует именно эту свежую сборку, а не `dist/`).
+После правки кода под новую версию Revit стоит обновить и
+`dist/FamilyVersionStamp.dll` — скопировать в неё свежую сборку под
+2024, чтобы коллеги без .NET SDK продолжали получать актуальную
+версию:
 
 ```powershell
-cd addins/FamilyVersionStamp
-./install.ps1                      # Revit 2024, для текущего пользователя
-./install.ps1 -RevitVersion 2025   # под другую версию Revit
-./install.ps1 -AllUsers            # в %ProgramData% (нужны права администратора)
+Copy-Item bin\Release\FamilyVersionStamp.dll dist\FamilyVersionStamp.dll -Force
 ```
 
-После — перезапустить Revit, команда появится в
-**Надстройки → Внешние инструменты**.
+Параметры `install.ps1`:
 
-На этой машине манифест уже установлен в
-`%APPDATA%\Autodesk\Revit\Addins\2024\FamilyVersionStamp.addin`.
-
-Перенос на другую машину: склонировать репозиторий, выполнить
-`install.ps1` (с нужным `-RevitVersion`, если там не 2024) — DLL при
-необходимости соберётся сама, путь в манифесте пропишется под этот
-компьютер автоматически.
-
-Чтобы отключить — удалить `.addin`-файл из папки Addins (сама DLL и
-исходники в репозитории не мешают).
+```powershell
+./install.ps1                      # автоопределение всех версий Revit
+./install.ps1 -RevitVersion 2025   # только для одной версии
+./install.ps1 -AllUsers            # в %ProgramData% (нужны права администратора)
+```
 
 ## Ограничения / допущения
 
