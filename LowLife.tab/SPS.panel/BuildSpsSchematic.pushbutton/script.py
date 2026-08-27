@@ -381,18 +381,32 @@ room_counters = {"already_set": 0, "looked_up": 0, "not_found": 0}
 sync_stats = {}
 
 with revit.Transaction(u"Sync SPS Schematic"):
+    # Сначала помещения — сразу для ВСЕЙ выборки (все устройства, кроме
+    # ушедших в ветки изоляторов — им помещение не нужно, они не в общей
+    # раскладке), одним проходом, а не по одному внутри группировки по
+    # этажам. Расстановка (level_room_groups/sync_levels) идёт уже по
+    # готовым значениям.
+    room_value_by_id = {}
+
+    for el in elements:
+        if el.Id.IntegerValue in branch_device_ids:
+            continue
+        room_value_by_id[el.Id.IntegerValue] = resolve_room_value(doc, el, room_counters)
+
+    _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
+
     level_room_groups = OrderedDict()
 
     for level_name in level_order:
         room_groups = OrderedDict()
 
         for el in level_groups[level_name]["elements"]:
-            if el.Id.IntegerValue in branch_device_ids:
+            if el.Id.IntegerValue not in room_value_by_id:
                 # Идёт в ряд-спутник своего изолятора (sync_isolator_satellites
                 # ниже), не в обычную раскладку по помещению.
                 continue
 
-            room_value = resolve_room_value(doc, el, room_counters)
+            room_value = room_value_by_id[el.Id.IntegerValue]
             room_key = room_value if room_value else u"(пусто)"
 
             if room_key not in room_groups:
@@ -401,7 +415,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
         level_room_groups[level_name] = room_groups
 
-    _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
+    _mark(u"Раскладка по этажам (level_room_groups)")
 
     if is_new_view:
         view = ViewDrafting.Create(doc, drafting_type_id)

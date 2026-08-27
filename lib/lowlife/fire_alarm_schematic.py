@@ -71,7 +71,7 @@ SATELLITE_EXTRA_BOTTOM_MM (см. подробности отступов в ко
 
 from lowlife.sot_schematic import (
     draw_segment, delete_elements, MM_TO_FT, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM,
-    LEVEL_SEPARATOR_OFFSET_MM, _place_room_group, flush_text_corrections
+    LEVEL_SEPARATOR_OFFSET_MM, _place_room_group
 )
 
 # Зазор между линиями кольца "туда"/"обратно" (см. докстринг модуля).
@@ -298,13 +298,6 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
     new_ids = []
     row_offset_ft = SATELLITE_ROW_OFFSET_MM * MM_TO_FT
 
-    # Центрирование текста всех веток за этот вызов копится сюда и
-    # разбирается одним общим Regenerate() в конце (см. докстринг
-    # sot_schematic.flush_text_corrections) — иначе каждая ветка (в
-    # _place_room_group) тянула бы свой собственный Regenerate(), а их
-    # может быть много (по одной на изолятор с ответвлением).
-    pending_text = []
-
     for isolator_uid, devices in isolator_branches.items():
         if not devices:
             continue
@@ -334,7 +327,7 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
         room_record, _report_rows = _place_room_group(
             doc, view, isolator_x, u"↳", valid_devices, room_param_name,
             address_param_name, device_uid_param_name, annotation_symbol,
-            label_offset_mm, satellite_y, pending=pending_text
+            label_offset_mm, satellite_y
         )
 
         new_ids.extend(room_record.get("line_ids", []))
@@ -345,7 +338,5 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
                 new_ids.append(dev["instance_id"])
             if dev.get("tag_id") is not None:
                 new_ids.append(dev["tag_id"])
-
-    flush_text_corrections(doc, view, pending_text)
 
     return new_ids
