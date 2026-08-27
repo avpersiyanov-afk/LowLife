@@ -211,14 +211,21 @@ def panel_matches(panel, workset_param_name, workset_filter_key, norm_fn):
 def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
                                   circuit_panel_param, excluded_device_keywords, norm_fn):
     """
-    [(panel_element, [device_element, ...]), ...] — те же целевые панели и
-    то же правило "устройство цепи" (первое неисключённое, кроме самой
-    панели), что и в SyncCircuitsAndLengths.pushbutton — вынесено сюда,
-    чтобы структурная схема (BuildScsSchematic) не дублировала этот
-    поиск заново. SyncCircuitsAndLengths намеренно не переведён на эту
-    функцию — рабочий код, трогать без необходимости не стоит.
-
-    Панели без ни одного подходящего устройства в результат не попадают.
+    (panel_devices, trunk_links):
+    - panel_devices — [(panel_element, [device_element, ...]), ...] — те же
+      целевые панели и то же правило "устройство цепи" (первое
+      неисключённое, кроме самой панели), что и в
+      SyncCircuitsAndLengths.pushbutton — вынесено сюда, чтобы структурная
+      схема (BuildScsSchematic) не дублировала этот поиск заново.
+      SyncCircuitsAndLengths намеренно не переведён на эту функцию —
+      рабочий код, трогать без необходимости не стоит. Панели без ни
+      одного подходящего устройства в этот список не попадают.
+    - trunk_links — [(panel_a, panel_b), ...] — цепи, у которых "устройство"
+      цепи само оказалось целевой панелью (например магистраль/оптическая
+      линия между двумя шкафами) — такие цепи в panel_devices НЕ попадают
+      (шкаф на схеме — не рядовое устройство своего соседа), каждая пара
+      панелей встречается не больше одного раза (по возрастанию Id, не
+      важно, с чьей стороны цепь была найдена).
     """
     from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
 
@@ -228,6 +235,7 @@ def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
         .ToElements()
 
     target_panels = [p for p in all_panels if panel_matches(p, workset_param_name, workset_filter_key, norm_fn)]
+    target_panel_ids = set(p.Id.IntegerValue for p in target_panels)
 
     all_circuits = FilteredElementCollector(doc) \
         .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
@@ -243,6 +251,9 @@ def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
             circuits_by_panel_name.setdefault(panel_name, []).append(c)
 
     result = []
+    trunk_links = []
+    seen_trunk_pairs = set()
+
     for panel in target_panels:
         panel_name = norm_fn(panel.Name)
         devices = []
@@ -253,14 +264,25 @@ def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
             except:
                 continue
 
-            normal_devs = [d for d in raw_devs if not is_excluded_device(d, excluded_device_keywords)]
+            trunk_devs = [d for d in raw_devs if d.Id.IntegerValue in target_panel_ids]
+            normal_devs = [
+                d for d in raw_devs
+                if d.Id.IntegerValue not in target_panel_ids and not is_excluded_device(d, excluded_device_keywords)
+            ]
+
+            for other_panel in trunk_devs:
+                pair_key = tuple(sorted((panel.Id.IntegerValue, other_panel.Id.IntegerValue)))
+                if pair_key not in seen_trunk_pairs:
+                    seen_trunk_pairs.add(pair_key)
+                    trunk_links.append((panel, other_panel))
+
             if normal_devs:
                 devices.append(normal_devs[0])
 
         if devices:
             result.append((panel, devices))
 
-    return result
+    return result, trunk_links
 
 
 def clear_stray_address_params(doc, param_names, allowed_type_ids,

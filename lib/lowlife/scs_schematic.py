@@ -72,6 +72,15 @@ _PANEL_COLOR_VALUE = 0.85
 
 _LINE_STYLE_PREFIX = u"СКС схема — "
 
+# Магистральные линии шкаф-шкаф (например оптическая связь между
+# панелями) рисуются отдельно от обычных шин розеток — не участвуют в
+# автогенерации цвета по panel_color_rgb (не связаны с конкретной
+# "одной" панелью — соединяют две), поэтому у них один общий,
+# фиксированный стиль/цвет, гарантированно не совпадающий ни с одним
+# автогенерируемым цветом панели (HSV-круг никогда не даёт чистый серый).
+TRUNK_LINE_STYLE_NAME = _LINE_STYLE_PREFIX + u"Магистраль"
+TRUNK_COLOR_RGB = (90, 90, 90)
+
 
 def panel_riser_x(panel_index):
     """
@@ -254,5 +263,48 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
                 _set_style(elem, style)
+
+    return new_ids
+
+
+def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links):
+    """
+    Прямая линия между узлами двух панелей на схеме — для магистральных
+    связей шкаф-шкаф (например оптическая линия между двумя шкафами),
+    которые не проходят через устройства и не принадлежат одной панели
+    (поэтому не красятся в цвет какой-то одной панели, см.
+    TRUNK_COLOR_RGB). Обе панели должны быть уже размещены на схеме
+    (см. _iter_state_devices(new_state)) — иначе пара пропускается.
+
+    trunk_links — [(panel_uid_a, panel_uid_b), ...] (см.
+    scs.collect_target_panel_devices).
+    old_trunk_line_ids — [line_id, ...] из состояния предыдущего запуска.
+
+    Как и шины (sync_panel_buses), эти линии не диффятся — полностью
+    удаляются и рисуются заново на каждом запуске.
+
+    Возвращает [line_id, ...] для сохранения в state.
+    """
+    from lowlife.sot_schematic import draw_segment, delete_elements, _iter_state_devices
+
+    delete_elements(doc, old_trunk_line_ids)
+
+    if not trunk_links:
+        return []
+
+    device_by_uid = dict((uid, (x, y)) for uid, x, y, _iid in _iter_state_devices(new_state))
+    style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB)
+
+    new_ids = []
+    for panel_uid_a, panel_uid_b in trunk_links:
+        point_a = device_by_uid.get(panel_uid_a)
+        point_b = device_by_uid.get(panel_uid_b)
+        if point_a is None or point_b is None:
+            continue
+
+        elem = draw_segment(doc, view, point_a[0], point_a[1], point_b[0], point_b[1])
+        if elem is not None:
+            new_ids.append(elem.Id.IntegerValue)
+            _set_style(elem, style)
 
     return new_ids

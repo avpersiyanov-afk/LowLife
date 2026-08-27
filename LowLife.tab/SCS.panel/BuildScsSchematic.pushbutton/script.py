@@ -18,6 +18,10 @@ __doc__ = (
     "к какому шкафу идёт. Показаны только розетка и панель, без "
     "промежуточных узлов трассы (без стояков/узлов маршрута из «Адреса "
     "узлов»).\n\n"
+    "Магистральные связи шкаф-шкаф (цепь, у которой вместо устройства "
+    "оказалась другая целевая панель — например оптическая линия между "
+    "двумя шкафами) рисуются отдельными прямыми линиями между узлами "
+    "этих панелей на схеме, своим цветом, не через шину устройств.\n\n"
     "Повторный запуск не пересоздаёт схему с нуля: обновляется вид с именем "
     "из настроек, раскладка предыдущего запуска хранится в служебном "
     "параметре этого вида — трогаются (двигаются/перерисовываются) только "
@@ -51,7 +55,9 @@ from lowlife.scs_settings import (
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
-from lowlife.scs_schematic import sync_panel_buses, BUS_DROP_OFFSET_MM, BUS_DROP_SPACING_MM
+from lowlife.scs_schematic import (
+    sync_panel_buses, sync_trunk_links, BUS_DROP_OFFSET_MM, BUS_DROP_SPACING_MM
+)
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 
@@ -144,7 +150,7 @@ def category_for_device(el):
 # АВТОСБОР УСТРОЙСТВ И ПАНЕЛЕЙ (те же критерии, что «Расчёт длины цепи»)
 # ------------------------------------------------------------
 
-panel_devices = collect_target_panel_devices(
+panel_devices, trunk_links = collect_target_panel_devices(
     doc, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, CIRCUIT_PANEL_PARAM,
     EXCLUDED_DEVICE_KEYWORDS, norm
 )
@@ -157,7 +163,23 @@ if not panel_devices:
         exitscript=True
     )
 
-panel_devices.sort(key=lambda pd: norm(pd[0].Name) or u"")
+# Магистральные связи шкаф-шкаф (например оптическая линия между двумя
+# панелями) — цепь, где вместо устройства оказалась другая целевая
+# панель. Рисуются отдельными линиями (sync_trunk_links), не через
+# обычную шину устройств. Панель, у которой из подключений есть только
+# такие магистрали (без единого обычного устройства), в panel_devices не
+# попадает вовсе (collect_target_panel_devices пропускает панели без
+# устройств) — добавляем её отдельно, с пустым списком устройств, иначе
+# она не окажется на схеме и магистраль до неё не от чего будет вести.
+panel_devices_by_uid = dict((p.UniqueId, (p, devs)) for p, devs in panel_devices)
+for a, b in trunk_links:
+    for p in (a, b):
+        if p.UniqueId not in panel_devices_by_uid:
+            panel_devices_by_uid[p.UniqueId] = (p, [])
+
+panel_devices = sorted(panel_devices_by_uid.values(), key=lambda pd: norm(pd[0].Name) or u"")
+
+trunk_link_uids = [(a.UniqueId, b.UniqueId) for a, b in trunk_links]
 
 elements = []
 seen_ids = set()
@@ -332,6 +354,11 @@ with revit.Transaction(u"Sync SCS Schematic"):
         doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids, panel_names
     )
 
+    old_trunk_line_ids = list(previous_state.get("trunk_line_ids", []))
+    new_state["trunk_line_ids"] = sync_trunk_links(
+        doc, view, new_state, old_trunk_line_ids, trunk_link_uids
+    )
+
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
 
 
@@ -353,6 +380,10 @@ if not state_saved:
 output.print_md(u"Панелей на схеме: **{}**, линий шины нарисовано: **{}**".format(
     len(panels_order), len(new_state["bus_line_ids"])
 ))
+if trunk_link_uids:
+    output.print_md(u"Магистральных связей шкаф-шкаф: **{}**, линий нарисовано: **{}**".format(
+        len(trunk_link_uids), len(new_state["trunk_line_ids"])
+    ))
 
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
     u"Вид создан заново" if is_new_view else u"Вид обновлён",
