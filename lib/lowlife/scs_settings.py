@@ -177,18 +177,20 @@ TYPE_FIELDS = [
         (BuiltInCategory.OST_DetailComponentTags,)),
 ]
 
-# Категории реальных устройств СКС для схемы (розетки/шкафы/панели —
-# то же, что уже ищет collect_target_panel_devices/PARAM_SPECS для
-# устройств и панелей) — источник списка "реальные типы этой категории"
-# в таблице категорий структурной схемы (rebuild_category_type_pickers).
+# Категории реальных устройств/панелей СКС для схемы — только устройства
+# связи и электрооборудование (панели/шкафы), а не весь набор
+# CAT_DEVICES_AND_PANELS из scs_parameters.py (тот шире — используется
+# для привязки параметров, где лишняя категория не мешает; здесь же это
+# список выбора в пикере "реальные типы этой категории", и лишние
+# категории только засоряли бы его типами, не относящимися к СКС).
+# Источник списка — в таблице категорий структурной схемы
+# (rebuild_category_type_pickers).
 SCHEMATIC_SOURCE_CATEGORIES = (
     BuiltInCategory.OST_CommunicationDevices,
-    BuiltInCategory.OST_ElectricalFixtures,
-    BuiltInCategory.OST_DataDevices,
     BuiltInCategory.OST_ElectricalEquipment,
 )
 
-# Категория схемных семейств (детализация) — та же, что у СОТ/СКУД.
+# Категория схемных семейств (элементы узлов/детализация) — та же, что у СОТ/СКУД.
 SCHEMATIC_CATEGORIES = (BuiltInCategory.OST_DetailComponents,)
 
 # {имя_категории: "id_типа"} — схемное семейство для категории.
@@ -777,7 +779,7 @@ def show_settings_form(doc, values):
                 schematic_categories = list(SCHEMATIC_CATEGORIES)
                 symbols = list_symbols_by_categories(doc, schematic_categories)
                 if not symbols:
-                    forms.alert(u"В проекте нет типов категории «Компоненты оформления».")
+                    forms.alert(u"В проекте нет типов категории «Элементы узлов».")
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
