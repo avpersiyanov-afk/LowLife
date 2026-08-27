@@ -12,16 +12,22 @@ _node_bottom_y и т.д. Уровни (sot_levels.py) и хранение рас
 (sot_layout_state.py) — тоже полностью общие модули, тоже импортируются
 как есть.
 
-Единственное, чего нет у СОТ и что нужно СКС — несколько НЕЗАВИСИМЫХ шин
-вместо одной общей: на этаже может быть несколько панелей (шкафов/патч-
-панелей), и каждая собирает линиями только СВОИ устройства, со своим
-стояком. sync_cable_connections (СОТ) рисует ровно одну такую шину на всю
-схему — sync_panel_buses ниже делает то же самое в цикле, по одной шине
-на панель, с разным X стояка, чтобы они не накладывались друг на друга.
+Чего нет у СОТ и что нужно СКС — несколько панелей (шкафов/патч-панелей)
+на одной схеме. Топология НЕ "N независимых шин" (была так в первой
+версии) — по требованию пользователя: на каждом этаже один ОБЩИЙ
+горизонтальный коллектор, к которому отростками собираются ВСЕ
+устройства этажа, независимо от того, к какой панели они идут (это
+имитирует физику — на этаже кабели разных панелей часто идут в одном
+лотке). Расходятся линии только в стояке — слева от рамок помещений,
+по одной отдельной вертикальной линии на каждую панель. Коллектор
+конкретного этажа дотягивается по X только до тех стояковых линий,
+чьи панели реально имеют устройство на этом этаже — поэтому этаж с
+одной панелью визуально даёт один отрезок до одного стояка, а этаж с
+двумя панелями — коллектор, дотянутый сразу до двух стояковых линий.
 """
 
 # lowlife.sot_schematic импортирует Autodesk.Revit.DB на уровне модуля —
-# импортируем его функции ЛЕНИВО, внутри sync_panel_buses, а не здесь
+# импортируем его функции ЛЕНИВО, внутри sync_shared_bus, а не здесь
 # наверху (тот же приём, что и в scs.py:get_workset_name), чтобы
 # panel_riser_x (чистая функция, без Revit API) можно было тестировать
 # вне Revit — см. tests/test_scs_schematic.py.
@@ -33,7 +39,7 @@ MM_TO_FT = 1.0 / 304.8
 # расстоянии левее рамок помещений — так же, как единственный стояк у СОТ.
 RISER_SPACING_MM = 300.0
 
-# Насколько ниже узлов проходит горизонтальный коллектор панели —
+# Насколько ниже узлов проходит общий горизонтальный коллектор этажа —
 # то же значение и тот же смысл, что CABLE_DROP_OFFSET_MM у СОТ.
 BUS_DROP_OFFSET_MM = 15.0
 
@@ -48,13 +54,18 @@ def panel_riser_x(panel_index):
     return -(panel_index + 1) * RISER_SPACING_MM * MM_TO_FT
 
 
-def sync_panel_buses(doc, view, new_state, old_bus_line_ids_by_panel, panels_order,
-                      panel_device_uids, drop_offset_mm=BUS_DROP_OFFSET_MM):
+def sync_shared_bus(doc, view, new_state, old_bus_line_ids, panels_order,
+                     panel_device_uids, drop_offset_mm=BUS_DROP_OFFSET_MM):
     """
-    Рисует по одной независимой шине (коллектор на каждый этаж + свой
-    отвод от каждого устройства + один стояк через все этажи) на каждую
-    панель — обобщение sot_schematic.sync_cable_connections на N панелей
-    вместо одного шкафа на всю схему.
+    Рисует общую шину: один горизонтальный коллектор на этаж (все
+    устройства этажа — общие отростки на одну линию) + по одной отдельной
+    вертикальной линии-стояку на каждую панель (свой X — panel_riser_x).
+    Коллектор этажа дотягивается по X до стояка каждой панели, у которой
+    есть хоть одно устройство на этом этаже — так что этаж с одной
+    панелью визуально даёт один отрезок до одного стояка, а этаж с
+    несколькими панелями — коллектор, дотянутый сразу до нескольких
+    стояковых линий. Стояк каждой панели, в свою очередь, тянется по Y
+    только через те этажи, где у неё реально есть устройства.
 
     panels_order — [panel_uid, ...], уже в нужном порядке отрисовки
     (например по имени панели) — определяет X стояка каждой панели
@@ -62,75 +73,77 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids_by_panel, panels_ord
     панелей не меняется.
     panel_device_uids — {panel_uid: set([device_uid, ...])} — устройства
     этой панели (её собственный uid тоже должен быть в своём множестве,
-    чтобы шина дотянулась до самого узла панели на схеме).
-    old_bus_line_ids_by_panel — {panel_uid: [line_id, ...]} из состояния
-    предыдущего запуска (для панелей, которых в этот раз нет — всё равно
-    будут удалены).
+    чтобы стояк дотянулся до самого узла панели на схеме).
+    old_bus_line_ids — [line_id, ...] из состояния предыдущего запуска.
 
     Как и у СОТ, эти линии не диффятся — полностью удаляются и рисуются
     заново на каждом запуске (они целиком выводятся из уже посчитанных
     sync_levels позиций узлов, диффить их незачем — см. docstring
     sot_schematic.sync_cable_connections).
 
-    Возвращает {panel_uid: [line_id, ...]} для сохранения в state.
+    Возвращает [line_id, ...] для сохранения в state.
     """
     from lowlife.sot_schematic import draw_segment, delete_elements, _iter_state_devices, _node_bottom_y
 
-    all_old_ids = []
-    for ids in old_bus_line_ids_by_panel.values():
-        all_old_ids.extend(ids)
-    delete_elements(doc, all_old_ids)
+    delete_elements(doc, old_bus_line_ids)
 
     all_devices = list(_iter_state_devices(new_state))
-    device_by_uid = dict((uid, (x, y, instance_id)) for uid, x, y, instance_id in all_devices)
+    if not all_devices:
+        return []
+
+    # uid -> множество панелей, которым принадлежит устройство (обычно
+    # ровно одна — но защищаемся от совпадения на случай, если одно и то
+    # же устройство почему-то попало в цепи двух панелей).
+    panels_by_device_uid = {}
+    for panel_uid, member_uids in panel_device_uids.items():
+        for uid in member_uids:
+            panels_by_device_uid.setdefault(uid, set()).add(panel_uid)
+
+    riser_x_by_panel = dict((panel_uid, panel_riser_x(i)) for i, panel_uid in enumerate(panels_order))
 
     drop_offset = drop_offset_mm * MM_TO_FT
-    result = {}
 
-    for index, panel_uid in enumerate(panels_order):
-        member_uids = panel_device_uids.get(panel_uid) or set()
-        members = [
-            (uid, x, y, instance_id)
-            for uid, (x, y, instance_id) in device_by_uid.items()
-            if uid in member_uids
-        ]
+    by_level_y = {}
+    for uid, x, y, instance_id in all_devices:
+        by_level_y.setdefault(y, []).append((uid, x, instance_id))
 
-        if not members:
-            result[panel_uid] = []
+    new_ids = []
+    riser_collector_ys = dict((panel_uid, []) for panel_uid in panels_order)
+
+    for level_y, entries in by_level_y.items():
+        collector_y = level_y - drop_offset
+
+        panels_on_floor = set()
+        for uid, _x, _iid in entries:
+            panels_on_floor |= panels_by_device_uid.get(uid, set())
+
+        riser_xs_needed = [riser_x_by_panel[p] for p in panels_on_floor if p in riser_x_by_panel]
+        xs = [x for _uid, x, _iid in entries] + riser_xs_needed
+
+        if not xs:
             continue
 
-        riser_x = panel_riser_x(index)
+        elem = draw_segment(doc, view, min(xs), collector_y, max(xs), collector_y)
+        if elem is not None:
+            new_ids.append(elem.Id.IntegerValue)
 
-        by_level_y = {}
-        for uid, x, y, instance_id in members:
-            by_level_y.setdefault(y, []).append((x, instance_id))
-
-        new_ids = []
-        collector_ys = []
-
-        for level_y, x_instance_list in by_level_y.items():
-            collector_y = level_y - drop_offset
-            collector_ys.append(collector_y)
-
-            xs = [x for x, _iid in x_instance_list]
-            x_min = min(xs + [riser_x])
-            x_max = max(xs + [riser_x])
-
-            elem = draw_segment(doc, view, x_min, collector_y, x_max, collector_y)
+        for uid, x, instance_id in entries:
+            drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
+            elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
 
-            for x, instance_id in x_instance_list:
-                drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
-                elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
-                if elem is not None:
-                    new_ids.append(elem.Id.IntegerValue)
+        for p in panels_on_floor:
+            if p in riser_collector_ys:
+                riser_collector_ys[p].append(collector_y)
 
-        if collector_ys:
-            elem = draw_segment(doc, view, riser_x, min(collector_ys), riser_x, max(collector_ys))
-            if elem is not None:
-                new_ids.append(elem.Id.IntegerValue)
+    for panel_uid in panels_order:
+        ys = riser_collector_ys.get(panel_uid) or []
+        if not ys:
+            continue
+        riser_x = riser_x_by_panel[panel_uid]
+        elem = draw_segment(doc, view, riser_x, min(ys), riser_x, max(ys))
+        if elem is not None:
+            new_ids.append(elem.Id.IntegerValue)
 
-        result[panel_uid] = new_ids
-
-    return result
+    return new_ids

@@ -7,15 +7,20 @@ __doc__ = (
     "по отметке: отрицательные — внизу схемы, глубже — ниже; положительные "
     "— выше, чем больше отметка) и по помещению — рамки и раскладка "
     "устроены так же, как у структурной схемы СОТ.\n\n"
-    "На одном этаже может быть несколько панелей (шкафов/патч-панелей) — "
-    "каждая получает свою независимую шину: свой горизонтальный коллектор "
-    "на каждом этаже со своими устройствами, свой вертикальный стояк слева "
-    "от рамок. Показаны только розетка и панель, без промежуточных узлов "
-    "трассы (без стояков/узлов маршрута из «Адреса узлов»).\n\n"
+    "На каждом этаже — один общий горизонтальный коллектор, к которому "
+    "отростками собираются ВСЕ устройства этажа независимо от того, к "
+    "какой панели они идут. Расходятся линии только в стояке слева от "
+    "рамок — там у каждой панели (шкафа/патч-панели) своя отдельная "
+    "вертикальная линия; коллектор конкретного этажа дотягивается по X "
+    "только до стояков тех панелей, у которых есть устройство на этом "
+    "этаже (этаж с одной панелью — один отрезок до одного стояка, этаж с "
+    "несколькими — коллектор, дотянутый сразу до нескольких стояков). "
+    "Показаны только розетка и панель, без промежуточных узлов трассы "
+    "(без стояков/узлов маршрута из «Адреса узлов»).\n\n"
     "Повторный запуск не пересоздаёт схему с нуля: обновляется вид с именем "
     "из настроек, раскладка предыдущего запуска хранится в служебном "
     "параметре этого вида — трогаются (двигаются/перерисовываются) только "
-    "этаж/помещение/устройство, где реально что-то изменилось. Линии шин "
+    "этаж/помещение/устройство, где реально что-то изменилось. Линии шины "
     "не редактируются вручную — перерисовываются заново на каждом запуске."
 )
 __author__ = "Pipers"
@@ -45,7 +50,7 @@ from lowlife.scs_settings import (
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels
-from lowlife.scs_schematic import sync_panel_buses
+from lowlife.scs_schematic import sync_shared_bus
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 
@@ -295,9 +300,9 @@ with revit.Transaction(u"Sync SCS Schematic"):
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
     )
 
-    old_bus_line_ids_by_panel = previous_state.get("panel_bus_line_ids", {})
-    new_state["panel_bus_line_ids"] = sync_panel_buses(
-        doc, view, new_state, old_bus_line_ids_by_panel, panels_order, panel_device_uids
+    old_bus_line_ids = previous_state.get("bus_line_ids", [])
+    new_state["bus_line_ids"] = sync_shared_bus(
+        doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids
     )
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
@@ -318,9 +323,8 @@ if not state_saved:
         u"(дублирование).".format(LAYOUT_PARAM_NAME, state_save_error)
     )
 
-total_bus_lines = sum(len(ids) for ids in new_state["panel_bus_line_ids"].values())
-output.print_md(u"Панелей на схеме: **{}**, линий шин нарисовано: **{}**".format(
-    len(panels_order), total_bus_lines
+output.print_md(u"Панелей на схеме: **{}**, линий шины нарисовано: **{}**".format(
+    len(panels_order), len(new_state["bus_line_ids"])
 ))
 
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
