@@ -27,16 +27,19 @@ __doc__ = (
     "вручную — на каждом запуске перерисовываются заново по актуальным "
     "позициям.\n\n"
     "Кроме этого, для каждого шлейфа (адрес устройства «панель.шлейф.номер») "
-    "рисуется кольцевой шлейф: на каждом этаже, где есть устройства этого "
-    "шлейфа (включая панель, если она там же), — один горизонтальный "
-    "отрезок на высоте самих узлов (проходит через них, без отхода вниз); "
-    "если шлейф затрагивает больше одного этажа — их отрезки соединяются "
-    "одним общим стояком слева от рамок этажей, и связь панель-стояк тоже "
-    "идёт горизонтально по этажу панели. Кольцевой интерфейс идёт «туда» и "
-    "«обратно» по одному и тому же маршруту, поэтому вся структура (этажные "
-    "отрезки + стояк) рисуется в два прохода со сдвигом 3 мм между ними. "
-    "Шлейф без панели среди узлов схемы (панель не сопоставлена ни одной "
-    "категории в настройках) рисуется без замыкания на неё.\n\n"
+    "рисуется кольцевой шлейф: внутри каждого помещения, где есть устройства "
+    "этого шлейфа (включая панель, если она там же), — один отрезок на "
+    "высоте самих узлов, проходящий через них (без отхода вниз). Переход в "
+    "ЛЮБОЕ другое помещение — хоть соседнее, хоть на другом этаже — только "
+    "через один общий стояк слева от рамок этажей, никогда напрямую между "
+    "помещениями (иначе линия резала бы чужие рамки, оказавшиеся между "
+    "ними): от края помещения к стояку идёт короткий спуск в свободный "
+    "зазор под рамкой, а не по прямой через чужие помещения. Кольцевой "
+    "интерфейс идёт «туда» и «обратно» по одному и тому же маршруту, "
+    "поэтому вся структура (отрезки внутри помещений + спуски + стояк) "
+    "рисуется в два прохода со сдвигом 3 мм между ними. Шлейф без панели "
+    "среди узлов схемы (панель не сопоставлена ни одной категории в "
+    "настройках) рисуется без замыкания на неё.\n\n"
     "Изолятор стоит на магистрали как обычное устройство, а устройства, "
     "подключённые к нему (его ответвление — назад к магистрали не "
     "возвращается), рисуются отдельной линией со сдвигом по Y от точки "
@@ -82,7 +85,7 @@ from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop, is_isolator
 from lowlife.fire_alarm_circuits import isolator_branch_device_map
-from lowlife.fire_alarm_schematic import sync_loop_connections, node_points_from_state
+from lowlife.fire_alarm_schematic import sync_loop_connections, node_placement_from_state
 
 fire_alarm_settings.set_system("SPS")
 
@@ -412,9 +415,9 @@ with revit.Transaction(u"Sync SPS Schematic"):
     # sync_loop_connections вызывается всегда (даже при выключенном
     # DRAW_LOOP_LINES, с пустым loops_for_drawing) — иначе линии, оставшиеся
     # от предыдущего запуска с включённым флагом, не удалились бы.
-    node_points = node_points_from_state(new_state) if DRAW_LOOP_LINES else {}
+    node_placement = node_placement_from_state(new_state) if DRAW_LOOP_LINES else {}
     old_loop_line_ids = previous_state.get("loop_line_ids", [])
-    new_state["loop_line_ids"] = sync_loop_connections(doc, view, old_loop_line_ids, loops_for_drawing, node_points)
+    new_state["loop_line_ids"] = sync_loop_connections(doc, view, old_loop_line_ids, loops_for_drawing, node_placement)
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
 

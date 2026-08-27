@@ -2,26 +2,34 @@
 """
 Кольцевой шлейф СПС на структурной схеме.
 
-В отличие от sot_schematic.sync_cable_connections (общий шкаф СОТ/СПС —
-топология "шина", коллектор ниже узлов + один стояк): здесь линия идёт
-ЧЕРЕЗ фактические точки узлов кольца на этаже (на их высоте, без отхода
-вниз) — один горизонтальный отрезок на этаж, от стояка (если кольцо
-затрагивает больше одного этажа) до крайнего узла кольца на этом этаже.
-Переход между этажами — через один общий стояк на кольцо (слева от рамок
-этажей, как и в sync_cable_connections). Панель — такой же узел на
-коллекторе своего этажа: линия до стояка от неё идёт горизонтально по
-этому этажу, а не отдельным наклонным отрезком.
+Внутри одного помещения — прямая линия через фактические точки узлов
+этого кольца в этом помещении (на их высоте, без отхода вниз). Переход
+в ЛЮБОЕ другое помещение — хоть соседнее, хоть на другом этаже — только
+через один общий стояк на кольцо (слева от рамок этажей), никогда
+напрямую между помещениями: иначе между ними на схеме почти всегда
+оказываются чужие рамки/помещения (раскладка идёт по номеру помещения,
+не по шлейфу), и прямая линия резала бы их насквозь (см. sync_cable_connections
+— тот же приём для одного общего шкафа СОТ/СПС, но там достаточно одного
+коллектора без деления по помещениям).
 
-Поскольку кольцевой интерфейс идёт "туда" и "обратно" по одному и тому же
-физическому маршруту, вся структура (коллекторы всех этажей + стояк)
-рисуется дважды — второй проход сдвинут на LOOP_LINE_GAP_MM (3 мм: по Y у
-горизонтальных коллекторов, по X у стояка), чтобы "туда"/"обратно"
-читались как два отдельных провода, а не одна линия.
+Раз связи "помещение -> стояк" всё равно неизбежно нужно как-то миновать
+чужие рамки, которые могут стоять между этим помещением и стояком (тот
+всегда слева от group_left=0, то есть левее ЛЮБОГО помещения в ряду
+этажа) — этот короткий участок уходит в свободный зазор под рамкой
+(LOOP_ROOM_DROP_OFFSET_MM ниже узлов, между нижней линией рамки
+помещения и разделителем этажей — то же место, что использует
+sync_cable_connections), а не идёт по прямой на высоте узлов.
 
-Координаты панели/устройств берутся из уже размещённых на схеме
-экземпляров схемных семейств — эта функция вызывается ПОСЛЕ
+Поскольку кольцевой интерфейс идёт "туда" и "обратно" по одному и тому
+же физическому маршруту, вся структура (линии внутри помещений, спуски к
+стояку и сам стояк) рисуется дважды — второй проход сдвинут на
+LOOP_LINE_GAP_MM (3 мм), чтобы "туда"/"обратно" читались как два
+отдельных провода, а не одна линия.
+
+Координаты и помещение/этаж каждого узла берутся из уже размещённых на
+схеме экземпляров схемных семейств — эта функция вызывается ПОСЛЕ
 sot_schematic.sync_levels, когда все узлы уже стоят на месте (см.
-node_points_from_state).
+node_placement_from_state).
 
 Изоляторы (ответвители) и их ответвления
 -----------------------------------------
@@ -38,13 +46,22 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 Чтобы ответвление визуально читалось как ответвление, а не продолжение
 магистрали, от изолятора линия сначала идёт коротким изломом по Y
 (BRANCH_Y_OFFSET_MM) и только потом — к первому устройству ветви и далее
-по её устройствам (прямыми отрезками, без возврата).
+по её устройствам (прямыми отрезками, без возврата). Ответвления обычно
+локальные (в пределах того же помещения, что и изолятор), поэтому для
+них правило "только через стояк" не применяется.
 """
 
 from lowlife.sot_schematic import draw_segment, delete_elements, MM_TO_FT
 
 # Зазор между линиями кольца "туда"/"обратно" (см. докстринг модуля).
 LOOP_LINE_GAP_MM = 3.0
+
+# Насколько ниже узлов проходит участок "помещение -> стояк" — тот же
+# свободный зазор (между нижней линией рамки помещения и разделителем
+# этажей), что использует sync_cable_connections, но отдельная константа
+# — обе линии на одной схеме не пересекаются одновременно с одним и тем
+# же view, но должны остаться независимо настраиваемыми.
+LOOP_ROOM_DROP_OFFSET_MM = 15.0
 
 # X первого стояка кольца — левее рамок этажей (третья/крайняя левая
 # линия рамки уровня в sot_schematic сидит на -35мм от group_left=0, см.
@@ -59,23 +76,24 @@ LOOP_RISER_SPACING_MM = 30.0
 BRANCH_Y_OFFSET_MM = 8.0
 
 
-def node_points_from_state(state):
+def node_placement_from_state(state):
     """
-    {UniqueId реального устройства: (x, y)} — фактические координаты уже
-    размещённых на схеме узлов (и устройств, и панелей — панель это тоже
-    узел категории "Электрооборудование", если для неё выбран схемный тип
-    в настройках), по итоговому state sot_schematic.sync_levels.
+    {UniqueId реального устройства: (x, y, level_key, room_key)} —
+    фактические координаты И помещение/этаж уже размещённых на схеме
+    узлов (и устройств, и панелей — панель это тоже узел категории
+    "Электрооборудование", если для неё выбран схемный тип в настройках),
+    по итоговому state sot_schematic.sync_levels.
     """
-    points = {}
-    for level_record in state.get("levels", {}).values():
+    result = {}
+    for level_key, level_record in state.get("levels", {}).items():
         y = level_record.get("y", 0.0)
-        for room_record in level_record.get("rooms", {}).values():
+        for room_key, room_record in level_record.get("rooms", {}).items():
             for uid, dev in room_record.get("devices", {}).items():
-                points[uid] = (dev.get("x", 0.0), y)
-    return points
+                result[uid] = (dev.get("x", 0.0), y, level_key, room_key)
+    return result
 
 
-def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_point_by_uid):
+def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_placement_by_uid):
     """
     Перерисовывает кольцевые шлейфы заново (как и sync_cable_connections —
     эти линии не редактируются вручную, поэтому диффинг не нужен: старые
@@ -85,21 +103,22 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_point_by_uid
     loops — список колец: [{"panel_uid": uid_или_None, "device_uids":
     [uid, ...], "branches": {isolator_uid: [uid, ...]}}, ...].
     device_uids — основная магистраль (порядок не важен для отрисовки —
-    коллектор проходит через все точки этажа разом), БЕЗ устройств,
+    внутри помещения линия проходит через все точки разом), БЕЗ устройств,
     ушедших на ветви (те перечислены в "branches"). "branches" —
     необязательный ключ; каждая запись — {UniqueId изолятора: [UniqueId
     устройств его ветви, в порядке обхода]} (см.
     fire_alarm_circuits.isolator_branch_device_map) — изолятор при этом
     сам остаётся в device_uids (магистраль идёт через него).
 
-    node_point_by_uid — {UniqueId: (x, y)} фактических координат узлов на
-    схеме (см. node_points_from_state).
+    node_placement_by_uid — {UniqueId: (x, y, level_key, room_key)}
+    фактического положения узлов на схеме (см. node_placement_from_state).
 
     Возвращает новый список id линий (для state).
     """
     delete_elements(doc, old_loop_line_ids)
 
     gap_ft = LOOP_LINE_GAP_MM * MM_TO_FT
+    drop_offset_ft = LOOP_ROOM_DROP_OFFSET_MM * MM_TO_FT
     branch_offset_ft = BRANCH_Y_OFFSET_MM * MM_TO_FT
     new_ids = []
 
@@ -136,37 +155,60 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_point_by_uid
 
         all_uids = ([panel_uid] if panel_uid else []) + list(device_uids)
 
-        by_level_y = {}
+        # Группировка по (этаж, помещение) — связь между разными группами
+        # идёт ТОЛЬКО через стояк, см. докстринг модуля.
+        by_room = {}
         for uid in all_uids:
-            pt = node_point_by_uid.get(uid)
-            if pt is None:
+            placement = node_placement_by_uid.get(uid)
+            if placement is None:
                 continue
-            by_level_y.setdefault(pt[1], []).append(pt[0])
+            x, y, level_key, room_key = placement
+            by_room.setdefault((level_key, room_key), []).append((x, y))
 
-        if by_level_y:
-            multi_floor = len(by_level_y) > 1
+        if by_room:
+            multi_room = len(by_room) > 1
             riser_x = None
+            riser_join_ys = []
 
-            if multi_floor:
+            if multi_room:
                 riser_x = -(LOOP_RISER_BASE_OFFSET_MM + riser_index * LOOP_RISER_SPACING_MM) * MM_TO_FT
                 riser_index += 1
 
-            for y, xs in by_level_y.items():
-                x_min = min(xs)
-                x_max = max(xs)
-                if riser_x is not None:
-                    x_min = min(x_min, riser_x)
-                    x_max = max(x_max, riser_x)
-                # Коллектор этажа — на высоте узлов (через них), без отхода вниз.
-                draw_both_passes(x_min, y, x_max, y, 0.0, gap_ft)
+            for points in by_room.values():
+                y = points[0][1]
+                xs = [p[0] for p in points]
+                x_min, x_max = min(xs), max(xs)
 
-            if riser_x is not None:
-                ys = list(by_level_y.keys())
-                draw_both_passes(riser_x, min(ys), riser_x, max(ys), gap_ft, 0.0)
+                # Внутри помещения — прямая линия через все точки разом
+                # (без отхода вниз), только в пределах САМОГО этого
+                # помещения — наружу за его пределы линия не выходит.
+                if x_max > x_min:
+                    draw_both_passes(x_min, y, x_max, y, 0.0, gap_ft)
+
+                if riser_x is not None:
+                    # Спуск к стояку — от ближайшего к стояку узла этого
+                    # помещения, коротким участком в свободном зазоре под
+                    # рамкой (а не по прямой на высоте узлов — иначе резало
+                    # бы рамки всех помещений, что физически окажутся
+                    # между этим помещением и стояком).
+                    room_anchor_x = x_min
+                    drop_y = y - drop_offset_ft
+                    riser_join_ys.append(drop_y)
+
+                    draw_both_passes(room_anchor_x, y, room_anchor_x, drop_y, gap_ft, 0.0)
+                    draw_both_passes(room_anchor_x, drop_y, riser_x, drop_y, 0.0, gap_ft)
+
+            if riser_x is not None and riser_join_ys:
+                draw_both_passes(riser_x, min(riser_join_ys), riser_x, max(riser_join_ys), gap_ft, 0.0)
 
         for isolator_uid, branch_device_uids in (loop.get("branches") or {}).items():
-            isolator_pt = node_point_by_uid.get(isolator_uid)
-            branch_pts = [node_point_by_uid[uid] for uid in branch_device_uids if uid in node_point_by_uid]
+            isolator_placement = node_placement_by_uid.get(isolator_uid)
+            isolator_pt = isolator_placement[:2] if isolator_placement is not None else None
+            branch_pts = []
+            for uid in branch_device_uids:
+                placement = node_placement_by_uid.get(uid)
+                if placement is not None:
+                    branch_pts.append(placement[:2])
             draw_branch(isolator_pt, branch_pts)
 
     return new_ids
