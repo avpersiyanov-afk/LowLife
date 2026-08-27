@@ -140,13 +140,39 @@ TEXT_FIELDS = [
         u"1.15", False, True),
     ("vertical_coef", u"[Цепи] Коэффициент запаса длины по вертикали",
         u"1.10", False, True),
+
+    # --- структурная схема (BuildScsSchematic) ---
+    ("schematic_view_name", u"[Схема] Имя чертёжного вида структурной схемы (создаётся с этим "
+        u"именем; при повторных запусках обновляется только вид с этим именем)",
+        u"Структурная схема СКС", False, True),
+    ("layout_param_name", u"[Схема] Служебный параметр вида для хранения раскладки схемы "
+        u"(текстовый, привязан к категории «Виды», JSON — не редактируется вручную)",
+        u"", False, True),
+    ("room_param_name", u"[Схема] Параметр помещения (на устройстве, панели и на схемном "
+        u"семействе)",
+        u"", False, True),
+    ("room_number_param_name", u"[Схема] Параметр номера помещения в связанной модели "
+        u"(используется, если параметр помещения на устройстве ещё пуст)",
+        u"", False, True),
+    ("device_uid_param_name", u"[Схема] Служебный параметр схемного семейства для UniqueId "
+        u"исходного устройства (текстовый, привязан к схемным семействам розетки/шкафа)",
+        u"", False, True),
+    ("node_label_offset_mm", u"[Схема] Смещение марки узла вверх от точки вставки, мм",
+        u"5", False, True),
 ]
 
-# (ключ, подпись) — типы, выбираемые из проекта (категория "Обобщённые модели")
+# (ключ, подпись, категории для пикера) — типы, выбираемые из проекта.
 TYPE_FIELDS = [
-    ("panel_type_id", u"Тип для точек панелей"),
-    ("route_type_id", u"Тип для узлов маршрута"),
-    ("riser_type_id", u"Тип для точек стояков"),
+    ("panel_type_id", u"Тип для точек панелей", (BuiltInCategory.OST_GenericModel,)),
+    ("route_type_id", u"Тип для узлов маршрута", (BuiltInCategory.OST_GenericModel,)),
+    ("riser_type_id", u"Тип для точек стояков", (BuiltInCategory.OST_GenericModel,)),
+    ("schematic_device_type_id", u"[Схема] Схемное семейство розетки",
+        (BuiltInCategory.OST_DetailComponents,)),
+    ("schematic_panel_type_id", u"[Схема] Схемное семейство шкафа/патч-панели",
+        (BuiltInCategory.OST_DetailComponents,)),
+    ("node_annotation_type_id", u"[Схема] Марка узла на схеме (тип «Обозначение, Адрес», "
+        u"ставится над каждым схемным семейством)",
+        (BuiltInCategory.OST_DetailComponentTags,)),
 ]
 
 # (ключ, подпись) — строка справочника кабелей (см. list_wire_catalog_items),
@@ -171,7 +197,7 @@ def _split_section(label_text):
 PLAIN_LABELS = {}
 for _key, _label, _default, _is_list, _required in TEXT_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
-for _key, _label in TYPE_FIELDS:
+for _key, _label, _categories in TYPE_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
 for _key, _label in CONDUCTOR_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
@@ -398,7 +424,7 @@ def load_saved_values():
     for key, _, default, _, _ in TEXT_FIELDS:
         values[key] = saved.get(key, default)
 
-    for key, _ in TYPE_FIELDS:
+    for key, _, _ in TYPE_FIELDS:
         values[key] = saved.get(key, "")
 
     for key, _ in CONDUCTOR_FIELDS:
@@ -493,12 +519,12 @@ def show_settings_form(doc, values):
 
     # --- типы для вставки ---
 
-    type_values = {key: values.get(key, "") for key, _ in TYPE_FIELDS}
+    type_values = {key: values.get(key, "") for key, _, _ in TYPE_FIELDS}
     type_labels = {}
 
     type_current_section = [None]
 
-    def make_type_picker(key, label_text):
+    def make_type_picker(key, label_text, categories):
         section, plain_label = _split_section(label_text)
 
         if section != type_current_section[0]:
@@ -529,10 +555,10 @@ def show_settings_form(doc, values):
         pick_btn.Padding = Thickness(8, 2, 8, 2)
         pick_btn.Margin = Thickness(8, 0, 0, 0)
 
-        def on_pick(sender, args, key=key, label_text=label_text):
-            symbols = list_generic_model_symbols(doc)
+        def on_pick(sender, args, key=key, label_text=label_text, categories=categories):
+            symbols = list_symbols_by_categories(doc, categories)
             if not symbols:
-                forms.alert(u"В проекте нет типов категории «Обобщённые модели».")
+                forms.alert(u"В проекте нет типов нужной категории.")
                 return
 
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
@@ -553,8 +579,8 @@ def show_settings_form(doc, values):
         row.Children.Add(pick_btn)
         root.Children.Add(row)
 
-    for key, label_text in TYPE_FIELDS:
-        make_type_picker(key, label_text)
+    for key, label_text, categories in TYPE_FIELDS:
+        make_type_picker(key, label_text, categories)
 
     # --- текстовые параметры (сгруппированы по разделу, если подпись начинается с "[Раздел]") ---
 

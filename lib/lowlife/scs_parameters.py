@@ -22,6 +22,10 @@ CAT_DEVICES_AND_PANELS = CAT_DEVICES_ONLY + [BuiltInCategory.OST_ElectricalEquip
 
 CAT_CIRCUITS = [BuiltInCategory.OST_ElectricalCircuit]
 
+CAT_VIEWS = [BuiltInCategory.OST_Views]
+
+CAT_SCHEMATIC_SYMBOLS = [BuiltInCategory.OST_DetailComponents]
+
 INSTANCE = "instance"
 TYPE = "type"
 
@@ -32,42 +36,54 @@ FOP = "fop"
 NATIVE = "native"
 
 # (ключ настроек, подпись, список ли значений через запятую, категории,
-#  instance/type, тип данных для справки, источник)
+#  instance/type, тип данных для справки, источник, обязателен ли —
+#  required=False у параметров, которые выполняют свою функцию только
+#  для необязательных кнопок (например структурной схемы), поэтому не
+#  должны блокировать "Параметры СКС" для тех, кто ими не пользуется)
 PARAM_SPECS = [
     ("cable_param_name", u"Тип прокладки кабеля (узлы)",
-        False, CAT_MARKERS, INSTANCE, TEXT, FOP),
+        False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
     ("route_param_name", u"Тип трассы (узлы)",
-        False, CAT_MARKERS, INSTANCE, TEXT, FOP),
+        False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
     ("addr_param_name", u"Адрес узла",
-        False, CAT_MARKERS, INSTANCE, TEXT, FOP),
+        False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
     ("addr_prev_param_name", u"Предыдущий адрес",
-        False, CAT_MARKERS, INSTANCE, TEXT, FOP),
+        False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
     ("segment_loads_param", u"Список цепей (узел маршрута)",
-        False, CAT_MARKERS, INSTANCE, TEXT, FOP),
+        False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
     ("offset_param_names", u"Отметка (узлы/устройства/панели/стояки)",
-        True, CAT_MARKERS + CAT_DEVICES_AND_PANELS, INSTANCE, NUMBER, FOP),
+        True, CAT_MARKERS + CAT_DEVICES_AND_PANELS, INSTANCE, NUMBER, FOP, True),
     ("nearest_segment_param", u"Ближайший узел маршрута (панель/устройство)",
-        False, CAT_DEVICES_AND_PANELS, INSTANCE, TEXT, FOP),
+        False, CAT_DEVICES_AND_PANELS, INSTANCE, TEXT, FOP, True),
     ("device_address_param", u"Адрес устройства",
-        False, CAT_DEVICES_ONLY, INSTANCE, TEXT, FOP),
+        False, CAT_DEVICES_ONLY, INSTANCE, TEXT, FOP, True),
     ("type_code_param", u"Обозначение (тип устройства)",
-        False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP),
+        False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP, True),
     ("circuit_name_type_param", u"Наименование (цепь)",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
+        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
     ("circuit_number_param", u"Номер цепи",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
+        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
     ("circuit_route_param", u"Маршрут цепи",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
+        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
     ("wire_length_param", u"Длина проводника",
-        False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP),
+        False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
     ("tray_length_param", u"Длина проводника в лотке",
-        False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP),
+        False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
     ("pipe_length_param", u"Длина проводника в трубе",
-        False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP),
+        False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
     ("route_method_param", u"Способ прокладки",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
+        False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
     ("load_name_param", u"Имя нагрузки",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, NATIVE),
+        False, CAT_CIRCUITS, INSTANCE, TEXT, NATIVE, True),
+
+    # --- структурная схема (BuildScsSchematic) — необязательные для
+    # остальных кнопок СКС, не должны блокировать "Параметры СКС" ---
+    ("layout_param_name", u"Раскладка структурной схемы (вид)",
+        False, CAT_VIEWS, INSTANCE, TEXT, FOP, False),
+    ("room_param_name", u"Помещение (устройство/панель)",
+        False, CAT_DEVICES_AND_PANELS, INSTANCE, TEXT, FOP, False),
+    ("device_uid_param_name", u"UniqueId исходного устройства (схемное семейство)",
+        False, CAT_SCHEMATIC_SYMBOLS, INSTANCE, TEXT, FOP, False),
 ]
 
 

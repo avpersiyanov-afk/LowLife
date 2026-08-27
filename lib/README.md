@@ -148,15 +148,21 @@ SyncCircuitsAndLengths.
 | `is_excluded_device` | `is_excluded_device(el, excluded_keywords)` | Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства. Общая для RenumberAddresses и SyncCircuitsAndLengths (обе ищут устройства через цепи целевых панелей) |
 | `get_workset_name` | `get_workset_name(el, workset_param_name)` | Имя рабочего набора элемента: сперва по имени параметра (на случай, если рабочий набор продублирован в обычный параметр), иначе через `BuiltInParameter.ELEM_PARTITION_PARAM` |
 | `panel_matches` | `panel_matches(panel, workset_param_name, workset_filter_key, norm_fn)` | Целевая панель — по ключевому слову в имени её рабочего набора (`norm_fn` — обычно `scs_circuits.norm`) |
+| `collect_target_panel_devices` | `collect_target_panel_devices(doc, workset_param_name, workset_filter_key, circuit_panel_param, excluded_device_keywords, norm_fn)` | `[(panel_element, [device_element, ...]), ...]` — те же целевые панели и то же правило «устройство цепи» (первое неисключённое, кроме самой панели), что и в `SyncCircuitsAndLengths.pushbutton` — вынесено сюда, чтобы `BuildScsSchematic` (структурная схема) не дублировало этот поиск заново. `SyncCircuitsAndLengths` сам не переведён на эту функцию — рабочий код, трогать без необходимости не стали |
 
 ## scs_settings.py
-**Одно общее окно настроек на все четыре кнопки `SCS.panel`** (PlaceRouteNodes /
-RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
-**типа для вставки** (панель/маршрут/стояк — из типов
-категории «Обобщённые модели» в проекте, включая ещё НЕ вставленные —
-см. `list_generic_model_symbols` ниже) + текстовые параметры
-(`TEXT_FIELDS`, сгруппированы в окне по разделам через префикс
-`"[Раздел] Подпись"`). Хранится в обычном JSON-файле
+**Одно общее окно настроек на все пять кнопок `SCS.panel`** (PlaceRouteNodes /
+RenumberAddresses / SyncCircuitsAndLengths / BuildScsSchematic /
+SetupParameters): выбор **типа для вставки** — не только категории
+«Обобщённые модели» (панель/маршрут/стояк), но и, начиная со структурной
+схемы, `OST_DetailComponents`/`OST_DetailComponentTags` (схемные
+семейства розетки/шкафа и марка узла) — `TYPE_FIELDS` теперь 3-элементные
+кортежи `(key, label, categories)`, категории пикера свои у каждого поля
+(см. `list_symbols_by_categories` ниже; раньше пикер был жёстко на
+`list_generic_model_symbols`, категория подразумевалась одна для всех
+полей) — из типов, загруженных в проект, включая ещё НЕ вставленные) +
+текстовые параметры (`TEXT_FIELDS`, сгруппированы в окне по разделам
+через префикс `"[Раздел] Подпись"`). Хранится в обычном JSON-файле
 `%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в `pyRevit_config.ini` —
 не полагаемся на `pyrevit.script.get_config()`, он не гарантированно
 расшаривает секцию между разными `script.py`) — **не в репозитории**:
@@ -171,7 +177,7 @@ RenumberAddresses / SyncCircuitsAndLengths / SetupParameters): выбор
 
 **Форму (`get_settings_interactive`) показывает только кнопка
 «Параметры СКС» (SetupParameters)** — она единственное место, где
-значения редактируются. Остальные три кнопки читают уже сохранённое
+значения редактируются. Остальные четыре кнопки читают уже сохранённое
 через `get_settings_silent()`, без показа окна — если запустить их до
 первой настройки, `require()` остановит скрипт и попросит сначала
 запустить «Параметры СКС».
@@ -262,12 +268,47 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 нумерации адресов, пока функция уже нужна) — SyncCircuitsAndLengths
 только читает уже записанное значение, ничего не досчитывает.
 
+## scs_schematic.py
+Логика кнопки **BuildScsSchematic** («Структурная схема»): раскладка по
+этажам/помещениям, схемные семейства+марки и инкрементальное обновление
+между запусками полностью переиспользованы из `sot_schematic.py`
+(`sync_levels`/`sync_rooms_in_level`) — импортируются напрямую, не
+скопированы: эти функции уже не завязаны на настройки СОТ конкретно,
+только на переданные `category_symbols`/`category_for_device`. Для СКС
+всего 2 «категории» — `"device"`/`"panel"` — вместо произвольной таблицы
+категорий СОТ, поэтому отдельная настройка категорий устройств не нужна:
+устройство для схемы — это просто устройство, найденное через
+`scs.collect_target_panel_devices` (те же цепи/панели, что и «Расчёт
+длины цепи»). Уровни (`sot_levels.py`) и хранение раскладки в параметре
+вида (`sot_layout_state.py`) — тоже общие модули, импортируются как есть.
+
+Единственное, чего нет у СОТ и что есть только здесь — несколько
+**независимых** шин вместо одной общей: на этаже может быть несколько
+панелей, и `sync_cable_connections` (СОТ, одна шина на весь чертёж) для
+этого не подходит.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `panel_riser_x` | `panel_riser_x(panel_index)` | X стояка панели с этим порядковым номером (0, 1, 2...) — левее рамок помещений, панели расставлены слева направо по возрастанию номера, чтобы стояки разных панелей не накладывались. Чистая функция без Revit API |
+| `sync_panel_buses` | `sync_panel_buses(doc, view, new_state, old_bus_line_ids_by_panel, panels_order, panel_device_uids, drop_offset_mm=BUS_DROP_OFFSET_MM)` | Обобщение `sot_schematic.sync_cable_connections` на N панелей: для каждой панели (в порядке `panels_order`) — свой коллектор на каждом этаже среди только её устройств (`panel_device_uids[panel_uid]`, должен включать и сам `panel_uid`), свои отводы, свой стояк через все её этажи, на `panel_riser_x(index)`. Как и у СОТ, эти линии не диффятся — полностью удаляются и рисуются заново на каждом запуске (выводятся из уже посчитанных `sync_levels` позиций, диффить незачем). Возвращает `{panel_uid: [line_id, ...]}` для `state["panel_bus_line_ids"]` |
+
+`RISER_SPACING_MM` (300мм между стояками разных панелей) и
+`BUS_DROP_OFFSET_MM` (тот же смысл, что `CABLE_DROP_OFFSET_MM` у СОТ) —
+константы раскладки, не настройки проекта.
+
 ## scs_parameters.py
 Логика кнопки **SetupParameters** («Параметры СКС»): таблица `PARAM_SPECS`
-(ключ настроек → категории Revit → instance/type → источник) для каждого
-параметра, который читают/пишут три кнопки СКС, и функции проверки/
-привязки этих параметров из **уже подключённого к проекту** файла общих
-параметров (ФОП, `Application.SharedParametersFilename`). Ничего не
+(ключ настроек → категории Revit → instance/type → источник →
+**обязателен ли**) для каждого параметра, который читают/пишут кнопки
+СКС, и функции проверки/привязки этих параметров из **уже подключённого
+к проекту** файла общих параметров (ФОП,
+`Application.SharedParametersFilename`). Последний элемент кортежа —
+`required` — добавлен вместе со структурной схемой: её параметры
+(`layout_param_name`/`room_param_name`/`device_uid_param_name`)
+`required=False`, чтобы `SetupParameters` не блокировался их пустыми
+значениями для тех, кто структурной схемой не пользуется — сама привязка
+всё равно происходит, если значение всё-таки заполнено (`require()` в
+`SetupParameters.pushbutton` теперь фильтрует по этому флагу). Ничего не
 выдумывает — если определения параметра нет ни в проекте, ни в файле
 ФОП, `ensure_binding` возвращает `missing_definition=True`, и кнопка
 только сообщает об этом, не создавая новых определений в файле ФОП.

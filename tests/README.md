@@ -20,14 +20,22 @@
   dict/точками и не вызывают `classify_element`/`safe_element_name`
   (единственное, что в scs.py трогает Revit API). Остальной scs.py
   (`classify_element`, `get_workset_name`, `clear_stray_address_params`,
-  ...) по-прежнему не тестируется вне Revit.
+  `collect_target_panel_devices`, ...) по-прежнему не тестируется вне
+  Revit.
+- `scs_schematic.py` (частично) — только `panel_riser_x` (X стояка
+  панели по её порядковому номеру, структурная схема СКС): чистая
+  формула без Revit API. `sync_panel_buses` импортирует
+  `lowlife.sot_schematic` (Revit API) лениво, внутри тела функции, ровно
+  затем, чтобы этот модуль оставался импортируемым для теста
+  `panel_riser_x` — сама `sync_panel_buses` не тестируется вне Revit.
 
 Не покрыто и не может быть протестировано вне Revit: `route_nodes.py`,
 `route_addressing.py`, `skud.py`, `fire_alarm.py`,
-`fire_alarm_circuits.py`, `geometry.py`, `params.py`, `selection.py` —
-все они напрямую импортируют `Autodesk.Revit.DB`. Также не покрыты сами
-кнопки (`LowLife.tab/**/script.py`) — они оркестрируют вызовы в Revit и не
-запускаются вне его процесса.
+`fire_alarm_circuits.py`, `geometry.py`, `params.py`, `selection.py`,
+`sot_schematic.py`, `sot_levels.py`, `sot_layout_state.py`, `room_info.py`
+— все они напрямую импортируют `Autodesk.Revit.DB`. Также не покрыты
+сами кнопки (`LowLife.tab/**/script.py`) — они оркестрируют вызовы в
+Revit и не запускаются вне его процесса.
 
 ## Требования
 

@@ -208,6 +208,61 @@ def panel_matches(panel, workset_param_name, workset_filter_key, norm_fn):
     return workset_filter_key.lower() in ws.lower()
 
 
+def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
+                                  circuit_panel_param, excluded_device_keywords, norm_fn):
+    """
+    [(panel_element, [device_element, ...]), ...] — те же целевые панели и
+    то же правило "устройство цепи" (первое неисключённое, кроме самой
+    панели), что и в SyncCircuitsAndLengths.pushbutton — вынесено сюда,
+    чтобы структурная схема (BuildScsSchematic) не дублировала этот
+    поиск заново. SyncCircuitsAndLengths намеренно не переведён на эту
+    функцию — рабочий код, трогать без необходимости не стоит.
+
+    Панели без ни одного подходящего устройства в результат не попадают.
+    """
+    from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
+
+    all_panels = FilteredElementCollector(doc) \
+        .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+    target_panels = [p for p in all_panels if panel_matches(p, workset_param_name, workset_filter_key, norm_fn)]
+
+    all_circuits = FilteredElementCollector(doc) \
+        .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+    from lowlife.params import get_string_param
+
+    circuits_by_panel_name = {}
+    for c in all_circuits:
+        panel_name = norm_fn(get_string_param(c, circuit_panel_param))
+        if panel_name:
+            circuits_by_panel_name.setdefault(panel_name, []).append(c)
+
+    result = []
+    for panel in target_panels:
+        panel_name = norm_fn(panel.Name)
+        devices = []
+
+        for c in circuits_by_panel_name.get(panel_name, []):
+            try:
+                raw_devs = [x for x in c.Elements if x.Id != panel.Id]
+            except:
+                continue
+
+            normal_devs = [d for d in raw_devs if not is_excluded_device(d, excluded_device_keywords)]
+            if normal_devs:
+                devices.append(normal_devs[0])
+
+        if devices:
+            result.append((panel, devices))
+
+    return result
+
+
 def clear_stray_address_params(doc, param_names, allowed_type_ids,
                                 workset_param_name=None, workset_filter_key=None):
     """

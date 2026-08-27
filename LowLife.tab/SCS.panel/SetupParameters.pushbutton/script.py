@@ -36,7 +36,7 @@ settings = get_settings_interactive(doc)
 if settings is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 
-scs_settings.require(settings, [key for key, _, _, _, _, _, source in PARAM_SPECS])
+scs_settings.require(settings, [key for key, _, _, _, _, _, source, required in PARAM_SPECS if required])
 
 
 # ------------------------------------------------------------
@@ -84,7 +84,7 @@ errors = []
 
 with revit.Transaction("Setup SCS Parameters"):
 
-    for key, label, is_list, categories, binding_kind, data_type, source in PARAM_SPECS:
+    for key, label, is_list, categories, binding_kind, data_type, source, required in PARAM_SPECS:
         raw_value = settings.get(key)
         names = split_names(raw_value, is_list)
 
