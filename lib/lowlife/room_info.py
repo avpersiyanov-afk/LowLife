@@ -9,15 +9,35 @@ line-based элементов, либо центр bounding box), затем с�
 параметр элемента записывается "Имя (Номер)" (или только то, что удалось
 найти).
 
+Поиск помещения двухпроходный:
+  1. точное попадание внутрь Room (Room.IsPointInRoom) — как было;
+  2. если точное попадание не нашлось — ближайший Room, чей контур
+     отстоит от точки не дальше ROOM_TOLERANCE_MM по горизонтали.
+Второй проход нужен, потому что оборудование часто ставят с заглублением
+в стену (стены обычно ~200 мм), и точка семейства оказывается за контуром
+Room на 1-2 см, из-за чего IsPointInRoom возвращает False.
+
 Имена параметров (куда писать результат, из какого параметра связанного
 Room брать номер) — соглашения конкретного проекта, поэтому не зашиты
 здесь, а приходят из room_info_settings.py.
 """
 
-from Autodesk.Revit.DB import RevitLinkInstance, FilteredElementCollector, BuiltInCategory, BuiltInParameter, LocationCurve
+from Autodesk.Revit.DB import (
+    RevitLinkInstance, FilteredElementCollector, BuiltInCategory,
+    BuiltInParameter, LocationCurve, SpatialElementBoundaryOptions, XYZ
+)
 
 from lowlife.geometry import get_point as get_location_point
 from lowlife.params import set_param_any, get_string_param
+
+
+# Насколько далеко точка может отстоять от контура Room и всё ещё
+# считаться принадлежащей этому помещению. Перекрывает примерно полстены
+# при толщине 200 мм, но недостаточно велик, чтобы «перепрыгнуть» стену
+# в соседнее помещение. Менять здесь — в окно настроек не выведено
+# намеренно (одна фиксированная величина, не стоит формы).
+ROOM_TOLERANCE_MM = 90.0
+_ROOM_TOLERANCE_FT = ROOM_TOLERANCE_MM / 304.8
 
 
 def get_point(el):
@@ -48,46 +68,117 @@ def get_point(el):
     return None
 
 
+def _collect_rooms(linked_doc):
+    return FilteredElementCollector(linked_doc) \
+        .OfCategory(BuiltInCategory.OST_Rooms) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+
+def _room_name_number(room, room_number_param_name):
+    """(имя, номер) одного Room — имя из нативного ROOM_NAME, номер из
+    общего параметра проекта. Любое может быть None."""
+    name_param = room.get_Parameter(BuiltInParameter.ROOM_NAME)
+    room_name = name_param.AsString() if name_param and name_param.HasValue else None
+
+    room_number = get_string_param(room, room_number_param_name) if room_number_param_name else None
+
+    return room_name, room_number
+
+
+def _distance_to_room_boundary(room, point):
+    """
+    Кратчайшее расстояние по горизонтали от point до контура Room, во
+    внутренних единицах Revit (футы). Возвращает None, если:
+      - у Room нет bounding box или контура (неразмещённый/незамкнутый);
+      - точка по высоте вне объёма помещения (±допуск) — чтобы не цеплять
+        помещение этажом выше/ниже, случайно близкое в плане.
+    """
+    try:
+        bbox = room.get_BoundingBox(None)
+    except:
+        bbox = None
+    if bbox is None:
+        return None
+    if not (bbox.Min.Z - _ROOM_TOLERANCE_FT <= point.Z <= bbox.Max.Z + _ROOM_TOLERANCE_FT):
+        return None
+
+    try:
+        loops = room.GetBoundarySegments(SpatialElementBoundaryOptions())
+    except:
+        loops = None
+    if not loops:
+        return None
+
+    best = None
+    for loop in loops:
+        for seg in loop:
+            try:
+                curve = seg.GetCurve()
+            except:
+                curve = None
+            if curve is None:
+                continue
+
+            # Контур лежит на отметке помещения — сравниваем в плане,
+            # подставляя Z кривой, иначе Curve.Distance учтёт перепад
+            # высот между точкой монтажа и полом.
+            flat = XYZ(point.X, point.Y, curve.GetEndPoint(0).Z)
+            try:
+                d = curve.Distance(flat)
+            except:
+                continue
+
+            if best is None or d < best:
+                best = d
+
+    return best
+
+
 def find_room_info(doc, point, room_number_param_name):
     """
-    Ищет Room, в который попадает point, во всех RevitLinkInstance
-    активного документа. Возвращает (имя, номер) первого найденного
-    помещения — имя берётся из нативного BuiltInParameter.ROOM_NAME,
-    номер — из room_number_param_name (общий параметр, специфичный для
-    проекта). Любое из двух может быть None, если не заполнено/не найдено.
+    Ищет Room, которому принадлежит point, во всех RevitLinkInstance
+    активного документа. Проход 1 — точное попадание внутрь (как раньше).
+    Проход 2 (если точного нет) — ближайший Room, чей контур не дальше
+    ROOM_TOLERANCE_MM от точки по горизонтали. Возвращает (имя, номер);
+    любое из двух может быть None.
     """
     if point is None:
         return None, None
 
     link_instances = FilteredElementCollector(doc).OfClass(RevitLinkInstance).ToElements()
 
+    rooms_by_doc = []
     for link in link_instances:
         linked_doc = link.GetLinkDocument()
         if linked_doc is None:
             continue
+        rooms_by_doc.append(_collect_rooms(linked_doc))
 
-        rooms = FilteredElementCollector(linked_doc) \
-            .OfCategory(BuiltInCategory.OST_Rooms) \
-            .WhereElementIsNotElementType() \
-            .ToElements()
-
+    # Проход 1: точное попадание внутрь Room.
+    for rooms in rooms_by_doc:
         for room in rooms:
             try:
                 in_room = room.IsPointInRoom(point)
             except:
                 in_room = False
+            if in_room:
+                return _room_name_number(room, room_number_param_name)
 
-            if not in_room:
+    # Проход 2: точка чуть за контуром (сидит в стене) — ближайший Room
+    # в пределах допуска.
+    best_dist = None
+    best_info = (None, None)
+    for rooms in rooms_by_doc:
+        for room in rooms:
+            d = _distance_to_room_boundary(room, point)
+            if d is None or d > _ROOM_TOLERANCE_FT:
                 continue
+            if best_dist is None or d < best_dist:
+                best_dist = d
+                best_info = _room_name_number(room, room_number_param_name)
 
-            name_param = room.get_Parameter(BuiltInParameter.ROOM_NAME)
-            room_name = name_param.AsString() if name_param and name_param.HasValue else None
-
-            room_number = get_string_param(room, room_number_param_name) if room_number_param_name else None
-
-            return room_name, room_number
-
-    return None, None
+    return best_info
 
 
 def format_room_value(room_name, room_number):
