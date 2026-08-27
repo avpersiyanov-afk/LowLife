@@ -60,6 +60,8 @@ __doc__ = (
 )
 __author__ = "Pipers"
 
+import time
+
 import clr
 
 clr.AddReference('RevitAPI')
@@ -96,6 +98,18 @@ fire_alarm_settings.set_system("SPS")
 
 doc = revit.doc
 output = pyrevit_script.get_output()
+
+# --- замеры времени по этапам (чтобы понять, где реально уходит время на
+# больших моделях, вместо гаданий) ---
+
+_timings = []
+_last_mark_time = [time.time()]
+
+
+def _mark(label):
+    now = time.time()
+    _timings.append((label, now - _last_mark_time[0]))
+    _last_mark_time[0] = now
 
 
 # ------------------------------------------------------------
@@ -195,6 +209,8 @@ if not elements:
         exitscript=True
     )
 
+_mark(u"Автосбор устройств")
+
 
 # ------------------------------------------------------------
 # ФИЛЬТР ПО КОРПУСУ/СЕКЦИИ (оба поля заданы в настройках — без диалога)
@@ -214,6 +230,9 @@ if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
             u"фильтрации».".format(BUILDING_FILTER_VALUE),
             exitscript=True
         )
+
+
+_mark(u"Фильтр по корпусу/секции")
 
 
 # ------------------------------------------------------------
@@ -249,7 +268,12 @@ element_ids_set = set(el.Id.IntegerValue for el in elements)
 
 isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
 isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
+
+_mark(u"Поиск изоляторов (is_isolator по всем устройствам)")
+
 branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
+
+_mark(u"Поиск ответвлений изоляторов (обход электрических цепей)")
 
 # {изолятор (элемент): [устройства ветви (элементы), ...]} — только
 # изоляторы, реально попавшие в elements (иначе рисовать спутник не для
@@ -274,6 +298,8 @@ for el in elements:
 branch_count = len(satellite_branches_by_isolator)
 branch_device_count = len(branch_device_ids)
 
+_mark(u"Сборка веток ответвлений (спутников)")
+
 
 # ------------------------------------------------------------
 # ГРУППИРОВКА ПО ЭТАЖУ
@@ -282,6 +308,8 @@ branch_device_count = len(branch_device_ids)
 level_groups = group_elements_by_level(doc, elements, LEVEL_PARAM_NAME)
 level_order = sorted_level_names(level_groups)
 level_labels = dict((name, get_level_label(name)) for name in level_order)
+
+_mark(u"Группировка по этажу (уровень элемента)")
 
 
 def resolve_room_value(doc, el, counters):
@@ -373,6 +401,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
         level_room_groups[level_name] = room_groups
 
+    _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
+
     if is_new_view:
         view = ViewDrafting.Create(doc, drafting_type_id)
         view.Name = SCHEMATIC_VIEW_NAME
@@ -391,6 +421,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
         extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM
     )
+
+    _mark(u"sync_levels (раскладка этажей/помещений/устройств)")
 
     # --- ряды-спутники ответвлений изоляторов (раскладка, без линий) ---
     # Всегда (не зависит от DRAW_LOOP_LINES — это про расположение
@@ -411,6 +443,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
         delete_elements(doc, old_satellite_ids)
         new_state["satellite_ids"] = []
 
+    _mark(u"Ряды-спутники ответвлений")
+
     # --- провода: пока выключены целиком (и «шкафные», и кольца/ответвления) ---
     # DRAW_LOOP_LINES управляет ОБОИМИ видами линий, пока раскладка
     # (в т.ч. новые ряды-спутники выше) не устроит — см. настройки СПС.
@@ -424,6 +458,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
         new_state["cable_line_ids"] = sync_cable_connections(
             doc, view, new_state, old_cable_line_ids, CABINET_UID if DRAW_LOOP_LINES else None
         )
+
+    _mark(u"Линии к шкафу")
 
     # --- кольцевые шлейфы: панель -> устройство №1 -> ... -> №N -> обратно ---
 
@@ -485,7 +521,11 @@ with revit.Transaction(u"Sync SPS Schematic"):
     old_loop_line_ids = previous_state.get("loop_line_ids", [])
     new_state["loop_line_ids"] = sync_loop_connections(doc, view, old_loop_line_ids, loops_for_drawing, node_placement)
 
+    _mark(u"Линии колец/ответвлений")
+
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
+
+    _mark(u"Сохранение раскладки в параметр вида")
 
 
 # ------------------------------------------------------------
@@ -493,6 +533,12 @@ with revit.Transaction(u"Sync SPS Schematic"):
 # ------------------------------------------------------------
 
 output.print_md(u"### Структурная схема СПС: {}".format(view_name))
+
+output.print_md(u"### Время по этапам (сек.)")
+_total_time = sum(seconds for _label, seconds in _timings)
+for _label, _seconds in _timings:
+    output.print_md(u"- {} — **{:.1f}** сек.".format(_label, _seconds))
+output.print_md(u"Итого: **{:.1f}** сек.".format(_total_time))
 
 if not state_saved:
     output.print_md(
