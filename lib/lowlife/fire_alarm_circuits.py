@@ -218,22 +218,30 @@ def circuit_membership_map(doc, number_param):
     return result
 
 
-def isolator_branch_device_map(doc):
+def isolator_branch_device_map(doc, isolator_ids=None):
     """
-    {ID изолятора (BaseEquipment цепи): [элементы-устройства]} по ВСЕМ
-    электрическим цепям документа, у которых назначена панель (BaseEquipment)
-    — для цепей «изолятор -> устройства» (см.
-    fire_alarm_isolator_circuits.build_isolator_device_circuits) это и есть
-    сам изолятор, что даёт достоверный состав его ответвления напрямую из
-    модели (а не по геометрии/адресу — то не отличает "продолжение
-    магистрали" от "устройства на ветви", см. докстринг fire_alarm_loops).
+    {ID изолятора (BaseEquipment цепи): [элементы-устройства]} — для
+    цепей «изолятор -> устройства» (см.
+    fire_alarm_isolator_circuits.build_isolator_device_circuits) BaseEquipment
+    цепи это и есть сам изолятор, что даёт достоверный состав его
+    ответвления напрямую из модели (а не по геометрии/адресу — то не
+    отличает "продолжение магистрали" от "устройства на ветви", см.
+    докстринг fire_alarm_loops).
 
-    Не фильтрует по типу/категории BaseEquipment — у обычных шлейфовых
-    цепей BaseEquipment — панель, а не изолятор; вызывающий код сам решает,
-    какие ключи (id) из результата ему нужны (обычно только устройства,
-    прошедшие fire_alarm.is_isolator).
+    isolator_ids — необязательный набор int ElementId, к которым сузить
+    результат: BaseEquipment каждой цепи документа (СКС/СКУД/ручных и
+    т.п., не только "изолятор-устройства") всё равно приходится прочитать
+    (дешёвое свойство), но .Elements (может быть дорогим на цепи с
+    большим числом устройств) читается ТОЛЬКО для цепей, чей BaseEquipment
+    входит в isolator_ids — на модели с тысячами цепей это на порядки
+    быстрее, чем читать .Elements у каждой. Если isolator_ids не задан —
+    прежнее поведение (без фильтра, читает всё).
     """
     result = {}
+    wanted = set(isolator_ids) if isolator_ids is not None else None
+
+    if wanted is not None and not wanted:
+        return result
 
     circuits = FilteredElementCollector(doc) \
         .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
@@ -250,6 +258,8 @@ def isolator_branch_device_map(doc):
         try:
             base_id = base.Id.IntegerValue
         except:
+            continue
+        if wanted is not None and base_id not in wanted:
             continue
         try:
             members = list(c.Elements)

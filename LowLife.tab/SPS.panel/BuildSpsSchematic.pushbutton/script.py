@@ -352,8 +352,14 @@ with revit.Transaction(u"Sync SPS Schematic"):
     # устройства" (build_isolator_device_circuits), а не по адресу/
     # геометрии: только так достоверно отличить "продолжение магистрали"
     # от "устройства на ветви" (см. докстринг lowlife.fire_alarm_loops).
-    branch_devices_by_isolator_id = isolator_branch_device_map(doc)
+    # is_isolator считается один раз на элемент (не на каждый запуск
+    # кнопки заново по всем цепям) — isolator_ids сужает
+    # isolator_branch_device_map до цепей ТОЛЬКО этих изоляторов, иначе
+    # на модели с большим числом электрических цепей (СКС/СКУД/ручных)
+    # чтение .Elements у каждой из них заметно замедляет кнопку.
     isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
+    isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
+    branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
 
     loops_for_drawing = []
     loops_without_panel = 0
@@ -370,7 +376,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         excluded_ids = set()
 
         for device in devices_in_loop:
-            if not is_isolator(device, isolator_keyword):
+            if device.Id.IntegerValue not in isolator_ids:
                 continue
 
             branch_members = branch_devices_by_isolator_id.get(device.Id.IntegerValue) or []
