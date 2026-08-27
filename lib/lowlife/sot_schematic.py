@@ -51,6 +51,13 @@ LEVEL_VERTICAL_LINE_LENGTH_MM = 51.0
 CONTINUOUS_TOP_LINE_OFFSET_MM = 5.0
 RIGHT_VERTICAL_LINE_OFFSET_MM = 5.0
 
+# Насколько мм под уровнем содержимого этажа (current_level_y) обычно
+# зарезервировано до нижней границы рамки (см. _draw_level_frame) — без
+# extra_bottom_mm. Экспортируется, чтобы вызывающий код (например СКС —
+# BuildScsSchematic) мог посчитать, сколько extra_bottom_mm ему нужно
+# добавить, не дублируя формулу BOTTOM_LINE_MM/LEVEL_SEPARATOR_OFFSET_MM.
+RESERVED_BOTTOM_MM = -BOTTOM_LINE_MM + LEVEL_SEPARATOR_OFFSET_MM
+
 # X линий "устройство -> шкаф" на вертикальном участке (стояк) — центр
 # незанятого "коридора" рамки уровня между первой и второй левыми
 # вертикальными линиями (first_level_line_x..second_level_line_x, при
@@ -539,16 +546,26 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
 # РАМКА УРОВНЯ — рисование "с нуля" / удаление
 # ------------------------------------------------------------
 
-def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group_right):
+def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group_right, extra_bottom_mm=0.0):
     """
     Рисует рамку этажа (3 левые вертикальные линии, правая вертикальная,
     2 горизонтальные, вертикальный текст этажа). group_left/group_right —
     границы содержимого этажа (level_group_left/level_group_right из
-    sync_rooms_in_level). Возвращает (text_id, line_ids).
+    sync_rooms_in_level). extra_bottom_mm — на сколько мм дополнительно
+    опустить нижнюю границу рамки ниже обычного (по умолчанию 0 — ничего
+    не меняется); нужно вызывающему коду, которому под рамкой этажа надо
+    больше места, чем обычно (например СКС — несколько линий шины друг
+    под другом, см. BuildScsSchematic). Возвращает (text_id, line_ids).
     """
     line_ids = []
 
-    bottom_level_line_y = current_level_y + BOTTOM_LINE_MM * MM_TO_FT - LEVEL_SEPARATOR_OFFSET_MM * MM_TO_FT
+    # base_bottom_y/level_lines_top_y — обычная (extra_bottom_mm=0) высота
+    # рамки, верх (level_lines_top_y) всегда остаётся здесь же — растягиваем
+    # только вниз, на extra_bottom_mm, а не сдвигаем всю рамку целиком
+    # (иначе верх рамки оторвался бы от рамок помещений над ним).
+    base_bottom_y = current_level_y + BOTTOM_LINE_MM * MM_TO_FT - LEVEL_SEPARATOR_OFFSET_MM * MM_TO_FT
+    level_lines_top_y = base_bottom_y + LEVEL_VERTICAL_LINE_LENGTH_MM * MM_TO_FT
+    bottom_level_line_y = base_bottom_y - extra_bottom_mm * MM_TO_FT
 
     first_level_line_x = group_left - LEVEL_LINE_1_OFFSET_MM * MM_TO_FT
     second_level_line_x = first_level_line_x - LEVEL_LINE_2_OFFSET_MM * MM_TO_FT
@@ -556,7 +573,7 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
     right_level_line_x = group_right + RIGHT_VERTICAL_LINE_OFFSET_MM * MM_TO_FT
 
     for x in (first_level_line_x, second_level_line_x, third_level_line_x, right_level_line_x):
-        elem = draw_level_vertical_line(doc, view, x, bottom_level_line_y)
+        elem = draw_segment(doc, view, x, bottom_level_line_y, x, level_lines_top_y)
         if elem is not None:
             line_ids.append(elem.Id.IntegerValue)
 
@@ -569,7 +586,6 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
     if elem is not None:
         line_ids.append(elem.Id.IntegerValue)
 
-    level_lines_top_y = bottom_level_line_y + LEVEL_VERTICAL_LINE_LENGTH_MM * MM_TO_FT
     level_text_x = (second_level_line_x + third_level_line_x) / 2.0
     level_text_y = (level_lines_top_y + bottom_level_line_y) / 2.0
 
@@ -733,7 +749,8 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
 
 def sync_levels(doc, view, level_order, level_room_groups, level_labels, category_symbols,
                  category_for_device, room_param_name, address_param_name, device_uid_param_name,
-                 annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None):
+                 annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
+                 extra_bottom_mm=0.0):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -741,6 +758,14 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     level_labels — {level_key: подпись для схемы} (get_level_label).
     previous_state — {"levels": {level_key: level_record}} из
     sot_layout_state.load_state (или {"levels": {}} для первого запуска).
+    extra_bottom_mm — на сколько мм дополнительно опустить нижнюю границу
+    рамки КАЖДОГО этажа (по умолчанию 0 — как раньше); нужно, если под
+    рамкой этажа рисуется что-то ещё, кроме самой схемы (например СКС —
+    несколько линий шины друг под другом, см. BuildScsSchematic). Общий
+    на все этажи (не по этажам отдельно) — если изменился по сравнению с
+    прошлым запуском, все рамки этажей перерисовываются заново (иначе
+    рамка, которую в этот раз просто "подвинули" — без redraw — осталась
+    бы со старым (возможно недостаточным) отступом).
 
     stats (если передан) — тот же словарь-счётчик, что и у
     sync_rooms_in_level, дополнительно получает
@@ -750,6 +775,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     sot_layout_state.save_state.
     """
     previous_levels = previous_state.get("levels", {}) if previous_state else {}
+    extra_bottom_changed = (previous_state or {}).get("extra_bottom_mm", 0.0) != extra_bottom_mm
 
     y_cursor = 0.0
     new_levels_state = {}
@@ -775,7 +801,11 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             continue
 
         y_changed = prev_level is None or abs(prev_level.get("y", 0.0) - y_cursor) > _TOLERANCE_FT
-        right_changed = prev_level is None or abs(prev_level.get("x_right", 0.0) - group_right) > _TOLERANCE_FT
+        right_changed = (
+            prev_level is None
+            or abs(prev_level.get("x_right", 0.0) - group_right) > _TOLERANCE_FT
+            or extra_bottom_changed
+        )
 
         if prev_level is not None and not y_changed and not right_changed:
             level_record = {
@@ -797,13 +827,15 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
                 _bump(stats, "levels_redrawn")
             else:
                 _bump(stats, "levels_created")
-            text_id, line_ids = _draw_level_frame(doc, view, level_label, y_cursor, group_left, group_right)
+            text_id, line_ids = _draw_level_frame(
+                doc, view, level_label, y_cursor, group_left, group_right, extra_bottom_mm
+            )
             level_record = {"y": y_cursor, "x_right": group_right, "text_id": text_id, "line_ids": line_ids}
 
         level_record["rooms"] = rooms_state
         new_levels_state[level_key] = level_record
 
-        y_cursor -= LEVEL_STEP_MM * MM_TO_FT
+        y_cursor -= (LEVEL_STEP_MM + extra_bottom_mm) * MM_TO_FT
 
     for level_key, prev_level in previous_levels.items():
         if level_key in new_levels_state:
@@ -813,7 +845,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             delete_elements(doc, _room_record_element_ids(room_record))
         _bump(stats, "levels_removed")
 
-    return {"v": 1, "levels": new_levels_state}, report_rows
+    return {"v": 1, "levels": new_levels_state, "extra_bottom_mm": extra_bottom_mm}, report_rows
 
 
 # ------------------------------------------------------------

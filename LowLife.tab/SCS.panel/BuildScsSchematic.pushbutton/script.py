@@ -50,8 +50,8 @@ from lowlife.scs_settings import (
     get_settings_silent, get_schematic_category_symbols, get_schematic_category_device_type_ids
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import sync_levels
-from lowlife.scs_schematic import sync_panel_buses
+from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
+from lowlife.scs_schematic import sync_panel_buses, BUS_DROP_OFFSET_MM, BUS_DROP_SPACING_MM
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 
@@ -234,6 +234,21 @@ level_labels = dict((name, get_level_label(name)) for name in level_order)
 
 
 # ------------------------------------------------------------
+# МЕСТО ПОД ШИНЫ: рамка этажа должна вмещать все линии коллекторов —
+# на случай, если все панели окажутся на одном этаже (худший случай,
+# не по каждому этажу отдельно — проще и одинаковая высота строк).
+# ------------------------------------------------------------
+
+if panels_order:
+    deepest_bus_offset_mm = BUS_DROP_OFFSET_MM + (len(panels_order) - 1) * BUS_DROP_SPACING_MM
+else:
+    deepest_bus_offset_mm = 0.0
+
+BUS_BOTTOM_MARGIN_MM = 5.0  # запас, чтобы последняя линия не легла впритык на границу рамки
+EXTRA_BOTTOM_MM = max(0.0, deepest_bus_offset_mm + BUS_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM)
+
+
+# ------------------------------------------------------------
 # ЧЕРТЁЖНЫЙ ВИД: ищем вид с именем из настроек (для обновления), иначе создаём
 # ------------------------------------------------------------
 
@@ -300,7 +315,8 @@ with revit.Transaction(u"Sync SCS Schematic"):
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, DEVICE_ADDRESS_PARAM, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
-        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
+        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
+        extra_bottom_mm=EXTRA_BOTTOM_MM
     )
 
     old_bus_line_ids = list(previous_state.get("bus_line_ids", []))
