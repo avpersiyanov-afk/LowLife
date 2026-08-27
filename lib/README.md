@@ -155,14 +155,22 @@ SyncCircuitsAndLengths.
 RenumberAddresses / SyncCircuitsAndLengths / BuildScsSchematic /
 SetupParameters): выбор **типа для вставки** — не только категории
 «Обобщённые модели» (панель/маршрут/стояк), но и, начиная со структурной
-схемы, `OST_DetailComponents`/`OST_DetailComponentTags` (схемные
-семейства розетки/шкафа и марка узла) — `TYPE_FIELDS` теперь 3-элементные
-кортежи `(key, label, categories)`, категории пикера свои у каждого поля
-(см. `list_symbols_by_categories` ниже; раньше пикер был жёстко на
-`list_generic_model_symbols`, категория подразумевалась одна для всех
-полей) — из типов, загруженных в проект, включая ещё НЕ вставленные) +
-текстовые параметры (`TEXT_FIELDS`, сгруппированы в окне по разделам
-через префикс `"[Раздел] Подпись"`). Хранится в обычном JSON-файле
+схемы, марка узла (`OST_DetailComponentTags`) — `TYPE_FIELDS` теперь
+3-элементные кортежи `(key, label, categories)`, категории пикера свои у
+каждого поля (см. `list_symbols_by_categories` ниже; раньше пикер был
+жёстко на `list_generic_model_symbols`, категория подразумевалась одна
+для всех полей) — из типов, загруженных в проект, включая ещё НЕ
+вставленные) + текстовые параметры (`TEXT_FIELDS`, теперь 6-элементные
+кортежи `(key, label, default, is_list, required, multiline)` — добавлен
+`multiline` для многострочных полей вроде `schematic_device_categories_text`,
+сгруппированы в окне по разделам через префикс `"[Раздел] Подпись"`) +
+**таблица категорий структурной схемы** (`schematic_device_categories_text`
+— список категорий по одной на строку, кнопка «Обновить список категорий»
+ниже строит для каждой категории пару пикеров: схемное семейство для
+вставки + реальные типы устройств/панелей модели этой категории — точно
+тот же паттерн, что и у структурной схемы СОТ, см. `sot_settings.py`;
+устройство/панель без сопоставленной категории на схему не попадает).
+Хранится в обычном JSON-файле
 `%APPDATA%\pyRevit\LowLifeSCS_settings.json` (не в `pyRevit_config.ini` —
 не полагаемся на `pyrevit.script.get_config()`, он не гарантированно
 расшаривает секцию между разными `script.py`) — **не в репозитории**:
@@ -201,6 +209,10 @@ SetupParameters): выбор **типа для вставки** — не тол�
 | `show_settings_form` | `show_settings_form(doc, values)` | Само модальное окно (`ScrollViewer` + кнопки типов через `forms.SelectFromList`); используется внутри `get_settings_interactive` |
 | `to_runtime_settings` | `to_runtime_settings(values)` | Строки → типы (списки через запятую → `list`); id типов не трогает |
 | `list_generic_model_symbols` | `list_generic_model_symbols(doc)` | Все `FamilySymbol` категории «Обобщённые модели», загруженные в проект — обходом `Family`/`GetFamilySymbolIds()`, а не `FilteredElementCollector(...).OfClass(FamilySymbol)`, чтобы не пропустить типы без вставленных экземпляров |
+| `list_symbols_by_categories` | `list_symbols_by_categories(doc, builtin_categories)` | То же, но для произвольного списка `BuiltInCategory` — включая типы без вставленных экземпляров (для выбора схемного семейства, которое ещё не размещено на схеме) |
+| `list_used_symbols_by_categories` | `list_used_symbols_by_categories(doc, builtin_categories)` | Только типы, у которых в проекте есть хотя бы один **размещённый** экземпляр — для выбора «реальные типы устройств/панелей этой категории» в таблице категорий структурной схемы, чтобы не засорять список типами, которых нет на модели |
+| `get_schematic_category_symbols` | `get_schematic_category_symbols(doc, settings)` | `{имя_категории: FamilySymbol}` — схемное семейство каждой категории из `schematic_device_categories_text`, у которой выбран существующий в проекте тип |
+| `get_schematic_category_device_type_ids` | `get_schematic_category_device_type_ids(settings)` | `{имя_категории: set(int)}` — id реальных типов устройств/панелей каждой категории; читается кнопкой `BuildScsSchematic` в паре с `skud.category_by_type_id(el, ...)` для определения категории конкретного элемента |
 | `_safe_element_name` | `_safe_element_name(el)` | `Element.Name.GetValue(el)` вместо прямого `el.Name` — в IronPython у некоторых Revit-элементов (в т.ч. `FamilySymbol`) `.Name` падает с ошибкой неоднозначного связывания, из-за чего в списке типов вместо имени типа показывался его `Id` |
 
 Обычный сценарий использования в рабочей кнопке (не SetupParameters):
@@ -274,13 +286,18 @@ panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 между запусками полностью переиспользованы из `sot_schematic.py`
 (`sync_levels`/`sync_rooms_in_level`) — импортируются напрямую, не
 скопированы: эти функции уже не завязаны на настройки СОТ конкретно,
-только на переданные `category_symbols`/`category_for_device`. Для СКС
-всего 2 «категории» — `"device"`/`"panel"` — вместо произвольной таблицы
-категорий СОТ, поэтому отдельная настройка категорий устройств не нужна:
-устройство для схемы — это просто устройство, найденное через
+только на переданные `category_symbols`/`category_for_device`. Категории
+устройств/панелей для схемы настраиваются той же таблицей, что и у
+СОТ (`scs_settings.py` → `schematic_device_categories_text` +
+`get_schematic_category_symbols`/`get_schematic_category_device_type_ids`,
+`category_for_device` в кнопке — `skud.category_by_type_id`) — но список
+**кандидатов**, которые вообще попадают на схему (какие устройства/панели
+считать «нашими»), берётся не из категорий, а через
 `scs.collect_target_panel_devices` (те же цепи/панели, что и «Расчёт
-длины цепи»). Уровни (`sot_levels.py`) и хранение раскладки в параметре
-вида (`sot_layout_state.py`) — тоже общие модули, импортируются как есть.
+длины цепи»); категория здесь отвечает только за то, какое схемное
+семейство ставить каждому уже отобранному элементу. Уровни
+(`sot_levels.py`) и хранение раскладки в параметре вида
+(`sot_layout_state.py`) — тоже общие модули, импортируются как есть.
 
 Единственное, чего нет у СОТ и что есть только здесь — несколько
 **независимых** шин вместо одной общей: на этаже может быть несколько

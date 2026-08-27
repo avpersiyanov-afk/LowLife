@@ -38,8 +38,11 @@ except ImportError:
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import collect_target_panel_devices
 from lowlife.scs_circuits import norm
+from lowlife.skud import category_by_type_id
 from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_silent
+from lowlife.scs_settings import (
+    get_settings_silent, get_schematic_category_symbols, get_schematic_category_device_type_ids
+)
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels
 from lowlife.scs_schematic import sync_panel_buses
@@ -61,7 +64,7 @@ scs_settings.require(settings, [
     "excluded_device_keywords", "device_address_param",
     "room_param_name", "room_number_param_name",
     "schematic_view_name", "layout_param_name", "device_uid_param_name",
-    "node_label_offset_mm", "schematic_device_type_id", "schematic_panel_type_id",
+    "node_label_offset_mm", "schematic_device_categories_text",
 ])
 # addr_param_name/addr_prev_param_name/nearest_segment_param здесь не
 # нужны — структурная схема не смотрит на узлы трассы вообще, только на
@@ -85,25 +88,6 @@ except (ValueError, AttributeError):
     NODE_LABEL_OFFSET_MM = 5.0
 
 
-def _resolve_symbol(settings_key, label):
-    id_str = settings.get(settings_key)
-    try:
-        el = doc.GetElement(ElementId(int(id_str)))
-    except:
-        el = None
-
-    if el is None:
-        forms.alert(
-            u"Не найден выбранный тип для «{}». Откройте «Параметры СКС» "
-            u"и выберите тип заново.".format(label),
-            exitscript=True
-        )
-    return el
-
-
-DEVICE_SYMBOL = _resolve_symbol("schematic_device_type_id", u"Схемное семейство розетки")
-PANEL_SYMBOL = _resolve_symbol("schematic_panel_type_id", u"Схемное семейство шкафа/патч-панели")
-
 ANNOTATION_SYMBOL = None
 if settings.get("node_annotation_type_id"):
     try:
@@ -118,7 +102,36 @@ if ANNOTATION_SYMBOL is None:
         u"Откройте «Параметры СКС» и выберите марку узла, чтобы включить их."
     )
 
-CATEGORY_SYMBOLS = {u"device": DEVICE_SYMBOL, u"panel": PANEL_SYMBOL}
+# Категория устройства/панели (для выбора схемного семейства) — по точному
+# совпадению ElementId реального типа, как у структурных схем СОТ/СКУД:
+# заводится в «Параметры СКС» (список категорий + для каждой — схемное
+# семейство и реальные типы устройств/панелей этой категории). Элемент,
+# чей тип не сопоставлен ни одной категории, на схему не попадёт (см.
+# unmatched_report ниже) — та же логика, что у структурной схемы СОТ.
+CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
+
+if not CATEGORY_SYMBOLS:
+    forms.alert(
+        u"Не выбрано ни одного схемного семейства для категорий устройств СКС.\n\n"
+        u"Откройте «Параметры СКС», заполните «Категории устройств схемы» и для "
+        u"каждой нажмите «Обновить список категорий», затем выберите схемное "
+        u"семейство.",
+        exitscript=True
+    )
+
+CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
+
+if not CATEGORY_DEVICE_TYPE_IDS:
+    forms.alert(
+        u"Не выбраны реальные типы устройств/панелей ни для одной категории СКС.\n\n"
+        u"Откройте «Параметры СКС» и для каждой категории выберите реальные типы "
+        u"устройств/панелей модели.",
+        exitscript=True
+    )
+
+
+def category_for_device(el):
+    return category_by_type_id(el, CATEGORY_DEVICE_TYPE_IDS)
 
 
 # ------------------------------------------------------------
@@ -142,12 +155,10 @@ panel_devices.sort(key=lambda pd: norm(pd[0].Name) or u"")
 
 elements = []
 seen_ids = set()
-panel_ids = set()
 panel_device_uids = {}
 panels_order = []
 
 for panel, devices in panel_devices:
-    panel_ids.add(panel.Id.IntegerValue)
     panels_order.append(panel.UniqueId)
 
     if panel.Id.IntegerValue not in seen_ids:
@@ -162,10 +173,6 @@ for panel, devices in panel_devices:
             elements.append(d)
 
     panel_device_uids[panel.UniqueId] = member_uids
-
-
-def category_for_device(el):
-    return u"panel" if el.Id.IntegerValue in panel_ids else u"device"
 
 
 # ------------------------------------------------------------
