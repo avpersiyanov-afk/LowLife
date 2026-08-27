@@ -207,22 +207,21 @@ def move_text_to(doc, text_note, x, y):
         return False
 
 
-def center_text_in_frame(doc, text_note, view, frame_left, frame_right, target_y):
-    if text_note is None:
-        return False
-
+def _refine_text_center(doc, text_note, view, target_x, target_y):
+    """
+    Подгонка текста по РЕАЛЬНОМУ BoundingBox (после doc.Regenerate() —
+    вызывающий код отвечает за него, здесь его нет намеренно, см.
+    flush_text_corrections). Сам сдвиг — дешёвый ElementTransformUtils,
+    без Regenerate.
+    """
     try:
-        frame_center_x = (frame_left + frame_right) / 2.0
-        move_text_to(doc, text_note, frame_center_x, target_y)
-        doc.Regenerate()
-
         bbox = text_note.get_BoundingBox(view)
         if bbox is None:
             return False
 
         text_center_x = (bbox.Min.X + bbox.Max.X) / 2.0
         text_center_y = (bbox.Min.Y + bbox.Max.Y) / 2.0
-        delta_x = frame_center_x - text_center_x
+        delta_x = target_x - text_center_x
         delta_y = target_y - text_center_y
 
         if abs(delta_x) > 0.000001 or abs(delta_y) > 0.000001:
@@ -233,7 +232,53 @@ def center_text_in_frame(doc, text_note, view, frame_left, frame_right, target_y
         return False
 
 
-def center_level_text(doc, text_note, view, left_x, right_x, bottom_y, top_y):
+def flush_text_corrections(doc, view, pending):
+    """
+    Один общий doc.Regenerate() на весь накопленный список (pending —
+    [(text_note, target_x, target_y), ...] из center_text_in_frame/
+    center_level_text, вызванных с параметром pending) вместо одного
+    Regenerate() на КАЖДЫЙ текст — на моделях, где Regenerate() стоит
+    заметное время (много связей/сложная геометрия — на практике
+    наблюдалось по несколько секунд на вызов), при сотнях помещений/
+    этажей за один запуск разница на порядки: доли секунды вместо минут.
+    Вызывать один раз в конце sync_levels/sync_isolator_satellites — не
+    после каждого помещения.
+    """
+    if not pending:
+        return
+    doc.Regenerate()
+    for text_note, target_x, target_y in pending:
+        _refine_text_center(doc, text_note, view, target_x, target_y)
+
+
+def center_text_in_frame(doc, text_note, view, frame_left, frame_right, target_y, pending=None):
+    """
+    pending — если передан список, текст ставится в расчётный центр
+    (TextNote создаётся с HorizontalAlignment.Center, поэтому это уже
+    довольно точно) и запись добавляется в pending для последующей
+    ТОЧНОЙ подгонки одним общим Regenerate() — см. flush_text_corrections.
+    Если pending не передан (по умолчанию, старое поведение) — Regenerate()
+    и подгонка делаются сразу же, как раньше.
+    """
+    if text_note is None:
+        return False
+
+    try:
+        frame_center_x = (frame_left + frame_right) / 2.0
+        move_text_to(doc, text_note, frame_center_x, target_y)
+
+        if pending is not None:
+            pending.append((text_note, frame_center_x, target_y))
+            return True
+
+        doc.Regenerate()
+        return _refine_text_center(doc, text_note, view, frame_center_x, target_y)
+    except:
+        return False
+
+
+def center_level_text(doc, text_note, view, left_x, right_x, bottom_y, top_y, pending=None):
+    """pending — см. center_text_in_frame."""
     if text_note is None:
         return False
 
@@ -241,21 +286,13 @@ def center_level_text(doc, text_note, view, left_x, right_x, bottom_y, top_y):
         center_x = (left_x + right_x) / 2.0
         center_y = (bottom_y + top_y) / 2.0
         move_text_to(doc, text_note, center_x, center_y)
+
+        if pending is not None:
+            pending.append((text_note, center_x, center_y))
+            return True
+
         doc.Regenerate()
-
-        bbox = text_note.get_BoundingBox(view)
-        if bbox is None:
-            return False
-
-        actual_center_x = (bbox.Min.X + bbox.Max.X) / 2.0
-        actual_center_y = (bbox.Min.Y + bbox.Max.Y) / 2.0
-        delta_x = center_x - actual_center_x
-        delta_y = center_y - actual_center_y
-
-        if abs(delta_x) > 0.000001 or abs(delta_y) > 0.000001:
-            ElementTransformUtils.MoveElement(doc, text_note.Id, XYZ(delta_x, delta_y, 0.0))
-
-        return True
+        return _refine_text_center(doc, text_note, view, center_x, center_y)
     except:
         return False
 
@@ -434,7 +471,7 @@ def _level_frame_element_ids(level_record):
 
 def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name,
                        address_param_name, device_uid_param_name, annotation_symbol,
-                       label_offset_mm, current_level_y):
+                       label_offset_mm, current_level_y, pending=None):
     """
     Рисует помещение с нуля в позиции x_pos — используется и для первой
     постройки схемы, и для перерисовки помещения, чьё содержимое
@@ -477,7 +514,9 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     group_center_x = (group_left_x + group_right_x) / 2.0
 
     if text_note is not None:
-        center_text_in_frame(doc, text_note, view, group_left_x, group_right_x, current_level_y + text_y)
+        center_text_in_frame(
+            doc, text_note, view, group_left_x, group_right_x, current_level_y + text_y, pending=pending
+        )
 
     line_ids = []
     for elem in (
@@ -546,7 +585,8 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
 # РАМКА УРОВНЯ — рисование "с нуля" / удаление
 # ------------------------------------------------------------
 
-def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group_right, extra_bottom_mm=0.0):
+def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group_right,
+                       extra_bottom_mm=0.0, pending=None):
     """
     Рисует рамку этажа (3 левые вертикальные линии, правая вертикальная,
     2 горизонтальные, вертикальный текст этажа). group_left/group_right —
@@ -595,7 +635,8 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
         center_level_text(
             doc, level_text_note, view,
             second_level_line_x, third_level_line_x,
-            bottom_level_line_y, level_lines_top_y
+            bottom_level_line_y, level_lines_top_y,
+            pending=pending
         )
         text_id = level_text_note.Id.IntegerValue
 
@@ -609,7 +650,8 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
 def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_groups,
                          category_symbols, category_for_device, room_param_name, address_param_name,
                          device_uid_param_name, annotation_symbol, label_offset_mm,
-                         previous_rooms_state, unmatched_report, stats=None, room_sort_values=None):
+                         previous_rooms_state, unmatched_report, stats=None, room_sort_values=None,
+                         pending=None):
     """
     room_groups — OrderedDict(room_key -> [device, ...]) для этого этажа
     (желаемое состояние, уже сгруппировано по параметру помещения).
@@ -626,6 +668,12 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     Нужно, если у вызывающего кода порядок помещений должен быть другим
     (например СКС — слева направо по плану, см. BuildScsSchematic); СОТ
     и СПС этот аргумент не передают, для них ничего не меняется.
+
+    pending — если передан список, центрирование текста новых/
+    перерисованных помещений копится в нём вместо немедленного
+    doc.Regenerate() на каждое — см. center_text_in_frame/
+    flush_text_corrections. Вызывающий код (sync_levels) сам разбирается
+    с ним одним общим Regenerate() в конце.
 
     Для каждого помещения: если набор устройств (по UniqueId) не
     изменился — либо не трогаем вообще (позиция та же), либо просто
@@ -745,7 +793,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             room_record, room_report_rows = _place_room_group(
                 doc, view, x_cursor, room_key, valid_devices, room_param_name,
                 address_param_name, device_uid_param_name, annotation_symbol,
-                label_offset_mm, current_level_y
+                label_offset_mm, current_level_y, pending=pending
             )
             report_rows.extend(room_report_rows)
 
@@ -799,6 +847,13 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     sync_rooms_in_level, дополнительно получает
     "levels_unchanged"/"levels_moved"/"levels_created"/"levels_redrawn"/"levels_removed".
 
+    Центрирование текста всех новых/перерисованных помещений и этажей за
+    этот вызов подгоняется одним общим doc.Regenerate() в самом конце
+    (см. flush_text_corrections), а не по одному Regenerate() на каждое
+    помещение/этаж — на моделях, где Regenerate() стоит заметное время
+    (много связей/сложная геометрия), при сотнях помещений за запуск это
+    была разница на порядки (наблюдалось — минуты вместо долей секунды).
+
     Возвращает (new_state, report_rows); new_state — готов для
     sot_layout_state.save_state.
     """
@@ -808,6 +863,14 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     y_cursor = 0.0
     new_levels_state = {}
     report_rows = []
+
+    # Копим центрирование текста всех новых/перерисованных помещений и
+    # этажей ЭТОГО запуска здесь и разбираемся с ним одним общим
+    # Regenerate() в самом конце (flush_text_corrections), а не по
+    # одному на каждое помещение/этаж — на моделях, где Regenerate()
+    # стоит заметное время (много связей), при сотнях помещений это
+    # разница на порядки (минуты против долей секунды).
+    pending_text = []
 
     for level_key in level_order:
         room_groups = level_room_groups[level_key]
@@ -821,7 +884,8 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
         rooms_state, group_left, group_right, level_report_rows = sync_rooms_in_level(
             doc, view, level_label, y_cursor, level_dy, room_groups, category_symbols, category_for_device,
             room_param_name, address_param_name, device_uid_param_name, annotation_symbol,
-            label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values
+            label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values,
+            pending=pending_text
         )
         report_rows.extend(level_report_rows)
 
@@ -858,7 +922,8 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             else:
                 _bump(stats, "levels_created")
             text_id, line_ids = _draw_level_frame(
-                doc, view, level_label, y_cursor, group_left, group_right, extra_bottom_mm
+                doc, view, level_label, y_cursor, group_left, group_right, extra_bottom_mm,
+                pending=pending_text
             )
             level_record = {"y": y_cursor, "x_right": group_right, "text_id": text_id, "line_ids": line_ids}
 
@@ -874,6 +939,8 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
         for room_record in prev_level.get("rooms", {}).values():
             delete_elements(doc, _room_record_element_ids(room_record))
         _bump(stats, "levels_removed")
+
+    flush_text_corrections(doc, view, pending_text)
 
     return {"v": 1, "levels": new_levels_state, "extra_bottom_mm": extra_bottom_mm}, report_rows
 
