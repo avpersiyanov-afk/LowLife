@@ -218,6 +218,48 @@ def circuit_membership_map(doc, number_param):
     return result
 
 
+def isolator_branch_device_map(doc):
+    """
+    {ID изолятора (BaseEquipment цепи): [элементы-устройства]} по ВСЕМ
+    электрическим цепям документа, у которых назначена панель (BaseEquipment)
+    — для цепей «изолятор -> устройства» (см.
+    fire_alarm_isolator_circuits.build_isolator_device_circuits) это и есть
+    сам изолятор, что даёт достоверный состав его ответвления напрямую из
+    модели (а не по геометрии/адресу — то не отличает "продолжение
+    магистрали" от "устройства на ветви", см. докстринг fire_alarm_loops).
+
+    Не фильтрует по типу/категории BaseEquipment — у обычных шлейфовых
+    цепей BaseEquipment — панель, а не изолятор; вызывающий код сам решает,
+    какие ключи (id) из результата ему нужны (обычно только устройства,
+    прошедшие fire_alarm.is_isolator).
+    """
+    result = {}
+
+    circuits = FilteredElementCollector(doc) \
+        .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+    for c in circuits:
+        try:
+            base = c.BaseEquipment
+        except:
+            base = None
+        if base is None:
+            continue
+        try:
+            base_id = base.Id.IntegerValue
+        except:
+            continue
+        try:
+            members = list(c.Elements)
+        except:
+            continue
+        result.setdefault(base_id, []).extend(members)
+
+    return result
+
+
 def build_loop_nodes(device_els, address_by_id, isolator_keyword):
     """Узлы шлейфа для build_loop_tree — из элементов Revit."""
     nodes = []

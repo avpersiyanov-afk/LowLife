@@ -34,7 +34,14 @@ __doc__ = (
     "одного кольца (например, кольцо из одного устройства, где «туда» и "
     "«обратно» идут по одному и тому же пути) разводятся на 3 мм. Шлейф "
     "без панели среди узлов схемы (панель не сопоставлена ни одной "
-    "категории в настройках) пропускается."
+    "категории в настройках) пропускается.\n\n"
+    "Изолятор стоит на магистрали как обычное устройство, а устройства, "
+    "подключённые к нему (его ответвление — назад к магистрали не "
+    "возвращается), рисуются отдельной линией со сдвигом по Y от точки "
+    "изолятора. Состав ответвления берётся из фактической электрической "
+    "цепи «изолятор -> устройства» (кнопка «Цепи изолятор-устройства СПС»), "
+    "а не из адреса или геометрии — если такой цепи у изолятора нет, "
+    "ответвление не рисуется."
 )
 __author__ = "Pipers"
 
@@ -64,7 +71,8 @@ from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_
 from lowlife.sot_schematic import sync_levels, sync_cable_connections
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
-from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop
+from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop, is_isolator
+from lowlife.fire_alarm_circuits import isolator_branch_device_map
 from lowlife.fire_alarm_schematic import sync_loop_connections, node_points_from_state
 
 fire_alarm_settings.set_system("SPS")
@@ -338,8 +346,17 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
     loops_by_key = group_devices_by_loop(elements, address_by_id)
 
+    # Ответвления изоляторов — из фактических эл. цепей "изолятор ->
+    # устройства" (build_isolator_device_circuits), а не по адресу/
+    # геометрии: только так достоверно отличить "продолжение магистрали"
+    # от "устройства на ветви" (см. докстринг lowlife.fire_alarm_loops).
+    branch_devices_by_isolator_id = isolator_branch_device_map(doc)
+    isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
+
     loops_for_drawing = []
     loops_without_panel = 0
+    branch_count = 0
+    branch_device_count = 0
 
     for (panel_num, _loop_num), devices_in_loop in loops_by_key.items():
         panel_el = panel_by_number.get(panel_num)
@@ -347,9 +364,32 @@ with revit.Transaction(u"Sync SPS Schematic"):
         if panel_uid is None:
             loops_without_panel += 1
 
+        branches = {}
+        excluded_ids = set()
+
+        for device in devices_in_loop:
+            if not is_isolator(device, isolator_keyword):
+                continue
+
+            branch_members = branch_devices_by_isolator_id.get(device.Id.IntegerValue) or []
+            if not branch_members:
+                continue
+
+            branch_members = sorted(
+                branch_members,
+                key=lambda d: address_by_id.get(d.Id.IntegerValue, (0, 0, 0))[2]
+            )
+            branches[device.UniqueId] = [d.UniqueId for d in branch_members]
+            excluded_ids.update(d.Id.IntegerValue for d in branch_members)
+            branch_count += 1
+            branch_device_count += len(branch_members)
+
+        main_devices = [d for d in devices_in_loop if d.Id.IntegerValue not in excluded_ids]
+
         loops_for_drawing.append({
             "panel_uid": panel_uid,
-            "device_uids": [d.UniqueId for d in devices_in_loop]
+            "device_uids": [d.UniqueId for d in main_devices],
+            "branches": branches
         })
 
     node_points = node_points_from_state(new_state)
@@ -402,6 +442,11 @@ if loops_without_panel:
         u"⚠ У **{}** шлейфов панель не найдена среди узлов схемы (адрес панели не "
         u"разбирается как одно число, либо тип панели не сопоставлен ни одной "
         u"категории в настройках) — кольцо для них не нарисовано.".format(loops_without_panel)
+    )
+if branch_count:
+    output.print_md(
+        u"Ответвлений от изоляторов: **{}** ({} устройств), состав — из электрической "
+        u"цепи «изолятор -> устройства» изолятора, не из адреса.".format(branch_count, branch_device_count)
     )
 
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(

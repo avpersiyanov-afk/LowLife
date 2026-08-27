@@ -21,6 +21,23 @@ SyncCircuitsAndLengths) в объём этой кнопки не входит. �
 же кольца (типичный случай — кольцо из одного устройства, где "туда" и
 "обратно" идут по одному и тому же отрезку): между ними выдерживается
 зазор LOOP_LINE_GAP_MM.
+
+Изоляторы (ответвители) и их ответвления
+-----------------------------------------
+Изолятор стоит инлайн на основном кольце (магистраль идёт ЧЕРЕЗ него, как
+через обычное устройство), но устройства, подключённые К НЕМУ (его
+собственная ветвь, которая назад к магистрали не возвращается — см.
+lowlife.fire_alarm_loops), исключаются из основной последовательности и
+рисуются отдельной ломаной от изолятора. Состав ветви берётся не из
+адреса/геометрии, а из фактической электрической цепи "изолятор ->
+устройства" в модели (см. lowlife.fire_alarm_circuits.isolator_branch_device_map)
+— это единственный надёжный источник, см. докстринг fire_alarm_loops о
+том, почему по одному адресу магистраль от ветви не отличить.
+
+Чтобы ответвление визуально читалось как ответвление, а не продолжение
+магистрали, от изолятора линия сначала идёт коротким изломом по Y
+(BRANCH_Y_OFFSET_MM) и только потом — к первому устройству ветви и далее
+по её устройствам.
 """
 
 from lowlife.sot_schematic import draw_segment, delete_elements, MM_TO_FT
@@ -28,6 +45,10 @@ from lowlife.sot_schematic import draw_segment, delete_elements, MM_TO_FT
 # Зазор между линиями кольца, когда они совпадают/идут параллельно
 # (см. докстринг модуля и sync_loop_connections._draw_hop).
 LOOP_LINE_GAP_MM = 3.0
+
+# Излом по Y от изолятора перед ответвлением — визуально отличает ветвь
+# от прямого продолжения магистрали (см. _draw_branch).
+BRANCH_Y_OFFSET_MM = 8.0
 
 _TOL_FT = 1e-6
 
@@ -75,22 +96,30 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_point_by_uid
     удаляются, новые рисуются по актуальным позициям узлов).
 
     loops — список колец: [{"panel_uid": uid_или_None, "device_uids":
-    [uid, ...]}, ...], device_uids уже в нужном порядке обхода (по
-    порядковому номеру адреса — см. fire_alarm.group_devices_by_loop).
+    [uid, ...], "branches": {isolator_uid: [uid, ...]}}, ...].
+    device_uids — основная магистраль в порядке обхода (по порядковому
+    номеру адреса — см. fire_alarm.group_devices_by_loop), БЕЗ устройств,
+    ушедших на ветви (те перечислены в "branches"). "branches" —
+    необязательный ключ; каждая запись — {UniqueId изолятора: [UniqueId
+    устройств его ветви в порядке обхода]} (см.
+    fire_alarm_circuits.isolator_branch_device_map) — изолятор при этом
+    сам остаётся в device_uids (магистраль идёт через него).
 
     node_point_by_uid — {UniqueId: (x, y)} фактических координат узлов на
     схеме (см. node_points_from_state).
 
     Кольцо, для которого на схеме нет узла-панели (panel_uid не задан или
     не нашёлся среди node_point_by_uid) или не осталось ни одного
-    устройства с известной точкой — пропускается (только его старые линии
-    удаляются, новые не рисуются).
+    устройства с известной точкой — магистраль не рисуется (только старые
+    линии удаляются); ветви при этом всё равно рисуются, если у их
+    изолятора есть точка на схеме.
 
     Возвращает новый список id линий (для state).
     """
     delete_elements(doc, old_loop_line_ids)
 
     gap_ft = LOOP_LINE_GAP_MM * MM_TO_FT
+    branch_offset_ft = BRANCH_Y_OFFSET_MM * MM_TO_FT
     new_ids = []
     seen_segments = {}
 
@@ -113,6 +142,19 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_point_by_uid
         if elem is not None:
             new_ids.append(elem.Id.IntegerValue)
 
+    def draw_branch(isolator_pt, device_pts):
+        """Излом по Y от изолятора, затем по устройствам ветви по прямой (без возврата)."""
+        if isolator_pt is None or not device_pts:
+            return
+
+        ix, iy = isolator_pt
+        stub_y = iy + branch_offset_ft
+        draw_hop(ix, iy, ix, stub_y)
+
+        path = [(ix, stub_y)] + device_pts
+        for (x1, y1), (x2, y2) in zip(path, path[1:]):
+            draw_hop(x1, y1, x2, y2)
+
     for loop in loops:
         panel_uid = loop.get("panel_uid")
         device_uids = loop.get("device_uids") or []
@@ -120,14 +162,15 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_point_by_uid
         panel_pt = node_point_by_uid.get(panel_uid) if panel_uid else None
         device_pts = [node_point_by_uid[uid] for uid in device_uids if uid in node_point_by_uid]
 
-        if not device_pts:
-            continue
+        if device_pts:
+            path = ([panel_pt] if panel_pt else []) + device_pts + ([panel_pt] if panel_pt else [])
+            if len(path) >= 2:
+                for (x1, y1), (x2, y2) in zip(path, path[1:]):
+                    draw_hop(x1, y1, x2, y2)
 
-        path = ([panel_pt] if panel_pt else []) + device_pts + ([panel_pt] if panel_pt else [])
-        if len(path) < 2:
-            continue
-
-        for (x1, y1), (x2, y2) in zip(path, path[1:]):
-            draw_hop(x1, y1, x2, y2)
+        for isolator_uid, branch_device_uids in (loop.get("branches") or {}).items():
+            isolator_pt = node_point_by_uid.get(isolator_uid)
+            branch_pts = [node_point_by_uid[uid] for uid in branch_device_uids if uid in node_point_by_uid]
+            draw_branch(isolator_pt, branch_pts)
 
     return new_ids
