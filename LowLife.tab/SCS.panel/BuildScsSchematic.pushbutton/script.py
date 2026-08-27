@@ -314,9 +314,15 @@ sync_stats = {}
 
 with revit.Transaction(u"Sync SCS Schematic"):
     level_room_groups = OrderedDict()
+    # {level_name: {room_key: реальный X (левая граница помещения по
+    # плану, min по устройствам в нём)}} — чтобы помещения на схеме шли
+    # слева направо в том же порядке, что и на плане, а не по номеру/
+    # имени (см. room_sort_values в sync_levels/sync_rooms_in_level).
+    room_sort_values = {}
 
     for level_name in level_order:
         room_groups = OrderedDict()
+        room_min_x = {}
 
         for el in level_groups[level_name]["elements"]:
             room_value = resolve_room_value(doc, el, room_counters)
@@ -326,7 +332,13 @@ with revit.Transaction(u"Sync SCS Schematic"):
                 room_groups[room_key] = []
             room_groups[room_key].append(el)
 
+            pt = get_room_point(el)
+            if pt is not None:
+                if room_key not in room_min_x or pt.X < room_min_x[room_key]:
+                    room_min_x[room_key] = pt.X
+
         level_room_groups[level_name] = room_groups
+        room_sort_values[level_name] = room_min_x
 
     if is_new_view:
         view = ViewDrafting.Create(doc, drafting_type_id)
@@ -339,7 +351,7 @@ with revit.Transaction(u"Sync SCS Schematic"):
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, DEVICE_ADDRESS_PARAM, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=EXTRA_BOTTOM_MM
+        extra_bottom_mm=EXTRA_BOTTOM_MM, room_sort_values=room_sort_values
     )
 
     old_bus_line_ids = list(previous_state.get("bus_line_ids", []))

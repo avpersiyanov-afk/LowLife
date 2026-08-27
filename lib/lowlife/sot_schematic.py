@@ -609,7 +609,7 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
 def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_groups,
                          category_symbols, category_for_device, room_param_name, address_param_name,
                          device_uid_param_name, annotation_symbol, label_offset_mm,
-                         previous_rooms_state, unmatched_report, stats=None):
+                         previous_rooms_state, unmatched_report, stats=None, room_sort_values=None):
     """
     room_groups — OrderedDict(room_key -> [device, ...]) для этого этажа
     (желаемое состояние, уже сгруппировано по параметру помещения).
@@ -618,6 +618,14 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     level_dy — на сколько по Y сдвинулся сам этаж относительно прошлого
     раза (0.0, если этаж не двигался/только что появился) — непереехавшие
     помещения переносятся на этот вектор вместе с этажом, а не только по X.
+    room_sort_values — {room_key: число} — порядок помещений слева
+    направо на схеме, по возрастанию (по умолчанию None — как раньше,
+    порядок по _room_sort_key, т.е. по номеру/имени помещения). Если
+    передан, используется ПОЛНОСТЬЮ вместо _room_sort_key (не вперемешку
+    — ключ, которого нет в словаре, уходит в конец, `float('inf')`).
+    Нужно, если у вызывающего кода порядок помещений должен быть другим
+    (например СКС — слева направо по плану, см. BuildScsSchematic); СОТ
+    и СПС этот аргумент не передают, для них ничего не меняется.
 
     Для каждого помещения: если набор устройств (по UniqueId) не
     изменился — либо не трогаем вообще (позиция та же), либо просто
@@ -641,7 +649,12 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     new_rooms_state = {}
     report_rows = []
 
-    for room_key in sorted(room_groups.keys(), key=_room_sort_key):
+    if room_sort_values is not None:
+        sort_key_fn = lambda room_key: room_sort_values.get(room_key, float("inf"))
+    else:
+        sort_key_fn = _room_sort_key
+
+    for room_key in sorted(room_groups.keys(), key=sort_key_fn):
         devices = room_groups[room_key]
         valid_devices = []
 
@@ -759,7 +772,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
 def sync_levels(doc, view, level_order, level_room_groups, level_labels, category_symbols,
                  category_for_device, room_param_name, address_param_name, device_uid_param_name,
                  annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
-                 extra_bottom_mm=0.0):
+                 extra_bottom_mm=0.0, room_sort_values=None):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -775,6 +788,12 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     прошлым запуском, все рамки этажей перерисовываются заново (иначе
     рамка, которую в этот раз просто "подвинули" — без redraw — осталась
     бы со старым (возможно недостаточным) отступом).
+    room_sort_values — {level_key: {room_key: число}} (по умолчанию None
+    — как раньше, sync_rooms_in_level сама сортирует по _room_sort_key) —
+    порядок помещений слева направо на каждом этаже; передаётся в
+    sync_rooms_in_level для соответствующего level_key как есть (см. её
+    docstring). Уровня, для которого записи нет, тоже не касается — для
+    него сортировка как раньше. СОТ/СПС этот аргумент не передают.
 
     stats (если передан) — тот же словарь-счётчик, что и у
     sync_rooms_in_level, дополнительно получает
@@ -797,10 +816,12 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
         prev_rooms = prev_level.get("rooms", {}) if prev_level else {}
         level_dy = 0.0 if prev_level is None else (y_cursor - prev_level.get("y", y_cursor))
 
+        level_room_sort_values = (room_sort_values or {}).get(level_key)
+
         rooms_state, group_left, group_right, level_report_rows = sync_rooms_in_level(
             doc, view, level_label, y_cursor, level_dy, room_groups, category_symbols, category_for_device,
             room_param_name, address_param_name, device_uid_param_name, annotation_symbol,
-            label_offset_mm, prev_rooms, unmatched_report, stats
+            label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values
         )
         report_rows.extend(level_report_rows)
 
