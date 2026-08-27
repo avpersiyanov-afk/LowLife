@@ -19,13 +19,19 @@ __doc__ = (
     "фильтрации — берутся только устройства с этим значением (остальные "
     "игнорируются). Чтобы вести отдельную схему по каждому корпусу, "
     "задайте для каждого своё имя вида и своё значение фильтра в настройках.\n\n"
-    "Если в настройках задана категория «Шкаф»/«Панель» — рисуются линии "
-    "до него шинной топологией: на каждом этаже один общий горизонтальный "
-    "коллектор чуть ниже узлов, от каждого узла к нему короткий "
-    "вертикальный отвод, коллекторы всех этажей выходят на один общий "
-    "вертикальный стояк слева от рамок этажей. Эти линии не редактируются "
-    "вручную — на каждом запуске перерисовываются заново по актуальным "
-    "позициям.\n\n"
+    "Ответвления изоляторов (устройства, подключённые к изолятору — состав "
+    "берётся из фактической электрической цепи «изолятор -> устройства», "
+    "кнопка «Цепи изолятор-устройства СПС», а не из адреса или геометрии) "
+    "рисуются НЕ в своём обычном помещении, а отдельным рядом-веткой прямо "
+    "под изолятором на схеме (тот же шаг между узлами и та же рамка, что у "
+    "обычного помещения, зазор 5 мм), — итог похож на дерево, растущее из "
+    "кольца. У изолятора без такой цепи ответвления нет — его устройства "
+    "остаются в общей раскладке по помещению как обычно.\n\n"
+    "Если в настройках задана категория «Шкаф»/«Панель» — рисуются линии до "
+    "него шинной топологией: на каждом этаже один общий горизонтальный "
+    "коллектор чуть ниже узлов, от каждого узла к нему короткий вертикальный "
+    "отвод, коллекторы всех этажей выходят на один общий вертикальный "
+    "стояк слева от рамок этажей.\n\n"
     "Кроме этого, для каждого шлейфа (адрес устройства «панель.шлейф.номер») "
     "рисуется кольцевой шлейф: внутри каждого помещения, где есть устройства "
     "этого шлейфа (включая панель, если она там же), — один отрезок на "
@@ -40,20 +46,17 @@ __doc__ = (
     "рисуется в два прохода со сдвигом 3 мм между ними. Шлейф без панели "
     "среди узлов схемы (панель не сопоставлена ни одной категории в "
     "настройках) рисуется без замыкания на неё.\n\n"
-    "Изолятор стоит на магистрали как обычное устройство, а устройства, "
-    "подключённые к нему (его ответвление — назад к магистрали не "
-    "возвращается), рисуются отдельной линией со сдвигом по Y от точки "
-    "изолятора. Состав ответвления берётся из фактической электрической "
-    "цепи «изолятор -> устройства» (кнопка «Цепи изолятор-устройства СПС»), "
-    "а не из адреса или геометрии — если такой цепи у изолятора нет, "
-    "ответвление не рисуется.\n\n"
-    "На больших моделях построение линий (кольца + ответвления) заметно "
-    "дольше, чем сама раскладка узлов по этажам/помещениям. Чтобы сначала "
-    "проверить/поправить раскладку без ожидания линий, впишите «нет» в "
-    "настройках СПС в поле «Рисовать кольцевые шлейфы и ответвления» — "
-    "раскладка построится как обычно, линии просто не рисуются (старые, "
-    "если были, удаляются). Верните «да» (или очистите поле), когда "
-    "раскладка устроит, и запустите ещё раз — линии достроятся."
+    "Оба вида линий (к шкафу и кольца/ответвления) не редактируются "
+    "вручную — на каждом запуске перерисовываются заново по актуальным "
+    "позициям, и оба выключаются ОДНИМ полем настроек. На больших моделях "
+    "их построение заметно дольше, чем сама раскладка узлов по этажам/"
+    "помещениям (включая ряды-ветки ответвлений — те строятся всегда, "
+    "линий не касается). Чтобы сначала проверить/поправить раскладку без "
+    "ожидания линий, впишите «нет» в настройках СПС в поле «Рисовать "
+    "кольцевые шлейфы и ответвления» — раскладка построится как обычно, "
+    "линии просто не рисуются (старые, если были, удаляются). Верните «да» "
+    "(или очистите поле), когда раскладка устроит, и запустите ещё раз — "
+    "линии достроятся."
 )
 __author__ = "Pipers"
 
@@ -80,12 +83,14 @@ from lowlife.fire_alarm_settings import (
     get_node_annotation_symbol, get_view_template, SCHEMATIC_SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import sync_levels, sync_cable_connections
+from lowlife.sot_schematic import sync_levels, sync_cable_connections, delete_elements
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop, is_isolator
 from lowlife.fire_alarm_circuits import isolator_branch_device_map
-from lowlife.fire_alarm_schematic import sync_loop_connections, node_placement_from_state
+from lowlife.fire_alarm_schematic import (
+    sync_loop_connections, sync_isolator_satellites, node_placement_from_state, SATELLITE_EXTRA_BOTTOM_MM
+)
 
 fire_alarm_settings.set_system("SPS")
 
@@ -228,6 +233,49 @@ if CABINET_CATEGORY_NAME:
 
 
 # ------------------------------------------------------------
+# ИЗОЛЯТОРЫ И ИХ ОТВЕТВЛЕНИЯ (для раскладки-спутника — и, если включено,
+# для линий кольца)
+# ------------------------------------------------------------
+#
+# Устройства ответвления убираются из обычной раскладки по помещению
+# (иначе оказались бы на схеме дважды) и рисуются отдельным рядом под
+# своим изолятором (sync_isolator_satellites) — см. её докстринг в
+# fire_alarm_schematic.py. Состав ответвления — из фактической
+# электрической цепи "изолятор -> устройства" (build_isolator_device_circuits),
+# а не по адресу/геометрии — см. докстринг lowlife.fire_alarm_loops о том,
+# почему по одному адресу магистраль от ветви не отличить.
+
+element_ids_set = set(el.Id.IntegerValue for el in elements)
+
+isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
+isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
+branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
+
+# {изолятор (элемент): [устройства ветви (элементы), ...]} — только
+# изоляторы, реально попавшие в elements (иначе рисовать спутник не для
+# чего — самого изолятора на схеме не будет), и только устройства ветви,
+# тоже попавшие в elements (иначе размещать нечего).
+satellite_branches_by_isolator = OrderedDict()
+branch_device_ids = set()
+
+for el in elements:
+    if el.Id.IntegerValue not in isolator_ids:
+        continue
+    branch_members = [
+        d for d in (branch_devices_by_isolator_id.get(el.Id.IntegerValue) or [])
+        if d.Id.IntegerValue in element_ids_set
+    ]
+    if not branch_members:
+        continue
+    branch_members.sort(key=lambda d: parse_device_address(get_string_param(d, ADDRESS_PARAM_NAME)) or (0, 0, 0))
+    satellite_branches_by_isolator[el] = branch_members
+    branch_device_ids.update(d.Id.IntegerValue for d in branch_members)
+
+branch_count = len(satellite_branches_by_isolator)
+branch_device_count = len(branch_device_ids)
+
+
+# ------------------------------------------------------------
 # ГРУППИРОВКА ПО ЭТАЖУ
 # ------------------------------------------------------------
 
@@ -311,6 +359,11 @@ with revit.Transaction(u"Sync SPS Schematic"):
         room_groups = OrderedDict()
 
         for el in level_groups[level_name]["elements"]:
+            if el.Id.IntegerValue in branch_device_ids:
+                # Идёт в ряд-спутник своего изолятора (sync_isolator_satellites
+                # ниже), не в обычную раскладку по помещению.
+                continue
+
             room_value = resolve_room_value(doc, el, room_counters)
             room_key = room_value if room_value else u"(пусто)"
 
@@ -335,19 +388,47 @@ with revit.Transaction(u"Sync SPS Schematic"):
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
-        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
+        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
+        extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM
     )
+
+    # --- ряды-спутники ответвлений изоляторов (раскладка, без линий) ---
+    # Всегда (не зависит от DRAW_LOOP_LINES — это про расположение
+    # устройств, а не про провода).
+
+    old_satellite_ids = previous_state.get("satellite_ids", [])
+    if satellite_branches_by_isolator:
+        node_placement_for_satellites = node_placement_from_state(new_state)
+        isolator_branches_by_uid = OrderedDict(
+            (isolator_el.UniqueId, devices) for isolator_el, devices in satellite_branches_by_isolator.items()
+        )
+        new_state["satellite_ids"] = sync_isolator_satellites(
+            doc, view, old_satellite_ids, isolator_branches_by_uid, node_placement_for_satellites,
+            CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
+            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM
+        )
+    else:
+        delete_elements(doc, old_satellite_ids)
+        new_state["satellite_ids"] = []
+
+    # --- провода: пока выключены целиком (и «шкафные», и кольца/ответвления) ---
+    # DRAW_LOOP_LINES управляет ОБОИМИ видами линий, пока раскладка
+    # (в т.ч. новые ряды-спутники выше) не устроит — см. настройки СПС.
+    # sync_cable_connections/sync_loop_connections вызываются в любом
+    # случае (с cabinet_uid=None / пустым списком колец при выключенном
+    # флаге), чтобы старые линии от предыдущего запуска с включёнными
+    # проводами гарантированно удалились, а не остались висеть.
 
     if CABINET_CATEGORY_NAME:
         old_cable_line_ids = previous_state.get("cable_line_ids", [])
-        new_state["cable_line_ids"] = sync_cable_connections(doc, view, new_state, old_cable_line_ids, CABINET_UID)
+        new_state["cable_line_ids"] = sync_cable_connections(
+            doc, view, new_state, old_cable_line_ids, CABINET_UID if DRAW_LOOP_LINES else None
+        )
 
     # --- кольцевые шлейфы: панель -> устройство №1 -> ... -> №N -> обратно ---
 
     loops_for_drawing = []
     loops_without_panel = 0
-    branch_count = 0
-    branch_device_count = 0
 
     if DRAW_LOOP_LINES:
         address_by_id = {}
@@ -365,18 +446,13 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
         loops_by_key = group_devices_by_loop(elements, address_by_id)
 
-        # Ответвления изоляторов — из фактических эл. цепей "изолятор ->
-        # устройства" (build_isolator_device_circuits), а не по адресу/
-        # геометрии: только так достоверно отличить "продолжение магистрали"
-        # от "устройства на ветви" (см. докстринг lowlife.fire_alarm_loops).
-        # is_isolator считается один раз на элемент (не на каждый запуск
-        # кнопки заново по всем цепям) — isolator_ids сужает
-        # isolator_branch_device_map до цепей ТОЛЬКО этих изоляторов, иначе
-        # на модели с большим числом электрических цепей (СКС/СКУД/ручных)
-        # чтение .Elements у каждой из них заметно замедляет кнопку.
-        isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
-        isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
-        branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
+        # Ответвления (изолятор -> его branch_devices) — те же самые,
+        # что уже посчитаны выше для раскладки-спутника; здесь только
+        # достаём UniqueId для sync_loop_connections.
+        branches_by_isolator_uid = dict(
+            (isolator_el.UniqueId, [d.UniqueId for d in devices])
+            for isolator_el, devices in satellite_branches_by_isolator.items()
+        )
 
         for (panel_num, _loop_num), devices_in_loop in loops_by_key.items():
             panel_el = panel_by_number.get(panel_num)
@@ -385,30 +461,20 @@ with revit.Transaction(u"Sync SPS Schematic"):
                 loops_without_panel += 1
 
             branches = {}
-            excluded_ids = set()
-
             for device in devices_in_loop:
                 if device.Id.IntegerValue not in isolator_ids:
                     continue
+                branch_uids = branches_by_isolator_uid.get(device.UniqueId)
+                if branch_uids:
+                    branches[device.UniqueId] = branch_uids
 
-                branch_members = branch_devices_by_isolator_id.get(device.Id.IntegerValue) or []
-                if not branch_members:
-                    continue
-
-                branch_members = sorted(
-                    branch_members,
-                    key=lambda d: address_by_id.get(d.Id.IntegerValue, (0, 0, 0))[2]
-                )
-                branches[device.UniqueId] = [d.UniqueId for d in branch_members]
-                excluded_ids.update(d.Id.IntegerValue for d in branch_members)
-                branch_count += 1
-                branch_device_count += len(branch_members)
-
-            main_devices = [d for d in devices_in_loop if d.Id.IntegerValue not in excluded_ids]
-
+            # group_devices_by_loop работает по elements (полный список,
+            # ответвления оттуда не убирались) — исключаем их здесь: у
+            # них нет отдельного узла на основной раскладке (только в
+            # спутнике под изолятором), магистрали идти не к чему.
             loops_for_drawing.append({
                 "panel_uid": panel_uid,
-                "device_uids": [d.UniqueId for d in main_devices],
+                "device_uids": [d.UniqueId for d in devices_in_loop if d.Id.IntegerValue not in branch_device_ids],
                 "branches": branches
             })
 
@@ -474,8 +540,11 @@ if loops_without_panel:
     )
 if branch_count:
     output.print_md(
-        u"Ответвлений от изоляторов: **{}** ({} устройств), состав — из электрической "
-        u"цепи «изолятор -> устройства» изолятора, не из адреса.".format(branch_count, branch_device_count)
+        u"Ответвлений от изоляторов: **{}** ({} устройств) — размещены рядом-веткой "
+        u"под своим изолятором (состав из электрической цепи «изолятор -> "
+        u"устройства», не из адреса; элементов на схеме под них создано: {}).".format(
+            branch_count, branch_device_count, len(new_state.get("satellite_ids", []))
+        )
     )
 
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(

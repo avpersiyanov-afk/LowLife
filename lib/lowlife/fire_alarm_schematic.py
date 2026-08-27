@@ -49,9 +49,30 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 по её устройствам (прямыми отрезками, без возврата). Ответвления обычно
 локальные (в пределах того же помещения, что и изолятор), поэтому для
 них правило "только через стояк" не применяется.
+
+Раскладка ответвлений изоляторов (sync_isolator_satellites)
+-------------------------------------------------------------
+Отдельно от линий — САМИ устройства ответвления рисуются не в своём
+обычном помещении (где им и следовало бы быть по параметру помещения), а
+отдельным рядом-"спутником" прямо под изолятором, как у обычного
+помещения (тот же шаг между узлами, та же рамка — переиспользуется
+sot_schematic._place_room_group), с зазором SATELLITE_GAP_MM от рамки
+этажа. Так итоговая раскладка читается как дерево, растущее от кольца:
+кольцо — обычный ряд по этажам/помещениям, а каждое ответвление —
+собственная "ветка" под своим изолятором. Вызывающий код (кнопка) сам
+исключает устройства ответвления из обычной группировки по помещению,
+иначе они оказались бы на схеме дважды.
+
+Место под ряд-спутник должно быть зарезервировано ЗАРАНЕЕ, при вызове
+sot_schematic.sync_levels — параметром extra_bottom_mm, значением
+SATELLITE_EXTRA_BOTTOM_MM (см. подробности отступов в комментариях к
+константам ниже); без этого рамка этажа наложится на ряд-спутник.
 """
 
-from lowlife.sot_schematic import draw_segment, delete_elements, MM_TO_FT
+from lowlife.sot_schematic import (
+    draw_segment, delete_elements, MM_TO_FT, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM,
+    LEVEL_SEPARATOR_OFFSET_MM, _place_room_group
+)
 
 # Зазор между линиями кольца "туда"/"обратно" (см. докстринг модуля).
 LOOP_LINE_GAP_MM = 3.0
@@ -74,6 +95,36 @@ LOOP_RISER_SPACING_MM = 30.0
 # Излом по Y от изолятора перед ответвлением — визуально отличает ветвь
 # от прямого продолжения магистрали (см. _draw_branch).
 BRANCH_Y_OFFSET_MM = 8.0
+
+# Зазор между нижней линией рамки помещения изолятора (BOTTOM_LINE_MM) и
+# верхней линией рамки ряда-спутника — прямо между двумя рамками, как
+# GROUP_GAP_MM между соседними помещениями в одном ряду, только по
+# вертикали.
+SATELLITE_GAP_MM = 5.0
+
+# На сколько ниже базовой линии этажа рисуется ряд-спутник ответвления:
+# нижняя граница рамки помещения (BOTTOM_LINE_MM), минус зазор
+# (SATELLITE_GAP_MM), минус верхняя граница собственной рамки спутника
+# (HEADER_TOP_LINE_MM — та же, что у обычного помещения).
+SATELLITE_ROW_OFFSET_MM = BOTTOM_LINE_MM - SATELLITE_GAP_MM - HEADER_TOP_LINE_MM
+
+# Нижняя граница рамки ряда-спутника (та же BOTTOM_LINE_MM, что и у
+# обычного помещения, но уже от его собственной базовой линии).
+_SATELLITE_ROW_BOTTOM_MM = SATELLITE_ROW_OFFSET_MM + BOTTOM_LINE_MM
+
+# Обычная (extra_bottom_mm=0) нижняя граница рамки этажа — см.
+# sot_schematic._draw_level_frame: base_bottom_y = current_level_y +
+# BOTTOM_LINE_MM - LEVEL_SEPARATOR_OFFSET_MM.
+_LEVEL_BASE_BOTTOM_MM = BOTTOM_LINE_MM - LEVEL_SEPARATOR_OFFSET_MM
+
+# extra_bottom_mm для sot_schematic.sync_levels — растягивает рамку
+# КАЖДОГО этажа вниз ровно настолько, чтобы под ней помещался ряд-спутник
+# (плюс небольшой запас 4мм) — иначе разделительная линия этажа наложится
+# на рамку ряда-спутника. Общий на все этажи (см. докстринг sync_levels)
+# — при построении СПС передаётся всегда, даже для этажей без
+# ответвлений, чтобы при появлении нового изолятора не пришлось всё
+# перестраивать заново из-за смены этого параметра.
+SATELLITE_EXTRA_BOTTOM_MM = (_LEVEL_BASE_BOTTOM_MM - _SATELLITE_ROW_BOTTOM_MM) + 4.0
 
 
 def node_placement_from_state(state):
@@ -210,5 +261,82 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_placement_by
                 if placement is not None:
                     branch_pts.append(placement[:2])
             draw_branch(isolator_pt, branch_pts)
+
+    return new_ids
+
+
+def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, node_placement_by_uid,
+                              category_symbols, category_for_device, room_param_name,
+                              address_param_name, device_uid_param_name, annotation_symbol,
+                              label_offset_mm):
+    """
+    Рисует ответвления изоляторов отдельным рядом-спутником прямо под
+    изолятором (см. докстринг модуля) — полностью перерисовывается каждый
+    запуск (без инкрементальной синхронизации, как у основной раскладки
+    помещений): состав ответвлений обычно небольшая часть от общего числа
+    устройств, полный перебор здесь дешёвый, а отдельный инкрементальный
+    код рисковал бы разъехаться с основной раскладкой при её собственных
+    сдвигах (сдвиг/пересчёт помещений сейчас не знает о спутниках).
+
+    isolator_branches — {UniqueId изолятора: [device_el, ...]} — реальные
+    элементы Revit его ветви (не UniqueId — нужны, чтобы создавать по ним
+    новые схемные экземпляры), уже в нужном порядке слева направо.
+
+    node_placement_by_uid — {UniqueId: (x, y, level_key, room_key)}
+    положения уже размещённых на схеме узлов (см. node_placement_from_state)
+    — используется только для координат самого изолятора; сами устройства
+    ветви в этом словаре отсутствуют (вызывающий код исключает их из
+    обычной группировки по помещению перед sync_levels).
+
+    Остальные параметры — как у sot_schematic.sync_rooms_in_level/
+    _place_room_group (категории, схемные символы, параметры записи).
+
+    Возвращает новый список id элементов ответвлений (для state).
+    """
+    delete_elements(doc, old_satellite_ids)
+
+    new_ids = []
+    row_offset_ft = SATELLITE_ROW_OFFSET_MM * MM_TO_FT
+
+    for isolator_uid, devices in isolator_branches.items():
+        if not devices:
+            continue
+
+        placement = node_placement_by_uid.get(isolator_uid)
+        if placement is None:
+            continue
+
+        isolator_x, isolator_y = placement[0], placement[1]
+        satellite_y = isolator_y + row_offset_ft
+
+        valid_devices = []
+        for device in devices:
+            category = category_for_device(device)
+            symbol = category_symbols.get(category) if category else None
+            if symbol is not None:
+                valid_devices.append((device, symbol))
+
+        if not valid_devices:
+            continue
+
+        # Переиспользуем ту же функцию, что рисует обычные помещения —
+        # тот же шаг между узлами, та же рамка, та же логика марок,
+        # только на своей строке (satellite_y вместо этажной current_level_y)
+        # и без подписи (room_key="↳" — просто помечает, что это ветка,
+        # а не обычное помещение).
+        room_record, _report_rows = _place_room_group(
+            doc, view, isolator_x, u"↳", valid_devices, room_param_name,
+            address_param_name, device_uid_param_name, annotation_symbol,
+            label_offset_mm, satellite_y
+        )
+
+        new_ids.extend(room_record.get("line_ids", []))
+        if room_record.get("text_id") is not None:
+            new_ids.append(room_record["text_id"])
+        for dev in room_record.get("devices", {}).values():
+            if dev.get("instance_id") is not None:
+                new_ids.append(dev["instance_id"])
+            if dev.get("tag_id") is not None:
+                new_ids.append(dev["tag_id"])
 
     return new_ids
