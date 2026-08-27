@@ -70,3 +70,48 @@ def test_panel_collectors_stack_further_from_level_for_each_next_panel():
     spacing_ft = scs_schematic.BUS_DROP_SPACING_MM * scs_schematic.MM_TO_FT
     assert y0 - y1 == pytest.approx(spacing_ft)
     assert y1 - y2 == pytest.approx(spacing_ft)
+
+
+def test_trunk_jump_overlapping_ranges_touches_both_directly():
+    # A: [0, 10], B: [5, 20] -> пересечение [5, 10], jump на верхней границе (10).
+    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(0.0, 10.0, 5.0, 20.0)
+    assert jump_y == pytest.approx(10.0)
+    assert ext_a is None
+    assert ext_b is None
+
+
+def test_trunk_jump_far_apart_ranges_meets_in_the_middle_of_the_gap():
+    # A: [0, 10] (например, нижние этажи), B: [50, 60] (далёкие верхние
+    # этажи) -> разрыв [10, 50], переход посередине (30), а не впритык
+    # к границе одного из стояков.
+    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(0.0, 10.0, 50.0, 60.0)
+    assert jump_y == pytest.approx(30.0)
+    assert ext_a == pytest.approx((10.0, 30.0))
+    assert ext_b == pytest.approx((50.0, 30.0))
+
+
+def test_trunk_jump_far_apart_ranges_order_independent():
+    # То же самое, но панели переданы в обратном порядке (B ниже A) —
+    # результат симметричный.
+    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(50.0, 60.0, 0.0, 10.0)
+    assert jump_y == pytest.approx(30.0)
+    assert ext_a == pytest.approx((50.0, 30.0))
+    assert ext_b == pytest.approx((10.0, 30.0))
+
+
+def test_trunk_jump_touching_ranges_no_gap_no_extension():
+    # A: [0, 10], B: [10, 20] -> касаются ровно в одной точке (10),
+    # переход там же, достройка не нужна ни одной из сторон.
+    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(0.0, 10.0, 10.0, 20.0)
+    assert jump_y == pytest.approx(10.0)
+    assert ext_a is None
+    assert ext_b is None
+
+
+def test_trunk_jump_single_point_ranges():
+    # Панель без своих устройств (только сама панель) на одном этаже
+    # каждая — min_y == max_y для обеих.
+    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(5.0, 5.0, 25.0, 25.0)
+    assert jump_y == pytest.approx(15.0)
+    assert ext_a == pytest.approx((5.0, 15.0))
+    assert ext_b == pytest.approx((25.0, 15.0))

@@ -76,10 +76,13 @@ _LINE_STYLE_PREFIX = u"СКС схема — "
 # панелями) рисуются отдельно от обычных шин розеток — не участвуют в
 # автогенерации цвета по panel_color_rgb (не связаны с конкретной
 # "одной" панелью — соединяют две), поэтому у них один общий,
-# фиксированный стиль/цвет, гарантированно не совпадающий ни с одним
-# автогенерируемым цветом панели (HSV-круг никогда не даёт чистый серый).
+# фиксированный стиль/цвет: яркий и контрастный (не серый — серый на
+# сложной чёрно-белой схеме, среди рамок и текста, легко теряется на
+# глаз), да ещё и жирный (TRUNK_LINE_WEIGHT), чтобы точно не потерялась
+# среди обычных тонких линий шины.
 TRUNK_LINE_STYLE_NAME = _LINE_STYLE_PREFIX + u"Магистраль"
-TRUNK_COLOR_RGB = (90, 90, 90)
+TRUNK_COLOR_RGB = (230, 20, 20)
+TRUNK_LINE_WEIGHT = 6
 
 
 def panel_riser_x(panel_index):
@@ -103,6 +106,44 @@ def panel_collector_y(panel_index, level_y):
     return level_y - (BUS_DROP_OFFSET_MM + panel_index * BUS_DROP_SPACING_MM) * MM_TO_FT
 
 
+def trunk_jump_geometry(min_y_a, max_y_a, min_y_b, max_y_b):
+    """
+    Геометрия перехода магистрали шкаф-шкаф между двумя стояками с
+    Y-диапазонами [min_y_a, max_y_a] и [min_y_b, max_y_b] (единицы —
+    любые, лишь бы одинаковые для обеих панелей и порядок min<=max).
+    Чистая функция, без Revit API — можно проверить тестами.
+
+    Возвращает (jump_y, ext_a, ext_b):
+    - jump_y — высота горизонтального перехода;
+    - ext_a/ext_b — None (стояк и так касается перехода) либо (from_y, to_y)
+      — какой отрезок достроить у этого стояка, чтобы он дотянулся до
+      jump_y.
+
+    Если диапазоны пересекаются — jump_y на верхней границе пересечения
+    (касается обоих стояков напрямую, ext_a=ext_b=None). Если нет —
+    jump_y ПОСЕРЕДИНЕ разрыва между диапазонами, и оба стояка достраиваются
+    коротким продолжением до неё — а не один стояк на всю длину разрыва
+    (у панелей на далёких друг от друга этажах разрыв может быть длиной
+    во много этажей, отрезок вышел бы аномально длинным).
+    """
+    overlap_lo = max(min_y_a, min_y_b)
+    overlap_hi = min(max_y_a, max_y_b)
+
+    if overlap_lo <= overlap_hi:
+        jump_y = overlap_hi
+    else:
+        jump_y = (overlap_hi + overlap_lo) / 2.0
+
+    def _extension(min_y, max_y):
+        if jump_y > max_y:
+            return max_y, jump_y
+        if jump_y < min_y:
+            return min_y, jump_y
+        return None
+
+    return jump_y, _extension(min_y_a, max_y_a), _extension(min_y_b, max_y_b)
+
+
 def panel_color_rgb(panel_index, panel_count):
     """
     (r, g, b) 0-255 для панели с этим порядковым номером — равномерно
@@ -116,14 +157,20 @@ def panel_color_rgb(panel_index, panel_count):
     return (int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
 
 
-def _get_or_create_line_style(doc, name, rgb):
+def _get_or_create_line_style(doc, name, rgb, weight=None):
     """
     Line Style (подкатегория категории «Линии») с этим именем — если уже
     существует (например, с прошлого запуска), просто переиспользуется
-    и обновляется цвет; если нет — создаётся. Возвращает GraphicsStyle
-    для присвоения DetailCurve.LineStyle, либо None при любой ошибке API
-    (тогда линия останется цвета по умолчанию — не критично для работы
-    кнопки, только для наглядности).
+    и обновляется цвет (и толщина, если weight задан); если нет —
+    создаётся. Возвращает GraphicsStyle для присвоения
+    DetailCurve.LineStyle, либо None при любой ошибке API (тогда линия
+    останется цвета по умолчанию — не критично для работы кнопки, только
+    для наглядности).
+
+    weight (1-16, см. Category.SetLineWeight) — задаётся только для
+    магистралей шкаф-шкаф (TRUNK_LINE_WEIGHT), чтобы жирная линия точно
+    не терялась на глаз среди обычных тонких линий шины; для линий
+    отдельной панели не задаётся (weight=None — толщина по умолчанию).
     """
     from Autodesk.Revit.DB import BuiltInCategory, Color, GraphicsStyleType
 
@@ -145,6 +192,12 @@ def _get_or_create_line_style(doc, name, rgb):
             subcategory.LineColor = Color(r, g, b)
         except:
             pass
+
+        if weight is not None:
+            try:
+                subcategory.SetLineWeight(weight, GraphicsStyleType.Projection)
+            except:
+                pass
 
         return subcategory.GetGraphicsStyle(GraphicsStyleType.Projection)
     except:
@@ -284,12 +337,16 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
     насквозь по диагонали:
 
     - горизонтальный "переход" между стояком панели A (X = riser_a) и
-      стояком панели B (X = riser_b) на высоте jump_y — верх более
-      низкого из двух участков стояка (min(max_y_a, max_y_b)), чтобы
-      переход гарантированно касался обоих, а не повисал в воздухе;
-    - если Y-диапазоны стояков не пересекаются вовсе (например, у панелей
-      нет общих этажей), участок стояка, который до jump_y не достаёт,
-      достраивается вниз коротким продолжением того же цвета магистрали.
+      стояком панели B (X = riser_b) на высоте jump_y;
+    - если Y-диапазоны стояков пересекаются — jump_y на верхней границе
+      пересечения (касается обоих стояков напрямую, без достройки);
+    - если не пересекаются вовсе (например, у панелей нет общих этажей —
+      это НЕ редкий случай, магистраль шкаф-шкаф как раз обычно связывает
+      далёкие друг от друга этажи) — jump_y ПОСЕРЕДИНЕ разрыва между
+      диапазонами, и оба стояка достраиваются коротким продолжением до
+      неё (не один стояк на всю длину разрыва — иначе при далёких друг
+      от друга этажах получался бы один аномально длинный отрезок вместо
+      короткого заметного перехода).
 
     riser_info — {panel_uid: (riser_x, min_y, max_y)}, из
     sync_panel_buses (второй элемент её возврата) — панель, у которой
@@ -315,7 +372,16 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
     if not trunk_links:
         return [], []
 
-    style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB)
+    style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB, TRUNK_LINE_WEIGHT)
+
+    def _draw_extension(x, ext, out_ids):
+        if ext is None:
+            return
+        from_y, to_y = ext
+        elem = draw_segment(doc, view, x, from_y, x, to_y)
+        if elem is not None:
+            out_ids.append(elem.Id.IntegerValue)
+            _set_style(elem, style)
 
     new_ids = []
     skipped = []
@@ -332,7 +398,7 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
 
         x_a, min_y_a, max_y_a = riser_a
         x_b, min_y_b, max_y_b = riser_b
-        jump_y = min(max_y_a, max_y_b)
+        jump_y, ext_a, ext_b = trunk_jump_geometry(min_y_a, max_y_a, min_y_b, max_y_b)
 
         pair_ids = []
 
@@ -341,17 +407,8 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
             pair_ids.append(elem.Id.IntegerValue)
             _set_style(elem, style)
 
-        if jump_y < min_y_a:
-            elem = draw_segment(doc, view, x_a, min_y_a, x_a, jump_y)
-            if elem is not None:
-                pair_ids.append(elem.Id.IntegerValue)
-                _set_style(elem, style)
-
-        if jump_y < min_y_b:
-            elem = draw_segment(doc, view, x_b, min_y_b, x_b, jump_y)
-            if elem is not None:
-                pair_ids.append(elem.Id.IntegerValue)
-                _set_style(elem, style)
+        _draw_extension(x_a, ext_a, pair_ids)
+        _draw_extension(x_b, ext_b, pair_ids)
 
         if pair_ids:
             new_ids.extend(pair_ids)
