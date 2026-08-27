@@ -368,7 +368,7 @@ with revit.Transaction(u"Sync SCS Schematic"):
     )
 
     old_trunk_line_ids = list(previous_state.get("trunk_line_ids", []))
-    new_state["trunk_line_ids"] = sync_trunk_links(
+    new_state["trunk_line_ids"], trunk_skipped = sync_trunk_links(
         doc, view, new_state, old_trunk_line_ids, trunk_link_uids, riser_info
     )
 
@@ -397,6 +397,17 @@ if trunk_link_uids:
     output.print_md(u"Магистральных связей шкаф-шкаф: **{}**, линий нарисовано: **{}**".format(
         len(trunk_link_uids), len(new_state["trunk_line_ids"])
     ))
+    if trunk_skipped:
+        skip_labels = {
+            "no_riser_a": u"панель A не размещена на схеме (нет линии шины)",
+            "no_riser_b": u"панель B не размещена на схеме (нет линии шины)",
+            "draw_failed": u"стояки размещены, но саму линию нарисовать не удалось",
+        }
+        output.print_md(u"### Не нарисовано ({})".format(len(trunk_skipped)))
+        for panel_uid_a, panel_uid_b, reason in trunk_skipped:
+            name_a = panel_names.get(panel_uid_a, panel_uid_a)
+            name_b = panel_names.get(panel_uid_b, panel_uid_b)
+            output.print_md(u"- {} <-> {}: {}".format(name_a, name_b, skip_labels.get(reason, reason)))
 
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
     u"Вид создан заново" if is_new_view else u"Вид обновлён",

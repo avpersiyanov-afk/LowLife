@@ -302,43 +302,60 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
     Как и шины (sync_panel_buses), эти линии не диффятся — полностью
     удаляются и рисуются заново на каждом запуске.
 
-    Возвращает [line_id, ...] для сохранения в state.
+    Возвращает (line_ids, skipped) — line_ids для сохранения в state;
+    skipped — [(panel_uid_a, panel_uid_b, reason), ...] для пар, для
+    которых не нарисовано НИ ОДНОГО отрезка (диагностика — почему связь
+    из настроек не попала на схему; reason один из "no_riser_a"/
+    "no_riser_b"/"draw_failed").
     """
     from lowlife.sot_schematic import draw_segment, delete_elements
 
     delete_elements(doc, old_trunk_line_ids)
 
     if not trunk_links:
-        return []
+        return [], []
 
     style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB)
 
     new_ids = []
+    skipped = []
+
     for panel_uid_a, panel_uid_b in trunk_links:
         riser_a = riser_info.get(panel_uid_a)
         riser_b = riser_info.get(panel_uid_b)
-        if riser_a is None or riser_b is None:
+        if riser_a is None:
+            skipped.append((panel_uid_a, panel_uid_b, "no_riser_a"))
+            continue
+        if riser_b is None:
+            skipped.append((panel_uid_a, panel_uid_b, "no_riser_b"))
             continue
 
         x_a, min_y_a, max_y_a = riser_a
         x_b, min_y_b, max_y_b = riser_b
         jump_y = min(max_y_a, max_y_b)
 
+        pair_ids = []
+
         elem = draw_segment(doc, view, x_a, jump_y, x_b, jump_y)
         if elem is not None:
-            new_ids.append(elem.Id.IntegerValue)
+            pair_ids.append(elem.Id.IntegerValue)
             _set_style(elem, style)
 
         if jump_y < min_y_a:
             elem = draw_segment(doc, view, x_a, min_y_a, x_a, jump_y)
             if elem is not None:
-                new_ids.append(elem.Id.IntegerValue)
+                pair_ids.append(elem.Id.IntegerValue)
                 _set_style(elem, style)
 
         if jump_y < min_y_b:
             elem = draw_segment(doc, view, x_b, min_y_b, x_b, jump_y)
             if elem is not None:
-                new_ids.append(elem.Id.IntegerValue)
+                pair_ids.append(elem.Id.IntegerValue)
                 _set_style(elem, style)
 
-    return new_ids
+        if pair_ids:
+            new_ids.extend(pair_ids)
+        else:
+            skipped.append((panel_uid_a, panel_uid_b, "draw_failed"))
+
+    return new_ids, skipped
