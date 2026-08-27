@@ -20,8 +20,9 @@ __doc__ = (
     "узлов»).\n\n"
     "Магистральные связи шкаф-шкаф (цепь, у которой вместо устройства "
     "оказалась другая целевая панель — например оптическая линия между "
-    "двумя шкафами) рисуются отдельными прямыми линиями между узлами "
-    "этих панелей на схеме, своим цветом, не через шину устройств.\n\n"
+    "двумя шкафами) ведутся через уже нарисованные стояки этих панелей "
+    "(переход между стояками на общей высоте), а не отдельной прямой "
+    "линией через рамки помещений; свой цвет, не через шину устройств.\n\n"
     "Повторный запуск не пересоздаёт схему с нуля: обновляется вид с именем "
     "из настроек, раскладка предыдущего запуска хранится в служебном "
     "параметре этого вида — трогаются (двигаются/перерисовываются) только "
@@ -350,13 +351,13 @@ with revit.Transaction(u"Sync SCS Schematic"):
     # линии — они остались бы в модели осиротевшими навсегда.
     for ids in previous_state.get("panel_bus_line_ids", {}).values():
         old_bus_line_ids.extend(ids)
-    new_state["bus_line_ids"] = sync_panel_buses(
+    new_state["bus_line_ids"], riser_info = sync_panel_buses(
         doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids, panel_names
     )
 
     old_trunk_line_ids = list(previous_state.get("trunk_line_ids", []))
     new_state["trunk_line_ids"] = sync_trunk_links(
-        doc, view, new_state, old_trunk_line_ids, trunk_link_uids
+        doc, view, new_state, old_trunk_line_ids, trunk_link_uids, riser_info
     )
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)

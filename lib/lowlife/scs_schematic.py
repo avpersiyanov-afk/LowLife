@@ -205,7 +205,12 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     sync_levels позиций узлов, диффить их незачем — см. docstring
     sot_schematic.sync_cable_connections).
 
-    Возвращает [line_id, ...] для сохранения в state.
+    Возвращает (line_ids, riser_info) — line_ids для сохранения в state;
+    riser_info — {panel_uid: (riser_x, min_y, max_y)} для панелей, у
+    которых реально нарисован хоть один участок шины (в т.ч. панель без
+    ни одного обычного устройства — узел только самой панели), нужен
+    sync_trunk_links, чтобы вести магистральные линии через уже
+    нарисованные стояки, а не отдельной линией напрямую.
     """
     from lowlife.sot_schematic import draw_segment, delete_elements, _iter_state_devices, _node_bottom_y
 
@@ -213,12 +218,13 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
 
     all_devices = list(_iter_state_devices(new_state))
     if not all_devices:
-        return []
+        return [], {}
 
     device_by_uid = dict((uid, (x, y, instance_id)) for uid, x, y, instance_id in all_devices)
     line_style_by_panel = _line_styles_by_panel(doc, panels_order, panel_names)
 
     new_ids = []
+    riser_info = {}
 
     for index, panel_uid in enumerate(panels_order):
         member_uids = panel_device_uids.get(panel_uid) or set()
@@ -263,19 +269,32 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
                 _set_style(elem, style)
+            riser_info[panel_uid] = (riser_x, min(collector_ys), max(collector_ys))
 
-    return new_ids
+    return new_ids, riser_info
 
 
-def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links):
+def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, riser_info):
     """
-    Прямая линия между узлами двух панелей на схеме — для магистральных
-    связей шкаф-шкаф (например оптическая линия между двумя шкафами),
-    которые не проходят через устройства и не принадлежат одной панели
-    (поэтому не красятся в цвет какой-то одной панели, см.
-    TRUNK_COLOR_RGB). Обе панели должны быть уже размещены на схеме
-    (см. _iter_state_devices(new_state)) — иначе пара пропускается.
+    Магистральная связь шкаф-шкаф (например оптическая линия между двумя
+    панелями) ведётся через уже нарисованные стояки этих панелей
+    (riser_info из sync_panel_buses), а не прямой линией напрямую через
+    рамки помещений — так магистраль визуально идёт по тому же "коридору
+    стояков" слева от схемы, что и обычные шины, а не пересекает её
+    насквозь по диагонали:
 
+    - горизонтальный "переход" между стояком панели A (X = riser_a) и
+      стояком панели B (X = riser_b) на высоте jump_y — верх более
+      низкого из двух участков стояка (min(max_y_a, max_y_b)), чтобы
+      переход гарантированно касался обоих, а не повисал в воздухе;
+    - если Y-диапазоны стояков не пересекаются вовсе (например, у панелей
+      нет общих этажей), участок стояка, который до jump_y не достаёт,
+      достраивается вниз коротким продолжением того же цвета магистрали.
+
+    riser_info — {panel_uid: (riser_x, min_y, max_y)}, из
+    sync_panel_buses (второй элемент её возврата) — панель, у которой
+    нет записи (шина не нарисована — например panels_order/panel_names
+    рассинхронизированы), пропускается.
     trunk_links — [(panel_uid_a, panel_uid_b), ...] (см.
     scs.collect_target_panel_devices).
     old_trunk_line_ids — [line_id, ...] из состояния предыдущего запуска.
@@ -285,26 +304,41 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links):
 
     Возвращает [line_id, ...] для сохранения в state.
     """
-    from lowlife.sot_schematic import draw_segment, delete_elements, _iter_state_devices
+    from lowlife.sot_schematic import draw_segment, delete_elements
 
     delete_elements(doc, old_trunk_line_ids)
 
     if not trunk_links:
         return []
 
-    device_by_uid = dict((uid, (x, y)) for uid, x, y, _iid in _iter_state_devices(new_state))
     style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB)
 
     new_ids = []
     for panel_uid_a, panel_uid_b in trunk_links:
-        point_a = device_by_uid.get(panel_uid_a)
-        point_b = device_by_uid.get(panel_uid_b)
-        if point_a is None or point_b is None:
+        riser_a = riser_info.get(panel_uid_a)
+        riser_b = riser_info.get(panel_uid_b)
+        if riser_a is None or riser_b is None:
             continue
 
-        elem = draw_segment(doc, view, point_a[0], point_a[1], point_b[0], point_b[1])
+        x_a, min_y_a, max_y_a = riser_a
+        x_b, min_y_b, max_y_b = riser_b
+        jump_y = min(max_y_a, max_y_b)
+
+        elem = draw_segment(doc, view, x_a, jump_y, x_b, jump_y)
         if elem is not None:
             new_ids.append(elem.Id.IntegerValue)
             _set_style(elem, style)
+
+        if jump_y < min_y_a:
+            elem = draw_segment(doc, view, x_a, min_y_a, x_a, jump_y)
+            if elem is not None:
+                new_ids.append(elem.Id.IntegerValue)
+                _set_style(elem, style)
+
+        if jump_y < min_y_b:
+            elem = draw_segment(doc, view, x_b, min_y_b, x_b, jump_y)
+            if elem is not None:
+                new_ids.append(elem.Id.IntegerValue)
+                _set_style(elem, style)
 
     return new_ids

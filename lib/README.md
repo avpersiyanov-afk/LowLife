@@ -321,8 +321,8 @@ Line Style (без настроек, по имени панели) — по цв
 | `panel_collector_y` | `panel_collector_y(panel_index, level_y)` | Y горизонтального коллектора панели с этим номером на этаже с данным `level_y` — первая панель на `BUS_DROP_OFFSET_MM` ниже узлов, каждая следующая ещё на `BUS_DROP_SPACING_MM` дальше, чтобы коллекторы нескольких панелей на одном этаже шли параллельно, не перекрываясь. Чистая функция без Revit API |
 | `panel_color_rgb` | `panel_color_rgb(panel_index, panel_count)` | `(r, g, b)` 0-255 для панели с этим номером — равномерно по кругу HSV (`colorsys.hsv_to_rgb`), а не плавным градиентом, чтобы соседние по индексу панели тоже были хорошо различимы. Чистая функция без Revit API |
 | `_get_or_create_line_style` | `_get_or_create_line_style(doc, name, rgb)` | Line Style (подкатегория категории «Линии» с этим именем) — переиспользуется, если уже существует с прошлого запуска (обновляет цвет), иначе создаётся (`Categories.NewSubcategory`). Возвращает `GraphicsStyle` для `DetailCurve.LineStyle`, либо `None` при любой ошибке API — тогда линия останется цвета по умолчанию, не критично |
-| `sync_panel_buses` | `sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids, panel_names)` | По одной независимой цветной шине на каждую панель (`panel_device_uids[panel_uid]`, должен включать и сам `panel_uid`) — свой коллектор на каждом её этаже (`panel_collector_y(index, level_y)`), свой стояк через все её этажи (`panel_riser_x(index)`), всё в одном `Line Style` (`panel_names` — `{panel_uid: имя}`, для его подписи). Как и у СОТ (`sync_cable_connections`), эти линии не диффятся — полностью удаляются и рисуются заново на каждом запуске (выводятся из уже посчитанных `sync_levels` позиций, диффить незачем). Возвращает плоский `[line_id, ...]` для `state["bus_line_ids"]` |
-| `sync_trunk_links` | `sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links)` | Прямая линия между узлами двух панелей — для магистральных связей шкаф-шкаф (`trunk_links` — `[(panel_uid_a, panel_uid_b), ...]`, из `scs.collect_target_panel_devices`), которые не проходят через устройства и не принадлежат одной панели — красятся в общий фиксированный `TRUNK_COLOR_RGB`, а не в автогенерируемый цвет какой-то одной панели. Пара, где одна из панелей ещё не размещена на схеме, пропускается. Тоже не диффится — удаляется и рисуется заново каждый запуск. Возвращает `[line_id, ...]` для `state["trunk_line_ids"]` |
+| `sync_panel_buses` | `sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids, panel_names)` | По одной независимой цветной шине на каждую панель (`panel_device_uids[panel_uid]`, должен включать и сам `panel_uid`) — свой коллектор на каждом её этаже (`panel_collector_y(index, level_y)`), свой стояк через все её этажи (`panel_riser_x(index)`), всё в одном `Line Style` (`panel_names` — `{panel_uid: имя}`, для его подписи). Как и у СОТ (`sync_cable_connections`), эти линии не диффятся — полностью удаляются и рисуются заново на каждом запуске (выводятся из уже посчитанных `sync_levels` позиций, диффить незачем). Возвращает `(line_ids, riser_info)` — `line_ids` для `state["bus_line_ids"]`; `riser_info` — `{panel_uid: (riser_x, min_y, max_y)}` для панелей, у которых реально нарисован хоть один участок шины — нужен `sync_trunk_links`, чтобы вести магистральные линии через уже нарисованные стояки |
+| `sync_trunk_links` | `sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, riser_info)` | Магистральная связь шкаф-шкаф (`trunk_links` — `[(panel_uid_a, panel_uid_b), ...]`, из `scs.collect_target_panel_devices`) ведётся через уже нарисованные стояки панелей (`riser_info` — второй элемент возврата `sync_panel_buses`), а не прямой линией через рамки помещений: горизонтальный "переход" между стояками на высоте `min(max_y_a, max_y_b)` (верх более низкого из двух участков, чтобы переход гарантированно касался обоих), плюс короткое продолжение стояка вниз, если Y-диапазоны стояков вообще не пересекаются. Общий фиксированный цвет `TRUNK_COLOR_RGB`, не цвет какой-то одной панели. Пара, где у одной из панелей нет записи в `riser_info` (шина не нарисована), пропускается. Тоже не диффится — удаляется и рисуется заново каждый запуск. Возвращает `[line_id, ...]` для `state["trunk_line_ids"]` |
 
 `RISER_BASE_OFFSET_MM` (5мм — первый стояк встаёт рядом с самой левой
 линией рамки этажа, как единственный стояк СОТ — `CABLE_RISER_OFFSET_MM
@@ -360,6 +360,22 @@ extra_bottom_mm) * MM_TO_FT`), чтобы рамки не наехали одн�
 из худшего случая — как если бы все панели схемы оказались на одном
 этаже (`BUS_DROP_OFFSET_MM + (len(panels_order)-1) * BUS_DROP_SPACING_MM`,
 плюс запас 5мм), минус уже зарезервированные `RESERVED_BOTTOM_MM`.
+
+### Марки узлов при сдвиге — delete+recreate, не TagHeadPosition (`sot_schematic.sync_rooms_in_level`)
+
+Тоже в общем с СОТ `sot_schematic.py`, но НЕ за опциональным параметром
+— меняет поведение по умолчанию (для обеих дисциплин): в ветке "набор
+устройств помещения не изменился, только сдвинулось" марка (`IndependentTag`
+без выноски) раньше просто переезжала вместе с узлом через
+`translate_elements` (`TagHeadPosition += vector`) — на практике
+оказалось ненадёжно (марка оставалась на старом месте). Теперь при
+реальном сдвиге узла (`room_moved`, `dx`/`level_dy` не нулевые) старая
+марка удаляется и ставится заново на новом месте через
+`place_node_annotation` — тем же путём, что уже использовался для
+"добора" марок, отсутствовавших на предыдущем запуске. Итоговая позиция
+та же, что и раньше задумывалась — просто через более надёжный путь;
+`translate_elements` для остальных элементов помещения (линии, текст,
+сами схемные семейства) не тронут.
 
 ## scs_parameters.py
 Логика кнопки **SetupParameters** («Параметры СКС»): таблица `PARAM_SPECS`

@@ -666,7 +666,8 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
 
         if not content_changed:
             dx = x_cursor - prev_record["x_left"]
-            if abs(dx) > _TOLERANCE_FT or abs(level_dy) > _TOLERANCE_FT:
+            room_moved = abs(dx) > _TOLERANCE_FT or abs(level_dy) > _TOLERANCE_FT
+            if room_moved:
                 translate_elements(doc, _room_record_element_ids(prev_record), dx, level_dy)
                 _bump(stats, "rooms_moved")
             else:
@@ -687,10 +688,18 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                 if instance is not None and room_value:
                     set_param_any(instance, room_param_name, room_value)
 
-                # марки без выноски не переезжают сами при сдвиге узла и не
-                # создаются задним числом для узлов, размещённых до того,
-                # как в настройках выбрали марку — добираем недостающие.
+                # Марки без выноски (TagHeadPosition) в некоторых проектах на
+                # практике не переезжают надёжно вместе с translate_elements
+                # (сдвиг узла выше уже применил vector и к ним тоже — но
+                # результат ненадёжен) — поэтому при реальном сдвиге узла
+                # старую марку удаляем и ставим заново на новом месте, а не
+                # полагаемся на то, что она уже переехала. Марка также
+                # добирается задним числом, если её вообще не было (узел
+                # размещён до того, как в настройках выбрали марку).
                 tag_id = old_dev.get("tag_id")
+                if room_moved and tag_id is not None:
+                    delete_elements(doc, [tag_id])
+                    tag_id = None
                 if tag_id is None and instance is not None:
                     new_tag = place_node_annotation(
                         doc, view, instance, annotation_symbol, new_x, current_level_y, label_offset_mm
