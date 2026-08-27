@@ -72,6 +72,26 @@ def test_panel_collectors_stack_further_from_level_for_each_next_panel():
     assert y1 - y2 == pytest.approx(spacing_ft)
 
 
+def test_trunk_drop_is_deeper_than_the_last_real_panel_collector():
+    # panel_count реальных панелей занимают индексы 0..panel_count-1 —
+    # отвод магистрали должен быть дальше от этажа, чем самый глубокий
+    # из них (иначе он мог бы столкнуться с чужой шиной устройств).
+    panel_count = 3
+    level_y = 100.0
+    deepest_collector_y = scs_schematic.panel_collector_y(panel_count - 1, level_y)
+    drop_y = scs_schematic.trunk_drop_y(panel_count, level_y)
+    assert drop_y < deepest_collector_y
+
+
+def test_trunk_drop_matches_virtual_next_panel_slot_minus_gap():
+    panel_count = 2
+    level_y = 100.0
+    expected = scs_schematic.panel_collector_y(panel_count, level_y) - (
+        scs_schematic.TRUNK_DROP_GAP_MM * scs_schematic.MM_TO_FT
+    )
+    assert scs_schematic.trunk_drop_y(panel_count, level_y) == pytest.approx(expected)
+
+
 def test_trunk_lane_does_not_collide_with_any_panel_riser():
     panel_count = 3
     panel_xs = [scs_schematic.panel_riser_x(i) for i in range(panel_count)]

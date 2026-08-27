@@ -34,6 +34,14 @@ Line Style (создаётся/переиспользуется автомати
 шиной той панели и была бы неотличима от неё. Свой яркий жирный стиль
 (TRUNK_COLOR_RGB/TRUNK_LINE_WEIGHT), не цвет какой-то одной панели.
 
+У самого шкафа магистраль отходит не от его шины устройств (переход
+начинался бы ровно в верхней точке стояка шины и читался бы как
+"продолжение" той же линии), а от СОБСТВЕННОГО узла шкафа — своим
+отдельным отводом, на видимом расстоянии от вертикального отростка
+шины устройств (см. TRUNK_STUB_OFFSET_MM), вниз до своей строки
+(глубже шины устройств любой панели этого этажа — trunk_drop_y) и
+дальше горизонтально до дорожки.
+
 Если магистральных связей несколько и они образуют ЦЕПОЧКУ (шкаф A —
 шкаф B — шкаф C, две связи через общий шкаф B), у всей цепочки —
 ОДНА общая дорожка (group_trunk_components), а не отдельная дорожка на
@@ -107,6 +115,26 @@ TRUNK_LINE_WEIGHT = 6
 # маленький отросток у стояка, а не как отдельная линия.
 TRUNK_LANE_GAP_MM = 20.0
 
+# Магистральная линия у самого шкафа отходит не от его обычной шины
+# устройств (было так раньше — переход к дорожке начинался ровно в
+# верхней точке стояка шины, визуально читалось как "продолжение" той
+# же линии, а не отдельная связь), а от СВОЕГО отдельного отвода: узел
+# шкафа -> вниз до собственной строки магистрали (ниже строк всех шин
+# устройств этого этажа, см. trunk_drop_y) -> горизонтально до дорожки
+# (trunk_lane_x). TRUNK_STUB_OFFSET_MM — на сколько этот отвод сдвинут
+# по X от самого узла шкафа (и, значит, от его вертикального отростка
+# к шине устройств, который идёт от той же точки, но строго по X узла)
+# — небольшой сдвиг, чтобы отвод не лёг на ту же вертикаль и не слился
+# с ней, а был на видимом расстоянии, как и просили.
+TRUNK_STUB_OFFSET_MM = 3.0
+
+# Насколько строка магистрального отвода (trunk_drop_y) ещё дальше от
+# этажа, чем самая глубокая строка шины устройств (panel_collector_y с
+# индексом panel_count, "виртуальная следующая панель" после всех
+# реальных) — заметный зазор, чтобы магистральный отвод не шёл почти
+# вплотную под последней шиной устройств, а стоял явно отдельно.
+TRUNK_DROP_GAP_MM = 6.0
+
 
 def panel_riser_x(panel_index):
     """
@@ -127,6 +155,20 @@ def panel_collector_y(panel_index, level_y):
     перекрывая друг друга. Чистая функция, без Revit API.
     """
     return level_y - (BUS_DROP_OFFSET_MM + panel_index * BUS_DROP_SPACING_MM) * MM_TO_FT
+
+
+def trunk_drop_y(panel_count, level_y):
+    """
+    Y строки магистрального отвода конкретного шкафа на этаже с этим
+    level_y — на panel_count-й "виртуальной" позиции panel_collector_y
+    (сразу за последним реальным индексом панели — 0..panel_count-1),
+    плюс ещё TRUNK_DROP_GAP_MM запаса, — заведомо дальше от этажа, чем
+    строка шины устройств ЛЮБОЙ панели схемы (panel_count берётся по
+    всей схеме, не по конкретному этажу — чтобы отвод не столкнулся с
+    чужой шиной, даже если панелей с бОльшим индексом на этом конкретном
+    этаже нет). Чистая функция, без Revit API.
+    """
+    return panel_collector_y(panel_count, level_y) - TRUNK_DROP_GAP_MM * MM_TO_FT
 
 
 def trunk_lane_x(trunk_index, panel_count):
@@ -336,12 +378,17 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     sync_levels позиций узлов, диффить их незачем — см. docstring
     sot_schematic.sync_cable_connections).
 
-    Возвращает (line_ids, riser_info) — line_ids для сохранения в state;
-    riser_info — {panel_uid: (riser_x, min_y, max_y)} для панелей, у
-    которых реально нарисован хоть один участок шины (в т.ч. панель без
-    ни одного обычного устройства — узел только самой панели), нужен
-    sync_trunk_links, чтобы вести магистральные линии через уже
-    нарисованные стояки, а не отдельной линией напрямую.
+    Возвращает (line_ids, panel_anchors) — line_ids для сохранения в
+    state; panel_anchors — {panel_uid: (panel_x, panel_level_y,
+    panel_drop_top_y)} для панелей, у которых реально нарисован хоть
+    один участок шины (в т.ч. панель без ни одного обычного устройства
+    — узел только самой панели) И которые сами найдены как узел на
+    схеме — panel_x/panel_drop_top_y — X и Y нижней границы УГО самого
+    узла панели (см. _node_bottom_y), panel_level_y — Y этажа, на
+    котором панель размещена; нужен sync_trunk_links, чтобы вести
+    магистральные линии от СОБСТВЕННОГО узла панели, а не через её шину
+    устройств (шина и магистраль не должны визуально сливаться/
+    восприниматься как продолжение друг друга).
     """
     from lowlife.sot_schematic import draw_segment, delete_elements, _iter_state_devices, _node_bottom_y
 
@@ -355,7 +402,7 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     line_style_by_panel = _line_styles_by_panel(doc, panels_order, panel_names)
 
     new_ids = []
-    riser_info = {}
+    panel_anchors = {}
 
     for index, panel_uid in enumerate(panels_order):
         member_uids = panel_device_uids.get(panel_uid) or set()
@@ -400,20 +447,28 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
                 _set_style(elem, style)
-            riser_info[panel_uid] = (riser_x, min(collector_ys), max(collector_ys))
 
-    return new_ids, riser_info
+            panel_self = device_by_uid.get(panel_uid)
+            if panel_self is not None:
+                panel_x, panel_level_y, panel_instance_id = panel_self
+                panel_drop_top_y = _node_bottom_y(doc, view, panel_instance_id, panel_level_y)
+                panel_anchors[panel_uid] = (panel_x, panel_level_y, panel_drop_top_y)
+
+    return new_ids, panel_anchors
 
 
-def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, riser_info, panel_count):
+def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, panel_anchors, panel_count):
     """
     Магистральные связи шкаф-шкаф (например оптическая линия между
-    шкафами) ведутся через СВОЮ ОТДЕЛЬНУЮ вертикальную "дорожку" (см.
-    trunk_lane_x) — не по X стояка одной из панелей (была так раньше —
-    визуально сливалось с обычной шиной той панели, магистраль была
-    неотличима от неё): короткий горизонтальный отвод от стояка каждого
-    шкафа до дорожки, вертикальный участок вдоль дорожки. Подключение к
-    каждому стояку — по его верхней точке (max_y).
+    шкафами) отходят от СОБСТВЕННОГО узла каждого шкафа (panel_anchors),
+    а не от его шины устройств (была так раньше — переход начинался
+    ровно в верхней точке стояка шины, читалось как "продолжение" той
+    же линии, а не отдельная связь): от узла шкафа — короткий отвод "на
+    расстоянии" от вертикального отростка шины устройств (тот идёт от
+    той же точки узла, но строго по её X — см. TRUNK_STUB_OFFSET_MM) вниз
+    до СВОЕЙ строки (глубже последней строки шины устройств этого этажа
+    — trunk_drop_y), дальше горизонтально до общей дорожки цепочки (см.
+    trunk_lane_x), дальше вертикально вдоль дорожки.
 
     Связи, образующие ЦЕПОЧКУ (шкаф A - шкаф B - шкаф C через две связи с
     общим шкафом B), группируются в одну цепочку с ОДНОЙ общей дорожкой
@@ -422,11 +477,11 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
     друг к другу (шаг RISER_SPACING_MM) и визуально сливались в подобие
     "коробки" вместо одной понятной линии (см. trunk_component_segments).
 
-    riser_info — {panel_uid: (riser_x, min_y, max_y)}, из
-    sync_panel_buses (второй элемент её возврата) — панель, у которой
-    нет записи (шина не нарисована — например panels_order/panel_names
-    рассинхронизированы), из цепочки исключается (для неё просто не
-    рисуется отвод, остальные члены цепочки это не затрагивает).
+    panel_anchors — {panel_uid: (panel_x, panel_level_y,
+    panel_drop_top_y)}, из sync_panel_buses (второй элемент её
+    возврата) — панель, у которой нет записи (не размещена на схеме
+    как узел), из цепочки исключается (для неё просто не рисуется
+    отвод, остальные члены цепочки это не затрагивает).
     panel_count — len(panels_order), для trunk_lane_x (дорожки магистралей
     продолжают ту же последовательность X, что и стояки панелей, поэтому
     нужно знать, сколько стояков панелей уже занято).
@@ -457,9 +512,9 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
 
     skipped = []
     for panel_uid_a, panel_uid_b in trunk_links:
-        if riser_info.get(panel_uid_a) is None:
+        if panel_anchors.get(panel_uid_a) is None:
             skipped.append((panel_uid_a, panel_uid_b, "no_riser_a"))
-        elif riser_info.get(panel_uid_b) is None:
+        elif panel_anchors.get(panel_uid_b) is None:
             skipped.append((panel_uid_a, panel_uid_b, "no_riser_b"))
 
     new_ids = []
@@ -469,10 +524,25 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
 
         member_points = []
         for panel_uid in member_uids:
-            riser = riser_info.get(panel_uid)
-            if riser is not None:
-                x, _min_y, max_y = riser
-                member_points.append((x, max_y))
+            anchor = panel_anchors.get(panel_uid)
+            if anchor is None:
+                continue
+
+            panel_x, panel_level_y, panel_drop_top_y = anchor
+            stub_x = panel_x - TRUNK_STUB_OFFSET_MM * MM_TO_FT
+            drop_y = trunk_drop_y(panel_count, panel_level_y)
+
+            # Отвод "на расстоянии" от узла шкафа: своя вертикаль
+            # (X=stub_x, сдвинут от X узла) от границы УГО шкафа вниз до
+            # своей строки — не касается вертикального отростка шины
+            # устройств того же шкафа (тот идёт от той же точки узла, но
+            # строго по X узла, без сдвига).
+            elem = draw_segment(doc, view, stub_x, panel_drop_top_y, stub_x, drop_y)
+            if elem is not None:
+                new_ids.append(elem.Id.IntegerValue)
+                _set_style(elem, style)
+
+            member_points.append((stub_x, drop_y))
 
         for x1, y1, x2, y2 in trunk_component_segments(member_points, lane_x):
             elem = draw_segment(doc, view, x1, y1, x2, y2)

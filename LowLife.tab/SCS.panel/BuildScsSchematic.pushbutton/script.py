@@ -20,9 +20,11 @@ __doc__ = (
     "узлов»).\n\n"
     "Магистральные связи шкаф-шкаф (цепь, у которой вместо устройства "
     "оказалась другая целевая панель — например оптическая линия между "
-    "двумя шкафами) ведутся по своей отдельной вертикальной дорожке "
-    "слева от стояков панелей (не по X одного из стояков — не совпадают "
-    "визуально с обычной шиной устройств), ярким жирным цветом.\n\n"
+    "двумя шкафами) отходят от собственного узла каждого шкафа (не от "
+    "его шины устройств — на видимом расстоянии от неё) до своей "
+    "отдельной вертикальной дорожки слева от стояков панелей, ярким "
+    "жирным цветом; несколько связей через общий шкаф (цепочка A-B-C) "
+    "используют одну общую дорожку на всех.\n\n"
     "Повторный запуск не пересоздаёт схему с нуля: обновляется вид с именем "
     "из настроек, раскладка предыдущего запуска хранится в служебном "
     "параметре этого вида — трогаются (двигаются/перерисовываются) только "
@@ -57,7 +59,7 @@ from lowlife.scs_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
 from lowlife.scs_schematic import (
-    sync_panel_buses, sync_trunk_links, BUS_DROP_OFFSET_MM, BUS_DROP_SPACING_MM
+    sync_panel_buses, sync_trunk_links, BUS_DROP_OFFSET_MM, BUS_DROP_SPACING_MM, TRUNK_DROP_GAP_MM
 )
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
@@ -166,12 +168,13 @@ if not panel_devices:
 
 # Магистральные связи шкаф-шкаф (например оптическая линия между двумя
 # панелями) — цепь, где вместо устройства оказалась другая целевая
-# панель. Рисуются отдельными линиями (sync_trunk_links), не через
-# обычную шину устройств. Панель, у которой из подключений есть только
-# такие магистрали (без единого обычного устройства), в panel_devices не
-# попадает вовсе (collect_target_panel_devices пропускает панели без
-# устройств) — добавляем её отдельно, с пустым списком устройств, иначе
-# она не окажется на схеме и магистраль до неё не от чего будет вести.
+# панель. Рисуются отдельными линиями (sync_trunk_links) от собственного
+# узла шкафа, не через его шину устройств. Панель, у которой из
+# подключений есть только такие магистрали (без единого обычного
+# устройства), в panel_devices не попадает вовсе (collect_target_panel_devices
+# пропускает панели без устройств) — добавляем её отдельно, с пустым
+# списком устройств, иначе она не окажется на схеме и магистраль до неё
+# не от чего будет вести.
 panel_devices_by_uid = dict((p.UniqueId, (p, devs)) for p, devs in panel_devices)
 for a, b in trunk_links:
     for p in (a, b):
@@ -267,8 +270,23 @@ if panels_order:
 else:
     deepest_bus_offset_mm = 0.0
 
+# Если есть хоть одна магистральная связь — у каждого шкафа-участника
+# ещё и собственный отвод магистрали (trunk_drop_y), который проходит
+# ЕЩЁ дальше от этажа, чем шина устройств самой глубокой (по индексу)
+# панели схемы — та же формула, что и в trunk_drop_y (panel_count-я,
+# "виртуальная" позиция panel_collector_y плюс TRUNK_DROP_GAP_MM).
+if trunk_link_uids:
+    deepest_trunk_offset_mm = (
+        BUS_DROP_OFFSET_MM + len(panels_order) * BUS_DROP_SPACING_MM + TRUNK_DROP_GAP_MM
+    )
+else:
+    deepest_trunk_offset_mm = 0.0
+
 BUS_BOTTOM_MARGIN_MM = 5.0  # запас, чтобы последняя линия не легла впритык на границу рамки
-EXTRA_BOTTOM_MM = max(0.0, deepest_bus_offset_mm + BUS_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM)
+EXTRA_BOTTOM_MM = max(
+    0.0,
+    max(deepest_bus_offset_mm, deepest_trunk_offset_mm) + BUS_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM
+)
 
 
 # ------------------------------------------------------------
@@ -377,13 +395,13 @@ with revit.Transaction(u"Sync SCS Schematic"):
     # линии — они остались бы в модели осиротевшими навсегда.
     for ids in previous_state.get("panel_bus_line_ids", {}).values():
         old_bus_line_ids.extend(ids)
-    new_state["bus_line_ids"], riser_info = sync_panel_buses(
+    new_state["bus_line_ids"], panel_anchors = sync_panel_buses(
         doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids, panel_names
     )
 
     old_trunk_line_ids = list(previous_state.get("trunk_line_ids", []))
     new_state["trunk_line_ids"], trunk_skipped = sync_trunk_links(
-        doc, view, new_state, old_trunk_line_ids, trunk_link_uids, riser_info, len(panels_order)
+        doc, view, new_state, old_trunk_line_ids, trunk_link_uids, panel_anchors, len(panels_order)
     )
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
