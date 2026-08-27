@@ -13,33 +13,26 @@ _node_bottom_y и т.д. Уровни (sot_levels.py) и хранение рас
 как есть.
 
 Чего нет у СОТ и что нужно СКС — несколько панелей (шкафов/патч-панелей)
-на одной схеме. Топология НЕ "N независимых шин" (была так в первой
-версии) — по требованию пользователя: на каждом этаже один ОБЩИЙ
-горизонтальный коллектор, к которому отростками собираются ВСЕ
-устройства этажа, независимо от того, к какой панели они идут (это
-имитирует физику — на этаже кабели разных панелей часто идут в одном
-лотке). Расходятся линии только в стояке — слева от рамок помещений,
-по одной отдельной вертикальной линии на каждую панель. Коллектор
-конкретного этажа дотягивается по X только до тех стояковых линий,
-чьи панели реально имеют устройство на этом этаже — поэтому этаж с
-одной панелью визуально даёт один отрезок до одного стояка, а этаж с
-двумя панелями — коллектор, дотянутый сразу до двух стояковых линий.
+на одной схеме, каждая своей независимой шиной: на каждом этаже у каждой
+панели, у которой есть на нём устройство, — своя горизонтальная линия
+коллектора (только её собственные устройства-отростки), дотянутая до её
+собственного стояка. Линии разных панелей на одном этаже разнесены по Y
+(следующая панель — дальше от рамки этажа, см. panel_collector_y), чтобы
+не накладывались друг на друга. Стояк каждой панели — своя отдельная
+вертикальная линия слева от рамок (см. panel_riser_x), тянется по Y
+только через те этажи, где у панели реально есть устройства.
 
-Раз коллектор общий, отросток одного устройства визуально не отличить
-от отростка другого без доп. признака — поэтому отростки (устройство ->
-коллектор) и стояк каждой панели красятся в свой цвет (свой Line Style,
-создаётся/переиспользуется автоматически по имени панели, без настроек)
-— один и тот же цвет у отростка и у стояка одной панели позволяет
-проследить конкретное устройство до конкретного шкафа глазами, даже
-через общий коллектор. Сам коллектор остаётся нейтральным (без
-переопределения цвета) — он не принадлежит одной панели.
+И отростки, и коллектор, и стояк одной панели красятся в один и тот же
+Line Style (создаётся/переиспользуется автоматически по имени панели,
+без настроек) — по цвету видно, какое устройство идёт к какому шкафу,
+даже если линии разных панелей визуально пересекаются на схеме.
 """
 
 # lowlife.sot_schematic импортирует Autodesk.Revit.DB на уровне модуля —
 # импортируем его функции (и Revit-специфичные тут же, при необходимости)
 # ЛЕНИВО, внутри функций, а не здесь наверху (тот же приём, что и в
-# scs.py:get_workset_name), чтобы panel_riser_x (чистая функция, без
-# Revit API) можно было тестировать вне Revit — см.
+# scs.py:get_workset_name), чтобы panel_riser_x/panel_collector_y (чистые
+# функции, без Revit API) можно было тестировать вне Revit — см.
 # tests/test_scs_schematic.py.
 import colorsys
 
@@ -62,9 +55,14 @@ RISER_BASE_OFFSET_MM = 5.0
 # масштаба схемы, коллектор до дальнего стояка тянулся через пустоту).
 RISER_SPACING_MM = 8.0
 
-# Насколько ниже узлов проходит общий горизонтальный коллектор этажа —
+# Насколько ниже узлов проходит коллектор первой (index=0) панели —
 # то же значение и тот же смысл, что CABLE_DROP_OFFSET_MM у СОТ.
 BUS_DROP_OFFSET_MM = 15.0
+
+# Насколько дальше от рамки этажа уходит коллектор каждой следующей
+# панели на том же этаже — чтобы коллекторы нескольких панелей не легли
+# друг на друга по Y, а стояли параллельно, один под другим.
+BUS_DROP_SPACING_MM = 8.0
 
 # Насыщенность/яркость автогенерируемых цветов панелей (HSV) — хорошо
 # различимые, не слишком тёмные и не белёсые цвета на тёмном/светлом
@@ -80,10 +78,20 @@ def panel_riser_x(panel_index):
     X стояка панели с данным порядковым номером (0, 1, 2...) — левее рамок
     помещений, панели расставлены по возрастанию номера слева направо от
     рамок (первая — ближе всего, на RISER_BASE_OFFSET_MM). Чистая
-    функция, без Revit API — можно проверить тестами отдельно от
-    геометрии сборки шины.
+    функция, без Revit API.
     """
     return -(RISER_BASE_OFFSET_MM + panel_index * RISER_SPACING_MM) * MM_TO_FT
+
+
+def panel_collector_y(panel_index, level_y):
+    """
+    Y горизонтального коллектора панели с этим номером на этаже с данным
+    level_y — первая панель (index=0) на BUS_DROP_OFFSET_MM ниже узлов,
+    каждая следующая ещё на BUS_DROP_SPACING_MM дальше (ниже) — так
+    коллекторы нескольких панелей на одном этаже идут параллельно, не
+    перекрывая друг друга. Чистая функция, без Revit API.
+    """
+    return level_y - (BUS_DROP_OFFSET_MM + panel_index * BUS_DROP_SPACING_MM) * MM_TO_FT
 
 
 def panel_color_rgb(panel_index, panel_count):
@@ -149,30 +157,37 @@ def _line_styles_by_panel(doc, panels_order, panel_names):
     return styles
 
 
-def sync_shared_bus(doc, view, new_state, old_bus_line_ids, panels_order,
-                     panel_device_uids, panel_names, drop_offset_mm=BUS_DROP_OFFSET_MM):
-    """
-    Рисует общую шину: один горизонтальный коллектор на этаж (все
-    устройства этажа — общие отростки на одну линию) + по одной отдельной
-    вертикальной линии-стояку на каждую панель (свой X — panel_riser_x).
-    Коллектор этажа дотягивается по X до стояка каждой панели, у которой
-    есть хоть одно устройство на этом этаже — так что этаж с одной
-    панелью визуально даёт один отрезок до одного стояка, а этаж с
-    несколькими панелями — коллектор, дотянутый сразу до нескольких
-    стояковых линий. Стояк каждой панели, в свою очередь, тянется по Y
-    только через те этажи, где у неё реально есть устройства.
+def _set_style(elem, style):
+    if elem is None or style is None:
+        return
+    try:
+        elem.LineStyle = style
+    except:
+        pass
 
-    Отростки (устройство -> коллектор) и стояк каждой панели красятся в
-    свой Line Style (авто, по имени панели, см. _line_styles_by_panel) —
-    коллектор остаётся нейтральным, он общий для всех панелей.
+
+def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
+                      panel_device_uids, panel_names):
+    """
+    Рисует по одной независимой, цветной шине на каждую панель: свой
+    горизонтальный коллектор на каждом этаже, где у панели есть
+    устройство (только её собственные устройства-отростки — не общий с
+    другими панелями), свой стояк через все её этажи. Коллекторы разных
+    панелей на одном этаже стоят на разной высоте (panel_collector_y) —
+    параллельно, не перекрываясь; стояки разных панелей — на разных X
+    (panel_riser_x), тоже параллельно.
+
+    Отростки, коллектор и стояк одной панели красятся в один Line Style
+    (авто, по имени панели, см. _line_styles_by_panel) — по цвету видно,
+    какое устройство идёт к какому шкафу.
 
     panels_order — [panel_uid, ...], уже в нужном порядке отрисовки
-    (например по имени панели) — определяет X стояка каждой панели
-    (panel_riser_x(index)), стабильный между запусками, пока порядок
-    панелей не меняется.
+    (например по имени панели) — определяет и X стояка (panel_riser_x),
+    и Y коллектора (panel_collector_y) каждой панели, стабильные между
+    запусками, пока порядок панелей не меняется.
     panel_device_uids — {panel_uid: set([device_uid, ...])} — устройства
     этой панели (её собственный uid тоже должен быть в своём множестве,
-    чтобы стояк дотянулся до самого узла панели на схеме).
+    чтобы шина дотянулась до самого узла панели на схеме).
     panel_names — {panel_uid: имя панели} — для подписи Line Style.
     old_bus_line_ids — [line_id, ...] из состояния предыдущего запуска.
 
@@ -191,78 +206,53 @@ def sync_shared_bus(doc, view, new_state, old_bus_line_ids, panels_order,
     if not all_devices:
         return []
 
-    # uid -> множество панелей, которым принадлежит устройство (обычно
-    # ровно одна — но защищаемся от совпадения на случай, если одно и то
-    # же устройство почему-то попало в цепи двух панелей).
-    panels_by_device_uid = {}
-    for panel_uid, member_uids in panel_device_uids.items():
-        for uid in member_uids:
-            panels_by_device_uid.setdefault(uid, set()).add(panel_uid)
-
-    riser_x_by_panel = dict((panel_uid, panel_riser_x(i)) for i, panel_uid in enumerate(panels_order))
+    device_by_uid = dict((uid, (x, y, instance_id)) for uid, x, y, instance_id in all_devices)
     line_style_by_panel = _line_styles_by_panel(doc, panels_order, panel_names)
 
-    def _panel_for_device(uid):
-        panels = panels_by_device_uid.get(uid)
-        if not panels:
-            return None
-        return sorted(panels)[0]
-
-    drop_offset = drop_offset_mm * MM_TO_FT
-
-    by_level_y = {}
-    for uid, x, y, instance_id in all_devices:
-        by_level_y.setdefault(y, []).append((uid, x, instance_id))
-
     new_ids = []
-    riser_collector_ys = dict((panel_uid, []) for panel_uid in panels_order)
 
-    for level_y, entries in by_level_y.items():
-        collector_y = level_y - drop_offset
+    for index, panel_uid in enumerate(panels_order):
+        member_uids = panel_device_uids.get(panel_uid) or set()
+        members = [
+            (uid, x, y, instance_id)
+            for uid, (x, y, instance_id) in device_by_uid.items()
+            if uid in member_uids
+        ]
 
-        panels_on_floor = set()
-        for uid, _x, _iid in entries:
-            panels_on_floor |= panels_by_device_uid.get(uid, set())
-
-        riser_xs_needed = [riser_x_by_panel[p] for p in panels_on_floor if p in riser_x_by_panel]
-        xs = [x for _uid, x, _iid in entries] + riser_xs_needed
-
-        if not xs:
+        if not members:
             continue
 
-        elem = draw_segment(doc, view, min(xs), collector_y, max(xs), collector_y)
-        if elem is not None:
-            new_ids.append(elem.Id.IntegerValue)
+        style = line_style_by_panel.get(panel_uid)
+        riser_x = panel_riser_x(index)
 
-        for uid, x, instance_id in entries:
-            drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
-            elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
+        by_level_y = {}
+        for uid, x, y, instance_id in members:
+            by_level_y.setdefault(y, []).append((x, instance_id))
+
+        collector_ys = []
+
+        for level_y, x_instance_list in by_level_y.items():
+            collector_y = panel_collector_y(index, level_y)
+            collector_ys.append(collector_y)
+
+            xs = [x for x, _iid in x_instance_list] + [riser_x]
+
+            elem = draw_segment(doc, view, min(xs), collector_y, max(xs), collector_y)
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
-                style = line_style_by_panel.get(_panel_for_device(uid))
-                if style is not None:
-                    try:
-                        elem.LineStyle = style
-                    except:
-                        pass
+                _set_style(elem, style)
 
-        for p in panels_on_floor:
-            if p in riser_collector_ys:
-                riser_collector_ys[p].append(collector_y)
+            for x, instance_id in x_instance_list:
+                drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
+                elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
+                if elem is not None:
+                    new_ids.append(elem.Id.IntegerValue)
+                    _set_style(elem, style)
 
-    for panel_uid in panels_order:
-        ys = riser_collector_ys.get(panel_uid) or []
-        if not ys:
-            continue
-        riser_x = riser_x_by_panel[panel_uid]
-        elem = draw_segment(doc, view, riser_x, min(ys), riser_x, max(ys))
-        if elem is not None:
-            new_ids.append(elem.Id.IntegerValue)
-            style = line_style_by_panel.get(panel_uid)
-            if style is not None:
-                try:
-                    elem.LineStyle = style
-                except:
-                    pass
+        if collector_ys:
+            elem = draw_segment(doc, view, riser_x, min(collector_ys), riser_x, max(collector_ys))
+            if elem is not None:
+                new_ids.append(elem.Id.IntegerValue)
+                _set_style(elem, style)
 
     return new_ids
