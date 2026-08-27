@@ -25,7 +25,16 @@ __doc__ = (
     "вертикальный отвод, коллекторы всех этажей выходят на один общий "
     "вертикальный стояк слева от рамок этажей. Эти линии не редактируются "
     "вручную — на каждом запуске перерисовываются заново по актуальным "
-    "позициям."
+    "позициям.\n\n"
+    "Кроме этого, для каждого шлейфа (адрес устройства «панель.шлейф.номер») "
+    "рисуется кольцевой шлейф — ломаная линия панель -> устройство №1 -> "
+    "№2 -> ... -> №N -> обратно на панель, в порядке порядкового номера "
+    "адреса. Это топологическая схема (отрезки идут по прямой между "
+    "узлами, без обхода чужих рамок); совпадающие/накладывающиеся отрезки "
+    "одного кольца (например, кольцо из одного устройства, где «туда» и "
+    "«обратно» идут по одному и тому же пути) разводятся на 3 мм. Шлейф "
+    "без панели среди узлов схемы (панель не сопоставлена ни одной "
+    "категории в настройках) пропускается."
 )
 __author__ = "Pipers"
 
@@ -55,6 +64,8 @@ from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_
 from lowlife.sot_schematic import sync_levels, sync_cable_connections
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
+from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop
+from lowlife.fire_alarm_schematic import sync_loop_connections, node_points_from_state
 
 fire_alarm_settings.set_system("SPS")
 
@@ -310,6 +321,41 @@ with revit.Transaction(u"Sync SPS Schematic"):
         old_cable_line_ids = previous_state.get("cable_line_ids", [])
         new_state["cable_line_ids"] = sync_cable_connections(doc, view, new_state, old_cable_line_ids, CABINET_UID)
 
+    # --- кольцевые шлейфы: панель -> устройство №1 -> ... -> №N -> обратно ---
+
+    address_by_id = {}
+    panel_by_number = {}
+
+    for el in elements:
+        raw = get_string_param(el, ADDRESS_PARAM_NAME)
+        parsed = parse_device_address(raw)
+        if parsed is not None:
+            address_by_id[el.Id.IntegerValue] = parsed
+        else:
+            panel_num = parse_panel_address(raw)
+            if panel_num is not None:
+                panel_by_number[panel_num] = el
+
+    loops_by_key = group_devices_by_loop(elements, address_by_id)
+
+    loops_for_drawing = []
+    loops_without_panel = 0
+
+    for (panel_num, _loop_num), devices_in_loop in loops_by_key.items():
+        panel_el = panel_by_number.get(panel_num)
+        panel_uid = panel_el.UniqueId if panel_el is not None else None
+        if panel_uid is None:
+            loops_without_panel += 1
+
+        loops_for_drawing.append({
+            "panel_uid": panel_uid,
+            "device_uids": [d.UniqueId for d in devices_in_loop]
+        })
+
+    node_points = node_points_from_state(new_state)
+    old_loop_line_ids = previous_state.get("loop_line_ids", [])
+    new_state["loop_line_ids"] = sync_loop_connections(doc, view, old_loop_line_ids, loops_for_drawing, node_points)
+
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
 
 
@@ -345,6 +391,19 @@ if CABINET_CATEGORY_NAME:
                 u"Найдено ещё {} устройств категории «Шкаф»/«Панель» кроме первого — "
                 u"линии рисуются только к одному (по алфавиту адреса).".format(cabinet_extra_count)
             )
+
+output.print_md(
+    u"Кольцевых шлейфов найдено: **{}**, линий кольца нарисовано: **{}**".format(
+        len(loops_for_drawing), len(new_state.get("loop_line_ids", []))
+    )
+)
+if loops_without_panel:
+    output.print_md(
+        u"⚠ У **{}** шлейфов панель не найдена среди узлов схемы (адрес панели не "
+        u"разбирается как одно число, либо тип панели не сопоставлен ни одной "
+        u"категории в настройках) — кольцо для них не нарисовано.".format(loops_without_panel)
+    )
+
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
     u"Вид создан заново" if is_new_view else u"Вид обновлён",
     len(level_order), len(all_report_rows)
