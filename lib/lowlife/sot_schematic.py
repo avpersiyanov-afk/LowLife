@@ -23,6 +23,7 @@ place_node_annotation), ничего в код для этого зашиват�
 
 import math
 import re
+import time
 
 from Autodesk.Revit.DB import (
     XYZ, Line, ElementId, TextNote, TextNoteType, TextNoteOptions,
@@ -387,6 +388,12 @@ def _bump(stats, key):
         stats[key] = stats.get(key, 0) + 1
 
 
+def _bump_time(timing, key, seconds):
+    """Накапливает время (сек.) по ключу — тот же приём, что _bump, только сумма, не счётчик."""
+    if timing is not None:
+        timing[key] = timing.get(key, 0.0) + seconds
+
+
 def _room_record_element_ids(room_record):
     """Все id, принадлежащие записи помещения (рамка+текст+узлы+марки), одним списком."""
     ids = list(room_record.get("line_ids", []))
@@ -415,13 +422,18 @@ def _level_frame_element_ids(level_record):
 
 def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name,
                        address_param_name, device_uid_param_name, annotation_symbol,
-                       label_offset_mm, current_level_y):
+                       label_offset_mm, current_level_y, timing=None):
     """
     Рисует помещение с нуля в позиции x_pos — используется и для первой
     постройки схемы, и для перерисовки помещения, чьё содержимое
     изменилось (sync_rooms_in_level). valid_devices — [(device, symbol), ...],
     уже отсортированные вызывающим кодом по адресу устройства (стабильный
     порядок слотов между запусками).
+
+    timing — если передан словарь, копит в нём суммарное время (сек.) по
+    видам операций ("text"/"lines"/"symbol_activate"/"instance"/"params"/
+    "tag") — диагностика, откуда реально уходит время на конкретной
+    модели (см. _bump_time). None по умолчанию — без замеров.
 
     Возвращает (room_record, report_rows) — room_record идёт в state
     (см. sot_layout_state), report_rows — [(room_key, address), ...].
@@ -434,6 +446,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     nodes_width = 2.0 * offset + (len(valid_devices) - 1) * step
     preliminary_center_x = x_pos + nodes_width / 2.0
 
+    _t0 = time.time()
     text_note = create_room_text(doc, view, room_key, preliminary_center_x, current_level_y + text_y)
 
     # Ширина по символам, а не по реальному BoundingBox (это требовало бы
@@ -457,7 +470,9 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
 
     if text_note is not None:
         center_text_in_frame(doc, text_note, view, group_left_x, group_right_x, current_level_y + text_y)
+    _bump_time(timing, "text", time.time() - _t0)
 
+    _t0 = time.time()
     line_ids = []
     for elem in (
         draw_vertical_line(doc, view, group_left_x, current_level_y),
@@ -468,6 +483,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     ):
         if elem is not None:
             line_ids.append(elem.Id.IntegerValue)
+    _bump_time(timing, "lines", time.time() - _t0)
 
     nodes_center_width = (len(valid_devices) - 1) * step
     nodes_start_x = group_center_x - nodes_center_width / 2.0
@@ -478,13 +494,18 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
 
     for device, symbol in valid_devices:
         if not symbol.IsActive:
+            _t0 = time.time()
             symbol.Activate()
             doc.Regenerate()
+            _bump_time(timing, "symbol_activate", time.time() - _t0)
 
+        _t0 = time.time()
         placement_point = XYZ(x_elem, current_level_y, 0.0)
         node_instance = doc.Create.NewFamilyInstance(placement_point, symbol, view)
+        _bump_time(timing, "instance", time.time() - _t0)
 
         if node_instance is not None:
+            _t0 = time.time()
             address_value = get_string_param(device, address_param_name)
             if address_value:
                 set_param_any(node_instance, address_param_name, address_value)
@@ -496,10 +517,13 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
             uid = device.UniqueId
             if device_uid_param_name:
                 set_param_any(node_instance, device_uid_param_name, uid)
+            _bump_time(timing, "params", time.time() - _t0)
 
+            _t0 = time.time()
             tag = place_node_annotation(
                 doc, view, node_instance, annotation_symbol, x_elem, current_level_y, label_offset_mm
             )
+            _bump_time(timing, "tag", time.time() - _t0)
 
             devices_state[uid] = {
                 "x": x_elem,
@@ -588,7 +612,8 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
 def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_groups,
                          category_symbols, category_for_device, room_param_name, address_param_name,
                          device_uid_param_name, annotation_symbol, label_offset_mm,
-                         previous_rooms_state, unmatched_report, stats=None, room_sort_values=None):
+                         previous_rooms_state, unmatched_report, stats=None, room_sort_values=None,
+                         timing=None):
     """
     room_groups — OrderedDict(room_key -> [device, ...]) для этого этажа
     (желаемое состояние, уже сгруппировано по параметру помещения).
@@ -724,7 +749,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             room_record, room_report_rows = _place_room_group(
                 doc, view, x_cursor, room_key, valid_devices, room_param_name,
                 address_param_name, device_uid_param_name, annotation_symbol,
-                label_offset_mm, current_level_y
+                label_offset_mm, current_level_y, timing=timing
             )
             report_rows.extend(room_report_rows)
 
@@ -751,7 +776,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
 def sync_levels(doc, view, level_order, level_room_groups, level_labels, category_symbols,
                  category_for_device, room_param_name, address_param_name, device_uid_param_name,
                  annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
-                 extra_bottom_mm=0.0, room_sort_values=None):
+                 extra_bottom_mm=0.0, room_sort_values=None, timing=None):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -778,6 +803,11 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     sync_rooms_in_level, дополнительно получает
     "levels_unchanged"/"levels_moved"/"levels_created"/"levels_redrawn"/"levels_removed".
 
+    timing — если передан словарь, копит в нём суммарное время (сек.) по
+    видам Revit-операций внутри _place_room_group (см. её докстринг) —
+    диагностика, чтобы увидеть, что именно на конкретной модели
+    занимает время, вместо гаданий по общему времени вызова.
+
     Возвращает (new_state, report_rows); new_state — готов для
     sot_layout_state.save_state.
     """
@@ -800,7 +830,8 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
         rooms_state, group_left, group_right, level_report_rows = sync_rooms_in_level(
             doc, view, level_label, y_cursor, level_dy, room_groups, category_symbols, category_for_device,
             room_param_name, address_param_name, device_uid_param_name, annotation_symbol,
-            label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values
+            label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values,
+            timing=timing
         )
         report_rows.extend(level_report_rows)
 

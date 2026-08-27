@@ -429,11 +429,18 @@ with revit.Transaction(u"Sync SPS Schematic"):
     except:
         pass
 
+    # timing_levels/timing_satellites — детальная разбивка (сек.) по видам
+    # Revit-операций внутри _place_room_group (текст/линии/активация типа/
+    # вставка экземпляра/параметры/марка), см. её докстринг — печатается в
+    # отчёте ниже, чтобы видеть, что именно на этой модели ест время.
+    timing_levels = {}
+    timing_satellites = {}
+
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM
+        extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM, timing=timing_levels
     )
 
     _mark(u"sync_levels (раскладка этажей/помещений/устройств)")
@@ -451,7 +458,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         new_state["satellite_ids"] = sync_isolator_satellites(
             doc, view, old_satellite_ids, isolator_branches_by_uid, node_placement_for_satellites,
             CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
-            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM
+            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM, timing=timing_satellites
         )
     else:
         delete_elements(doc, old_satellite_ids)
@@ -553,6 +560,27 @@ _total_time = sum(seconds for _label, seconds in _timings)
 for _label, _seconds in _timings:
     output.print_md(u"- {} — **{:.1f}** сек.".format(_label, _seconds))
 output.print_md(u"Итого: **{:.1f}** сек.".format(_total_time))
+
+_timing_labels = {
+    "text": u"создание+центрирование текста помещения",
+    "lines": u"линии рамки (5 отрезков)",
+    "symbol_activate": u"активация типа семейства (редко, раз на тип)",
+    "instance": u"вставка экземпляра устройства (NewFamilyInstance)",
+    "params": u"запись параметров устройства (адрес/помещение/UID)",
+    "tag": u"марка узла (IndependentTag)",
+}
+
+
+def _print_timing_breakdown(title, timing_dict):
+    if not timing_dict:
+        return
+    output.print_md(u"### {} — разбивка по операциям (сек.)".format(title))
+    for key, seconds in sorted(timing_dict.items(), key=lambda kv: -kv[1]):
+        output.print_md(u"- {} — **{:.1f}** сек.".format(_timing_labels.get(key, key), seconds))
+
+
+_print_timing_breakdown(u"sync_levels", timing_levels)
+_print_timing_breakdown(u"Ряды-спутники", timing_satellites)
 
 if not state_saved:
     output.print_md(

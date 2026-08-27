@@ -268,7 +268,7 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_placement_by
 def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, node_placement_by_uid,
                               category_symbols, category_for_device, room_param_name,
                               address_param_name, device_uid_param_name, annotation_symbol,
-                              label_offset_mm):
+                              label_offset_mm, timing=None):
     """
     Рисует ответвления изоляторов отдельным рядом-спутником прямо под
     изолятором (см. докстринг модуля) — полностью перерисовывается каждый
@@ -290,6 +290,7 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
 
     Остальные параметры — как у sot_schematic.sync_rooms_in_level/
     _place_room_group (категории, схемные символы, параметры записи).
+    timing — см. sot_schematic._place_room_group/sync_levels.
 
     Возвращает новый список id элементов ответвлений (для state).
     """
@@ -327,7 +328,7 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
         room_record, _report_rows = _place_room_group(
             doc, view, isolator_x, u"↳", valid_devices, room_param_name,
             address_param_name, device_uid_param_name, annotation_symbol,
-            label_offset_mm, satellite_y
+            label_offset_mm, satellite_y, timing=timing
         )
 
         new_ids.extend(room_record.get("line_ids", []))
