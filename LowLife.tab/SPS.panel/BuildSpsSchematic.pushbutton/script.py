@@ -43,7 +43,14 @@ __doc__ = (
     "изолятора. Состав ответвления берётся из фактической электрической "
     "цепи «изолятор -> устройства» (кнопка «Цепи изолятор-устройства СПС»), "
     "а не из адреса или геометрии — если такой цепи у изолятора нет, "
-    "ответвление не рисуется."
+    "ответвление не рисуется.\n\n"
+    "На больших моделях построение линий (кольца + ответвления) заметно "
+    "дольше, чем сама раскладка узлов по этажам/помещениям. Чтобы сначала "
+    "проверить/поправить раскладку без ожидания линий, впишите «нет» в "
+    "настройках СПС в поле «Рисовать кольцевые шлейфы и ответвления» — "
+    "раскладка построится как обычно, линии просто не рисуются (старые, "
+    "если были, удаляются). Верните «да» (или очистите поле), когда "
+    "раскладка устроит, и запустите ещё раз — линии достроятся."
 )
 __author__ = "Pipers"
 
@@ -105,6 +112,7 @@ SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
 LAYOUT_PARAM_NAME = settings["layout_param_name"]
 DEVICE_UID_PARAM_NAME = settings["device_uid_param_name"]
 CABINET_CATEGORY_NAME = settings["cabinet_category_name"].strip()
+DRAW_LOOP_LINES = settings.get("draw_loop_lines", u"да").strip().lower() not in (u"нет", u"no", u"0", u"false")
 
 try:
     NODE_LABEL_OFFSET_MM = float(settings["node_label_offset_mm"].replace(u",", u"."))
@@ -333,74 +341,78 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
     # --- кольцевые шлейфы: панель -> устройство №1 -> ... -> №N -> обратно ---
 
-    address_by_id = {}
-    panel_by_number = {}
-
-    for el in elements:
-        raw = get_string_param(el, ADDRESS_PARAM_NAME)
-        parsed = parse_device_address(raw)
-        if parsed is not None:
-            address_by_id[el.Id.IntegerValue] = parsed
-        else:
-            panel_num = parse_panel_address(raw)
-            if panel_num is not None:
-                panel_by_number[panel_num] = el
-
-    loops_by_key = group_devices_by_loop(elements, address_by_id)
-
-    # Ответвления изоляторов — из фактических эл. цепей "изолятор ->
-    # устройства" (build_isolator_device_circuits), а не по адресу/
-    # геометрии: только так достоверно отличить "продолжение магистрали"
-    # от "устройства на ветви" (см. докстринг lowlife.fire_alarm_loops).
-    # is_isolator считается один раз на элемент (не на каждый запуск
-    # кнопки заново по всем цепям) — isolator_ids сужает
-    # isolator_branch_device_map до цепей ТОЛЬКО этих изоляторов, иначе
-    # на модели с большим числом электрических цепей (СКС/СКУД/ручных)
-    # чтение .Elements у каждой из них заметно замедляет кнопку.
-    isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
-    isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
-    branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
-
     loops_for_drawing = []
     loops_without_panel = 0
     branch_count = 0
     branch_device_count = 0
 
-    for (panel_num, _loop_num), devices_in_loop in loops_by_key.items():
-        panel_el = panel_by_number.get(panel_num)
-        panel_uid = panel_el.UniqueId if panel_el is not None else None
-        if panel_uid is None:
-            loops_without_panel += 1
+    if DRAW_LOOP_LINES:
+        address_by_id = {}
+        panel_by_number = {}
 
-        branches = {}
-        excluded_ids = set()
+        for el in elements:
+            raw = get_string_param(el, ADDRESS_PARAM_NAME)
+            parsed = parse_device_address(raw)
+            if parsed is not None:
+                address_by_id[el.Id.IntegerValue] = parsed
+            else:
+                panel_num = parse_panel_address(raw)
+                if panel_num is not None:
+                    panel_by_number[panel_num] = el
 
-        for device in devices_in_loop:
-            if device.Id.IntegerValue not in isolator_ids:
-                continue
+        loops_by_key = group_devices_by_loop(elements, address_by_id)
 
-            branch_members = branch_devices_by_isolator_id.get(device.Id.IntegerValue) or []
-            if not branch_members:
-                continue
+        # Ответвления изоляторов — из фактических эл. цепей "изолятор ->
+        # устройства" (build_isolator_device_circuits), а не по адресу/
+        # геометрии: только так достоверно отличить "продолжение магистрали"
+        # от "устройства на ветви" (см. докстринг lowlife.fire_alarm_loops).
+        # is_isolator считается один раз на элемент (не на каждый запуск
+        # кнопки заново по всем цепям) — isolator_ids сужает
+        # isolator_branch_device_map до цепей ТОЛЬКО этих изоляторов, иначе
+        # на модели с большим числом электрических цепей (СКС/СКУД/ручных)
+        # чтение .Elements у каждой из них заметно замедляет кнопку.
+        isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
+        isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
+        branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
 
-            branch_members = sorted(
-                branch_members,
-                key=lambda d: address_by_id.get(d.Id.IntegerValue, (0, 0, 0))[2]
-            )
-            branches[device.UniqueId] = [d.UniqueId for d in branch_members]
-            excluded_ids.update(d.Id.IntegerValue for d in branch_members)
-            branch_count += 1
-            branch_device_count += len(branch_members)
+        for (panel_num, _loop_num), devices_in_loop in loops_by_key.items():
+            panel_el = panel_by_number.get(panel_num)
+            panel_uid = panel_el.UniqueId if panel_el is not None else None
+            if panel_uid is None:
+                loops_without_panel += 1
 
-        main_devices = [d for d in devices_in_loop if d.Id.IntegerValue not in excluded_ids]
+            branches = {}
+            excluded_ids = set()
 
-        loops_for_drawing.append({
-            "panel_uid": panel_uid,
-            "device_uids": [d.UniqueId for d in main_devices],
-            "branches": branches
-        })
+            for device in devices_in_loop:
+                if device.Id.IntegerValue not in isolator_ids:
+                    continue
 
-    node_points = node_points_from_state(new_state)
+                branch_members = branch_devices_by_isolator_id.get(device.Id.IntegerValue) or []
+                if not branch_members:
+                    continue
+
+                branch_members = sorted(
+                    branch_members,
+                    key=lambda d: address_by_id.get(d.Id.IntegerValue, (0, 0, 0))[2]
+                )
+                branches[device.UniqueId] = [d.UniqueId for d in branch_members]
+                excluded_ids.update(d.Id.IntegerValue for d in branch_members)
+                branch_count += 1
+                branch_device_count += len(branch_members)
+
+            main_devices = [d for d in devices_in_loop if d.Id.IntegerValue not in excluded_ids]
+
+            loops_for_drawing.append({
+                "panel_uid": panel_uid,
+                "device_uids": [d.UniqueId for d in main_devices],
+                "branches": branches
+            })
+
+    # sync_loop_connections вызывается всегда (даже при выключенном
+    # DRAW_LOOP_LINES, с пустым loops_for_drawing) — иначе линии, оставшиеся
+    # от предыдущего запуска с включённым флагом, не удалились бы.
+    node_points = node_points_from_state(new_state) if DRAW_LOOP_LINES else {}
     old_loop_line_ids = previous_state.get("loop_line_ids", [])
     new_state["loop_line_ids"] = sync_loop_connections(doc, view, old_loop_line_ids, loops_for_drawing, node_points)
 
@@ -440,11 +452,17 @@ if CABINET_CATEGORY_NAME:
                 u"линии рисуются только к одному (по алфавиту адреса).".format(cabinet_extra_count)
             )
 
-output.print_md(
-    u"Кольцевых шлейфов найдено: **{}**, линий кольца нарисовано: **{}**".format(
-        len(loops_for_drawing), len(new_state.get("loop_line_ids", []))
+if not DRAW_LOOP_LINES:
+    output.print_md(
+        u"Кольцевые шлейфы и ответвления выключены в настройках («Рисовать кольцевые "
+        u"шлейфы...» = «нет») — построена только раскладка узлов."
     )
-)
+else:
+    output.print_md(
+        u"Кольцевых шлейфов найдено: **{}**, линий кольца нарисовано: **{}**".format(
+            len(loops_for_drawing), len(new_state.get("loop_line_ids", []))
+        )
+    )
 if loops_without_panel:
     output.print_md(
         u"⚠ У **{}** шлейфов панель не найдена среди узлов схемы (адрес панели не "

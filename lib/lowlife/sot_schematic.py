@@ -447,9 +447,20 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     preliminary_center_x = x_pos + nodes_width / 2.0
 
     text_note = create_room_text(doc, view, room_key, preliminary_center_x, current_level_y + text_y)
-    text_width = get_text_width(doc, text_note, view)
-    if text_width <= 0.0:
-        text_width = len(room_key) * 2.5 * MM_TO_FT
+
+    # Ширина по символам, а не doc.Regenerate() + реальный BoundingBox
+    # (get_text_width) — тот же самый regenerate() чуть ниже сделает
+    # center_text_in_frame, так что второй, отдельный только ради ширины
+    # рамки, был бы избыточным (а на большой/связанной модели каждый
+    # regenerate() — заметная по времени операция, и при сотнях помещений
+    # на схеме это удваивает время построения на пустом месте). Ширина
+    # нужна только чтобы решить max(nodes_width, text_required_width) —
+    # при 2+ устройствах в помещении nodes_width почти всегда и так
+    # больше, так что грубая оценка ширины текста ни на что не влияет;
+    # разве что для одиночных устройств с длинным именем помещения рамка
+    # может оказаться чуть уже, чем по факту нужно тексту — сам текст
+    # всё равно останется отцентрирован (center_text_in_frame ниже).
+    text_width = len(room_key) * 2.5 * MM_TO_FT
 
     text_required_width = text_width + 2.0 * text_margin
     group_width = max(nodes_width, text_required_width)
