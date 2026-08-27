@@ -31,8 +31,17 @@ Line Style (создаётся/переиспользуется автомати
 вертикальной "дорожке" (trunk_lane_x, продолжение той же
 последовательности X, что и стояки панелей — panel_riser_x), не по X
 одного из стояков: иначе магистраль визуально совпадала бы с обычной
-шиной той панели и была бы неотличима от нею. Свой яркий жирный стиль
+шиной той панели и была бы неотличима от неё. Свой яркий жирный стиль
 (TRUNK_COLOR_RGB/TRUNK_LINE_WEIGHT), не цвет какой-то одной панели.
+
+Если магистральных связей несколько и они образуют ЦЕПОЧКУ (шкаф A —
+шкаф B — шкаф C, две связи через общий шкаф B), у всей цепочки —
+ОДНА общая дорожка (group_trunk_components), а не отдельная дорожка на
+каждую пару связей: иначе дорожки соседних пар (разница в X всего
+RISER_SPACING_MM) стояли бы почти вплотную друг к другу и визуально
+сливались в подобие "коробки" вместо одной понятной линии. Каждый шкаф
+цепочки просто подключается к этой общей дорожке своим отдельным
+коротким горизонтальным отводом (trunk_component_segments).
 """
 
 # lowlife.sot_schematic импортирует Autodesk.Revit.DB на уровне модуля —
@@ -136,27 +145,80 @@ def trunk_lane_x(trunk_index, panel_count):
     return last_panel_x - (TRUNK_LANE_GAP_MM + trunk_index * RISER_SPACING_MM) * MM_TO_FT
 
 
-def trunk_link_segments(x_a, y_a, x_b, y_b, lane_x):
+def group_trunk_components(trunk_links):
     """
-    Отрезки магистрали шкаф-шкаф между стояком панели A (X=x_a, высота
-    подключения Y=y_a) и стояком панели B (X=x_b, Y=y_b) через отдельную
-    дорожку (X=lane_x, см. trunk_lane_x) — не через сами стояки панелей,
-    чтобы магистраль не совпадала по X ни с одной из их линий шины:
-    короткий горизонтальный переход от стояка A до дорожки, вертикальный
-    участок вдоль дорожки (может быть длинным — у панелей на далёких
-    друг от друга этажах это и есть настоящая длина магистрали, ничего
-    аномального), короткий горизонтальный переход от дорожки до стояка B.
+    Группирует пары магистральных связей [(a, b), ...] в связные цепочки
+    (шкаф A - шкаф B - шкаф C через две связи с общим шкафом B — одна
+    цепочка из трёх шкафов, а не две отдельные пары) — union-find по
+    парам. Порядок компонентов и узлов внутри — по первому появлению во
+    входном списке (детерминированно между запусками, пока сам список
+    trunk_links не меняется). Чистая функция, без Revit API.
+
+    Возвращает [[panel_uid, ...], ...] — по одному списку узлов на
+    компонент, каждый узел встречается только в одном компоненте.
+    """
+    parent = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    order = []
+    seen = set()
+    for a, b in trunk_links:
+        union(a, b)
+        for node in (a, b):
+            if node not in seen:
+                seen.add(node)
+                order.append(node)
+
+    components_by_root = {}
+    for node in order:
+        root = find(node)
+        components_by_root.setdefault(root, []).append(node)
+
+    return list(components_by_root.values())
+
+
+def trunk_component_segments(member_points, lane_x):
+    """
+    Отрезки магистрали для одной цепочки шкафов, подключённой к одной
+    общей дорожке (X=lane_x, см. trunk_lane_x, group_trunk_components):
+    у каждого шкафа цепочки — свой короткий горизонтальный отвод от его
+    стояка (X=x, Y=y — высота подключения) до дорожки; сама дорожка —
+    ОДИН вертикальный участок от самого нижнего до самого верхнего
+    отвода цепочки (не по отдельному куску на каждую пару связей — иначе
+    при цепочке из 3+ шкафов на одной дорожке появлялись бы наложенные
+    друг на друга отрезки).
+
+    member_points — [(x, y), ...] — стояк (X) и высота подключения (Y)
+    каждого шкафа цепочки, в любом порядке.
 
     Возвращает [(x1, y1, x2, y2), ...] — только невырожденные отрезки
     (нулевой длины пропускаются). Чистая функция, без Revit API.
     """
     segments = []
-    if x_a != lane_x:
-        segments.append((x_a, y_a, lane_x, y_a))
-    if y_a != y_b:
-        segments.append((lane_x, y_a, lane_x, y_b))
-    if lane_x != x_b:
-        segments.append((lane_x, y_b, x_b, y_b))
+
+    for x, y in member_points:
+        if x != lane_x:
+            segments.append((x, y, lane_x, y))
+
+    if len(member_points) >= 2:
+        ys = [y for _x, y in member_points]
+        y_min, y_max = min(ys), max(ys)
+        if y_min != y_max:
+            segments.append((lane_x, y_min, lane_x, y_max))
+
     return segments
 
 
@@ -345,38 +407,44 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
 
 def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, riser_info, panel_count):
     """
-    Магистральная связь шкаф-шкаф (например оптическая линия между двумя
-    панелями) ведётся через СВОЮ ОТДЕЛЬНУЮ вертикальную "дорожку" (см.
-    trunk_lane_x) — не по X стояка одной из панелей (была так в прошлой
-    версии — визуально сливалось с обычной шиной той панели, магистраль
-    была неотличима от неё): короткий горизонтальный переход от стояка
-    панели A до дорожки, вертикальный участок вдоль дорожки (может быть
-    длинным — у панелей на далёких друг от друга этажах это настоящая
-    длина магистрали, не баг), короткий горизонтальный переход от дорожки
-    до стояка панели B (см. trunk_link_segments). Подключение к каждому
-    стояку — по его верхней точке (max_y).
+    Магистральные связи шкаф-шкаф (например оптическая линия между
+    шкафами) ведутся через СВОЮ ОТДЕЛЬНУЮ вертикальную "дорожку" (см.
+    trunk_lane_x) — не по X стояка одной из панелей (была так раньше —
+    визуально сливалось с обычной шиной той панели, магистраль была
+    неотличима от неё): короткий горизонтальный отвод от стояка каждого
+    шкафа до дорожки, вертикальный участок вдоль дорожки. Подключение к
+    каждому стояку — по его верхней точке (max_y).
+
+    Связи, образующие ЦЕПОЧКУ (шкаф A - шкаф B - шкаф C через две связи с
+    общим шкафом B), группируются в одну цепочку с ОДНОЙ общей дорожкой
+    на всех (group_trunk_components) — не отдельная дорожка на каждую
+    пару связей: иначе дорожки соседних пар стояли бы почти вплотную
+    друг к другу (шаг RISER_SPACING_MM) и визуально сливались в подобие
+    "коробки" вместо одной понятной линии (см. trunk_component_segments).
 
     riser_info — {panel_uid: (riser_x, min_y, max_y)}, из
     sync_panel_buses (второй элемент её возврата) — панель, у которой
     нет записи (шина не нарисована — например panels_order/panel_names
-    рассинхронизированы), пропускается.
+    рассинхронизированы), из цепочки исключается (для неё просто не
+    рисуется отвод, остальные члены цепочки это не затрагивает).
     panel_count — len(panels_order), для trunk_lane_x (дорожки магистралей
     продолжают ту же последовательность X, что и стояки панелей, поэтому
     нужно знать, сколько стояков панелей уже занято).
     trunk_links — [(panel_uid_a, panel_uid_b), ...] (см.
-    scs.collect_target_panel_devices) — порядок определяет, какая
-    дорожка (X) достанется какой паре (trunk_lane_x(index, panel_count)),
-    стабильно между запусками, пока список магистралей не меняется.
+    scs.collect_target_panel_devices) — порядок определяет и группировку
+    в цепочки, и то, какая дорожка (X) достанется какой цепочке
+    (trunk_lane_x(component_index, panel_count)), стабильно между
+    запусками, пока список магистралей не меняется.
     old_trunk_line_ids — [line_id, ...] из состояния предыдущего запуска.
 
     Как и шины (sync_panel_buses), эти линии не диффятся — полностью
     удаляются и рисуются заново на каждом запуске.
 
     Возвращает (line_ids, skipped) — line_ids для сохранения в state;
-    skipped — [(panel_uid_a, panel_uid_b, reason), ...] для пар, для
-    которых не нарисовано НИ ОДНОГО отрезка (диагностика — почему связь
-    из настроек не попала на схему; reason один из "no_riser_a"/
-    "no_riser_b"/"draw_failed").
+    skipped — [(panel_uid_a, panel_uid_b, reason), ...] для исходных пар
+    trunk_links, у которых хотя бы одна панель не размещена на схеме
+    (диагностика — почему связь из настроек не попала на схему; reason
+    один из "no_riser_a"/"no_riser_b").
     """
     from lowlife.sot_schematic import draw_segment, delete_elements
 
@@ -387,33 +455,29 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
 
     style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB, TRUNK_LINE_WEIGHT)
 
-    new_ids = []
     skipped = []
-
-    for trunk_index, (panel_uid_a, panel_uid_b) in enumerate(trunk_links):
-        riser_a = riser_info.get(panel_uid_a)
-        riser_b = riser_info.get(panel_uid_b)
-        if riser_a is None:
+    for panel_uid_a, panel_uid_b in trunk_links:
+        if riser_info.get(panel_uid_a) is None:
             skipped.append((panel_uid_a, panel_uid_b, "no_riser_a"))
-            continue
-        if riser_b is None:
+        elif riser_info.get(panel_uid_b) is None:
             skipped.append((panel_uid_a, panel_uid_b, "no_riser_b"))
-            continue
 
-        x_a, _min_y_a, max_y_a = riser_a
-        x_b, _min_y_b, max_y_b = riser_b
-        lane_x = trunk_lane_x(trunk_index, panel_count)
+    new_ids = []
 
-        pair_ids = []
-        for x1, y1, x2, y2 in trunk_link_segments(x_a, max_y_a, x_b, max_y_b, lane_x):
+    for component_index, member_uids in enumerate(group_trunk_components(trunk_links)):
+        lane_x = trunk_lane_x(component_index, panel_count)
+
+        member_points = []
+        for panel_uid in member_uids:
+            riser = riser_info.get(panel_uid)
+            if riser is not None:
+                x, _min_y, max_y = riser
+                member_points.append((x, max_y))
+
+        for x1, y1, x2, y2 in trunk_component_segments(member_points, lane_x):
             elem = draw_segment(doc, view, x1, y1, x2, y2)
             if elem is not None:
-                pair_ids.append(elem.Id.IntegerValue)
+                new_ids.append(elem.Id.IntegerValue)
                 _set_style(elem, style)
-
-        if pair_ids:
-            new_ids.extend(pair_ids)
-        else:
-            skipped.append((panel_uid_a, panel_uid_b, "draw_failed"))
 
     return new_ids, skipped

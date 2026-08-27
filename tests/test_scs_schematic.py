@@ -88,27 +88,72 @@ def test_trunk_lane_does_not_collide_with_any_panel_riser():
     assert lane1 < lane0
 
 
-def test_trunk_link_segments_forms_a_path_through_the_dedicated_lane():
-    # A слева/ниже по X,Y условно, B справа/выше — дорожка где-то между.
-    segments = scs_schematic.trunk_link_segments(
-        x_a=-5.0, y_a=10.0, x_b=-13.0, y_b=50.0, lane_x=-40.0
+def test_group_trunk_components_merges_a_chain_sharing_a_panel():
+    # A-B и B-C делят панель B -> одна цепочка из трёх панелей.
+    components = scs_schematic.group_trunk_components([("A", "B"), ("B", "C")])
+    assert len(components) == 1
+    assert set(components[0]) == set(["A", "B", "C"])
+
+
+def test_group_trunk_components_keeps_independent_pairs_separate():
+    components = scs_schematic.group_trunk_components([("A", "B"), ("C", "D")])
+    assert len(components) == 2
+    groups = [set(c) for c in components]
+    assert set(["A", "B"]) in groups
+    assert set(["C", "D"]) in groups
+
+
+def test_group_trunk_components_order_is_deterministic_by_first_appearance():
+    # Порядок компонент/членов внутри них определяется порядком первого
+    # появления панели в trunk_links — стабильно между запусками, пока
+    # список магистралей не меняется.
+    components = scs_schematic.group_trunk_components([("B", "C"), ("A", "B")])
+    assert components == [["B", "C", "A"]]
+
+
+def test_trunk_component_segments_two_member_chain():
+    # Двухчленная цепочка — по сути та же пара, что раньше у
+    # trunk_link_segments, но собрана через компонентный API.
+    segments = scs_schematic.trunk_component_segments(
+        [(-5.0, 10.0), (-13.0, 50.0)], lane_x=-40.0
     )
     assert len(segments) == 3
-
-    seg_a, seg_lane, seg_b = segments
-    # Первый отрезок — от стояка A до дорожки, на высоте A.
+    seg_a, seg_b, seg_lane = segments
     assert seg_a == (-5.0, 10.0, -40.0, 10.0)
-    # Второй — вдоль дорожки, от высоты A до высоты B.
+    assert seg_b == (-13.0, 50.0, -40.0, 50.0)
     assert seg_lane == (-40.0, 10.0, -40.0, 50.0)
-    # Третий — от дорожки до стояка B, на высоте B.
-    assert seg_b == (-40.0, 50.0, -13.0, 50.0)
 
 
-def test_trunk_link_segments_skips_degenerate_pieces():
-    # x_a совпадает с lane_x (стояк ровно на дорожке) и y_a == y_b (одна
-    # высота подключения с обеих сторон) — оба этих отрезка вырождены и
-    # не должны попасть в результат.
-    segments = scs_schematic.trunk_link_segments(
-        x_a=-40.0, y_a=20.0, x_b=-13.0, y_b=20.0, lane_x=-40.0
+def test_trunk_component_segments_three_member_chain_shares_one_lane_segment():
+    # Три панели в одной цепочке -> три отвода до дорожки + ОДИН общий
+    # вертикальный участок дорожки (не по одному на каждую пару).
+    segments = scs_schematic.trunk_component_segments(
+        [(-5.0, 10.0), (-13.0, 50.0), (-21.0, 30.0)], lane_x=-40.0
     )
-    assert segments == [(-40.0, 20.0, -13.0, 20.0)]
+    hops = segments[:-1]
+    lane_segment = segments[-1]
+    assert hops == [
+        (-5.0, 10.0, -40.0, 10.0),
+        (-13.0, 50.0, -40.0, 50.0),
+        (-21.0, 30.0, -40.0, 30.0),
+    ]
+    # Вертикальный участок дорожки покрывает весь диапазон Y цепочки.
+    assert lane_segment == (-40.0, 10.0, -40.0, 50.0)
+
+
+def test_trunk_component_segments_skips_degenerate_hop():
+    # Один из членов цепочки уже стоит ровно на дорожке -> его отвод
+    # вырожден и не должен попасть в результат.
+    segments = scs_schematic.trunk_component_segments(
+        [(-40.0, 20.0), (-13.0, 20.0)], lane_x=-40.0
+    )
+    # x_a совпадает с lane_x -> первый отвод пропущен; y совпадают у
+    # обоих членов -> общий вертикальный участок дорожки тоже вырожден.
+    assert segments == [(-13.0, 20.0, -40.0, 20.0)]
+
+
+def test_trunk_component_segments_single_member_has_no_lane_segment():
+    # Один член (например второй участник связи не размещён на схеме) —
+    # только отвод, вертикального участка дорожки быть не должно.
+    segments = scs_schematic.trunk_component_segments([(-5.0, 10.0)], lane_x=-40.0)
+    assert segments == [(-5.0, 10.0, -40.0, 10.0)]
