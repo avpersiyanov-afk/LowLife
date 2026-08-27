@@ -300,7 +300,15 @@ with revit.Transaction(u"Sync SCS Schematic"):
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
     )
 
-    old_bus_line_ids = previous_state.get("bus_line_ids", [])
+    old_bus_line_ids = list(previous_state.get("bus_line_ids", []))
+    # Разовая миграция: до 27.08 линии шины хранились в
+    # "panel_bus_line_ids" как {panel_uid: [id, ...]} (независимая шина
+    # на каждую панель) — раскладка, сохранённая тем прошлым запуском,
+    # всё ещё может нести это старое поле. Новый код смотрит только на
+    # "bus_line_ids" и без этой строки никогда не найдёт и не удалит те
+    # линии — они остались бы в модели осиротевшими навсегда.
+    for ids in previous_state.get("panel_bus_line_ids", {}).values():
+        old_bus_line_ids.extend(ids)
     new_state["bus_line_ids"] = sync_shared_bus(
         doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids
     )

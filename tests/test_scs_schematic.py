@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Тесты для lowlife.scs_schematic.panel_riser_x — единственная чистая
-(без Revit API) функция в модуле; sync_panel_buses импортирует
+(без Revit API) функция в модуле; sync_shared_bus импортирует
 lowlife.sot_schematic лениво (внутри тела функции) именно затем, чтобы
 этот модуль оставался импортируемым и тестируемым вне Revit (см.
 tests/README.md)."""
@@ -10,10 +10,10 @@ import pytest
 from lowlife import scs_schematic
 
 
-def test_first_panel_is_closest_to_room_frames():
-    # index=0 -> одно расстояние RISER_SPACING_MM левее X=0 (рамок).
+def test_first_panel_is_at_base_offset():
+    # index=0 -> RISER_BASE_OFFSET_MM левее X=0 (рамок), без RISER_SPACING_MM.
     x0 = scs_schematic.panel_riser_x(0)
-    expected = -scs_schematic.RISER_SPACING_MM * scs_schematic.MM_TO_FT
+    expected = -scs_schematic.RISER_BASE_OFFSET_MM * scs_schematic.MM_TO_FT
     assert x0 == pytest.approx(expected)
 
 
