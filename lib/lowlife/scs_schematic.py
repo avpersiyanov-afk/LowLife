@@ -91,6 +91,13 @@ TRUNK_LINE_STYLE_NAME = _LINE_STYLE_PREFIX + u"Магистраль"
 TRUNK_COLOR_RGB = (230, 20, 20)
 TRUNK_LINE_WEIGHT = 6
 
+# Зазор между стояком последней панели и первой дорожкой магистрали —
+# заметно больше RISER_SPACING_MM (обычного шага МЕЖДУ стояками панелей
+# или между дорожками разных магистралей): дорожка магистрали не должна
+# стоять вплотную к стоякам панелей, иначе переход к ней выглядит как
+# маленький отросток у стояка, а не как отдельная линия.
+TRUNK_LANE_GAP_MM = 20.0
+
 
 def panel_riser_x(panel_index):
     """
@@ -116,13 +123,17 @@ def panel_collector_y(panel_index, level_y):
 def trunk_lane_x(trunk_index, panel_count):
     """
     X отдельной вертикальной "дорожки" магистрали с этим порядковым
-    номером (0, 1, 2...) — левее ВСЕХ стояков панелей (продолжение той
-    же последовательности, что и panel_riser_x: дорожка магистрали
-    номер 0 — это как бы "стояк панели номер panel_count"), поэтому
-    никогда не совпадает по X ни с одним стояком панели. Чистая
-    функция, без Revit API.
+    номером (0, 1, 2...) — левее ВСЕХ стояков панелей, с заметным
+    зазором (TRUNK_LANE_GAP_MM) после последнего из них — не вплотную,
+    как было раньше (сразу за panel_riser_x(panel_count-1), тем же
+    шагом RISER_SPACING_MM, что и между стояками панелей): переход к
+    такой дорожке выглядел как маленький отросток у стояка панели, а не
+    как заметная отдельная линия. Между собой дорожки разных магистралей
+    по-прежнему расставлены с шагом RISER_SPACING_MM. Чистая функция,
+    без Revit API.
     """
-    return panel_riser_x(panel_count + trunk_index)
+    last_panel_x = panel_riser_x(panel_count - 1) if panel_count > 0 else 0.0
+    return last_panel_x - (TRUNK_LANE_GAP_MM + trunk_index * RISER_SPACING_MM) * MM_TO_FT
 
 
 def trunk_link_segments(x_a, y_a, x_b, y_b, lane_x):
