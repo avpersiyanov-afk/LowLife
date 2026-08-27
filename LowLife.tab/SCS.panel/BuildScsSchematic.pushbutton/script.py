@@ -161,10 +161,12 @@ panel_devices.sort(key=lambda pd: norm(pd[0].Name) or u"")
 elements = []
 seen_ids = set()
 panel_device_uids = {}
+panel_names = {}
 panels_order = []
 
 for panel, devices in panel_devices:
     panels_order.append(panel.UniqueId)
+    panel_names[panel.UniqueId] = norm(panel.Name) or panel.UniqueId
 
     if panel.Id.IntegerValue not in seen_ids:
         seen_ids.add(panel.Id.IntegerValue)
@@ -310,7 +312,7 @@ with revit.Transaction(u"Sync SCS Schematic"):
     for ids in previous_state.get("panel_bus_line_ids", {}).values():
         old_bus_line_ids.extend(ids)
     new_state["bus_line_ids"] = sync_shared_bus(
-        doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids
+        doc, view, new_state, old_bus_line_ids, panels_order, panel_device_uids, panel_names
     )
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
