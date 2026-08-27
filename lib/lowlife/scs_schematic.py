@@ -26,6 +26,13 @@ _node_bottom_y и т.д. Уровни (sot_levels.py) и хранение рас
 Line Style (создаётся/переиспользуется автоматически по имени панели,
 без настроек) — по цвету видно, какое устройство идёт к какому шкафу,
 даже если линии разных панелей визуально пересекаются на схеме.
+
+Магистральные связи шкаф-шкаф (sync_trunk_links) — по СВОЕЙ отдельной
+вертикальной "дорожке" (trunk_lane_x, продолжение той же
+последовательности X, что и стояки панелей — panel_riser_x), не по X
+одного из стояков: иначе магистраль визуально совпадала бы с обычной
+шиной той панели и была бы неотличима от нею. Свой яркий жирный стиль
+(TRUNK_COLOR_RGB/TRUNK_LINE_WEIGHT), не цвет какой-то одной панели.
 """
 
 # lowlife.sot_schematic импортирует Autodesk.Revit.DB на уровне модуля —
@@ -106,42 +113,40 @@ def panel_collector_y(panel_index, level_y):
     return level_y - (BUS_DROP_OFFSET_MM + panel_index * BUS_DROP_SPACING_MM) * MM_TO_FT
 
 
-def trunk_jump_geometry(min_y_a, max_y_a, min_y_b, max_y_b):
+def trunk_lane_x(trunk_index, panel_count):
     """
-    Геометрия перехода магистрали шкаф-шкаф между двумя стояками с
-    Y-диапазонами [min_y_a, max_y_a] и [min_y_b, max_y_b] (единицы —
-    любые, лишь бы одинаковые для обеих панелей и порядок min<=max).
-    Чистая функция, без Revit API — можно проверить тестами.
-
-    Возвращает (jump_y, ext_a, ext_b):
-    - jump_y — высота горизонтального перехода;
-    - ext_a/ext_b — None (стояк и так касается перехода) либо (from_y, to_y)
-      — какой отрезок достроить у этого стояка, чтобы он дотянулся до
-      jump_y.
-
-    Если диапазоны пересекаются — jump_y на верхней границе пересечения
-    (касается обоих стояков напрямую, ext_a=ext_b=None). Если нет —
-    jump_y ПОСЕРЕДИНЕ разрыва между диапазонами, и оба стояка достраиваются
-    коротким продолжением до неё — а не один стояк на всю длину разрыва
-    (у панелей на далёких друг от друга этажах разрыв может быть длиной
-    во много этажей, отрезок вышел бы аномально длинным).
+    X отдельной вертикальной "дорожки" магистрали с этим порядковым
+    номером (0, 1, 2...) — левее ВСЕХ стояков панелей (продолжение той
+    же последовательности, что и panel_riser_x: дорожка магистрали
+    номер 0 — это как бы "стояк панели номер panel_count"), поэтому
+    никогда не совпадает по X ни с одним стояком панели. Чистая
+    функция, без Revit API.
     """
-    overlap_lo = max(min_y_a, min_y_b)
-    overlap_hi = min(max_y_a, max_y_b)
+    return panel_riser_x(panel_count + trunk_index)
 
-    if overlap_lo <= overlap_hi:
-        jump_y = overlap_hi
-    else:
-        jump_y = (overlap_hi + overlap_lo) / 2.0
 
-    def _extension(min_y, max_y):
-        if jump_y > max_y:
-            return max_y, jump_y
-        if jump_y < min_y:
-            return min_y, jump_y
-        return None
+def trunk_link_segments(x_a, y_a, x_b, y_b, lane_x):
+    """
+    Отрезки магистрали шкаф-шкаф между стояком панели A (X=x_a, высота
+    подключения Y=y_a) и стояком панели B (X=x_b, Y=y_b) через отдельную
+    дорожку (X=lane_x, см. trunk_lane_x) — не через сами стояки панелей,
+    чтобы магистраль не совпадала по X ни с одной из их линий шины:
+    короткий горизонтальный переход от стояка A до дорожки, вертикальный
+    участок вдоль дорожки (может быть длинным — у панелей на далёких
+    друг от друга этажах это и есть настоящая длина магистрали, ничего
+    аномального), короткий горизонтальный переход от дорожки до стояка B.
 
-    return jump_y, _extension(min_y_a, max_y_a), _extension(min_y_b, max_y_b)
+    Возвращает [(x1, y1, x2, y2), ...] — только невырожденные отрезки
+    (нулевой длины пропускаются). Чистая функция, без Revit API.
+    """
+    segments = []
+    if x_a != lane_x:
+        segments.append((x_a, y_a, lane_x, y_a))
+    if y_a != y_b:
+        segments.append((lane_x, y_a, lane_x, y_b))
+    if lane_x != x_b:
+        segments.append((lane_x, y_b, x_b, y_b))
+    return segments
 
 
 def panel_color_rgb(panel_index, panel_count):
@@ -327,33 +332,30 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     return new_ids, riser_info
 
 
-def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, riser_info):
+def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, riser_info, panel_count):
     """
     Магистральная связь шкаф-шкаф (например оптическая линия между двумя
-    панелями) ведётся через уже нарисованные стояки этих панелей
-    (riser_info из sync_panel_buses), а не прямой линией напрямую через
-    рамки помещений — так магистраль визуально идёт по тому же "коридору
-    стояков" слева от схемы, что и обычные шины, а не пересекает её
-    насквозь по диагонали:
-
-    - горизонтальный "переход" между стояком панели A (X = riser_a) и
-      стояком панели B (X = riser_b) на высоте jump_y;
-    - если Y-диапазоны стояков пересекаются — jump_y на верхней границе
-      пересечения (касается обоих стояков напрямую, без достройки);
-    - если не пересекаются вовсе (например, у панелей нет общих этажей —
-      это НЕ редкий случай, магистраль шкаф-шкаф как раз обычно связывает
-      далёкие друг от друга этажи) — jump_y ПОСЕРЕДИНЕ разрыва между
-      диапазонами, и оба стояка достраиваются коротким продолжением до
-      неё (не один стояк на всю длину разрыва — иначе при далёких друг
-      от друга этажах получался бы один аномально длинный отрезок вместо
-      короткого заметного перехода).
+    панелями) ведётся через СВОЮ ОТДЕЛЬНУЮ вертикальную "дорожку" (см.
+    trunk_lane_x) — не по X стояка одной из панелей (была так в прошлой
+    версии — визуально сливалось с обычной шиной той панели, магистраль
+    была неотличима от неё): короткий горизонтальный переход от стояка
+    панели A до дорожки, вертикальный участок вдоль дорожки (может быть
+    длинным — у панелей на далёких друг от друга этажах это настоящая
+    длина магистрали, не баг), короткий горизонтальный переход от дорожки
+    до стояка панели B (см. trunk_link_segments). Подключение к каждому
+    стояку — по его верхней точке (max_y).
 
     riser_info — {panel_uid: (riser_x, min_y, max_y)}, из
     sync_panel_buses (второй элемент её возврата) — панель, у которой
     нет записи (шина не нарисована — например panels_order/panel_names
     рассинхронизированы), пропускается.
+    panel_count — len(panels_order), для trunk_lane_x (дорожки магистралей
+    продолжают ту же последовательность X, что и стояки панелей, поэтому
+    нужно знать, сколько стояков панелей уже занято).
     trunk_links — [(panel_uid_a, panel_uid_b), ...] (см.
-    scs.collect_target_panel_devices).
+    scs.collect_target_panel_devices) — порядок определяет, какая
+    дорожка (X) достанется какой паре (trunk_lane_x(index, panel_count)),
+    стабильно между запусками, пока список магистралей не меняется.
     old_trunk_line_ids — [line_id, ...] из состояния предыдущего запуска.
 
     Как и шины (sync_panel_buses), эти линии не диффятся — полностью
@@ -374,19 +376,10 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
 
     style = _get_or_create_line_style(doc, TRUNK_LINE_STYLE_NAME, TRUNK_COLOR_RGB, TRUNK_LINE_WEIGHT)
 
-    def _draw_extension(x, ext, out_ids):
-        if ext is None:
-            return
-        from_y, to_y = ext
-        elem = draw_segment(doc, view, x, from_y, x, to_y)
-        if elem is not None:
-            out_ids.append(elem.Id.IntegerValue)
-            _set_style(elem, style)
-
     new_ids = []
     skipped = []
 
-    for panel_uid_a, panel_uid_b in trunk_links:
+    for trunk_index, (panel_uid_a, panel_uid_b) in enumerate(trunk_links):
         riser_a = riser_info.get(panel_uid_a)
         riser_b = riser_info.get(panel_uid_b)
         if riser_a is None:
@@ -396,19 +389,16 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, rise
             skipped.append((panel_uid_a, panel_uid_b, "no_riser_b"))
             continue
 
-        x_a, min_y_a, max_y_a = riser_a
-        x_b, min_y_b, max_y_b = riser_b
-        jump_y, ext_a, ext_b = trunk_jump_geometry(min_y_a, max_y_a, min_y_b, max_y_b)
+        x_a, _min_y_a, max_y_a = riser_a
+        x_b, _min_y_b, max_y_b = riser_b
+        lane_x = trunk_lane_x(trunk_index, panel_count)
 
         pair_ids = []
-
-        elem = draw_segment(doc, view, x_a, jump_y, x_b, jump_y)
-        if elem is not None:
-            pair_ids.append(elem.Id.IntegerValue)
-            _set_style(elem, style)
-
-        _draw_extension(x_a, ext_a, pair_ids)
-        _draw_extension(x_b, ext_b, pair_ids)
+        for x1, y1, x2, y2 in trunk_link_segments(x_a, max_y_a, x_b, max_y_b, lane_x):
+            elem = draw_segment(doc, view, x1, y1, x2, y2)
+            if elem is not None:
+                pair_ids.append(elem.Id.IntegerValue)
+                _set_style(elem, style)
 
         if pair_ids:
             new_ids.extend(pair_ids)

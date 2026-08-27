@@ -72,46 +72,43 @@ def test_panel_collectors_stack_further_from_level_for_each_next_panel():
     assert y1 - y2 == pytest.approx(spacing_ft)
 
 
-def test_trunk_jump_overlapping_ranges_touches_both_directly():
-    # A: [0, 10], B: [5, 20] -> пересечение [5, 10], jump на верхней границе (10).
-    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(0.0, 10.0, 5.0, 20.0)
-    assert jump_y == pytest.approx(10.0)
-    assert ext_a is None
-    assert ext_b is None
+def test_trunk_lane_does_not_collide_with_any_panel_riser():
+    panel_count = 3
+    panel_xs = [scs_schematic.panel_riser_x(i) for i in range(panel_count)]
+
+    lane0 = scs_schematic.trunk_lane_x(0, panel_count)
+    lane1 = scs_schematic.trunk_lane_x(1, panel_count)
+
+    assert lane0 not in panel_xs
+    assert lane1 not in panel_xs
+    assert lane0 != lane1
+    # Дорожки магистралей — продолжение той же последовательности, левее
+    # (дальше от рамок), чем любой стояк панели.
+    assert lane0 < min(panel_xs)
+    assert lane1 < lane0
 
 
-def test_trunk_jump_far_apart_ranges_meets_in_the_middle_of_the_gap():
-    # A: [0, 10] (например, нижние этажи), B: [50, 60] (далёкие верхние
-    # этажи) -> разрыв [10, 50], переход посередине (30), а не впритык
-    # к границе одного из стояков.
-    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(0.0, 10.0, 50.0, 60.0)
-    assert jump_y == pytest.approx(30.0)
-    assert ext_a == pytest.approx((10.0, 30.0))
-    assert ext_b == pytest.approx((50.0, 30.0))
+def test_trunk_link_segments_forms_a_path_through_the_dedicated_lane():
+    # A слева/ниже по X,Y условно, B справа/выше — дорожка где-то между.
+    segments = scs_schematic.trunk_link_segments(
+        x_a=-5.0, y_a=10.0, x_b=-13.0, y_b=50.0, lane_x=-40.0
+    )
+    assert len(segments) == 3
+
+    seg_a, seg_lane, seg_b = segments
+    # Первый отрезок — от стояка A до дорожки, на высоте A.
+    assert seg_a == (-5.0, 10.0, -40.0, 10.0)
+    # Второй — вдоль дорожки, от высоты A до высоты B.
+    assert seg_lane == (-40.0, 10.0, -40.0, 50.0)
+    # Третий — от дорожки до стояка B, на высоте B.
+    assert seg_b == (-40.0, 50.0, -13.0, 50.0)
 
 
-def test_trunk_jump_far_apart_ranges_order_independent():
-    # То же самое, но панели переданы в обратном порядке (B ниже A) —
-    # результат симметричный.
-    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(50.0, 60.0, 0.0, 10.0)
-    assert jump_y == pytest.approx(30.0)
-    assert ext_a == pytest.approx((50.0, 30.0))
-    assert ext_b == pytest.approx((10.0, 30.0))
-
-
-def test_trunk_jump_touching_ranges_no_gap_no_extension():
-    # A: [0, 10], B: [10, 20] -> касаются ровно в одной точке (10),
-    # переход там же, достройка не нужна ни одной из сторон.
-    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(0.0, 10.0, 10.0, 20.0)
-    assert jump_y == pytest.approx(10.0)
-    assert ext_a is None
-    assert ext_b is None
-
-
-def test_trunk_jump_single_point_ranges():
-    # Панель без своих устройств (только сама панель) на одном этаже
-    # каждая — min_y == max_y для обеих.
-    jump_y, ext_a, ext_b = scs_schematic.trunk_jump_geometry(5.0, 5.0, 25.0, 25.0)
-    assert jump_y == pytest.approx(15.0)
-    assert ext_a == pytest.approx((5.0, 15.0))
-    assert ext_b == pytest.approx((25.0, 15.0))
+def test_trunk_link_segments_skips_degenerate_pieces():
+    # x_a совпадает с lane_x (стояк ровно на дорожке) и y_a == y_b (одна
+    # высота подключения с обеих сторон) — оба этих отрезка вырождены и
+    # не должны попасть в результат.
+    segments = scs_schematic.trunk_link_segments(
+        x_a=-40.0, y_a=20.0, x_b=-13.0, y_b=20.0, lane_x=-40.0
+    )
+    assert segments == [(-40.0, 20.0, -13.0, 20.0)]
