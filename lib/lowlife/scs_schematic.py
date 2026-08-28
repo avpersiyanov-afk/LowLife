@@ -359,14 +359,23 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     параллельно, не перекрываясь; стояки разных панелей — на разных X
     (panel_riser_x), тоже параллельно.
 
+    Y коллектора считается по ЛОКАЛЬНОМУ индексу панели — её позиции
+    среди панелей, реально присутствующих именно на этом этаже (не по
+    её глобальному номеру во всей схеме panels_order) — иначе на этаже,
+    где у какой-то панели с меньшим номером устройств нет, между
+    реально нарисованными коллекторами появлялся бы разрыв в несколько
+    BUS_DROP_SPACING_MM вместо одного (номер пропущенной панели всё
+    равно "съедал" бы своё место). X стояка (panel_riser_x) и цвет,
+    наоборот, — по ГЛОБАЛЬНОМУ индексу, не зависят от этажа.
+
     Отростки, коллектор и стояк одной панели красятся в один Line Style
     (авто, по имени панели, см. _line_styles_by_panel) — по цвету видно,
     какое устройство идёт к какому шкафу.
 
     panels_order — [panel_uid, ...], уже в нужном порядке отрисовки
-    (например по имени панели) — определяет и X стояка (panel_riser_x),
-    и Y коллектора (panel_collector_y) каждой панели, стабильные между
-    запусками, пока порядок панелей не меняется.
+    (например по имени панели) — определяет X стояка (panel_riser_x) и
+    цвет каждой панели, стабильные между запусками, пока порядок
+    панелей не меняется.
     panel_device_uids — {panel_uid: set([device_uid, ...])} — устройства
     этой панели (её собственный uid тоже должен быть в своём множестве,
     чтобы шина дотянулась до самого узла панели на схеме).
@@ -401,17 +410,40 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     device_by_uid = dict((uid, (x, y, instance_id)) for uid, x, y, instance_id in all_devices)
     line_style_by_panel = _line_styles_by_panel(doc, panels_order, panel_names)
 
-    new_ids = []
-    panel_anchors = {}
+    # Собственный член (устройство/сама панель) каждой панели, сгруппированный
+    # по этажу — сначала по всем панелям, чтобы узнать, СКОЛЬКО и КАКИХ
+    # панелей реально присутствует на каждом конкретном этаже. Без этого
+    # collector_y считался бы по ГЛОБАЛЬНОМУ индексу панели (её порядковому
+    # номеру во всей схеме), и на этаже, где панелей с меньшим индексом нет,
+    # между реально нарисованными коллекторами появлялся бы разрыв в
+    # несколько BUS_DROP_SPACING_MM вместо одного — коллекторы у панели с
+    # индексом, скажем, 0 и 2 (без панели 1 на этом этаже) встали бы через
+    # 8мм, а не 4мм. Локальный индекс — позиция панели среди панелей,
+    # реально присутствующих именно на этом этаже (в том же порядке, что
+    # panels_order) — коллекторы на каждом этаже всегда идут подряд, без
+    # пропусков. Riser_x и цвет панели по-прежнему берутся по ГЛОБАЛЬНОМУ
+    # индексу — не меняются от этажа к этажу.
+    panel_members = {}
+    floor_panel_order = {}
 
-    for index, panel_uid in enumerate(panels_order):
+    for panel_uid in panels_order:
         member_uids = panel_device_uids.get(panel_uid) or set()
         members = [
             (uid, x, y, instance_id)
             for uid, (x, y, instance_id) in device_by_uid.items()
             if uid in member_uids
         ]
+        if not members:
+            continue
+        panel_members[panel_uid] = members
+        for level_y in set(y for _uid, _x, y, _iid in members):
+            floor_panel_order.setdefault(level_y, []).append(panel_uid)
 
+    new_ids = []
+    panel_anchors = {}
+
+    for index, panel_uid in enumerate(panels_order):
+        members = panel_members.get(panel_uid)
         if not members:
             continue
 
@@ -425,7 +457,8 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
         collector_ys = []
 
         for level_y, x_instance_list in by_level_y.items():
-            collector_y = panel_collector_y(index, level_y)
+            local_index = floor_panel_order[level_y].index(panel_uid)
+            collector_y = panel_collector_y(local_index, level_y)
             collector_ys.append(collector_y)
 
             xs = [x for x, _iid in x_instance_list] + [riser_x]

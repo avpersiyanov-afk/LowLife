@@ -27,7 +27,7 @@ import time
 
 from Autodesk.Revit.DB import (
     XYZ, Line, ElementId, TextNote, TextNoteType, TextNoteOptions,
-    HorizontalTextAlignment, FilteredElementCollector,
+    HorizontalTextAlignment, VerticalTextAlignment, FilteredElementCollector,
     ElementTransformUtils, IndependentTag, TagOrientation, Reference
 )
 
@@ -148,6 +148,15 @@ def create_room_text(doc, view, text, x, y):
         text_note = TextNote.Create(doc, view.Id, point, text, text_type.Id)
         try:
             text_note.HorizontalAlignment = HorizontalTextAlignment.Center
+        except:
+            pass
+        try:
+            # Без этого y — верхняя граница текста (Revit по умолчанию
+            # анкерит TextNote сверху), а TEXT_Y_MM подобран как раз
+            # СЕРЕДИНА (TOP_LINE_MM..HEADER_TOP_LINE_MM) — с анкером
+            # "сверху" текст визуально сдвинут вниз от реального центра
+            # строки на половину своей высоты, а не стоит по центру.
+            text_note.VerticalAlignment = VerticalTextAlignment.Middle
         except:
             pass
         return text_note
