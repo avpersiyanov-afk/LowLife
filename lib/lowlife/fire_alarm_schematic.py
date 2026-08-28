@@ -55,13 +55,21 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 Отдельно от линий — САМИ устройства ответвления рисуются не в своём
 обычном помещении (где им и следовало бы быть по параметру помещения), а
 отдельным рядом-"спутником" прямо под изолятором, как у обычного
-помещения (тот же шаг между узлами, та же рамка — переиспользуется
-sot_schematic._place_room_group), с зазором SATELLITE_GAP_MM от рамки
-этажа. Так итоговая раскладка читается как дерево, растущее от кольца:
-кольцо — обычный ряд по этажам/помещениям, а каждое ответвление —
-собственная "ветка" под своим изолятором. Вызывающий код (кнопка) сам
-исключает устройства ответвления из обычной группировки по помещению,
-иначе они оказались бы на схеме дважды.
+помещения (тот же шаг между узлами, та же рамка, подпись — реальные
+помещения устройств ветви — переиспользуется sot_schematic._place_room_group),
+с зазором SATELLITE_GAP_MM от рамки этажа. Так итоговая раскладка
+читается как дерево, растущее от кольца: кольцо — обычный ряд по
+этажам/помещениям, а каждое ответвление — собственная "ветка" под своим
+изолятором. Вызывающий код (кнопка) сам исключает устройства ответвления
+из обычной группировки по помещению, иначе они оказались бы на схеме
+дважды.
+
+Ветки изоляторов ОДНОГО этажа (у них общий фиксированный отступ от него,
+см. SATELLITE_ROW_OFFSET_MM) могли бы наложиться друг на друга, если их
+изоляторы физически близко по X — раскладываются слева направо в
+порядке X изолятора, с тем же зазором SATELLITE_GAP_MM между соседними
+ветками, что и по вертикали (тот же x_cursor-приём, что у обычных
+помещений в sync_rooms_in_level).
 
 Место под ряд-спутник должно быть зарезервировано ЗАРАНЕЕ, при вызове
 sot_schematic.sync_levels — параметром extra_bottom_mm, значением
@@ -69,6 +77,7 @@ SATELLITE_EXTRA_BOTTOM_MM (см. подробности отступов в ко
 константам ниже); без этого рамка этажа наложится на ряд-спутник.
 """
 
+from lowlife.params import get_string_param
 from lowlife.sot_schematic import (
     draw_segment, delete_elements, MM_TO_FT, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM,
     LEVEL_SEPARATOR_OFFSET_MM, _place_room_group
@@ -298,46 +307,78 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
 
     new_ids = []
     row_offset_ft = SATELLITE_ROW_OFFSET_MM * MM_TO_FT
+    gap_ft = SATELLITE_GAP_MM * MM_TO_FT
 
+    # Группируем изоляторы по этажу — ряд-спутник у КАЖДОГО из них сидит
+    # на одном и том же фиксированном отступе от своего этажа, поэтому
+    # столкнуться (наложиться рамками) могут только ветки изоляторов
+    # ОДНОГО этажа, если их изоляторы физически близко по X. Внутри
+    # этажа раскладываем ветки слева направо в порядке X их изоляторов,
+    # сдвигая начало следующей ветки за правый край предыдущей (+ зазор),
+    # если иначе она бы на неё наехала — тот же приём, что x_cursor у
+    # обычных помещений (sync_rooms_in_level).
+    by_level = {}
     for isolator_uid, devices in isolator_branches.items():
         if not devices:
             continue
-
         placement = node_placement_by_uid.get(isolator_uid)
         if placement is None:
             continue
+        isolator_x, isolator_y, level_key = placement[0], placement[1], placement[2]
+        by_level.setdefault(level_key, []).append((isolator_x, isolator_y, devices))
 
-        isolator_x, isolator_y = placement[0], placement[1]
-        satellite_y = isolator_y + row_offset_ft
+    for level_key, items in by_level.items():
+        items.sort(key=lambda item: item[0])
+        right_edge = None
 
-        valid_devices = []
-        for device in devices:
-            category = category_for_device(device)
-            symbol = category_symbols.get(category) if category else None
-            if symbol is not None:
-                valid_devices.append((device, symbol))
+        for isolator_x, isolator_y, devices in items:
+            valid_devices = []
+            for device in devices:
+                category = category_for_device(device)
+                symbol = category_symbols.get(category) if category else None
+                if symbol is not None:
+                    valid_devices.append((device, symbol))
 
-        if not valid_devices:
-            continue
+            if not valid_devices:
+                continue
 
-        # Переиспользуем ту же функцию, что рисует обычные помещения —
-        # тот же шаг между узлами, та же рамка, та же логика марок,
-        # только на своей строке (satellite_y вместо этажной current_level_y)
-        # и без подписи (room_key="↳" — просто помечает, что это ветка,
-        # а не обычное помещение).
-        room_record, _report_rows = _place_room_group(
-            doc, view, isolator_x, u"↳", valid_devices, room_param_name,
-            address_param_name, device_uid_param_name, annotation_symbol,
-            label_offset_mm, satellite_y, timing=timing
-        )
+            start_x = isolator_x
+            if right_edge is not None and start_x < right_edge + gap_ft:
+                start_x = right_edge + gap_ft
 
-        new_ids.extend(room_record.get("line_ids", []))
-        if room_record.get("text_id") is not None:
-            new_ids.append(room_record["text_id"])
-        for dev in room_record.get("devices", {}).values():
-            if dev.get("instance_id") is not None:
-                new_ids.append(dev["instance_id"])
-            if dev.get("tag_id") is not None:
-                new_ids.append(dev["tag_id"])
+            satellite_y = isolator_y + row_offset_ft
+
+            # Подпись ветки — реальные помещения её устройств (как у
+            # обычных помещений), а не заглушка: если все устройства из
+            # одного помещения — просто его имя, если из разных — через
+            # "; ". Пусто (нет ни у одного) — тогда уже "↳", просто как
+            # пометка "это ветка".
+            room_names = []
+            for device, _symbol in valid_devices:
+                room_value = get_string_param(device, room_param_name)
+                if room_value and room_value.strip() and room_value.strip() not in room_names:
+                    room_names.append(room_value.strip())
+            room_label = u"; ".join(room_names) if room_names else u"↳"
+
+            # Переиспользуем ту же функцию, что рисует обычные помещения —
+            # тот же шаг между узлами, та же рамка, та же логика марок,
+            # только на своей строке (satellite_y вместо этажной
+            # current_level_y).
+            room_record, _report_rows = _place_room_group(
+                doc, view, start_x, room_label, valid_devices, room_param_name,
+                address_param_name, device_uid_param_name, annotation_symbol,
+                label_offset_mm, satellite_y, timing=timing
+            )
+
+            right_edge = room_record.get("x_right", start_x)
+
+            new_ids.extend(room_record.get("line_ids", []))
+            if room_record.get("text_id") is not None:
+                new_ids.append(room_record["text_id"])
+            for dev in room_record.get("devices", {}).values():
+                if dev.get("instance_id") is not None:
+                    new_ids.append(dev["instance_id"])
+                if dev.get("tag_id") is not None:
+                    new_ids.append(dev["tag_id"])
 
     return new_ids
