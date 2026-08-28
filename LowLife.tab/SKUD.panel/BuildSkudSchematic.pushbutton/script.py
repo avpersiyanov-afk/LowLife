@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 __title__ = "Структурная\nсхема"
 __doc__ = (
-    "Строит структурную схему СКУД по цепям контроллеров (от точки, "
-    "указанной кликом на виде). Узел-контроллер (типовая группа деталей) "
-    "ставится один раз на контроллер; на каждую точку прохода подбирается "
-    "группа, чей состав устройств совпадает с составом точки прохода. "
-    "Группы разгруппировываются, адреса переносятся, всё пишется в JSON-"
-    "манифест рядом с проектом (для кнопки «Обновить схему»)."
+    "Строит структурную схему СКУД по цепям контроллеров на отдельном "
+    "чертёжном виде (имя — из настроек). Узел-контроллер (типовая группа "
+    "деталей) ставится один раз на контроллер; на каждую точку прохода "
+    "подбирается группа, чей состав устройств совпадает с составом точки "
+    "прохода. Группы разгруппировываются, адреса переносятся, весь JSON-"
+    "манифест пишется в служебный параметр вида (для кнопки «Обновить "
+    "схему»). Повторный запуск перерисовывает схему заново."
 )
 __author__ = "Pipers"
 
@@ -29,7 +30,9 @@ from lowlife.skud_schematic import (
     match_group_name, signature_text, category_of_from_type_map,
     invert_category_device_type_ids, invert_category_type_id_strings,
 )
-from lowlife.skud_schematic_manifest import write_manifest
+from lowlife.skud_schematic_manifest import (
+    find_schematic_view, save_manifest, empty_manifest,
+)
 from lowlife import skud_settings
 from lowlife.skud_settings import (
     get_settings_silent, get_schematic_category_symbols,
@@ -40,15 +43,7 @@ from lowlife.skud_settings import (
 from lowlife import room_info_settings
 
 doc = revit.doc
-uidoc = revit.uidoc
-view = doc.ActiveView
-
-if view.ViewType != ViewType.DraftingView:
-    forms.alert(
-        u"Откройте чертёжный вид (Drafting View) — на него вставляются "
-        u"типовые группы деталей структурной схемы.",
-        exitscript=True
-    )
+view = None  # определяется ниже: вид с именем SCHEMATIC_VIEW_NAME (или создаётся)
 
 FT_TO_M = 0.3048
 M_TO_FT = 1.0 / FT_TO_M
@@ -67,7 +62,11 @@ skud_settings.require(settings, [
     "schematic_address_param",
     "schematic_layout_gap_m", "schematic_layout_step_mm",
     "schematic_device_categories_text",
+    "schematic_view_name", "manifest_param_name",
 ])
+
+SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
+MANIFEST_PARAM_NAME = settings["manifest_param_name"]
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
@@ -178,14 +177,39 @@ controllers_with_devices.sort(key=lambda item: (item[3], item[1]))
 
 
 # ------------------------------------------------------------
-# ТОЧКА ВСТАВКИ
+# ЧЕРТЁЖНЫЙ ВИД: вид с именем из настроек (для обновления), иначе создаём
 # ------------------------------------------------------------
 
-try:
-    base_point = uidoc.Selection.PickPoint(u"Укажите точку вставки структурной схемы")
-except:
-    forms.alert(u"Операция отменена.", exitscript=True)
+view, previous_manifest, name_conflict = find_schematic_view(
+    doc, SCHEMATIC_VIEW_NAME, MANIFEST_PARAM_NAME
+)
 
+if name_conflict:
+    forms.alert(
+        u"В проекте уже есть вид с именем «{}», но это не чертёжный вид.\n\n"
+        u"Переименуйте существующий вид либо измените имя вида в «Параметры "
+        u"СКУД».".format(SCHEMATIC_VIEW_NAME),
+        exitscript=True
+    )
+
+is_new_view = view is None
+
+if is_new_view:
+    previous_manifest = empty_manifest()
+
+    drafting_type_id = None
+    for vft in FilteredElementCollector(doc).OfClass(ViewFamilyType).ToElements():
+        try:
+            if vft.ViewFamily == ViewFamily.Drafting:
+                drafting_type_id = vft.Id
+                break
+        except:
+            continue
+
+    if drafting_type_id is None:
+        forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).", exitscript=True)
+
+base_point = XYZ(0.0, 0.0, 0.0)
 level_elevations = [item[3] for item in controllers_with_devices]
 insert_points = layout_points_by_level(base_point, level_elevations, LAYOUT_GAP_FT)
 
@@ -224,10 +248,24 @@ def _group_by_category_ordered(devices):
     return [(cat, buckets[cat]) for cat in order]
 
 
+placed_element_ids = []   # всё нарисованное — для очистки при следующей пересборке
+
+
+def _track(el_or_id):
+    try:
+        placed_element_ids.append(el_or_id.Id.IntegerValue)
+    except:
+        try:
+            placed_element_ids.append(int(el_or_id))
+        except:
+            pass
+
+
 def _make_line(p_from, p_to):
     try:
         line = Line.CreateBound(p_from, p_to)
-        doc.Create.NewDetailCurve(view, line)
+        dc = doc.Create.NewDetailCurve(view, line)
+        _track(dc)
         return True
     except:
         return False
@@ -242,12 +280,32 @@ passage_points_matched = 0
 passage_points_unmatched = 0
 devices_addressed = 0
 lines_created = 0
+cleared_elements = 0
 unmatched_report = []
 group_read_errors = []
 
 manifest_controllers = []
 
 with revit.Transaction("Build SKUD Schematic"):
+
+    if is_new_view:
+        view = ViewDrafting.Create(doc, drafting_type_id)
+        view.Name = SCHEMATIC_VIEW_NAME
+        view.Scale = 1
+
+    # --- очистка предыдущей схемы (перерисовываем заново) ---
+    for old_id in previous_manifest.get("placed_element_ids", []):
+        try:
+            el = doc.GetElement(ElementId(int(old_id)))
+        except:
+            el = None
+        if el is None:
+            continue
+        try:
+            doc.Delete(el.Id)
+            cleared_elements += 1
+        except:
+            pass
 
     # --- сигнатуры библиотечных групп точек прохода ---
     pp_group_signatures = {}   # имя -> signature
@@ -282,6 +340,8 @@ with revit.Transaction("Build SKUD Schematic"):
         if freed:
             controllers_placed += 1
             controller_schem_ids = [mid.IntegerValue for mid in freed]
+            for mid in freed:
+                _track(mid.IntegerValue)
             by_cat, _sig = classify_members(doc, freed, category_of_schematic)
             for el in by_cat.get(CONTROLLER_CATEGORY_NAME, []):
                 if set_param_any(el, SCHEMATIC_ADDRESS_PARAM, controller_addr):
@@ -310,6 +370,8 @@ with revit.Transaction("Build SKUD Schematic"):
                 except:
                     freed_pp = []
 
+                for mid in freed_pp:
+                    _track(mid.IntegerValue)
                 by_cat_pp, _s = classify_members(doc, freed_pp, category_of_schematic)
 
                 for cat, real_list in _group_by_category_ordered(pp_devices):
@@ -352,6 +414,7 @@ with revit.Transaction("Build SKUD Schematic"):
                     schem_el = doc.Create.NewFamilyInstance(dpt, symbol, view)
                     if schem_el is None:
                         continue
+                    _track(schem_el)
                     addr = clean_text_value(get_string_param(real_dev, DEVICE_ADDRESS_PARAM))
                     if addr and set_param_any(schem_el, SCHEMATIC_ADDRESS_PARAM, addr):
                         devices_addressed += 1
@@ -385,16 +448,14 @@ with revit.Transaction("Build SKUD Schematic"):
             "passage_points": manifest_pps,
         })
 
+    # --- манифест в параметр вида (внутри той же транзакции) ---
+    manifest_data = empty_manifest()
+    manifest_data["base_point"] = [base_point.X, base_point.Y, base_point.Z]
+    manifest_data["placed_element_ids"] = placed_element_ids
+    manifest_data["controllers"] = manifest_controllers
 
-# ------------------------------------------------------------
-# МАНИФЕСТ
-# ------------------------------------------------------------
-
-manifest_data = {
-    "base_point": [base_point.X, base_point.Y, base_point.Z],
-    "controllers": manifest_controllers,
-}
-manifest_file, beside_project = write_manifest(doc, manifest_data)
+    manifest_saved, manifest_save_error = save_manifest(view, MANIFEST_PARAM_NAME, manifest_data)
+    view_name = view.Name
 
 
 # ------------------------------------------------------------
@@ -420,27 +481,33 @@ if unmatched_report:
     for line in unmatched_report:
         output.print_md(u"- {}".format(line))
 
-warn = u""
-if not beside_project:
-    warn = (u"\n\nВНИМАНИЕ: проект не сохранён — манифест записан во временный "
-            u"файл. Сохраните проект и перезапустите, чтобы манифест лёг рядом с .rvt.")
+if not manifest_saved:
+    output.print_md(
+        u"### ⚠ Манифест НЕ сохранён в параметр вида «{}»\n\n"
+        u"Причина: {}.\n\n"
+        u"Без него повторный запуск не найдёт эту схему и нарисует всё "
+        u"заново поверх существующего.".format(MANIFEST_PARAM_NAME, manifest_save_error)
+    )
+
+warn = u"" if manifest_saved else u"\n\nВНИМАНИЕ: манифест не сохранён — см. окно вывода."
 
 forms.alert(
-    u"Готово.\n\n"
+    u"Готово. Вид: {}\n\n"
     u"Контроллеров размещено: {}\n"
     u"Точек прохода по группе: {}\n"
     u"Точек прохода без группы (резервная раскладка): {}\n"
     u"Адресов записано: {}\n"
     u"Линий создано: {}\n"
-    u"Контроллеров без адреса (пропущено): {}\n\n"
-    u"Манифест: {}{}".format(
+    u"Удалено от прошлой схемы: {}\n"
+    u"Контроллеров без адреса (пропущено): {}{}".format(
+        view_name,
         controllers_placed,
         passage_points_matched,
         passage_points_unmatched,
         devices_addressed,
         lines_created,
+        cleared_elements,
         len(controllers_without_address),
-        manifest_file,
         warn,
     )
 )

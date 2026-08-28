@@ -553,6 +553,11 @@ CPython-only зависимость (импортируется внутри ф�
 (строка) и `passage_point_group_ids` (список), с `load_*`/`save_*`.
 Текстовое поле `passage_point_param` («Номер точки прохода») —
 необязательное: пусто у устройства → одна точка прохода на контроллер.
+Поля `schematic_view_name` (имя чертёжного вида схемы, дефолт
+«Структурная схема СКУД») и `manifest_param_name` (служебный текстовый
+параметр вида, куда `BuildSkudSchematic` пишет весь JSON-манифест —
+привязать к категории «Виды») — по образцу `schematic_view_name`/
+`layout_param_name` в `sot_settings.py`.
 
 ## skud_parameters.py
 Таблица `PARAM_SPECS` для параметров СКУД + проверка/привязка из ФОП.
@@ -594,16 +599,25 @@ CPython-only зависимость (импортируется внутри ф�
 деталей, `scs_settings.list_detail_group_types`); ключи JSON
 `controller_group_id` / `passage_point_group_ids`.
 
-Всё поставленное пишется в JSON-манифест (`skud_schematic_manifest.py`)
-рядом с `.rvt` — по нему **UpdateSkudSchematic** обновляет адреса на
-схемных элементах и сообщает о структурных расхождениях.
+Весь JSON-манифест пишется в служебный текстовый параметр самого
+чертёжного вида (`skud_schematic_manifest.py`) — по нему
+**UpdateSkudSchematic** обновляет адреса на схемных элементах, а
+повторный запуск **BuildSkudSchematic** удаляет прошлую схему (по списку
+`placed_element_ids`) и рисует заново. Раскладка идёт от начала координат
+вида (клик точки убран).
 
 ## skud_schematic_manifest.py
-Чтение/запись JSON-манифеста структурной схемы СКУД
-(`<проект>.skud_schematic.json` рядом с `.rvt`; если проект не сохранён —
-временный файл в `%APPDATA%\pyRevit` + флаг). `manifest_path(doc)` →
-`(path, is_beside_project)`; `write_manifest(doc, data)` (проставляет
-`schema_version`); `read_manifest(doc)` → `dict|None`.
+JSON-манифест структурной схемы СКУД в текстовом параметре чертёжного
+вида (`manifest_param_name` из настроек), а не в файле — тот же приём,
+что `sot_layout_state.py` для СОТ/СПС. Вид ищется по имени
+(`schematic_view_name`).
+
+| Функция | Что делает |
+|---|---|
+| `find_schematic_view(doc, view_name, manifest_param_name)` | `(view, manifest, name_conflict)` — вид-ViewDrafting с этим именем + его манифест (или пустой); `name_conflict=True` если вид с именем есть, но не чертёжный; `(None, None, False)` — вида нет (первый запуск) |
+| `load_manifest(view, param_name)` | `dict` из параметра вида, либо `empty_manifest()` |
+| `save_manifest(view, param_name, data)` | `(ok, reason)` — пишет JSON в параметр вида (внутри транзакции); `reason` объясняет, почему не удалось (нет параметра, только чтение, `Set()` упал) |
+| `empty_manifest()` | `{"schema_version": 1, "placed_element_ids": [], "controllers": []}` |
 
 ## skud_room_info.py
 Имя помещения для устройств СКУД (**AssignSkudRooms**) — надстройка над

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 __title__ = "Обновить\nсхему"
 __doc__ = (
-    "Читает JSON-манифест структурной схемы СКУД (создаётся кнопкой "
-    "«Структурная схема» рядом с проектом) и обновляет по нему уже "
-    "поставленную схему: переносит изменившиеся адреса на схемные "
-    "элементы и сообщает о структурных расхождениях (добавленные/"
-    "удалённые устройства, изменившийся состав точки прохода — им нужна "
-    "полная пересборка)."
+    "Читает JSON-манифест структурной схемы СКУД из служебного параметра "
+    "чертёжного вида (пишется кнопкой «Структурная схема») и обновляет по "
+    "нему уже поставленную схему: переносит изменившиеся адреса на схемные "
+    "элементы и сообщает о структурных расхождениях (добавленные/удалённые "
+    "устройства, изменившийся состав точки прохода — им нужна полная "
+    "пересборка)."
 )
 __author__ = "Pipers"
 
@@ -25,7 +25,7 @@ from lowlife.skud_schematic import (
     passage_points_of, signature_of, signature_text,
     category_of_from_type_map, invert_category_device_type_ids,
 )
-from lowlife.skud_schematic_manifest import read_manifest, manifest_path
+from lowlife.skud_schematic_manifest import find_schematic_view, save_manifest
 from lowlife import skud_settings
 from lowlife.skud_settings import (
     get_settings_silent, get_schematic_category_device_type_ids,
@@ -34,20 +34,33 @@ from lowlife.skud_settings import (
 doc = revit.doc
 output = pyrevit_script.get_output()
 
-manifest = read_manifest(doc)
-if not manifest or not manifest.get("controllers"):
-    path, _beside = manifest_path(doc)
-    forms.alert(
-        u"Манифест структурной схемы не найден или пуст:\n{}\n\n"
-        u"Сначала постройте схему кнопкой «Структурная схема».".format(path),
-        exitscript=True
-    )
-
 settings = get_settings_silent()
 skud_settings.require(settings, [
     "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
     "circuit_panel_param", "device_address_param", "schematic_address_param",
+    "schematic_view_name", "manifest_param_name",
 ])
+
+SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
+MANIFEST_PARAM_NAME = settings["manifest_param_name"]
+
+schematic_view, manifest, name_conflict = find_schematic_view(
+    doc, SCHEMATIC_VIEW_NAME, MANIFEST_PARAM_NAME
+)
+
+if name_conflict:
+    forms.alert(
+        u"В проекте есть вид с именем «{}», но это не чертёжный вид.".format(SCHEMATIC_VIEW_NAME),
+        exitscript=True
+    )
+
+if schematic_view is None or not manifest or not manifest.get("controllers"):
+    forms.alert(
+        u"Манифест структурной схемы не найден в параметре вида «{}» (вид «{}»).\n\n"
+        u"Сначала постройте схему кнопкой «Структурная схема».".format(
+            MANIFEST_PARAM_NAME, SCHEMATIC_VIEW_NAME),
+        exitscript=True
+    )
 
 WORKSET_PARAM_NAME = settings["workset_param_name"]
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
@@ -131,6 +144,7 @@ with revit.Transaction("Update SKUD schematic"):
                         addr_updates += 1
                     if DEVICE_MARKING_PARAM:
                         set_param_any(schem_el, DEVICE_MARKING_PARAM, new_addr)
+                    dev["address"] = new_addr   # обновляем манифест
 
             # структурный дрейф точки прохода
             live = live_pps.get(pp_key)
@@ -156,6 +170,12 @@ with revit.Transaction("Update SKUD schematic"):
                     u"Контроллер {}: в модели появилась точка прохода «{}», её нет в схеме.".format(
                         c_addr, live_key))
 
+    manifest_saved, manifest_save_error = (True, None)
+    if addr_updates:
+        manifest_saved, manifest_save_error = save_manifest(
+            schematic_view, MANIFEST_PARAM_NAME, manifest
+        )
+
 
 # ------------------------------------------------------------
 # ОТЧЁТ
@@ -171,6 +191,9 @@ def _section(title, rows):
 _section(u"Устройства удалены из модели", missing_real)
 _section(u"Схемные элементы удалены", missing_schematic)
 _section(u"Требуется пересборка", rebuild_needed)
+
+if not manifest_saved:
+    output.print_md(u"### ⚠ Обновлённый манифест не сохранён\n\nПричина: {}.".format(manifest_save_error))
 
 forms.alert(
     u"Готово.\n\n"

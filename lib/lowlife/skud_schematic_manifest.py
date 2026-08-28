@@ -1,73 +1,145 @@
 # -*- coding: utf-8 -*-
 """
-JSON-манифест структурной схемы СКУД.
+Манифест структурной схемы СКУД — JSON в текстовом параметре самого
+чертёжного вида (manifest_param_name из настроек СКУД), а не в файле на
+диске: едет вместе с моделью, доступен всем, кто открывает проект. Тот же
+приём, что sot_layout_state.py для СОТ/СПС.
 
-BuildSkudSchematic после раскладки пишет сюда полное описание того, что
-поставлено (контроллеры → точки прохода → устройства, с id реальных и
-схемных элементов, адресами, помещениями, именем подобранной группы).
-UpdateSkudSchematic читает манифест и по нему обновляет схему без полной
-пересборки.
+Вид определяется по имени (schematic_view_name из настроек) — см.
+find_schematic_view.
 
-Файл лежит рядом с .rvt: <путь_проекта_без_расширения>.skud_schematic.json.
-Если проект не сохранён (doc.PathName пуст) — временный файл в
-%APPDATA%\\pyRevit (и вызывающий скрипт предупреждает пользователя).
+Структура манифеста (см. skud_schematic_manifest.empty_manifest и
+BuildSkudSchematic):
+{
+    "schema_version": 1,
+    "placed_element_ids": [123, 124, ...],   # всё, что кнопка нарисовала
+                                             # (схемные элементы + линии) —
+                                             # для очистки при пересборке
+    "controllers": [{
+        "controller_id": 0, "address": "F1",
+        "controller_group": "<имя>", "schematic_element_ids": [0],
+        "passage_points": [{
+            "key": "1",
+            "signature": [["геркон", 1], ["считыватель", 1]],
+            "matched_group": "<имя|null>", "unmatched": false,
+            "devices": [{"real_id": 0, "category": "считыватель",
+                         "address": "F1.1", "room": "Коридор (101)",
+                         "schematic_id": 0}]
+        }]
+    }]
+}
+
+Все id — int (ElementId.IntegerValue); нерезолвящийся id (элемент удалён
+вручную/undo) не ошибка — вызывающий код просто считает соответствующий
+узел «изменившимся».
 """
 
-import os
-import io
 import json
+
+from Autodesk.Revit.DB import FilteredElementCollector, View, ViewDrafting
+
+from lowlife.params import get_string_param, set_param_any
 
 SCHEMA_VERSION = 1
 
-_UNSAVED_FILE_NAME = "LowLifeSKUD_schematic_unsaved.json"
+
+def empty_manifest():
+    return {"schema_version": SCHEMA_VERSION, "placed_element_ids": [], "controllers": []}
 
 
-def manifest_path(doc):
-    """(path, is_beside_project). Путь к файлу манифеста для документа."""
-    project_path = u""
+def _parse(text):
+    if not text:
+        return None
     try:
-        project_path = doc.PathName or u""
+        data = json.loads(text)
     except:
-        project_path = u""
+        return None
+    if not isinstance(data, dict) or "controllers" not in data:
+        return None
+    return data
 
-    if project_path:
-        base, _ext = os.path.splitext(project_path)
-        return base + u".skud_schematic.json", True
 
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-    if not os.path.isdir(folder):
+def find_schematic_view(doc, view_name, manifest_param_name):
+    """
+    Ищет чертёжный вид с точным именем view_name.
+
+    Возвращает (view, manifest, name_conflict):
+      - вид есть и это ViewDrafting -> (view, его манифест или пустой, False);
+      - вид с этим именем есть, но не ViewDrafting -> (None, None, True);
+      - вида нет -> (None, None, False) — первый запуск, создаём новый.
+    """
+    if not view_name:
+        return None, None, False
+
+    try:
+        views = FilteredElementCollector(doc).OfClass(View).ToElements()
+    except:
+        return None, None, False
+
+    existing = None
+    for view in views:
         try:
-            os.makedirs(folder)
+            name = view.Name
         except:
-            pass
-    return os.path.join(folder, _UNSAVED_FILE_NAME), False
+            continue
+        if name == view_name:
+            existing = view
+            break
+
+    if existing is None:
+        return None, None, False
+
+    if not isinstance(existing, ViewDrafting):
+        return None, None, True
+
+    return existing, load_manifest(existing, manifest_param_name), False
 
 
-def write_manifest(doc, data):
-    """Пишет data (dict) в файл манифеста. Возвращает (path, is_beside_project)."""
-    path, beside = manifest_path(doc)
+def load_manifest(view, manifest_param_name):
+    """Манифест из параметра вида, либо пустая структура."""
+    if view is None or not manifest_param_name:
+        return empty_manifest()
+
+    data = _parse(get_string_param(view, manifest_param_name))
+    return data if data is not None else empty_manifest()
+
+
+def save_manifest(view, manifest_param_name, data):
+    """
+    Пишет манифест в параметр вида. Вызывать внутри транзакции. Возвращает
+    (ok, reason) — reason=None при успехе, иначе короткое пояснение, почему
+    запись не удалась (параметр не резолвится через LookupParameter на этом
+    виде, только для чтения, или Set() бросил исключение).
+    """
+    if view is None:
+        return False, u"вид не найден"
+
+    if not manifest_param_name:
+        return False, u"имя параметра манифеста не задано в настройках"
+
     payload = dict(data)
     payload["schema_version"] = SCHEMA_VERSION
 
-    with io.open(path, "w", encoding="utf-8") as f:
-        f.write(unicode(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)))
-
-    return path, beside
-
-
-def read_manifest(doc):
-    """dict из файла манифеста, либо None если файла нет / он битый."""
-    path, _beside = manifest_path(doc)
-
-    if not os.path.isfile(path):
-        return None
+    try:
+        text = json.dumps(payload, ensure_ascii=False)
+    except Exception as e:
+        return False, u"не удалось сериализовать манифест в JSON: {}".format(e)
 
     try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if not text.strip():
-            return None
-        return json.loads(text)
-    except:
-        return None
+        p = view.LookupParameter(manifest_param_name)
+    except Exception as e:
+        return False, u"LookupParameter упал с ошибкой: {}".format(e)
+
+    if p is None:
+        return False, u"LookupParameter('{}') вернул None на этом виде".format(manifest_param_name)
+
+    try:
+        if p.IsReadOnly:
+            return False, u"параметр «{}» на этом виде только для чтения".format(manifest_param_name)
+    except Exception as e:
+        return False, u"не удалось проверить IsReadOnly: {}".format(e)
+
+    if not set_param_any(view, manifest_param_name, text):
+        return False, u"set_param_any не смог записать значение (см. StorageType параметра)"
+
+    return True, None
