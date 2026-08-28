@@ -1,37 +1,41 @@
 # -*- coding: utf-8 -*-
 """
-Манифест структурной схемы СКУД — JSON в текстовом параметре самого
-чертёжного вида (manifest_param_name из настроек СКУД), а не в файле на
-диске: едет вместе с моделью, доступен всем, кто открывает проект. Тот же
-приём, что sot_layout_state.py для СОТ/СПС.
+Манифест (состояние) структурной схемы СКУД — JSON в текстовом параметре
+самого чертёжного вида (manifest_param_name из настроек СКУД), а не в
+файле на диске: едет вместе с моделью, доступен всем. Тот же приём, что
+sot_layout_state.py для СОТ/СПС.
 
-Вид определяется по имени (schematic_view_name из настроек) — см.
-find_schematic_view.
+Вид определяется по имени (schematic_view_name) — см. find_schematic_view.
 
-Структура манифеста (см. skud_schematic_manifest.empty_manifest и
-BuildSkudSchematic):
+Структура (v2) — инкрементальное состояние, ключи по UniqueId (стабильны
+между сессиями), внутри дублируются IntegerValue id для быстрого резолва
+(нерезолвящийся id → BuildSkudSchematic считает узел «изменившимся» и
+перерисовывает):
+
 {
-    "schema_version": 1,
-    "placed_element_ids": [123, 124, ...],   # всё, что кнопка нарисовала
-                                             # (схемные элементы + линии) —
-                                             # для очистки при пересборке
-    "controllers": [{
-        "controller_id": 0, "address": "F1",
-        "controller_group": "<имя>", "schematic_element_ids": [0],
-        "passage_points": [{
-            "key": "1",
-            "signature": [["геркон", 1], ["считыватель", 1]],
-            "matched_group": "<имя|null>", "unmatched": false,
-            "devices": [{"real_id": 0, "category": "считыватель",
-                         "address": "F1.1", "room": "Коридор (101)",
-                         "schematic_id": 0}]
-        }]
-    }]
+    "schema_version": 2,
+    "line_ids": [id, ...],                 # линии контроллер→точки прохода,
+                                           # пересоздаются каждый запуск
+    "controllers": {
+        "<controller UniqueId>": {
+            "address": "F1",
+            "node": {"element_ids": [id, ...], "group": "<имя группы>"},
+            "passage_points": {
+                "<pp_key>": {
+                    "signature": [["считыватель", 1], ["замок", 1]],
+                    "group": "<имя группы | null>",
+                    "element_ids": [id, ...],
+                    "devices": {
+                        "<device UniqueId>": {
+                            "schematic_id": id, "category": "считыватель",
+                            "address": "F1.1", "room": "Коридор (101)"
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
-
-Все id — int (ElementId.IntegerValue); нерезолвящийся id (элемент удалён
-вручную/undo) не ошибка — вызывающий код просто считает соответствующий
-узел «изменившимся».
 """
 
 import json
@@ -40,23 +44,38 @@ from Autodesk.Revit.DB import FilteredElementCollector, View, ViewDrafting
 
 from lowlife.params import get_string_param, set_param_any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def empty_manifest():
-    return {"schema_version": SCHEMA_VERSION, "placed_element_ids": [], "controllers": []}
+    return {"schema_version": SCHEMA_VERSION, "line_ids": [], "controllers": {}}
 
 
 def _parse(text):
+    """dict манифеста ТЕКУЩЕЙ версии, либо None (пусто/битый/другая версия)."""
     if not text:
         return None
     try:
         data = json.loads(text)
     except:
         return None
-    if not isinstance(data, dict) or "controllers" not in data:
+    if not isinstance(data, dict):
+        return None
+    if data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    if not isinstance(data.get("controllers"), dict):
         return None
     return data
+
+
+def raw_manifest(view, manifest_param_name):
+    """Сырой dict из параметра вида без проверки версии (для миграции)."""
+    if view is None or not manifest_param_name:
+        return None
+    try:
+        return json.loads(get_string_param(view, manifest_param_name) or u"")
+    except:
+        return None
 
 
 def find_schematic_view(doc, view_name, manifest_param_name):
@@ -64,7 +83,7 @@ def find_schematic_view(doc, view_name, manifest_param_name):
     Ищет чертёжный вид с точным именем view_name.
 
     Возвращает (view, manifest, name_conflict):
-      - вид есть и это ViewDrafting -> (view, его манифест или пустой, False);
+      - вид есть и это ViewDrafting -> (view, его манифест v2 или пустой, False);
       - вид с этим именем есть, но не ViewDrafting -> (None, None, True);
       - вида нет -> (None, None, False) — первый запуск, создаём новый.
     """
@@ -96,7 +115,7 @@ def find_schematic_view(doc, view_name, manifest_param_name):
 
 
 def load_manifest(view, manifest_param_name):
-    """Манифест из параметра вида, либо пустая структура."""
+    """Манифест v2 из параметра вида, либо пустая структура."""
     if view is None or not manifest_param_name:
         return empty_manifest()
 
@@ -108,8 +127,8 @@ def save_manifest(view, manifest_param_name, data):
     """
     Пишет манифест в параметр вида. Вызывать внутри транзакции. Возвращает
     (ok, reason) — reason=None при успехе, иначе короткое пояснение, почему
-    запись не удалась (параметр не резолвится через LookupParameter на этом
-    виде, только для чтения, или Set() бросил исключение).
+    запись не удалась (параметр не резолвится через LookupParameter на
+    этом виде, только для чтения, или Set() бросил исключение).
     """
     if view is None:
         return False, u"вид не найден"

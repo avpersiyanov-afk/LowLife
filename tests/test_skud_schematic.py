@@ -129,6 +129,48 @@ def test_majority_value_tie_takes_first_seen():
     assert ss.majority_value([u"Тамбур", u"Коридор"]) == u"Тамбур"
 
 
+# --- passage_point_changed --------------------------------------------
+
+def _prev_pp(uids, group):
+    return {"devices": dict((u, {}) for u in uids), "group": group}
+
+
+def test_passage_point_changed_no_previous():
+    assert ss.passage_point_changed(None, [u"a", u"b"], u"односторонняя") is True
+
+
+def test_passage_point_changed_same_set_same_group():
+    prev = _prev_pp([u"a", u"b"], u"односторонняя")
+    assert ss.passage_point_changed(prev, [u"b", u"a"], u"односторонняя") is False
+
+
+def test_passage_point_changed_device_added_or_removed():
+    prev = _prev_pp([u"a", u"b"], u"односторонняя")
+    assert ss.passage_point_changed(prev, [u"a", u"b", u"c"], u"односторонняя") is True
+    assert ss.passage_point_changed(prev, [u"a"], u"односторонняя") is True
+
+
+def test_passage_point_changed_group_switched():
+    prev = _prev_pp([u"a", u"b"], u"односторонняя")
+    assert ss.passage_point_changed(prev, [u"a", u"b"], u"двусторонняя") is True
+    assert ss.passage_point_changed(prev, [u"a", u"b"], None) is True
+
+
+def test_passage_point_changed_fallback_stays_fallback():
+    prev = _prev_pp([u"a", u"b"], None)
+    assert ss.passage_point_changed(prev, [u"a", u"b"], None) is False
+
+
+# --- group_by_category_ordered ---------------------------------------
+
+def test_group_by_category_ordered_keeps_first_seen_order():
+    cat_of = ss.category_of_from_type_map({1: u"считыватель", 2: u"замок"})
+    devs = [FakeDevice(2), FakeDevice(1), FakeDevice(1), FakeDevice(99)]
+    grouped = ss.group_by_category_ordered(devs, cat_of)
+    assert [c for c, _ in grouped] == [u"замок", u"считыватель"]
+    assert [len(v) for _, v in grouped] == [1, 2]
+
+
 # --- signature_text ----------------------------------------------------
 
 def test_signature_text_formatting():

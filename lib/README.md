@@ -550,7 +550,7 @@ CPython-only зависимость (импортируется внутри ф�
 | `is_controller` | `is_controller(el, workset_param_name, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
 | `parse_category_names` | `parse_category_names(text)` | Текст вида `"контроллер\nсчитыватель\nзамок"` → список имён категорий устройств (по одной на строку) — общие категории для схемы (BuildSkudSchematic) и подбора проводника (AssignCircuitsAndCables) |
 | `category_by_type_id` | `category_by_type_id(el, category_type_ids)` | Категория реального устройства по точному совпадению `ElementId` его типа с одним из `category_type_ids` (`{имя: set(int)}` из настроек) — заменяет сопоставление по ключевым словам |
-| `collect_controller_devices` | `collect_controller_devices(doc, workset_param, workset_kw, type_kw, circuit_panel_param, excluded_kw)` | `[(контроллер, [устройства])]` — единая точка сбора «устройств контроллера» (по всем его цепям, без самого контроллера и исключённых, дедуп по `ElementId`) для `BuildSkudSchematic`/`AssignSkudRooms`/`UpdateSkudSchematic` |
+| `collect_controller_devices` | `collect_controller_devices(doc, workset_param, workset_kw, type_kw, circuit_panel_param, excluded_kw)` | `[(контроллер, [устройства])]` — единая точка сбора «устройств контроллера» (по всем его цепям, без самого контроллера и исключённых, дедуп по `ElementId`) для `BuildSkudSchematic`/`AssignSkudRooms` |
 | `hypotenuse_length_ft` | `hypotenuse_length_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между двумя точками (в футах) — длина "по катетам" для устройств рядом с контроллером |
 | `is_near_controller` | `is_near_controller(controller_pt, device_pt, threshold_ft)` | `True`, если прямое 3D-расстояние между контроллером и устройством меньше порога |
 
@@ -605,10 +605,12 @@ CPython-only зависимость (импортируется внутри ф�
 Текстовое поле `passage_point_param` («Номер точки прохода») —
 необязательное: пусто у устройства → одна точка прохода на контроллер.
 Поля `schematic_view_name` (имя чертёжного вида схемы, дефолт
-«Структурная схема СКУД») и `manifest_param_name` (служебный текстовый
-параметр вида, куда `BuildSkudSchematic` пишет весь JSON-манифест —
-привязать к категории «Виды») — по образцу `schematic_view_name`/
-`layout_param_name` в `sot_settings.py`.
+«Структурная схема СКУД»), `manifest_param_name` (служебный текстовый
+параметр вида для JSON-состояния схемы — привязать к категории «Виды») и
+`schematic_source_uid_param` (служебный текстовый параметр схемных
+Detail-семейств для `UniqueId` исходного устройства) — по образцу
+`schematic_view_name` / `layout_param_name` / `device_uid_param_name` в
+`sot_settings.py`.
 
 ## skud_parameters.py
 Таблица `PARAM_SPECS` для параметров СКУД + проверка/привязка из ФОП.
@@ -636,6 +638,8 @@ CPython-only зависимость (импортируется внутри ф�
 | `invert_category_type_id_strings` | `invert_category_type_id_strings(category_to_id_str)` | `{категория: "id"}` → `{int: категория}` (для `category_of` схемных элементов) |
 | `passage_points_of` | `passage_points_of(devices, passage_point_param, address_param)` | `OrderedDict{ключ: [устройства]}` — разбивка устройств контроллера по значению параметра «Номер точки прохода» (пусто → `"1"`); внутри — сортировка по адресу, ключи по первому появлению |
 | `signature_of` | `signature_of(devices, category_of)` | `(signature, uncategorized_count)` — сигнатура = кортеж отсортированных пар `(категория, количество)` |
+| `group_by_category_ordered` | `group_by_category_ordered(devices, category_of)` | `[(категория, [устройства])]` в порядке первого появления категории; без категории — отбрасываются |
+| `passage_point_changed` | `passage_point_changed(prev_pp, desired_uids, matched_group)` | `True`, если точку прохода надо перерисовать: не было раньше / сменился набор устройств (по `UniqueId`) / изменилась подобранная группа. Чистая, тестируется |
 | `classify_members` | `classify_members(doc, member_ids, category_of)` | `(by_category, signature)` для членов группы / разгруппированных элементов; члены без категории (рамка, линии) отбрасываются |
 | `group_signature` | `group_signature(doc, group_type, category_of)` | `(signature, by_category)` по первому размещённому экземпляру типа группы, либо `(None, None)` если экземпляров нет |
 | `match_group_name` | `match_group_name(signature, group_signatures)` | Имя группы с точно такой же сигнатурой, либо `None` |
@@ -650,25 +654,42 @@ CPython-only зависимость (импортируется внутри ф�
 деталей, `scs_settings.list_detail_group_types`); ключи JSON
 `controller_group_id` / `passage_point_group_ids`.
 
-Весь JSON-манифест пишется в служебный текстовый параметр самого
-чертёжного вида (`skud_schematic_manifest.py`) — по нему
-**UpdateSkudSchematic** обновляет адреса на схемных элементах, а
-повторный запуск **BuildSkudSchematic** удаляет прошлую схему (по списку
-`placed_element_ids`) и рисует заново. Раскладка идёт от начала координат
-вида (клик точки убран).
+Раскладка идёт от начала координат вида. Синхронизация — в
+`skud_schematic_sync.py`, состояние — в `skud_schematic_manifest.py`.
+
+## skud_schematic_sync.py
+Инкрементальная синхронизация структурной схемы СКУД — аналог
+`sot_schematic.sync_levels`/`sync_rooms_in_level`. Работает с Revit API
+напрямую, вне Revit не импортируется, юнит-тестами не покрыт.
+
+`sync_schematic(doc, view, desired_controllers, previous_state, cfg)` →
+`(new_state, report)` (внутри уже открытой транзакции). Единица
+неизменности — **точка прохода**: тот же набор устройств (по `UniqueId`)
+и та же подобранная группа → геометрию не трогает, обновляет только
+адрес/марку; иначе — удаляет и рисует заново; пропавшие удаляет, новые
+размещает; пропавший контроллер убирает целиком. Линии контроллер→точка
+прохода пересоздаются каждый запуск, якорь — `_anchor_of` (среднее
+`Location.Point` фактических элементов). `desired_controllers` строит
+кнопка (`uid`/`address`/`elevation`/`passage_points[…].{key, signature,
+matched_group, devices[…]}`); `cfg` — dict с параметрами/типами групп/
+callables. `report` — счётчики `pp_unchanged/pp_redrawn/pp_created/
+pp_removed/controllers_created/controllers_removed/stale_refs` + список
+`no_match`.
 
 ## skud_schematic_manifest.py
-JSON-манифест структурной схемы СКУД в текстовом параметре чертёжного
-вида (`manifest_param_name` из настроек), а не в файле — тот же приём,
-что `sot_layout_state.py` для СОТ/СПС. Вид ищется по имени
-(`schematic_view_name`).
+JSON-состояние (v2) структурной схемы СКУД в текстовом параметре
+чертёжного вида (`manifest_param_name` из настроек), а не в файле — тот
+же приём, что `sot_layout_state.py` для СОТ/СПС. Вид ищется по имени
+(`schematic_view_name`). Ключи по `UniqueId` контроллеров/устройств,
+внутри дублируются `IntegerValue` id для быстрого резолва.
 
 | Функция | Что делает |
 |---|---|
-| `find_schematic_view(doc, view_name, manifest_param_name)` | `(view, manifest, name_conflict)` — вид-ViewDrafting с этим именем + его манифест (или пустой); `name_conflict=True` если вид с именем есть, но не чертёжный; `(None, None, False)` — вида нет (первый запуск) |
-| `load_manifest(view, param_name)` | `dict` из параметра вида, либо `empty_manifest()` |
-| `save_manifest(view, param_name, data)` | `(ok, reason)` — пишет JSON в параметр вида (внутри транзакции); `reason` объясняет, почему не удалось (нет параметра, только чтение, `Set()` упал) |
-| `empty_manifest()` | `{"schema_version": 1, "placed_element_ids": [], "controllers": []}` |
+| `find_schematic_view(doc, view_name, manifest_param_name)` | `(view, manifest, name_conflict)` — вид-ViewDrafting с этим именем + его состояние (или пустое); `name_conflict=True` если вид есть, но не чертёжный; `(None, None, False)` — вида нет |
+| `load_manifest(view, param_name)` | `dict` состояния v2 из параметра вида, либо `empty_manifest()` (в т.ч. если там v1 — несовместимо) |
+| `raw_manifest(view, param_name)` | сырой `dict` без проверки версии — для миграции (достать `placed_element_ids` из старого v1) |
+| `save_manifest(view, param_name, data)` | `(ok, reason)` — пишет JSON в параметр вида (внутри транзакции); `reason` объясняет, почему не удалось |
+| `empty_manifest()` | `{"schema_version": 2, "line_ids": [], "controllers": {}}` |
 
 ## skud_room_info.py
 Имя помещения для устройств СКУД (**AssignSkudRooms**) — надстройка над

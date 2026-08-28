@@ -107,6 +107,42 @@ def signature_of(devices, category_of):
     return _signature_from_counts(counts), uncategorized
 
 
+def group_by_category_ordered(devices, category_of):
+    """
+    [(категория, [устройства])] в порядке первого появления категории.
+    Устройства без категории (category_of вернул None) отбрасываются.
+    """
+    order = []
+    buckets = {}
+    for d in devices:
+        cat = category_of(d)
+        if not cat:
+            continue
+        if cat not in buckets:
+            buckets[cat] = []
+            order.append(cat)
+        buckets[cat].append(d)
+    return [(cat, buckets[cat]) for cat in order]
+
+
+def passage_point_changed(prev_pp, desired_uids, matched_group):
+    """
+    True, если точку прохода нужно перерисовать: раньше её не было, либо
+    сменился набор устройств (по UniqueId), либо изменилась подобранная
+    группа (в т.ч. была группа — стало None и наоборот).
+
+    prev_pp — запись точки прохода из манифеста
+    (`{"devices": {uid: ...}, "group": ...}`), либо None.
+    """
+    if prev_pp is None:
+        return True
+    if set(prev_pp.get("devices", {})) != set(desired_uids):
+        return True
+    if prev_pp.get("group") != matched_group:
+        return True
+    return False
+
+
 def classify_members(doc, member_ids, category_of):
     """
     {категория: [элементы]} для списка ElementId (членов группы или
