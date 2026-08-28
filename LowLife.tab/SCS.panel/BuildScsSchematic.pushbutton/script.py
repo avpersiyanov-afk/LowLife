@@ -59,7 +59,7 @@ from lowlife.scs_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
 from lowlife.scs_schematic import (
-    sync_panel_buses, sync_trunk_links, BOUNDARY_MARGIN_MM, BUS_DROP_SPACING_MM
+    sync_panel_buses, sync_trunk_links, BOUNDARY_MARGIN_MM, BUS_DROP_SPACING_MM, ROOM_BOTTOM_MM
 )
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
@@ -265,8 +265,14 @@ level_labels = dict((name, get_level_label(name)) for name in level_order)
 # не по каждому этажу отдельно — проще и одинаковая высота строк).
 # ------------------------------------------------------------
 
+# ROOM_BOTTOM_MM — насколько ниже level_y уходит сама рамка помещения
+# (см. scs_schematic.ROOM_BOTTOM_MM) — первая линия кабеля отсчитывается
+# от ЭТОЙ границы, не от level_y напрямую, иначе линия попадает поверх/
+# внутрь рамки помещения (см. panel_collector_y).
 if panels_order:
-    deepest_bus_offset_mm = BOUNDARY_MARGIN_MM + (len(panels_order) - 1) * BUS_DROP_SPACING_MM
+    deepest_bus_offset_mm = (
+        ROOM_BOTTOM_MM + BOUNDARY_MARGIN_MM + (len(panels_order) - 1) * BUS_DROP_SPACING_MM
+    )
 else:
     deepest_bus_offset_mm = 0.0
 
@@ -278,7 +284,7 @@ else:
 # без отдельного увеличенного зазора — между всеми линиями кабелей на
 # этаже одно и то же расстояние).
 if trunk_link_uids:
-    deepest_trunk_offset_mm = BOUNDARY_MARGIN_MM + len(panels_order) * BUS_DROP_SPACING_MM
+    deepest_trunk_offset_mm = ROOM_BOTTOM_MM + BOUNDARY_MARGIN_MM + len(panels_order) * BUS_DROP_SPACING_MM
 else:
     deepest_trunk_offset_mm = 0.0
 

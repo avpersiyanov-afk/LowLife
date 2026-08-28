@@ -51,9 +51,24 @@ def test_panel_color_rgb_single_panel_does_not_crash():
 
 
 def test_first_panel_collector_is_at_base_drop_offset():
+    # Отступ отсчитывается от НИЖНЕЙ ГРАНИЦЫ РАМКИ ПОМЕЩЕНИЯ
+    # (level_y - ROOM_BOTTOM_MM), а не от level_y напрямую — иначе линия
+    # попадает поверх/внутрь самой рамки помещения.
     y0 = scs_schematic.panel_collector_y(0, 100.0)
-    expected = 100.0 - scs_schematic.BOUNDARY_MARGIN_MM * scs_schematic.MM_TO_FT
+    expected = 100.0 - (
+        scs_schematic.ROOM_BOTTOM_MM + scs_schematic.BOUNDARY_MARGIN_MM
+    ) * scs_schematic.MM_TO_FT
     assert y0 == pytest.approx(expected)
+
+
+def test_first_panel_collector_clears_the_room_frame_bottom_edge():
+    # Сама граница рамки помещения (у СОТ/СКС) — level_y - ROOM_BOTTOM_MM;
+    # первая линия кабеля должна быть строго дальше (ниже) неё, а не
+    # выше/на ней (иначе линия рисуется поверх/внутри блока помещения).
+    level_y = 100.0
+    room_bottom_y = level_y - scs_schematic.ROOM_BOTTOM_MM * scs_schematic.MM_TO_FT
+    y0 = scs_schematic.panel_collector_y(0, level_y)
+    assert y0 < room_bottom_y
 
 
 def test_panel_collectors_stack_further_from_level_for_each_next_panel():
