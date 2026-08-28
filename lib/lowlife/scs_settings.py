@@ -21,7 +21,9 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
 
-from Autodesk.Revit.DB import ElementId, FilteredElementCollector, Family, BuiltInCategory, Element
+from Autodesk.Revit.DB import (
+    ElementId, FilteredElementCollector, Family, BuiltInCategory, Element, GroupType
+)
 
 from pyrevit import forms
 
@@ -371,6 +373,38 @@ def list_symbols_by_categories(doc, builtin_categories):
                 symbols.append(symbol)
 
     return symbols
+
+
+class GroupTypeOption(object):
+    """Обёртка над GroupType (тип группы) для отображения в списке выбора."""
+
+    def __init__(self, group_type):
+        self.group_type = group_type
+        self.name = _safe_element_name(group_type) or str(group_type.Id.IntegerValue)
+
+    def __str__(self):
+        return self.name
+
+
+def list_detail_group_types(doc):
+    """
+    Типы групп деталей проекта (GroupType категории OST_IOSDetailGroups),
+    включая ещё не размещённые. Для выбора типовых групп структурной схемы
+    СКУД (см. skud_settings).
+    """
+    result = []
+
+    for group_type in FilteredElementCollector(doc).OfClass(GroupType):
+        try:
+            category = group_type.Category
+        except:
+            category = None
+        if category is None:
+            continue
+        if category.Id.IntegerValue == int(BuiltInCategory.OST_IOSDetailGroups):
+            result.append(group_type)
+
+    return result
 
 
 def _type_display_name(doc, id_str):

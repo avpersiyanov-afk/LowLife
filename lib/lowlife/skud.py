@@ -69,6 +69,67 @@ def category_by_type_id(el, category_type_ids):
     return None
 
 
+def collect_controller_devices(doc, workset_param, workset_keyword, type_keyword,
+                               circuit_panel_param, excluded_keywords):
+    """
+    [(контроллер, [устройства])] — контроллеры СКУД и их подключённые
+    устройства: по всем цепям контроллера (параметр цепи
+    circuit_panel_param == Name контроллера), без самого контроллера и
+    без исключённых по ключевому слову, с дедупликацией по ElementId.
+
+    Единая точка сбора для BuildSkudSchematic / AssignSkudRooms /
+    UpdateSkudSchematic — чтобы «что считается устройством контроллера»
+    было определено в одном месте.
+    """
+    from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
+    from lowlife.scs import is_excluded_device
+    from lowlife.scs_circuits import norm
+    from lowlife.params import get_string_param
+
+    equipment = FilteredElementCollector(doc) \
+        .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
+        .WhereElementIsNotElementType().ToElements()
+
+    controllers = [
+        e for e in equipment
+        if is_controller(e, workset_param, workset_keyword, type_keyword)
+    ]
+
+    circuits = FilteredElementCollector(doc) \
+        .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
+        .WhereElementIsNotElementType().ToElements()
+
+    circuits_by_name = {}
+    for c in circuits:
+        name = norm(get_string_param(c, circuit_panel_param))
+        if name:
+            circuits_by_name.setdefault(name, []).append(c)
+
+    result = []
+    for controller in controllers:
+        name = norm(controller.Name)
+        devices = []
+        for c in circuits_by_name.get(name, []):
+            try:
+                raw = [x for x in c.Elements if x.Id != controller.Id]
+            except:
+                continue
+            devices.extend([d for d in raw if not is_excluded_device(d, excluded_keywords)])
+
+        seen = set()
+        unique = []
+        for d in devices:
+            key = d.Id.IntegerValue
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(d)
+
+        result.append((controller, unique))
+
+    return result
+
+
 def hypotenuse_length_ft(pt_a, pt_b):
     """Длина по катетам (|dx| + |dy| + |dz|) между двумя точками, в футах (единицы Revit)."""
     return abs(pt_a.X - pt_b.X) + abs(pt_a.Y - pt_b.Y) + abs(pt_a.Z - pt_b.Z)

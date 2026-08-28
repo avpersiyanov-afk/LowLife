@@ -487,6 +487,7 @@ CPython-only зависимость (импортируется внутри ф�
 | `is_controller` | `is_controller(el, workset_param_name, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
 | `parse_category_names` | `parse_category_names(text)` | Текст вида `"контроллер\nсчитыватель\nзамок"` → список имён категорий устройств (по одной на строку) — общие категории для схемы (BuildSkudSchematic) и подбора проводника (AssignCircuitsAndCables) |
 | `category_by_type_id` | `category_by_type_id(el, category_type_ids)` | Категория реального устройства по точному совпадению `ElementId` его типа с одним из `category_type_ids` (`{имя: set(int)}` из настроек) — заменяет сопоставление по ключевым словам |
+| `collect_controller_devices` | `collect_controller_devices(doc, workset_param, workset_kw, type_kw, circuit_panel_param, excluded_kw)` | `[(контроллер, [устройства])]` — единая точка сбора «устройств контроллера» (по всем его цепям, без самого контроллера и исключённых, дедуп по `ElementId`) для `BuildSkudSchematic`/`AssignSkudRooms`/`UpdateSkudSchematic` |
 | `hypotenuse_length_ft` | `hypotenuse_length_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между двумя точками (в футах) — длина "по катетам" для устройств рядом с контроллером |
 | `is_near_controller` | `is_near_controller(controller_pt, device_pt, threshold_ft)` | `True`, если прямое 3D-расстояние между контроллером и устройством меньше порога |
 
@@ -533,6 +534,14 @@ CPython-only зависимость (импортируется внутри ф�
 `SKUD.panel`) — остальные кнопки читают уже сохранённое через
 `get_settings_silent()`, тот же принцип, что в СКС.
 
+Раздел «Типовые группы структурной схемы» окна: пикер узла-контроллера
+(одна группа деталей) и мультивыбор узлов точек прохода — источник
+`scs_settings.list_detail_group_types` (только `OST_IOSDetailGroups`),
+обёртка `GroupTypeOption`; прямые ключи JSON `controller_group_id`
+(строка) и `passage_point_group_ids` (список), с `load_*`/`save_*`.
+Текстовое поле `passage_point_param` («Номер точки прохода») —
+необязательное: пусто у устройства → одна точка прохода на контроллер.
+
 ## skud_parameters.py
 Таблица `PARAM_SPECS` для параметров СКУД + проверка/привязка из ФОП.
 Логика привязки (`ensure_binding`, `find_existing_binding`,
@@ -543,26 +552,55 @@ CPython-only зависимость (импортируется внутри ф�
 `OST_GenericModel` для узлов трассы/схемы).
 
 ## skud_schematic.py
-Логика кнопки **BuildSkudSchematic** («Структурная схема»): без
-группы-эталона — каждый контроллер и каждое его устройство вставляются
-как отдельный экземпляр типа, назначенного в настройках СКУД для
-соответствующей категории (реальное устройство сопоставляется с
-категорией по точному типу — `skud.category_by_type_id`, не по ключевым
-словам), в точке, вычисленной от точки контроллера.
+Логика кнопки **BuildSkudSchematic** («Структурная схема»): узел-контроллер
+(типовая группа деталей) ставится один раз на контроллер, а на каждую его
+точку прохода подбирается группа деталей, чей состав устройств (по
+категориям) совпадает с составом точки прохода; при отсутствии совпадения —
+резервная раскладка отдельными схемными семействами (`device_layout_point`).
+Модуль импортирует `lowlife.params` лениво и с запасным вариантом
+(`_param_value` читает из `el.params` у fake-элемента), поэтому чистые
+функции импортируются и тестируются вне Revit (`tests/test_skud_schematic.py`).
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `layout_points_by_level` | `layout_points_by_level(base_point, level_elevations, gap_ft)` | Точки вставки контроллеров, сгруппированных по этажу (`level_elevations` — Elevation уровня каждого контроллера, тот же порядок, что список контроллеров): один этаж — один сплошной горизонтальный ряд по X с шагом `gap_ft`, без ограничения длины; следующий этаж — со сдвигом вверх по Y на `gap_ft`, от точки клика пользователя (`base_point`) |
-| `device_layout_point` | `device_layout_point(insert_pt, category_layout, category, index_in_category, step_ft)` | Точка вставки устройства: точка контроллера (`insert_pt`) + смещение `(dx, dy)` категории из `category_layout` (`{имя: (dx_ft, dy_ft)}`, из настроек) + шаг `step_ft` вправо по X на каждый следующий экземпляр той же категории у этого контроллера |
+| `category_of_from_type_map` | `category_of_from_type_map(type_id_to_category)` | Возвращает `category_of(el) -> имя|None` по плоской карте `{int(id типа): категория}` |
+| `invert_category_device_type_ids` | `invert_category_device_type_ids(category_to_ids)` | `{категория: set(int)}` → `{int: категория}` (для `category_of` реальных устройств) |
+| `invert_category_type_id_strings` | `invert_category_type_id_strings(category_to_id_str)` | `{категория: "id"}` → `{int: категория}` (для `category_of` схемных элементов) |
+| `passage_points_of` | `passage_points_of(devices, passage_point_param, address_param)` | `OrderedDict{ключ: [устройства]}` — разбивка устройств контроллера по значению параметра «Номер точки прохода» (пусто → `"1"`); внутри — сортировка по адресу, ключи по первому появлению |
+| `signature_of` | `signature_of(devices, category_of)` | `(signature, uncategorized_count)` — сигнатура = кортеж отсортированных пар `(категория, количество)` |
+| `classify_members` | `classify_members(doc, member_ids, category_of)` | `(by_category, signature)` для членов группы / разгруппированных элементов; члены без категории (рамка, линии) отбрасываются |
+| `group_signature` | `group_signature(doc, group_type, category_of)` | `(signature, by_category)` по первому размещённому экземпляру типа группы, либо `(None, None)` если экземпляров нет |
+| `match_group_name` | `match_group_name(signature, group_signatures)` | Имя группы с точно такой же сигнатурой, либо `None` |
+| `signature_text` | `signature_text(signature)` | `"считыватель x2 + замок + геркон"` — человекочитаемо |
+| `majority_value` | `majority_value(values)` | Самое частое непустое значение; при равенстве — первое по порядку; `""` если все пустые. Реэкспортируется `skud_room_info` |
+| `layout_points_by_level` | `layout_points_by_level(base_point, level_elevations, gap_ft)` | Точки вставки контроллеров по этажам: этаж — сплошной ряд по X с шагом `gap_ft`, следующий этаж — сдвиг вверх по Y |
+| `passage_point_layout_point` | `passage_point_layout_point(insert_pt, index, gap_ft)` | Точка origin группы точки прохода — под контроллером, каждая следующая ниже |
+| `device_layout_point` | `device_layout_point(insert_pt, category_layout, category, index_in_category, step_ft)` | Резервная раскладка (no-match): точка контроллера + смещение `(dx, dy)` категории + шаг `step_ft` вправо на каждый следующий экземпляр той же категории |
 
-Координаты (dx, dy от контроллера) и шаг между однотипными устройствами,
-а также сопоставление категория→реальные типы устройств и
-категория→схемное семейство для вставки — настраиваются в окне
-«Параметры СКУД» (`skud_settings.py`), включая превью раскладки.
+Типовые группы (узел-контроллер + узлы точек прохода) выбираются в окне
+«Параметры СКУД» → «Типовые группы структурной схемы» (только группы
+деталей, `scs_settings.list_detail_group_types`); ключи JSON
+`controller_group_id` / `passage_point_group_ids`.
 
-Линии между контроллером и устройствами на схеме — простые независимые
-`DetailLine` (топология "звезда"), создаются кнопкой сразу после вставки
-каждой пары точек.
+Всё поставленное пишется в JSON-манифест (`skud_schematic_manifest.py`)
+рядом с `.rvt` — по нему **UpdateSkudSchematic** обновляет адреса на
+схемных элементах и сообщает о структурных расхождениях.
+
+## skud_schematic_manifest.py
+Чтение/запись JSON-манифеста структурной схемы СКУД
+(`<проект>.skud_schematic.json` рядом с `.rvt`; если проект не сохранён —
+временный файл в `%APPDATA%\pyRevit` + флаг). `manifest_path(doc)` →
+`(path, is_beside_project)`; `write_manifest(doc, data)` (проставляет
+`schema_version`); `read_manifest(doc)` → `dict|None`.
+
+## skud_room_info.py
+Имя помещения для устройств СКУД (**AssignSkudRooms**) — надстройка над
+`room_info.py`: по каждой точке прохода берётся одно (самое частое,
+`majority_value`) значение помещения и пишется всем её устройствам. Имена
+параметров — из `room_info_settings` (общие с СПС/СОТ, не дублируются).
+`device_room_value(doc, el, room_number_param)` — значение для одного
+элемента; `assign_rooms_by_passage_point(doc, passage_points, target_param,
+room_number_param)` — запись по точкам прохода, возвращает строки отчёта.
 
 ## fire_alarm.py
 Константы и разбор адресов для **СПС и СОУЭ** (`SPS.panel`/`SOUE.panel`).

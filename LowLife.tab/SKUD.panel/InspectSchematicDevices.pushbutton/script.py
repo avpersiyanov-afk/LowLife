@@ -20,9 +20,13 @@ from pyrevit import revit, forms, script as pyrevit_script
 from lowlife.params import get_string_param
 from lowlife.scs import is_excluded_device, safe_element_name
 from lowlife.scs_circuits import norm, clean_text_value
+from lowlife.skud_schematic import (
+    passage_points_of, signature_of, signature_text,
+    category_of_from_type_map, invert_category_device_type_ids,
+)
 
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import get_settings_silent, get_schematic_category_device_type_ids
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -38,6 +42,11 @@ skud_settings.require(settings, [
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
+PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
+
+category_of_real = category_of_from_type_map(
+    invert_category_device_type_ids(get_schematic_category_device_type_ids(settings))
+)
 
 
 try:
@@ -114,5 +123,33 @@ if len(all_device_ids_flat) != len(unique_ids):
         ))
 else:
     output.print_md(u"Дубликатов по ElementId нет.")
+
+
+# --- разбивка по точкам прохода + сигнатуры (для отладки матчинга групп) ---
+
+unique_devices = []
+seen_dev = set()
+for eid in all_device_ids_flat:
+    if eid in seen_dev:
+        continue
+    seen_dev.add(eid)
+    el = doc.GetElement(ElementId(eid))
+    if el is not None:
+        unique_devices.append(el)
+
+output.print_md(u"### Точки прохода контроллера (параметр «{}»)".format(
+    PASSAGE_POINT_PARAM or u"— не задан, всё → точка прохода 1"))
+
+pps = passage_points_of(unique_devices, PASSAGE_POINT_PARAM, DEVICE_ADDRESS_PARAM)
+for pp_key, pp_devices in pps.items():
+    sig, uncategorized = signature_of(pp_devices, category_of_real)
+    output.print_md(u"#### Точка прохода «{}» — {}".format(pp_key, signature_text(sig)))
+    if uncategorized:
+        output.print_md(u"  - без категории (не сопоставится): {}".format(uncategorized))
+    for d in pp_devices:
+        addr = clean_text_value(get_string_param(d, DEVICE_ADDRESS_PARAM))
+        cat = category_of_real(d)
+        output.print_md(u"  - ID {}: `{}` addr=`{}` категория=`{}`".format(
+            d.Id.IntegerValue, safe_element_name(d), addr, cat or u"—"))
 
 forms.alert(u"Готово, смотрите окно вывода pyRevit.")
