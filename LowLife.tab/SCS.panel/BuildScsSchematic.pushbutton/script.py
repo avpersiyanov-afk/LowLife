@@ -49,9 +49,9 @@ except ImportError:
     OrderedDict = dict
 
 from lowlife.params import get_string_param, set_param_any
-from lowlife.scs import collect_target_panel_devices
+from lowlife.scs import collect_target_panel_devices, safe_element_name
 from lowlife.scs_circuits import norm
-from lowlife.skud import category_by_type_id
+from lowlife.skud import category_by_type_id, parse_category_names
 from lowlife import scs_settings
 from lowlife.scs_settings import (
     get_settings_silent, get_schematic_category_symbols, get_schematic_category_device_type_ids
@@ -208,6 +208,48 @@ for panel, devices in panel_devices:
             elements.append(d)
 
     panel_device_uids[panel.UniqueId] = member_uids
+
+
+# ------------------------------------------------------------
+# ДИАГНОСТИКА СОПОСТАВЛЕНИЯ КАТЕГОРИЙ: для каждого элемента схемы —
+# какой РЕАЛЬНЫЙ тип у него и в какую категорию (значит, в какое схемное
+# семейство) он попал по факту. Не влияет на саму схему — только на
+# отчёт ниже; нужно, чтобы разница между тем, что настроено, и тем, что
+# получилось, была видна сразу, а не терялась внутри sync_levels.
+# ------------------------------------------------------------
+
+def _symbol_display(symbol):
+    if symbol is None:
+        return u"?"
+    fam_name = None
+    try:
+        fam_name = safe_element_name(symbol.Family)
+    except:
+        pass
+    type_name = safe_element_name(symbol)
+    return u"{} : {}".format(fam_name or u"?", type_name or symbol.Id.IntegerValue)
+
+
+def _real_type_display(el):
+    try:
+        symbol = doc.GetElement(el.GetTypeId())
+    except:
+        symbol = None
+    return _symbol_display(symbol)
+
+
+CATEGORY_NAMES_ORDER = parse_category_names(settings.get("schematic_device_categories_text", u""))
+category_diag = dict((name, {}) for name in CATEGORY_NAMES_ORDER)
+uncategorized_diag = {}
+
+for el in elements:
+    cat = category_for_device(el)
+    real_type = _real_type_display(el)
+    bucket = category_diag.get(cat) if cat is not None else None
+    if bucket is None:
+        uncategorized_diag[real_type] = uncategorized_diag.get(real_type, 0) + 1
+    else:
+        bucket[real_type] = bucket.get(real_type, 0) + 1
 
 
 # ------------------------------------------------------------
@@ -524,6 +566,28 @@ if room_counters["not_found"]:
         u"группа «(пусто)» — либо точка элемента не попадает ни в один Room "
         u"связанной модели, либо не подключена сама связь.".format(room_counters["not_found"])
     )
+
+output.print_md(u"### Сопоставление категорий (что реально попало на схему)")
+if not CATEGORY_NAMES_ORDER:
+    output.print_md(u"Категории не заданы («Категории устройств схемы» в «Параметры СКС» пусто).")
+for cat_name in CATEGORY_NAMES_ORDER:
+    symbol = CATEGORY_SYMBOLS.get(cat_name)
+    symbol_display = _symbol_display(symbol) if symbol is not None else u"(схемное семейство не выбрано)"
+    counts = category_diag.get(cat_name) or {}
+    total = sum(counts.values())
+    output.print_md(u"- «{}» -> **{}** — устройств: **{}**".format(cat_name, symbol_display, total))
+    for real_type, n in sorted(counts.items()):
+        output.print_md(u"  - {}: {}".format(real_type, n))
+    if total == 0:
+        output.print_md(
+            u"  - (ни один реальный тип не сопоставлен этой категории — "
+            u"проверьте «Реальные типы устройств/панелей этой категории» "
+            u"в «Параметры СКС»)"
+        )
+if uncategorized_diag:
+    output.print_md(u"Реальные типы БЕЗ категории (на схему не попадут):")
+    for real_type, n in sorted(uncategorized_diag.items()):
+        output.print_md(u"- {}: {}".format(real_type, n))
 
 if unmatched_report:
     output.print_md(u"### Не размещено (нет схемного семейства) — {}".format(len(unmatched_report)))
