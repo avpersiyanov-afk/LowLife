@@ -52,7 +52,7 @@ def test_panel_color_rgb_single_panel_does_not_crash():
 
 def test_first_panel_collector_is_at_base_drop_offset():
     y0 = scs_schematic.panel_collector_y(0, 100.0)
-    expected = 100.0 - scs_schematic.BUS_DROP_OFFSET_MM * scs_schematic.MM_TO_FT
+    expected = 100.0 - scs_schematic.BOUNDARY_MARGIN_MM * scs_schematic.MM_TO_FT
     assert y0 == pytest.approx(expected)
 
 
@@ -72,23 +72,24 @@ def test_panel_collectors_stack_further_from_level_for_each_next_panel():
     assert y1 - y2 == pytest.approx(spacing_ft)
 
 
-def test_trunk_drop_is_deeper_than_the_last_real_panel_collector():
+def test_trunk_drop_is_exactly_one_spacing_step_past_the_last_real_panel_collector():
     # panel_count реальных панелей занимают индексы 0..panel_count-1 —
     # отвод магистрали должен быть дальше от этажа, чем самый глубокий
-    # из них (иначе он мог бы столкнуться с чужой шиной устройств).
+    # из них, ровно на один обычный шаг BUS_DROP_SPACING_MM — без
+    # отдельного увеличенного зазора: между всеми линиями кабелей на
+    # этаже одно и то же расстояние (4мм), магистраль не исключение.
     panel_count = 3
     level_y = 100.0
     deepest_collector_y = scs_schematic.panel_collector_y(panel_count - 1, level_y)
     drop_y = scs_schematic.trunk_drop_y(panel_count, level_y)
-    assert drop_y < deepest_collector_y
+    spacing_ft = scs_schematic.BUS_DROP_SPACING_MM * scs_schematic.MM_TO_FT
+    assert deepest_collector_y - drop_y == pytest.approx(spacing_ft)
 
 
-def test_trunk_drop_matches_virtual_next_panel_slot_minus_gap():
+def test_trunk_drop_matches_virtual_next_panel_slot():
     panel_count = 2
     level_y = 100.0
-    expected = scs_schematic.panel_collector_y(panel_count, level_y) - (
-        scs_schematic.TRUNK_DROP_GAP_MM * scs_schematic.MM_TO_FT
-    )
+    expected = scs_schematic.panel_collector_y(panel_count, level_y)
     assert scs_schematic.trunk_drop_y(panel_count, level_y) == pytest.approx(expected)
 
 

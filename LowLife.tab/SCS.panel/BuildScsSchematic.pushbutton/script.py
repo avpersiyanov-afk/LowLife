@@ -59,7 +59,7 @@ from lowlife.scs_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
 from lowlife.scs_schematic import (
-    sync_panel_buses, sync_trunk_links, BUS_DROP_OFFSET_MM, BUS_DROP_SPACING_MM, TRUNK_DROP_GAP_MM
+    sync_panel_buses, sync_trunk_links, BOUNDARY_MARGIN_MM, BUS_DROP_SPACING_MM
 )
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
@@ -266,31 +266,33 @@ level_labels = dict((name, get_level_label(name)) for name in level_order)
 # ------------------------------------------------------------
 
 if panels_order:
-    deepest_bus_offset_mm = BUS_DROP_OFFSET_MM + (len(panels_order) - 1) * BUS_DROP_SPACING_MM
+    deepest_bus_offset_mm = BOUNDARY_MARGIN_MM + (len(panels_order) - 1) * BUS_DROP_SPACING_MM
 else:
     deepest_bus_offset_mm = 0.0
 
 # Если есть хоть одна магистральная связь — у каждого шкафа-участника
 # ещё и собственный отвод магистрали (trunk_drop_y), который проходит
 # ЕЩЁ дальше от этажа, чем шина устройств самой глубокой (по индексу)
-# панели схемы — та же формула, что и в trunk_drop_y (panel_count-я,
-# "виртуальная" позиция panel_collector_y плюс TRUNK_DROP_GAP_MM).
+# панели схемы — на один шаг BUS_DROP_SPACING_MM (та же формула, что и в
+# trunk_drop_y — panel_count-я, "виртуальная" позиция panel_collector_y,
+# без отдельного увеличенного зазора — между всеми линиями кабелей на
+# этаже одно и то же расстояние).
 if trunk_link_uids:
-    deepest_trunk_offset_mm = (
-        BUS_DROP_OFFSET_MM + len(panels_order) * BUS_DROP_SPACING_MM + TRUNK_DROP_GAP_MM
-    )
+    deepest_trunk_offset_mm = BOUNDARY_MARGIN_MM + len(panels_order) * BUS_DROP_SPACING_MM
 else:
     deepest_trunk_offset_mm = 0.0
 
-BUS_BOTTOM_MARGIN_MM = 5.0  # запас, чтобы последняя линия не легла впритык на границу рамки
-# У магистрали запас больше (не 5, а 10мм): она жирная (TRUNK_LINE_WEIGHT
-# у sync_trunk_links), её видимая толщина на схеме заметно съедает узкий
-# запас, который достаточен для тонких линий шины устройств.
-TRUNK_BOTTOM_MARGIN_MM = 10.0
+# Запас между самой глубокой линией кабеля и нижней границей рамки —
+# тот же BOUNDARY_MARGIN_MM, что и сверху (между узлами и первой линией):
+# по требованию пользователя это одно и то же число, а не два разных
+# подобранных на глаз значения (было — отдельный, больший запас для
+# магистрали, потому что её жирная линия визуально "съедала" узкий запас
+# тонких линий шины; тот запас был лишней сложностью, раз этот теперь
+# одинаковый и для магистрали, и для шины).
 EXTRA_BOTTOM_MM = max(
     0.0,
-    deepest_bus_offset_mm + BUS_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM,
-    deepest_trunk_offset_mm + TRUNK_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM
+    deepest_bus_offset_mm + BOUNDARY_MARGIN_MM - RESERVED_BOTTOM_MM,
+    deepest_trunk_offset_mm + BOUNDARY_MARGIN_MM - RESERVED_BOTTOM_MM
 )
 
 
