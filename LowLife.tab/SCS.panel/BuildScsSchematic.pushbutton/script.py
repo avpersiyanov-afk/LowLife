@@ -283,9 +283,14 @@ else:
     deepest_trunk_offset_mm = 0.0
 
 BUS_BOTTOM_MARGIN_MM = 5.0  # запас, чтобы последняя линия не легла впритык на границу рамки
+# У магистрали запас больше (не 5, а 10мм): она жирная (TRUNK_LINE_WEIGHT
+# у sync_trunk_links), её видимая толщина на схеме заметно съедает узкий
+# запас, который достаточен для тонких линий шины устройств.
+TRUNK_BOTTOM_MARGIN_MM = 10.0
 EXTRA_BOTTOM_MM = max(
     0.0,
-    max(deepest_bus_offset_mm, deepest_trunk_offset_mm) + BUS_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM
+    deepest_bus_offset_mm + BUS_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM,
+    deepest_trunk_offset_mm + TRUNK_BOTTOM_MARGIN_MM - RESERVED_BOTTOM_MM
 )
 
 
