@@ -480,10 +480,11 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     Возвращает (room_record, report_rows) — room_record идёт в state
     (см. sot_layout_state), report_rows — [(room_key, address), ...].
     """
+    step = STEP_MM * MM_TO_FT
     text_y = TEXT_Y_MM * MM_TO_FT
 
     group_width = _room_group_width_ft(room_key, valid_devices)
-    nodes_width = 2.0 * (LINE_OFFSET_MM * MM_TO_FT) + (len(valid_devices) - 1) * (STEP_MM * MM_TO_FT)
+    nodes_width = 2.0 * (LINE_OFFSET_MM * MM_TO_FT) + (len(valid_devices) - 1) * step
     preliminary_center_x = x_pos + nodes_width / 2.0
 
     _t0 = time.time()
