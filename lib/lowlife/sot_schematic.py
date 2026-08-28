@@ -569,11 +569,18 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
     не меняется); нужно вызывающему коду, которому под рамкой этажа надо
     больше места, чем обычно (например СКС — несколько линий шины друг
     под другом, см. BuildScsSchematic). extra_left_mm — аналогично, но
-    влево: на сколько мм дополнительно отодвинуть самую левую (третью)
-    линию рамки левее обычного (по умолчанию 0); нужно, если левее рамок
-    помещений рисуется что-то ещё, чем обычная ширина рамки не рассчитана
-    (например СКС — несколько стояков панелей и дорожки магистралей, см.
-    BuildScsSchematic). Возвращает (text_id, line_ids).
+    влево: на сколько мм дополнительно расширить КОРИДОР МЕЖДУ ПЕРВОЙ И
+    ВТОРОЙ ЛИНИЕЙ рамки (по умолчанию 0); нужно, если между помещениями
+    и подписью этажа рисуется что-то ещё, чем обычная ширина коридора не
+    рассчитана (например СКС — несколько стояков панелей и дорожки
+    магистралей, см. BuildScsSchematic). Вторая и третья линия (и подпись
+    этажа между ними) сдвигаются влево вместе, на то же extra_left_mm —
+    сама подпись остаётся в коридоре неизменной ширины, просто дальше от
+    содержимого, а не "растягивается" вместе с ним (иначе при большом
+    extra_left_mm подпись оказалась бы неоправданно далеко от второй
+    линии, а стояки/дорожки — наоборот, залезали бы за вторую линию,
+    в коридор подписи, из-за фиксированной ширины первого коридора).
+    Возвращает (text_id, line_ids).
     """
     line_ids = []
 
@@ -585,13 +592,15 @@ def _draw_level_frame(doc, view, level_label, current_level_y, group_left, group
     level_lines_top_y = base_bottom_y + LEVEL_VERTICAL_LINE_LENGTH_MM * MM_TO_FT
     bottom_level_line_y = base_bottom_y - extra_bottom_mm * MM_TO_FT
 
-    # Аналогично extra_bottom_mm: первая и вторая линии (ближе к
-    # помещениям) остаются на обычном месте, растягиваем только третью
-    # (самую левую) — иначе "оторвались" бы от второй линии/подписи
-    # этажа, которая между ними.
+    # Аналогично extra_bottom_mm: первая линия (ближе к помещениям)
+    # остаётся на обычном месте, растягиваем коридор ПЕРЕД второй линией
+    # (первая-вторая) — вторая и третья линия (и подпись этажа между
+    # ними, свой коридор неизменной ширины) сдвигаются вместе, дальше
+    # влево, а не остаются на месте (иначе содержимое первого коридора
+    # при росте залезало бы за вторую линию, в коридор подписи).
     first_level_line_x = group_left - LEVEL_LINE_1_OFFSET_MM * MM_TO_FT
-    second_level_line_x = first_level_line_x - LEVEL_LINE_2_OFFSET_MM * MM_TO_FT
-    third_level_line_x = second_level_line_x - (LEVEL_LINE_3_OFFSET_MM + extra_left_mm) * MM_TO_FT
+    second_level_line_x = first_level_line_x - (LEVEL_LINE_2_OFFSET_MM + extra_left_mm) * MM_TO_FT
+    third_level_line_x = second_level_line_x - LEVEL_LINE_3_OFFSET_MM * MM_TO_FT
     right_level_line_x = group_right + RIGHT_VERTICAL_LINE_OFFSET_MM * MM_TO_FT
 
     for x in (first_level_line_x, second_level_line_x, third_level_line_x, right_level_line_x):

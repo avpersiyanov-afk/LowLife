@@ -60,7 +60,7 @@ from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_
 from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
 from lowlife.scs_schematic import (
     sync_panel_buses, sync_trunk_links, BOUNDARY_MARGIN_MM, BUS_DROP_SPACING_MM, ROOM_BOTTOM_MM,
-    RISER_BASE_OFFSET_MM, RISER_SPACING_MM, LEVEL_FRAME_WIDTH_MM, group_trunk_components
+    RISER_BASE_OFFSET_MM, RISER_SPACING_MM, RISER_CORRIDOR_WIDTH_MM, group_trunk_components
 )
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
@@ -304,11 +304,13 @@ EXTRA_BOTTOM_MM = max(
 
 
 # ------------------------------------------------------------
-# МЕСТО ПОД СТОЯКИ/ДОРОЖКИ: рамка этажа должна вмещать по X все стояки
-# панелей и все дорожки магистралей — тот же принцип, что и EXTRA_BOTTOM_MM
-# выше, только влево, а не вниз. Без этого первый стояк мог оказаться
-# ровно на структурной линии рамки (LEVEL_FRAME_WIDTH_MM без запаса), а
-# дальний стояк/дорожка — вовсе за левым краем уже нарисованной рамки.
+# МЕСТО ПОД СТОЯКИ/ДОРОЖКИ: коридор между первой и второй линией рамки
+# этажа должен вмещать по X все стояки панелей и все дорожки магистралей
+# — тот же принцип, что и EXTRA_BOTTOM_MM выше, только влево, а не вниз.
+# Расширяется именно этот коридор (см. _draw_level_frame), а не рамка
+# целиком — иначе стояки/дорожки залезали бы в соседний коридор подписи
+# этажа (за второй линией) или подпись оставалась бы слишком близко к
+# ним, не отодвигаясь вместе с расширением.
 # ------------------------------------------------------------
 
 if panels_order:
@@ -330,8 +332,8 @@ else:
 
 EXTRA_LEFT_MM = max(
     0.0,
-    deepest_riser_offset_mm + BOUNDARY_MARGIN_MM - LEVEL_FRAME_WIDTH_MM,
-    deepest_lane_offset_mm + BOUNDARY_MARGIN_MM - LEVEL_FRAME_WIDTH_MM
+    deepest_riser_offset_mm + BOUNDARY_MARGIN_MM - RISER_CORRIDOR_WIDTH_MM,
+    deepest_lane_offset_mm + BOUNDARY_MARGIN_MM - RISER_CORRIDOR_WIDTH_MM
 )
 
 

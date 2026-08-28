@@ -135,11 +135,19 @@ def test_trunk_lane_is_exactly_boundary_margin_past_the_last_riser():
 
 
 def test_first_riser_is_boundary_margin_short_of_the_level_frame_width():
-    # Первый стояк не должен совпадать с самой правой линией рамки этажа
-    # (LEVEL_FRAME_WIDTH_MM отсчитывает от левой границы содержимого
-    # помещений, RISER_BASE_OFFSET_MM должен оставлять BOUNDARY_MARGIN_MM
-    # запаса до неё же с внутренней стороны, а не сидеть прямо на ней).
+    # Первый стояк не должен совпадать с самой правой линией коридора
+    # (RISER_BASE_OFFSET_MM должен оставлять BOUNDARY_MARGIN_MM запаса до
+    # неё же с внутренней стороны, а не сидеть прямо на ней).
     assert scs_schematic.RISER_BASE_OFFSET_MM > scs_schematic.BOUNDARY_MARGIN_MM
+
+
+def test_riser_corridor_width_is_a_positive_reference_value():
+    # RISER_CORRIDOR_WIDTH_MM — сколько места под стояки/дорожки уже есть
+    # без extra_left_mm; расширение коридора даже для одной панели —
+    # нормальный, ожидаемый путь (см. BuildScsSchematic.EXTRA_LEFT_MM),
+    # этот тест лишь страхует от случайно обнулённого/отрицательного
+    # значения константы.
+    assert scs_schematic.RISER_CORRIDOR_WIDTH_MM > 0
 
 
 def test_group_trunk_components_merges_a_chain_sharing_a_panel():
