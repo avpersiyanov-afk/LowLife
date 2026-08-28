@@ -103,6 +103,13 @@ try:
 except (ValueError, AttributeError):
     NODE_LABEL_OFFSET_MM = 5.0
 
+try:
+    MAX_ROW_WIDTH_MM = float((settings.get("max_row_width_mm") or u"").replace(u",", u".") or 0.0)
+except (ValueError, AttributeError):
+    MAX_ROW_WIDTH_MM = 0.0
+if MAX_ROW_WIDTH_MM < 0.0:
+    MAX_ROW_WIDTH_MM = 0.0
+
 
 ANNOTATION_SYMBOL = None
 if settings.get("node_annotation_type_id"):
@@ -473,7 +480,8 @@ with revit.Transaction(u"Sync SCS Schematic"):
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, DEVICE_ADDRESS_PARAM, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=EXTRA_BOTTOM_MM, extra_left_mm=EXTRA_LEFT_MM, room_sort_values=room_sort_values
+        extra_bottom_mm=EXTRA_BOTTOM_MM, extra_left_mm=EXTRA_LEFT_MM, room_sort_values=room_sort_values,
+        max_row_width_mm=MAX_ROW_WIDTH_MM
     )
 
     old_bus_line_ids = list(previous_state.get("bus_line_ids", []))

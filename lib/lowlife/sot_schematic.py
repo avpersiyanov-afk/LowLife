@@ -78,6 +78,19 @@ CABLE_DROP_OFFSET_MM = 15.0
 # пересчёта позиций внутри них. См. sync_levels.
 LEVEL_STEP_MM = (-BOTTOM_LINE_MM) + LEVEL_SEPARATOR_OFFSET_MM + LEVEL_NEXT_GAP_MM + HEADER_TOP_LINE_MM
 
+# Зазор между двумя СТРОКАМИ помещений ВНУТРИ одного этажа (перенос по
+# ширине — см. max_row_width_mm у sync_rooms_in_level/sync_levels) — не
+# путать с LEVEL_NEXT_GAP_MM (тот между РАЗНЫМИ этажами, со своей рамкой
+# и подписью между ними; тут ни рамки, ни подписи по отдельности нет —
+# все строки одного этажа делят одну общую рамку).
+ROW_WRAP_GAP_MM = 10.0
+
+# Вертикальный шаг между началом одной строки помещений этажа и
+# следующей (при переносе по ширине) — включает высоту самой строки
+# (от подписи наверху, HEADER_TOP_LINE_MM, до нижней линии рамки
+# помещения, BOTTOM_LINE_MM) плюс зазор ROW_WRAP_GAP_MM.
+ROW_WRAP_STEP_MM = HEADER_TOP_LINE_MM + (-BOTTOM_LINE_MM) + ROW_WRAP_GAP_MM
+
 _ROOM_NUMBER_RE = re.compile(r"\((\d+)\)\s*$")
 _ANY_NUMBER_RE = re.compile(r"\d+")
 _SPLIT_NUMBER_RE = re.compile(r"(\d+)")
@@ -425,6 +438,26 @@ def _level_frame_element_ids(level_record):
     return ids
 
 
+def _room_group_width_ft(room_key, valid_devices):
+    """
+    Ширина рамки помещения (в футах) — по числу устройств (STEP_MM между
+    ними, LINE_OFFSET_MM с каждого края) или по ширине текста подписи
+    (грубая оценка по числу символов, см. _place_room_group), смотря что
+    больше. Чистая функция — нужна и для самого рисования
+    (_place_room_group), и для переноса помещений по строкам при
+    ограничении ширины этажа (см. max_row_width_mm у sync_rooms_in_level).
+    """
+    offset = LINE_OFFSET_MM * MM_TO_FT
+    step = STEP_MM * MM_TO_FT
+    text_margin = TEXT_MARGIN_MM * MM_TO_FT
+
+    nodes_width = 2.0 * offset + (len(valid_devices) - 1) * step
+    text_width = len(room_key) * 2.5 * MM_TO_FT
+    text_required_width = text_width + 2.0 * text_margin
+
+    return max(nodes_width, text_required_width)
+
+
 # ------------------------------------------------------------
 # ГРУППА ПОМЕЩЕНИЯ (ряд узлов + рамка) — рисование "с нуля"
 # ------------------------------------------------------------
@@ -447,17 +480,14 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     Возвращает (room_record, report_rows) — room_record идёт в state
     (см. sot_layout_state), report_rows — [(room_key, address), ...].
     """
-    offset = LINE_OFFSET_MM * MM_TO_FT
-    step = STEP_MM * MM_TO_FT
-    text_margin = TEXT_MARGIN_MM * MM_TO_FT
     text_y = TEXT_Y_MM * MM_TO_FT
 
-    nodes_width = 2.0 * offset + (len(valid_devices) - 1) * step
+    group_width = _room_group_width_ft(room_key, valid_devices)
+    nodes_width = 2.0 * (LINE_OFFSET_MM * MM_TO_FT) + (len(valid_devices) - 1) * (STEP_MM * MM_TO_FT)
     preliminary_center_x = x_pos + nodes_width / 2.0
 
     _t0 = time.time()
     text_note = create_room_text(doc, view, room_key, preliminary_center_x, current_level_y + text_y)
-
     # Ширина по символам, а не по реальному BoundingBox (это требовало бы
     # doc.Regenerate() — убрано целиком, см. center_text_in_frame) — нужна
     # только чтобы решить max(nodes_width, text_required_width): при 2+
@@ -467,11 +497,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     # чуть уже, чем по факту нужно тексту — сам текст всё равно останется
     # отцентрирован по X (center_text_in_frame ниже, через
     # HorizontalAlignment.Center), просто может на пару мм выйти за рамку
-    # по ширине в редких случаях.
-    text_width = len(room_key) * 2.5 * MM_TO_FT
-
-    text_required_width = text_width + 2.0 * text_margin
-    group_width = max(nodes_width, text_required_width)
+    # по ширине в редких случаях (см. _room_group_width_ft).
 
     group_left_x = x_pos
     group_right_x = x_pos + group_width
@@ -546,6 +572,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     room_record = {
         "x_left": group_left_x,
         "x_right": group_right_x,
+        "y": current_level_y,
         "text_id": (text_note.Id.IntegerValue if text_note is not None else None),
         "line_ids": line_ids,
         "devices": devices_state
@@ -641,7 +668,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                          category_symbols, category_for_device, room_param_name, address_param_name,
                          device_uid_param_name, annotation_symbol, label_offset_mm,
                          previous_rooms_state, unmatched_report, stats=None, room_sort_values=None,
-                         timing=None):
+                         timing=None, max_row_width_mm=0.0):
     """
     room_groups — OrderedDict(room_key -> [device, ...]) для этого этажа
     (желаемое состояние, уже сгруппировано по параметру помещения).
@@ -658,24 +685,36 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     Нужно, если у вызывающего кода порядок помещений должен быть другим
     (например СКС — слева направо по плану, см. BuildScsSchematic); СОТ
     и СПС этот аргумент не передают, для них ничего не меняется.
+    max_row_width_mm — максимальная ширина ОДНОЙ строки помещений этажа,
+    мм (по умолчанию 0 — не ограничивать, как раньше, все помещения в
+    одну строку без переноса); если следующее по порядку помещение не
+    помещается в текущую строку — переносится на новую строку НИЖЕ (как
+    перенос текста по словам, порядок помещений при этом не меняется —
+    только на сколько строк он разбит), см. _room_group_width_ft/
+    ROW_WRAP_STEP_MM. Нужно, чтобы лист не получался очень длинным по
+    ширине при большом числе помещений на этаже (например СКС, см.
+    BuildScsSchematic); СОТ и СПС этот аргумент не передают.
 
     Для каждого помещения: если набор устройств (по UniqueId) не
     изменился — либо не трогаем вообще (позиция та же), либо просто
     переносим на новую позицию (ElementTransformUtils), если что-то левее
-    сдвинулось и/или сдвинулся сам этаж; если набор изменился (или
-    помещения раньше не было) — удаляем старые элементы (если были) и
-    рисуем заново. Помещения, пропавшие из желаемого набора, удаляются
-    целиком, следующие за ними автоматически "подтягиваются" — курсор x
-    не резервирует под них место.
+    сдвинулось, сдвинулся сам этаж, и/или помещение перешло на другую
+    строку при переносе по ширине; если набор изменился (или помещения
+    раньше не было) — удаляем старые элементы (если были) и рисуем
+    заново. Помещения, пропавшие из желаемого набора, удаляются целиком,
+    следующие за ними автоматически "подтягиваются" — курсор x не
+    резервирует под них место.
 
     stats (если передан) — словарь-счётчик, наращивает ключи
     "rooms_unchanged"/"rooms_moved"/"rooms_created"/"rooms_redrawn"/"rooms_removed"
     (единица измерения — помещение, не устройство: если содержимое
     помещения изменилось, всё помещение перерисовывается целиком).
 
-    Возвращает (new_rooms_state, level_group_left, level_group_right, report_rows).
+    Возвращает (new_rooms_state, level_group_left, level_group_right,
+    report_rows, row_wrap_extra_mm) — row_wrap_extra_mm (0.0 без переноса)
+    нужен вызывающему коду (sync_levels), чтобы растянуть рамку этажа по
+    высоте под все строки помещений, не только под одну.
     """
-    x_cursor = 0.0
     level_group_left = None
     level_group_right = None
     new_rooms_state = {}
@@ -686,7 +725,14 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     else:
         sort_key_fn = _room_sort_key
 
-    for room_key in sorted(room_groups.keys(), key=sort_key_fn):
+    ordered_room_keys = sorted(room_groups.keys(), key=sort_key_fn)
+
+    # Первый проход — только сопоставление категорий/устройств и решение,
+    # на какую строку попадёт каждое помещение (перенос по ширине, если
+    # max_row_width_mm задан) — без единого Revit-вызова, чтобы ряд можно
+    # было спланировать целиком до того, как что-либо рисуется/двигается.
+    room_valid_devices = {}
+    for room_key in ordered_room_keys:
         devices = room_groups[room_key]
         valid_devices = []
 
@@ -702,6 +748,38 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             continue
 
         valid_devices.sort(key=lambda pair: _natural_sort_key(get_string_param(pair[0], address_param_name)))
+        room_valid_devices[room_key] = valid_devices
+
+    placed_room_keys = [rk for rk in ordered_room_keys if rk in room_valid_devices]
+
+    max_row_width_ft = max_row_width_mm * MM_TO_FT if max_row_width_mm else 0.0
+    row_of_room = {}
+    row_x_cursor = 0.0
+    current_row = 0
+    for room_key in placed_room_keys:
+        width = _room_group_width_ft(room_key, room_valid_devices[room_key])
+        if max_row_width_ft > 0.0 and row_x_cursor > 0.0:
+            projected_right = row_x_cursor + GROUP_GAP_MM * MM_TO_FT + width
+            if projected_right > max_row_width_ft:
+                current_row += 1
+                row_x_cursor = 0.0
+        if row_x_cursor > 0.0:
+            row_x_cursor += GROUP_GAP_MM * MM_TO_FT
+        row_of_room[room_key] = current_row
+        row_x_cursor += width
+
+    max_row_index = 0
+    x_cursor = 0.0
+    active_row = 0
+
+    for room_key in placed_room_keys:
+        valid_devices = room_valid_devices[room_key]
+        row = row_of_room[room_key]
+        if row != active_row:
+            x_cursor = 0.0
+            active_row = row
+        max_row_index = max(max_row_index, row)
+        row_y = current_level_y - row * ROW_WRAP_STEP_MM * MM_TO_FT
 
         desired_uids = set(device.UniqueId for device, _symbol in valid_devices)
         prev_record = previous_rooms_state.get(room_key)
@@ -711,9 +789,15 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
 
         if not content_changed:
             dx = x_cursor - prev_record["x_left"]
-            room_moved = abs(dx) > _TOLERANCE_FT or abs(level_dy) > _TOLERANCE_FT
+            # Старые (сохранённые до появления переноса по строкам) записи
+            # "y" не имеют — тогда считаем, что помещение было в строке 0
+            # прежнего положения этажа (current_level_y - level_dy) — так
+            # оно и стояло на самом деле до этой версии кода.
+            prev_room_y = prev_record.get("y", current_level_y - level_dy)
+            dy = row_y - prev_room_y
+            room_moved = abs(dx) > _TOLERANCE_FT or abs(dy) > _TOLERANCE_FT
             if room_moved:
-                translate_elements(doc, _room_record_element_ids(prev_record), dx, level_dy)
+                translate_elements(doc, _room_record_element_ids(prev_record), dx, dy)
                 _bump(stats, "rooms_moved")
             else:
                 _bump(stats, "rooms_unchanged")
@@ -768,7 +852,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                     tag_id = None
                 if tag_id is None and instance is not None:
                     new_tag = place_node_annotation(
-                        doc, view, instance, annotation_symbol, new_x, current_level_y, label_offset_mm
+                        doc, view, instance, annotation_symbol, new_x, row_y, label_offset_mm
                     )
                     if new_tag is not None:
                         tag_id = new_tag.Id.IntegerValue
@@ -784,6 +868,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             room_record = {
                 "x_left": x_cursor,
                 "x_right": prev_record["x_right"] + dx,
+                "y": row_y,
                 "text_id": prev_record.get("text_id"),
                 "line_ids": prev_record.get("line_ids", []),
                 "devices": new_devices_state
@@ -798,7 +883,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             room_record, room_report_rows = _place_room_group(
                 doc, view, x_cursor, room_key, valid_devices, room_param_name,
                 address_param_name, device_uid_param_name, annotation_symbol,
-                label_offset_mm, current_level_y, timing=timing
+                label_offset_mm, row_y, timing=timing
             )
             report_rows.extend(room_report_rows)
 
@@ -815,7 +900,9 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
         delete_elements(doc, _room_record_element_ids(prev_record))
         _bump(stats, "rooms_removed")
 
-    return new_rooms_state, level_group_left, level_group_right, report_rows
+    row_wrap_extra_mm = max_row_index * ROW_WRAP_STEP_MM if max_row_index > 0 else 0.0
+
+    return new_rooms_state, level_group_left, level_group_right, report_rows, row_wrap_extra_mm
 
 
 # ------------------------------------------------------------
@@ -825,7 +912,8 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
 def sync_levels(doc, view, level_order, level_room_groups, level_labels, category_symbols,
                  category_for_device, room_param_name, address_param_name, device_uid_param_name,
                  annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
-                 extra_bottom_mm=0.0, extra_left_mm=0.0, room_sort_values=None, timing=None):
+                 extra_bottom_mm=0.0, extra_left_mm=0.0, room_sort_values=None, timing=None,
+                 max_row_width_mm=0.0):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -852,6 +940,14 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     sync_rooms_in_level для соответствующего level_key как есть (см. её
     docstring). Уровня, для которого записи нет, тоже не касается — для
     него сортировка как раньше. СОТ/СПС этот аргумент не передают.
+    max_row_width_mm — передаётся в sync_rooms_in_level как есть (см. её
+    docstring — перенос помещений по строкам внутри этажа при превышении
+    этой ширины, по умолчанию 0 — без переноса). Место под дополнительные
+    строки (row_wrap_extra_mm, возврат sync_rooms_in_level) добавляется к
+    extra_bottom_mm для КОНКРЕТНОГО этажа — у разных этажей число строк
+    может быть разным, поэтому, в отличие от extra_bottom_mm/extra_left_mm,
+    это не общий на все этажи параметр, а свой у каждого; общий механизм
+    "растянуть рамку вниз" (`_draw_level_frame`) при этом тот же самый.
 
     stats (если передан) — тот же словарь-счётчик, что и у
     sync_rooms_in_level, дополнительно получает
@@ -882,11 +978,11 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
 
         level_room_sort_values = (room_sort_values or {}).get(level_key)
 
-        rooms_state, group_left, group_right, level_report_rows = sync_rooms_in_level(
+        rooms_state, group_left, group_right, level_report_rows, row_wrap_extra_mm = sync_rooms_in_level(
             doc, view, level_label, y_cursor, level_dy, room_groups, category_symbols, category_for_device,
             room_param_name, address_param_name, device_uid_param_name, annotation_symbol,
             label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values,
-            timing=timing
+            timing=timing, max_row_width_mm=max_row_width_mm
         )
         report_rows.extend(level_report_rows)
 
@@ -895,17 +991,21 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
                 delete_elements(doc, _level_frame_element_ids(prev_level))
             continue
 
+        level_extra_bottom_mm = extra_bottom_mm + row_wrap_extra_mm
+        row_wrap_changed = (prev_level or {}).get("row_wrap_extra_mm", 0.0) != row_wrap_extra_mm
+
         y_changed = prev_level is None or abs(prev_level.get("y", 0.0) - y_cursor) > _TOLERANCE_FT
         right_changed = (
             prev_level is None
             or abs(prev_level.get("x_right", 0.0) - group_right) > _TOLERANCE_FT
             or extra_bottom_changed
             or extra_left_changed
+            or row_wrap_changed
         )
 
         if prev_level is not None and not y_changed and not right_changed:
             level_record = {
-                "y": y_cursor, "x_right": group_right,
+                "y": y_cursor, "x_right": group_right, "row_wrap_extra_mm": row_wrap_extra_mm,
                 "text_id": prev_level.get("text_id"), "line_ids": prev_level.get("line_ids", [])
             }
             _bump(stats, "levels_unchanged")
@@ -913,7 +1013,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             dy = y_cursor - prev_level["y"]
             translate_elements(doc, _level_frame_element_ids(prev_level), 0.0, dy)
             level_record = {
-                "y": y_cursor, "x_right": group_right,
+                "y": y_cursor, "x_right": group_right, "row_wrap_extra_mm": row_wrap_extra_mm,
                 "text_id": prev_level.get("text_id"), "line_ids": prev_level.get("line_ids", [])
             }
             _bump(stats, "levels_moved")
@@ -924,14 +1024,17 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             else:
                 _bump(stats, "levels_created")
             text_id, line_ids = _draw_level_frame(
-                doc, view, level_label, y_cursor, group_left, group_right, extra_bottom_mm, extra_left_mm
+                doc, view, level_label, y_cursor, group_left, group_right, level_extra_bottom_mm, extra_left_mm
             )
-            level_record = {"y": y_cursor, "x_right": group_right, "text_id": text_id, "line_ids": line_ids}
+            level_record = {
+                "y": y_cursor, "x_right": group_right, "row_wrap_extra_mm": row_wrap_extra_mm,
+                "text_id": text_id, "line_ids": line_ids
+            }
 
         level_record["rooms"] = rooms_state
         new_levels_state[level_key] = level_record
 
-        y_cursor -= (LEVEL_STEP_MM + extra_bottom_mm) * MM_TO_FT
+        y_cursor -= (LEVEL_STEP_MM + level_extra_bottom_mm) * MM_TO_FT
 
     for level_key, prev_level in previous_levels.items():
         if level_key in new_levels_state:
