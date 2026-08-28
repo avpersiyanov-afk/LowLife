@@ -59,7 +59,8 @@ from lowlife.scs_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, RESERVED_BOTTOM_MM
 from lowlife.scs_schematic import (
-    sync_panel_buses, sync_trunk_links, BOUNDARY_MARGIN_MM, BUS_DROP_SPACING_MM, ROOM_BOTTOM_MM
+    sync_panel_buses, sync_trunk_links, BOUNDARY_MARGIN_MM, BUS_DROP_SPACING_MM, ROOM_BOTTOM_MM,
+    RISER_BASE_OFFSET_MM, RISER_SPACING_MM, LEVEL_FRAME_WIDTH_MM, group_trunk_components
 )
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
@@ -303,6 +304,38 @@ EXTRA_BOTTOM_MM = max(
 
 
 # ------------------------------------------------------------
+# МЕСТО ПОД СТОЯКИ/ДОРОЖКИ: рамка этажа должна вмещать по X все стояки
+# панелей и все дорожки магистралей — тот же принцип, что и EXTRA_BOTTOM_MM
+# выше, только влево, а не вниз. Без этого первый стояк мог оказаться
+# ровно на структурной линии рамки (LEVEL_FRAME_WIDTH_MM без запаса), а
+# дальний стояк/дорожка — вовсе за левым краем уже нарисованной рамки.
+# ------------------------------------------------------------
+
+if panels_order:
+    deepest_riser_offset_mm = RISER_BASE_OFFSET_MM + (len(panels_order) - 1) * RISER_SPACING_MM
+else:
+    deepest_riser_offset_mm = 0.0
+
+# Число дорожек магистралей — не число связей trunk_link_uids, а число
+# независимых ЦЕПОЧЕК после группировки (см. scs_schematic.group_trunk_
+# components/sync_trunk_links) — у цепочки из нескольких связей одна
+# общая дорожка, не по дорожке на каждую связь.
+trunk_components = group_trunk_components(trunk_link_uids) if trunk_link_uids else []
+if trunk_components:
+    deepest_lane_offset_mm = (
+        deepest_riser_offset_mm + BOUNDARY_MARGIN_MM + (len(trunk_components) - 1) * RISER_SPACING_MM
+    )
+else:
+    deepest_lane_offset_mm = 0.0
+
+EXTRA_LEFT_MM = max(
+    0.0,
+    deepest_riser_offset_mm + BOUNDARY_MARGIN_MM - LEVEL_FRAME_WIDTH_MM,
+    deepest_lane_offset_mm + BOUNDARY_MARGIN_MM - LEVEL_FRAME_WIDTH_MM
+)
+
+
+# ------------------------------------------------------------
 # ЧЕРТЁЖНЫЙ ВИД: ищем вид с именем из настроек (для обновления), иначе создаём
 # ------------------------------------------------------------
 
@@ -396,7 +429,7 @@ with revit.Transaction(u"Sync SCS Schematic"):
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, DEVICE_ADDRESS_PARAM, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=EXTRA_BOTTOM_MM, room_sort_values=room_sort_values
+        extra_bottom_mm=EXTRA_BOTTOM_MM, extra_left_mm=EXTRA_LEFT_MM, room_sort_values=room_sort_values
     )
 
     old_bus_line_ids = list(previous_state.get("bus_line_ids", []))

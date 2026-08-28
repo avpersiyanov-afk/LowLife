@@ -124,6 +124,24 @@ def test_trunk_lane_does_not_collide_with_any_panel_riser():
     assert lane1 < lane0
 
 
+def test_trunk_lane_is_exactly_boundary_margin_past_the_last_riser():
+    # Зазор от последнего стояка до первой дорожки — то же число, что и
+    # везде (BOUNDARY_MARGIN_MM), не отдельный увеличенный зазор.
+    panel_count = 3
+    last_riser_x = scs_schematic.panel_riser_x(panel_count - 1)
+    lane0 = scs_schematic.trunk_lane_x(0, panel_count)
+    margin_ft = scs_schematic.BOUNDARY_MARGIN_MM * scs_schematic.MM_TO_FT
+    assert last_riser_x - lane0 == pytest.approx(margin_ft)
+
+
+def test_first_riser_is_boundary_margin_short_of_the_level_frame_width():
+    # Первый стояк не должен совпадать с самой правой линией рамки этажа
+    # (LEVEL_FRAME_WIDTH_MM отсчитывает от левой границы содержимого
+    # помещений, RISER_BASE_OFFSET_MM должен оставлять BOUNDARY_MARGIN_MM
+    # запаса до неё же с внутренней стороны, а не сидеть прямо на ней).
+    assert scs_schematic.RISER_BASE_OFFSET_MM > scs_schematic.BOUNDARY_MARGIN_MM
+
+
 def test_group_trunk_components_merges_a_chain_sharing_a_panel():
     # A-B и B-C делят панель B -> одна цепочка из трёх панелей.
     components = scs_schematic.group_trunk_components([("A", "B"), ("B", "C")])
