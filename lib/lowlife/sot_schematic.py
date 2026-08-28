@@ -719,11 +719,32 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                 _bump(stats, "rooms_unchanged")
 
             new_devices_state = {}
-            for device, _symbol in valid_devices:
+            for device, symbol in valid_devices:
                 uid = device.UniqueId
                 old_dev = prev_record["devices"][uid]
                 instance = _resolve(doc, old_dev["instance_id"])
                 new_x = old_dev["x"] + dx
+
+                # Устройство то же (набор UID не менялся — иначе попали бы в
+                # ветку "изменилось" и перерисовались заново), но категория
+                # могла сопоставляться с ДРУГИМ схемным семейством с прошлого
+                # запуска (настройки поменялись, а сам список устройств
+                # помещения — нет) — тогда просто "перенести" узел мало,
+                # у него на месте останется СТАРЫЙ тип. Проверяем и меняем
+                # тип на месте (FamilyInstance.Symbol), не только позицию.
+                if instance is not None and symbol is not None:
+                    try:
+                        symbol_changed = instance.Symbol.Id != symbol.Id
+                    except:
+                        symbol_changed = False
+                    if symbol_changed:
+                        try:
+                            if not symbol.IsActive:
+                                symbol.Activate()
+                                doc.Regenerate()
+                            instance.Symbol = symbol
+                        except:
+                            pass
 
                 address_value = get_string_param(device, address_param_name)
                 if instance is not None and address_value:
