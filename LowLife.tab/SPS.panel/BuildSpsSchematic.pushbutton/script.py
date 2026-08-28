@@ -56,7 +56,14 @@ __doc__ = (
     "кольцевые шлейфы и ответвления» — раскладка построится как обычно, "
     "линии просто не рисуются (старые, если были, удаляются). Верните «да» "
     "(или очистите поле), когда раскладка устроит, и запустите ещё раз — "
-    "линии достроятся."
+    "линии достроятся.\n\n"
+    "Марки узлов (IndependentTag) — тоже отдельный переключатель, «Ставить "
+    "марки узлов»: сама вставка марки — штатный вызов Revit API, который на "
+    "некоторых моделях занимает секунду и больше НА КАЖДУЮ марку, и легко "
+    "становится основным временем построения схемы при сотнях устройств "
+    "(на практике наблюдалось на порядок дольше, чем всё остальное вместе "
+    "взятое). Впишите «нет», чтобы сначала построить/поправить раскладку "
+    "без марок, добавить их отдельным запуском, когда раскладка устроит."
 )
 __author__ = "Pipers"
 
@@ -135,16 +142,22 @@ LAYOUT_PARAM_NAME = settings["layout_param_name"]
 DEVICE_UID_PARAM_NAME = settings["device_uid_param_name"]
 CABINET_CATEGORY_NAME = settings["cabinet_category_name"].strip()
 DRAW_LOOP_LINES = settings.get("draw_loop_lines", u"да").strip().lower() not in (u"нет", u"no", u"0", u"false")
+DRAW_TAGS = settings.get("draw_tags", u"да").strip().lower() not in (u"нет", u"no", u"0", u"false")
 
 try:
     NODE_LABEL_OFFSET_MM = float(settings["node_label_offset_mm"].replace(u",", u"."))
 except (ValueError, AttributeError):
     NODE_LABEL_OFFSET_MM = 5.0
 
-ANNOTATION_SYMBOL = get_node_annotation_symbol(doc, settings)
+# Марки (IndependentTag) — штатный вызов Revit API, который на некоторых
+# моделях стоит секунду и больше НА КАЖДУЮ марку (см. докстринг кнопки) —
+# при DRAW_TAGS=False сразу берём None: place_node_annotation ловит это в
+# своём try/except (обращение к .IsActive у None) и просто не пытается
+# создать марку — без единого лишнего вызова IndependentTag.Create.
+ANNOTATION_SYMBOL = get_node_annotation_symbol(doc, settings) if DRAW_TAGS else None
 VIEW_TEMPLATE = get_view_template(doc, settings)
 
-if ANNOTATION_SYMBOL is None:
+if ANNOTATION_SYMBOL is None and DRAW_TAGS:
     forms.alert(
         u"Не выбрана марка узла в настройках СПС — марки над схемными "
         u"семействами ставиться не будут.\n\n"
@@ -608,6 +621,12 @@ if CABINET_CATEGORY_NAME:
                 u"Найдено ещё {} устройств категории «Шкаф»/«Панель» кроме первого — "
                 u"линии рисуются только к одному (по алфавиту адреса).".format(cabinet_extra_count)
             )
+
+if not DRAW_TAGS:
+    output.print_md(
+        u"Марки узлов выключены в настройках («Ставить марки узлов» = «нет») — узлы на "
+        u"схеме без марок."
+    )
 
 if not DRAW_LOOP_LINES:
     output.print_md(
