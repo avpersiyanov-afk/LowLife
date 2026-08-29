@@ -108,6 +108,43 @@ def test_trunk_drop_matches_virtual_next_panel_slot():
     assert scs_schematic.trunk_drop_y(panel_count, level_y) == pytest.approx(expected)
 
 
+def test_panel_collector_y_up_is_a_mirror_of_panel_collector_y():
+    # Отзеркаленная строка (см. sot_schematic.sync_rooms_in_level) — тот
+    # же отступ от level_y, что и у обычной panel_collector_y, но вверх
+    # (level_y + ...), а не вниз, и от ВЕРХНЕЙ границы рамки помещения
+    # (ROOM_TOP_MM), а не от нижней (ROOM_BOTTOM_MM).
+    level_y = 100.0
+    y0 = scs_schematic.panel_collector_y_up(0, level_y)
+    expected = level_y + (
+        scs_schematic.ROOM_TOP_MM + scs_schematic.BOUNDARY_MARGIN_MM
+    ) * scs_schematic.MM_TO_FT
+    assert y0 == pytest.approx(expected)
+
+
+def test_panel_collector_y_up_clears_the_room_frame_top_edge():
+    level_y = 100.0
+    room_top_y = level_y + scs_schematic.ROOM_TOP_MM * scs_schematic.MM_TO_FT
+    y0 = scs_schematic.panel_collector_y_up(0, level_y)
+    assert y0 > room_top_y
+
+
+def test_panel_collectors_up_stack_further_from_level_for_each_next_panel():
+    level_y = 50.0
+    y0 = scs_schematic.panel_collector_y_up(0, level_y)
+    y1 = scs_schematic.panel_collector_y_up(1, level_y)
+
+    assert y1 > y0
+    spacing_ft = scs_schematic.BUS_DROP_SPACING_MM * scs_schematic.MM_TO_FT
+    assert y1 - y0 == pytest.approx(spacing_ft)
+
+
+def test_trunk_drop_up_matches_virtual_next_panel_slot():
+    panel_count = 2
+    level_y = 100.0
+    expected = scs_schematic.panel_collector_y_up(panel_count, level_y)
+    assert scs_schematic.trunk_drop_y_up(panel_count, level_y) == pytest.approx(expected)
+
+
 def test_trunk_lane_does_not_collide_with_any_panel_riser():
     panel_count = 3
     panel_xs = [scs_schematic.panel_riser_x(i) for i in range(panel_count)]

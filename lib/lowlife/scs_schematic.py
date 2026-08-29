@@ -8,7 +8,7 @@ lib/lowlife/sot_schematic.py (написано для СОТ, но ничем н
 дисциплине: category_symbols/category_for_device — просто параметры) и
 переиспользуется здесь напрямую, без копирования: sync_levels,
 sync_rooms_in_level, draw_segment, delete_elements, _iter_state_devices,
-_node_bottom_y и т.д. Уровни (sot_levels.py) и хранение раскладки
+_node_bottom_y/_node_top_y и т.д. Уровни (sot_levels.py) и хранение раскладки
 (sot_layout_state.py) — тоже полностью общие модули, тоже импортируются
 как есть.
 
@@ -73,6 +73,13 @@ MM_TO_FT = 1.0 / 304.8
 # напрямую, линия оказывалась на 2мм ВЫШЕ границы помещения, то есть
 # внутри неё).
 ROOM_BOTTOM_MM = 10.0
+
+# Зеркало ROOM_BOTTOM_MM — насколько высоко (мм) уходит ВЕРХНЯЯ граница
+# рамки помещения выше level_y (то же число, что TOP_LINE_MM у СОТ).
+# Нужен для строк помещений, перенесённых по ширине и отзеркаленных (см.
+# sot_schematic.sync_rooms_in_level) — там шина ведётся от ВЕРХНЕГО края
+# узла и коллектор строится ВЫШЕ этой границы, а не ниже ROOM_BOTTOM_MM.
+ROOM_TOP_MM = 20.0
 
 # Отступ от границы — везде одно и то же число по требованию
 # пользователя ("между линией и границей этажа/стояка/помещения 8мм"),
@@ -178,6 +185,16 @@ def panel_collector_y(panel_index, level_y):
     return level_y - (ROOM_BOTTOM_MM + BOUNDARY_MARGIN_MM + panel_index * BUS_DROP_SPACING_MM) * MM_TO_FT
 
 
+def panel_collector_y_up(panel_index, level_y):
+    """
+    Зеркало panel_collector_y — для панелей на строке, перенесённой по
+    ширине и отзеркаленной (см. sot_schematic.sync_rooms_in_level):
+    коллектор ВЫШЕ ВЕРХНЕЙ границы рамки помещения (level_y + ROOM_TOP_MM),
+    а не ниже нижней. Чистая функция, без Revit API.
+    """
+    return level_y + (ROOM_TOP_MM + BOUNDARY_MARGIN_MM + panel_index * BUS_DROP_SPACING_MM) * MM_TO_FT
+
+
 def trunk_drop_y(panel_count, level_y):
     """
     Y строки магистрального отвода конкретного шкафа на этаже с этим
@@ -193,6 +210,11 @@ def trunk_drop_y(panel_count, level_y):
     нет. Чистая функция, без Revit API.
     """
     return panel_collector_y(panel_count, level_y)
+
+
+def trunk_drop_y_up(panel_count, level_y):
+    """Зеркало trunk_drop_y — для панели на отзеркаленной строке (см. panel_collector_y_up)."""
+    return panel_collector_y_up(panel_count, level_y)
 
 
 def trunk_lane_x(trunk_index, panel_count):
@@ -415,17 +437,20 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
 
     Возвращает (line_ids, panel_anchors) — line_ids для сохранения в
     state; panel_anchors — {panel_uid: (panel_x, panel_level_y,
-    panel_drop_top_y)} для панелей, у которых реально нарисован хоть
-    один участок шины (в т.ч. панель без ни одного обычного устройства
-    — узел только самой панели) И которые сами найдены как узел на
-    схеме — panel_x/panel_drop_top_y — X и Y нижней границы УГО самого
-    узла панели (см. _node_bottom_y), panel_level_y — Y этажа, на
-    котором панель размещена; нужен sync_trunk_links, чтобы вести
-    магистральные линии от СОБСТВЕННОГО узла панели, а не через её шину
-    устройств (шина и магистраль не должны визуально сливаться/
-    восприниматься как продолжение друг друга).
+    panel_drop_top_y, panel_flipped)} для панелей, у которых реально
+    нарисован хоть один участок шины (в т.ч. панель без ни одного
+    обычного устройства — узел только самой панели) И которые сами
+    найдены как узел на схеме — panel_x/panel_drop_top_y — X и Y границы
+    УГО самого узла панели со стороны отвода (нижней — обычно, верхней —
+    если панель на отзеркаленной строке, см. panel_flipped/_node_top_y),
+    panel_level_y — Y этажа/строки, на которой панель размещена;
+    panel_flipped — отзеркалена ли строка панели (см. sot_schematic.
+    sync_rooms_in_level) — нужен sync_trunk_links, чтобы вести
+    магистральный отвод панели в ТУ ЖЕ сторону, что и её шина устройств.
     """
-    from lowlife.sot_schematic import draw_segment, delete_elements, _iter_state_devices, _node_bottom_y
+    from lowlife.sot_schematic import (
+        draw_segment, delete_elements, _iter_state_devices, _node_bottom_y, _node_top_y
+    )
 
     delete_elements(doc, old_bus_line_ids)
 
@@ -433,7 +458,7 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     if not all_devices:
         return [], {}
 
-    device_by_uid = dict((uid, (x, y, instance_id)) for uid, x, y, instance_id in all_devices)
+    device_by_uid = dict((uid, (x, y, instance_id, flipped)) for uid, x, y, instance_id, flipped in all_devices)
     line_style_by_panel = _line_styles_by_panel(doc, panels_order, panel_names)
 
     # Собственный член (устройство/сама панель) каждой панели, сгруппированный
@@ -455,14 +480,14 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     for panel_uid in panels_order:
         member_uids = panel_device_uids.get(panel_uid) or set()
         members = [
-            (uid, x, y, instance_id)
-            for uid, (x, y, instance_id) in device_by_uid.items()
+            (uid, x, y, instance_id, flipped)
+            for uid, (x, y, instance_id, flipped) in device_by_uid.items()
             if uid in member_uids
         ]
         if not members:
             continue
         panel_members[panel_uid] = members
-        for level_y in set(y for _uid, _x, y, _iid in members):
+        for level_y in set(y for _uid, _x, y, _iid, _flipped in members):
             floor_panel_order.setdefault(level_y, []).append(panel_uid)
 
     new_ids = []
@@ -477,14 +502,20 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
         riser_x = panel_riser_x(index)
 
         by_level_y = {}
-        for uid, x, y, instance_id in members:
+        flipped_by_y = {}
+        for uid, x, y, instance_id, flipped in members:
             by_level_y.setdefault(y, []).append((x, instance_id))
+            flipped_by_y[y] = flipped
 
         collector_ys = []
 
         for level_y, x_instance_list in by_level_y.items():
             local_index = floor_panel_order[level_y].index(panel_uid)
-            collector_y = panel_collector_y(local_index, level_y)
+            flipped = flipped_by_y[level_y]
+            collector_y = (
+                panel_collector_y_up(local_index, level_y) if flipped
+                else panel_collector_y(local_index, level_y)
+            )
             collector_ys.append(collector_y)
 
             xs = [x for x, _iid in x_instance_list] + [riser_x]
@@ -495,7 +526,10 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
                 _set_style(elem, style)
 
             for x, instance_id in x_instance_list:
-                drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
+                drop_top_y = (
+                    _node_top_y(doc, view, instance_id, level_y) if flipped
+                    else _node_bottom_y(doc, view, instance_id, level_y)
+                )
                 elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
                 if elem is not None:
                     new_ids.append(elem.Id.IntegerValue)
@@ -509,9 +543,12 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
 
             panel_self = device_by_uid.get(panel_uid)
             if panel_self is not None:
-                panel_x, panel_level_y, panel_instance_id = panel_self
-                panel_drop_top_y = _node_bottom_y(doc, view, panel_instance_id, panel_level_y)
-                panel_anchors[panel_uid] = (panel_x, panel_level_y, panel_drop_top_y)
+                panel_x, panel_level_y, panel_instance_id, panel_flipped = panel_self
+                panel_drop_top_y = (
+                    _node_top_y(doc, view, panel_instance_id, panel_level_y) if panel_flipped
+                    else _node_bottom_y(doc, view, panel_instance_id, panel_level_y)
+                )
+                panel_anchors[panel_uid] = (panel_x, panel_level_y, panel_drop_top_y, panel_flipped)
 
     return new_ids, panel_anchors
 
@@ -537,10 +574,10 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, pane
     "коробки" вместо одной понятной линии (см. trunk_component_segments).
 
     panel_anchors — {panel_uid: (panel_x, panel_level_y,
-    panel_drop_top_y)}, из sync_panel_buses (второй элемент её
-    возврата) — панель, у которой нет записи (не размещена на схеме
-    как узел), из цепочки исключается (для неё просто не рисуется
-    отвод, остальные члены цепочки это не затрагивает).
+    panel_drop_top_y, panel_flipped)}, из sync_panel_buses (второй
+    элемент её возврата) — панель, у которой нет записи (не размещена
+    на схеме как узел), из цепочки исключается (для неё просто не
+    рисуется отвод, остальные члены цепочки это не затрагивает).
     panel_count — len(panels_order), для trunk_lane_x (дорожки магистралей
     продолжают ту же последовательность X, что и стояки панелей, поэтому
     нужно знать, сколько стояков панелей уже занято).
@@ -587,9 +624,12 @@ def sync_trunk_links(doc, view, new_state, old_trunk_line_ids, trunk_links, pane
             if anchor is None:
                 continue
 
-            panel_x, panel_level_y, panel_drop_top_y = anchor
+            panel_x, panel_level_y, panel_drop_top_y, panel_flipped = anchor
             stub_x = panel_x - TRUNK_STUB_OFFSET_MM * MM_TO_FT
-            drop_y = trunk_drop_y(panel_count, panel_level_y)
+            drop_y = (
+                trunk_drop_y_up(panel_count, panel_level_y) if panel_flipped
+                else trunk_drop_y(panel_count, panel_level_y)
+            )
 
             # Отвод "на расстоянии" от узла шкафа: своя вертикаль
             # (X=stub_x, сдвинут от X узла) от границы УГО шкафа вниз до

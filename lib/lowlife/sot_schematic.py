@@ -43,6 +43,13 @@ TOP_LINE_MM = 20.0
 TEXT_Y_MM = 23.0
 HEADER_TOP_LINE_MM = 26.0
 TEXT_MARGIN_MM = 3.0
+
+# Зеркальная TEXT_Y_MM позиция подписи помещения — под нижней линией
+# рамки (BOTTOM_LINE_MM), а не над верхней (TOP_LINE_MM) — для строк,
+# перенесённых по ширине (см. ROW_WRAP_STEP_MM/sync_rooms_in_level),
+# у которых марки узлов и соединительные линии тоже отзеркалены (вниз/
+# вверх соответственно), чтобы не пересекать подпись своей же строки.
+TEXT_Y_BELOW_MM = BOTTOM_LINE_MM - TEXT_MARGIN_MM
 LEVEL_SEPARATOR_OFFSET_MM = 10.0
 LEVEL_NEXT_GAP_MM = 5.0
 LEVEL_LINE_1_OFFSET_MM = 5.0
@@ -69,8 +76,16 @@ RESERVED_BOTTOM_MM = -BOTTOM_LINE_MM + LEVEL_SEPARATOR_OFFSET_MM
 CABLE_RISER_OFFSET_MM = LEVEL_LINE_1_OFFSET_MM + LEVEL_LINE_2_OFFSET_MM / 2.0
 
 # Насколько ниже узлов проходит общий горизонтальный сборный участок
-# (коллектор) на каждом этаже — см. sync_cable_connections.
+# (коллектор) на каждом этаже — см. sync_cable_connections. Уже с запасом
+# больше -BOTTOM_LINE_MM (10мм) — коллектор проходит НИЖЕ нижней линии
+# рамки помещения, не задевая её (5мм зазора).
 CABLE_DROP_OFFSET_MM = 15.0
+
+# Зеркало CABLE_DROP_OFFSET_MM для строк, перенесённых по ширине и
+# отзеркаленных (см. sync_rooms_in_level/_node_top_y) — коллектор ВЫШЕ
+# верхней линии рамки помещения (TOP_LINE_MM), с тем же запасом (5мм),
+# что и у обычного коллектора относительно нижней линии.
+CABLE_DROP_OFFSET_UP_MM = TOP_LINE_MM + (CABLE_DROP_OFFSET_MM + BOTTOM_LINE_MM)
 
 # Вертикальный шаг между "начальной" Y одного этажа и следующего — не
 # зависит от содержимого (только от констант выше), поэтому вставка/
@@ -82,13 +97,24 @@ LEVEL_STEP_MM = (-BOTTOM_LINE_MM) + LEVEL_SEPARATOR_OFFSET_MM + LEVEL_NEXT_GAP_M
 # ширине — см. max_row_width_mm у sync_rooms_in_level/sync_levels) — не
 # путать с LEVEL_NEXT_GAP_MM (тот между РАЗНЫМИ этажами, со своей рамкой
 # и подписью между ними; тут ни рамки, ни подписи по отдельности нет —
-# все строки одного этажа делят одну общую рамку).
-ROW_WRAP_GAP_MM = 10.0
+# все строки одного этажа делят одну общую рамку). Достаточно большой,
+# чтобы между строками уместились ещё и соединительные линии "устройство
+# -> шкаф/панель" — нечётные строки отзеркалены (см. sync_rooms_in_level:
+# марка снизу узла, линия от верхнего края узла, подпись помещения снизу
+# рамки), и линии соседних строк сходятся в ОДНОМ общем зазоре между
+# ними (чётная строка сверху — линии вниз, нечётная снизу — линии вверх),
+# а не расходятся каждая в свою сторону — 10мм (место только под рамки)
+# для этого было мало, линии соседней строки утыкались в подпись.
+ROW_WRAP_GAP_MM = 30.0
 
 # Вертикальный шаг между началом одной строки помещений этажа и
 # следующей (при переносе по ширине) — включает высоту самой строки
 # (от подписи наверху, HEADER_TOP_LINE_MM, до нижней линии рамки
-# помещения, BOTTOM_LINE_MM) плюс зазор ROW_WRAP_GAP_MM.
+# помещения, BOTTOM_LINE_MM) плюс зазор ROW_WRAP_GAP_MM. Один и тот же
+# шаг для всех строк (не только "линейных" зазоров между чётной и
+# нечётной строкой, но и "подписных" между нечётной и следующей чётной)
+# — с запасом, но проще и без риска накладок, чем разная ширина зазора
+# через один.
 ROW_WRAP_STEP_MM = HEADER_TOP_LINE_MM + (-BOTTOM_LINE_MM) + ROW_WRAP_GAP_MM
 
 _ROOM_NUMBER_RE = re.compile(r"\((\d+)\)\s*$")
@@ -327,14 +353,19 @@ def draw_segment(doc, view, x1, y1, x2, y2):
 # МАРКА УЗЛА (аннотация "Обозначение, Адрес" над схемным семейством)
 # ------------------------------------------------------------
 
-def place_node_annotation(doc, view, node_instance, annotation_symbol, x, current_level_y, label_offset_mm):
+def place_node_annotation(doc, view, node_instance, annotation_symbol, x, current_level_y, label_offset_mm,
+                           below=False):
     """
     Ставит марку (IndependentTag) типа annotation_symbol на node_instance —
     марка сама читает "Обозначение"/"Адрес" с помеченного элемента через
     свои поля-метки, ничего сюда передавать/копировать не нужно. Марка —
     горизонтальная (TagOrientation.Horizontal), без выноски, головка по
     центру узла на label_offset_mm выше точки вставки (настройка СОТ
-    "Смещение марки узла вверх от точки вставки, мм").
+    "Смещение марки узла вверх от точки вставки, мм"), либо ниже, если
+    below=True (по умолчанию False, поведение как раньше) — для строк
+    помещений, перенесённых по ширине и отзеркаленных (см.
+    sync_rooms_in_level): там и соединительная линия идёт от верхнего
+    края узла, а не от нижнего, так что марка снизу не мешает ей.
     """
     if annotation_symbol is None or node_instance is None:
         return None
@@ -344,7 +375,8 @@ def place_node_annotation(doc, view, node_instance, annotation_symbol, x, curren
             annotation_symbol.Activate()
             doc.Regenerate()
 
-        point = XYZ(x, current_level_y + label_offset_mm * MM_TO_FT, 0.0)
+        offset_ft = -label_offset_mm * MM_TO_FT if below else label_offset_mm * MM_TO_FT
+        point = XYZ(x, current_level_y + offset_ft, 0.0)
 
         return IndependentTag.Create(
             doc, annotation_symbol.Id, view.Id, Reference(node_instance),
@@ -441,16 +473,16 @@ def _level_frame_element_ids(level_record):
 def _room_group_width_ft(room_key, valid_devices):
     """
     Ширина рамки помещения (в футах) — по числу устройств (STEP_MM между
-    ними, LINE_OFFSET_MM с каждого края). room_key раньше ещё участвовал
-    в грубой оценке ширины текста подписи по числу символов, из-за чего
-    рамка для ОДНОГО устройства в помещении с длинным именем оказывалась
-    неоправданно широкой — никакого реального измерения ширины текста
-    там не было (только прикидка "на глаз", часто с запасом), поэтому
-    убрали: ширина теперь только по числу устройств, а если подпись
-    шире рамки — она просто выходит за её границы по бокам, текст
-    всё равно остаётся отцентрирован (HorizontalAlignment.Center, см.
-    center_text_in_frame). room_key оставлен в сигнатуре ради
-    совместимости с вызывающим кодом, не используется.
+    ними, LINE_OFFSET_MM с каждого края) ИЛИ по ширине текста подписи
+    (грубая оценка по числу символов — точного измерения без реального
+    BoundingBox всё равно нет, см. center_text_in_frame), смотря что
+    больше. Ширину подписи одно время убирали отсюда совсем (рамка для
+    ОДНОГО устройства в помещении с длинным именем становилась неоправданно
+    широкой) — но без нижней границы по тексту соседние узкие помещения
+    (мало устройств, длинное имя) вставали почти впритык, и подписи
+    налезали друг на друга нечитаемой кашей, особенно при переносе по
+    строкам (max_row_width_mm), где узких однодевайсных помещений в ряд
+    обычно много. Оценка "на глаз" всё же лучше, чем совсем без неё.
 
     Чистая функция — нужна и для самого рисования (_place_room_group), и
     для переноса помещений по строкам при ограничении ширины этажа (см.
@@ -458,7 +490,13 @@ def _room_group_width_ft(room_key, valid_devices):
     """
     offset = LINE_OFFSET_MM * MM_TO_FT
     step = STEP_MM * MM_TO_FT
-    return 2.0 * offset + (len(valid_devices) - 1) * step
+    text_margin = TEXT_MARGIN_MM * MM_TO_FT
+
+    nodes_width = 2.0 * offset + (len(valid_devices) - 1) * step
+    text_width = len(room_key) * 2.5 * MM_TO_FT
+    text_required_width = text_width + 2.0 * text_margin
+
+    return max(nodes_width, text_required_width)
 
 
 # ------------------------------------------------------------
@@ -467,13 +505,25 @@ def _room_group_width_ft(room_key, valid_devices):
 
 def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name,
                        address_param_name, device_uid_param_name, annotation_symbol,
-                       label_offset_mm, current_level_y, timing=None):
+                       label_offset_mm, current_level_y, timing=None, flipped=False):
     """
     Рисует помещение с нуля в позиции x_pos — используется и для первой
     постройки схемы, и для перерисовки помещения, чьё содержимое
     изменилось (sync_rooms_in_level). valid_devices — [(device, symbol), ...],
     уже отсортированные вызывающим кодом по адресу устройства (стабильный
     порядок слотов между запусками).
+
+    flipped=True — для строк помещений, перенесённых по ширине (см.
+    max_row_width_mm/ROW_WRAP_STEP_MM у sync_rooms_in_level) через одну:
+    подпись помещения снизу рамки (не сверху), марка узла снизу узла (не
+    сверху, place_node_annotation(below=True)) — соединительная линия
+    "устройство -> шкаф/панель" (рисуется отдельно, вызывающим кодом типа
+    sot_schematic.sync_cable_connections/scs_schematic.sync_panel_buses,
+    от bbox узла — см. _node_top_y вместо _node_bottom_y) в таком случае
+    идёт от ВЕРХНЕГО края узла, а не от нижнего — соседние строки сходятся
+    линиями в один общий зазор между ними, а не расходятся каждая в свою
+    сторону, и линия не пересекает подпись помещения своей же строки
+    (см. sync_rooms_in_level докстринг).
 
     timing — если передан словарь, копит в нём суммарное время (сек.) по
     видам операций ("text"/"lines"/"symbol_activate"/"instance"/"params"/
@@ -484,15 +534,12 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     (см. sot_layout_state), report_rows — [(room_key, address), ...].
     """
     step = STEP_MM * MM_TO_FT
-    text_y = TEXT_Y_MM * MM_TO_FT
+    text_y = (TEXT_Y_BELOW_MM if flipped else TEXT_Y_MM) * MM_TO_FT
 
-    # group_width — только по числу устройств (см. _room_group_width_ft);
-    # текст подписи центрируется по X независимо от неё
-    # (HorizontalAlignment.Center, см. center_text_in_frame) и просто
-    # выходит за границы рамки по бокам, если он шире — без реального
-    # BoundingBox (это требовало бы doc.Regenerate(), убрано целиком)
-    # узнать точную ширину текста заранее всё равно нельзя, а раздувать
-    # рамку под грубую оценку "на глаз" не нужно.
+    # group_width — по числу устройств ИЛИ по ширине подписи, смотря что
+    # больше (см. _room_group_width_ft) — подпись центрируется по X
+    # независимо от неё (HorizontalAlignment.Center, см.
+    # center_text_in_frame).
     group_width = _room_group_width_ft(room_key, valid_devices)
     preliminary_center_x = x_pos + group_width / 2.0
 
@@ -556,7 +603,8 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
 
             _t0 = time.time()
             tag = place_node_annotation(
-                doc, view, node_instance, annotation_symbol, x_elem, current_level_y, label_offset_mm
+                doc, view, node_instance, annotation_symbol, x_elem, current_level_y, label_offset_mm,
+                below=flipped
             )
             _bump_time(timing, "tag", time.time() - _t0)
 
@@ -573,6 +621,7 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
         "x_left": group_left_x,
         "x_right": group_right_x,
         "y": current_level_y,
+        "flipped": flipped,
         "text_id": (text_note.Id.IntegerValue if text_note is not None else None),
         "line_ids": line_ids,
         "devices": devices_state
@@ -692,8 +741,17 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     перенос текста по словам, порядок помещений при этом не меняется —
     только на сколько строк он разбит), см. _room_group_width_ft/
     ROW_WRAP_STEP_MM. Нужно, чтобы лист не получался очень длинным по
-    ширине при большом числе помещений на этаже (например СКС, см.
-    BuildScsSchematic); СОТ и СПС этот аргумент не передают.
+    ширине при большом числе помещений на этаже — поле "Максимальная
+    ширина строки помещений на этаже, мм" в настройках каждой дисциплины
+    (СКС/СОТ/СПС), по умолчанию пусто/0 — как раньше.
+
+    Нечётные строки (при переносе) — отзеркалены: подпись помещения
+    снизу рамки, марка узла снизу узла, соединительная линия "устройство
+    -> шкаф/панель" (рисуется отдельно вызывающим кодом) — от ВЕРХНЕГО
+    края узла (см. _place_room_group(flipped=...), _node_top_y). Так
+    соседние строки сходятся линиями в один общий зазор между ними
+    (чётная сверху — линии вниз, нечётная снизу — линии вверх), а не
+    расходятся каждая в свою сторону, пересекая подпись соседней строки.
 
     Для каждого помещения: если набор устройств (по UniqueId) не
     изменился — либо не трогаем вообще (позиция та же), либо просто
@@ -780,12 +838,25 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             active_row = row
         max_row_index = max(max_row_index, row)
         row_y = current_level_y - row * ROW_WRAP_STEP_MM * MM_TO_FT
+        # Чётные строки — как раньше (подпись/марка сверху, линия от
+        # нижнего края узла), нечётные — отзеркалены (см. _place_room_group
+        # docstring): так соседние строки сходятся линиями в один общий
+        # зазор между ними, а не расходятся каждая в свою сторону.
+        flipped = (row % 2 == 1)
 
         desired_uids = set(device.UniqueId for device, _symbol in valid_devices)
         prev_record = previous_rooms_state.get(room_key)
         prev_uids = set(prev_record["devices"].keys()) if prev_record else set()
 
-        content_changed = (prev_record is None) or (desired_uids != prev_uids)
+        # Смена "стороны" (flipped) требует перерисовки, даже если набор
+        # устройств тот же — иначе подпись/марка/направление линии
+        # остались бы от прежней строки, для новой стороны неверные (это
+        # не просто "подвинуть", у geometрии другая ориентация).
+        content_changed = (
+            (prev_record is None)
+            or (desired_uids != prev_uids)
+            or (bool(prev_record.get("flipped", False)) != flipped)
+        )
 
         if not content_changed:
             dx = x_cursor - prev_record["x_left"]
@@ -852,7 +923,8 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                     tag_id = None
                 if tag_id is None and instance is not None:
                     new_tag = place_node_annotation(
-                        doc, view, instance, annotation_symbol, new_x, row_y, label_offset_mm
+                        doc, view, instance, annotation_symbol, new_x, row_y, label_offset_mm,
+                        below=flipped
                     )
                     if new_tag is not None:
                         tag_id = new_tag.Id.IntegerValue
@@ -869,6 +941,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                 "x_left": x_cursor,
                 "x_right": prev_record["x_right"] + dx,
                 "y": row_y,
+                "flipped": flipped,
                 "text_id": prev_record.get("text_id"),
                 "line_ids": prev_record.get("line_ids", []),
                 "devices": new_devices_state
@@ -883,7 +956,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             room_record, room_report_rows = _place_room_group(
                 doc, view, x_cursor, room_key, valid_devices, room_param_name,
                 address_param_name, device_uid_param_name, annotation_symbol,
-                label_offset_mm, row_y, timing=timing
+                label_offset_mm, row_y, timing=timing, flipped=flipped
             )
             report_rows.extend(room_report_rows)
 
@@ -1055,12 +1128,32 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
 # ------------------------------------------------------------
 
 def _iter_state_devices(state):
-    """(uid, x, level_y, instance_id) для каждого устройства, размещённого на схеме (по итоговому state)."""
+    """
+    (uid, x, row_y, instance_id, flipped) для каждого устройства,
+    размещённого на схеме (по итоговому state).
+
+    row_y — Y СОБСТВЕННОЙ строки помещения (room_record["y"]), НЕ этажа
+    целиком (level_record["y"]) — при переносе помещений по строкам
+    (max_row_width_mm) у разных помещений одного этажа разный Y, а линии
+    "устройство -> шкаф/панель" должны собираться в коллектор СВОЕЙ
+    строки, а не тянуться через весь этаж до чужой. У помещений без
+    собственного "y" в записи (сохранены до появления переноса по
+    строкам — тогда все помещения были на Y этажа) — используется Y
+    этажа как раньше.
+
+    flipped — room_record["flipped"] (по умолчанию False) — строка
+    отзеркалена (см. sync_rooms_in_level/_place_room_group): вызывающему
+    коду (sync_cable_connections/scs_schematic.sync_panel_buses) нужно
+    знать это, чтобы вести отвод от верхнего края узла и коллектор выше
+    строки, а не как обычно — снизу.
+    """
     for level_record in state.get("levels", {}).values():
-        y = level_record.get("y", 0.0)
+        level_y = level_record.get("y", 0.0)
         for room_record in level_record.get("rooms", {}).values():
+            row_y = room_record.get("y", level_y)
+            flipped = bool(room_record.get("flipped", False))
             for uid, dev in room_record.get("devices", {}).items():
-                yield uid, dev.get("x", 0.0), y, dev.get("instance_id")
+                yield uid, dev.get("x", 0.0), row_y, dev.get("instance_id"), flipped
 
 
 def _node_bottom_y(doc, view, instance_id, fallback_y):
@@ -1080,6 +1173,28 @@ def _node_bottom_y(doc, view, instance_id, fallback_y):
         if bbox is None:
             return fallback_y
         return bbox.Min.Y
+    except:
+        return fallback_y
+
+
+def _node_top_y(doc, view, instance_id, fallback_y):
+    """
+    Зеркало _node_bottom_y — Y верхней границы УГО узла (bbox.Max.Y), а
+    не нижней. Нужен для строк помещений, перенесённых по ширине и
+    отзеркаленных (см. sync_rooms_in_level) — там соединительная линия
+    "устройство -> шкаф/панель" должна начинаться от верхнего края
+    значка, а не от нижнего (нижний занят маркой, см.
+    place_node_annotation(below=True)).
+    """
+    el = _resolve(doc, instance_id)
+    if el is None:
+        return fallback_y
+
+    try:
+        bbox = el.get_BoundingBox(view)
+        if bbox is None:
+            return fallback_y
+        return bbox.Max.Y
     except:
         return fallback_y
 
@@ -1125,7 +1240,7 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
         return []
 
     devices = list(_iter_state_devices(new_state))
-    device_by_uid = dict((uid, (x, y)) for uid, x, y, _iid in devices)
+    device_by_uid = dict((uid, (x, y)) for uid, x, y, _iid, _flipped in devices)
 
     if cabinet_uid not in device_by_uid:
         return []
@@ -1134,16 +1249,25 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
 
     riser_x = -CABLE_RISER_OFFSET_MM * MM_TO_FT
     drop_offset = CABLE_DROP_OFFSET_MM * MM_TO_FT
+    drop_offset_up = CABLE_DROP_OFFSET_UP_MM * MM_TO_FT
 
+    # Группировка по (y, flipped) — y уже собственный y СТРОКИ помещения
+    # (см. _iter_state_devices), а не этажа целиком, так что у разных
+    # строк одного этажа он разный; flipped хранится отдельно (одинаков
+    # для всех устройств одной группы — строка либо целиком отзеркалена,
+    # либо нет), чтобы знать, в какую сторону вести коллектор этой группы.
     by_level_y = {}
-    for uid, x, y, instance_id in devices:
+    flipped_by_y = {}
+    for uid, x, y, instance_id, flipped in devices:
         by_level_y.setdefault(y, []).append((x, instance_id))
+        flipped_by_y[y] = flipped
 
     new_ids = []
     collector_ys = []
 
     for level_y, x_instance_list in by_level_y.items():
-        collector_y = level_y - drop_offset
+        flipped = flipped_by_y[level_y]
+        collector_y = level_y + drop_offset_up if flipped else level_y - drop_offset
         collector_ys.append(collector_y)
 
         xs = [x for x, _iid in x_instance_list]
@@ -1155,7 +1279,8 @@ def sync_cable_connections(doc, view, new_state, old_cable_line_ids, cabinet_uid
             new_ids.append(elem.Id.IntegerValue)
 
         for x, instance_id in x_instance_list:
-            drop_top_y = _node_bottom_y(doc, view, instance_id, level_y)
+            drop_top_y = _node_top_y(doc, view, instance_id, level_y) if flipped \
+                else _node_bottom_y(doc, view, instance_id, level_y)
             elem = draw_segment(doc, view, x, drop_top_y, x, collector_y)
             if elem is not None:
                 new_ids.append(elem.Id.IntegerValue)
