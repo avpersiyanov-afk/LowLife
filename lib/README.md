@@ -232,6 +232,28 @@ PANEL_TYPE_ID = ElementId(int(settings["panel_type_id"]))
 panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 ```
 
+## settings_transfer.py
+Общий для **всех** окон настроек (`scs_settings` / `skud_settings` /
+`fire_alarm_settings` / `sot_settings` / `room_info_settings`) хелпер
+«перенести настройки на другой проект». Каждая дисциплина хранит все свои
+настройки одним JSON-файлом в `%APPDATA%\pyRevit\` (`_read_all` /
+`_write_all` в её `*_settings.py`); этот модуль просто копирует такой файл
+наружу (`forms.save_file`) и обратно (`forms.pick_file`), поэтому
+переносится сразу всё — текстовые поля, выбранные типы, таблицы категорий
+схемы. Не импортирует ничего из `lowlife.*` (нет риска циклического
+импорта).
+
+| Функция / имя | Сигнатура | Что делает |
+|---|---|---|
+| `RELOAD` | `unicode`-константа | `show_settings_form` возвращает её вместо словаря значений, когда пользователь загрузил настройки из файла — `get_settings_interactive` в ответ перечитывает сохранённые значения и открывает окно заново (цикл `while True`) |
+| `add_transfer_buttons` | `(buttons_panel, read_all, write_all, discipline_label, on_imported)` | Вставляет в начало нижнего ряда кнопок окна пару «Выгрузить настройки…» / «Загрузить настройки…». `on_imported` — колбэк, который должен закрыть окно так, чтобы `show_settings_form` вернул `RELOAD` (обычно `result["values"] = settings_transfer.RELOAD; win.Close()`) |
+
+Загрузка **перезаписывает** совпадающие ключи (`data.update(imported)`),
+недостающие в файле — оставляет; спрашивает подтверждение и предупреждает,
+что выбор типов из проекта (`*_type_id`, строки справочника кабелей,
+шаблоны видов) почти наверняка придётся переназначить — `ElementId`
+на другом проекте другие.
+
 ## scs_addressing.py
 Логика кнопки **RenumberAddresses** («Адреса узлов»): классификация точек
 относительно линий трассы (`classify_point` → `NODE_STRICT`/`NODE_ON_LINE`/

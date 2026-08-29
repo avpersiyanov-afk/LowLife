@@ -35,6 +35,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
+from lowlife import settings_transfer
 from lowlife.params import get_string_param
 from lowlife.skud import parse_category_names
 from lowlife.scs_settings import list_symbols_by_categories, _safe_element_name, TypeOption
@@ -439,7 +440,7 @@ def show_settings_form(doc, values):
 
     win = Window()
     win.Title = u"Настройки СОТ"
-    win.Width = 600
+    win.Width = 800
     win.Height = 700
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
@@ -805,6 +806,14 @@ def show_settings_form(doc, values):
     buttons.Children.Add(cancel_btn)
     buttons.Children.Add(ok_btn)
 
+    def _on_settings_imported():
+        result["values"] = settings_transfer.RELOAD
+        win.Close()
+
+    settings_transfer.add_transfer_buttons(
+        buttons, _read_all, _write_all, u"СОТ", _on_settings_imported
+    )
+
     scroll = ScrollViewer()
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroll.Content = root
@@ -824,14 +833,19 @@ def get_settings_interactive(doc):
     готовый к использованию словарь. Возвращает None, если пользователь
     нажал "Отмена".
     """
-    saved = load_saved_values()
-    edited = show_settings_form(doc, saved)
+    while True:
+        saved = load_saved_values()
+        edited = show_settings_form(doc, saved)
 
-    if edited is None:
-        return None
+        if edited == settings_transfer.RELOAD:
+            # настройки загружены из файла и уже записаны — открываем заново
+            continue
 
-    save_values(edited)
-    return to_runtime_settings(edited)
+        if edited is None:
+            return None
+
+        save_values(edited)
+        return to_runtime_settings(edited)
 
 
 def get_settings_silent():

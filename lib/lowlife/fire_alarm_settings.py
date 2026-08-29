@@ -36,6 +36,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
+from lowlife import settings_transfer
 from lowlife.fire_alarm import ISOLATOR_KEYWORD
 from lowlife.fire_alarm_circuits import DEVICE_CATEGORIES, category_title
 from lowlife.skud import parse_category_names
@@ -501,7 +502,7 @@ def show_settings_form(doc, values):
 
     win = Window()
     win.Title = u"Настройки {}".format(current_title())
-    win.Width = 600
+    win.Width = 800
     win.Height = 720
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     # Topmost не ставим — см. комментарий в scs_settings.py.
@@ -959,6 +960,14 @@ def show_settings_form(doc, values):
     buttons.Children.Add(cancel_btn)
     buttons.Children.Add(ok_btn)
 
+    def _on_settings_imported():
+        result["values"] = settings_transfer.RELOAD
+        win.Close()
+
+    settings_transfer.add_transfer_buttons(
+        buttons, _read_all, _write_all, current_title(), _on_settings_imported
+    )
+
     scroll = ScrollViewer()
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroll.Content = root
@@ -973,14 +982,19 @@ def show_settings_form(doc, values):
 
 
 def get_settings_interactive(doc):
-    saved = load_saved_values()
-    edited = show_settings_form(doc, saved)
+    while True:
+        saved = load_saved_values()
+        edited = show_settings_form(doc, saved)
 
-    if edited is None:
-        return None
+        if edited == settings_transfer.RELOAD:
+            # настройки загружены из файла и уже записаны — открываем заново
+            continue
 
-    save_values(edited)
-    return to_runtime_settings(edited)
+        if edited is None:
+            return None
+
+        save_values(edited)
+        return to_runtime_settings(edited)
 
 
 def get_settings_silent():

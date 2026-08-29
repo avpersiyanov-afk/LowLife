@@ -38,6 +38,7 @@ from System.Windows.Controls import (
 from System.Windows.Media import Brushes
 
 from lowlife import scs as scs_defaults
+from lowlife import settings_transfer
 from lowlife.skud import parse_category_names
 
 SETTINGS_FILE_NAME = "LowLifeSCS_settings.json"
@@ -666,7 +667,7 @@ def show_settings_form(doc, values):
 
     win = Window()
     win.Title = u"Настройки СКС"
-    win.Width = 560
+    win.Width = 780
     win.Height = 760
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     # Topmost намеренно НЕ ставим: иначе окно выбора типа
@@ -1089,6 +1090,14 @@ def show_settings_form(doc, values):
     buttons.Children.Add(cancel_btn)
     buttons.Children.Add(ok_btn)
 
+    def _on_settings_imported():
+        result["values"] = settings_transfer.RELOAD
+        win.Close()
+
+    settings_transfer.add_transfer_buttons(
+        buttons, _read_all, _write_all, u"СКС", _on_settings_imported
+    )
+
     scroll = ScrollViewer()
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroll.Content = root
@@ -1114,14 +1123,20 @@ def get_settings_interactive(doc):
     СКС берут уже сохранённые значения через get_settings_silent(),
     без показа окна.
     """
-    saved = load_saved_values()
-    edited = show_settings_form(doc, saved)
+    while True:
+        saved = load_saved_values()
+        edited = show_settings_form(doc, saved)
 
-    if edited is None:
-        return None
+        if edited == settings_transfer.RELOAD:
+            # пользователь загрузил настройки из файла — они уже записаны,
+            # открываем окно заново с обновлёнными значениями
+            continue
 
-    save_values(edited)
-    return to_runtime_settings(edited)
+        if edited is None:
+            return None
+
+        save_values(edited)
+        return to_runtime_settings(edited)
 
 
 def get_settings_silent():

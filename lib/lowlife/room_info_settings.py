@@ -21,6 +21,8 @@ clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
+from lowlife import settings_transfer
+
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
     FontWeights, HorizontalAlignment, TextWrapping
@@ -142,8 +144,8 @@ def show_settings_form(values):
 
     win = Window()
     win.Title = u"Настройки: Помещение из связи"
-    win.Width = 560
-    win.Height = 380
+    win.Width = 780
+    win.Height = 400
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
@@ -231,6 +233,14 @@ def show_settings_form(values):
     buttons.Children.Add(cancel_btn)
     buttons.Children.Add(ok_btn)
 
+    def _on_settings_imported():
+        result["values"] = settings_transfer.RELOAD
+        win.Close()
+
+    settings_transfer.add_transfer_buttons(
+        buttons, _read_all, _write_all, u"помещений", _on_settings_imported
+    )
+
     outer.Children.Add(buttons)
     outer.Children.Add(root)
 
@@ -246,14 +256,19 @@ def get_settings_interactive():
     их. Возвращает None, если пользователь нажал «Отмена». Используется
     только кнопкой «Параметры помещений».
     """
-    saved = load_saved_values()
-    edited = show_settings_form(saved)
+    while True:
+        saved = load_saved_values()
+        edited = show_settings_form(saved)
 
-    if edited is None:
-        return None
+        if edited == settings_transfer.RELOAD:
+            # настройки загружены из файла и уже записаны — открываем заново
+            continue
 
-    save_values(edited)
-    return edited
+        if edited is None:
+            return None
+
+        save_values(edited)
+        return edited
 
 
 def get_settings_silent():
