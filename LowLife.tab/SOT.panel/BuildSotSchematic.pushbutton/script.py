@@ -87,6 +87,13 @@ try:
 except (ValueError, AttributeError):
     NODE_LABEL_OFFSET_MM = 5.0
 
+try:
+    MAX_ROW_WIDTH_MM = float((settings.get("max_row_width_mm") or u"").replace(u",", u".") or 0.0)
+except (ValueError, AttributeError):
+    MAX_ROW_WIDTH_MM = 0.0
+if MAX_ROW_WIDTH_MM < 0.0:
+    MAX_ROW_WIDTH_MM = 0.0
+
 ANNOTATION_SYMBOL = get_node_annotation_symbol(doc, settings)
 VIEW_TEMPLATE = get_view_template(doc, settings)
 
@@ -299,7 +306,8 @@ with revit.Transaction(u"Sync SOT Schematic"):
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
-        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats
+        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
+        max_row_width_mm=MAX_ROW_WIDTH_MM
     )
 
     if CABINET_CATEGORY_NAME:

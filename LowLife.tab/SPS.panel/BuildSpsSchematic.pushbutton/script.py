@@ -149,6 +149,13 @@ try:
 except (ValueError, AttributeError):
     NODE_LABEL_OFFSET_MM = 5.0
 
+try:
+    MAX_ROW_WIDTH_MM = float((settings.get("max_row_width_mm") or u"").replace(u",", u".") or 0.0)
+except (ValueError, AttributeError):
+    MAX_ROW_WIDTH_MM = 0.0
+if MAX_ROW_WIDTH_MM < 0.0:
+    MAX_ROW_WIDTH_MM = 0.0
+
 # Марки (IndependentTag) — штатный вызов Revit API, который на некоторых
 # моделях стоит секунду и больше НА КАЖДУЮ марку (см. докстринг кнопки) —
 # при DRAW_TAGS=False сразу берём None: place_node_annotation ловит это в
@@ -453,7 +460,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM, timing=timing_levels
+        extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM, timing=timing_levels,
+        max_row_width_mm=MAX_ROW_WIDTH_MM
     )
 
     _mark(u"sync_levels (раскладка этажей/помещений/устройств)")
