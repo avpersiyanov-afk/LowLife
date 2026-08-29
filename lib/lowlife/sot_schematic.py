@@ -441,21 +441,24 @@ def _level_frame_element_ids(level_record):
 def _room_group_width_ft(room_key, valid_devices):
     """
     Ширина рамки помещения (в футах) — по числу устройств (STEP_MM между
-    ними, LINE_OFFSET_MM с каждого края) или по ширине текста подписи
-    (грубая оценка по числу символов, см. _place_room_group), смотря что
-    больше. Чистая функция — нужна и для самого рисования
-    (_place_room_group), и для переноса помещений по строкам при
-    ограничении ширины этажа (см. max_row_width_mm у sync_rooms_in_level).
+    ними, LINE_OFFSET_MM с каждого края). room_key раньше ещё участвовал
+    в грубой оценке ширины текста подписи по числу символов, из-за чего
+    рамка для ОДНОГО устройства в помещении с длинным именем оказывалась
+    неоправданно широкой — никакого реального измерения ширины текста
+    там не было (только прикидка "на глаз", часто с запасом), поэтому
+    убрали: ширина теперь только по числу устройств, а если подпись
+    шире рамки — она просто выходит за её границы по бокам, текст
+    всё равно остаётся отцентрирован (HorizontalAlignment.Center, см.
+    center_text_in_frame). room_key оставлен в сигнатуре ради
+    совместимости с вызывающим кодом, не используется.
+
+    Чистая функция — нужна и для самого рисования (_place_room_group), и
+    для переноса помещений по строкам при ограничении ширины этажа (см.
+    max_row_width_mm у sync_rooms_in_level).
     """
     offset = LINE_OFFSET_MM * MM_TO_FT
     step = STEP_MM * MM_TO_FT
-    text_margin = TEXT_MARGIN_MM * MM_TO_FT
-
-    nodes_width = 2.0 * offset + (len(valid_devices) - 1) * step
-    text_width = len(room_key) * 2.5 * MM_TO_FT
-    text_required_width = text_width + 2.0 * text_margin
-
-    return max(nodes_width, text_required_width)
+    return 2.0 * offset + (len(valid_devices) - 1) * step
 
 
 # ------------------------------------------------------------
@@ -483,22 +486,18 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     step = STEP_MM * MM_TO_FT
     text_y = TEXT_Y_MM * MM_TO_FT
 
+    # group_width — только по числу устройств (см. _room_group_width_ft);
+    # текст подписи центрируется по X независимо от неё
+    # (HorizontalAlignment.Center, см. center_text_in_frame) и просто
+    # выходит за границы рамки по бокам, если он шире — без реального
+    # BoundingBox (это требовало бы doc.Regenerate(), убрано целиком)
+    # узнать точную ширину текста заранее всё равно нельзя, а раздувать
+    # рамку под грубую оценку "на глаз" не нужно.
     group_width = _room_group_width_ft(room_key, valid_devices)
-    nodes_width = 2.0 * (LINE_OFFSET_MM * MM_TO_FT) + (len(valid_devices) - 1) * step
-    preliminary_center_x = x_pos + nodes_width / 2.0
+    preliminary_center_x = x_pos + group_width / 2.0
 
     _t0 = time.time()
     text_note = create_room_text(doc, view, room_key, preliminary_center_x, current_level_y + text_y)
-    # Ширина по символам, а не по реальному BoundingBox (это требовало бы
-    # doc.Regenerate() — убрано целиком, см. center_text_in_frame) — нужна
-    # только чтобы решить max(nodes_width, text_required_width): при 2+
-    # устройствах в помещении nodes_width почти всегда и так больше, так
-    # что грубая оценка ширины текста ни на что не влияет; разве что для
-    # одиночных устройств с длинным именем помещения рамка может оказаться
-    # чуть уже, чем по факту нужно тексту — сам текст всё равно останется
-    # отцентрирован по X (center_text_in_frame ниже, через
-    # HorizontalAlignment.Center), просто может на пару мм выйти за рамку
-    # по ширине в редких случаях (см. _room_group_width_ft).
 
     group_left_x = x_pos
     group_right_x = x_pos + group_width

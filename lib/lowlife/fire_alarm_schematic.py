@@ -71,16 +71,29 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 ветками, что и по вертикали (тот же x_cursor-приём, что у обычных
 помещений в sync_rooms_in_level).
 
+Если ВСЕ устройства ветви — в том же помещении, что и сам изолятор
+(сравнивается с уже размещённым узлом изолятора по параметру помещения,
+а не по ключу раскладки), отдельная рамка/подпись не рисуется вовсе —
+ветка просто ложится в тот же ряд, ниже на SAME_ROOM_BRANCH_OFFSET_MM, с
+зазором SAME_ROOM_BRANCH_GAP_MM между изолятором и первым устройством
+ветки (см. _place_inline_branch_devices). Если хотя бы одно устройство
+ветви из ДРУГОГО помещения (или у изолятора/устройств помещение не
+определено) — рамка рисуется как раньше.
+
 Место под ряд-спутник должно быть зарезервировано ЗАРАНЕЕ, при вызове
 sot_schematic.sync_levels — параметром extra_bottom_mm, значением
 SATELLITE_EXTRA_BOTTOM_MM (см. подробности отступов в комментариях к
-константам ниже); без этого рамка этажа наложится на ряд-спутник.
+константам ниже; учитывает оба случая — и рамку, и ветку в том же
+помещении, у неё отступ больше); без этого рамка этажа наложится на
+ряд-спутник/ветку.
 """
 
-from lowlife.params import get_string_param
+from Autodesk.Revit.DB import XYZ
+
+from lowlife.params import get_string_param, set_param_any
 from lowlife.sot_schematic import (
-    draw_segment, delete_elements, MM_TO_FT, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM,
-    LEVEL_SEPARATOR_OFFSET_MM, _place_room_group
+    draw_segment, delete_elements, MM_TO_FT, STEP_MM, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM,
+    LEVEL_SEPARATOR_OFFSET_MM, place_node_annotation, _place_room_group
 )
 
 # Зазор между линиями кольца "туда"/"обратно" (см. докстринг модуля).
@@ -126,14 +139,33 @@ _SATELLITE_ROW_BOTTOM_MM = SATELLITE_ROW_OFFSET_MM + BOTTOM_LINE_MM
 # BOTTOM_LINE_MM - LEVEL_SEPARATOR_OFFSET_MM.
 _LEVEL_BASE_BOTTOM_MM = BOTTOM_LINE_MM - LEVEL_SEPARATOR_OFFSET_MM
 
+# Ветка изолятора, все устройства которой в том же помещении, что и сам
+# изолятор — без отдельной рамки, просто ниже на эту величину (мм) от
+# ряда изолятора, в пределах того же помещения на схеме.
+SAME_ROOM_BRANCH_OFFSET_MM = 120.0
+
+# Зазор между изолятором и первым устройством такой ветки по X — тот же
+# шаг, что и между обычными узлами (STEP_MM), чтобы связывающая линия от
+# изолятора не начиналась вплотную под ним.
+SAME_ROOM_BRANCH_GAP_MM = STEP_MM
+
+# Запас под сам схемный символ узла ниже точки вставки (высота УГО),
+# чтобы нижняя граница рамки этажа не резала узлы такой ветки.
+_INLINE_BOTTOM_MARGIN_MM = 15.0
+_INLINE_BOTTOM_MM = -(SAME_ROOM_BRANCH_OFFSET_MM + _INLINE_BOTTOM_MARGIN_MM)
+
 # extra_bottom_mm для sot_schematic.sync_levels — растягивает рамку
-# КАЖДОГО этажа вниз ровно настолько, чтобы под ней помещался ряд-спутник
-# (плюс небольшой запас 4мм) — иначе разделительная линия этажа наложится
-# на рамку ряда-спутника. Общий на все этажи (см. докстринг sync_levels)
-# — при построении СПС передаётся всегда, даже для этажей без
-# ответвлений, чтобы при появлении нового изолятора не пришлось всё
-# перестраивать заново из-за смены этого параметра.
-SATELLITE_EXTRA_BOTTOM_MM = (_LEVEL_BASE_BOTTOM_MM - _SATELLITE_ROW_BOTTOM_MM) + 4.0
+# КАЖДОГО этажа вниз ровно настолько, чтобы под ней помещался самый
+# глубокий из двух случаев (обычная рамка ряда-спутника ИЛИ ветка в том
+# же помещении — она глубже), плюс небольшой запас 4мм — иначе
+# разделительная линия этажа наложится на них. Общий на все этажи (см.
+# докстринг sync_levels) — при построении СПС передаётся всегда, даже
+# для этажей без ответвлений, чтобы при появлении нового изолятора не
+# пришлось всё перестраивать заново из-за смены этого параметра.
+SATELLITE_EXTRA_BOTTOM_MM = max(
+    (_LEVEL_BASE_BOTTOM_MM - _SATELLITE_ROW_BOTTOM_MM) + 4.0,
+    (_LEVEL_BASE_BOTTOM_MM - _INLINE_BOTTOM_MM) + 4.0
+)
 
 
 def node_placement_from_state(state):
@@ -274,6 +306,55 @@ def sync_loop_connections(doc, view, old_loop_line_ids, loops, node_placement_by
     return new_ids
 
 
+def _place_inline_branch_devices(doc, view, start_x, y, valid_devices, room_param_name,
+                                  address_param_name, device_uid_param_name, annotation_symbol,
+                                  label_offset_mm):
+    """
+    Устройства ветви БЕЗ рамки/подписи — просто узлы + марки в ряд, тем
+    же шагом STEP_MM, что и обычные помещения, начиная с start_x на
+    высоте y (см. докстринг модуля, SAME_ROOM_BRANCH_OFFSET_MM). Для
+    веток изолятора, чьи устройства в том же помещении, что и сам
+    изолятор — своя рамка не нужна, ветка просто читается как
+    продолжение того же помещения на схеме, только ниже.
+
+    Возвращает список id новых элементов (узлы + марки) — сюда же
+    относится: параметры на схемный экземпляр (адрес/помещение/UID)
+    пишутся точно так же, как в sot_schematic._place_room_group.
+    """
+    step = STEP_MM * MM_TO_FT
+    x = start_x
+    new_ids = []
+
+    for device, symbol in valid_devices:
+        if not symbol.IsActive:
+            symbol.Activate()
+            doc.Regenerate()
+
+        node_instance = doc.Create.NewFamilyInstance(XYZ(x, y, 0.0), symbol, view)
+
+        if node_instance is not None:
+            address_value = get_string_param(device, address_param_name)
+            if address_value:
+                set_param_any(node_instance, address_param_name, address_value)
+
+            room_value = get_string_param(device, room_param_name)
+            if room_value:
+                set_param_any(node_instance, room_param_name, room_value)
+
+            if device_uid_param_name:
+                set_param_any(node_instance, device_uid_param_name, device.UniqueId)
+
+            tag = place_node_annotation(doc, view, node_instance, annotation_symbol, x, y, label_offset_mm)
+
+            new_ids.append(node_instance.Id.IntegerValue)
+            if tag is not None:
+                new_ids.append(tag.Id.IntegerValue)
+
+        x += step
+
+    return new_ids
+
+
 def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, node_placement_by_uid,
                               category_symbols, category_for_device, room_param_name,
                               address_param_name, device_uid_param_name, annotation_symbol,
@@ -308,15 +389,20 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
     new_ids = []
     row_offset_ft = SATELLITE_ROW_OFFSET_MM * MM_TO_FT
     gap_ft = SATELLITE_GAP_MM * MM_TO_FT
+    inline_offset_ft = SAME_ROOM_BRANCH_OFFSET_MM * MM_TO_FT
+    inline_gap_ft = SAME_ROOM_BRANCH_GAP_MM * MM_TO_FT
 
-    # Группируем изоляторы по этажу — ряд-спутник у КАЖДОГО из них сидит
-    # на одном и том же фиксированном отступе от своего этажа, поэтому
-    # столкнуться (наложиться рамками) могут только ветки изоляторов
-    # ОДНОГО этажа, если их изоляторы физически близко по X. Внутри
-    # этажа раскладываем ветки слева направо в порядке X их изоляторов,
-    # сдвигая начало следующей ветки за правый край предыдущей (+ зазор),
-    # если иначе она бы на неё наехала — тот же приём, что x_cursor у
-    # обычных помещений (sync_rooms_in_level).
+    # Группируем изоляторы по этажу — и рамка ряда-спутника, и ветка "в
+    # том же помещении" сидят на одном и том же фиксированном отступе от
+    # своего этажа (у каждой — свой отступ, но общий для ВСЕХ изоляторов
+    # этажа), поэтому столкнуться (наложиться) по X могут только ветки
+    # ОДНОГО этажа И одного типа (обе рамочные либо обе инлайн), если их
+    # изоляторы физически близко. Внутри этажа раскладываем оба вида
+    # слева направо в порядке X изолятора, каждый вид — со своим
+    # курсором (тот же x_cursor-приём, что у обычных помещений в
+    # sync_rooms_in_level), сдвигая начало следующей ветки за правый
+    # край предыдущей ТОГО ЖЕ вида (+ зазор), если иначе она бы на неё
+    # наехала.
     by_level = {}
     for isolator_uid, devices in isolator_branches.items():
         if not devices:
@@ -324,14 +410,15 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
         placement = node_placement_by_uid.get(isolator_uid)
         if placement is None:
             continue
-        isolator_x, isolator_y, level_key = placement[0], placement[1], placement[2]
-        by_level.setdefault(level_key, []).append((isolator_x, isolator_y, devices))
+        isolator_x, isolator_y, level_key, isolator_room_key = placement
+        by_level.setdefault(level_key, []).append((isolator_x, isolator_y, isolator_room_key, devices))
 
     for level_key, items in by_level.items():
         items.sort(key=lambda item: item[0])
-        right_edge = None
+        framed_right_edge = None
+        inline_right_edge = None
 
-        for isolator_x, isolator_y, devices in items:
+        for isolator_x, isolator_y, isolator_room_key, devices in items:
             valid_devices = []
             for device in devices:
                 category = category_for_device(device)
@@ -342,9 +429,36 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
             if not valid_devices:
                 continue
 
+            # "В том же помещении" — у изолятора есть реальное (не
+            # "(пусто)") помещение, и у ВСЕХ устройств ветви оно
+            # совпадает с ним (сравниваем со значением параметра
+            # напрямую, а не с ключом раскладки — надёжнее, если
+            # где-то попадётся "(пусто)" как реальный текст).
+            same_room = bool(isolator_room_key) and isolator_room_key != u"(пусто)" and all(
+                (get_string_param(device, room_param_name) or u"").strip() == isolator_room_key
+                for device, _symbol in valid_devices
+            )
+
+            if same_room:
+                start_x = isolator_x + inline_gap_ft
+                if inline_right_edge is not None and start_x < inline_right_edge + gap_ft:
+                    start_x = inline_right_edge + gap_ft
+
+                inline_y = isolator_y - inline_offset_ft
+
+                ids = _place_inline_branch_devices(
+                    doc, view, start_x, inline_y, valid_devices, room_param_name,
+                    address_param_name, device_uid_param_name, annotation_symbol, label_offset_mm
+                )
+                new_ids.extend(ids)
+
+                last_x = start_x + max(0, len(valid_devices) - 1) * STEP_MM * MM_TO_FT
+                inline_right_edge = last_x
+                continue
+
             start_x = isolator_x
-            if right_edge is not None and start_x < right_edge + gap_ft:
-                start_x = right_edge + gap_ft
+            if framed_right_edge is not None and start_x < framed_right_edge + gap_ft:
+                start_x = framed_right_edge + gap_ft
 
             satellite_y = isolator_y + row_offset_ft
 
@@ -370,7 +484,7 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
                 label_offset_mm, satellite_y, timing=timing
             )
 
-            right_edge = room_record.get("x_right", start_x)
+            framed_right_edge = room_record.get("x_right", start_x)
 
             new_ids.extend(room_record.get("line_ids", []))
             if room_record.get("text_id") is not None:
