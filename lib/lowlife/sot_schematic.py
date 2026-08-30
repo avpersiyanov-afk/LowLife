@@ -44,6 +44,16 @@ TEXT_Y_MM = 23.0
 HEADER_TOP_LINE_MM = 26.0
 TEXT_MARGIN_MM = 3.0
 
+# Запас по ширине рамки помещения сверх ширины подписи (см.
+# _room_group_width_ft) — рамка компактная, привязана к ширине подписи,
+# а не к max(ширина по числу устройств, ширина подписи), как было
+# раньше: "по числу устройств" (STEP_MM между ними) в помещениях с 2+
+# устройствами почти всегда побеждала в max() и раздувала рамку заметно
+# шире, чем реально нужно самой подписи (устройства внутри рамки теперь
+# просто теснее друг к другу, если не помещаются с обычным шагом, а не
+# определяют ширину — см. _place_room_group).
+TEXT_FRAME_MARGIN_MM = 10.0
+
 # Зеркальная TEXT_Y_MM позиция подписи помещения — под нижней линией
 # рамки (BOTTOM_LINE_MM), а не над верхней (TOP_LINE_MM) — для строк,
 # перенесённых по ширине (см. ROW_WRAP_STEP_MM/sync_rooms_in_level),
@@ -500,24 +510,28 @@ def _level_frame_element_ids(level_record):
 
 def _room_group_width_ft(room_key, valid_devices, extra_width_ft=0.0):
     """
-    Ширина рамки помещения (в футах) — по числу устройств (STEP_MM между
-    ними, LINE_OFFSET_MM с каждого края) ИЛИ по ширине текста подписи
-    (грубая оценка по числу символов — точного измерения без реального
-    BoundingBox всё равно нет, см. center_text_in_frame), смотря что
-    больше, ПЛЮС extra_width_ft. Ширину подписи одно время убирали
-    отсюда совсем (рамка для ОДНОГО устройства в помещении с длинным
-    именем становилась неоправданно широкой) — но без нижней границы по
-    тексту соседние узкие помещения (мало устройств, длинное имя)
-    вставали почти впритык, и подписи налезали друг на друга нечитаемой
-    кашей, особенно при переносе по строкам (max_row_width_mm), где
-    узких однодевайсных помещений в ряд обычно много. Оценка "на глаз"
-    всё же лучше, чем совсем без неё.
+    Ширина рамки помещения (в футах) — компактная, привязана к ширине
+    подписи (грубая оценка по числу символов — точного измерения без
+    реального BoundingBox всё равно нет, см. center_text_in_frame) плюс
+    TEXT_FRAME_MARGIN_MM, ПЛЮС extra_width_ft.
+
+    Раньше рамка была max(ширина по числу устройств, ширина подписи) —
+    но ширина "по числу устройств" (STEP_MM между ними) в помещениях с
+    2+ устройствами почти всегда оказывалась больше подписи и побеждала
+    в max(), из-за чего рамка получалась заметно шире, чем нужно самой
+    подписи (та, собственно, и определяет читаемую ширину помещения —
+    устройства внутри неё просто расставляются равномерно, не требуя
+    отдельного минимума). Теперь ширина только по подписи — компактнее;
+    если у помещения устройств больше, чем помещается вплотную с шагом
+    STEP_MM в такую ширину, они станут теснее друг к другу (шаг между
+    ними — не фиксированный STEP_MM, а group_width/(n-1), см.
+    _place_room_group), а не раздувают рамку.
 
     extra_width_ft (по умолчанию 0 — как раньше) — вызывающему коду
     иногда нужно зарезервировать под помещением ЕЩЁ немного места сверх
-    того, что требуют сами устройства/подпись (например СПС — под ветку
-    изолятора, чьи устройства в том же помещении, рисуется под ним же,
-    см. lib/lowlife/fire_alarm_schematic.py) — известно ДО того, как эта
+    того, что требует сама подпись (например СПС — под ветку изолятора,
+    чьи устройства в том же помещении, рисуется под ним же, см.
+    lib/lowlife/fire_alarm_schematic.py) — известно ДО того, как эта
     функция посчитает "естественную" ширину, поэтому нельзя просто
     досчитать потом: перенос по строкам (max_row_width_mm) и раскладка
     соседних помещений в ряду должны знать об этом СРАЗУ, а не постфактум
@@ -527,15 +541,8 @@ def _room_group_width_ft(room_key, valid_devices, extra_width_ft=0.0):
     для переноса помещений по строкам при ограничении ширины этажа (см.
     max_row_width_mm у sync_rooms_in_level).
     """
-    offset = LINE_OFFSET_MM * MM_TO_FT
-    step = STEP_MM * MM_TO_FT
-    text_margin = TEXT_MARGIN_MM * MM_TO_FT
-
-    nodes_width = 2.0 * offset + (len(valid_devices) - 1) * step
     text_width = len(room_key) * 2.5 * MM_TO_FT
-    text_required_width = text_width + 2.0 * text_margin
-
-    return max(nodes_width, text_required_width) + extra_width_ft
+    return text_width + TEXT_FRAME_MARGIN_MM * MM_TO_FT + extra_width_ft
 
 
 # ------------------------------------------------------------
@@ -576,13 +583,13 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
     (см. sot_layout_state), report_rows — [(room_key, address), ...].
     """
     step = STEP_MM * MM_TO_FT
+    offset = LINE_OFFSET_MM * MM_TO_FT
     text_y = (TEXT_Y_BELOW_MM if flipped else TEXT_Y_MM) * MM_TO_FT
 
-    # group_width — по числу устройств ИЛИ по ширине подписи, смотря что
-    # больше (см. _room_group_width_ft), плюс extra_width_ft, если
-    # вызывающему коду нужно место под что-то ещё под этим же
-    # помещением — подпись центрируется по X независимо от неё
-    # (HorizontalAlignment.Center, см. center_text_in_frame).
+    # group_width — по ширине подписи (см. _room_group_width_ft), плюс
+    # extra_width_ft, если вызывающему коду нужно место под что-то ещё
+    # под этим же помещением — подпись центрируется по X независимо от
+    # неё (HorizontalAlignment.Center, см. center_text_in_frame).
     group_width = _room_group_width_ft(room_key, valid_devices, extra_width_ft)
     preliminary_center_x = x_pos + group_width / 2.0
 
@@ -623,6 +630,15 @@ def _place_room_group(doc, view, x_pos, room_key, valid_devices, room_param_name
         if elem is not None:
             line_ids.append(elem.Id.IntegerValue)
     _bump_time(timing, "lines", time.time() - _t0)
+
+    # Ширина рамки теперь считается по подписи (см. _room_group_width_ft),
+    # не по числу устройств — если устройств несколько и обычный шаг
+    # STEP_MM между ними не помещается в group_width с отступом offset
+    # с каждого края, узлы просто теснее друг к другу (шаг сжимается),
+    # а не раздвигают рамку. Один узел — по центру, шаг ни на что не влияет.
+    if len(valid_devices) > 1:
+        max_span = max(group_width - 2.0 * offset, 0.0)
+        step = min(step, max_span / (len(valid_devices) - 1))
 
     nodes_center_width = (len(valid_devices) - 1) * step
     nodes_start_x = group_center_x - nodes_center_width / 2.0

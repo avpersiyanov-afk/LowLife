@@ -458,6 +458,16 @@ def sync_panel_buses(doc, view, new_state, old_bus_line_ids, panels_order,
     if not all_devices:
         return [], {}
 
+    # Регенерация ДО чтения bounding box узлов (_node_bottom_y/_node_top_y
+    # ниже) — как и у sot_schematic.sync_cable_connections. Без неё узлы,
+    # только что размещённые этим же запуском sync_levels (например
+    # вторая строка помещений при переносе по ширине — она может целиком
+    # появиться впервые именно сейчас), могли отдавать невалидный/нулевой
+    # bounding box, и отвод от узла до шины рисовался бы не от границы
+    # значка, а от резервного fallback_y — визуально "не дотягивал" до
+    # узла.
+    doc.Regenerate()
+
     device_by_uid = dict((uid, (x, y, instance_id, flipped)) for uid, x, y, instance_id, flipped in all_devices)
     line_style_by_panel = _line_styles_by_panel(doc, panels_order, panel_names)
 
