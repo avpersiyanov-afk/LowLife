@@ -234,7 +234,9 @@ def _redraw_passage_point(doc, view, pp, pp_pt, cfg):
             for d in devs[len(schem_list):]:
                 devices_state[d["uid"]] = _dev_state(d, None)
     else:
-        index_by_cat = {}
+        # резервная раскладка: все устройства столбиком вниз от pp_pt,
+        # в порядке категорий (в пределах категории — по адресу)
+        idx = 0
         for cat in order:
             for d in desired_by_cat[cat]:
                 symbol = cfg["category_symbols"].get(cat) if cat else None
@@ -243,9 +245,8 @@ def _redraw_passage_point(doc, view, pp, pp_pt, cfg):
                     continue
                 if not symbol.IsActive:
                     symbol.Activate()
-                k = index_by_cat.get(cat, 0)
-                dpt = device_layout_point(pp_pt, cfg["category_layout_ft"], cat, k, cfg["category_step_ft"])
-                index_by_cat[cat] = k + 1
+                dpt = device_layout_point(pp_pt, idx, cfg["fallback_step_ft"])
+                idx += 1
                 schem_el = doc.Create.NewFamilyInstance(dpt, symbol, view)
                 if schem_el is None:
                     devices_state[d["uid"]] = _dev_state(d, None)
@@ -304,8 +305,8 @@ def sync_schematic(doc, view, desired_controllers, previous_state, cfg):
     cfg — dict: category_of_schematic, schematic_address_param,
       device_marking_param, source_uid_param, controller_group_type,
       pp_group_types_by_name {имя: GroupType}, controller_category_name,
-      category_symbols {категория: FamilySymbol}, category_layout_ft,
-      category_step_ft, layout_gap_ft.
+      category_symbols {категория: FamilySymbol} (для резервной раскладки),
+      fallback_step_ft (шаг столбика в резервной раскладке), layout_gap_ft.
 
     Возвращает (new_state, report). Транзакция уже открыта вызывающим.
     """

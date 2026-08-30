@@ -28,10 +28,9 @@ from System.Windows import (
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock, ScrollViewer,
-    ScrollBarVisibility, Canvas
+    ScrollBarVisibility
 )
-from System.Windows.Media import Brushes, SolidColorBrush, Colors
-from System.Windows.Shapes import Ellipse
+from System.Windows.Media import Brushes
 
 from lowlife import skud as skud_defaults
 from lowlife import settings_transfer
@@ -154,7 +153,7 @@ TEXT_FIELDS = [
         u"", False, True, False),
     ("schematic_layout_gap_m", u"[Схема] Шаг между контроллерами по X и между этажами по Y при автораскладке, м",
         u"5", False, True, False),
-    ("schematic_layout_step_mm", u"[Схема] Шаг между устройствами одной категории у одного контроллера, мм",
+    ("schematic_layout_step_mm", u"[Схема] Шаг по вертикали между устройствами в резервной раскладке (когда для точки прохода нет группы), мм",
         u"10", False, True, False),
     ("schematic_device_categories_text", u"[Схема] Категории устройств схемы (по одной на строку)",
         u"", False, True, True),
@@ -190,11 +189,6 @@ SCHEMATIC_CATEGORY_TYPES_KEY = "schematic_category_type_ids"
 # ключевым словам: категория реального устройства определяется точным
 # совпадением типа с одним из выбранных здесь).
 SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
-
-# {имя_категории: [dx_mm, dy_mm]} — смещение точки вставки категории от
-# точки контроллера (0,0), используется структурной схемой и превью в
-# окне настроек.
-SCHEMATIC_CATEGORY_LAYOUT_KEY = "schematic_category_layout_mm"
 
 # {имя_категории: "id_элемента_справочника_кабелей"} — тип проводника
 # (параметр цепи «Проводник», ссылка на строку ключевой спецификации, см.
@@ -336,12 +330,6 @@ def load_schematic_category_device_type_ids():
     return dict(saved.get(SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY, {}))
 
 
-def load_schematic_category_layout_mm():
-    """{имя_категории: [dx_mm, dy_mm]} — смещение категории от точки контроллера."""
-    saved = _read_all()
-    return dict(saved.get(SCHEMATIC_CATEGORY_LAYOUT_KEY, {}))
-
-
 def load_schematic_category_wire_type_ids():
     """{имя_категории: "id_строки_справочника_кабелей"} — тип проводника по категории устройства."""
     saved = _read_all()
@@ -424,32 +412,6 @@ def get_schematic_category_device_type_ids(settings):
     return result
 
 
-def get_schematic_category_layout_ft(settings):
-    """
-    {имя_категории: (dx_ft, dy_ft)} — смещение категории от точки
-    контроллера, для skud_schematic.device_layout_point. Категории без
-    заданного смещения получают (0.0, 0.0) при использовании (см.
-    device_layout_point) и в этот словарь не попадают.
-    """
-    categories = parse_category_names(settings.get("schematic_device_categories_text", u""))
-    saved = load_schematic_category_layout_mm()
-
-    MM_TO_FT = 1.0 / (0.3048 * 1000.0)
-
-    result = {}
-    for name in categories:
-        pair = saved.get(name)
-        if not pair or len(pair) != 2:
-            continue
-        try:
-            dx_mm, dy_mm = float(pair[0]), float(pair[1])
-        except:
-            continue
-        result[name] = (dx_mm * MM_TO_FT, dy_mm * MM_TO_FT)
-
-    return result
-
-
 def get_schematic_category_wire_type_elem_ids(doc, settings):
     """
     {имя_категории: ElementId} для категорий из
@@ -494,12 +456,6 @@ def save_schematic_category_type_ids(type_ids):
 def save_schematic_category_device_type_ids(type_ids):
     data = _read_all()
     data[SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY] = dict(type_ids)
-    _write_all(data)
-
-
-def save_schematic_category_layout_mm(layout):
-    data = _read_all()
-    data[SCHEMATIC_CATEGORY_LAYOUT_KEY] = dict(layout)
     _write_all(data)
 
 
@@ -758,70 +714,17 @@ def show_settings_form(doc, values):
 
     category_type_ids = load_schematic_category_type_ids()
     category_device_type_ids = load_schematic_category_device_type_ids()
-    category_layout_mm = load_schematic_category_layout_mm()
     category_wire_type_ids = load_schematic_category_wire_type_ids()
 
     category_type_labels = {}
     category_device_labels = {}
-    category_layout_boxes = {}
     category_wire_labels = {}
     category_types_panel = StackPanel()
-    layout_preview_canvas = Canvas()
-    layout_preview_canvas.Height = 220
-    layout_preview_canvas.Background = Brushes.Transparent
-
-    PREVIEW_SCALE = 0.4  # пикселей на мм
-    PREVIEW_CENTER = (300, 110)
-
-    def redraw_layout_preview(sender=None, args=None):
-        layout_preview_canvas.Children.Clear()
-
-        cx, cy = PREVIEW_CENTER
-
-        controller_dot = Ellipse()
-        controller_dot.Width = 10
-        controller_dot.Height = 10
-        controller_dot.Fill = SolidColorBrush(Colors.OrangeRed)
-        Canvas.SetLeft(controller_dot, cx - 5)
-        Canvas.SetTop(controller_dot, cy - 5)
-        layout_preview_canvas.Children.Add(controller_dot)
-
-        controller_label = TextBlock()
-        controller_label.Text = u"контроллер"
-        controller_label.FontSize = 10
-        Canvas.SetLeft(controller_label, cx + 8)
-        Canvas.SetTop(controller_label, cy - 8)
-        layout_preview_canvas.Children.Add(controller_label)
-
-        for name, (dx_box, dy_box) in category_layout_boxes.items():
-            try:
-                dx_mm = float(dx_box.Text)
-                dy_mm = float(dy_box.Text)
-            except:
-                continue
-
-            dot = Ellipse()
-            dot.Width = 8
-            dot.Height = 8
-            dot.Fill = SolidColorBrush(Colors.DodgerBlue)
-            x = cx + dx_mm * PREVIEW_SCALE
-            y = cy - dy_mm * PREVIEW_SCALE
-            Canvas.SetLeft(dot, x - 4)
-            Canvas.SetTop(dot, y - 4)
-            layout_preview_canvas.Children.Add(dot)
-
-            label = TextBlock()
-            label.Text = name
-            label.FontSize = 10
-            Canvas.SetLeft(label, x + 6)
-            Canvas.SetTop(label, y - 7)
-            layout_preview_canvas.Children.Add(label)
 
     def rebuild_category_type_pickers(sender=None, args=None):
         category_types_panel.Children.Clear()
         category_type_labels.clear()
         category_device_labels.clear()
-        category_layout_boxes.clear()
         category_wire_labels.clear()
 
         categories = parse_category_names(boxes["schematic_device_categories_text"].Text)
@@ -832,7 +735,6 @@ def show_settings_form(doc, values):
             hint2.FontSize = 11
             hint2.Foreground = Brushes.Gray
             category_types_panel.Children.Add(hint2)
-            redraw_layout_preview()
             return
 
         for name in categories:
@@ -1005,40 +907,6 @@ def show_settings_form(doc, values):
             row4.Children.Add(pick_btn4)
             category_types_panel.Children.Add(row4)
 
-            # --- координаты (dx, dy от точки контроллера, мм) ---
-
-            label3 = TextBlock()
-            label3.Text = u"Координаты (dx, dy от контроллера, мм)"
-            label3.Margin = Thickness(0, 6, 0, 2)
-            category_types_panel.Children.Add(label3)
-
-            row3 = StackPanel()
-            row3.Orientation = Orientation.Horizontal
-
-            saved_pair = category_layout_mm.get(name, [0, 0])
-
-            dx_box = TextBox()
-            dx_box.Text = str(saved_pair[0]) if len(saved_pair) > 0 else u"0"
-            dx_box.Width = 80
-            dx_box.Padding = Thickness(4)
-
-            dy_box = TextBox()
-            dy_box.Text = str(saved_pair[1]) if len(saved_pair) > 1 else u"0"
-            dy_box.Width = 80
-            dy_box.Padding = Thickness(4)
-            dy_box.Margin = Thickness(8, 0, 0, 0)
-
-            category_layout_boxes[name] = (dx_box, dy_box)
-
-            dx_box.TextChanged += redraw_layout_preview
-            dy_box.TextChanged += redraw_layout_preview
-
-            row3.Children.Add(dx_box)
-            row3.Children.Add(dy_box)
-            category_types_panel.Children.Add(row3)
-
-        redraw_layout_preview()
-
     for key, label_text, _, _, required, multiline in TEXT_FIELDS:
         section, plain_label = _split_section(label_text)
 
@@ -1079,18 +947,11 @@ def show_settings_form(doc, values):
             root.Children.Add(refresh_btn)
 
             category_types_title = TextBlock()
-            category_types_title.Text = u"Категории структурной схемы: семейства, устройства, координаты"
+            category_types_title.Text = u"Категории структурной схемы: схемное семейство и реальные типы устройств"
             category_types_title.FontWeight = FontWeights.Bold
             category_types_title.Margin = Thickness(0, 12, 0, 4)
             category_types_title.TextWrapping = TextWrapping.Wrap
             root.Children.Add(category_types_title)
-
-            preview_title = TextBlock()
-            preview_title.Text = u"Превью раскладки (от точки контроллера)"
-            preview_title.FontWeight = FontWeights.Bold
-            preview_title.Margin = Thickness(0, 8, 0, 2)
-            root.Children.Add(preview_title)
-            root.Children.Add(layout_preview_canvas)
 
             root.Children.Add(category_types_panel)
             rebuild_category_type_pickers()
@@ -1139,14 +1000,6 @@ def show_settings_form(doc, values):
         save_schematic_category_wire_type_ids(category_wire_type_ids)
         save_controller_group_id(group_values["controller_group_id"])
         save_passage_point_group_ids(group_values["passage_point_group_ids"])
-
-        layout_to_save = {}
-        for name, (dx_box, dy_box) in category_layout_boxes.items():
-            try:
-                layout_to_save[name] = [float(dx_box.Text), float(dy_box.Text)]
-            except:
-                continue
-        save_schematic_category_layout_mm(layout_to_save)
 
         win.Close()
 

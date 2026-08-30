@@ -310,21 +310,13 @@ def layout_points_by_level(base_point, level_elevations, gap_ft):
     return points
 
 
-def device_layout_point(insert_pt, category_layout, category, index_in_category, step_ft):
+def device_layout_point(pp_pt, index, step_ft):
     """
-    Точка вставки схемного устройства: insert_pt (точка контроллера) +
-    смещение (dx, dy) категории из category_layout (в футах) + шаг
-    вправо по X на каждый следующий экземпляр той же категории у этого
-    же контроллера (index_in_category — 0 для первого).
-
-    category_layout — {имя_категории: (dx_ft, dy_ft)}. Категория без
-    записи в layout получает нулевое смещение (в точке контроллера).
+    Точка вставки устройства в РЕЗЕРВНОЙ раскладке (когда для состава
+    точки прохода не нашлось типовой группы): столбиком вниз от точки
+    вставки точки прохода (pp_pt), шаг step_ft на каждое следующее
+    устройство. index — 0 для первого.
     """
     from Autodesk.Revit.DB import XYZ
 
-    dx, dy = category_layout.get(category, (0.0, 0.0))
-    return XYZ(
-        insert_pt.X + dx + index_in_category * step_ft,
-        insert_pt.Y + dy,
-        insert_pt.Z
-    )
+    return XYZ(pp_pt.X, pp_pt.Y - index * step_ft, pp_pt.Z)

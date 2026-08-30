@@ -86,6 +86,18 @@ SATELLITE_EXTRA_BOTTOM_MM (см. подробности отступов в ко
 константам ниже; учитывает оба случая — и рамку, и ветку в том же
 помещении, у неё отступ больше); без этого рамка этажа наложится на
 ряд-спутник/ветку.
+
+ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: при переносе помещений по строкам
+(max_row_width_mm у sync_levels) нечётные строки отзеркалены — подпись
+помещения и марка узла у НИХ уже сами уходят ВНИЗ (см. докстринг
+sot_schematic.sync_rooms_in_level/_place_room_group, flipped). Ряд-
+спутник/ветка изолятора здесь всегда уходит вниз тоже, независимо от
+flipped его строки — если изолятор попадёт на нечётную (отзеркаленную)
+строку, его ветка теоретически может визуально столкнуться с уже
+отзеркаленной подписью/маркой этой же строки. Не обработано (нет
+доступа к flipped там, где это нужно, без более широкой правки) —
+проверить на реальной схеме с переносом строк и изоляторами на
+нечётных строках, если увидите наложение — сообщите.
 """
 
 from Autodesk.Revit.DB import XYZ
@@ -175,13 +187,21 @@ def node_placement_from_state(state):
     узлов (и устройств, и панелей — панель это тоже узел категории
     "Электрооборудование", если для неё выбран схемный тип в настройках),
     по итоговому state sot_schematic.sync_levels.
+
+    y — Y СОБСТВЕННОЙ строки помещения (room_record["y"]), НЕ этажа
+    целиком (level_record["y"]): при переносе помещений по строкам
+    (max_row_width_mm у sync_levels) у разных помещений одного этажа
+    разный Y — см. докстринг sot_schematic._iter_state_devices, тот же
+    приём. У помещений без собственного "y" в записи (сохранены до
+    появления переноса по строкам) — Y этажа, как раньше.
     """
     result = {}
     for level_key, level_record in state.get("levels", {}).items():
-        y = level_record.get("y", 0.0)
+        level_y = level_record.get("y", 0.0)
         for room_key, room_record in level_record.get("rooms", {}).items():
+            row_y = room_record.get("y", level_y)
             for uid, dev in room_record.get("devices", {}).items():
-                result[uid] = (dev.get("x", 0.0), y, level_key, room_key)
+                result[uid] = (dev.get("x", 0.0), row_y, level_key, room_key)
     return result
 
 

@@ -36,7 +36,7 @@ from lowlife.skud_schematic_manifest import (
 from lowlife import skud_settings
 from lowlife.skud_settings import (
     get_settings_silent, get_schematic_category_symbols,
-    get_schematic_category_device_type_ids, get_schematic_category_layout_ft,
+    get_schematic_category_device_type_ids,
     load_controller_group_id, load_passage_point_group_ids,
     load_schematic_category_type_ids,
 )
@@ -77,7 +77,7 @@ SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
 MANIFEST_PARAM_NAME = settings["manifest_param_name"]
 
 LAYOUT_GAP_FT = float(settings["schematic_layout_gap_m"]) * M_TO_FT
-CATEGORY_STEP_FT = float(settings["schematic_layout_step_mm"]) * MM_TO_FT
+FALLBACK_STEP_FT = float(settings["schematic_layout_step_mm"]) * MM_TO_FT   # для no-match
 
 DEVICE_CATEGORY_NAMES = parse_category_names(settings["schematic_device_categories_text"])
 if not DEVICE_CATEGORY_NAMES:
@@ -96,7 +96,6 @@ category_of_schematic = category_of_from_type_map(
     invert_category_type_id_strings(load_schematic_category_type_ids())
 )
 CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)      # для no-match
-CATEGORY_LAYOUT_FT = get_schematic_category_layout_ft(settings)       # для no-match
 
 CONTROLLER_GROUP_ID = load_controller_group_id()
 PASSAGE_POINT_GROUP_IDS = load_passage_point_group_ids()
@@ -249,8 +248,7 @@ cfg = {
     "pp_group_types_by_name": pp_group_type_by_name,
     "controller_category_name": CONTROLLER_CATEGORY_NAME,
     "category_symbols": CATEGORY_SYMBOLS,
-    "category_layout_ft": CATEGORY_LAYOUT_FT,
-    "category_step_ft": CATEGORY_STEP_FT,
+    "fallback_step_ft": FALLBACK_STEP_FT,
     "layout_gap_ft": LAYOUT_GAP_FT,
 }
 

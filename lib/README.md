@@ -754,12 +754,15 @@ CPython-only зависимость (импортируется внутри ф�
 «категория → реальные типы устройств». Для каждой категории окно хранит
 (отдельно от `TEXT_FIELDS`, прямыми ключами в JSON):
 `schematic_category_type_ids` (схемное семейство для вставки — из
-категории Detail Items, `list_symbols_by_categories`),
+категории Detail Items, `list_symbols_by_categories`; нужно и для чтения
+состава типовых групп, и для резервной раскладки),
 `schematic_category_device_type_ids` (список реальных типов устройств
 модели, отнесённых к категории — мультивыбор из `OST_SecurityDevices` +
-`OST_ElectricalEquipment`), `schematic_category_wire_type_ids` (тип
-проводника) и `schematic_category_layout_mm` (смещение `dx, dy` от точки
-контроллера, мм) — с превью раскладки прямо в окне настроек.
+`OST_ElectricalEquipment`; «ключ идентичности») и
+`schematic_category_wire_type_ids` (тип проводника). Per-category
+координаты раскладки убраны — основной путь работает через типовые
+группы, резервная раскладка (no-match) ставит устройства простым
+столбиком с шагом `schematic_layout_step_mm`.
 
 Параметр цепи «Проводник» (`cable_type_param`) хранится как
 `StorageType.ElementId`, но ссылается НЕ на
@@ -830,7 +833,7 @@ Detail-семейств для `UniqueId` исходного устройств�
 | `majority_value` | `majority_value(values)` | Самое частое непустое значение; при равенстве — первое по порядку; `""` если все пустые. Реэкспортируется `skud_room_info` |
 | `layout_points_by_level` | `layout_points_by_level(base_point, level_elevations, gap_ft)` | Точки вставки контроллеров по этажам: этаж — сплошной ряд по X с шагом `gap_ft`, следующий этаж — сдвиг вверх по Y |
 | `passage_point_layout_point` | `passage_point_layout_point(insert_pt, index, gap_ft)` | Точка origin группы точки прохода — под контроллером, каждая следующая ниже |
-| `device_layout_point` | `device_layout_point(insert_pt, category_layout, category, index_in_category, step_ft)` | Резервная раскладка (no-match): точка контроллера + смещение `(dx, dy)` категории + шаг `step_ft` вправо на каждый следующий экземпляр той же категории |
+| `device_layout_point` | `device_layout_point(pp_pt, index, step_ft)` | Резервная раскладка (no-match): устройства столбиком вниз от точки вставки точки прохода, шаг `step_ft` на каждое следующее |
 
 Типовые группы (узел-контроллер + узлы точек прохода) выбираются в окне
 «Параметры СКУД» → «Типовые группы структурной схемы» (только группы
