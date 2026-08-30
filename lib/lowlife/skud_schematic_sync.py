@@ -3,8 +3,8 @@
 Инкрементальная синхронизация структурной схемы СКУД — аналог
 sot_schematic.sync_levels / sync_rooms_in_level.
 
-Единица неизменности — ТОЧКА ПРОХОДА (узел-контроллер отдельно). При
-повторном запуске BuildSkudSchematic:
+Единица неизменности — ТОЧКА ПРОХОДА (схемное семейство контроллера
+синхронизируется отдельно). При повторном запуске BuildSkudSchematic:
   - точка прохода с тем же набором устройств (по UniqueId) и той же
     подобранной группой — по геометрии не трогается (ручная раскладка
     сохраняется), обновляются только адрес/марка на схемных элементах;
@@ -135,17 +135,6 @@ def _link_and_address(doc, schem_el, d, cfg):
             set_param_any(schem_el, cfg["device_marking_param"], addr)
 
 
-def _write_controller_address(doc, element_ids, address, cfg):
-    if not address:
-        return
-    for i in element_ids:
-        el = _resolve(doc, i)
-        if el is None:
-            continue
-        if cfg["category_of_schematic"](el) == cfg["controller_category_name"]:
-            set_param_any(el, cfg["schematic_address_param"], address)
-
-
 # ------------------------------------------------------------
 # Точка прохода: keep / redraw
 # ------------------------------------------------------------
@@ -264,30 +253,49 @@ def _redraw_passage_point(doc, view, pp, pp_pt, cfg):
 
 
 # ------------------------------------------------------------
-# Узел-контроллер
+# Контроллер — одиночное схемное семейство (не группа)
 # ------------------------------------------------------------
 
+def _place_controller(doc, view, symbol, uid, addr, cfg, pt):
+    """Вставляет схемное семейство контроллера, пишет UniqueId и адрес.
+    Возвращает [int id] (пустой список, если вставить не удалось)."""
+    if symbol is None:
+        return []
+    if not symbol.IsActive:
+        symbol.Activate()
+    try:
+        el = doc.Create.NewFamilyInstance(pt, symbol, view)
+    except:
+        el = None
+    if el is None:
+        return []
+    if cfg["source_uid_param"]:
+        set_param_any(el, cfg["source_uid_param"], uid)
+    if addr:
+        set_param_any(el, cfg["schematic_address_param"], addr)
+    return [el.Id.IntegerValue]
+
+
 def _sync_controller_node(doc, view, dc, prev_c, fresh_pt, cfg):
-    """(element_ids, group_name, insert_pt). insert_pt — откуда раскладывать
-    точки прохода этого контроллера."""
+    """(element_ids, insert_pt). insert_pt — откуда раскладывать точки
+    прохода этого контроллера."""
     addr = dc["address"]
     prev_node = prev_c.get("node") if prev_c else None
 
     if prev_node and _all_resolve(doc, prev_node.get("element_ids", [])):
         ids = list(prev_node["element_ids"])
-        _write_controller_address(doc, ids, addr, cfg)
-        return ids, prev_node.get("group"), _anchor_of(doc, ids, fresh_pt)
+        if addr:
+            for i in ids:
+                el = _resolve(doc, i)
+                if el is not None:
+                    set_param_any(el, cfg["schematic_address_param"], addr)
+        return ids, _anchor_of(doc, ids, fresh_pt)
 
     if prev_node:
         _delete(doc, prev_node.get("element_ids", []))
 
-    ids, group_name = _place_group(doc, cfg["controller_group_type"], fresh_pt)
-    for i in ids:
-        el = _resolve(doc, i)
-        if el is not None and cfg["source_uid_param"]:
-            set_param_any(el, cfg["source_uid_param"], dc["uid"])
-    _write_controller_address(doc, ids, addr, cfg)
-    return ids, group_name, fresh_pt
+    ids = _place_controller(doc, view, cfg["controller_symbol"], dc["uid"], addr, cfg, fresh_pt)
+    return ids, fresh_pt
 
 
 # ------------------------------------------------------------
@@ -303,8 +311,8 @@ def sync_schematic(doc, view, desired_controllers, previous_state, cfg):
                             "devices": [{"uid","id","category","address","room"}]}]}]
     previous_state — dict манифеста v2 (или skud_schematic_manifest.empty_manifest()).
     cfg — dict: category_of_schematic, schematic_address_param,
-      device_marking_param, source_uid_param, controller_group_type,
-      pp_group_types_by_name {имя: GroupType}, controller_category_name,
+      device_marking_param, source_uid_param, controller_symbol (FamilySymbol
+      схемного семейства контроллера), pp_group_types_by_name {имя: GroupType},
       category_symbols {категория: FamilySymbol} (для резервной раскладки),
       fallback_step_ft (шаг столбика в резервной раскладке), layout_gap_ft.
 
@@ -332,7 +340,7 @@ def sync_schematic(doc, view, desired_controllers, previous_state, cfg):
         if prev_c is None:
             report["controllers_created"] += 1
 
-        node_ids, node_group, insert_pt = _sync_controller_node(
+        node_ids, insert_pt = _sync_controller_node(
             doc, view, dc, prev_c, fresh_points[idx], cfg
         )
         controller_anchor = _anchor_of(doc, node_ids, insert_pt)
@@ -386,7 +394,7 @@ def sync_schematic(doc, view, desired_controllers, previous_state, cfg):
 
         new_controllers[uid] = {
             "address": dc["address"],
-            "node": {"element_ids": node_ids, "group": node_group},
+            "node": {"element_ids": node_ids},
             "passage_points": new_pps,
         }
 

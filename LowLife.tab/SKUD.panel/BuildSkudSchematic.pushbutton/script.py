@@ -2,8 +2,8 @@
 __title__ = "Структурная\nсхема"
 __doc__ = (
     "Строит и обновляет структурную схему СКУД на отдельном чертёжном виде "
-    "(имя — из настроек). Узел-контроллер (типовая группа деталей) ставится "
-    "один раз на контроллер; на каждую точку прохода подбирается группа, "
+    "(имя — из настроек). Схемное семейство контроллера ставится один раз "
+    "на контроллер; на каждую точку прохода подбирается группа деталей, "
     "чей состав устройств совпадает с составом точки прохода. Повторный "
     "запуск — инкрементальная синхронизация: неизменные точки прохода не "
     "трогаются (ручная раскладка сохраняется), изменившиеся перерисовываются, "
@@ -37,8 +37,7 @@ from lowlife import skud_settings
 from lowlife.skud_settings import (
     get_settings_silent, get_schematic_category_symbols,
     get_schematic_category_device_type_ids,
-    load_controller_group_id, load_passage_point_group_ids,
-    load_schematic_category_type_ids,
+    load_passage_point_group_ids, load_schematic_category_type_ids,
 )
 from lowlife import room_info_settings
 
@@ -95,21 +94,26 @@ category_of_real = category_of_from_type_map(
 category_of_schematic = category_of_from_type_map(
     invert_category_type_id_strings(load_schematic_category_type_ids())
 )
-CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)      # для no-match
+# {категория: схемное семейство} — контроллер тоже берётся отсюда, по
+# категории «контроллер»; для точек прохода эти семейства нужны только
+# в резервной раскладке (когда нет подходящей группы).
+CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
-CONTROLLER_GROUP_ID = load_controller_group_id()
-PASSAGE_POINT_GROUP_IDS = load_passage_point_group_ids()
-if not CONTROLLER_GROUP_ID or not PASSAGE_POINT_GROUP_IDS:
+if not CONTROLLER_CATEGORY_NAME or CONTROLLER_CATEGORY_NAME not in CATEGORY_SYMBOLS:
     forms.alert(
-        u"Не выбраны типовые группы структурной схемы.\n\n"
-        u"«Параметры СКУД» → «Типовые группы структурной схемы».",
+        u"Не выбрано схемное семейство для категории «контроллер».\n\n"
+        u"«Параметры СКУД» → категории устройств схемы → строка «контроллер».",
         exitscript=True
     )
+CONTROLLER_SYMBOL = CATEGORY_SYMBOLS[CONTROLLER_CATEGORY_NAME]
 
-controller_group_type = doc.GetElement(ElementId(int(CONTROLLER_GROUP_ID)))
-if controller_group_type is None:
-    forms.alert(u"Узел-контроллер (id {}) не найден. Перевыберите в «Параметры СКУД».".format(
-        CONTROLLER_GROUP_ID), exitscript=True)
+PASSAGE_POINT_GROUP_IDS = load_passage_point_group_ids()
+if not PASSAGE_POINT_GROUP_IDS:
+    forms.alert(
+        u"Не выбраны типовые группы точек прохода.\n\n"
+        u"«Параметры СКУД» → «Типовые группы точек прохода».",
+        exitscript=True
+    )
 
 ROOM_TARGET_PARAM = room_info_settings.load_saved_values().get("target_param_name") or u""
 
@@ -244,9 +248,8 @@ cfg = {
     "schematic_address_param": SCHEMATIC_ADDRESS_PARAM,
     "device_marking_param": DEVICE_MARKING_PARAM,
     "source_uid_param": SCHEMATIC_SOURCE_UID_PARAM,
-    "controller_group_type": controller_group_type,
+    "controller_symbol": CONTROLLER_SYMBOL,
     "pp_group_types_by_name": pp_group_type_by_name,
-    "controller_category_name": CONTROLLER_CATEGORY_NAME,
     "category_symbols": CATEGORY_SYMBOLS,
     "fallback_step_ft": FALLBACK_STEP_FT,
     "layout_gap_ft": LAYOUT_GAP_FT,

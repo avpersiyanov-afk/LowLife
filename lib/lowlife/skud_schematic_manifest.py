@@ -19,7 +19,7 @@ sot_layout_state.py для СОТ/СПС.
     "controllers": {
         "<controller UniqueId>": {
             "address": "F1",
-            "node": {"element_ids": [id, ...], "group": "<имя группы>"},
+            "node": {"element_ids": [id]},   # схемное семейство контроллера
             "passage_points": {
                 "<pp_key>": {
                     "signature": [["считыватель", 1], ["замок", 1]],

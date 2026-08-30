@@ -198,10 +198,6 @@ SCHEMATIC_CATEGORY_DEVICE_TYPES_KEY = "schematic_category_device_type_ids"
 # и на подбор кабеля).
 SCHEMATIC_CATEGORY_WIRE_TYPES_KEY = "schematic_category_wire_type_ids"
 
-# Отдельный ключ в JSON: "id_типа" одной группы деталей — типовой узел
-# КОНТРОЛЛЕРА структурной схемы (ставится один раз на контроллер).
-CONTROLLER_GROUP_ID_KEY = "controller_group_id"
-
 # Отдельный ключ в JSON: ["id_типа1", ...] — типовые узлы ТОЧЕК ПРОХОДА
 # (группы деталей). Для каждой точки прохода контроллера подбирается та,
 # чей состав устройств (по категориям, см. skud.category_by_type_id)
@@ -336,22 +332,10 @@ def load_schematic_category_wire_type_ids():
     return dict(saved.get(SCHEMATIC_CATEGORY_WIRE_TYPES_KEY, {}))
 
 
-def load_controller_group_id():
-    """"id_типа" группы деталей — типовой узел контроллера (или "")."""
-    saved = _read_all()
-    return saved.get(CONTROLLER_GROUP_ID_KEY, "") or ""
-
-
 def load_passage_point_group_ids():
     """["id_типа", ...] групп деталей — типовые узлы точек прохода."""
     saved = _read_all()
     return list(saved.get(PASSAGE_POINT_GROUP_IDS_KEY, []))
-
-
-def save_controller_group_id(id_str):
-    data = _read_all()
-    data[CONTROLLER_GROUP_ID_KEY] = id_str or ""
-    _write_all(data)
 
 
 def save_passage_point_group_ids(id_strs):
@@ -605,71 +589,23 @@ def show_settings_form(doc, values):
     for key, label_text in TYPE_FIELDS:
         make_type_picker(key, label_text)
 
-    # --- типовые группы деталей структурной схемы ---
-    # Один узел-контроллер (ставится один раз на контроллер) и набор
-    # узлов точек прохода (подбираются по составу устройств точки прохода).
+    # --- типовые группы точек прохода (группы деталей) ---
+    # Контроллер — это одиночное схемное семейство (выбирается ниже, в
+    # категории «контроллер»), у него нет типового узла-группы. Группы
+    # нужны только точкам прохода: у каждой — свой состав устройств.
 
     group_values = {
-        "controller_group_id": load_controller_group_id(),
         "passage_point_group_ids": list(load_passage_point_group_ids()),
     }
 
-    def _group_name(id_str):
-        if not id_str:
-            return u"(не выбрана)"
-        try:
-            el = doc.GetElement(ElementId(int(id_str)))
-        except:
-            el = None
-        return _safe_element_name(el) if el is not None else u"(не выбрана)"
-
     groups_section = TextBlock()
-    groups_section.Text = u"Типовые группы структурной схемы (группы деталей)"
+    groups_section.Text = u"Типовые группы точек прохода (группы деталей)"
     groups_section.FontWeight = FontWeights.Bold
     groups_section.Margin = Thickness(0, 16, 0, 4)
     root.Children.Add(groups_section)
 
-    # -- группа-контроллер --
-    ctrl_group_label = TextBlock()
-    ctrl_group_label.Text = u"Узел-контроллер"
-    ctrl_group_label.Margin = Thickness(0, 8, 0, 2)
-    root.Children.Add(ctrl_group_label)
-
-    ctrl_group_row = StackPanel()
-    ctrl_group_row.Orientation = Orientation.Horizontal
-
-    ctrl_group_value = TextBlock()
-    ctrl_group_value.Text = _group_name(group_values["controller_group_id"])
-    ctrl_group_value.VerticalAlignment = VerticalAlignment.Center
-    ctrl_group_value.Width = 300
-    ctrl_group_value.TextWrapping = TextWrapping.Wrap
-
-    ctrl_group_btn = Button()
-    ctrl_group_btn.Content = u"Выбрать..."
-    ctrl_group_btn.Padding = Thickness(8, 2, 8, 2)
-    ctrl_group_btn.Margin = Thickness(8, 0, 0, 0)
-
-    def on_pick_controller_group(sender, args):
-        group_types = list_detail_group_types(doc)
-        if not group_types:
-            forms.alert(u"В проекте нет групп деталей.")
-            return
-        options = sorted([GroupTypeOption(g) for g in group_types], key=lambda o: o.name)
-        selected = forms.SelectFromList.show(
-            options, title=u"Узел-контроллер", button_name=u"Выбрать", multiselect=False
-        )
-        if selected:
-            group_values["controller_group_id"] = str(selected.group_type.Id.IntegerValue)
-            ctrl_group_value.Text = selected.name
-
-    ctrl_group_btn.Click += on_pick_controller_group
-    ctrl_group_row.Children.Add(ctrl_group_value)
-    ctrl_group_row.Children.Add(ctrl_group_btn)
-    root.Children.Add(ctrl_group_row)
-
-    # -- группы точек прохода --
     pp_group_label = TextBlock()
-    pp_group_label.Text = u"Узлы точек прохода (несколько)"
+    pp_group_label.Text = u"Группы точек прохода (несколько — по одной на типовой состав)"
     pp_group_label.Margin = Thickness(0, 8, 0, 2)
     root.Children.Add(pp_group_label)
 
@@ -998,7 +934,6 @@ def show_settings_form(doc, values):
         save_schematic_category_type_ids(category_type_ids)
         save_schematic_category_device_type_ids(category_device_type_ids)
         save_schematic_category_wire_type_ids(category_wire_type_ids)
-        save_controller_group_id(group_values["controller_group_id"])
         save_passage_point_group_ids(group_values["passage_point_group_ids"])
 
         win.Close()
