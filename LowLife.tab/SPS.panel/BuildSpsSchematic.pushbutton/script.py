@@ -415,16 +415,20 @@ room_counters = {"already_set": 0, "looked_up": 0, "not_found": 0}
 sync_stats = {}
 
 with revit.Transaction(u"Sync SPS Schematic"):
-    # Сначала помещения — сразу для ВСЕЙ выборки (все устройства, кроме
-    # ушедших в ветки изоляторов — им помещение не нужно, они не в общей
-    # раскладке), одним проходом, а не по одному внутри группировки по
-    # этажам. Расстановка (level_room_groups/sync_levels) идёт уже по
-    # готовым значениям.
+    # Сначала помещения — сразу для ВСЕЙ выборки, одним проходом, а не по
+    # одному внутри группировки по этажам. ВКЛЮЧАЯ устройства ветвей
+    # изоляторов — им это помещение не нужно для обычной раскладки (они
+    # не попадут в level_room_groups, см. ниже), но нужно как значение
+    # параметра: sync_isolator_satellites сравнивает его с помещением
+    # изолятора (same_room) и пишет как подпись/параметр на схемный узел
+    # ветки, а EXTRA_ROOM_WIDTH_MM ниже — как условие резерва ширины;
+    # если пропустить resolve_room_value для них, у устройства, чьё
+    # помещение никогда не заполняли вручную, оно так и останется
+    # пустым навсегда (заполнить его больше некому). Расстановка
+    # (level_room_groups/sync_levels) идёт уже по готовым значениям.
     room_value_by_id = {}
 
     for el in elements:
-        if el.Id.IntegerValue in branch_device_ids:
-            continue
         room_value_by_id[el.Id.IntegerValue] = resolve_room_value(doc, el, room_counters)
 
     _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
@@ -481,9 +485,10 @@ with revit.Transaction(u"Sync SPS Schematic"):
         room_groups = OrderedDict()
 
         for el in level_groups[level_name]["elements"]:
-            if el.Id.IntegerValue not in room_value_by_id:
+            if el.Id.IntegerValue in branch_device_ids:
                 # Идёт в ряд-спутник своего изолятора (sync_isolator_satellites
-                # ниже), не в обычную раскладку по помещению.
+                # ниже), не в обычную раскладку по помещению — несмотря на
+                # то, что room_value_by_id для него тоже посчитан (см. выше).
                 continue
 
             room_value = room_value_by_id[el.Id.IntegerValue]
