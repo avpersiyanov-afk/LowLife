@@ -77,42 +77,52 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 встаёт прямо под изолятором (та же X, без сдвига) на
 same_room_branch_offset_mm ниже (параметр sync_isolator_satellites — по
 умолчанию SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT, настраивается в параметрах
-СПС), см. _place_inline_branch_devices. Вместо своей рамки — РАСШИРЯЕТСЯ
-уже существующая рамка помещения изолятора (та, что нарисовал
-sync_levels): вниз, чтобы туда влезла ветка, и вправо, если ветка шире,
-чем то, что уже занято основным рядом (см. _redraw_room_frame). Если это
-раздвигает помещение шире, чем сейчас занимает весь этаж — рамка этажа
-тоже перерисовывается пошире. Если хотя бы одно устройство ветви из
-ДРУГОГО помещения (или у изолятора/устройств помещение не определено) —
+СПС), см. _place_inline_branch_devices. Вместо своей рамки — вниз
+РАСШИРЯЕТСЯ уже существующая рамка помещения изолятора (см.
+_redraw_room_frame). Если хотя бы одно устройство ветви из ДРУГОГО
+помещения (или у изолятора/устройств помещение не определено) —
 рисуется отдельная рамка-спутник, как раньше.
 
-Место под ряд-спутник должно быть зарезервировано ЗАРАНЕЕ, при вызове
+Ширина под ветку (и "в том же помещении", и рамка-спутник в том же
+ряду) резервируется НЕ здесь, а ЗАРАНЕЕ — вызывающий код (кнопка) сам
+считает нужную доп. ширину по каждому изолятору с веткой "в том же
+помещении" и передаёт её в sot_schematic.sync_levels как
+extra_room_width_mm ДО того, как эта функция вообще запускается: так
+ширина попадает в саму раскладку этажа (перенос по max_row_width_mm,
+позиции соседних помещений) с самого начала, а не приклеивается поверх
+уже готового макета, когда её двигать/учитывать в лимите уже поздно (и
+подгонять от этого рамку этажа не нужно — она уже посчитана верно). Эта
+функция поэтому трогает у рамки помещения ТОЛЬКО высоту (вниз, под
+ветку) — ширина (x_left/x_right) уже правильная, взятая как есть из
+new_state.
+
+Расширение по высоте — идемпотентно: если рамка помещения уже была
+растянута под ветку с ТЕМ ЖЕ same_room_branch_offset_mm (метка
+room_record["branch_offset_mm"] от прошлого запуска совпадает) — линии
+не трогаются вообще, дальнейшую синхронизацию позиции (перенос при
+сдвиге этажа/соседей) берёт на себя обычный инкрементальный код
+sot_schematic.sync_rooms_in_level, как для любой другой рамки помещения
+(он транслирует line_ids по dx/dy сам, ему для этого не нужно знать про
+ветку). Перерисовывается заново только при первом появлении ветки, при
+смене same_room_branch_offset_mm в настройках, или если sync_levels уже
+перерисовал это помещение с нуля по другой причине (состав устройств
+изменился) — тогда метка "теряется" вместе со старой рамкой, и это
+детектируется как "нужно расширить заново".
+
+Место под ряд-спутник (и под ветку "в том же помещении", у неё отступ
+может быть больше) должно быть зарезервировано ЗАРАНЕЕ, при вызове
 sot_schematic.sync_levels — параметром extra_bottom_mm, значением
 SATELLITE_EXTRA_BOTTOM_MM (см. подробности отступов в комментариях к
-константам ниже; учитывает оба случая — и рамку, и ветку в том же
-помещении, у неё отступ больше); без этого рамка этажа наложится на
-ряд-спутник/ветку.
-
-ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: расширение рамки помещения ВПРАВО (ветка "в том
-же помещении" шире, чем сейчас занято основным рядом) происходит уже
-ПОСЛЕ того, как sync_levels расставил ВСЕ помещения этого этажа по X —
-если справа от расширяемого помещения уже стоит следующее (обычный
-зазор между ними — GROUP_GAP_MM, 5мм), новая правая граница может
-наехать на него: свободного места под расширение специально не
-резервируется, вся раскладка этажа заново не пересчитывается (это уже
-задача sync_levels, а не эта функция). На практике встречается редко —
-ветка либо уже, чем основной ряд изолятора (тогда расширения вообще не
-происходит), либо изолятор — последнее/единственное помещение в строке.
-Если увидите наложение на соседнее помещение — сообщите.
+константам ниже); без этого рамка этажа наложится на ряд-спутник/ветку.
 """
 
 from Autodesk.Revit.DB import XYZ
 
 from lowlife.params import get_string_param, set_param_any
 from lowlife.sot_schematic import (
-    draw_segment, draw_horizontal_line, delete_elements, move_text_to, MM_TO_FT, STEP_MM,
-    TOP_LINE_MM, TEXT_Y_MM, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM, LEVEL_SEPARATOR_OFFSET_MM,
-    place_node_annotation, _place_room_group, _draw_level_frame, _resolve
+    draw_segment, draw_horizontal_line, delete_elements, MM_TO_FT, STEP_MM,
+    TOP_LINE_MM, BOTTOM_LINE_MM, HEADER_TOP_LINE_MM, LEVEL_SEPARATOR_OFFSET_MM,
+    place_node_annotation, _place_room_group
 )
 
 _TOL_FT = 1e-6
@@ -404,12 +414,14 @@ def _place_inline_branch_devices(doc, view, start_x, y, valid_devices, room_para
 def _redraw_room_frame(doc, view, room_y, group_left_x, group_right_x, bottom_y):
     """
     Перерисовывает рамку помещения (5 линий, как _place_room_group) с
-    НОВЫМИ границами — используется, когда обычную рамку нужно расширить
-    под ответвление изолятора в том же помещении (см. докстринг модуля):
-    вниз (bottom_y — АБСОЛЮТНЫЙ Y, а не смещение от room_y, в отличие от
-    верхних линий, которые остаются на прежнем месте) и/или вправо
-    (group_right_x). Текст (подпись помещения) не трогает — вызывающий
-    код сам передвигает её (см. move_text_to), если ширина изменилась.
+    НОВОЙ нижней границей — используется, когда обычную рамку нужно
+    расширить вниз под ответвление изолятора в том же помещении (см.
+    докстринг модуля): bottom_y — АБСОЛЮТНЫЙ Y, а не смещение от room_y, в
+    отличие от верхних линий, которые остаются на прежнем месте.
+    group_left_x/group_right_x — те же, что уже были у рамки (ширина сюда
+    приходит готовой из new_state, эта функция её не меняет и не считает
+    заново) — текст (подпись помещения) поэтому тоже не трогает: раз
+    x_left/x_right не меняются, центр подписи остаётся тем же.
 
     Возвращает новый список id линий.
     """
@@ -432,15 +444,17 @@ def _redraw_room_frame(doc, view, room_y, group_left_x, group_right_x, bottom_y)
 def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, new_state,
                               category_symbols, category_for_device, room_param_name,
                               address_param_name, device_uid_param_name, annotation_symbol,
-                              label_offset_mm, level_labels=None, extra_bottom_mm=0.0,
-                              timing=None, same_room_branch_offset_mm=None):
+                              label_offset_mm, timing=None, same_room_branch_offset_mm=None):
     """
     Рисует ответвления изоляторов (см. докстринг модуля) — полностью
     перерисовывается каждый запуск (без инкрементальной синхронизации,
     как у основной раскладки помещений): состав ответвлений обычно
     небольшая часть от общего числа устройств, полный перебор здесь
     дешёвый, а отдельный инкрементальный код рисковал бы разъехаться с
-    основной раскладкой при её собственных сдвигах.
+    основной раскладкой при её собственных сдвигах. Исключение — рамка
+    помещения "в том же помещении" (см. ниже): она уже принадлежит
+    основной раскладке (нарисована sync_levels), и трогается лишь
+    настолько, насколько нужно для высоты под ветку.
 
     isolator_branches — {UniqueId изолятора: [device_el, ...]} — реальные
     элементы Revit его ветви (не UniqueId — нужны, чтобы создавать по ним
@@ -451,16 +465,13 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
     node_placement_from_state — вызывается здесь же), а для веток "в том
     же помещении" ЕЩЁ и мутируется напрямую: у затронутых помещений
     (new_state["levels"][level_key]["rooms"][room_key]) обновляются
-    "line_ids"/"x_right" при расширении рамки (см. ниже) — то же самое
-    делает и сам sync_levels, так что следующий запуск (сохранённый через
-    sot_layout_state.save_state) увидит уже расширенную рамку как есть, а
-    не будет пытаться "исправить" её обратно.
-
-    level_labels — {level_key: подпись этажа} (get_level_label) — нужны,
-    только если рамку этажа придётся перерисовывать пошире (см. ниже);
-    extra_bottom_mm — тот же extra_bottom_mm, что был передан в
-    sync_levels для ЭТОГО запуска (см. satellite_extra_bottom_mm) — нужен
-    для той же перерисовки, чтобы нижняя граница осталась той же.
+    "line_ids"/"branch_offset_mm" при расширении рамки вниз (см. ниже) —
+    то же самое делает и сам sync_levels, так что следующий запуск
+    (сохранённый через sot_layout_state.save_state) увидит уже
+    расширенную рамку как есть, а не будет пытаться "исправить" её
+    обратно. Ширина (x_left/x_right) этой функцией не трогается —
+    берётся как есть из new_state (см. докстринг модуля,
+    extra_room_width_mm у sync_levels).
 
     same_room_branch_offset_mm — на сколько мм ниже ряда изолятора
     ставится ветка "в том же помещении" (см. докстринг модуля); если не
@@ -475,11 +486,11 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
 
     Возвращает новый список id элементов ответвлений САМИХ ПО СЕБЕ (узлы
     ветки + их марки) — для state. Линии/текст расширенной рамки
-    помещения/этажа сюда НЕ входят: они уже учтены в самих
-    new_state["levels"][...]["rooms"][...]["line_ids"]/["text_id"] (и
-    аналогично у этажа), которые и так удаляет/пересоздаёт сам sync_levels
-    при следующей перестройке этого помещения/этажа — дублировать их
-    отслеживание здесь не нужно.
+    помещения сюда НЕ входят: они уже учтены в самих
+    new_state["levels"][...]["rooms"][...]["line_ids"], которые и так
+    удаляет/пересоздаёт/переносит сам sync_levels при следующей
+    перестройке этого помещения — дублировать их отслеживание здесь не
+    нужно.
     """
     delete_elements(doc, old_satellite_ids)
 
@@ -495,12 +506,6 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
     )
     inline_offset_ft = inline_offset_mm * MM_TO_FT
     inline_bottom_margin_ft = _INLINE_BOTTOM_MARGIN_MM * MM_TO_FT
-
-    # Этажи, где хотя бы одно помещение расширилось ВПРАВО (не только
-    # вниз — вниз уже зарезервировано extra_bottom_mm заранее, рамку
-    # этажа по высоте трогать не нужно) — им в конце, отдельным проходом,
-    # может понадобиться пошире и своя рамка этажа (см. ниже).
-    levels_grown_wider = set()
 
     # Группируем изоляторы по этажу — рамка ряда-спутника (для веток из
     # ДРУГОГО помещения) сидит на одном и том же фиксированном отступе от
@@ -557,35 +562,35 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
                 )
                 new_ids.extend(ids)
 
-                last_x = start_x + max(0, len(valid_devices) - 1) * STEP_MM * MM_TO_FT
-
-                # --- расширяем рамку помещения изолятора, чтобы ветка влезла ---
+                # --- расширяем рамку помещения изолятора вниз, чтобы
+                # ветка влезла (ширина уже верная — заранее зарезервирована
+                # вызывающим кодом через extra_room_width_mm у sync_levels,
+                # трогать её здесь не нужно); идемпотентно — только если
+                # ещё не расширяли с ТЕМ ЖЕ отступом (см. докстринг). ---
                 room_record = new_state.get("levels", {}).get(level_key, {}) \
                     .get("rooms", {}).get(isolator_room_key)
 
                 if room_record is not None:
-                    room_y = room_record.get("y", isolator_y)
-                    room_left_x = room_record.get("x_left", 0.0)
-                    old_right_x = room_record.get("x_right", room_left_x)
-
-                    # Ветка всегда глубже стандартной нижней линии
-                    # (BOTTOM_LINE_MM) при разумных настройках отступа —
-                    # сравнивать не с чем, просто берём её границу.
-                    new_bottom_y = inline_y - inline_bottom_margin_ft
-                    new_right_x = max(old_right_x, last_x + (STEP_MM / 2.0) * MM_TO_FT)
-
-                    delete_elements(doc, room_record.get("line_ids", []))
-                    room_record["line_ids"] = _redraw_room_frame(
-                        doc, view, room_y, room_left_x, new_right_x, new_bottom_y
+                    already_extended = (
+                        room_record.get("line_ids")
+                        and room_record.get("branch_offset_mm") is not None
+                        and abs(room_record["branch_offset_mm"] - inline_offset_mm) < _TOL_FT
                     )
-                    room_record["x_right"] = new_right_x
+                    if not already_extended:
+                        room_y = room_record.get("y", isolator_y)
+                        room_left_x = room_record.get("x_left", 0.0)
+                        room_right_x = room_record.get("x_right", room_left_x)
 
-                    if new_right_x > old_right_x + _TOL_FT:
-                        text_note = _resolve(doc, room_record.get("text_id"))
-                        if text_note is not None:
-                            new_center_x = (room_left_x + new_right_x) / 2.0
-                            move_text_to(doc, text_note, new_center_x, room_y + TEXT_Y_MM * MM_TO_FT)
-                        levels_grown_wider.add(level_key)
+                        # Ветка всегда глубже стандартной нижней линии
+                        # (BOTTOM_LINE_MM) при разумных настройках отступа —
+                        # сравнивать не с чем, просто берём её границу.
+                        new_bottom_y = inline_y - inline_bottom_margin_ft
+
+                        delete_elements(doc, room_record.get("line_ids", []))
+                        room_record["line_ids"] = _redraw_room_frame(
+                            doc, view, room_y, room_left_x, room_right_x, new_bottom_y
+                        )
+                        room_record["branch_offset_mm"] = inline_offset_mm
 
                 continue
 
@@ -627,39 +632,5 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
                     new_ids.append(dev["instance_id"])
                 if dev.get("tag_id") is not None:
                     new_ids.append(dev["tag_id"])
-
-    # --- если хотя бы одно помещение стало шире, рамка ЕГО этажа тоже
-    # может оказаться уже недостаточно широкой (доходила только до
-    # старого x_right) — перерисовываем такие этажи пошире, до самого
-    # широкого помещения на них (могло вырасти и не то, что раздвинуло
-    # этаж последним, поэтому берём максимум по ВСЕМ помещениям этажа,
-    # не только по затронутым). ---
-    for level_key in levels_grown_wider:
-        level_record = new_state.get("levels", {}).get(level_key)
-        if level_record is None:
-            continue
-
-        rooms = level_record.get("rooms", {})
-        room_rights = [r.get("x_right", 0.0) for r in rooms.values()]
-        if not room_rights:
-            continue
-
-        new_group_right = max(room_rights)
-        old_group_right = level_record.get("x_right", 0.0)
-        if new_group_right <= old_group_right + _TOL_FT:
-            continue
-
-        old_ids = list(level_record.get("line_ids", []))
-        if level_record.get("text_id") is not None:
-            old_ids.append(level_record["text_id"])
-        delete_elements(doc, old_ids)
-
-        level_label = (level_labels or {}).get(level_key, u"")
-        text_id, line_ids = _draw_level_frame(
-            doc, view, level_label, level_record.get("y", 0.0), 0.0, new_group_right, extra_bottom_mm
-        )
-        level_record["text_id"] = text_id
-        level_record["line_ids"] = line_ids
-        level_record["x_right"] = new_group_right
 
     return new_ids

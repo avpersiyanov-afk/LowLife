@@ -25,7 +25,12 @@ __doc__ = (
     "рисуются НЕ в своём обычном помещении, а отдельным рядом-веткой прямо "
     "под изолятором на схеме (тот же шаг между узлами и та же рамка, что у "
     "обычного помещения, зазор 5 мм), — итог похож на дерево, растущее из "
-    "кольца. У изолятора без такой цепи ответвления нет — его устройства "
+    "кольца. Если ВСЕ устройства ветви — в том же помещении, что и сам "
+    "изолятор, отдельная рамка не рисуется — ветка встаёт прямо под "
+    "изолятором внутри рамки его же помещения («Смещение ветки в том же "
+    "помещении, мм» в настройках СПС); место под неё (и по высоте, и по "
+    "ширине) резервируется заранее, вместе с общей раскладкой этажа. У "
+    "изолятора без такой цепи ответвления нет — его устройства "
     "остаются в общей раскладке по помещению как обычно.\n\n"
     "Если в настройках задана категория «Шкаф»/«Панель» — рисуются линии до "
     "него шинной топологией: на каждом этаже один общий горизонтальный "
@@ -92,7 +97,7 @@ from lowlife.fire_alarm_settings import (
     get_node_annotation_symbol, get_view_template, SCHEMATIC_SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import sync_levels, sync_cable_connections, delete_elements
+from lowlife.sot_schematic import sync_levels, sync_cable_connections, delete_elements, STEP_MM
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
 from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop, is_isolator
@@ -424,6 +429,52 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
     _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
 
+    # --- доп. ширина под ветки изоляторов "в том же помещении" (см.
+    # fire_alarm_schematic.sync_isolator_satellites) — считается ЗАРАНЕЕ,
+    # до sync_levels, чтобы попасть в саму раскладку (перенос по
+    # max_row_width_mm, позиции соседних помещений в ряду), а не
+    # приклеиваться поверх уже готового макета этажа постфактум, когда
+    # двигать/учитывать в лимите уже поздно. Консервативно (по числу
+    # устройств ветви * STEP_MM, без точного знания X изолятора внутри
+    # помещения) — лучше немного лишнего места, чем наложение на соседа;
+    # если изоляторов "в том же помещении" в одном помещении несколько —
+    # ширина суммируется по всем.
+    level_name_by_id = {}
+    for level_name in level_order:
+        for el in level_groups[level_name]["elements"]:
+            level_name_by_id[el.Id.IntegerValue] = level_name
+
+    extra_room_width_mm = {}
+    for isolator_el, branch_devices in satellite_branches_by_isolator.items():
+        isolator_id = isolator_el.Id.IntegerValue
+        isolator_room_value = room_value_by_id.get(isolator_id)
+        if not isolator_room_value:
+            continue
+
+        valid_branch_devices = [
+            d for d in branch_devices
+            if category_for_device(d) and CATEGORY_SYMBOLS.get(category_for_device(d)) is not None
+        ]
+        if not valid_branch_devices:
+            continue
+
+        same_room = all(
+            (get_string_param(d, ROOM_PARAM_NAME) or u"").strip() == isolator_room_value
+            for d in valid_branch_devices
+        )
+        if not same_room:
+            continue
+
+        level_name = level_name_by_id.get(isolator_id)
+        if level_name is None:
+            continue
+
+        extra_mm = len(valid_branch_devices) * STEP_MM
+        level_extra = extra_room_width_mm.setdefault(level_name, {})
+        level_extra[isolator_room_value] = level_extra.get(isolator_room_value, 0.0) + extra_mm
+
+    _mark(u"Резерв ширины под ветки изоляторов в том же помещении")
+
     level_room_groups = OrderedDict()
 
     for level_name in level_order:
@@ -478,7 +529,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
         extra_bottom_mm=satellite_extra_bottom, timing=timing_levels,
-        max_row_width_mm=MAX_ROW_WIDTH_MM, mirror_rows=False
+        max_row_width_mm=MAX_ROW_WIDTH_MM, mirror_rows=False,
+        extra_room_width_mm=extra_room_width_mm
     )
 
     _mark(u"sync_levels (раскладка этажей/помещений/устройств)")
@@ -496,8 +548,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
             doc, view, old_satellite_ids, isolator_branches_by_uid, new_state,
             CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
             DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM,
-            level_labels=level_labels, extra_bottom_mm=satellite_extra_bottom, timing=timing_satellites,
-            same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM
+            timing=timing_satellites, same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM
         )
     else:
         delete_elements(doc, old_satellite_ids)
