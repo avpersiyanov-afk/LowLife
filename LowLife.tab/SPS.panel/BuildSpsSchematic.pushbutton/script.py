@@ -170,8 +170,6 @@ except (ValueError, AttributeError):
 if SAME_ROOM_BRANCH_OFFSET_MM < 0.0:
     SAME_ROOM_BRANCH_OFFSET_MM = 0.0
 
-BRANCH_LOT_PARAM_NAME = settings.get("branch_lot_param_name") or u""
-
 # Марки (IndependentTag) — штатный вызов Revit API, который на некоторых
 # моделях стоит секунду и больше НА КАЖДУЮ марку (см. докстринг кнопки) —
 # при DRAW_TAGS=False сразу берём None: place_node_annotation ловит это в
@@ -435,16 +433,33 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
     _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
 
-    # --- доп. ширина под ветки изоляторов "в том же помещении" (см.
-    # fire_alarm_schematic.sync_isolator_satellites) — считается ЗАРАНЕЕ,
-    # до sync_levels, чтобы попасть в саму раскладку (перенос по
-    # max_row_width_mm, позиции соседних помещений в ряду), а не
-    # приклеиваться поверх уже готового макета этажа постфактум, когда
-    # двигать/учитывать в лимите уже поздно. Консервативно (по числу
-    # устройств ветви * STEP_MM, без точного знания X изолятора внутри
-    # помещения) — лучше немного лишнего места, чем наложение на соседа;
-    # если изоляторов "в том же помещении" в одном помещении несколько —
-    # ширина суммируется по всем.
+    # --- помещение веток изоляторов приводим к помещению самого изолятора,
+    # + резервируем под них доп. ширину (см. fire_alarm_schematic.
+    # sync_isolator_satellites) ---
+    #
+    # Устройства ветви физически часто разбросаны по НЕСКОЛЬКИМ помещениям
+    # (изолятор в одном, часть его извещателей — в соседних) — "помещение
+    # из связи" (resolve_room_value выше) по каждой точке отдельно
+    # совершенно корректно находит для них РАЗНЫЕ помещения, но для схемы
+    # ветка концептуально — одно целое, привязанное к помещению изолятора
+    # (там, где он физически стоит), а не лоскутное одеяло из подписей
+    # разных помещений её устройств. Поэтому здесь принудительно
+    # переписываем помещение ВСЕХ устройств ветви на помещение изолятора —
+    # и в кэш room_value_by_id (на нём же ниже extra_room_width_mm и сам
+    # same_room-выбор внутри sync_isolator_satellites), и на сам параметр
+    # РЕАЛЬНОГО устройства в модели (не только на схемный узел) — иначе
+    # при следующем запуске resolve_room_value увидел бы уже заполненный
+    # параметр и не тронул бы его, но там осталось бы старое (по точке)
+    # значение, а не то, что нужно ветке.
+    #
+    # Доп. ширина под ветку — считается ЗАРАНЕЕ, до sync_levels, чтобы
+    # попасть в саму раскладку (перенос по max_row_width_mm, позиции
+    # соседних помещений в ряду), а не приклеиваться поверх уже готового
+    # макета этажа постфактум, когда двигать/учитывать в лимите уже
+    # поздно. Консервативно (по числу устройств ветви * STEP_MM, без
+    # точного знания X изолятора внутри помещения) — лучше немного
+    # лишнего места, чем наложение на соседа; если изоляторов "в том же
+    # помещении" в одном помещении несколько — ширина суммируется по всем.
     level_name_by_id = {}
     for level_name in level_order:
         for el in level_groups[level_name]["elements"]:
@@ -464,12 +479,11 @@ with revit.Transaction(u"Sync SPS Schematic"):
         if not valid_branch_devices:
             continue
 
-        same_room = all(
-            (get_string_param(d, ROOM_PARAM_NAME) or u"").strip() == isolator_room_value
-            for d in valid_branch_devices
-        )
-        if not same_room:
-            continue
+        for d in valid_branch_devices:
+            d_id = d.Id.IntegerValue
+            if room_value_by_id.get(d_id) != isolator_room_value:
+                room_value_by_id[d_id] = isolator_room_value
+                set_param_any(d, ROOM_PARAM_NAME, isolator_room_value)
 
         level_name = level_name_by_id.get(isolator_id)
         if level_name is None:
@@ -479,7 +493,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         level_extra = extra_room_width_mm.setdefault(level_name, {})
         level_extra[isolator_room_value] = level_extra.get(isolator_room_value, 0.0) + extra_mm
 
-    _mark(u"Резерв ширины под ветки изоляторов в том же помещении")
+    _mark(u"Помещение веток изоляторов + резерв ширины под них")
 
     level_room_groups = OrderedDict()
 
@@ -555,8 +569,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
             doc, view, old_satellite_ids, isolator_branches_by_uid, new_state,
             CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
             DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM,
-            timing=timing_satellites, same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM,
-            lot_param_name=BRANCH_LOT_PARAM_NAME
+            timing=timing_satellites, same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM
         )
     else:
         delete_elements(doc, old_satellite_ids)
