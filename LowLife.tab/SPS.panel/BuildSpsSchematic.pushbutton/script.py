@@ -471,11 +471,13 @@ with revit.Transaction(u"Sync SPS Schematic"):
     # строки на её собственной высоте (см. fire_alarm_schematic.py), а
     # не отдельным отводом выше/ниже — зеркалировать нечего, все строки
     # выглядят одинаково (подпись/марка сверху).
+    satellite_extra_bottom = satellite_extra_bottom_mm(SAME_ROOM_BRANCH_OFFSET_MM)
+
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=satellite_extra_bottom_mm(SAME_ROOM_BRANCH_OFFSET_MM), timing=timing_levels,
+        extra_bottom_mm=satellite_extra_bottom, timing=timing_levels,
         max_row_width_mm=MAX_ROW_WIDTH_MM, mirror_rows=False
     )
 
@@ -487,14 +489,14 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
     old_satellite_ids = previous_state.get("satellite_ids", [])
     if satellite_branches_by_isolator:
-        node_placement_for_satellites = node_placement_from_state(new_state)
         isolator_branches_by_uid = OrderedDict(
             (isolator_el.UniqueId, devices) for isolator_el, devices in satellite_branches_by_isolator.items()
         )
         new_state["satellite_ids"] = sync_isolator_satellites(
-            doc, view, old_satellite_ids, isolator_branches_by_uid, node_placement_for_satellites,
+            doc, view, old_satellite_ids, isolator_branches_by_uid, new_state,
             CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
-            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM, timing=timing_satellites,
+            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM,
+            level_labels=level_labels, extra_bottom_mm=satellite_extra_bottom, timing=timing_satellites,
             same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM
         )
     else:
