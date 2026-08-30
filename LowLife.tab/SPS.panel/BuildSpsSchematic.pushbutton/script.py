@@ -456,12 +456,18 @@ with revit.Transaction(u"Sync SPS Schematic"):
     timing_levels = {}
     timing_satellites = {}
 
+    # mirror_rows=False — у СКС зеркалирование нечётных строк нужно,
+    # чтобы линия "устройство -> шкаф" не пересекала подпись соседней
+    # строки; у СПС кольцевой шлейф идёт напрямую через устройства
+    # строки на её собственной высоте (см. fire_alarm_schematic.py), а
+    # не отдельным отводом выше/ниже — зеркалировать нечего, все строки
+    # выглядят одинаково (подпись/марка сверху).
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
         extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM, timing=timing_levels,
-        max_row_width_mm=MAX_ROW_WIDTH_MM
+        max_row_width_mm=MAX_ROW_WIDTH_MM, mirror_rows=False
     )
 
     _mark(u"sync_levels (раскладка этажей/помещений/устройств)")

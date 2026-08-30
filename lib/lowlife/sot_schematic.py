@@ -717,7 +717,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                          category_symbols, category_for_device, room_param_name, address_param_name,
                          device_uid_param_name, annotation_symbol, label_offset_mm,
                          previous_rooms_state, unmatched_report, stats=None, room_sort_values=None,
-                         timing=None, max_row_width_mm=0.0):
+                         timing=None, max_row_width_mm=0.0, mirror_rows=True):
     """
     room_groups — OrderedDict(room_key -> [device, ...]) для этого этажа
     (желаемое состояние, уже сгруппировано по параметру помещения).
@@ -745,13 +745,24 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     ширина строки помещений на этаже, мм" в настройках каждой дисциплины
     (СКС/СОТ/СПС), по умолчанию пусто/0 — как раньше.
 
-    Нечётные строки (при переносе) — отзеркалены: подпись помещения
-    снизу рамки, марка узла снизу узла, соединительная линия "устройство
-    -> шкаф/панель" (рисуется отдельно вызывающим кодом) — от ВЕРХНЕГО
-    края узла (см. _place_room_group(flipped=...), _node_top_y). Так
-    соседние строки сходятся линиями в один общий зазор между ними
-    (чётная сверху — линии вниз, нечётная снизу — линии вверх), а не
-    расходятся каждая в свою сторону, пересекая подпись соседней строки.
+    Нечётные строки (при переносе) — по умолчанию отзеркалены: подпись
+    помещения снизу рамки, марка узла снизу узла, соединительная линия
+    "устройство -> шкаф/панель" (рисуется отдельно вызывающим кодом) —
+    от ВЕРХНЕГО края узла (см. _place_room_group(flipped=...),
+    _node_top_y). Так соседние строки сходятся линиями в один общий
+    зазор между ними (чётная сверху — линии вниз, нечётная снизу —
+    линии вверх), а не расходятся каждая в свою сторону, пересекая
+    подпись соседней строки. mirror_rows=False отключает это зеркалирование
+    целиком — ВСЕ строки как чётные (подпись/марка всегда сверху);
+    геометрически это безопасно само по себе (текст помещения — внутри
+    высоты рамки, ROW_WRAP_STEP_MM между строками не зависит от
+    зеркалирования), нужно только тем дисциплинам, чья "линия -> шкаф"
+    сама не идёт через каждую строку по-разному сверху/снизу и поэтому
+    рисковала бы пересечь чужую подпись — так что зеркалирование ей
+    просто не нужно (например СПС: кольцевой шлейф идёт напрямую через
+    устройства строки на её собственной высоте, а не отдельным отводом
+    выше/ниже, см. lib/lowlife/fire_alarm_schematic.py). По умолчанию
+    True — прежнее поведение (СОТ/СКС/СКУД).
 
     Для каждого помещения: если набор устройств (по UniqueId) не
     изменился — либо не трогаем вообще (позиция та же), либо просто
@@ -840,9 +851,10 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
         row_y = current_level_y - row * ROW_WRAP_STEP_MM * MM_TO_FT
         # Чётные строки — как раньше (подпись/марка сверху, линия от
         # нижнего края узла), нечётные — отзеркалены (см. _place_room_group
-        # docstring): так соседние строки сходятся линиями в один общий
-        # зазор между ними, а не расходятся каждая в свою сторону.
-        flipped = (row % 2 == 1)
+        # docstring), если mirror_rows не отключён вызывающим кодом: так
+        # соседние строки сходятся линиями в один общий зазор между ними,
+        # а не расходятся каждая в свою сторону.
+        flipped = mirror_rows and (row % 2 == 1)
 
         desired_uids = set(device.UniqueId for device, _symbol in valid_devices)
         prev_record = previous_rooms_state.get(room_key)
@@ -986,7 +998,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
                  category_for_device, room_param_name, address_param_name, device_uid_param_name,
                  annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
                  extra_bottom_mm=0.0, extra_left_mm=0.0, room_sort_values=None, timing=None,
-                 max_row_width_mm=0.0):
+                 max_row_width_mm=0.0, mirror_rows=True):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -1021,6 +1033,10 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     может быть разным, поэтому, в отличие от extra_bottom_mm/extra_left_mm,
     это не общий на все этажи параметр, а свой у каждого; общий механизм
     "растянуть рамку вниз" (`_draw_level_frame`) при этом тот же самый.
+    mirror_rows — передаётся в sync_rooms_in_level как есть (см. её
+    docstring — по умолчанию True, зеркалирование нечётных строк при
+    переносе; False отключает его целиком для дисциплин, которым оно не
+    нужно).
 
     stats (если передан) — тот же словарь-счётчик, что и у
     sync_rooms_in_level, дополнительно получает
@@ -1055,7 +1071,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             doc, view, level_label, y_cursor, level_dy, room_groups, category_symbols, category_for_device,
             room_param_name, address_param_name, device_uid_param_name, annotation_symbol,
             label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values,
-            timing=timing, max_row_width_mm=max_row_width_mm
+            timing=timing, max_row_width_mm=max_row_width_mm, mirror_rows=mirror_rows
         )
         report_rows.extend(level_report_rows)
 
