@@ -55,8 +55,10 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 Отдельно от линий — САМИ устройства ответвления рисуются не в своём
 обычном помещении (где им и следовало бы быть по параметру помещения), а
 отдельным рядом-"спутником" прямо под изолятором, как у обычного
-помещения (тот же шаг между узлами, та же рамка, подпись — реальные
-помещения устройств ветви — переиспользуется sot_schematic._place_room_group),
+помещения (тот же шаг между узлами, та же рамка; подпись — по умолчанию
+реальные помещения устройств ветви через "; ", либо параметр "Имя лота"
+(lot_param_name), если он задан и одинаков у всех устройств ветки — см.
+sync_isolator_satellites — переиспользуется sot_schematic._place_room_group),
 с зазором SATELLITE_GAP_MM от рамки этажа. Так итоговая раскладка
 читается как дерево, растущее от кольца: кольцо — обычный ряд по
 этажам/помещениям, а каждое ответвление — собственная "ветка" под своим
@@ -444,7 +446,8 @@ def _redraw_room_frame(doc, view, room_y, group_left_x, group_right_x, bottom_y)
 def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, new_state,
                               category_symbols, category_for_device, room_param_name,
                               address_param_name, device_uid_param_name, annotation_symbol,
-                              label_offset_mm, timing=None, same_room_branch_offset_mm=None):
+                              label_offset_mm, timing=None, same_room_branch_offset_mm=None,
+                              lot_param_name=None):
     """
     Рисует ответвления изоляторов (см. докстринг модуля) — полностью
     перерисовывается каждый запуск (без инкрементальной синхронизации,
@@ -479,6 +482,17 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
     совпадать со значением, переданным в satellite_extra_bottom_mm() при
     вызове sync_levels — иначе резерва под рамкой этажа может не
     хватить/останется зря пустым.
+
+    lot_param_name — параметр устройства "Имя лота" (например
+    SMNX_Имя лота, настройка СПС), по умолчанию None. Только для рамки-
+    спутника ветки из РАЗНЫХ помещений (см. докстринг модуля): если этот
+    параметр заполнен и ОДИНАКОВ у ВСЕХ устройств ветки — подпись рамки
+    берётся из его значения, а не строится перечислением через "; " их
+    (разных) помещений — это может быть заметно компактнее/понятнее,
+    когда у ветки на самом деле есть общее логическое имя (лот), просто
+    устройства физически в разных Revit-помещениях. Если параметр не
+    задан, пуст хотя бы у одного устройства ветки, или значения не
+    совпадают — подпись как раньше, из помещений.
 
     Остальные параметры — как у sot_schematic.sync_rooms_in_level/
     _place_room_group (категории, схемные символы, параметры записи).
@@ -600,17 +614,30 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
 
             satellite_y = isolator_y + row_offset_ft
 
-            # Подпись ветки — реальные помещения её устройств (как у
-            # обычных помещений), а не заглушка: если все устройства из
-            # одного помещения — просто его имя, если из разных — через
-            # "; ". Пусто (нет ни у одного) — тогда уже "↳", просто как
-            # пометка "это ветка".
-            room_names = []
-            for device, _symbol in valid_devices:
-                room_value = get_string_param(device, room_param_name)
-                if room_value and room_value.strip() and room_value.strip() not in room_names:
-                    room_names.append(room_value.strip())
-            room_label = u"; ".join(room_names) if room_names else u"↳"
+            # Подпись ветки — если задан lot_param_name (например
+            # "SMNX_Имя лота") и он заполнен ОДИНАКОВО у ВСЕХ устройств
+            # ветки — берём его значение (компактнее и осмысленнее, если
+            # у ветки есть общее логическое имя, даже когда устройства
+            # физически в разных Revit-помещениях). Иначе — реальные
+            # помещения её устройств (как у обычных помещений): если все
+            # устройства из одного помещения — просто его имя, если из
+            # разных — через "; ". Пусто (нет ни у одного) — тогда уже
+            # "↳", просто как пометка "это ветка".
+            room_label = None
+
+            if lot_param_name:
+                lot_values = [get_string_param(d, lot_param_name) for d, _symbol in valid_devices]
+                lot_values = [v.strip() if v else u"" for v in lot_values]
+                if all(lot_values) and len(set(lot_values)) == 1:
+                    room_label = lot_values[0]
+
+            if room_label is None:
+                room_names = []
+                for device, _symbol in valid_devices:
+                    room_value = get_string_param(device, room_param_name)
+                    if room_value and room_value.strip() and room_value.strip() not in room_names:
+                        room_names.append(room_value.strip())
+                room_label = u"; ".join(room_names) if room_names else u"↳"
 
             # Переиспользуем ту же функцию, что рисует обычные помещения —
             # тот же шаг между узлами, та же рамка, та же логика марок,

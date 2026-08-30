@@ -170,6 +170,8 @@ except (ValueError, AttributeError):
 if SAME_ROOM_BRANCH_OFFSET_MM < 0.0:
     SAME_ROOM_BRANCH_OFFSET_MM = 0.0
 
+BRANCH_LOT_PARAM_NAME = settings.get("branch_lot_param_name") or u""
+
 # Марки (IndependentTag) — штатный вызов Revit API, который на некоторых
 # моделях стоит секунду и больше НА КАЖДУЮ марку (см. докстринг кнопки) —
 # при DRAW_TAGS=False сразу берём None: place_node_annotation ловит это в
@@ -553,7 +555,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
             doc, view, old_satellite_ids, isolator_branches_by_uid, new_state,
             CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
             DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM,
-            timing=timing_satellites, same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM
+            timing=timing_satellites, same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM,
+            lot_param_name=BRANCH_LOT_PARAM_NAME
         )
     else:
         delete_elements(doc, old_satellite_ids)
