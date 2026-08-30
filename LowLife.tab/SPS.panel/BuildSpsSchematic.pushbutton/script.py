@@ -98,7 +98,7 @@ from lowlife.room_info import get_point as get_room_point, find_room_info, forma
 from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop, is_isolator
 from lowlife.fire_alarm_circuits import isolator_branch_device_map
 from lowlife.fire_alarm_schematic import (
-    sync_loop_connections, sync_isolator_satellites, node_placement_from_state, SATELLITE_EXTRA_BOTTOM_MM
+    sync_loop_connections, sync_isolator_satellites, node_placement_from_state, satellite_extra_bottom_mm
 )
 
 fire_alarm_settings.set_system("SPS")
@@ -155,6 +155,15 @@ except (ValueError, AttributeError):
     MAX_ROW_WIDTH_MM = 0.0
 if MAX_ROW_WIDTH_MM < 0.0:
     MAX_ROW_WIDTH_MM = 0.0
+
+try:
+    SAME_ROOM_BRANCH_OFFSET_MM = float(
+        (settings.get("same_room_branch_offset_mm") or u"").replace(u",", u".") or 0.0
+    )
+except (ValueError, AttributeError):
+    SAME_ROOM_BRANCH_OFFSET_MM = 0.0
+if SAME_ROOM_BRANCH_OFFSET_MM < 0.0:
+    SAME_ROOM_BRANCH_OFFSET_MM = 0.0
 
 # Марки (IndependentTag) — штатный вызов Revit API, который на некоторых
 # моделях стоит секунду и больше НА КАЖДУЮ марку (см. докстринг кнопки) —
@@ -466,7 +475,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        extra_bottom_mm=SATELLITE_EXTRA_BOTTOM_MM, timing=timing_levels,
+        extra_bottom_mm=satellite_extra_bottom_mm(SAME_ROOM_BRANCH_OFFSET_MM), timing=timing_levels,
         max_row_width_mm=MAX_ROW_WIDTH_MM, mirror_rows=False
     )
 
@@ -485,7 +494,8 @@ with revit.Transaction(u"Sync SPS Schematic"):
         new_state["satellite_ids"] = sync_isolator_satellites(
             doc, view, old_satellite_ids, isolator_branches_by_uid, node_placement_for_satellites,
             CATEGORY_SYMBOLS, category_for_device, ROOM_PARAM_NAME, ADDRESS_PARAM_NAME,
-            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM, timing=timing_satellites
+            DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL, NODE_LABEL_OFFSET_MM, timing=timing_satellites,
+            same_room_branch_offset_mm=SAME_ROOM_BRANCH_OFFSET_MM
         )
     else:
         delete_elements(doc, old_satellite_ids)

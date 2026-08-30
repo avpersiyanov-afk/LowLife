@@ -74,7 +74,9 @@ lowlife.fire_alarm_loops), исключаются из основной посл
 Если ВСЕ устройства ветви — в том же помещении, что и сам изолятор
 (сравнивается с уже размещённым узлом изолятора по параметру помещения,
 а не по ключу раскладки), отдельная рамка/подпись не рисуется вовсе —
-ветка просто ложится в тот же ряд, ниже на SAME_ROOM_BRANCH_OFFSET_MM, с
+ветка просто ложится в тот же ряд, ниже на same_room_branch_offset_mm
+(параметр sync_isolator_satellites — по умолчанию
+SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT, настраивается в параметрах СПС), с
 зазором SAME_ROOM_BRANCH_GAP_MM между изолятором и первым устройством
 ветки (см. _place_inline_branch_devices). Если хотя бы одно устройство
 ветви из ДРУГОГО помещения (или у изолятора/устройств помещение не
@@ -153,8 +155,12 @@ _LEVEL_BASE_BOTTOM_MM = BOTTOM_LINE_MM - LEVEL_SEPARATOR_OFFSET_MM
 
 # Ветка изолятора, все устройства которой в том же помещении, что и сам
 # изолятор — без отдельной рамки, просто ниже на эту величину (мм) от
-# ряда изолятора, в пределах того же помещения на схеме.
-SAME_ROOM_BRANCH_OFFSET_MM = 120.0
+# ряда изолятора, в пределах того же помещения на схеме. Значение по
+# умолчанию, если вызывающий код (кнопка) не передал своё, настраиваемое
+# в параметрах СПС ("same_room_branch_offset_mm") — было 120мм
+# изначально, оказалось на практике слишком далеко от изолятора для
+# "той же комнаты", уменьшено.
+SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT = 40.0
 
 # Зазор между изолятором и первым устройством такой ветки по X — тот же
 # шаг, что и между обычными узлами (STEP_MM), чтобы связывающая линия от
@@ -164,20 +170,38 @@ SAME_ROOM_BRANCH_GAP_MM = STEP_MM
 # Запас под сам схемный символ узла ниже точки вставки (высота УГО),
 # чтобы нижняя граница рамки этажа не резала узлы такой ветки.
 _INLINE_BOTTOM_MARGIN_MM = 15.0
-_INLINE_BOTTOM_MM = -(SAME_ROOM_BRANCH_OFFSET_MM + _INLINE_BOTTOM_MARGIN_MM)
 
-# extra_bottom_mm для sot_schematic.sync_levels — растягивает рамку
-# КАЖДОГО этажа вниз ровно настолько, чтобы под ней помещался самый
-# глубокий из двух случаев (обычная рамка ряда-спутника ИЛИ ветка в том
-# же помещении — она глубже), плюс небольшой запас 4мм — иначе
-# разделительная линия этажа наложится на них. Общий на все этажи (см.
-# докстринг sync_levels) — при построении СПС передаётся всегда, даже
-# для этажей без ответвлений, чтобы при появлении нового изолятора не
-# пришлось всё перестраивать заново из-за смены этого параметра.
-SATELLITE_EXTRA_BOTTOM_MM = max(
-    (_LEVEL_BASE_BOTTOM_MM - _SATELLITE_ROW_BOTTOM_MM) + 4.0,
-    (_LEVEL_BASE_BOTTOM_MM - _INLINE_BOTTOM_MM) + 4.0
-)
+
+def satellite_extra_bottom_mm(same_room_branch_offset_mm=None):
+    """
+    extra_bottom_mm для sot_schematic.sync_levels — растягивает рамку
+    КАЖДОГО этажа вниз ровно настолько, чтобы под ней помещался самый
+    глубокий из двух случаев (обычная рамка ряда-спутника ИЛИ ветка в
+    том же помещении, с отступом same_room_branch_offset_mm — по
+    умолчанию SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT, если не задан/некорректен,
+    как и у sync_isolator_satellites), плюс небольшой запас 4мм — иначе
+    разделительная линия этажа наложится на них. Общий на все этажи (см.
+    докстринг sync_levels) — при построении СПС передаётся всегда, даже
+    для этажей без ответвлений, чтобы при появлении нового изолятора (или
+    смене этого отступа в настройках) не пришлось всё перестраивать
+    заново из-за смены этого параметра.
+    """
+    offset = (
+        same_room_branch_offset_mm
+        if same_room_branch_offset_mm and same_room_branch_offset_mm > 0
+        else SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT
+    )
+    inline_bottom_mm = -(offset + _INLINE_BOTTOM_MARGIN_MM)
+
+    return max(
+        (_LEVEL_BASE_BOTTOM_MM - _SATELLITE_ROW_BOTTOM_MM) + 4.0,
+        (_LEVEL_BASE_BOTTOM_MM - inline_bottom_mm) + 4.0
+    )
+
+
+# extra_bottom_mm по умолчанию (SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT) — для
+# вызывающего кода, которому не нужно настраивать отступ отдельно.
+SATELLITE_EXTRA_BOTTOM_MM = satellite_extra_bottom_mm()
 
 
 def node_placement_from_state(state):
@@ -378,7 +402,7 @@ def _place_inline_branch_devices(doc, view, start_x, y, valid_devices, room_para
 def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, node_placement_by_uid,
                               category_symbols, category_for_device, room_param_name,
                               address_param_name, device_uid_param_name, annotation_symbol,
-                              label_offset_mm, timing=None):
+                              label_offset_mm, timing=None, same_room_branch_offset_mm=None):
     """
     Рисует ответвления изоляторов отдельным рядом-спутником прямо под
     изолятором (см. докстринг модуля) — полностью перерисовывается каждый
@@ -398,6 +422,13 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
     ветви в этом словаре отсутствуют (вызывающий код исключает их из
     обычной группировки по помещению перед sync_levels).
 
+    same_room_branch_offset_mm — на сколько мм ниже ряда изолятора
+    ставится ветка "в том же помещении" (см. докстринг модуля); если не
+    задан/не больше нуля — SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT. Должно
+    совпадать со значением, переданным в satellite_extra_bottom_mm() при
+    вызове sync_levels — иначе резерва под рамкой этажа может не
+    хватить/останется зря пустым.
+
     Остальные параметры — как у sot_schematic.sync_rooms_in_level/
     _place_room_group (категории, схемные символы, параметры записи).
     timing — см. sot_schematic._place_room_group/sync_levels.
@@ -409,7 +440,12 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, no
     new_ids = []
     row_offset_ft = SATELLITE_ROW_OFFSET_MM * MM_TO_FT
     gap_ft = SATELLITE_GAP_MM * MM_TO_FT
-    inline_offset_ft = SAME_ROOM_BRANCH_OFFSET_MM * MM_TO_FT
+    inline_offset_mm = (
+        same_room_branch_offset_mm
+        if same_room_branch_offset_mm and same_room_branch_offset_mm > 0
+        else SAME_ROOM_BRANCH_OFFSET_MM_DEFAULT
+    )
+    inline_offset_ft = inline_offset_mm * MM_TO_FT
     inline_gap_ft = SAME_ROOM_BRANCH_GAP_MM * MM_TO_FT
 
     # Группируем изоляторы по этажу — и рамка ряда-спутника, и ветка "в
