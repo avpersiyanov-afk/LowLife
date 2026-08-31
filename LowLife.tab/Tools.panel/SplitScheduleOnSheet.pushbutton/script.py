@@ -208,20 +208,44 @@ def instance_width_ft(inst):
     return w if (is_num(w) and w > 0) else 0.0
 
 
-def arrange_in_row(sched, sheet_id, origin, width_ft, count):
+def arrange_in_row(sched, sheet_id, origin, width_ft, count, original_id):
     doc.Regenerate()
     if is_num(width_ft) and width_ft > 0:
         step = width_ft + GAP_MM / MM_IN_FOOT
     else:
         step = FALLBACK_STEP_MM / MM_IN_FOOT
 
+    # Собрать экземпляры этой спеки на этом листе; первый на каждый валидный
+    # индекс сегмента оставляем, всё остальное (старая цельная спека до
+    # разбиения, дубли, индексы вне диапазона) — под снос. Исходный экземпляр
+    # сносим всегда: если Revit оставил его отдельным — уберём, если сделал
+    # сегментом 0 — пересоздадим ниже на нужном месте.
     by_seg = {}
+    strays = []
     for inst in FilteredElementCollector(doc).OfClass(ScheduleSheetInstance):
         if inst.ScheduleId.IntegerValue != sched.Id.IntegerValue:
             continue
         if inst.OwnerViewId.IntegerValue != sheet_id.IntegerValue:
             continue
-        by_seg.setdefault(inst.SegmentIndex, inst)
+        si = inst.SegmentIndex
+        if (original_id is not None
+                and inst.Id.IntegerValue == original_id.IntegerValue):
+            strays.append(inst.Id)
+        elif 0 <= si < count and si not in by_seg:
+            by_seg[si] = inst
+        else:
+            strays.append(inst.Id)
+
+    removed = 0
+    for sid in strays:
+        try:
+            doc.Delete(sid)
+            removed += 1
+        except Exception as ex:
+            dbg(u"Delete лишнего: {}".format(ex))
+    if removed:
+        doc.Regenerate()
+    dbg(u"удалено лишних экземпляров: {}".format(removed))
 
     created = 0
     moved = 0
@@ -242,7 +266,7 @@ def arrange_in_row(sched, sheet_id, origin, width_ft, count):
                 moved += 1
         except Exception as ex:
             dbg(u"Move сегм.{}: {}".format(k, ex))
-    return created, moved
+    return created, moved, removed
 
 
 def main():
@@ -282,6 +306,7 @@ def main():
 
     sheet_id = sched_inst.OwnerViewId
     origin = sched_inst.Point
+    original_id = sched_inst.Id
     width_ft = instance_width_ft(sched_inst)
 
     seg_mm = None
@@ -363,7 +388,9 @@ def main():
             sched.Split(count)
 
         doc.Regenerate()
-        created, moved = arrange_in_row(sched, sheet_id, origin, width_ft, count)
+        created, moved, removed = arrange_in_row(
+            sched, sheet_id, origin, width_ft, count, original_id
+        )
 
     final = sched.GetSegmentCount()
 
@@ -372,7 +399,8 @@ def main():
         lines.append(u"Высота участка ~{:.0f} мм (задано {:.0f})".format(
             seg_mm, amount * MM_IN_FOOT))
         lines.append(u"Высота всей спеки ~{:.0f} мм".format(total_mm))
-    lines.append(u"Раскладка: создано {}, передвинуто {}".format(created, moved))
+    lines.append(u"Раскладка: создано {}, передвинуто {}, удалено {}".format(
+        created, moved, removed))
     lines.append(
         u"Ширина участка: {:.0f} мм".format(width_ft * MM_IN_FOOT)
         if width_ft else
