@@ -68,16 +68,6 @@ def _parse(text):
     return data
 
 
-def raw_manifest(view, manifest_param_name):
-    """Сырой dict из параметра вида без проверки версии (для миграции)."""
-    if view is None or not manifest_param_name:
-        return None
-    try:
-        return json.loads(get_string_param(view, manifest_param_name) or u"")
-    except:
-        return None
-
-
 def find_schematic_view(doc, view_name, manifest_param_name):
     """
     Ищет чертёжный вид с точным именем view_name.

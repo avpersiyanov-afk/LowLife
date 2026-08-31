@@ -125,14 +125,19 @@ def _dev_state(d, schem_el):
     }
 
 
+def _write_address_and_mark(doc, el, addr, cfg):
+    """Адрес → «Адрес…», и он же → «Марка…» (если параметр марки задан)."""
+    if not addr:
+        return
+    set_param_any(el, cfg["schematic_address_param"], addr)
+    if cfg["device_marking_param"]:
+        set_param_any(el, cfg["device_marking_param"], addr)
+
+
 def _link_and_address(doc, schem_el, d, cfg):
     if cfg["source_uid_param"]:
         set_param_any(schem_el, cfg["source_uid_param"], d["uid"])
-    addr = d["address"] or u""
-    if addr:
-        set_param_any(schem_el, cfg["schematic_address_param"], addr)
-        if cfg["device_marking_param"]:
-            set_param_any(schem_el, cfg["device_marking_param"], addr)
+    _write_address_and_mark(doc, schem_el, d["address"] or u"", cfg)
 
 
 # ------------------------------------------------------------
@@ -257,7 +262,7 @@ def _redraw_passage_point(doc, view, pp, pp_pt, cfg):
 # ------------------------------------------------------------
 
 def _place_controller(doc, view, symbol, uid, addr, cfg, pt):
-    """Вставляет схемное семейство контроллера, пишет UniqueId и адрес.
+    """Вставляет схемное семейство контроллера, пишет UniqueId, адрес и марку.
     Возвращает [int id] (пустой список, если вставить не удалось)."""
     if symbol is None:
         return []
@@ -271,8 +276,7 @@ def _place_controller(doc, view, symbol, uid, addr, cfg, pt):
         return []
     if cfg["source_uid_param"]:
         set_param_any(el, cfg["source_uid_param"], uid)
-    if addr:
-        set_param_any(el, cfg["schematic_address_param"], addr)
+    _write_address_and_mark(doc, el, addr, cfg)
     return [el.Id.IntegerValue]
 
 
@@ -284,11 +288,10 @@ def _sync_controller_node(doc, view, dc, prev_c, fresh_pt, cfg):
 
     if prev_node and _all_resolve(doc, prev_node.get("element_ids", [])):
         ids = list(prev_node["element_ids"])
-        if addr:
-            for i in ids:
-                el = _resolve(doc, i)
-                if el is not None:
-                    set_param_any(el, cfg["schematic_address_param"], addr)
+        for i in ids:
+            el = _resolve(doc, i)
+            if el is not None:
+                _write_address_and_mark(doc, el, addr, cfg)
         return ids, _anchor_of(doc, ids, fresh_pt)
 
     if prev_node:

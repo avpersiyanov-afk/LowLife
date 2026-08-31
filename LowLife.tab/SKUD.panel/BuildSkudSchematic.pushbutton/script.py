@@ -31,7 +31,7 @@ from lowlife.skud_schematic import (
 )
 from lowlife.skud_schematic_sync import sync_schematic
 from lowlife.skud_schematic_manifest import (
-    find_schematic_view, load_manifest, save_manifest, empty_manifest, raw_manifest,
+    find_schematic_view, load_manifest, save_manifest, empty_manifest,
 )
 from lowlife import skud_settings
 from lowlife.skud_settings import (
@@ -218,7 +218,6 @@ if name_conflict:
 
 is_new_view = view is None
 drafting_type_id = None
-legacy_ids = []
 
 if is_new_view:
     previous_state = empty_manifest()
@@ -233,9 +232,8 @@ if is_new_view:
         forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).",
                     exitscript=True)
 else:
-    raw = raw_manifest(view, MANIFEST_PARAM_NAME)
-    if isinstance(raw, dict) and raw.get("schema_version") != 2:
-        legacy_ids = list(raw.get("placed_element_ids", []))       # миграция v1 -> v2
+    # Несовместимый/битый манифест load_manifest вернёт как empty_manifest()
+    # — тогда схема соберётся заново (нерезолвящихся ссылок нет по определению).
     previous_state = load_manifest(view, MANIFEST_PARAM_NAME)
 
 
@@ -260,18 +258,6 @@ with revit.Transaction("Sync SKUD Schematic"):
         view = ViewDrafting.Create(doc, drafting_type_id)
         view.Name = SCHEMATIC_VIEW_NAME
         view.Scale = 1
-
-    if legacy_ids:
-        for old_id in legacy_ids:
-            try:
-                el = doc.GetElement(ElementId(int(old_id)))
-            except:
-                el = None
-            if el is not None:
-                try:
-                    doc.Delete(el.Id)
-                except:
-                    pass
 
     new_state, report = sync_schematic(doc, view, desired_controllers, previous_state, cfg)
     manifest_saved, manifest_save_error = save_manifest(view, MANIFEST_PARAM_NAME, new_state)
