@@ -32,6 +32,9 @@ MM_IN_FOOT = 304.8
 # Зазор между участками при раскладке в ряд
 GAP_MM = 5.0
 
+# Ширина раскладки, если ширину участка измерить не удалось
+FALLBACK_STEP_MM = 300.0
+
 # Разумный предел, чтобы опечатка не наплодила сотни участков
 MAX_SEGMENTS = 60
 
@@ -49,9 +52,6 @@ class Stop(Exception):
 def get_target_schedule():
     u"""
     (ViewSchedule, экземпляр на листе или None, число разных выбранных спек).
-    Спека берётся из выбранного на листе экземпляра спецификации или из
-    напрямую выбранной спецификации; выбор нескольких сегментов одной и той
-    же спеки ошибкой не считается.
     """
     schedule_ids = set()
     picked = None
@@ -73,30 +73,8 @@ def get_target_schedule():
     return picked, picked_inst, len(schedule_ids)
 
 
-def instance_size_ft(inst):
-    u"""
-    (ширина, высота) экземпляра спецификации на листе в футах, либо (0, 0).
-    GetSegmentHeight здесь бесполезен: у неразбитой спеки он даёт бесконечность.
-    """
-    if inst is None:
-        return 0.0, 0.0
-
-    sheet = doc.GetElement(inst.OwnerViewId)
-    try:
-        bbox = inst.get_BoundingBox(sheet)
-    except Exception:
-        bbox = None
-
-    if bbox is None:
-        return 0.0, 0.0
-
-    w = bbox.Max.X - bbox.Min.X
-    h = bbox.Max.Y - bbox.Min.Y
-    if math.isinf(w) or math.isnan(w) or w <= 0:
-        w = 0.0
-    if math.isinf(h) or math.isnan(h) or h <= 0:
-        h = 0.0
-    return w, h
+def is_num(x):
+    return x is not None and not math.isinf(x) and not math.isnan(x)
 
 
 def ask(prompt, default):
@@ -142,46 +120,122 @@ def parse_request(raw):
 
 
 def merge_back(sched):
-    u"""Собрать разбитую спеку обратно в одну. Сигнатура MergeSegments в
-    разных сборках Revit отличается — пробуем оба варианта."""
-    try:
-        sched.MergeSegments()
-    except TypeError:
-        guard = 0
-        while sched.GetSegmentCount() > 1 and guard < MAX_SEGMENTS:
+    u"""Собрать разбитую спеку обратно в одну, независимо от сигнатуры
+    MergeSegments в конкретной сборке Revit."""
+    guard = 0
+    while sched.GetSegmentCount() > 1 and guard < MAX_SEGMENTS:
+        before = sched.GetSegmentCount()
+        try:
+            sched.MergeSegments()
+        except TypeError:
             sched.MergeSegments(0)
-            guard += 1
+        if sched.GetSegmentCount() >= before:
+            break
+        guard += 1
 
 
-def arrange_in_row(sched, sheet_id, origin, width_ft, count):
+def measure_total_height_ft(sched):
     u"""
-    Разложить участки спеки на листе sheet_id в один ряд слева направо от
-    origin. Недостающие создаём, лишние по месту двигаем.
-    Возвращает (создано, передвинуто).
+    Полная высота тела спецификации в футах. Меряем «пробой»: делим на 2
+    равные части, читаем предел первой (= половина полной высоты), собираем
+    обратно. GetSegmentHeight у неразбитой спеки возвращает бесконечность,
+    габарит экземпляра на листе врёт — поэтому так.
     """
-    doc.Regenerate()
+    try:
+        sched.Split(2)
+        doc.Regenerate()
+        half = sched.GetSegmentHeight(0)
+        merge_back(sched)
+        doc.Regenerate()
+        if is_num(half) and half > 0:
+            return 2.0 * half
+    except Exception:
+        try:
+            merge_back(sched)
+            doc.Regenerate()
+        except Exception:
+            pass
+    return 0.0
 
+
+def collect_on_sheet(sched, sheet_id):
+    u"""{SegmentIndex: instance} + [Id дублей] для спеки на листе."""
     by_seg = {}
+    dups = []
     for inst in FilteredElementCollector(doc).OfClass(ScheduleSheetInstance):
         if inst.ScheduleId.IntegerValue != sched.Id.IntegerValue:
             continue
         if inst.OwnerViewId.IntegerValue != sheet_id.IntegerValue:
             continue
-        by_seg[inst.SegmentIndex] = inst
+        si = inst.SegmentIndex
+        if si in by_seg:
+            dups.append(inst.Id)
+        else:
+            by_seg[si] = inst
+    return by_seg, dups
 
-    step = width_ft + GAP_MM / MM_IN_FOOT
+
+def segment_width_ft(sched, sheet_id):
+    u"""Ширина участка — максимум по габаритам размещённых сегментов."""
+    sheet = doc.GetElement(sheet_id)
+    best = 0.0
+    for inst in FilteredElementCollector(doc).OfClass(ScheduleSheetInstance):
+        if inst.ScheduleId.IntegerValue != sched.Id.IntegerValue:
+            continue
+        if inst.OwnerViewId.IntegerValue != sheet_id.IntegerValue:
+            continue
+        try:
+            b = inst.get_BoundingBox(sheet)
+        except Exception:
+            b = None
+        if b is None:
+            continue
+        w = b.Max.X - b.Min.X
+        if is_num(w) and w > best:
+            best = w
+    return best
+
+
+def arrange_in_row(sched, sheet_id, origin, count):
+    u"""Разложить участки слева направо от origin. Дубли/лишние удалить,
+    недостающие создать, имеющиеся передвинуть."""
+    doc.Regenerate()
+
+    by_seg, dups = collect_on_sheet(sched, sheet_id)
+    kill = list(dups)
+    for si in list(by_seg.keys()):
+        if si < 0 or si >= count:
+            kill.append(by_seg[si].Id)
+
+    removed = 0
+    for eid in kill:
+        try:
+            doc.Delete(eid)
+            removed += 1
+        except Exception:
+            pass
+    if removed:
+        doc.Regenerate()
+
+    width_ft = segment_width_ft(sched, sheet_id)
+    if is_num(width_ft) and width_ft > 0:
+        step = width_ft + GAP_MM / MM_IN_FOOT
+    else:
+        step = FALLBACK_STEP_MM / MM_IN_FOOT
+
+    by_seg, _ = collect_on_sheet(sched, sheet_id)
     created = 0
     moved = 0
-
     for k in range(count):
         target = XYZ(origin.X + step * k, origin.Y, origin.Z)
         inst = by_seg.get(k)
-
         if inst is None:
-            ScheduleSheetInstance.Create(doc, sheet_id, sched.Id, target, k)
-            created += 1
+            try:
+                ScheduleSheetInstance.Create(doc, sheet_id, sched.Id, target, k)
+                created += 1
+            except Exception:
+                pass
             continue
-
         try:
             delta = target - inst.Point
             if delta.GetLength() > 1e-7:
@@ -190,7 +244,7 @@ def arrange_in_row(sched, sheet_id, origin, width_ft, count):
         except Exception:
             pass
 
-    return created, moved
+    return created, moved, removed, width_ft * MM_IN_FOOT
 
 
 def main():
@@ -201,18 +255,14 @@ def main():
             u"Сначала выберите на листе спецификацию (или саму спецификацию "
             u"в диспетчере проекта), потом запустите кнопку."
         )
-
     if distinct > 1:
         raise Stop(u"Выбрано несколько разных спецификаций. Оставьте одну.")
-
     if getattr(sched, "IsTitleblockRevisionSchedule", False):
         raise Stop(u"Спецификацию изменений в штампе разбить нельзя.")
-
     if sched_inst is None:
         raise Stop(
             u"Выберите экземпляр спецификации на листе (щёлкните по самой "
-            u"таблице на листе), а не спецификацию в диспетчере проекта — "
-            u"иначе некуда раскладывать участки."
+            u"таблице на листе), а не спецификацию в диспетчере проекта."
         )
 
     try:
@@ -224,9 +274,8 @@ def main():
 
     if already_split:
         go = forms.alert(
-            u"Спецификация уже разбита на {} участков. Revit умеет делить "
-            u"спеку только один раз, поэтому её нужно сначала собрать обратно "
-            u"в одну.\n\nСобрать сейчас и разбить заново?".format(
+            u"Спецификация уже разбита на {} участков. Её нужно сначала "
+            u"собрать обратно в одну.\n\nСобрать и разбить заново?".format(
                 sched.GetSegmentCount()
             ),
             yes=True, no=True
@@ -234,23 +283,15 @@ def main():
         if not go:
             raise Cancelled()
 
-    _, hint_h = instance_size_ft(sched_inst)
-    if hint_h > 0 and not already_split:
-        size_line = u"Высота всей спецификации на листе — {:.0f} мм.".format(
-            hint_h * MM_IN_FOOT
-        )
-    else:
-        size_line = u"Число участков — просто число."
-
     raw = ask(
         u"На сколько участков разбить спецификацию? (например  3)\n"
-        u"Либо высота одного участка: число с «мм» (например  180мм).\n\n"
-        + size_line,
+        u"Либо высота одного участка: число с «мм» (например  180мм).",
         3
     )
     mode, amount = parse_request(raw)
 
     sheet_id = sched_inst.OwnerViewId
+    origin = sched_inst.Point
 
     with revit.Transaction(u"Разбить спецификацию на листе"):
         if already_split:
@@ -258,15 +299,12 @@ def main():
             if sched.GetSegmentCount() > 1:
                 raise Stop(
                     u"Не удалось собрать спецификацию обратно в одну. "
-                    u"Соберите участки вручную (перетаскиванием) и повторите."
+                    u"Соберите участки вручную и повторите."
                 )
             doc.Regenerate()
 
-        # Замер после возможной сборки — тут спека точно цельная
-        width_ft, total_ft = instance_size_ft(sched_inst)
-        origin = sched_inst.Point
-
         if mode == "mm":
+            total_ft = measure_total_height_ft(sched)
             if total_ft <= 0:
                 raise Stop(
                     u"Не удалось измерить высоту спецификации. Задайте число "
@@ -284,29 +322,31 @@ def main():
                 heights.Add(amount)
             sched.Split(heights)
             seg_mm = amount * MM_IN_FOOT
+            total_mm = total_ft * MM_IN_FOOT
         else:
             count = amount
             sched.Split(count)
             seg_mm = None
+            total_mm = 0.0
 
-        if width_ft <= 0:
-            width_ft = 0.0  # раскладка вплотную, если ширину не измерили
-
-        created, moved = arrange_in_row(
-            sched, sheet_id, origin, width_ft, count
+        doc.Regenerate()
+        created, moved, removed, width_mm = arrange_in_row(
+            sched, sheet_id, origin, count
         )
 
     final = sched.GetSegmentCount()
-    tail = u""
-    if seg_mm is not None:
-        tail = u"\nВысота участка: {:.0f} мм".format(seg_mm)
 
-    forms.alert(
-        u"Готово.\n\nУчастков: {}{}\nРазложено в ряд на листе: {} "
-        u"(создано {}, передвинуто {}).".format(
-            final, tail, created + moved, created, moved
+    lines = [u"Готово.", u"", u"Участков: {}".format(final)]
+    if seg_mm is not None:
+        lines.append(u"Высота участка: {:.0f} мм".format(seg_mm))
+        lines.append(u"Измеренная высота всей спеки: {:.0f} мм".format(total_mm))
+    lines.append(
+        u"Раскладка: создано {}, передвинуто {}, удалено лишних {}".format(
+            created, moved, removed
         )
     )
+    lines.append(u"Ширина участка для раскладки: {:.0f} мм".format(width_mm))
+    forms.alert(u"\n".join(lines))
 
 
 try:
