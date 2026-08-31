@@ -792,7 +792,8 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
                          category_symbols, category_for_device, room_param_name, address_param_name,
                          device_uid_param_name, annotation_symbol, label_offset_mm,
                          previous_rooms_state, unmatched_report, stats=None, room_sort_values=None,
-                         timing=None, max_row_width_mm=0.0, mirror_rows=True, extra_room_width_mm=None):
+                         timing=None, max_row_width_mm=0.0, mirror_rows=True, extra_room_width_mm=None,
+                         extra_row_wrap_step_mm=0.0):
     """
     room_groups — OrderedDict(room_key -> [device, ...]) для этого этажа
     (желаемое состояние, уже сгруппировано по параметру помещения).
@@ -852,6 +853,21 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
     ширина изменилась по сравнению с прошлым запуском — помещение всё
     равно перерисовывается заново (не просто переносится), иначе
     фактическая ширина осталась бы прежней.
+
+    extra_row_wrap_step_mm — на сколько мм увеличить ROW_WRAP_STEP_MM
+    (вертикальный шаг между СОСЕДНИМИ строками при переносе по ширине,
+    см. max_row_width_mm выше), по умолчанию 0 — как раньше. Обычный шаг
+    рассчитан только на высоту САМОЙ рамки помещения (HEADER_TOP_LINE_MM
+    + (-BOTTOM_LINE_MM)) плюс зазор ROW_WRAP_GAP_MM (30мм) — если
+    вызывающему коду ниже нижней линии рамки помещения ЕЩЁ надо место под
+    что-то своё (например СПС — ряды-ветки ответвлений изолятора, см.
+    fire_alarm_schematic.py: SATELLITE_EXTRA_BOTTOM_MM/satellite_extra_bottom_mm),
+    обычного зазора может не хватить — содержимое СЛЕДУЮЩЕЙ строки
+    (её собственная рамка/подпись) окажется выше этого "довеска" у
+    ПРЕДЫДУЩЕЙ и будет им перекрыто. Один шаг на ВСЕ переходы между
+    строками этажа (не по строкам отдельно — так же, как сам
+    ROW_WRAP_STEP_MM устроен) — с запасом, но без риска угадать не ту
+    строку, которой конкретно нужен довесок.
 
     Для каждого помещения: если набор устройств (по UniqueId) не
     изменился — либо не трогаем вообще (позиция та же), либо просто
@@ -929,6 +945,8 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
         row_of_room[room_key] = current_row
         row_x_cursor += width
 
+    effective_row_wrap_step_mm = ROW_WRAP_STEP_MM + extra_row_wrap_step_mm
+
     max_row_index = 0
     x_cursor = 0.0
     active_row = 0
@@ -940,7 +958,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
             x_cursor = 0.0
             active_row = row
         max_row_index = max(max_row_index, row)
-        row_y = current_level_y - row * ROW_WRAP_STEP_MM * MM_TO_FT
+        row_y = current_level_y - row * effective_row_wrap_step_mm * MM_TO_FT
         # Чётные строки — как раньше (подпись/марка сверху, линия от
         # нижнего края узла), нечётные — отзеркалены (см. _place_room_group
         # docstring), если mirror_rows не отключён вызывающим кодом: так
@@ -1092,7 +1110,7 @@ def sync_rooms_in_level(doc, view, level_label, current_level_y, level_dy, room_
         delete_elements(doc, _room_record_element_ids(prev_record))
         _bump(stats, "rooms_removed")
 
-    row_wrap_extra_mm = max_row_index * ROW_WRAP_STEP_MM if max_row_index > 0 else 0.0
+    row_wrap_extra_mm = max_row_index * effective_row_wrap_step_mm if max_row_index > 0 else 0.0
 
     return new_rooms_state, level_group_left, level_group_right, report_rows, row_wrap_extra_mm
 
@@ -1105,7 +1123,8 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
                  category_for_device, room_param_name, address_param_name, device_uid_param_name,
                  annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
                  extra_bottom_mm=0.0, extra_left_mm=0.0, room_sort_values=None, timing=None,
-                 max_row_width_mm=0.0, mirror_rows=True, extra_room_width_mm=None):
+                 max_row_width_mm=0.0, mirror_rows=True, extra_room_width_mm=None,
+                 extra_row_wrap_step_mm=0.0):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -1154,6 +1173,14 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     (см. fire_alarm_schematic.sync_isolator_satellites) — раньше ширина
     добавлялась постфактум и лимит переноса её не учитывал.
 
+    extra_row_wrap_step_mm — передаётся в sync_rooms_in_level как есть
+    (см. её докстринг) — насколько увеличить вертикальный шаг между
+    СОСЕДНИМИ строками при переносе по ширине, если вызывающему коду под
+    рамкой помещения нужно ЕЩЁ место, кроме самой рамки (например СПС —
+    ряды-ветки ответвлений изолятора). По умолчанию 0 — как раньше. Один
+    на все этажи разом (не по этажам отдельно — как max_row_width_mm/
+    mirror_rows).
+
     stats (если передан) — тот же словарь-счётчик, что и у
     sync_rooms_in_level, дополнительно получает
     "levels_unchanged"/"levels_moved"/"levels_created"/"levels_redrawn"/"levels_removed".
@@ -1189,7 +1216,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
             room_param_name, address_param_name, device_uid_param_name, annotation_symbol,
             label_offset_mm, prev_rooms, unmatched_report, stats, level_room_sort_values,
             timing=timing, max_row_width_mm=max_row_width_mm, mirror_rows=mirror_rows,
-            extra_room_width_mm=level_extra_room_width_mm
+            extra_room_width_mm=level_extra_room_width_mm, extra_row_wrap_step_mm=extra_row_wrap_step_mm
         )
         report_rows.extend(level_report_rows)
 

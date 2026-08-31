@@ -575,13 +575,22 @@ with revit.Transaction(u"Sync SPS Schematic"):
     # выглядят одинаково (подпись/марка сверху).
     satellite_extra_bottom = satellite_extra_bottom_mm(SAME_ROOM_BRANCH_OFFSET_MM)
 
+    # extra_row_wrap_step_mm=satellite_extra_bottom — тот же запас, что и
+    # extra_bottom_mm ниже (под ряды-ветки ответвлений изолятора), но
+    # применённый ещё и МЕЖДУ соседними строками при переносе по ширине,
+    # не только под последней строкой этажа: обычный ROW_WRAP_STEP_MM
+    # рассчитан только на высоту самой рамки помещения — ветки изолятора
+    # опускаются заметно ниже её нижней линии и без этого запаса залезали
+    # бы в рамку/подпись следующей строки (см. sot_schematic.sync_rooms_in_level
+    # докстринг про extra_row_wrap_step_mm).
     new_state, all_report_rows = sync_levels(
         doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
         ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
         NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
         extra_bottom_mm=satellite_extra_bottom, timing=timing_levels,
         max_row_width_mm=MAX_ROW_WIDTH_MM, mirror_rows=False,
-        extra_room_width_mm=extra_room_width_mm
+        extra_room_width_mm=extra_room_width_mm,
+        extra_row_wrap_step_mm=satellite_extra_bottom
     )
 
     _mark(u"sync_levels (раскладка этажей/помещений/устройств)")

@@ -523,17 +523,24 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
     inline_offset_ft = inline_offset_mm * MM_TO_FT
     inline_bottom_margin_ft = _INLINE_BOTTOM_MARGIN_MM * MM_TO_FT
 
-    # Группируем изоляторы по этажу — рамка ряда-спутника (для веток из
-    # ДРУГОГО помещения) сидит на одном и том же фиксированном отступе от
-    # своего этажа у всех изоляторов, поэтому столкнуться (наложиться)
-    # могут только рамки-спутники ОДНОГО этажа, если их изоляторы
-    # физически близко по X — раскладываются слева направо в порядке X
-    # изолятора, тем же x_cursor-приёмом, что и обычные помещения в
-    # sync_rooms_in_level. Ветки "в том же помещении" в этом курсоре не
-    # участвуют — они не спутники, а расширение УЖЕ существующей рамки
-    # своего помещения, друг с другом сталкиваться им особо негде (разные
-    # изоляторы почти всегда в разных помещениях).
-    by_level = {}
+    # Группируем изоляторы по (этаж, СТРОКА) — рамка ряда-спутника (для
+    # веток из ДРУГОГО помещения) сидит на одном и том же фиксированном
+    # отступе от СВОЕЙ строки (isolator_y — это уже Y конкретной строки
+    # помещения, см. node_placement_from_state, а не этажа целиком: при
+    # переносе по ширине у разных строк одного этажа разный Y), поэтому
+    # столкнуться (наложиться) могут только рамки-спутники ОДНОЙ строки,
+    # если их изоляторы физически близко по X — раскладываются слева
+    # направо в порядке X изолятора, тем же x_cursor-приёмом, что и
+    # обычные помещения в sync_rooms_in_level. Группировать только по
+    # этажу (без Y) было БЫ неверно при переносе по ширине — изоляторы из
+    # РАЗНЫХ строк одного этажа сортировались бы по X вперемешку и общий
+    # курсор двигал бы спутники одной строки из-за X изолятора совсем
+    # другой, с которой они не пересекаются вообще. Ветки "в том же
+    # помещении" в этом курсоре не участвуют — они не спутники, а
+    # расширение УЖЕ существующей рамки своего помещения, друг с другом
+    # сталкиваться им особо негде (разные изоляторы почти всегда в
+    # разных помещениях).
+    by_level_row = {}
     for isolator_uid, devices in isolator_branches.items():
         if not devices:
             continue
@@ -541,9 +548,11 @@ def sync_isolator_satellites(doc, view, old_satellite_ids, isolator_branches, ne
         if placement is None:
             continue
         isolator_x, isolator_y, level_key, isolator_room_key = placement
-        by_level.setdefault(level_key, []).append((isolator_x, isolator_y, isolator_room_key, devices))
+        by_level_row.setdefault((level_key, isolator_y), []).append(
+            (isolator_x, isolator_y, isolator_room_key, devices)
+        )
 
-    for level_key, items in by_level.items():
+    for (level_key, _row_y), items in by_level_row.items():
         items.sort(key=lambda item: item[0])
         framed_right_edge = None
 
