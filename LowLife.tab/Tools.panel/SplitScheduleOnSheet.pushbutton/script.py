@@ -142,6 +142,56 @@ def probe_total_body_ft(sched):
     return total
 
 
+def fit_count_by_height(sched, total_body_ft, body_target_ft, header_ft, amount_ft):
+    u"""
+    Подобрать число участков так, чтобы ПОСЛЕДНИЙ размещённый участок
+    (шапка + остаток тела) был не выше заданной высоты amount_ft.
+    Пробуем разбить, читаем реальную высоту последнего сегмента, при
+    необходимости добавляем участок — каждая проба в откатываемой транзакции.
+    """
+    count = max(2, int(math.ceil(total_body_ft / body_target_ft - 1e-9)))
+
+    for attempt in range(10):
+        if count >= MAX_SEGMENTS:
+            dbg(u"подбор: упёрлись в предел {} участков".format(MAX_SEGMENTS))
+            return MAX_SEGMENTS
+
+        last_body = None
+        t = Transaction(doc, u"Подбор разбиения")
+        t.Start()
+        try:
+            heights = List[float]()
+            for _ in range(count - 1):
+                heights.Add(body_target_ft)
+            sched.Split(heights)
+            doc.Regenerate()
+            last_body = sched.GetSegmentHeight(count - 1)
+        except Exception as ex:
+            dbg(u"подбор#{}: {}".format(attempt, ex))
+        finally:
+            try:
+                t.RollBack()
+            except Exception as ex:
+                dbg(u"подбор#{} откат: {}".format(attempt, ex))
+
+        if not (is_num(last_body) and last_body > 0):
+            dbg(u"подбор#{}: последний сегмент = {} — добавляю участок".format(
+                attempt, last_body
+            ))
+            return count + 1
+
+        last_placed = last_body + header_ft
+        dbg(u"подбор#{}: {} уч., последний {:.0f}+{:.0f}={:.0f} мм".format(
+            attempt, count, last_body * MM_IN_FOOT, header_ft * MM_IN_FOOT,
+            last_placed * MM_IN_FOOT
+        ))
+        if last_placed <= amount_ft + 1e-6:
+            return count
+        count += 1
+
+    return count
+
+
 def header_height_ft(sched):
     u"""
     Высота повторяющейся шапки спеки (заголовок + строка названий граф), футы.
@@ -341,11 +391,17 @@ def main():
                 )
             )
 
-        count = max(2, int(math.ceil(total_ft / body_target_ft - 1e-9)))
-        if count > MAX_SEGMENTS:
+        if already_split:
+            # спеку сейчас не разбить пробно — берём с запасом в 1 участок
+            count = max(2, int(math.ceil(total_ft / body_target_ft - 1e-9))) + 1
+        else:
+            count = fit_count_by_height(
+                sched, total_ft, body_target_ft, header_ft, amount
+            )
+        if count >= MAX_SEGMENTS:
             raise Stop(
-                u"Получается {} участков — слишком много. Увеличьте высоту "
-                u"участка.".format(count)
+                u"Получается слишком много участков ({}+). Увеличьте высоту "
+                u"участка.".format(MAX_SEGMENTS)
             )
         seg_mm = amount * MM_IN_FOOT
         total_mm = total_ft * MM_IN_FOOT
