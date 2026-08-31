@@ -113,20 +113,38 @@ def parse_request(raw):
     return "count", count
 
 
-def probe_total_height_ft(sched):
+def probe_geometry_ft(sched, sheet_id):
     u"""
-    Полная высота тела спеки в футах (0.0 — не вышло).
-    Делим на 2 равные части во ВРЕМЕННОЙ транзакции, читаем предел первой
-    (= половина полной высоты) и откатываем транзакцию — спека остаётся
-    нетронутой, собирать обратно не нужно.
+    (полная высота ТЕЛА спеки в футах, высота ШАПКИ в футах). 0.0/0.0 — не вышло.
+
+    Во ВРЕМЕННОЙ транзакции делим спеку на 2 равные части, читаем предел
+    первой (GetSegmentHeight — это высота тела, без шапки) => полная высота
+    тела = 2 * предел. Шапку берём как (видимая высота экземпляра сегмента 0)
+    минус (предел его тела). Транзакцию откатываем — спека не тронута.
     """
     h0 = None
-    t = Transaction(doc, u"Замер высоты спецификации")
+    header = 0.0
+    t = Transaction(doc, u"Замер спецификации")
     t.Start()
     try:
         sched.Split(2)
         doc.Regenerate()
         h0 = sched.GetSegmentHeight(0)
+
+        sheet = doc.GetElement(sheet_id)
+        for inst in FilteredElementCollector(doc).OfClass(ScheduleSheetInstance):
+            if inst.ScheduleId.IntegerValue != sched.Id.IntegerValue:
+                continue
+            if inst.OwnerViewId.IntegerValue != sheet_id.IntegerValue:
+                continue
+            if inst.SegmentIndex != 0:
+                continue
+            bb = inst.get_BoundingBox(sheet)
+            if bb is not None:
+                vis = bb.Max.Y - bb.Min.Y
+                if is_num(vis) and is_num(h0):
+                    header = vis - h0
+            break
     except Exception as ex:
         dbg(u"проба Split(2): {}".format(ex))
     finally:
@@ -135,10 +153,14 @@ def probe_total_height_ft(sched):
         except Exception as ex:
             dbg(u"откат пробы: {}".format(ex))
 
-    dbg(u"проба GetSegmentHeight(0) = {}".format(h0))
-    if is_num(h0) and h0 > 0:
-        return 2.0 * h0
-    return 0.0
+    total = 2.0 * h0 if (is_num(h0) and h0 > 0) else 0.0
+    if not (is_num(header) and header > 0):
+        header = 0.0
+
+    dbg(u"проба: тело≈{:.0f} мм, шапка≈{:.0f} мм (GetSegmentHeight(0)={})".format(
+        total * MM_IN_FOOT, header * MM_IN_FOOT, h0
+    ))
+    return total, header
 
 
 def unsplit(sched):
@@ -266,10 +288,15 @@ def main():
     # --- определить число участков (для режима «по высоте» нужна высота) ---
     seg_mm = None
     total_mm = 0.0
+    body_target_ft = amount
     if mode == "count":
         count = amount
     else:
-        total_ft = 0.0 if already_split else probe_total_height_ft(sched)
+        if already_split:
+            total_ft, header_ft = 0.0, 0.0
+        else:
+            total_ft, header_ft = probe_geometry_ft(sched, sheet_id)
+
         if total_ft <= 0:
             raw2 = ask(
                 u"Высоту не удалось измерить автоматически.\n"
@@ -277,9 +304,20 @@ def main():
                 2000
             )
             total_ft = to_float_mm(raw2) / MM_IN_FOOT
+            header_ft = 0.0
             dbg(u"высота задана вручную: {:.0f} мм".format(total_ft * MM_IN_FOOT))
 
-        count = max(2, int(math.ceil(total_ft / amount - 1e-9)))
+        # заданная высота участка = шапка + тело, поэтому предел тела уменьшаем
+        body_target_ft = amount - header_ft
+        if body_target_ft <= 0:
+            raise Stop(
+                u"Высота участка {:.0f} мм не больше шапки таблицы (~{:.0f} мм). "
+                u"Задайте больше.".format(
+                    amount * MM_IN_FOOT, header_ft * MM_IN_FOOT
+                )
+            )
+
+        count = max(2, int(math.ceil(total_ft / body_target_ft - 1e-9)))
         if count > MAX_SEGMENTS:
             raise Stop(
                 u"Получается {} участков — слишком много. Увеличьте высоту "
@@ -304,7 +342,7 @@ def main():
         if mode == "mm":
             heights = List[float]()
             for _ in range(count - 1):
-                heights.Add(amount)
+                heights.Add(body_target_ft)
             sched.Split(heights)
         else:
             sched.Split(count)
@@ -317,7 +355,12 @@ def main():
     lines = [u"Готово.", u"", u"Участков: {}".format(final)]
     if seg_mm is not None:
         lines.append(u"Высота участка: {:.0f} мм".format(seg_mm))
-        lines.append(u"Высота всей спеки: {:.0f} мм".format(total_mm))
+        lines.append(
+            u"  в т.ч. шапка ~{:.0f} мм + тело {:.0f} мм".format(
+                seg_mm - body_target_ft * MM_IN_FOOT, body_target_ft * MM_IN_FOOT
+            )
+        )
+        lines.append(u"Высота всей спеки (тело): {:.0f} мм".format(total_mm))
     lines.append(u"Раскладка: создано {}, передвинуто {}".format(created, moved))
     lines.append(
         u"Ширина участка: {:.0f} мм".format(width_ft * MM_IN_FOOT)
