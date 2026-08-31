@@ -29,8 +29,16 @@ __doc__ = (
     "изолятор, отдельная рамка не рисуется — ветка встаёт прямо под "
     "изолятором внутри рамки его же помещения («Смещение ветки в том же "
     "помещении, мм» в настройках СПС); место под неё (и по высоте, и по "
-    "ширине) резервируется заранее, вместе с общей раскладкой этажа. У "
-    "изолятора без такой цепи ответвления нет — его устройства "
+    "ширине) резервируется заранее, вместе с общей раскладкой этажа. "
+    "Устройства ветви часто физически разбросаны по нескольким разным "
+    "помещениям — если в настройках задан параметр «Имя лота на помещении "
+    "в связанной модели», для таких устройств сначала смотрится этот "
+    "параметр у помещения связи, в которое попадает точка устройства, и, "
+    "если он заполнен, его значение принудительно записывается в параметр "
+    "помещения устройства (и на реальный элемент в модели, и на схемный "
+    "узел) вместо обычного имени/номера — так несколько физически разных "
+    "помещений, отмеченных одним «лотом», на схеме читаются одной общей "
+    "рамкой. У изолятора без такой цепи ответвления нет — его устройства "
     "остаются в общей раскладке по помещению как обычно.\n\n"
     "Если в настройках задана категория «Шкаф»/«Панель» — рисуются линии до "
     "него шинной топологией: на каждом этаже один общий горизонтальный "
@@ -99,7 +107,9 @@ from lowlife.fire_alarm_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, sync_cable_connections, delete_elements, STEP_MM
 from lowlife.sot_layout_state import find_layout_view, save_state
-from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
+from lowlife.room_info import (
+    get_point as get_room_point, find_room_info, find_room_param_value, format_room_value
+)
 from lowlife.fire_alarm import parse_device_address, parse_panel_address, group_devices_by_loop, is_isolator
 from lowlife.fire_alarm_circuits import isolator_branch_device_map
 from lowlife.fire_alarm_schematic import (
@@ -169,6 +179,8 @@ except (ValueError, AttributeError):
     SAME_ROOM_BRANCH_OFFSET_MM = 0.0
 if SAME_ROOM_BRANCH_OFFSET_MM < 0.0:
     SAME_ROOM_BRANCH_OFFSET_MM = 0.0
+
+BRANCH_LOT_ROOM_PARAM_NAME = settings.get("branch_lot_room_param_name") or u""
 
 # Марки (IndependentTag) — штатный вызов Revit API, который на некоторых
 # моделях стоит секунду и больше НА КАЖДУЮ марку (см. докстринг кнопки) —
@@ -346,13 +358,37 @@ level_labels = dict((name, get_level_label(name)) for name in level_order)
 _mark(u"Группировка по этажу (уровень элемента)")
 
 
-def resolve_room_value(doc, el, counters):
+def resolve_room_value(doc, el, counters, is_branch=False):
     """
     Значение параметра ROOM_PARAM_NAME на устройстве, если оно уже
     заполнено; если пусто — ищет помещение в связанной модели сам и
     записывает найденное значение на устройство, чтобы при повторном
     запуске схемы и других кнопках оно уже было под рукой.
+
+    is_branch — устройство ушло в ветку изолятора (branch_device_ids, см.
+    вызывающий код). Только для таких устройств, и только если в
+    настройках задан BRANCH_LOT_ROOM_PARAM_NAME («Имя лота» на самом
+    ПОМЕЩЕНИИ в связанной модели, не на устройстве): сначала смотрим этот
+    параметр у Room, в который попадает точка устройства — если он
+    заполнен, ПРИНУДИТЕЛЬНО (даже если ROOM_PARAM_NAME на устройстве уже
+    чем-то заполнен) записываем его значение в ROOM_PARAM_NAME и
+    возвращаем, минуя обычный поиск имени/номера помещения. Устройства
+    ветви физически часто разбросаны по нескольким помещениям — обычный
+    геометрический поиск по каждой точке отдельно совершенно корректно
+    находит им разные помещения, а "Имя лота" — способ вручную указать в
+    связанной модели, что несколько таких помещений на самом деле одна
+    логическая зона ветки. Если параметр не задан в настройках, или у
+    найденного Room пуст — просто продолжаем обычной логикой ниже (эта
+    ветка не отличается от любого другого устройства).
     """
+    if is_branch and BRANCH_LOT_ROOM_PARAM_NAME:
+        point = get_room_point(el)
+        lot_value = find_room_param_value(doc, point, BRANCH_LOT_ROOM_PARAM_NAME)
+        if lot_value:
+            set_param_any(el, ROOM_PARAM_NAME, lot_value)
+            counters["lot_written"] += 1
+            return lot_value
+
     room_value = get_string_param(el, ROOM_PARAM_NAME)
 
     if room_value and room_value.strip():
@@ -411,7 +447,7 @@ if is_new_view:
 # ------------------------------------------------------------
 
 unmatched_report = []
-room_counters = {"already_set": 0, "looked_up": 0, "not_found": 0}
+room_counters = {"already_set": 0, "looked_up": 0, "not_found": 0, "lot_written": 0}
 sync_stats = {}
 
 with revit.Transaction(u"Sync SPS Schematic"):
@@ -424,39 +460,32 @@ with revit.Transaction(u"Sync SPS Schematic"):
     # ветки, а EXTRA_ROOM_WIDTH_MM ниже — как условие резерва ширины;
     # если пропустить resolve_room_value для них, у устройства, чьё
     # помещение никогда не заполняли вручную, оно так и останется
-    # пустым навсегда (заполнить его больше некому). Расстановка
-    # (level_room_groups/sync_levels) идёт уже по готовым значениям.
+    # пустым навсегда (заполнить его больше некому). is_branch — только
+    # для них смотрится "Имя лота" на помещении в связи (см. докстринг
+    # resolve_room_value). Расстановка (level_room_groups/sync_levels)
+    # идёт уже по готовым значениям.
     room_value_by_id = {}
 
     for el in elements:
-        room_value_by_id[el.Id.IntegerValue] = resolve_room_value(doc, el, room_counters)
+        el_id = el.Id.IntegerValue
+        room_value_by_id[el_id] = resolve_room_value(
+            doc, el, room_counters, is_branch=(el_id in branch_device_ids)
+        )
 
     _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
 
-    # --- помещение веток изоляторов приводим к помещению самого изолятора,
-    # + резервируем под них доп. ширину (см. fire_alarm_schematic.
-    # sync_isolator_satellites) ---
-    #
-    # Устройства ветви физически часто разбросаны по НЕСКОЛЬКИМ помещениям
-    # (изолятор в одном, часть его извещателей — в соседних) — "помещение
-    # из связи" (resolve_room_value выше) по каждой точке отдельно
-    # совершенно корректно находит для них РАЗНЫЕ помещения, но для схемы
-    # ветка концептуально — одно целое, привязанное к помещению изолятора
-    # (там, где он физически стоит), а не лоскутное одеяло из подписей
-    # разных помещений её устройств. Поэтому здесь принудительно
-    # переписываем помещение ВСЕХ устройств ветви на помещение изолятора —
-    # и в кэш room_value_by_id (на нём же ниже extra_room_width_mm и сам
-    # same_room-выбор внутри sync_isolator_satellites), и на сам параметр
-    # РЕАЛЬНОГО устройства в модели (не только на схемный узел) — иначе
-    # при следующем запуске resolve_room_value увидел бы уже заполненный
-    # параметр и не тронул бы его, но там осталось бы старое (по точке)
-    # значение, а не то, что нужно ветке.
-    #
-    # Доп. ширина под ветку — считается ЗАРАНЕЕ, до sync_levels, чтобы
-    # попасть в саму раскладку (перенос по max_row_width_mm, позиции
-    # соседних помещений в ряду), а не приклеиваться поверх уже готового
-    # макета этажа постфактум, когда двигать/учитывать в лимите уже
-    # поздно. Консервативно (по числу устройств ветви * STEP_MM, без
+    # --- доп. ширина под ветки изоляторов "в том же помещении" (см.
+    # fire_alarm_schematic.sync_isolator_satellites) — считается ЗАРАНЕЕ,
+    # до sync_levels, чтобы попасть в саму раскладку (перенос по
+    # max_row_width_mm, позиции соседних помещений в ряду), а не
+    # приклеиваться поверх уже готового макета этажа постфактум, когда
+    # двигать/учитывать в лимите уже поздно. "В том же помещении" — все
+    # устройства ветви (после resolve_room_value выше, включая возможную
+    # подстановку по "Имени лота") резолвились в ТО ЖЕ помещение, что и
+    # сам изолятор; если хотя бы одно отличается — ветка не "в том же
+    # помещении", ширина под неё не резервируется здесь (см.
+    # sync_isolator_satellites — там она уйдёт в отдельную рамку-
+    # спутник). Консервативно (по числу устройств ветви * STEP_MM, без
     # точного знания X изолятора внутри помещения) — лучше немного
     # лишнего места, чем наложение на соседа; если изоляторов "в том же
     # помещении" в одном помещении несколько — ширина суммируется по всем.
@@ -479,11 +508,12 @@ with revit.Transaction(u"Sync SPS Schematic"):
         if not valid_branch_devices:
             continue
 
-        for d in valid_branch_devices:
-            d_id = d.Id.IntegerValue
-            if room_value_by_id.get(d_id) != isolator_room_value:
-                room_value_by_id[d_id] = isolator_room_value
-                set_param_any(d, ROOM_PARAM_NAME, isolator_room_value)
+        same_room = all(
+            room_value_by_id.get(d.Id.IntegerValue) == isolator_room_value
+            for d in valid_branch_devices
+        )
+        if not same_room:
+            continue
 
         level_name = level_name_by_id.get(isolator_id)
         if level_name is None:
@@ -493,7 +523,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         level_extra = extra_room_width_mm.setdefault(level_name, {})
         level_extra[isolator_room_value] = level_extra.get(isolator_room_value, 0.0) + extra_mm
 
-    _mark(u"Помещение веток изоляторов + резерв ширины под них")
+    _mark(u"Резерв ширины под ветки изоляторов в том же помещении")
 
     level_room_groups = OrderedDict()
 
@@ -777,8 +807,11 @@ output.print_md(
     )
 )
 output.print_md(
-    u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, не найдено — {}".format(
-        room_counters["already_set"], room_counters["looked_up"], room_counters["not_found"]
+    u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, "
+    u"не найдено — {}{}".format(
+        room_counters["already_set"], room_counters["looked_up"], room_counters["not_found"],
+        u", по «Имени лота» ветви — {}".format(room_counters["lot_written"])
+        if room_counters["lot_written"] else u""
     )
 )
 

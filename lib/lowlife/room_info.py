@@ -135,16 +135,17 @@ def _distance_to_room_boundary(room, point):
     return best
 
 
-def find_room_info(doc, point, room_number_param_name):
+def _find_room(doc, point):
     """
-    Ищет Room, которому принадлежит point, во всех RevitLinkInstance
-    активного документа. Проход 1 — точное попадание внутрь (как раньше).
-    Проход 2 (если точного нет) — ближайший Room, чей контур не дальше
-    ROOM_TOLERANCE_MM от точки по горизонтали. Возвращает (имя, номер);
-    любое из двух может быть None.
+    Ищет и возвращает сам элемент Room (не имя/номер), которому
+    принадлежит point, во всех RevitLinkInstance активного документа —
+    общий поиск для find_room_info и find_room_param_value. Проход 1 —
+    точное попадание внутрь (Room.IsPointInRoom). Проход 2 (если точного
+    нет) — ближайший Room, чей контур не дальше ROOM_TOLERANCE_MM от
+    точки по горизонтали. None, если точка пуста или ничего не найдено.
     """
     if point is None:
-        return None, None
+        return None
 
     link_instances = FilteredElementCollector(doc).OfClass(RevitLinkInstance).ToElements()
 
@@ -163,12 +164,12 @@ def find_room_info(doc, point, room_number_param_name):
             except:
                 in_room = False
             if in_room:
-                return _room_name_number(room, room_number_param_name)
+                return room
 
     # Проход 2: точка чуть за контуром (сидит в стене) — ближайший Room
     # в пределах допуска.
     best_dist = None
-    best_info = (None, None)
+    best_room = None
     for rooms in rooms_by_doc:
         for room in rooms:
             d = _distance_to_room_boundary(room, point)
@@ -176,9 +177,42 @@ def find_room_info(doc, point, room_number_param_name):
                 continue
             if best_dist is None or d < best_dist:
                 best_dist = d
-                best_info = _room_name_number(room, room_number_param_name)
+                best_room = room
 
-    return best_info
+    return best_room
+
+
+def find_room_info(doc, point, room_number_param_name):
+    """
+    Ищет Room, которому принадлежит point (см. _find_room), и возвращает
+    (имя, номер) — любое из двух может быть None, если Room не найден или
+    у него не заполнено.
+    """
+    room = _find_room(doc, point)
+    if room is None:
+        return None, None
+    return _room_name_number(room, room_number_param_name)
+
+
+def find_room_param_value(doc, point, param_name):
+    """
+    Значение произвольного текстового параметра НА САМОМ элементе Room в
+    связанной модели (не имя/номер помещения — см. find_room_info, а
+    любой другой параметр, заполняемый на помещении как таковом, например
+    признак принадлежности к какой-то группе/зоне) — тем же поиском, что
+    и find_room_info (точное попадание, иначе ближайший в пределах
+    допуска). None, если параметр не задан, Room не найден, либо
+    параметра на нём нет/он пуст.
+    """
+    if not param_name:
+        return None
+
+    room = _find_room(doc, point)
+    if room is None:
+        return None
+
+    value = get_string_param(room, param_name)
+    return value.strip() if value and value.strip() else None
 
 
 def format_room_value(room_name, room_number):
