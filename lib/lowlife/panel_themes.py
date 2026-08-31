@@ -57,6 +57,7 @@ THEMES = {
         (u"SKUD", u"AssignCircuitsAndCables"),
         (u"SKUD", u"CalcSkudLengths"),
         (u"SKUD", u"ShowCircuitRoute"),
+        (u"SKUD", u"AssignSkudRooms"),
         (u"SKUD", u"BuildSkudSchematic"),
         (u"SKUD", u"InspectSchematicDevices"),
         (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
@@ -120,6 +121,9 @@ THEMES = {
     u"General": [
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
+        (u"Tools", u"SplitScheduleOnSheet"),
+        (u"Tools", u"ScheduleToExcel"),
+        (u"Tools", u"ScheduleFromExcel"),
         (u"Tools", u"Hello"),
         (u"Tools", u"RoomInfo"),
         (u"Music", u"PlayPause"),
