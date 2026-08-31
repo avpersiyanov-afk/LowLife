@@ -121,7 +121,6 @@ def _dev_state(d, schem_el):
         "schematic_id": schem_el.Id.IntegerValue if schem_el is not None else None,
         "category": d["category"] or u"",
         "address": d["address"] or u"",
-        "room": d["room"] or u"",
     }
 
 
@@ -167,10 +166,7 @@ def _keep_passage_point(doc, pp, prev_pp, cfg, report):
 
         addr = d["address"] or u""
         if schem_el is not None:
-            if addr:
-                set_param_any(schem_el, cfg["schematic_address_param"], addr)
-                if cfg["device_marking_param"]:
-                    set_param_any(schem_el, cfg["device_marking_param"], addr)
+            _write_address_and_mark(doc, schem_el, addr, cfg)
         else:
             report["stale_refs"] += 1
 
@@ -178,7 +174,6 @@ def _keep_passage_point(doc, pp, prev_pp, cfg, report):
             "schematic_id": schem_id,
             "category": d["category"] or u"",
             "address": addr,
-            "room": d["room"] or u"",
         }
 
     return {
@@ -311,7 +306,7 @@ def sync_schematic(doc, view, desired_controllers, previous_state, cfg):
       [{"uid", "id", "address", "elevation",
         "passage_points": [{"key", "signature", "uncategorized",
                             "matched_group"|None,
-                            "devices": [{"uid","id","category","address","room"}]}]}]
+                            "devices": [{"uid","id","category","address"}]}]}]
     previous_state — dict манифеста v2 (или skud_schematic_manifest.empty_manifest()).
     cfg — dict: category_of_schematic, schematic_address_param,
       device_marking_param, source_uid_param, controller_symbol (FamilySymbol

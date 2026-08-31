@@ -39,7 +39,6 @@ from lowlife.skud_settings import (
     get_schematic_category_device_type_ids,
     load_passage_point_group_ids, load_schematic_category_type_ids,
 )
-from lowlife import room_info_settings
 
 doc = revit.doc
 output = pyrevit_script.get_output()
@@ -107,6 +106,14 @@ if not CONTROLLER_CATEGORY_NAME or CONTROLLER_CATEGORY_NAME not in CATEGORY_SYMB
     )
 CONTROLLER_SYMBOL = CATEGORY_SYMBOLS[CONTROLLER_CATEGORY_NAME]
 
+# Категории без выбранного схемного семейства: их устройства не попадут ни
+# в чтение состава групп (сигнатура группы соберётся неполной → матча не
+# будет), ни в резервную раскладку. Не фатально — но почти наверняка не то,
+# что нужно, поэтому в отчёт.
+categories_without_symbol = [
+    n for n in DEVICE_CATEGORY_NAMES if n not in CATEGORY_SYMBOLS
+]
+
 PASSAGE_POINT_GROUP_IDS = load_passage_point_group_ids()
 if not PASSAGE_POINT_GROUP_IDS:
     forms.alert(
@@ -114,8 +121,6 @@ if not PASSAGE_POINT_GROUP_IDS:
         u"«Параметры СКУД» → «Типовые группы точек прохода».",
         exitscript=True
     )
-
-ROOM_TARGET_PARAM = room_info_settings.load_saved_values().get("target_param_name") or u""
 
 
 # ------------------------------------------------------------
@@ -152,7 +157,6 @@ def _dev_record(d):
         "id": d.Id.IntegerValue,
         "category": category_of_real(d) or u"",
         "address": clean_text_value(get_string_param(d, DEVICE_ADDRESS_PARAM)) or u"",
-        "room": (get_string_param(d, ROOM_TARGET_PARAM) or u"") if ROOM_TARGET_PARAM else u"",
     }
 
 
@@ -273,6 +277,16 @@ if controllers_without_address:
     for name in controllers_without_address:
         output.print_md(u"- {}".format(name))
 
+if categories_without_symbol:
+    output.print_md(u"### Категории без схемного семейства ({})".format(len(categories_without_symbol)))
+    output.print_md(
+        u"Для этих категорий не выбрано «Схемное семейство» в «Параметры СКУД» — их "
+        u"устройства не попадут ни в подбор групп (сигнатура группы соберётся неполной), "
+        u"ни в резервную раскладку:"
+    )
+    for name in categories_without_symbol:
+        output.print_md(u"- {}".format(name))
+
 if group_read_errors:
     output.print_md(u"### Не удалось прочитать состав групп ({})".format(len(group_read_errors)))
     output.print_md(u"У этих типов групп нет ни одного размещённого экземпляра — вставьте группу один раз:")
@@ -299,12 +313,14 @@ forms.alert(
     u"Контроллеров: добавлено {} / удалено {}\n"
     u"Нерезолвившихся ссылок на схемные элементы: {}\n"
     u"Точек прохода без типовой группы: {}\n"
+    u"Категорий без схемного семейства: {}\n"
     u"Контроллеров без адреса (пропущено): {}{}".format(
         view_name,
         report["pp_unchanged"], report["pp_redrawn"], report["pp_created"], report["pp_removed"],
         report["controllers_created"], report["controllers_removed"],
         report["stale_refs"],
         len(report["no_match"]),
+        len(categories_without_symbol),
         len(controllers_without_address),
         warn,
     )

@@ -28,7 +28,7 @@ sot_layout_state.py для СОТ/СПС.
                     "devices": {
                         "<device UniqueId>": {
                             "schematic_id": id, "category": "считыватель",
-                            "address": "F1.1", "room": "Коридор (101)"
+                            "address": "F1.1"
                         }
                     }
                 }
