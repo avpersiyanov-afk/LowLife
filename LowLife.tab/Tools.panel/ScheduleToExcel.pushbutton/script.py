@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-__title__ = u"Спека\nв Excel"
-__doc__ = u"Выгружает спецификацию в .xlsx: первый столбец Revit ID, дальше параметры по столбцам"
+__title__ = u"Экспорт\nв Эксель"
+__doc__ = u"Экспорт спецификации в .xlsx: первый столбец Revit ID, дальше параметры по столбцам"
 __author__ = "Pipers"
 
 import traceback
@@ -67,10 +67,10 @@ try:
     forms.alert(
         u"Готово.\n\nСпецификация: {}\nСтрок: {}\nСтолбцов-параметров: {}\n\n{}\n\n"
         u"Правьте значения в Excel (столбец «Revit ID» не трогать) и "
-        u"загружайте кнопкой «Спека из Excel».".format(name, n_els, n_cols, path)
+        u"загружайте кнопкой «Импорт из Эксель».".format(name, n_els, n_cols, path)
     )
 except Exception:
     forms.alert(
-        u"Сбой при выгрузке:\n\n{}".format(traceback.format_exc()),
-        title=u"Спека в Excel"
+        u"Сбой при экспорте:\n\n{}".format(traceback.format_exc()),
+        title=u"Экспорт в Эксель"
     )

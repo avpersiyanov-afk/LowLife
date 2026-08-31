@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-__title__ = u"Спека\nиз Excel"
-__doc__ = u"Загружает правки из .xlsx обратно в модель: по столбцу Revit ID находит элементы и пишет параметры"
+__title__ = u"Импорт\nиз Эксель"
+__doc__ = u"Импорт правок из .xlsx обратно в модель: по столбцу Revit ID находит элементы и пишет параметры"
 __author__ = "Pipers"
 
 import traceback
@@ -53,6 +53,6 @@ try:
     forms.alert(u"\n".join(parts))
 except Exception:
     forms.alert(
-        u"Сбой при загрузке:\n\n{}".format(traceback.format_exc()),
-        title=u"Спека из Excel"
+        u"Сбой при импорте:\n\n{}".format(traceback.format_exc()),
+        title=u"Импорт из Эксель"
     )
