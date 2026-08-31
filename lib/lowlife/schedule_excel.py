@@ -111,6 +111,19 @@ def _set_param_text(p, text):
     return False
 
 
+def _instance_param_map(el):
+    u"""{имя параметра экземпляра: Parameter} за один проход — вместо
+    LookupParameter на каждый столбец (тот каждый раз линейно сканирует
+    все параметры элемента)."""
+    m = {}
+    for p in el.Parameters:
+        try:
+            m.setdefault(p.Definition.Name, p)
+        except Exception:
+            pass
+    return m
+
+
 def schedule_to_rows(doc, sched):
     u"""(rows, число_элементов, число_столбцов-параметров). rows[0] — заголовок."""
     fields = _visible_fields(sched)
@@ -122,9 +135,10 @@ def schedule_to_rows(doc, sched):
 
     rows = [[ID_HEADER] + names]
     for el in els:
+        pmap = _instance_param_map(el)
         row = [el.Id.IntegerValue]
         for nm in names:
-            row.append(_param_to_text(el.LookupParameter(nm)))
+            row.append(_param_to_text(pmap.get(nm)))
         rows.append(row)
 
     return rows, len(els), len(names)
@@ -161,47 +175,66 @@ def rows_to_model(doc, rows):
         res["errors"].append(u"Не найден столбец «{}».".format(ID_HEADER))
         return res
 
+    # столбцы-параметры считаем один раз
+    cols = [(ci, h) for ci, h in enumerate(header) if h and ci != id_col]
+
+    changed = unchanged = no_element = no_param = read_only = 0
+    errors = res["errors"]
+    get_el = doc.GetElement
+    eid_type = StorageType.ElementId
+
     for r in rows[hidx + 1:]:
-        if not r or id_col >= len(r) or r[id_col] is None:
+        n = len(r)
+        if id_col >= n or r[id_col] is None:
             continue
-        raw_id = unicode(r[id_col]).strip().replace(u",", u".")
+        raw_id = unicode(r[id_col]).strip()
         if not raw_id:
             continue
         try:
-            eid = int(float(raw_id))
+            eid = int(float(raw_id.replace(u",", u".")))
         except ValueError:
             continue
 
-        el = doc.GetElement(ElementId(eid))
+        el = get_el(ElementId(eid))
         if el is None:
-            res["no_element"] += 1
+            no_element += 1
             continue
 
-        for ci, h in enumerate(header):
-            if ci == id_col or not h or ci >= len(r):
-                continue
-            cell = r[ci]
-            if cell is None or not unicode(cell).strip():
-                continue
-            new_text = unicode(cell)
+        # заполненные ячейки этой строки
+        pending = []
+        for ci, h in cols:
+            if ci < n:
+                cell = r[ci]
+                if cell is not None:
+                    txt = unicode(cell)
+                    if txt.strip():
+                        pending.append((h, txt))
+        if not pending:
+            continue
 
-            p = el.LookupParameter(h)
+        pmap = _instance_param_map(el)
+
+        for h, new_text in pending:
+            p = pmap.get(h)
             if p is None:
-                res["no_param"] += 1
+                no_param += 1
                 continue
-            if p.IsReadOnly or p.StorageType == StorageType.ElementId:
-                res["read_only"] += 1
+            if p.IsReadOnly or p.StorageType == eid_type:
+                read_only += 1
                 continue
-
             if _param_to_text(p).strip() == new_text.strip():
-                res["unchanged"] += 1
+                unchanged += 1
                 continue
-
             if _set_param_text(p, new_text):
-                res["changed"] += 1
+                changed += 1
             else:
-                res["errors"].append(
+                errors.append(
                     u"ID {} / «{}»: не удалось записать «{}»".format(eid, h, new_text)
                 )
 
+    res["changed"] = changed
+    res["unchanged"] = unchanged
+    res["no_element"] = no_element
+    res["no_param"] = no_param
+    res["read_only"] = read_only
     return res

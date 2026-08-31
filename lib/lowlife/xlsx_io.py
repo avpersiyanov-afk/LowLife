@@ -19,10 +19,15 @@ try:
     clr.AddReference("System.IO.Compression.FileSystem")
 except Exception:
     pass
+try:
+    clr.AddReference("System.Xml")
+except Exception:
+    pass
 
-from System.IO import FileStream, FileMode, FileAccess, StreamReader
+from System.IO import FileStream, FileMode, FileAccess, StreamReader, StringReader
 from System.IO.Compression import ZipArchive, ZipArchiveMode
 from System.Text import Encoding
+from System.Xml import XmlReader, XmlReaderSettings, XmlNodeType
 
 
 _CT = (
@@ -155,15 +160,137 @@ def _read_entry(zf, name):
         st.Close()
 
 
+_TEXT_NODES = (
+    XmlNodeType.Text, XmlNodeType.CDATA,
+    XmlNodeType.SignificantWhitespace, XmlNodeType.Whitespace,
+)
+
+
+def _reader(xml):
+    s = XmlReaderSettings()
+    s.IgnoreComments = True
+    s.IgnoreProcessingInstructions = True
+    s.CheckCharacters = False
+    return XmlReader.Create(StringReader(xml), s)
+
+
 def _shared_strings(zf):
     txt = _read_entry(zf, u"xl/sharedStrings.xml")
     if not txt:
         return []
     items = []
-    for m in re.finditer(r"<si>(.*?)</si>", txt, re.S):
-        chunks = re.findall(r"<t[^>]*>(.*?)</t>", m.group(1), re.S)
-        items.append(_unesc(u"".join(chunks)))
+    buf = []
+    in_t = False
+    rdr = _reader(txt)
+    try:
+        while rdr.Read():
+            nt = rdr.NodeType
+            if nt == XmlNodeType.Element:
+                ln = rdr.LocalName
+                if ln == u"si":
+                    buf = []
+                elif ln == u"t":
+                    in_t = True
+            elif nt in _TEXT_NODES:
+                if in_t:
+                    buf.append(rdr.Value)
+            elif nt == XmlNodeType.EndElement:
+                ln = rdr.LocalName
+                if ln == u"t":
+                    in_t = False
+                elif ln == u"si":
+                    items.append(u"".join(buf))
+    finally:
+        rdr.Close()
     return items
+
+
+def _parse_sheet(xml, shared):
+    rows = []
+    cells = {}
+    maxc = -1
+    col = -1
+    ctype = None
+    in_v = False
+    in_t = False
+    vbuf = []
+    tbuf = []
+
+    rdr = _reader(xml)
+    try:
+        while rdr.Read():
+            nt = rdr.NodeType
+
+            if nt == XmlNodeType.Element:
+                ln = rdr.LocalName
+                if ln == u"c":
+                    ref = rdr.GetAttribute(u"r")
+                    ctype = rdr.GetAttribute(u"t")
+                    col = _col_index(_letters(ref)) if ref else (maxc + 1)
+                    if rdr.IsEmptyElement and col > maxc:
+                        maxc = col
+                elif ln == u"v":
+                    if rdr.IsEmptyElement:
+                        cells[col] = None if ctype == u"s" else u""
+                        if col > maxc:
+                            maxc = col
+                    else:
+                        in_v = True
+                        vbuf = []
+                elif ln == u"t":
+                    if rdr.IsEmptyElement:
+                        if col not in cells or cells[col] is None:
+                            cells[col] = u""
+                        if col > maxc:
+                            maxc = col
+                    else:
+                        in_t = True
+                        tbuf = []
+                elif ln == u"row":
+                    cells = {}
+                    maxc = -1
+
+            elif nt in _TEXT_NODES:
+                if in_v:
+                    vbuf.append(rdr.Value)
+                elif in_t:
+                    tbuf.append(rdr.Value)
+
+            elif nt == XmlNodeType.EndElement:
+                ln = rdr.LocalName
+                if ln == u"v":
+                    in_v = False
+                    raw = u"".join(vbuf)
+                    if ctype == u"s":
+                        try:
+                            k = int(raw)
+                            raw = shared[k] if 0 <= k < len(shared) else None
+                        except Exception:
+                            raw = None
+                    cells[col] = raw
+                    if col > maxc:
+                        maxc = col
+                elif ln == u"t":
+                    in_t = False
+                    prev = cells.get(col) or u""
+                    cells[col] = prev + u"".join(tbuf)
+                    if col > maxc:
+                        maxc = col
+                elif ln == u"row":
+                    rows.append([cells.get(i) for i in range(maxc + 1)])
+    finally:
+        rdr.Close()
+    return rows
+
+
+def _letters(ref):
+    out = []
+    for ch in ref:
+        if ch.isalpha():
+            out.append(ch)
+        else:
+            break
+    return u"".join(out)
 
 
 def _sheet_entry_name(zf):
@@ -193,6 +320,14 @@ def read_xlsx(path):
     if not xml:
         return []
 
+    try:
+        return _parse_sheet(xml, shared)
+    except Exception:
+        return _parse_sheet_regex(xml, shared)
+
+
+def _parse_sheet_regex(xml, shared):
+    u"""Резервный разбор регулярками, если потоковый XmlReader почему-то упал."""
     rows = []
     for rm in re.finditer(r"<row\b[^>]*>(.*?)</row>", xml, re.S):
         body = rm.group(1)
