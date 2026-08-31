@@ -23,7 +23,7 @@ uidoc = revit.uidoc
 
 MM_IN_FOOT = 304.8
 
-# Разумный предел, чтобы опечатка в высоте не наплодила сотни участков
+# Разумный предел, чтобы опечатка не наплодила сотни участков
 MAX_SEGMENTS = 60
 
 
@@ -42,7 +42,7 @@ def get_target_schedule():
     (ViewSchedule, экземпляр на листе или None, число разных выбранных спек).
     Спека берётся из выбранного на листе экземпляра спецификации или из
     напрямую выбранной спецификации; выбор нескольких сегментов одной и той
-    же спеки не считается ошибкой.
+    же спеки ошибкой не считается.
     """
     schedule_ids = set()
     picked = None
@@ -64,25 +64,29 @@ def get_target_schedule():
     return picked, picked_inst, len(schedule_ids)
 
 
-def total_body_height_ft(sched, inst):
+def placed_height_ft(inst):
     u"""
-    Высота спецификации в футах. Сначала по API сегментов, а если он на
-    неразбитой спеке молчит — по габариту размещённого на листе экземпляра.
+    Высота размещённого на листе экземпляра спецификации, в футах.
+    0.0 — если измерить не удалось (например, выбрана сама спека, а не её
+    экземпляр на листе). GetSegmentHeight здесь бесполезен: у неразбитой
+    спеки он возвращает бесконечность.
     """
+    if inst is None:
+        return 0.0
+
+    sheet = doc.GetElement(inst.OwnerViewId)
     try:
-        h = sched.GetSegmentHeight(0)
-        if h and h > 0:
-            return h
-    except Exception:
-        pass
-
-    if inst is not None:
-        sheet = doc.GetElement(inst.OwnerViewId)
         bbox = inst.get_BoundingBox(sheet)
-        if bbox is not None:
-            return bbox.Max.Y - bbox.Min.Y
+    except Exception:
+        bbox = None
 
-    return 0.0
+    if bbox is None:
+        return 0.0
+
+    h = bbox.Max.Y - bbox.Min.Y
+    if math.isinf(h) or math.isnan(h) or h <= 0:
+        return 0.0
+    return h
 
 
 def ask(prompt, default):
@@ -95,17 +99,17 @@ def ask(prompt, default):
 
 def parse_request(raw, total_ft):
     u"""
-    По вводу пользователя возвращает (список высот сегментов кроме последнего
-    в футах, высота участка в мм для отчёта).
-    Ввод: число мм — высота участка; число со знаком x/х/* — число участков.
+    Возвращает ('count', None, N)  — разбить на N равных участков, либо
+             ('heights', [высоты кроме последнего в футах], N) — по высоте.
+    Ввод: просто число — число участков; число с «мм» — высота участка.
     """
     raw = raw.strip().lower().replace(",", ".")
 
-    is_count = False
-    for suffix in (u"x", u"х", u"*"):
+    is_mm = False
+    for suffix in (u"мм", u"mm", u"м"):
         if raw.endswith(suffix):
             raw = raw[:-len(suffix)].strip()
-            is_count = True
+            is_mm = True
             break
 
     try:
@@ -116,28 +120,33 @@ def parse_request(raw, total_ft):
     if value <= 0:
         raise Stop(u"Значение должно быть больше нуля.")
 
-    if is_count:
-        count = int(round(value))
-        if count < 2:
-            raise Stop(u"Участков должно быть хотя бы 2.")
-        seg_ft = total_ft / count
-    else:
+    if is_mm:
+        if total_ft <= 0:
+            raise Stop(
+                u"Не удалось измерить высоту спецификации на листе. "
+                u"Задайте вместо этого число участков — просто число."
+            )
         seg_ft = value / MM_IN_FOOT
         count = int(math.ceil(total_ft / seg_ft - 1e-9))
         count = max(count, 2)
+        if count > MAX_SEGMENTS:
+            raise Stop(
+                u"Получается {} участков — слишком много. "
+                u"Увеличьте высоту участка.".format(count)
+            )
+        return "heights", [seg_ft] * (count - 1), count
 
+    count = int(round(value))
+    if count < 2:
+        raise Stop(u"Участков должно быть хотя бы 2.")
     if count > MAX_SEGMENTS:
-        raise Stop(
-            u"Получается {} участков — слишком много. "
-            u"Увеличьте высоту участка.".format(count)
-        )
-
-    return [seg_ft] * (count - 1), seg_ft * MM_IN_FOOT
+        raise Stop(u"{} участков — слишком много.".format(count))
+    return "count", None, count
 
 
 def merge_back(sched):
     u"""Собрать разбитую спеку обратно в одну. Сигнатура MergeSegments в
-    разных сборках Revit отличается, поэтому пробуем оба варианта."""
+    разных сборках Revit отличается — пробуем оба варианта."""
     try:
         sched.MergeSegments()
     except TypeError:
@@ -181,27 +190,24 @@ def main():
         if not go:
             raise Cancelled()
 
-    total_ft = total_body_height_ft(sched, sched_inst)
-    if total_ft <= 0:
-        raise Stop(
-            u"Не удалось определить высоту спецификации. Убедитесь, что она "
-            u"размещена на листе."
-        )
-
+    total_ft = placed_height_ft(sched_inst)
     total_mm = total_ft * MM_IN_FOOT
 
+    if total_ft > 0:
+        size_line = u"Высота всей спецификации на листе — {:.0f} мм.".format(
+            total_mm
+        )
+    else:
+        size_line = u"Высоту спецификации измерить не удалось — задайте число участков."
+
     raw = ask(
-        u"Высота одного участка в мм.\n"
-        u"Либо число участков со знаком x (например  4x).\n\n"
-        u"Сейчас вся спецификация — {:.0f} мм.".format(total_mm),
-        int(round(total_mm / 2.0))
+        u"На сколько участков разбить спецификацию? (например  3)\n"
+        u"Либо высота одного участка: число с «мм» (например  180мм).\n\n"
+        + size_line,
+        3
     )
 
-    seg_heights_ft, seg_height_mm = parse_request(raw, total_ft)
-
-    heights = List[float]()
-    for h in seg_heights_ft:
-        heights.Add(h)
+    mode, heights_list, count = parse_request(raw, total_ft)
 
     with revit.Transaction(u"Разбить спецификацию на листе"):
         if already_split:
@@ -211,14 +217,24 @@ def main():
                     u"Не удалось собрать спецификацию обратно в одну. "
                     u"Соберите участки вручную (перетаскиванием) и повторите."
                 )
-        sched.Split(heights)
+
+        if mode == "count":
+            sched.Split(count)
+        else:
+            heights = List[float]()
+            for h in heights_list:
+                heights.Add(h)
+            sched.Split(heights)
+
+    final = sched.GetSegmentCount()
+    tail = u""
+    if mode == "heights":
+        tail = u"\nВысота участка: {:.0f} мм".format(heights_list[0] * MM_IN_FOOT)
 
     forms.alert(
-        u"Готово.\n\n"
-        u"Участков: {}\n"
-        u"Высота участка: {:.0f} мм\n\n"
+        u"Готово.\n\nУчастков: {}{}\n\n"
         u"Взаимное расположение участков на листе поправьте "
-        u"перетаскиванием.".format(sched.GetSegmentCount(), seg_height_mm)
+        u"перетаскиванием.".format(final, tail)
     )
 
 
