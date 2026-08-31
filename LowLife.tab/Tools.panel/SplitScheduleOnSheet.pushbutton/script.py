@@ -309,8 +309,6 @@ def main():
     original_id = sched_inst.Id
     width_ft = instance_width_ft(sched_inst)
 
-    seg_mm = None
-    total_mm = 0.0
     body_each_ft = amount
 
     if mode == "count":
@@ -364,8 +362,6 @@ def main():
             )
         # равные по телу участки — без «хвоста» из одной шапки
         body_each_ft = total_body_ft / count
-        seg_mm = (body_each_ft + header_ft) * MM_IN_FOOT
-        total_mm = (total_body_ft + header_ft) * MM_IN_FOOT
 
     with revit.Transaction(u"Разбить спецификацию на листе"):
         if sched.GetSegmentCount() > 1:
@@ -388,29 +384,9 @@ def main():
             sched.Split(count)
 
         doc.Regenerate()
-        created, moved, removed = arrange_in_row(
-            sched, sheet_id, origin, width_ft, count, original_id
-        )
+        arrange_in_row(sched, sheet_id, origin, width_ft, count, original_id)
 
-    final = sched.GetSegmentCount()
-
-    lines = [u"Готово.", u"", u"Участков: {}".format(final)]
-    if seg_mm is not None:
-        lines.append(u"Высота участка ~{:.0f} мм (задано {:.0f})".format(
-            seg_mm, amount * MM_IN_FOOT))
-        lines.append(u"Высота всей спеки ~{:.0f} мм".format(total_mm))
-    lines.append(u"Раскладка: создано {}, передвинуто {}, удалено {}".format(
-        created, moved, removed))
-    lines.append(
-        u"Ширина участка: {:.0f} мм".format(width_ft * MM_IN_FOOT)
-        if width_ft else
-        u"Ширина не измерена, шаг {:.0f} мм".format(FALLBACK_STEP_MM)
-    )
-    if _debug:
-        lines.append(u"")
-        lines.append(u"Диагностика:")
-        lines.extend(_debug)
-    forms.alert(u"\n".join(lines))
+    # Успех — без итогового окна. Сообщения показываем только при отмене/сбое.
 
 
 try:
