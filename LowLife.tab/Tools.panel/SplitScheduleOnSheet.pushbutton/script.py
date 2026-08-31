@@ -5,12 +5,15 @@ __doc__ = u"Разбивает выбранную спецификацию на 
 __author__ = "Pipers"
 
 import math
+import traceback
 
 import clr
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
+clr.AddReference('Microsoft.VisualBasic')
 
 from System.Collections.Generic import List
+from Microsoft.VisualBasic import Interaction
 from Autodesk.Revit.DB import ScheduleSheetInstance, ViewSchedule
 from pyrevit import revit, forms
 
@@ -22,6 +25,16 @@ MM_IN_FOOT = 304.8
 
 # Разумный предел, чтобы опечатка в высоте не наплодила сотни участков
 MAX_SEGMENTS = 60
+
+
+class Cancelled(Exception):
+    u"""Пользователь отменил операцию — не показываем трейсбек."""
+    pass
+
+
+class Stop(Exception):
+    u"""Понятное сообщение вместо трейсбека."""
+    pass
 
 
 def get_target_schedule():
@@ -72,6 +85,14 @@ def total_body_height_ft(sched, inst):
     return 0.0
 
 
+def ask(prompt, default):
+    u"""Простой ввод строки. Пустой ответ = отмена."""
+    answer = Interaction.InputBox(prompt, u"Разбить спецификацию", unicode(default))
+    if answer is None or not answer.strip():
+        raise Cancelled()
+    return answer
+
+
 def parse_request(raw, total_ft):
     u"""
     По вводу пользователя возвращает (список высот сегментов кроме последнего
@@ -90,20 +111,26 @@ def parse_request(raw, total_ft):
     try:
         value = float(raw)
     except ValueError:
-        forms.alert(u"Не понял ввод: «{}».".format(raw), exitscript=True)
+        raise Stop(u"Не понял ввод: «{}».".format(raw))
 
     if value <= 0:
-        forms.alert(u"Значение должно быть больше нуля.", exitscript=True)
+        raise Stop(u"Значение должно быть больше нуля.")
 
     if is_count:
         count = int(round(value))
         if count < 2:
-            forms.alert(u"Участков должно быть хотя бы 2.", exitscript=True)
+            raise Stop(u"Участков должно быть хотя бы 2.")
         seg_ft = total_ft / count
     else:
         seg_ft = value / MM_IN_FOOT
         count = int(math.ceil(total_ft / seg_ft - 1e-9))
         count = max(count, 2)
+
+    if count > MAX_SEGMENTS:
+        raise Stop(
+            u"Получается {} участков — слишком много. "
+            u"Увеличьте высоту участка.".format(count)
+        )
 
     return [seg_ft] * (count - 1), seg_ft * MM_IN_FOOT
 
@@ -120,101 +147,89 @@ def merge_back(sched):
             guard += 1
 
 
-# ------------------------------------------------------------
-# ОСНОВНОЙ КОД
-# ------------------------------------------------------------
+def main():
+    sched, sched_inst, distinct = get_target_schedule()
 
-sched, sched_inst, distinct = get_target_schedule()
+    if sched is None:
+        raise Stop(
+            u"Сначала выберите на листе спецификацию (или саму спецификацию "
+            u"в диспетчере проекта), потом запустите кнопку."
+        )
 
-if sched is None:
-    forms.alert(
-        u"Сначала выберите на листе спецификацию (или саму спецификацию в "
-        u"диспетчере проекта), потом запустите кнопку.",
-        exitscript=True
-    )
+    if distinct > 1:
+        raise Stop(u"Выбрано несколько разных спецификаций. Оставьте одну.")
 
-if distinct > 1:
-    forms.alert(
-        u"Выбрано несколько разных спецификаций. Оставьте одну.",
-        exitscript=True
-    )
+    if getattr(sched, "IsTitleblockRevisionSchedule", False):
+        raise Stop(u"Спецификацию изменений в штампе разбить нельзя.")
 
-if getattr(sched, "IsTitleblockRevisionSchedule", False):
-    forms.alert(u"Спецификацию изменений в штампе разбить нельзя.", exitscript=True)
+    try:
+        already_split = sched.IsSplit()
+    except AttributeError:
+        raise Stop(
+            u"Эта сборка Revit не поддерживает разбиение спецификаций через API."
+        )
 
-try:
-    already_split = sched.IsSplit()
-except AttributeError:
-    forms.alert(
-        u"Эта сборка Revit не поддерживает разбиение спецификаций через API.",
-        exitscript=True
-    )
+    if already_split:
+        go = forms.alert(
+            u"Спецификация уже разбита на {} участков. Revit умеет делить "
+            u"спеку только один раз, поэтому её нужно сначала собрать обратно "
+            u"в одну.\n\nСобрать сейчас и разбить заново?".format(
+                sched.GetSegmentCount()
+            ),
+            yes=True, no=True
+        )
+        if not go:
+            raise Cancelled()
 
-if already_split:
-    if not forms.alert(
-        u"Спецификация уже разбита на {} участков. Revit умеет делить "
-        u"спеку только один раз, поэтому её нужно сначала собрать обратно "
-        u"в одну.\n\nСобрать сейчас и разбить заново?".format(
-            sched.GetSegmentCount()
-        ),
-        yes=True, no=True
-    ):
-        forms.alert(u"Операция отменена.", exitscript=True)
+    total_ft = total_body_height_ft(sched, sched_inst)
+    if total_ft <= 0:
+        raise Stop(
+            u"Не удалось определить высоту спецификации. Убедитесь, что она "
+            u"размещена на листе."
+        )
 
-total_ft = total_body_height_ft(sched, sched_inst)
+    total_mm = total_ft * MM_IN_FOOT
 
-if total_ft <= 0:
-    forms.alert(
-        u"Не удалось определить высоту спецификации. Убедитесь, что она "
-        u"размещена на листе.",
-        exitscript=True
-    )
-
-total_mm = total_ft * MM_IN_FOOT
-
-raw = forms.ask_for_string(
-    default=str(int(round(total_mm / 2.0))),
-    prompt=(
+    raw = ask(
         u"Высота одного участка в мм.\n"
         u"Либо число участков со знаком x (например  4x).\n\n"
-        u"Сейчас вся спецификация — {:.0f} мм.".format(total_mm)
-    ),
-    title=u"Разбить спецификацию"
-)
+        u"Сейчас вся спецификация — {:.0f} мм.".format(total_mm),
+        int(round(total_mm / 2.0))
+    )
 
-if not raw:
-    forms.alert(u"Операция отменена.", exitscript=True)
+    seg_heights_ft, seg_height_mm = parse_request(raw, total_ft)
 
-seg_heights_ft, seg_height_mm = parse_request(raw, total_ft)
-seg_count = len(seg_heights_ft) + 1
+    heights = List[float]()
+    for h in seg_heights_ft:
+        heights.Add(h)
 
-if seg_count > MAX_SEGMENTS:
+    with revit.Transaction(u"Разбить спецификацию на листе"):
+        if already_split:
+            merge_back(sched)
+            if sched.GetSegmentCount() > 1:
+                raise Stop(
+                    u"Не удалось собрать спецификацию обратно в одну. "
+                    u"Соберите участки вручную (перетаскиванием) и повторите."
+                )
+        sched.Split(heights)
+
     forms.alert(
-        u"Получается {} участков — слишком много. Увеличьте высоту "
-        u"участка.".format(seg_count),
-        exitscript=True
+        u"Готово.\n\n"
+        u"Участков: {}\n"
+        u"Высота участка: {:.0f} мм\n\n"
+        u"Взаимное расположение участков на листе поправьте "
+        u"перетаскиванием.".format(sched.GetSegmentCount(), seg_height_mm)
     )
 
-heights = List[float]()
-for h in seg_heights_ft:
-    heights.Add(h)
 
-with revit.Transaction(u"Разбить спецификацию на листе"):
-    if already_split:
-        merge_back(sched)
-        if sched.GetSegmentCount() > 1:
-            raise Exception(
-                u"Не удалось собрать спецификацию обратно в одну. "
-                u"Соберите участки вручную (перетаскиванием) и повторите."
-            )
-    sched.Split(heights)
-
-forms.alert(
-    u"Готово.\n\n"
-    u"Участков: {}\n"
-    u"Высота участка: {:.0f} мм\n\n"
-    u"Взаимное расположение участков на листе поправьте перетаскиванием.".format(
-        sched.GetSegmentCount(),
-        seg_height_mm
+try:
+    main()
+except Cancelled:
+    pass
+except Stop as ex:
+    forms.alert(unicode(ex))
+except Exception:
+    forms.alert(
+        u"Сбой при разбиении спецификации:\n\n{}".format(traceback.format_exc()),
+        title=u"Разбить спецификацию"
     )
-)
