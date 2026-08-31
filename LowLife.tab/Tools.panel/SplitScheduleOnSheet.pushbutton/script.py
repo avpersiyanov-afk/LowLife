@@ -18,6 +18,7 @@ from Autodesk.Revit.DB import (
     ElementTransformUtils,
     FilteredElementCollector,
     ScheduleSheetInstance,
+    SectionType,
     Transaction,
     ViewSchedule,
     XYZ,
@@ -113,38 +114,19 @@ def parse_request(raw):
     return "count", count
 
 
-def probe_geometry_ft(sched, sheet_id):
+def probe_total_body_ft(sched):
     u"""
-    (полная высота ТЕЛА спеки в футах, высота ШАПКИ в футах). 0.0/0.0 — не вышло.
-
-    Во ВРЕМЕННОЙ транзакции делим спеку на 2 равные части, читаем предел
-    первой (GetSegmentHeight — это высота тела, без шапки) => полная высота
-    тела = 2 * предел. Шапку берём как (видимая высота экземпляра сегмента 0)
-    минус (предел его тела). Транзакцию откатываем — спека не тронута.
+    Полная высота ТЕЛА спеки (строки данных, без повторяющейся шапки), футы.
+    Делим на 2 равные части во ВРЕМЕННОЙ транзакции, читаем предел первой
+    (GetSegmentHeight = высота тела) => полная = 2 * предел. Откат.
     """
     h0 = None
-    header = 0.0
     t = Transaction(doc, u"Замер спецификации")
     t.Start()
     try:
         sched.Split(2)
         doc.Regenerate()
         h0 = sched.GetSegmentHeight(0)
-
-        sheet = doc.GetElement(sheet_id)
-        for inst in FilteredElementCollector(doc).OfClass(ScheduleSheetInstance):
-            if inst.ScheduleId.IntegerValue != sched.Id.IntegerValue:
-                continue
-            if inst.OwnerViewId.IntegerValue != sheet_id.IntegerValue:
-                continue
-            if inst.SegmentIndex != 0:
-                continue
-            bb = inst.get_BoundingBox(sheet)
-            if bb is not None:
-                vis = bb.Max.Y - bb.Min.Y
-                if is_num(vis) and is_num(h0):
-                    header = vis - h0
-            break
     except Exception as ex:
         dbg(u"проба Split(2): {}".format(ex))
     finally:
@@ -154,13 +136,45 @@ def probe_geometry_ft(sched, sheet_id):
             dbg(u"откат пробы: {}".format(ex))
 
     total = 2.0 * h0 if (is_num(h0) and h0 > 0) else 0.0
-    if not (is_num(header) and header > 0):
-        header = 0.0
-
-    dbg(u"проба: тело≈{:.0f} мм, шапка≈{:.0f} мм (GetSegmentHeight(0)={})".format(
-        total * MM_IN_FOOT, header * MM_IN_FOOT, h0
+    dbg(u"проба: тело≈{:.0f} мм (GetSegmentHeight(0)={})".format(
+        total * MM_IN_FOOT, h0
     ))
-    return total, header
+    return total
+
+
+def header_height_ft(sched):
+    u"""
+    Высота повторяющейся шапки спеки (заголовок + строка названий граф), футы.
+    Берём из модели таблицы (GetTableData), без габаритов — их высота врёт.
+    0.0 — не удалось.
+    """
+    try:
+        td = sched.GetTableData()
+    except Exception as ex:
+        dbg(u"GetTableData: {}".format(ex))
+        return 0.0
+
+    total = 0.0
+    try:
+        sd = td.GetSectionData(SectionType.Header)
+    except Exception as ex:
+        dbg(u"GetSectionData(Header): {}".format(ex))
+        sd = None
+
+    if sd is not None:
+        rows = 0
+        try:
+            for r in range(sd.FirstRowNumber, sd.LastRowNumber + 1):
+                try:
+                    total += sd.GetRowHeight(r)
+                    rows += 1
+                except Exception:
+                    pass
+        except Exception as ex:
+            dbg(u"строки шапки: {}".format(ex))
+        dbg(u"шапка: строк {}, высота {:.0f} мм".format(rows, total * MM_IN_FOOT))
+
+    return total if (is_num(total) and total > 0) else 0.0
 
 
 def unsplit(sched):
@@ -292,11 +306,7 @@ def main():
     if mode == "count":
         count = amount
     else:
-        if already_split:
-            total_ft, header_ft = 0.0, 0.0
-        else:
-            total_ft, header_ft = probe_geometry_ft(sched, sheet_id)
-
+        total_ft = 0.0 if already_split else probe_total_body_ft(sched)
         if total_ft <= 0:
             raw2 = ask(
                 u"Высоту не удалось измерить автоматически.\n"
@@ -304,8 +314,22 @@ def main():
                 2000
             )
             total_ft = to_float_mm(raw2) / MM_IN_FOOT
-            header_ft = 0.0
             dbg(u"высота задана вручную: {:.0f} мм".format(total_ft * MM_IN_FOOT))
+
+        header_ft = header_height_ft(sched)
+        if header_ft <= 0:
+            raw3 = ask(
+                u"Не смог определить высоту повторяющейся шапки спецификации.\n"
+                u"Введите её в мм (заголовок + строка названий граф; 0 — не "
+                u"учитывать):",
+                0
+            )
+            raw3 = raw3.strip().lower().replace(",", ".")
+            try:
+                header_ft = max(0.0, float(raw3)) / MM_IN_FOOT
+            except ValueError:
+                header_ft = 0.0
+            dbg(u"шапка задана вручную: {:.0f} мм".format(header_ft * MM_IN_FOOT))
 
         # заданная высота участка = шапка + тело, поэтому предел тела уменьшаем
         body_target_ft = amount - header_ft
