@@ -724,6 +724,33 @@ CPython-only зависимость (импортируется внутри ф�
 |---|---|---|
 | `export_addressing_to_excel` | `export_addressing_to_excel(rows, file_path)` | Пишет лист `"Адреса СКС"` с жирным заголовком и автошириной колонок; `rows` — список dict с ключами `id/category/x_mm/y_mm/addr/addr_prev/cable_type` (см. `COLUMNS`) |
 
+## xlsx_io.py
+Мини чтение/запись `.xlsx` **без сторонних пакетов** (openpyxl не нужен, Excel
+запускать не надо). `.xlsx` — это zip с XML; работаем через
+`System.IO.Compression.ZipArchive` на IronPython 2. Один лист, без
+стилей/формул. Значения на чтении — `unicode` или `None`. Используется
+кнопками `Tools.panel/ScheduleToExcel` и `ScheduleFromExcel`.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `write_xlsx` | `write_xlsx(path, rows, sheet_name=u"Лист1")` | Пишет `rows` (список списков: str/число/None) одним листом; строки — `inlineStr` |
+| `read_xlsx` | `read_xlsx(path)` | Список строк (список ячеек); понимает и `inlineStr`, и `sharedStrings` (так Excel пересохраняет файл) |
+
+## schedule_excel.py
+Выгрузка спецификации в таблицу и обратная загрузка правок в модель. Ключ
+связи строки с элементом — столбец `«Revit ID»`; остальные столбцы —
+параметры экземпляра по имени поля спецификации, на загрузке ищутся через
+`LookupParameter`. Пишутся только не-read-only и не-`ElementId` параметры;
+пустые ячейки пропускаются. Используется кнопками `Tools.panel/ScheduleToExcel`
+(экспорт) и `ScheduleFromExcel` (импорт, вызывающий код оборачивает в транзакцию).
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `list_schedules` | `list_schedules(doc)` | Обычные спеки проекта (без шаблонов, ключевых, штамповых), отсортированы по имени |
+| `schedule_name` | `schedule_name(el)` | Имя вида через `Element.Name.GetValue` (обход неоднозначного связывания IronPython) |
+| `schedule_to_rows` | `schedule_to_rows(doc, sched)` | `(rows, число_элементов, число_столбцов)`; `rows[0]` — заголовок `["Revit ID", <поля>…]` |
+| `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
+
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —
 по образцу `scs.py`, но независимый модуль (своя дисциплина).
