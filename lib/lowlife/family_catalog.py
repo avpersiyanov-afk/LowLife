@@ -651,34 +651,49 @@ def _copy_rfa(src_path, dst_path):
             pass
 
 
-def ensure_family_editable(doc, family):
+def checkout_families(doc, families):
     """
-    Совместная модель: «одалживает» элемент семейства из центральной
+    ОДНИМ вызовом «одалживает» все переданные семейства из центральной
     (WorksharingUtils.CheckoutElements) — программный аналог ручного
-    диалога «Семейство не является редактируемым. Сделать редактируемым и
-    продолжить? → Да». Без этого Document.LoadFamily молча возвращает
-    False и семейство не перезагружается. **Вне транзакции.**
+    диалога «Сделать семейство редактируемым? → Да». Batched, чтобы не
+    делать сетевой запрос на каждое семейство.
 
-    Возвращает (ok, note): ok=False — владелец другой пользователь, писать
-    нельзя; note — необязательное примечание. Несовместная модель или
-    ошибка самой проверки → (True, ...).
+    Возвращает set(id.IntegerValue) семейств, занятых другим пользователем
+    (перезаписать нельзя). Полностью «мягкая»: несовместная модель, любая
+    ошибка/недоступность API — просто пустой set, дальше LoadFamily
+    отработает как раньше. **Вне транзакции.**
     """
+    result = set()
     try:
         if not doc.IsWorkshared:
-            return (True, None)
+            return result
     except:
-        return (True, None)
+        return result
+
     try:
         from Autodesk.Revit.DB import WorksharingUtils, CheckoutStatus
-        status = WorksharingUtils.GetCheckoutStatus(doc, family.Id)
-        if status == CheckoutStatus.OwnedByOtherUser:
-            return (False, u"семейство занято другим пользователем — освободите его")
-        ids = List[ElementId]()
-        ids.Add(family.Id)
-        WorksharingUtils.CheckoutElements(doc, ids)
-        return (True, None)
-    except Exception as ex:
-        return (True, u"checkout: {}".format(ex))
+    except:
+        return result
+
+    to_checkout = List[ElementId]()
+    for fam in families:
+        if fam is None:
+            continue
+        try:
+            st = WorksharingUtils.GetCheckoutStatus(doc, fam.Id)
+        except:
+            st = None
+        if st == CheckoutStatus.OwnedByOtherUser:
+            result.add(fam.Id.IntegerValue)
+        else:
+            to_checkout.Add(fam.Id)
+
+    if to_checkout.Count:
+        try:
+            WorksharingUtils.CheckoutElements(doc, to_checkout)
+        except:
+            pass
+    return result
 
 
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
@@ -704,12 +719,6 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         _copy_rfa(src_path, dst)
     except Exception as ex:
         return (u"error", u"копирование во временный файл: {}".format(ex))
-
-    existing = find_family_by_name(doc, target_family_name)
-    if existing is not None:
-        ok_co, co_note = ensure_family_editable(doc, existing)
-        if not ok_co:
-            return (u"error", co_note)
 
     try:
         res = doc.LoadFamily(dst, options)
@@ -1147,11 +1156,24 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
         return result
 
     options = OverwriteFamilyLoadOptions(overwrite_params)
+
+    # совместная модель: одним пакетом одалживаем все затрагиваемые семейства
+    owned_other = checkout_families(
+        doc,
+        [find_family_by_name(doc, tn) for (_f, _s, tn, _d, _c) in jobs]
+    )
+
     temp_dir = tempfile.mkdtemp(prefix="lowlife_famcat_")
     loaded = []
 
     try:
         for family, src_path, target_name, disp, catalog_name in jobs:
+            ex = find_family_by_name(doc, target_name)
+            if ex is not None and ex.Id.IntegerValue in owned_other:
+                result["failed"].append(
+                    (target_name, disp, u"занято другим пользователем — освободите семейство")
+                )
+                continue
             status, payload = reload_family(doc, src_path, target_name, temp_dir, options)
             if status == u"error":
                 result["failed"].append((target_name, disp, payload))
@@ -1681,11 +1703,23 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     options = OverwriteFamilyLoadOptions(overwrite_params)
     done = []  # (entry, family, was_present, n_types)
 
+    # совместная модель: одним пакетом одалживаем уже присутствующие семейства
+    owned_other = checkout_families(
+        doc, [find_family_by_name(doc, e.name) for (e, _t) in jobs]
+    )
+
     # Грузим из локальной копии (+ .txt рядом), как reload_family.
     temp_dir = tempfile.mkdtemp(prefix="lowlife_famload_")
     try:
         for e, type_names in jobs:
             was_present = e.name in present_names
+
+            existing = find_family_by_name(doc, e.name)
+            if existing is not None and existing.Id.IntegerValue in owned_other:
+                result["failed"].append(
+                    (e.name, e.rel, u"занято другим пользователем — освободите семейство")
+                )
+                continue
 
             dst = os.path.join(temp_dir, _safe_filename(e.name) + u".rfa")
             try:
@@ -1693,14 +1727,6 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
             except Exception as ex:
                 result["failed"].append((e.name, e.rel, u"копирование во временную папку: {}".format(ex)))
                 continue
-
-            # совместная модель: если семейство уже есть — одолжить его
-            existing = find_family_by_name(doc, e.name)
-            if existing is not None:
-                ok_co, co_note = ensure_family_editable(doc, existing)
-                if not ok_co:
-                    result["failed"].append((e.name, e.rel, co_note))
-                    continue
 
             try:
                 if type_names:

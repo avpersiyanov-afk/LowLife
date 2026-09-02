@@ -61,8 +61,12 @@ try:
         script.exit()
     jobs, do_rename, overwrite_params = picked
 
+    output.print_md(u"# Обновление семейств из каталога")
+    output.print_md(u"Отмечено: {}. Загрузка…".format(len(jobs)))
+
     result = fc.apply_updates(doc, jobs, do_rename, overwrite_params)
     fc.render_result_md(output, result)
+    output.print_md(u"---\n**Готово.**")
 
     summary = [u"Готово.", u""] + fc.result_summary_lines(result)
     summary += [

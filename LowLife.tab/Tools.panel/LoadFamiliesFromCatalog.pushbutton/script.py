@@ -97,8 +97,12 @@ try:
     if not jobs:
         forms.alert(u"Нечего загружать.", exitscript=True)
 
+    output.print_md(u"# Загрузка семейств из каталога")
+    output.print_md(u"Отмечено: {}. Загрузка…".format(len(jobs)))
+
     result = fc.apply_loads(doc, jobs, present, overwrite_params)
     fc.render_load_result_md(output, result)
+    output.print_md(u"---\n**Готово.**")
 
     summary = [u"Готово.", u""] + fc.load_summary_lines(result)
     summary += [
