@@ -598,16 +598,30 @@ class OverwriteFamilyLoadOptions(IFamilyLoadOptions):
     Для общих (shared) вложенных семейств источник — сам загружаемый файл.
     """
 
+    # Трейс вызовов колбэков — чтобы понять, зовёт ли их Revit вообще
+    # (LOAD_OPTS_TRACE очищает вызывающий код перед LoadFamily).
+    trace = []
+
     def __init__(self, overwrite_parameter_values=True):
         self._overwrite = bool(overwrite_parameter_values)
 
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
-        overwriteParameterValues.Value = self._overwrite
+        try:
+            overwriteParameterValues.Value = self._overwrite
+            OverwriteFamilyLoadOptions.trace.append(
+                u"OnFamilyFound(inUse={}) -> overwrite={}".format(familyInUse, self._overwrite)
+            )
+        except Exception as ex:
+            OverwriteFamilyLoadOptions.trace.append(u"OnFamilyFound ИСКЛ: {}".format(ex))
         return True
 
     def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
-        source.Value = FamilySource.Family
-        overwriteParameterValues.Value = self._overwrite
+        try:
+            source.Value = FamilySource.Family
+            overwriteParameterValues.Value = self._overwrite
+            OverwriteFamilyLoadOptions.trace.append(u"OnSharedFamilyFound")
+        except Exception as ex:
+            OverwriteFamilyLoadOptions.trace.append(u"OnSharedFamilyFound ИСКЛ: {}".format(ex))
         return True
 
 
@@ -692,7 +706,7 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     family_element нужен вызывающему коду для write_stamp / rename_family.
     """
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
-    diag = []
+    diag = [u"файл: {}".format(src_path)]
 
     try:
         shutil.copyfile(src_path, dst)
@@ -713,10 +727,16 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         diag.append(u"типоразмеров до: {}".format(n_before))
         diag.append(_checkout_family(doc, existing))
 
+    del OverwriteFamilyLoadOptions.trace[:]
     try:
         res = doc.LoadFamily(dst, options)
     except Exception as ex:
         return (u"error", u"{}".format(ex), u"; ".join(diag))
+
+    if OverwriteFamilyLoadOptions.trace:
+        diag.append(u"колбэки: " + u" | ".join(OverwriteFamilyLoadOptions.trace))
+    else:
+        diag.append(u"колбэки IFamilyLoadOptions НЕ вызывались")
 
     loaded = None
     if isinstance(res, tuple):
