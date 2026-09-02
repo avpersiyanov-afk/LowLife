@@ -64,12 +64,19 @@ try:
 
     present = fc.project_family_names(doc)
 
-    picked = fc.show_load_form(entries, present, root)
-    if not picked:
-        script.exit()
-    load_entries, overwrite_params, choose_types = picked
+    # Цикл шагов: окно выбора файлов -> (опц.) окно выбора типоразмеров.
+    # «← Назад» в окне типоразмеров возвращает к окну выбора файлов.
+    jobs = None
+    while jobs is None:
+        picked = fc.show_load_form(entries, present, root)
+        if not picked:
+            script.exit()
+        load_entries, overwrite_params, choose_types = picked
 
-    if choose_types:
+        if not choose_types:
+            jobs = [(e, None) for e in load_entries]
+            break
+
         app = doc.Application
         type_map = []      # (entry, [имена типоразмеров])
         passthru = []      # семейства, у которых типы не прочитались — грузим целиком
@@ -81,9 +88,12 @@ try:
                 else:
                     passthru.append(e)
                 pb.update_progress(i + 1, len(load_entries))
+
         sel = fc.show_type_picker(type_map)
         if sel is None:
             script.exit()
+        if sel == fc.BACK:
+            continue  # назад к окну выбора файлов
 
         jobs = [(e, None) for e in passthru]
         for e, names in type_map:
@@ -91,8 +101,6 @@ try:
             if not chosen:
                 continue
             jobs.append((e, None if set(chosen) == set(names) else sorted(chosen)))
-    else:
-        jobs = [(e, None) for e in load_entries]
 
     if not jobs:
         forms.alert(u"Нечего загружать.", exitscript=True)

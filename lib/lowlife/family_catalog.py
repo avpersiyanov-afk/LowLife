@@ -121,6 +121,9 @@ STATUS_NO_STAMP = u"нет метки"
 STATUS_CURRENT = u"актуально"
 STATUS_NO_CATALOG = u"нет в каталоге"
 
+# Сигнал «вернуться на предыдущий шаг» из окна выбора типоразмеров.
+BACK = u"__back__"
+
 
 # --------------------------------------------------------------------------
 # Хранение пути к каталогу
@@ -1567,9 +1570,10 @@ class _TypeRow(object):
 def show_type_picker(type_map):
     """
     type_map — список (entry, [имена_типоразмеров]). Окно с галочками
-    по каждому типоразмеру каждого семейства. Возвращает
-    {entry: set(отмеченные_имена)} (семейства без единой галочки не
-    попадают), либо None, если окно закрыли.
+    по каждому типоразмеру каждого семейства. Возвращает:
+      {entry: set(отмеченные_имена)} — по кнопке «Загрузить отмеченные»;
+      BACK — по кнопке «← Назад» (вернуться к окну выбора файлов);
+      None — окно закрыто.
     """
     if not type_map:
         return {}
@@ -1661,6 +1665,11 @@ def show_type_picker(type_map):
     none_btn.Margin = Thickness(0, 0, 8, 0)
     none_btn.Click += lambda s, a: _select_all(False)
 
+    back_btn = Button()
+    back_btn.Content = u"← Назад"
+    back_btn.Padding = Thickness(10, 4, 10, 4)
+    back_btn.Margin = Thickness(0, 0, 8, 0)
+
     close_btn = Button()
     close_btn.Content = u"Закрыть"
     close_btn.Padding = Thickness(10, 4, 10, 4)
@@ -1686,12 +1695,18 @@ def show_type_picker(type_map):
         result["map"] = picked
         win.Close()
 
+    def on_back(sender, args):
+        result["map"] = BACK
+        win.Close()
+
     def on_close(sender, args):
         win.Close()
 
     run_btn.Click += on_run
+    back_btn.Click += on_back
     close_btn.Click += on_close
 
+    buttons.Children.Add(back_btn)
     buttons.Children.Add(all_btn)
     buttons.Children.Add(none_btn)
     buttons.Children.Add(close_btn)
