@@ -770,6 +770,11 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
 
     try:
         shutil.copyfile(src_path, dst)
+        # каталог типоразмеров моделируемого семейства — рядом с .rfa
+        src_txt = os.path.splitext(src_path)[0] + u".txt"
+        dst_txt = os.path.splitext(dst)[0] + u".txt"
+        if os.path.isfile(src_txt):
+            shutil.copyfile(src_txt, dst_txt)
     except Exception as ex:
         return (u"error", u"копирование во временный файл: {}".format(ex), u"")
 
@@ -788,8 +793,25 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         diag.append(_checkout_family(doc, existing))
 
     del OverwriteFamilyLoadOptions.trace[:]
-    fam, note = _load_rfa_into_project(doc, dst, options)
-    diag.append(note)
+
+    cat_types = _read_type_catalog_names(dst_txt) if os.path.isfile(dst_txt) else []
+    if cat_types:
+        # моделируемое семейство с .txt: LoadFamily целиком берёт только
+        # прототип, поэтому грузим типы из каталога через LoadFamilySymbol
+        errs = []
+        for tn in cat_types:
+            try:
+                doc.LoadFamilySymbol(dst, tn, options)
+            except Exception as ex:
+                errs.append(u"«{}»: {}".format(tn, ex))
+        fam = find_family_by_name(doc, target_family_name)
+        diag.append(u"каталог типов: {} шт{}".format(
+            len(cat_types), u" (ошибки: " + u"; ".join(errs) + u")" if errs else u""
+        ))
+    else:
+        fam, note = _load_rfa_into_project(doc, dst, options)
+        diag.append(note)
+
     # реально перезагрузилось, только если вернулся элемент Family
     changed = fam is not None
 
@@ -1685,13 +1707,53 @@ def show_type_picker(type_map):
     return result["map"]
 
 
+def _read_type_catalog_names(txt_path):
+    """
+    Имена типоразмеров из каталога типоразмеров .txt (первый столбец каждой
+    строки после заголовка; разделитель — первый символ первой строки).
+    [] при сбое. Кодировка каталога — UTF-16 / UTF-8 / ANSI (cp1251).
+    """
+    lines = None
+    for enc in (u"utf-16", u"utf-8-sig", u"cp1251", u"utf-8", u"latin-1"):
+        try:
+            with io.open(txt_path, "r", encoding=enc) as f:
+                text = f.read()
+        except:
+            continue
+        if u"�" in text and enc != u"latin-1":
+            continue
+        lines = text.splitlines()
+        break
+    if not lines:
+        return []
+
+    header = lines[0] if lines[0] else u","
+    delim = header[0] if header[0] in (u",", u";", u"\t") else u","
+
+    names = []
+    for ln in lines[1:]:
+        ln = ln.strip()
+        if not ln:
+            continue
+        name = ln.split(delim, 1)[0].strip().strip(u'"')
+        if name:
+            names.append(name)
+    return names
+
+
 def read_family_type_names(app, path):
     """
-    Имена типоразмеров в файле .rfa: открывает семейство как отдельный
-    документ (app.OpenDocumentFile), читает FamilyManager.Types и
-    закрывает без сохранения. [] при сбое или если типоразмеров нет.
-    Вызывать ВНЕ транзакции (открытие документа).
+    Имена типоразмеров семейства. Если рядом лежит каталог типоразмеров
+    .txt — берём из него (у моделируемых семейств типы именно там, в
+    FamilyManager.Types только прототип). Иначе открываем .rfa отдельным
+    документом и читаем FamilyManager.Types. [] при сбое. ВНЕ транзакции.
     """
+    txt = os.path.splitext(path)[0] + u".txt"
+    if os.path.isfile(txt):
+        cat = _read_type_catalog_names(txt)
+        if cat:
+            return sorted(set(cat))
+
     names = []
     fdoc = None
     try:
@@ -1741,27 +1803,56 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
         if existing is not None:
             _checkout_family(doc, existing)
 
-        # грузим семейство целиком тем же способом, что reload_family
-        # (OpenDocumentFile -> LoadFamily(targetDoc, opts)); частичный
-        # выбор типоразмеров пока не применяется — грузятся все типы файла
+        # Модель типоразмеров:
+        #  - явный список из окна выбора → грузим его;
+        #  - иначе, если рядом с .rfa есть одноимённый .txt (каталог
+        #    типоразмеров моделируемого семейства) → грузим все типы из него
+        #    через LoadFamilySymbol (LoadFamily целиком берёт только прототип);
+        #  - иначе (типы встроены в .rfa, напр. схемные узлы) → обычный способ.
+        txt = os.path.splitext(e.path)[0] + u".txt"
+        want_types = None
+        if type_names:
+            want_types = list(type_names)
+        elif os.path.isfile(txt):
+            want_types = _read_type_catalog_names(txt)
+
+        n_types = None
         try:
-            fam, _note = _load_rfa_into_project(doc, e.path, options)
+            if want_types:
+                errs = []
+                for tn in want_types:
+                    try:
+                        doc.LoadFamilySymbol(e.path, tn, options)
+                    except Exception as ex:
+                        errs.append(u"«{}»: {}".format(tn, ex))
+                fam = find_family_by_name(doc, e.name)
+                n_types = len(want_types)
+                if fam is None and not was_present:
+                    result["failed"].append((
+                        e.name, e.rel,
+                        u"типы из каталога не загрузились: {}".format(
+                            u"; ".join(errs) or u"?"
+                        )
+                    ))
+                    continue
+            else:
+                fam, _note = _load_rfa_into_project(doc, e.path, options)
+                try:
+                    if fam is None or not fam.IsValidObject:
+                        fam = None
+                except:
+                    fam = None
+                if fam is None:
+                    fam = find_family_by_name(doc, e.name)
         except Exception as ex:
             result["failed"].append((e.name, e.rel, u"{}".format(ex)))
             continue
-        try:
-            if fam is None or not fam.IsValidObject:
-                fam = None
-        except:
-            fam = None
-        if fam is None:
-            fam = find_family_by_name(doc, e.name)
 
         if fam is None and not was_present:
             result["failed"].append((e.name, e.rel, u"семейство не загрузилось"))
             continue
 
-        done.append((e, fam, was_present, len(type_names) if type_names else None))
+        done.append((e, fam, was_present, n_types))
 
     if not done:
         return result
