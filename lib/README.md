@@ -752,35 +752,44 @@ CPython-only зависимость (импортируется внутри ф�
 | `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
 
 ## family_catalog.py
-Тело двух кнопок `Tools.panel`: `UpdateFamiliesFromCatalog` («Обновить
-семейства») и `CheckFamiliesAgainstCatalog` («Актуальность семейств»). Обновление
-загружаемых семейств выбранной категории из папки-каталога `.rfa` + проверка их
-актуальности. Путь к каталогу общий, хранится в
-`%APPDATA%\pyRevit\LowLifeFamilyCatalog_settings.json` (тот же подход, что
-`scs_settings.py`); у обеих кнопок есть `config.py` — Shift+клик меняет папку.
+Тело двух кнопок `Tools.panel`: `UpdateFamiliesFromCatalog` («Семейства из
+каталога» — актуальность + обновление) и `LoadFamiliesFromCatalog` («Загрузить
+семейства»). Работа с загружаемыми семействами из папки-каталога `.rfa`. Путь к
+каталогу общий, хранится в `%APPDATA%\pyRevit\LowLifeFamilyCatalog_settings.json`
+(тот же подход, что `scs_settings.py`); у обеих кнопок есть `config.py` —
+Shift+клик меняет папку. Обе кнопки принимают **несколько категорий**
+(`UpdateFamiliesFromCatalog` — `forms.SelectFromList(multiselect=True)` по
+категориям Revit; `LoadFamiliesFromCatalog` — по папкам каталога, т.к. у ещё не
+загруженного `.rfa` категорию не узнать без открытия файла).
+
 Похожесть имён — свой коэффициент Сёренсена—Дайса по буквенным биграммам
 нормализованных имён (без `difflib` и прочих зависимостей от полноты стандартной
 библиотеки движка). Ключевой приём обновления семейства с **другим** именем
 файла: `.rfa` копируется во временный файл, переименованный в имя семейства
 модели, — `Document.LoadFamily` сопоставляет семейство по имени файла, поэтому
-обновляется нужное, а не создаётся новое. `LoadFamily` управляет своей
-транзакцией и вызывается **вне** `revit.Transaction` — каждая перезагрузка
-отдельный шаг отмены.
+обновляется нужное, а не создаётся новое (для загрузки нового семейства
+`apply_loads` грузит `.rfa` напрямую, без переименования). `LoadFamily` управляет
+своей транзакцией и вызывается **вне** транзакции — каждая перезагрузка отдельный
+шаг отмены.
 
-Актуальность: после загрузки в сам элемент `Family` пишется скрытая метка
-(ExtensibleStorage, схема `SCHEMA_GUID`, все поля строковые — чтобы у `SimpleField`
-не требовать единицы/спецификацию) с датой изменения файла `.rfa` в каталоге.
-`SetEntity` и `Family.Name` требуют транзакции — поэтому переименование и метки
-идут отдельным проходом после всех `LoadFamily` (см. `apply_updates`, транзакция
+После загрузки в сам элемент `Family` пишется скрытая метка (ExtensibleStorage,
+схема `SCHEMA_GUID`, все поля строковые — чтобы у `SimpleField` не требовать
+единицы/спецификацию) с датой изменения файла `.rfa` в каталоге. `SetEntity` и
+`Family.Name` требуют транзакции — поэтому переименование и метки идут отдельным
+проходом после всех `LoadFamily` (см. `apply_updates` / `apply_loads`, транзакция
 через `Autodesk.Revit.DB.Transaction`, а не `revit.Transaction`, чтобы модуль не
-тянул `pyrevit.revit`). `CheckFamiliesAgainstCatalog` сравнивает метку с текущей
-датой похожего файла, раскладывает семейства по статусам
-`STATUS_STALE / STATUS_NO_STAMP / STATUS_NO_CATALOG / STATUS_CURRENT`, показывает
-их в окне `show_status_form` (DataGrid: имя, статус цветом, даты, похожесть;
-сортировка по клику на заголовок — своя, через `grid.Sorting`, т.к. WPF не
-разрешает пути к python-объектам для сортировки; цвет строки — через `LoadingRow`;
-галочка выбора — `DataGridCheckBoxColumn` TwoWay) и по кнопке «Обновить
-отмеченные» гонит их через тот же `apply_updates`, что и основная кнопка.
+тянул `pyrevit.revit`).
+
+`show_status_form` — единое окно кнопки «Семейства из каталога»: `DataGrid`
+(галочка, имя, категория, статус цветом, даты, похожесть), сортировка по клику на
+заголовок — своя (`grid.Sorting` сортирует `List[object]` по `SortMemberPath`,
+т.к. WPF не разрешает пути к python-объектам для сортировки), цвет строки — через
+`LoadingRow`, галочка — `DataGridCheckBoxColumn` TwoWay, двойной клик по строке
+или «Файл…» — вручную выбрать другой файл каталога. Отмеченные уходят в тот же
+`apply_updates`. `show_load_form` — аналогичная таблица кнопки «Загрузить
+семейства» (файл, папка, «в модели», дата), отмеченные — в `apply_loads`.
+Общие помощники таблиц: `_text_col` / `_check_col` / `_star` / `_attach_row_coloring`
+/ `_attach_datagrid_sorting`.
 
 | Функция / класс | Сигнатура | Что делает |
 |---|---|---|
@@ -790,7 +799,8 @@ CPython-only зависимость (импортируется внутри ф�
 | `file_mtime` | `file_mtime(path)` | `(epoch_float, "ГГГГ-ММ-ДД ЧЧ:ММ")` либо `(None, None)` |
 | `scan_catalog` | `scan_catalog(root)` | Все `.rfa` из `root` и подпапок (без резервных копий `Имя.0001.rfa`; папки с «архив» в имени — `EXCLUDED_DIR_KEYWORDS` — пропускаются целиком) — список `CatalogEntry` (`.path`, `.name`, `.rel`, `.mtime`, `.mtime_iso`) |
 | `list_family_categories` | `list_family_categories(doc)` | `CategoryOption` (`.cat_id`, `.name` с числом) для категорий с загружаемыми (не in-place) семействами |
-| `list_families_in_category` | `list_families_in_category(doc, cat_id)` | Загружаемые семейства категории (`cat_id` — `ElementId`) |
+| `list_families_in_categories` / `list_families_in_category` | `list_families_in_categories(doc, cat_ids)` / `list_families_in_category(doc, cat_id)` | Загружаемые семейства из набора категорий / одной категории (`cat_id[s]` — `ElementId` или int) |
+| `project_family_names` | `project_family_names(doc)` | `set` имён всех загружаемых семейств проекта — для «уже в модели?» в окне загрузки |
 | `build_matches` | `build_matches(families, entries)` | `[MatchRow(family, family_name, entry|None, score, stamp, status)]`; статус по метке (порог достоверности имени `MATCH_FLOOR`); сортировка: сперва устаревшие/без метки |
 | `read_stamp` / `write_stamp` | `read_stamp(family)` / `write_stamp(family, mtime_epoch, mtime_iso, catalog_file)` | Чтение/запись скрытой метки на `Family`. `write_stamp` **требует транзакции** |
 | `stamp_status` | `stamp_status(stamp, entry)` | `STATUS_*` по метке и текущей дате файла каталога (`STALE_TOLERANCE_SEC` запас на расхождение часов) |
@@ -798,10 +808,12 @@ CPython-only зависимость (импортируется внутри ф�
 | `OverwriteFamilyLoadOptions` | — | `IFamilyLoadOptions`, всегда `overwriteParameterValues = True`, для общих семейств `source = FamilySource.Family` |
 | `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `("loaded", family)` — перезагружено, `("unchanged", family)` — `LoadFamily` вернул False (содержимое совпало, **не ошибка**), `("error", "текст")` |
 | `rename_family` | `rename_family(doc, family, new_name)` | Переименовывает семейство модели (напр. по имени файла каталога, когда его переименовали в каталоге). **Требует транзакции.** `(True, None)` либо `(False, "причина")` — имя совпадает / занято / отклонено. `Element.Name` под IronPython пишется через `_set_element_name` (рефлексия, как `_safe_element_name` для чтения) |
-| `show_preview_form` | `show_preview_form(rows, entries, catalog_root)` | WPF-таблица «семейство → файл (N%) · статус · [→ новое имя]» с галочками, кнопкой «Файл…» и флажком «переименовывать по имени файла каталога» (по умолчанию вкл.); авто-галочка на устаревших и (при похожести ≥ `AUTO_CHECK_SCORE`) на «без метки», «актуальные» — нет; `(confirmed, do_rename)` где `confirmed` — `[(family, src_path, target_family_name, display, catalog_name)]`, либо `None` |
-| `show_status_form` | `show_status_form(rows, catalog_root)` | Окно кнопки «Актуальность семейств»: инфо + сортируемый `DataGrid` (галочка, имя, статус цветом, дата в модели, дата в каталоге, файл, похожесть) + флажок переименования + «Отметить требующие обновления» / «Снять все» / «Обновить отмеченные» / «Закрыть». `(jobs, do_rename)` для отмеченных строк с файлом либо `None`, если окно закрыли |
-| `apply_updates` | `apply_updates(doc, jobs, do_rename)` | Общий конвейер обеих кнопок: `reload_family` каждого (вне транзакции) → одна `Transaction`: `rename_family` при `do_rename` и различии имён + `write_stamp`. Возвращает dict со списками `updated / unchanged / renamed / rename_failed / failed / stamp_failed` |
-| `render_result_md` / `result_summary_lines` | `render_result_md(output, result)` / `result_summary_lines(result)` | Печать разделов отчёта `apply_updates` в окно вывода / короткая сводка для `forms.alert` |
+| `show_status_form` | `show_status_form(rows, catalog_root, entries)` | Единое окно «Семейства из каталога»: сортируемый `DataGrid` (галочка, имя, категория, статус цветом, дата в модели, дата в каталоге, файл, похожесть) + флажок переименования + «Файл…» (или двойной клик — сменить файл строки) + «Отметить требующие обновления» / «Снять все» / «Обновить отмеченные» / «Закрыть». `(jobs, do_rename)` для отмеченных строк с файлом либо `None` |
+| `show_load_form` | `show_load_form(entries, present_names, catalog_root)` | Окно «Загрузить семейства»: сортируемый `DataGrid` (галочка, файл, папка, «в модели», дата файла); зелёным — новые, серым — уже в модели. Список `CatalogEntry` для отмеченных строк либо `None` |
+| `apply_updates` | `apply_updates(doc, jobs, do_rename)` | Конвейер обновления: `reload_family` каждого (вне транзакции) → одна `Transaction`: `rename_family` при `do_rename` и различии имён + `write_stamp`. dict: `updated / unchanged / renamed / rename_failed / failed / stamp_failed` |
+| `apply_loads` | `apply_loads(doc, entries, present_names)` | Конвейер загрузки: `doc.LoadFamily(path, overwrite-опции)` напрямую (без переименования) → `Transaction`: `write_stamp`. dict: `loaded` (новые) / `updated` (уже были) / `failed` / `stamp_failed` |
+| `render_result_md` / `result_summary_lines` | `(output, result)` | Отчёт `apply_updates` в окно вывода / сводка для `forms.alert` |
+| `render_load_result_md` / `load_summary_lines` | `(output, result)` | То же для `apply_loads` |
 
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —

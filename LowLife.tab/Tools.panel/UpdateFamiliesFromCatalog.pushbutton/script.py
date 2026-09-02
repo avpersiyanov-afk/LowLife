@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-__title__ = u"Обновить\nсемейства"
-__doc__ = u"Обновляет семейства выбранной категории из папки-каталога .rfa: подбор по похожему имени + перезагрузка с заменой параметров. Shift+клик — сменить папку каталога."
+__title__ = u"Семейства\nиз каталога"
+__doc__ = u"Актуальность семейств выбранных категорий относительно папки-каталога .rfa и обновление отмеченных (перезагрузка с заменой параметров, при различии имён — переименование). Shift+клик — сменить папку каталога."
 __author__ = "Pipers"
 
 import traceback
@@ -42,27 +42,26 @@ try:
 
     chosen = forms.SelectFromList.show(
         categories,
-        title=u"Категория семейств для обновления",
+        title=u"Категории семейств (можно несколько)",
         button_name=u"Далее",
-        multiselect=False
+        multiselect=True
     )
     if not chosen:
         script.exit()
 
-    families = fc.list_families_in_category(doc, chosen.cat_id)
+    cat_ids = [c.cat_id for c in chosen]
+    families = fc.list_families_in_categories(doc, cat_ids)
     if not families:
-        forms.alert(u"В выбранной категории нет загружаемых семейств.", exitscript=True)
+        forms.alert(u"В выбранных категориях нет загружаемых семейств.", exitscript=True)
 
     rows = fc.build_matches(families, entries)
 
-    picked = fc.show_preview_form(rows, entries, root)
+    picked = fc.show_status_form(rows, root, entries)
     if not picked:
         script.exit()
-    confirmed, do_rename = picked
-    if not confirmed:
-        script.exit()
+    jobs, do_rename = picked
 
-    result = fc.apply_updates(doc, list(confirmed), do_rename)
+    result = fc.apply_updates(doc, jobs, do_rename)
     fc.render_result_md(output, result)
 
     summary = [u"Готово.", u""] + fc.result_summary_lines(result)
@@ -70,10 +69,10 @@ try:
         u"",
         u"Подробности — в окне вывода. Каждая перезагрузка — отдельный шаг отмены (Ctrl+Z).",
     ]
-    forms.alert(u"\n".join(summary), title=u"Обновить семейства")
+    forms.alert(u"\n".join(summary), title=u"Семейства из каталога")
 
 except Exception:
     forms.alert(
         u"Сбой при обновлении семейств:\n\n{}".format(traceback.format_exc()),
-        title=u"Обновить семейства"
+        title=u"Семейства из каталога"
     )
