@@ -636,6 +636,14 @@ def _set_element_name(el, name):
             return False
 
 
+def _checkout_status(doc, family):
+    try:
+        from Autodesk.Revit.DB import WorksharingUtils
+        return u"{}".format(WorksharingUtils.GetCheckoutStatus(doc, family.Id))
+    except Exception as ex:
+        return u"?({})".format(ex)
+
+
 def _checkout_family(doc, family):
     """
     Совместная модель: «одалживает» элемент семейства из центральной
@@ -645,20 +653,25 @@ def _checkout_family(doc, family):
     False, и геометрия/параметры не обновляются (переименование при этом
     проходит, т.к. идёт в явной транзакции). **Вне транзакции.**
 
-    Тихо ничего не делает для несовместной модели / при недоступности API.
+    Возвращает строку-примечание (для отчёта-диагностики). Тихо ничего не
+    делает для несовместной модели / при недоступности API.
     """
     try:
         if not doc.IsWorkshared:
-            return
+            return u"модель не совместная"
     except:
-        return
+        return u"IsWorkshared недоступен"
+    before = _checkout_status(doc, family)
+    err = u""
     try:
         from Autodesk.Revit.DB import WorksharingUtils
         ids = List[ElementId]()
         ids.Add(family.Id)
         WorksharingUtils.CheckoutElements(doc, ids)
-    except:
-        pass
+    except Exception as ex:
+        err = u" checkout-искл={}".format(ex)
+    after = _checkout_status(doc, family)
+    return u"co: {} -> {}{}".format(before, after, err)
 
 
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
@@ -679,31 +692,41 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     family_element нужен вызывающему коду для write_stamp / rename_family.
     """
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
+    diag = []
 
     try:
         shutil.copyfile(src_path, dst)
     except Exception as ex:
-        return (u"error", u"копирование во временный файл: {}".format(ex))
+        return (u"error", u"копирование во временный файл: {}".format(ex), u"")
 
     # Совместная модель: одолжить существующее семейство из центральной,
     # иначе Document.LoadFamily молча вернёт False (не может ответить на
     # диалог «Сделать семейство редактируемым?»).
     existing = find_family_by_name(doc, target_family_name)
-    if existing is not None:
-        _checkout_family(doc, existing)
+    if existing is None:
+        diag.append(u"семейство «{}» в модели НЕ найдено".format(target_family_name))
+    else:
+        try:
+            n_before = len(list(existing.GetFamilySymbolIds()))
+        except:
+            n_before = -1
+        diag.append(u"типоразмеров до: {}".format(n_before))
+        diag.append(_checkout_family(doc, existing))
 
     try:
         res = doc.LoadFamily(dst, options)
     except Exception as ex:
-        return (u"error", u"{}".format(ex))
+        return (u"error", u"{}".format(ex), u"; ".join(diag))
 
     loaded = None
     if isinstance(res, tuple):
         changed = bool(res[0])
         if len(res) > 1:
             loaded = res[1]
+        diag.append(u"LoadFamily: tuple, res[0]={}".format(changed))
     else:
         changed = bool(res)
+        diag.append(u"LoadFamily: {}={}".format(type(res).__name__, changed))
 
     try:
         valid = loaded is not None and loaded.IsValidObject
@@ -711,8 +734,15 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         valid = False
     if not valid:
         loaded = find_family_by_name(doc, target_family_name)
+    diag.append(u"ссылка на семейство: {}".format(u"есть" if loaded is not None else u"НЕТ"))
 
-    return (u"loaded" if changed else u"unchanged", loaded)
+    try:
+        if loaded is not None:
+            diag.append(u"типоразмеров после: {}".format(len(list(loaded.GetFamilySymbolIds()))))
+    except:
+        pass
+
+    return (u"loaded" if changed else u"unchanged", loaded, u"; ".join(diag))
 
 
 def rename_family(doc, family, new_name):
@@ -1122,7 +1152,7 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
     """
     result = {
         "updated": [], "unchanged": [], "renamed": [],
-        "rename_failed": [], "failed": [], "stamp_failed": [],
+        "rename_failed": [], "failed": [], "stamp_failed": [], "debug": [],
     }
     if not jobs:
         return result
@@ -1133,7 +1163,8 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
 
     try:
         for family, src_path, target_name, disp, catalog_name in jobs:
-            status, payload = reload_family(doc, src_path, target_name, temp_dir, options)
+            status, payload, note = reload_family(doc, src_path, target_name, temp_dir, options)
+            result["debug"].append(u"**{}** — {}".format(target_name, note))
             if status == u"error":
                 result["failed"].append((target_name, disp, payload))
             else:
@@ -1214,6 +1245,10 @@ def render_result_md(output, result):
         output.print_md(u"### Метку даты записать не удалось ({})\n{}".format(
             len(sf), u"\n".join(u"- {}".format(x) for x in sf)
         ))
+    dbg = result.get("debug")
+    if dbg:
+        output.print_md(u"### Диагностика LoadFamily")
+        output.print_md(u"\n".join(u"- {}".format(x) for x in dbg))
 
 
 def result_summary_lines(result):
