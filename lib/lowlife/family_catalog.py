@@ -739,26 +739,58 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         diag.append(u"типоразмеров до: {}".format(n_before))
         diag.append(_checkout_family(doc, existing))
 
+    try:
+        diag.append(u"opts isinstance IFamilyLoadOptions: {}".format(
+            isinstance(options, IFamilyLoadOptions)
+        ))
+    except:
+        pass
+
+    loaded = None
+    changed = False
+
+    # Способ 1 — открыть .rfa как документ семейства и «Загрузить в проект»
+    # (Document.LoadFamily(targetDoc, opts)). Это путь ручного диалога: он
+    # форсирует перезагрузку и вызывает OnFamilyFound. Путевой
+    # doc.LoadFamily(path, opts) молча отдаёт False, если версия файла не
+    # новее уже загруженной (наш случай: файл 2020, семейство в модели
+    # обновлено до 2024).
     del OverwriteFamilyLoadOptions.trace[:]
     try:
-        res = doc.LoadFamily(dst, options)
+        fam_doc = doc.Application.OpenDocumentFile(dst)
+        try:
+            fam = fam_doc.LoadFamily(doc, options)
+            loaded = fam
+            changed = fam is not None
+            diag.append(u"FamilyDoc.LoadFamily -> {}".format(
+                u"Family" if fam is not None else u"None"
+            ))
+        finally:
+            try:
+                fam_doc.Close(False)
+            except Exception as cex:
+                diag.append(u"Close искл: {}".format(cex))
     except Exception as ex:
-        return (u"error", u"{}".format(ex), u"; ".join(diag))
+        diag.append(u"FamilyDoc.LoadFamily искл: {}".format(ex))
+
+    # Способ 2 (запасной) — путевой doc.LoadFamily(path, opts)
+    if loaded is None:
+        try:
+            res = doc.LoadFamily(dst, options)
+            if isinstance(res, tuple):
+                changed = bool(res[0])
+                loaded = res[1] if len(res) > 1 else None
+                diag.append(u"doc.LoadFamily: tuple res[0]={}".format(changed))
+            else:
+                changed = bool(res)
+                diag.append(u"doc.LoadFamily: {}={}".format(type(res).__name__, changed))
+        except Exception as ex:
+            diag.append(u"doc.LoadFamily искл: {}".format(ex))
 
     if OverwriteFamilyLoadOptions.trace:
         diag.append(u"колбэки: " + u" | ".join(OverwriteFamilyLoadOptions.trace))
     else:
         diag.append(u"колбэки IFamilyLoadOptions НЕ вызывались")
-
-    loaded = None
-    if isinstance(res, tuple):
-        changed = bool(res[0])
-        if len(res) > 1:
-            loaded = res[1]
-        diag.append(u"LoadFamily: tuple, res[0]={}".format(changed))
-    else:
-        changed = bool(res)
-        diag.append(u"LoadFamily: {}={}".format(type(res).__name__, changed))
 
     try:
         valid = loaded is not None and loaded.IsValidObject
