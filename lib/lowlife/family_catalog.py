@@ -581,18 +581,33 @@ def build_matches(families, entries):
 
 class OverwriteFamilyLoadOptions(IFamilyLoadOptions):
     """
-    IFamilyLoadOptions, всегда разрешающий перезапись значений параметров
-    из загружаемого файла (overwriteParameterValues = True). Для общих
-    семейств источником берётся сам загружаемый файл (FamilySource.Family).
+    IFamilyLoadOptions для перезагрузки семейства.
+
+    overwrite_parameter_values управляет тем же, что выбор в диалоге Revit
+    при загрузке семейства, уже присутствующего в проекте:
+      True  — «Перезаписать существующую версию и значения параметров»:
+              для типоразмеров, что есть и в проекте, и в файле, значения
+              параметров берутся из файла каталога;
+      False — «Перезаписать существующую версию»: определение семейства
+              (геометрия, формулы, набор типоразмеров, параметры) всё равно
+              обновляется, но существующие значения параметров у уже
+              имеющихся типоразмеров сохраняются.
+    В обоих случаях новые типоразмеры из файла добавляются, а типоразмеры,
+    которых в файле нет, Revit из проекта не удаляет.
+
+    Для общих (shared) вложенных семейств источник — сам загружаемый файл.
     """
 
+    def __init__(self, overwrite_parameter_values=True):
+        self._overwrite = bool(overwrite_parameter_values)
+
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
-        overwriteParameterValues.Value = True
+        overwriteParameterValues.Value = self._overwrite
         return True
 
     def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
         source.Value = FamilySource.Family
-        overwriteParameterValues.Value = True
+        overwriteParameterValues.Value = self._overwrite
         return True
 
 
@@ -833,8 +848,8 @@ def show_status_form(rows, catalog_root, entries):
     выбора. Двойной клик по строке или кнопка «Файл…» — вручную указать
     другой файл каталога для строки.
 
-    Возвращает (jobs, do_rename) для отмеченных строк с файлом в каталоге,
-    либо None, если окно просто закрыли.
+    Возвращает (jobs, do_rename, overwrite_params) для отмеченных строк с
+    файлом в каталоге, либо None, если окно просто закрыли.
     jobs — (family, src_path, target_family_name, display, catalog_name).
     """
     counts = {STATUS_STALE: 0, STATUS_NO_STAMP: 0, STATUS_NO_CATALOG: 0, STATUS_CURRENT: 0}
@@ -848,7 +863,7 @@ def show_status_form(rows, catalog_root, entries):
         data.Add(row)
 
     entry_options = sorted([EntryOption(e) for e in entries], key=lambda o: o.name.lower())
-    result = {"jobs": None, "rename": True}
+    result = {"jobs": None, "rename": True, "overwrite": True}
 
     win = Window()
     win.Title = u"Семейства из каталога — актуальность и обновление"
@@ -941,6 +956,15 @@ def show_status_form(rows, catalog_root, entries):
     bottom.Margin = Thickness(16, 8, 16, 12)
     DockPanel.SetDock(bottom, Dock.Bottom)
 
+    overwrite_cb = CheckBox()
+    overwrite_cb.Content = (
+        u"Заменять значения параметров типоразмеров из файла каталога "
+        u"(в браузере — «Перезаписать существующую версию и значения параметров»)"
+    )
+    overwrite_cb.IsChecked = True
+    overwrite_cb.Margin = Thickness(0, 0, 0, 6)
+    bottom.Children.Add(overwrite_cb)
+
     rename_cb = CheckBox()
     rename_cb.Content = (
         u"Переименовывать семейство модели по имени файла каталога, если они различаются"
@@ -1014,6 +1038,7 @@ def show_status_form(rows, catalog_root, entries):
             return
         result["jobs"] = jobs
         result["rename"] = bool(rename_cb.IsChecked)
+        result["overwrite"] = bool(overwrite_cb.IsChecked)
         win.Close()
 
     def on_close(sender, args):
@@ -1037,16 +1062,18 @@ def show_status_form(rows, catalog_root, entries):
 
     if result["jobs"] is None:
         return None
-    return (result["jobs"], result["rename"])
+    return (result["jobs"], result["rename"], result["overwrite"])
 
 
 # --------------------------------------------------------------------------
 # Применение обновлений (общее для обеих кнопок)
 # --------------------------------------------------------------------------
 
-def apply_updates(doc, jobs, do_rename):
+def apply_updates(doc, jobs, do_rename, overwrite_params=True):
     """
     jobs — список (family, src_path, target_family_name, display, catalog_name).
+    overwrite_params — см. OverwriteFamilyLoadOptions (True = «перезаписать и
+    значения параметров», как в диалоге браузера).
 
     Грузит каждое семейство (reload_family, вне транзакции), затем одной
     транзакцией: при do_rename и различии имён переименовывает семейство
@@ -1068,7 +1095,7 @@ def apply_updates(doc, jobs, do_rename):
     if not jobs:
         return result
 
-    options = OverwriteFamilyLoadOptions()
+    options = OverwriteFamilyLoadOptions(overwrite_params)
     temp_dir = tempfile.mkdtemp(prefix="lowlife_famcat_")
     loaded = []
 
@@ -1192,8 +1219,9 @@ class _LoadRow(object):
 
 def show_load_form(entries, present_names, catalog_root):
     """
-    Окно выбора семейств каталога для загрузки в модель. Возвращает список
-    CatalogEntry для отмеченных строк, либо None, если окно закрыли.
+    Окно выбора семейств каталога для загрузки в модель. Возвращает
+    (entries, overwrite_params) — список CatalogEntry для отмеченных строк
+    и флаг замены значений параметров, — либо None, если окно закрыли.
     """
     data = List[object]()
     n_new = 0
@@ -1203,7 +1231,7 @@ def show_load_form(entries, present_names, catalog_root):
             n_new += 1
         data.Add(_LoadRow(e, in_model))
 
-    result = {"entries": None}
+    result = {"entries": None, "overwrite": True}
 
     win = Window()
     win.Title = u"Загрузка семейств из каталога"
@@ -1265,6 +1293,15 @@ def show_load_form(entries, present_names, catalog_root):
     bottom.Margin = Thickness(16, 8, 16, 12)
     DockPanel.SetDock(bottom, Dock.Bottom)
 
+    overwrite_cb = CheckBox()
+    overwrite_cb.Content = (
+        u"Для уже присутствующих в модели — заменять значения параметров типоразмеров "
+        u"из файла каталога (для новых семейств роли не играет)"
+    )
+    overwrite_cb.IsChecked = True
+    overwrite_cb.Margin = Thickness(0, 0, 0, 8)
+    bottom.Children.Add(overwrite_cb)
+
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
     buttons.HorizontalAlignment = HorizontalAlignment.Right
@@ -1317,6 +1354,7 @@ def show_load_form(entries, present_names, catalog_root):
             forms.alert(u"Не отмечено ни одного семейства.")
             return
         result["entries"] = picked
+        result["overwrite"] = bool(overwrite_cb.IsChecked)
         win.Close()
 
     def on_close(sender, args):
@@ -1338,20 +1376,24 @@ def show_load_form(entries, present_names, catalog_root):
     win.Content = outer
     win.ShowDialog()
 
-    return result["entries"]
+    if result["entries"] is None:
+        return None
+    return (result["entries"], result["overwrite"])
 
 
-def apply_loads(doc, entries, present_names):
+def apply_loads(doc, entries, present_names, overwrite_params=True):
     """
     Загружает выбранные .rfa из каталога в модель напрямую (без переименования)
     и ставит им скрытую метку даты. Новые — «loaded», уже бывшие в модели —
-    «updated». Возвращает dict: loaded / updated / failed / stamp_failed.
+    «updated». overwrite_params — см. OverwriteFamilyLoadOptions (влияет
+    только на уже присутствующие семейства). Возвращает dict:
+    loaded / updated / failed / stamp_failed.
     """
     result = {"loaded": [], "updated": [], "failed": [], "stamp_failed": []}
     if not entries:
         return result
 
-    options = OverwriteFamilyLoadOptions()
+    options = OverwriteFamilyLoadOptions(overwrite_params)
     done = []  # (entry, family, was_present)
 
     for e in entries:

@@ -59,9 +59,9 @@ try:
     picked = fc.show_status_form(rows, root, entries)
     if not picked:
         script.exit()
-    jobs, do_rename = picked
+    jobs, do_rename, overwrite_params = picked
 
-    result = fc.apply_updates(doc, jobs, do_rename)
+    result = fc.apply_updates(doc, jobs, do_rename, overwrite_params)
     fc.render_result_md(output, result)
 
     summary = [u"Готово.", u""] + fc.result_summary_lines(result)

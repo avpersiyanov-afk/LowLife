@@ -67,8 +67,9 @@ try:
     picked = fc.show_load_form(entries, present, root)
     if not picked:
         script.exit()
+    load_entries, overwrite_params = picked
 
-    result = fc.apply_loads(doc, picked, present)
+    result = fc.apply_loads(doc, load_entries, present, overwrite_params)
     fc.render_load_result_md(output, result)
 
     summary = [u"Готово.", u""] + fc.load_summary_lines(result)
