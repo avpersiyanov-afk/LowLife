@@ -694,12 +694,16 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     return (u"loaded" if changed else u"unchanged", loaded)
 
 
-def rename_family(doc, family, new_name):
+def rename_family(doc, family, new_name, replace_existing=False):
     """
     Переименовывает семейство модели в new_name (например по имени файла
-    каталога). **Требует открытой транзакции.** Возвращает (True, None)
+    каталога). **Требует открытой транзакции.** Возвращает (True, note)
     либо (False, "причина") — если имя уже совпадает, занято другим
-    семейством, пустое или Revit его отклонил.
+    семейством (и replace_existing=False), пустое или Revit его отклонил.
+
+    replace_existing=True: если new_name занято ДРУГИМ семейством — удалить
+    то семейство и переименовать (для сценария «в проекте есть дубль того
+    же семейства под другим именем»).
     """
     try:
         new_name = unicode(new_name or u"").strip()
@@ -708,12 +712,20 @@ def rename_family(doc, family, new_name):
         if _safe_element_name(family) == new_name:
             return (False, u"имя уже совпадает")
 
+        note = None
         existing = find_family_by_name(doc, new_name)
         if existing is not None and existing.Id != family.Id:
-            return (False, u"в проекте уже есть семейство «{}»".format(new_name))
+            if not replace_existing:
+                return (False, u"в проекте уже есть семейство «{}» "
+                               u"(включите «заменять одноимённое»)".format(new_name))
+            try:
+                doc.Delete(existing.Id)
+                note = u"заменено имевшееся семейство «{}»".format(new_name)
+            except Exception as ex:
+                return (False, u"не удалить имевшееся «{}»: {}".format(new_name, ex))
 
         if _set_element_name(family, new_name):
-            return (True, None)
+            return (True, note)
         return (False, u"Revit отклонил имя «{}»".format(new_name))
     except Exception as ex:
         return (False, u"{}".format(ex))
@@ -859,8 +871,8 @@ def show_status_form(rows, catalog_root, entries):
     выбора. Двойной клик по строке или кнопка «Файл…» — вручную указать
     другой файл каталога для строки.
 
-    Возвращает (jobs, do_rename, overwrite_params) для отмеченных строк с
-    файлом в каталоге, либо None, если окно просто закрыли.
+    Возвращает (jobs, do_rename, overwrite_params, replace_on_rename) для
+    отмеченных строк с файлом в каталоге, либо None, если окно закрыли.
     jobs — (family, src_path, target_family_name, display, catalog_name).
     """
     counts = {STATUS_STALE: 0, STATUS_NO_STAMP: 0, STATUS_NO_CATALOG: 0, STATUS_CURRENT: 0}
@@ -874,7 +886,7 @@ def show_status_form(rows, catalog_root, entries):
         data.Add(row)
 
     entry_options = sorted([EntryOption(e) for e in entries], key=lambda o: o.name.lower())
-    result = {"jobs": None, "rename": True, "overwrite": True}
+    result = {"jobs": None, "rename": True, "overwrite": True, "replace": False}
 
     win = Window()
     win.Title = u"Семейства из каталога — актуальность и обновление"
@@ -981,8 +993,17 @@ def show_status_form(rows, catalog_root, entries):
         u"Переименовывать семейство модели по имени файла каталога, если они различаются"
     )
     rename_cb.IsChecked = True
-    rename_cb.Margin = Thickness(0, 0, 0, 8)
+    rename_cb.Margin = Thickness(0, 0, 0, 6)
     bottom.Children.Add(rename_cb)
+
+    replace_cb = CheckBox()
+    replace_cb.Content = (
+        u"…и если это имя уже занято другим семейством — заменить его "
+        u"(удалить дубль в проекте)"
+    )
+    replace_cb.IsChecked = False
+    replace_cb.Margin = Thickness(0, 0, 0, 8)
+    bottom.Children.Add(replace_cb)
 
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -1050,6 +1071,7 @@ def show_status_form(rows, catalog_root, entries):
         result["jobs"] = jobs
         result["rename"] = bool(rename_cb.IsChecked)
         result["overwrite"] = bool(overwrite_cb.IsChecked)
+        result["replace"] = bool(replace_cb.IsChecked)
         win.Close()
 
     def on_close(sender, args):
@@ -1073,18 +1095,20 @@ def show_status_form(rows, catalog_root, entries):
 
     if result["jobs"] is None:
         return None
-    return (result["jobs"], result["rename"], result["overwrite"])
+    return (result["jobs"], result["rename"], result["overwrite"], result["replace"])
 
 
 # --------------------------------------------------------------------------
 # Применение обновлений (общее для обеих кнопок)
 # --------------------------------------------------------------------------
 
-def apply_updates(doc, jobs, do_rename, overwrite_params=True):
+def apply_updates(doc, jobs, do_rename, overwrite_params=True, replace_on_rename=False):
     """
     jobs — список (family, src_path, target_family_name, display, catalog_name).
     overwrite_params — см. OverwriteFamilyLoadOptions (True = «перезаписать и
     значения параметров», как в диалоге браузера).
+    replace_on_rename — при do_rename: если целевое имя занято ДРУГИМ
+    семейством, удалить то семейство и всё равно переименовать.
 
     Грузит каждое семейство (reload_family, вне транзакции), затем одной
     транзакцией: при do_rename и различии имён переименовывает семейство
@@ -1132,13 +1156,18 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
             was_renamed = False
 
             if do_rename and fam_elem and catalog_name and catalog_name != target_name:
-                ok_rn, err_rn = rename_family(doc, fam_elem, catalog_name)
+                ok_rn, rn_note = rename_family(
+                    doc, fam_elem, catalog_name, replace_existing=replace_on_rename
+                )
                 if ok_rn:
-                    result["renamed"].append((target_name, catalog_name))
+                    result["renamed"].append((
+                        target_name,
+                        catalog_name if not rn_note else u"{} ({})".format(catalog_name, rn_note),
+                    ))
                     final_name = catalog_name
                     was_renamed = True
                 else:
-                    result["rename_failed"].append((target_name, catalog_name, err_rn))
+                    result["rename_failed"].append((target_name, catalog_name, rn_note))
 
             ok_stamp = write_stamp(fam_elem, epoch, iso, disp) if fam_elem else False
             if not ok_stamp:
@@ -1630,17 +1659,14 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
 
             out_family = None
             try:
-                # простой оверлоуд (1 аргумент) — для новых семейств
-                any_ok = bool(doc.LoadFamily(dst))
-                if not any_ok:
-                    # уже есть в проекте (или идентично) — с опциями перезаписи
-                    res = doc.LoadFamily(dst, options)
-                    if isinstance(res, tuple):
-                        any_ok = bool(res[0])
-                        if len(res) > 1:
-                            out_family = res[1]
-                    else:
-                        any_ok = bool(res)
+                # ровно как reload_family в apply_updates (работает у кнопки обновления)
+                res = doc.LoadFamily(dst, options)
+                if isinstance(res, tuple):
+                    any_ok = bool(res[0])
+                    if len(res) > 1:
+                        out_family = res[1]
+                else:
+                    any_ok = bool(res)
             except Exception as ex:
                 result["failed"].append((e.name, e.rel, u"{}".format(ex)))
                 continue
