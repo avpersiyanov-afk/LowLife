@@ -770,10 +770,17 @@ CPython-only зависимость (импортируется внутри ф�
 Актуальность: после загрузки в сам элемент `Family` пишется скрытая метка
 (ExtensibleStorage, схема `SCHEMA_GUID`, все поля строковые — чтобы у `SimpleField`
 не требовать единицы/спецификацию) с датой изменения файла `.rfa` в каталоге.
-`SetEntity` требует транзакции — поэтому метки проставляются отдельным проходом
-после всех `LoadFamily`, внутри `revit.Transaction`. `CheckFamiliesAgainstCatalog`
-сравнивает метку с текущей датой похожего файла и раскладывает семейства по
-статусам `STATUS_STALE / STATUS_NO_STAMP / STATUS_NO_CATALOG / STATUS_CURRENT`.
+`SetEntity` и `Family.Name` требуют транзакции — поэтому переименование и метки
+идут отдельным проходом после всех `LoadFamily` (см. `apply_updates`, транзакция
+через `Autodesk.Revit.DB.Transaction`, а не `revit.Transaction`, чтобы модуль не
+тянул `pyrevit.revit`). `CheckFamiliesAgainstCatalog` сравнивает метку с текущей
+датой похожего файла, раскладывает семейства по статусам
+`STATUS_STALE / STATUS_NO_STAMP / STATUS_NO_CATALOG / STATUS_CURRENT`, показывает
+их в окне `show_status_form` (DataGrid: имя, статус цветом, даты, похожесть;
+сортировка по клику на заголовок — своя, через `grid.Sorting`, т.к. WPF не
+разрешает пути к python-объектам для сортировки; цвет строки — через `LoadingRow`;
+галочка выбора — `DataGridCheckBoxColumn` TwoWay) и по кнопке «Обновить
+отмеченные» гонит их через тот же `apply_updates`, что и основная кнопка.
 
 | Функция / класс | Сигнатура | Что делает |
 |---|---|---|
@@ -792,6 +799,9 @@ CPython-only зависимость (импортируется внутри ф�
 | `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `("loaded", family)` — перезагружено, `("unchanged", family)` — `LoadFamily` вернул False (содержимое совпало, **не ошибка**), `("error", "текст")` |
 | `rename_family` | `rename_family(doc, family, new_name)` | Переименовывает семейство модели (напр. по имени файла каталога, когда его переименовали в каталоге). **Требует транзакции.** `(True, None)` либо `(False, "причина")` — имя совпадает / занято / отклонено. `Element.Name` под IronPython пишется через `_set_element_name` (рефлексия, как `_safe_element_name` для чтения) |
 | `show_preview_form` | `show_preview_form(rows, entries, catalog_root)` | WPF-таблица «семейство → файл (N%) · статус · [→ новое имя]» с галочками, кнопкой «Файл…» и флажком «переименовывать по имени файла каталога» (по умолчанию вкл.); авто-галочка на устаревших и (при похожести ≥ `AUTO_CHECK_SCORE`) на «без метки», «актуальные» — нет; `(confirmed, do_rename)` где `confirmed` — `[(family, src_path, target_family_name, display, catalog_name)]`, либо `None` |
+| `show_status_form` | `show_status_form(rows, catalog_root)` | Окно кнопки «Актуальность семейств»: инфо + сортируемый `DataGrid` (галочка, имя, статус цветом, дата в модели, дата в каталоге, файл, похожесть) + флажок переименования + «Отметить требующие обновления» / «Снять все» / «Обновить отмеченные» / «Закрыть». `(jobs, do_rename)` для отмеченных строк с файлом либо `None`, если окно закрыли |
+| `apply_updates` | `apply_updates(doc, jobs, do_rename)` | Общий конвейер обеих кнопок: `reload_family` каждого (вне транзакции) → одна `Transaction`: `rename_family` при `do_rename` и различии имён + `write_stamp`. Возвращает dict со списками `updated / unchanged / renamed / rename_failed / failed / stamp_failed` |
+| `render_result_md` / `result_summary_lines` | `render_result_md(output, result)` / `result_summary_lines(result)` | Печать разделов отчёта `apply_updates` в окно вывода / короткая сводка для `forms.alert` |
 
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —

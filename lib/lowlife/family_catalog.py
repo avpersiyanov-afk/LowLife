@@ -47,22 +47,26 @@ import os
 import io
 import json
 import shutil
+import tempfile
 import datetime
 
 import clr
 clr.AddReference('RevitAPI')
+clr.AddReference('System')
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
+clr.AddReference('WindowsBase')
 
 from Autodesk.Revit.DB import (
     FilteredElementCollector, Family, Element, ElementId,
-    IFamilyLoadOptions, FamilySource
+    IFamilyLoadOptions, FamilySource, Transaction
 )
 from Autodesk.Revit.DB.ExtensibleStorage import (
     Schema, SchemaBuilder, AccessLevel, Entity
 )
 
 from System import Guid, String
+from System.Collections.Generic import List
 
 from pyrevit import forms
 
@@ -72,9 +76,14 @@ from System.Windows import (
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, Button, CheckBox, Orientation, DockPanel, Dock,
-    ScrollViewer, ScrollBarVisibility
+    ScrollViewer, ScrollBarVisibility,
+    DataGrid, DataGridCheckBoxColumn, DataGridTextColumn,
+    DataGridLength, DataGridLengthUnitType,
+    DataGridHeadersVisibility, DataGridGridLinesVisibility, DataGridSelectionMode
 )
+from System.Windows.Data import Binding, BindingMode, UpdateSourceTrigger
 from System.Windows.Media import Brushes
+from System.ComponentModel import ListSortDirection
 
 
 SETTINGS_FILE_NAME = "LowLifeFamilyCatalog_settings.json"
@@ -927,3 +936,415 @@ def show_preview_form(rows, entries, catalog_root):
     if result["confirmed"] is None:
         return None
     return (result["confirmed"], result["rename"])
+
+
+# --------------------------------------------------------------------------
+# Окно актуальности (кнопка «Актуальность семейств») — таблица + выбор
+# --------------------------------------------------------------------------
+
+def _status_brush(status):
+    if status == STATUS_STALE:
+        return Brushes.Firebrick
+    if status == STATUS_NO_STAMP:
+        return Brushes.DarkOrange
+    if status == STATUS_CURRENT:
+        return Brushes.Green
+    return Brushes.Gray
+
+
+class _StatusRow(object):
+    """Строка DataGrid окна актуальности (свойства читаются WPF-биндингом)."""
+
+    def __init__(self, mr):
+        self.mr = mr
+        self.FamilyName = mr.family_name
+        self.Status = mr.status
+        self.ModelDate = (mr.stamp or {}).get("iso") or u"—"
+        self.CatalogDate = (mr.entry.mtime_iso if mr.entry and mr.entry.mtime_iso else u"—")
+        self.CatalogFile = mr.entry.rel if mr.entry else u"—"
+        self.Score = float(mr.score)
+        self.ScoreText = (u"{}%".format(int(round(mr.score * 100))) if mr.entry else u"—")
+        # по умолчанию отмечены те, что имеет смысл обновить
+        self.Selected = bool(mr.entry) and mr.status in (STATUS_STALE, STATUS_NO_STAMP)
+
+
+def show_status_form(rows, catalog_root):
+    """
+    Окно «Актуальность семейств»: информация + сортируемая таблица (имя
+    семейства, статус зелёным/красным, даты, файл, похожесть) с галочками
+    выбора. Возвращает (jobs, do_rename) для отмеченных строк с файлом в
+    каталоге, либо None, если пользователь просто закрыл окно.
+    jobs — как у show_preview_form: (family, src_path, target_family_name,
+    display, catalog_name).
+    """
+    counts = {STATUS_STALE: 0, STATUS_NO_STAMP: 0, STATUS_NO_CATALOG: 0, STATUS_CURRENT: 0}
+    for mr in rows:
+        counts[mr.status] = counts.get(mr.status, 0) + 1
+
+    data = List[object]()
+    for mr in rows:
+        data.Add(_StatusRow(mr))
+
+    result = {"jobs": None, "rename": True}
+
+    win = Window()
+    win.Title = u"Актуальность семейств"
+    win.Width = 1040
+    win.Height = 700
+    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+
+    outer = DockPanel()
+    outer.LastChildFill = True
+
+    header = StackPanel()
+    header.Margin = Thickness(16, 12, 16, 8)
+    DockPanel.SetDock(header, Dock.Top)
+
+    title = TextBlock()
+    title.Text = u"Актуальность семейств относительно каталога"
+    title.FontSize = 16
+    title.FontWeight = FontWeights.Bold
+    header.Children.Add(title)
+
+    info = TextBlock()
+    info.Text = (
+        u"Каталог: {}\n"
+        u"Устарели: {}   ·   без метки: {}   ·   нет в каталоге: {}   ·   актуальны: {}\n"
+        u"Красным — требуют обновления, оранжевым — без метки, зелёным — актуальны. "
+        u"Заголовки столбцов сортируют. Отметьте, что обновить, и нажмите "
+        u"«Обновить отмеченные»; чтобы просто посмотреть — закройте окно.".format(
+            catalog_root,
+            counts.get(STATUS_STALE, 0), counts.get(STATUS_NO_STAMP, 0),
+            counts.get(STATUS_NO_CATALOG, 0), counts.get(STATUS_CURRENT, 0)
+        )
+    )
+    info.FontSize = 11
+    info.Foreground = Brushes.Gray
+    info.TextWrapping = TextWrapping.Wrap
+    info.Margin = Thickness(0, 4, 0, 0)
+    header.Children.Add(info)
+
+    grid = DataGrid()
+    grid.Margin = Thickness(16, 0, 16, 0)
+    grid.AutoGenerateColumns = False
+    grid.CanUserAddRows = False
+    grid.CanUserDeleteRows = False
+    grid.CanUserResizeRows = False
+    grid.HeadersVisibility = DataGridHeadersVisibility.Column
+    grid.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal
+    grid.SelectionMode = DataGridSelectionMode.Extended
+    grid.IsReadOnly = False
+    grid.ItemsSource = data
+
+    def _star(n):
+        return DataGridLength(n, DataGridLengthUnitType.Star)
+
+    def _txt(hdr, path, width=None, sort_path=None):
+        c = DataGridTextColumn()
+        c.Header = hdr
+        c.Binding = Binding(path)
+        c.IsReadOnly = True
+        # для сортировки по «Похожесть» сортируем по числовому Score,
+        # а не по строке "12%" (иначе "100%" < "12%")
+        c.SortMemberPath = sort_path or path
+        c.Width = width if width is not None else DataGridLength.Auto
+        return c
+
+    _sel_b = Binding("Selected")
+    _sel_b.Mode = BindingMode.TwoWay
+    _sel_b.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+
+    chk = DataGridCheckBoxColumn()
+    chk.Header = u"Обновить"
+    chk.Binding = _sel_b
+    chk.CanUserSort = False
+
+    grid.Columns.Add(chk)
+    grid.Columns.Add(_txt(u"Семейство", "FamilyName", _star(3)))
+    grid.Columns.Add(_txt(u"Статус", "Status"))
+    grid.Columns.Add(_txt(u"Дата в модели", "ModelDate"))
+    grid.Columns.Add(_txt(u"Дата в каталоге", "CatalogDate"))
+    grid.Columns.Add(_txt(u"Файл каталога", "CatalogFile", _star(3)))
+    grid.Columns.Add(_txt(u"Похожесть", "ScoreText", sort_path="Score"))
+
+    def on_loading_row(sender, e):
+        try:
+            e.Row.Foreground = _status_brush(e.Row.Item.Status)
+        except:
+            pass
+
+    grid.LoadingRow += on_loading_row
+
+    # Сортировка по клику на заголовок — своя, по атрибутам _StatusRow
+    # (не полагаемся на разрешение путей WPF к python-объектам).
+    sort_state = {"path": None, "asc": True}
+
+    def _sort_key(row, path):
+        val = getattr(row, path, None)
+        if isinstance(val, basestring):
+            return (0, val.lower())
+        if val is None:
+            return (1, u"")
+        return (0, val)
+
+    def on_sorting(sender, e):
+        col = e.Column
+        path = col.SortMemberPath
+        if not path:
+            e.Handled = True
+            return
+        asc = not (sort_state["path"] == path and sort_state["asc"])
+        sort_state["path"] = path
+        sort_state["asc"] = asc
+
+        items = sorted(list(data), key=lambda r: _sort_key(r, path), reverse=not asc)
+        data.Clear()
+        for it in items:
+            data.Add(it)
+        try:
+            grid.Items.Refresh()
+        except:
+            pass
+
+        for c in grid.Columns:
+            c.SortDirection = None
+        col.SortDirection = (
+            ListSortDirection.Ascending if asc else ListSortDirection.Descending
+        )
+        e.Handled = True
+
+    grid.Sorting += on_sorting
+
+    # --- нижняя панель ---
+
+    bottom = StackPanel()
+    bottom.Margin = Thickness(16, 8, 16, 12)
+    DockPanel.SetDock(bottom, Dock.Bottom)
+
+    rename_cb = CheckBox()
+    rename_cb.Content = (
+        u"Переименовывать семейство модели по имени файла каталога, если они различаются"
+    )
+    rename_cb.IsChecked = True
+    rename_cb.Margin = Thickness(0, 0, 0, 8)
+    bottom.Children.Add(rename_cb)
+
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    buttons.HorizontalAlignment = HorizontalAlignment.Right
+    bottom.Children.Add(buttons)
+
+    def _select_where(pred):
+        try:
+            grid.CommitEdit()
+        except:
+            pass
+        for row in data:
+            row.Selected = pred(row)
+        grid.Items.Refresh()
+
+    sel_stale_btn = Button()
+    sel_stale_btn.Content = u"Отметить требующие обновления"
+    sel_stale_btn.Padding = Thickness(10, 4, 10, 4)
+    sel_stale_btn.Margin = Thickness(0, 0, 8, 0)
+    sel_stale_btn.Click += lambda s, a: _select_where(
+        lambda r: r.mr.entry is not None and r.mr.status in (STATUS_STALE, STATUS_NO_STAMP)
+    )
+
+    sel_none_btn = Button()
+    sel_none_btn.Content = u"Снять все"
+    sel_none_btn.Padding = Thickness(10, 4, 10, 4)
+    sel_none_btn.Margin = Thickness(0, 0, 8, 0)
+    sel_none_btn.Click += lambda s, a: _select_where(lambda r: False)
+
+    close_btn = Button()
+    close_btn.Content = u"Закрыть"
+    close_btn.Padding = Thickness(10, 4, 10, 4)
+    close_btn.Margin = Thickness(0, 0, 8, 0)
+
+    run_btn = Button()
+    run_btn.Content = u"Обновить отмеченные"
+    run_btn.Padding = Thickness(10, 4, 10, 4)
+    run_btn.FontWeight = FontWeights.Bold
+
+    def on_run(sender, args):
+        try:
+            grid.CommitEdit()
+        except:
+            pass
+        jobs = []
+        skipped = 0
+        for row in data:
+            if not row.Selected:
+                continue
+            if row.mr.entry is None:
+                skipped += 1
+                continue
+            jobs.append((
+                row.mr.family,
+                row.mr.entry.path,
+                row.mr.family_name,
+                row.mr.entry.rel,
+                row.mr.entry.name,
+            ))
+        if not jobs:
+            forms.alert(u"Не отмечено ни одного семейства с файлом в каталоге.")
+            return
+        result["jobs"] = jobs
+        result["rename"] = bool(rename_cb.IsChecked)
+        win.Close()
+
+    def on_close(sender, args):
+        win.Close()
+
+    run_btn.Click += on_run
+    close_btn.Click += on_close
+
+    buttons.Children.Add(sel_stale_btn)
+    buttons.Children.Add(sel_none_btn)
+    buttons.Children.Add(close_btn)
+    buttons.Children.Add(run_btn)
+
+    outer.Children.Add(header)
+    outer.Children.Add(bottom)
+    outer.Children.Add(grid)
+
+    win.Content = outer
+    win.ShowDialog()
+
+    if result["jobs"] is None:
+        return None
+    return (result["jobs"], result["rename"])
+
+
+# --------------------------------------------------------------------------
+# Применение обновлений (общее для обеих кнопок)
+# --------------------------------------------------------------------------
+
+def apply_updates(doc, jobs, do_rename):
+    """
+    jobs — список (family, src_path, target_family_name, display, catalog_name).
+
+    Грузит каждое семейство (reload_family, вне транзакции), затем одной
+    транзакцией: при do_rename и различии имён переименовывает семейство
+    модели по имени файла каталога (rename_family) и пишет скрытую метку
+    даты (write_stamp).
+
+    Возвращает dict со списками для отчёта:
+      updated       — (final_name, display, iso)  содержимое перезагружено;
+      unchanged     — (final_name, display, iso)  LoadFamily=False, совпало;
+      renamed       — (old_name, new_name);
+      rename_failed — (old_name, new_name, err);
+      failed        — (target_name, display, err) ошибка загрузки;
+      stamp_failed  — final_name.
+    """
+    result = {
+        "updated": [], "unchanged": [], "renamed": [],
+        "rename_failed": [], "failed": [], "stamp_failed": [],
+    }
+    if not jobs:
+        return result
+
+    options = OverwriteFamilyLoadOptions()
+    temp_dir = tempfile.mkdtemp(prefix="lowlife_famcat_")
+    loaded = []
+
+    try:
+        for family, src_path, target_name, disp, catalog_name in jobs:
+            status, payload = reload_family(doc, src_path, target_name, temp_dir, options)
+            if status == u"error":
+                result["failed"].append((target_name, disp, payload))
+            else:
+                loaded.append((payload, target_name, disp, src_path, catalog_name, status))
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    if not loaded:
+        return result
+
+    t = Transaction(doc, u"Обновление семейств из каталога: имена и метки")
+    t.Start()
+    try:
+        for fam_elem, target_name, disp, src_path, catalog_name, status in loaded:
+            epoch, iso = file_mtime(src_path)
+            final_name = target_name
+            was_renamed = False
+
+            if do_rename and fam_elem and catalog_name and catalog_name != target_name:
+                ok_rn, err_rn = rename_family(doc, fam_elem, catalog_name)
+                if ok_rn:
+                    result["renamed"].append((target_name, catalog_name))
+                    final_name = catalog_name
+                    was_renamed = True
+                else:
+                    result["rename_failed"].append((target_name, catalog_name, err_rn))
+
+            ok_stamp = write_stamp(fam_elem, epoch, iso, disp) if fam_elem else False
+            if not ok_stamp:
+                result["stamp_failed"].append(final_name)
+
+            if status == u"loaded":
+                result["updated"].append((final_name, disp, iso))
+            elif not was_renamed:
+                result["unchanged"].append((final_name, disp, iso))
+        t.Commit()
+    except:
+        if t.HasStarted() and not t.HasEnded():
+            t.RollBack()
+        raise
+
+    return result
+
+
+def render_result_md(output, result):
+    """Печатает разделы отчёта apply_updates в окно вывода pyRevit."""
+    up = result["updated"]
+    ch = result["unchanged"]
+    rn = result["renamed"]
+    rf = result["rename_failed"]
+    fl = result["failed"]
+    sf = result["stamp_failed"]
+
+    if up:
+        output.print_md(u"### Обновлены семейства ({})".format(len(up)))
+        output.print_md(u"\n".join(
+            u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in up
+        ))
+    if rn:
+        output.print_md(u"### Переименованы по файлу каталога ({})".format(len(rn)))
+        output.print_md(u"\n".join(u"- «{}»  →  «{}»".format(a, b) for a, b in rn))
+    if ch:
+        output.print_md(u"### Без изменений — содержимое совпадает ({})".format(len(ch)))
+        output.print_md(u"\n".join(
+            u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in ch
+        ))
+    if fl:
+        output.print_md(u"### Не удалось загрузить ({})".format(len(fl)))
+        output.print_md(u"\n".join(
+            u"- **{}**  ←  `{}` — {}".format(n, d, e) for n, d, e in fl
+        ))
+    if rf:
+        output.print_md(u"### Обновлены, но не переименованы ({})".format(len(rf)))
+        output.print_md(u"\n".join(
+            u"- «{}»  →  «{}» — {}".format(a, b, e) for a, b, e in rf
+        ))
+    if sf:
+        output.print_md(u"### Метку даты записать не удалось ({})\n{}".format(
+            len(sf), u"\n".join(u"- {}".format(x) for x in sf)
+        ))
+
+
+def result_summary_lines(result):
+    """Короткая сводка apply_updates для forms.alert."""
+    lines = [u"Обновлено: {}".format(len(result["updated"]))]
+    if result["renamed"]:
+        lines.append(u"Переименовано: {}".format(len(result["renamed"])))
+    if result["unchanged"]:
+        lines.append(u"Без изменений: {}".format(len(result["unchanged"])))
+    if result["failed"]:
+        lines.append(u"Ошибок загрузки: {}".format(len(result["failed"])))
+    if result["rename_failed"]:
+        lines.append(u"Не переименовано: {}".format(len(result["rename_failed"])))
+    if result["stamp_failed"]:
+        lines.append(u"Без метки даты: {}".format(len(result["stamp_failed"])))
+    return lines

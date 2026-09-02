@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 __title__ = u"Актуальность\nсемейств"
-__doc__ = u"Сравнивает семейства выбранной категории с папкой-каталогом .rfa по скрытой метке даты и показывает, какие устарели. Ничего не меняет. Shift+клик — сменить папку каталога."
+__doc__ = u"Окно с таблицей: имя семейства, статус (зелёный/красный), даты в модели и каталоге. Сортировка по столбцам, выбор галочками — отмеченные можно тут же обновить. Shift+клик — сменить папку каталога."
 __author__ = "Pipers"
 
 import traceback
@@ -54,63 +54,21 @@ try:
 
     rows = fc.build_matches(families, entries)
 
-    groups = {
-        fc.STATUS_STALE: [],
-        fc.STATUS_NO_STAMP: [],
-        fc.STATUS_NO_CATALOG: [],
-        fc.STATUS_CURRENT: [],
-    }
-    for r in rows:
-        groups.get(r.status, groups[fc.STATUS_NO_CATALOG]).append(r)
+    picked = fc.show_status_form(rows, root)
+    if not picked:
+        # окно закрыто без действий — просто посмотрели
+        script.exit()
 
-    output.print_md(u"# Актуальность семейств — категория «{}»".format(chosen.name))
-    output.print_md(u"Каталог: `{}`".format(root))
+    jobs, do_rename = picked
+    result = fc.apply_updates(doc, jobs, do_rename)
+    fc.render_result_md(output, result)
 
-    def _dump(status, header, with_dates):
-        bucket = groups.get(status) or []
-        if not bucket:
-            return
-        output.print_md(u"## {} ({})".format(header, len(bucket)))
-        lines = []
-        for r in bucket:
-            if with_dates:
-                model_iso = (r.stamp or {}).get("iso") or u"—"
-                cat_iso = r.entry.mtime_iso if r.entry else u"—"
-                lines.append(
-                    u"- **{}**  ←  `{}`  · в модели: {} · в каталоге: {}".format(
-                        r.family_name,
-                        r.entry.rel if r.entry else u"?",
-                        model_iso, cat_iso
-                    )
-                )
-            elif r.entry:
-                lines.append(u"- **{}**  ←  `{}` ({}%)".format(
-                    r.family_name, r.entry.rel, int(round(r.score * 100))
-                ))
-            else:
-                lines.append(u"- **{}**".format(r.family_name))
-        output.print_md(u"\n".join(lines))
-
-    _dump(fc.STATUS_STALE, u"Устарели — файл каталога новее метки", True)
-    _dump(fc.STATUS_NO_STAMP, u"Без метки — не обновлялись этой кнопкой", False)
-    _dump(fc.STATUS_NO_CATALOG, u"Нет похожего файла в каталоге", False)
-    _dump(fc.STATUS_CURRENT, u"Актуальны", True)
-
-    n_stale = len(groups[fc.STATUS_STALE])
-    n_nostamp = len(groups[fc.STATUS_NO_STAMP])
-    forms.alert(
-        u"\n".join([
-            u"Проверено семейств: {}".format(len(rows)),
-            u"",
-            u"Устарели: {}".format(n_stale),
-            u"Без метки: {}".format(n_nostamp),
-            u"Нет в каталоге: {}".format(len(groups[fc.STATUS_NO_CATALOG])),
-            u"Актуальны: {}".format(len(groups[fc.STATUS_CURRENT])),
-            u"",
-            u"Подробности — в окне вывода. Обновить: кнопка «Обновить семейства».",
-        ]),
-        title=u"Актуальность семейств"
-    )
+    summary = [u"Готово.", u""] + fc.result_summary_lines(result)
+    summary += [
+        u"",
+        u"Подробности — в окне вывода. Каждая перезагрузка — отдельный шаг отмены (Ctrl+Z).",
+    ]
+    forms.alert(u"\n".join(summary), title=u"Актуальность семейств")
 
 except Exception:
     forms.alert(
