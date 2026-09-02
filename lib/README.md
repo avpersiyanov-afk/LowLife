@@ -781,7 +781,7 @@ CPython-only зависимость (импортируется внутри ф�
 | `load_catalog_root` / `save_catalog_root` | `load_catalog_root()` / `save_catalog_root(path)` | Чтение/запись сохранённого пути к корню каталога |
 | `similarity` | `similarity(a, b)` | Похожесть имён `0..1` (Дайс по биграммам нормализованных имён); точное совпадение после нормализации — `1.0`, вхождение целиком — не ниже `0.9` |
 | `file_mtime` | `file_mtime(path)` | `(epoch_float, "ГГГГ-ММ-ДД ЧЧ:ММ")` либо `(None, None)` |
-| `scan_catalog` | `scan_catalog(root)` | Все `.rfa` из `root` и подпапок (без резервных копий `Имя.0001.rfa`) — список `CatalogEntry` (`.path`, `.name`, `.rel`, `.mtime`, `.mtime_iso`) |
+| `scan_catalog` | `scan_catalog(root)` | Все `.rfa` из `root` и подпапок (без резервных копий `Имя.0001.rfa`; папки с «архив» в имени — `EXCLUDED_DIR_KEYWORDS` — пропускаются целиком) — список `CatalogEntry` (`.path`, `.name`, `.rel`, `.mtime`, `.mtime_iso`) |
 | `list_family_categories` | `list_family_categories(doc)` | `CategoryOption` (`.cat_id`, `.name` с числом) для категорий с загружаемыми (не in-place) семействами |
 | `list_families_in_category` | `list_families_in_category(doc, cat_id)` | Загружаемые семейства категории (`cat_id` — `ElementId`) |
 | `build_matches` | `build_matches(families, entries)` | `[MatchRow(family, family_name, entry|None, score, stamp, status)]`; статус по метке (порог достоверности имени `MATCH_FLOOR`); сортировка: сперва устаревшие/без метки |

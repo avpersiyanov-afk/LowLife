@@ -9,7 +9,8 @@
    %APPDATA%\\pyRevit\\LowLifeFamilyCatalog_settings.json (тот же подход,
    что у scs_settings.py — простой JSON, а не pyrevit.script.get_config());
 2. рекурсивно собирает все .rfa из каталога (подпапки тоже), пропуская
-   резервные копии Revit вида «Имя.0001.rfa»;
+   резервные копии Revit вида «Имя.0001.rfa» и папки с «архив» в имени
+   (EXCLUDED_DIR_KEYWORDS);
 3. по выбранной пользователем категории берёт загруженные в проект
    семейства и для каждого ищет в каталоге файл с самым похожим именем
    (коэффициент Сёренсена—Дайса по буквенным биграммам нормализованных
@@ -252,6 +253,16 @@ def similarity(a, b):
 # Каталог .rfa
 # --------------------------------------------------------------------------
 
+# Папки, чьё имя содержит одно из этих слов (без учёта регистра), в обход
+# каталога не заходят вместе со всем содержимым — например «Архив», «Архив 2023».
+EXCLUDED_DIR_KEYWORDS = (u"архив", u"archive", u"archiv")
+
+
+def _is_excluded_dir(name):
+    low = unicode(name or u"").lower()
+    return any(kw in low for kw in EXCLUDED_DIR_KEYWORDS)
+
+
 def _is_backup_rfa(filename):
     """«Имя.0001.rfa» — резервная копия, создаваемая Revit; в каталог не берём."""
     low = filename.lower()
@@ -292,11 +303,18 @@ class CatalogEntry(object):
 
 
 def scan_catalog(root):
-    """Все .rfa из root и его подпапок (без резервных копий). Список CatalogEntry."""
+    """
+    Все .rfa из root и его подпапок (без резервных копий Revit). Папки,
+    чьё имя содержит «архив» (см. EXCLUDED_DIR_KEYWORDS), пропускаются
+    целиком. Список CatalogEntry.
+    """
     entries = []
     seen = set()
 
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        # правим dirnames на месте — os.walk не зайдёт в отброшенные папки
+        dirnames[:] = [d for d in dirnames if not _is_excluded_dir(d)]
+
         for fn in filenames:
             if not fn.lower().endswith(".rfa") or _is_backup_rfa(fn):
                 continue
