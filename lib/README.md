@@ -751,6 +751,31 @@ CPython-only зависимость (импортируется внутри ф�
 | `schedule_to_rows` | `schedule_to_rows(doc, sched)` | `(rows, число_элементов, число_столбцов)`; `rows[0]` — заголовок `["Revit ID", <поля>…]` |
 | `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
 
+## family_catalog.py
+Тело кнопки `Tools.panel/UpdateFamiliesFromCatalog` («Обновить семейства») —
+обновление загружаемых семейств выбранной категории из папки-каталога `.rfa`.
+Путь к каталогу хранится в `%APPDATA%\pyRevit\LowLifeFamilyCatalog_settings.json`
+(тот же подход, что `scs_settings.py`). Похожесть имён — свой коэффициент
+Сёренсена—Дайса по буквенным биграммам нормализованных имён (без `difflib` и
+прочих зависимостей от полноты стандартной библиотеки движка). Ключевой приём
+обновления семейства с **другим** именем файла: `.rfa` копируется во временный
+файл, переименованный в имя семейства модели, — `Document.LoadFamily`
+сопоставляет семейство по имени файла, поэтому обновляется нужное, а не
+создаётся новое. `LoadFamily` управляет своей транзакцией и вызывается **вне**
+`revit.Transaction` — каждая перезагрузка отдельный шаг отмены.
+
+| Функция / класс | Сигнатура | Что делает |
+|---|---|---|
+| `load_catalog_root` / `save_catalog_root` | `load_catalog_root()` / `save_catalog_root(path)` | Чтение/запись сохранённого пути к корню каталога |
+| `similarity` | `similarity(a, b)` | Похожесть имён `0..1` (Дайс по биграммам нормализованных имён); точное совпадение после нормализации — `1.0`, вхождение целиком — не ниже `0.9` |
+| `scan_catalog` | `scan_catalog(root)` | Все `.rfa` из `root` и подпапок (без резервных копий `Имя.0001.rfa`) — список `CatalogEntry` (`.path`, `.name`, `.rel`) |
+| `list_family_categories` | `list_family_categories(doc)` | `CategoryOption` (`.cat_id`, `.name` с числом) для категорий с загружаемыми (не in-place) семействами |
+| `list_families_in_category` | `list_families_in_category(doc, cat_id)` | Загружаемые семейства категории (`cat_id` — `ElementId`) |
+| `build_matches` | `build_matches(families, entries)` | `[MatchRow(family, family_name, entry|None, score)]`, отсортировано по убыванию похожести |
+| `OverwriteFamilyLoadOptions` | — | `IFamilyLoadOptions`, всегда `overwriteParameterValues = True`, для общих семейств `source = FamilySource.Family` |
+| `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `(True, None)` либо `(False, "ошибка")` |
+| `show_preview_form` | `show_preview_form(rows, entries, catalog_root)` | WPF-таблица «семейство → файл (N%)» с галочками и кнопкой «Файл…»; список `(family, src_path, target_family_name, display)` для отмеченных либо `None` |
+
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —
 по образцу `scs.py`, но независимый модуль (своя дисциплина).
