@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 __title__ = u"Загрузить\nсемейства"
-__doc__ = u"Загружает семейства из папки-каталога .rfa в модель: выбор разделов (папок) каталога, таблица с галочками по файлам, опционально — выбор конкретных типоразмеров. Shift+клик — сменить папку каталога."
+__doc__ = u"Загружает семейства из папки-каталога .rfa в модель: выбор разделов (папок) каталога, таблица с галочками по файлам, затем окно выбора типоразмеров. Shift+клик — сменить папку каталога."
 __author__ = "Pipers"
 
 import os
@@ -64,18 +64,14 @@ try:
 
     present = fc.project_family_names(doc)
 
-    # Цикл шагов: окно выбора файлов -> (опц.) окно выбора типоразмеров.
+    # Шаги: окно выбора файлов -> окно выбора типоразмеров (всегда).
     # «← Назад» в окне типоразмеров возвращает к окну выбора файлов.
     jobs = None
     while jobs is None:
         picked = fc.show_load_form(entries, present, root)
         if not picked:
             script.exit()
-        load_entries, overwrite_params, choose_types = picked
-
-        if not choose_types:
-            jobs = [(e, None) for e in load_entries]
-            break
+        load_entries, overwrite_params = picked
 
         app = doc.Application
         type_map = []      # (entry, [имена типоразмеров])

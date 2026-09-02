@@ -1385,9 +1385,9 @@ class _LoadRow(object):
 def show_load_form(entries, present_names, catalog_root):
     """
     Окно выбора семейств каталога для загрузки в модель. Возвращает
-    (entries, overwrite_params, choose_types) — список CatalogEntry для
-    отмеченных строк, флаг замены значений параметров и флаг «выбирать
-    типоразмеры» — либо None, если окно закрыли.
+    (entries, overwrite_params) — список CatalogEntry для отмеченных строк
+    и флаг замены значений параметров, — либо None, если окно закрыли.
+    Выбор типоразмеров делается всегда, отдельным окном (show_type_picker).
     """
     data = List[object]()
     n_new = 0
@@ -1397,7 +1397,7 @@ def show_load_form(entries, present_names, catalog_root):
             n_new += 1
         data.Add(_LoadRow(e, in_model))
 
-    result = {"entries": None, "overwrite": True, "choose_types": False}
+    result = {"entries": None, "overwrite": True}
 
     win = Window()
     win.Title = u"Загрузка семейств из каталога"
@@ -1458,15 +1458,6 @@ def show_load_form(entries, present_names, catalog_root):
     bottom = StackPanel()
     bottom.Margin = Thickness(16, 8, 16, 12)
     DockPanel.SetDock(bottom, Dock.Bottom)
-
-    types_cb = CheckBox()
-    types_cb.Content = (
-        u"Выбрать типоразмеры для загрузки (иначе грузится всё семейство; "
-        u"откроет каждый отмеченный .rfa, чтобы прочитать список типов)"
-    )
-    types_cb.IsChecked = False
-    types_cb.Margin = Thickness(0, 0, 0, 6)
-    bottom.Children.Add(types_cb)
 
     overwrite_cb = CheckBox()
     overwrite_cb.Content = (
@@ -1530,7 +1521,6 @@ def show_load_form(entries, present_names, catalog_root):
             return
         result["entries"] = picked
         result["overwrite"] = bool(overwrite_cb.IsChecked)
-        result["choose_types"] = bool(types_cb.IsChecked)
         win.Close()
 
     def on_close(sender, args):
@@ -1554,7 +1544,7 @@ def show_load_form(entries, present_names, catalog_root):
 
     if result["entries"] is None:
         return None
-    return (result["entries"], result["overwrite"], result["choose_types"])
+    return (result["entries"], result["overwrite"])
 
 
 class _TypeRow(object):
