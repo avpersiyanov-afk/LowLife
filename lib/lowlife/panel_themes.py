@@ -124,6 +124,8 @@ THEMES = {
         (u"Tools", u"SplitScheduleOnSheet"),
         (u"Tools", u"ScheduleToExcel"),
         (u"Tools", u"ScheduleFromExcel"),
+        (u"Tools", u"UpdateFamiliesFromCatalog"),
+        (u"Tools", u"LoadFamiliesFromCatalog"),
         (u"Tools", u"Hello"),
         (u"Tools", u"RoomInfo"),
         (u"Music", u"PlayPause"),
