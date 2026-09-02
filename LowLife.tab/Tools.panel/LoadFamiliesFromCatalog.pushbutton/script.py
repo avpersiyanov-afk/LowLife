@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 __title__ = u"Загрузить\nсемейства"
-__doc__ = u"Загружает семейства из папки-каталога .rfa в модель: выбор разделов (папок) каталога, таблица с галочками по файлам, опционально — выбор конкретных типоразмеров. Shift+клик — сменить папку каталога."
+__doc__ = u"Загружает семейства из папки-каталога .rfa в модель. Shift+клик — сменить папку каталога."
 __author__ = "Pipers"
 
 import os
@@ -13,10 +13,15 @@ clr.AddReference('RevitAPIUI')
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
-from lowlife import family_catalog as fc
-
 doc = revit.doc
 output = script.get_output()
+
+
+def log(msg):
+    try:
+        output.print_md(msg)
+    except:
+        pass
 
 
 class FolderOption(object):
@@ -29,26 +34,33 @@ class FolderOption(object):
 
 
 try:
+    log(u"### Загрузить семейства — запуск")
+
+    log(u"1. импорт модуля family_catalog…")
+    from lowlife import family_catalog as fc
+    log(u"   ок")
+
     try:
         config_mode = bool(EXEC_PARAMS.config_mode)
     except Exception:
         config_mode = False
 
+    log(u"2. путь к каталогу…")
     root = fc.resolve_catalog_root(force_pick=config_mode)
     if not root:
+        log(u"   путь не задан — выход")
         script.exit()
+    log(u"   каталог: `{}`".format(root))
 
+    log(u"3. сканирую каталог (на сетевом диске может быть долго)…")
     entries = fc.scan_catalog(root)
+    log(u"   найдено .rfa: {}".format(len(entries)))
     if not entries:
-        forms.alert(
-            u"В каталоге не найдено ни одного .rfa:\n{}".format(root),
-            exitscript=True
-        )
+        forms.alert(u"В каталоге не найдено ни одного .rfa:\n{}".format(root), exitscript=True)
 
-    # Разделы каталога = папки с .rfa (у не загруженного .rfa категорию
-    # Revit не узнать, не открыв файл, поэтому фильтруем по папкам).
     folders = sorted(set(os.path.dirname(e.rel) or u"." for e in entries))
     if len(folders) > 1:
+        log(u"4. окно выбора разделов ({} папок)…".format(len(folders)))
         chosen = forms.SelectFromList.show(
             [FolderOption(f) for f in folders],
             title=u"Разделы каталога — можно несколько (Отмена = все)",
@@ -62,41 +74,46 @@ try:
     if not entries:
         forms.alert(u"В выбранных разделах нет .rfa.", exitscript=True)
 
+    log(u"5. имена семейств проекта…")
     present = fc.project_family_names(doc)
+    log(u"   семейств в проекте: {}".format(len(present)))
 
+    log(u"6. окно таблицы файлов (show_load_form)…")
     picked = fc.show_load_form(entries, present, root)
     if not picked:
+        log(u"   окно закрыто")
         script.exit()
     load_entries, overwrite_params, choose_types = picked
 
     if choose_types:
+        log(u"7. чтение типоразмеров у {} файлов…".format(len(load_entries)))
         app = doc.Application
-        type_map = []      # (entry, [имена типоразмеров])
-        passthru = []      # семейства, у которых типы не прочитались — грузим целиком
-        with forms.ProgressBar(title=u"Чтение типоразмеров… ({value}/{max_value})") as pb:
-            for i, e in enumerate(load_entries):
-                names = fc.read_family_type_names(app, e.path)
-                if names:
-                    type_map.append((e, names))
-                else:
-                    passthru.append(e)
-                pb.update_progress(i + 1, len(load_entries))
+        type_map = []
+        passthru = []
+        for e in load_entries:
+            names = fc.read_family_type_names(app, e.path)
+            if names:
+                type_map.append((e, names))
+            else:
+                passthru.append(e)
+        log(u"   с типами: {}, без: {}".format(len(type_map), len(passthru)))
         sel = fc.show_type_picker(type_map)
         if sel is None:
+            log(u"   окно типов закрыто")
             script.exit()
-
         jobs = [(e, None) for e in passthru]
         for e, names in type_map:
-            chosen = sel.get(e)
-            if not chosen:
+            ch = sel.get(e)
+            if not ch:
                 continue
-            jobs.append((e, None if set(chosen) == set(names) else sorted(chosen)))
+            jobs.append((e, None if set(ch) == set(names) else sorted(ch)))
     else:
         jobs = [(e, None) for e in load_entries]
 
     if not jobs:
         forms.alert(u"Нечего загружать.", exitscript=True)
 
+    log(u"8. загрузка {} семейств…".format(len(jobs)))
     result = fc.apply_loads(doc, jobs, present, overwrite_params)
     fc.render_load_result_md(output, result)
 
@@ -108,7 +125,10 @@ try:
     forms.alert(u"\n".join(summary), title=u"Загрузить семейства")
 
 except Exception:
-    forms.alert(
-        u"Сбой при загрузке семейств:\n\n{}".format(traceback.format_exc()),
-        title=u"Загрузить семейства"
-    )
+    tb = traceback.format_exc()
+    log(u"**ОШИБКА**\n```\n{}\n```".format(tb))
+    try:
+        forms.alert(u"Сбой при загрузке семейств:\n\n{}".format(tb),
+                    title=u"Загрузить семейства")
+    except:
+        pass
