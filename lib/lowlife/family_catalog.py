@@ -1220,8 +1220,9 @@ class _LoadRow(object):
 def show_load_form(entries, present_names, catalog_root):
     """
     Окно выбора семейств каталога для загрузки в модель. Возвращает
-    (entries, overwrite_params) — список CatalogEntry для отмеченных строк
-    и флаг замены значений параметров, — либо None, если окно закрыли.
+    (entries, overwrite_params, choose_types) — список CatalogEntry для
+    отмеченных строк, флаг замены значений параметров и флаг «выбирать
+    типоразмеры» — либо None, если окно закрыли.
     """
     data = List[object]()
     n_new = 0
@@ -1231,7 +1232,7 @@ def show_load_form(entries, present_names, catalog_root):
             n_new += 1
         data.Add(_LoadRow(e, in_model))
 
-    result = {"entries": None, "overwrite": True}
+    result = {"entries": None, "overwrite": True, "choose_types": False}
 
     win = Window()
     win.Title = u"Загрузка семейств из каталога"
@@ -1292,6 +1293,15 @@ def show_load_form(entries, present_names, catalog_root):
     bottom = StackPanel()
     bottom.Margin = Thickness(16, 8, 16, 12)
     DockPanel.SetDock(bottom, Dock.Bottom)
+
+    types_cb = CheckBox()
+    types_cb.Content = (
+        u"Выбрать типоразмеры для загрузки (иначе грузится всё семейство; "
+        u"откроет каждый отмеченный .rfa, чтобы прочитать список типов)"
+    )
+    types_cb.IsChecked = False
+    types_cb.Margin = Thickness(0, 0, 0, 6)
+    bottom.Children.Add(types_cb)
 
     overwrite_cb = CheckBox()
     overwrite_cb.Content = (
@@ -1355,6 +1365,7 @@ def show_load_form(entries, present_names, catalog_root):
             return
         result["entries"] = picked
         result["overwrite"] = bool(overwrite_cb.IsChecked)
+        result["choose_types"] = bool(types_cb.IsChecked)
         win.Close()
 
     def on_close(sender, args):
@@ -1378,47 +1389,237 @@ def show_load_form(entries, present_names, catalog_root):
 
     if result["entries"] is None:
         return None
-    return (result["entries"], result["overwrite"])
+    return (result["entries"], result["overwrite"], result["choose_types"])
 
 
-def apply_loads(doc, entries, present_names, overwrite_params=True):
+class _TypeRow(object):
+    """Строка DataGrid окна выбора типоразмеров."""
+
+    def __init__(self, entry, family_name, type_name):
+        self.entry = entry
+        self.FamilyName = family_name
+        self.TypeName = type_name
+        self.Selected = True
+
+
+def show_type_picker(type_map):
     """
-    Загружает выбранные .rfa из каталога в модель напрямую (без переименования)
-    и ставит им скрытую метку даты. Новые — «loaded», уже бывшие в модели —
-    «updated». overwrite_params — см. OverwriteFamilyLoadOptions (влияет
-    только на уже присутствующие семейства). Возвращает dict:
-    loaded / updated / failed / stamp_failed.
+    type_map — список (entry, [имена_типоразмеров]). Окно с галочками
+    по каждому типоразмеру каждого семейства. Возвращает
+    {entry: set(отмеченные_имена)} (семейства без единой галочки не
+    попадают), либо None, если окно закрыли.
+    """
+    if not type_map:
+        return {}
+
+    data = List[object]()
+    for entry, names in type_map:
+        fam_name = os.path.splitext(os.path.basename(entry.path))[0]
+        for tn in names:
+            data.Add(_TypeRow(entry, fam_name, tn))
+
+    result = {"map": None}
+
+    win = Window()
+    win.Title = u"Выбор типоразмеров для загрузки"
+    win.Width = 820
+    win.Height = 640
+    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+
+    outer = DockPanel()
+    outer.LastChildFill = True
+
+    header = StackPanel()
+    header.Margin = Thickness(16, 12, 16, 8)
+    DockPanel.SetDock(header, Dock.Top)
+
+    title = TextBlock()
+    title.Text = u"Отметьте типоразмеры для загрузки в модель"
+    title.FontSize = 16
+    title.FontWeight = FontWeights.Bold
+    header.Children.Add(title)
+
+    info = TextBlock()
+    info.Text = (
+        u"Семейств: {}   ·   типоразмеров всего: {}\n"
+        u"Снятые типоразмеры не загружаются. Если у семейства отмечены все "
+        u"типоразмеры — оно грузится целиком.".format(len(type_map), data.Count)
+    )
+    info.FontSize = 11
+    info.Foreground = Brushes.Gray
+    info.TextWrapping = TextWrapping.Wrap
+    info.Margin = Thickness(0, 4, 0, 0)
+    header.Children.Add(info)
+
+    grid = DataGrid()
+    grid.Margin = Thickness(16, 0, 16, 0)
+    grid.AutoGenerateColumns = False
+    grid.CanUserAddRows = False
+    grid.CanUserDeleteRows = False
+    grid.CanUserResizeRows = False
+    grid.HeadersVisibility = DataGridHeadersVisibility.Column
+    grid.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal
+    grid.SelectionMode = DataGridSelectionMode.Extended
+    grid.IsReadOnly = False
+    grid.ItemsSource = data
+
+    grid.Columns.Add(_check_col(u"Загрузить"))
+    grid.Columns.Add(_text_col(u"Семейство", "FamilyName", _star(2)))
+    grid.Columns.Add(_text_col(u"Типоразмер", "TypeName", _star(3)))
+
+    _attach_datagrid_sorting(grid, data)
+
+    bottom = StackPanel()
+    bottom.Margin = Thickness(16, 8, 16, 12)
+    DockPanel.SetDock(bottom, Dock.Bottom)
+
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    buttons.HorizontalAlignment = HorizontalAlignment.Right
+    bottom.Children.Add(buttons)
+
+    def _select_all(val):
+        try:
+            grid.CommitEdit()
+        except:
+            pass
+        for row in data:
+            row.Selected = val
+        grid.Items.Refresh()
+
+    all_btn = Button()
+    all_btn.Content = u"Отметить все"
+    all_btn.Padding = Thickness(10, 4, 10, 4)
+    all_btn.Margin = Thickness(0, 0, 8, 0)
+    all_btn.Click += lambda s, a: _select_all(True)
+
+    none_btn = Button()
+    none_btn.Content = u"Снять все"
+    none_btn.Padding = Thickness(10, 4, 10, 4)
+    none_btn.Margin = Thickness(0, 0, 8, 0)
+    none_btn.Click += lambda s, a: _select_all(False)
+
+    close_btn = Button()
+    close_btn.Content = u"Закрыть"
+    close_btn.Padding = Thickness(10, 4, 10, 4)
+    close_btn.Margin = Thickness(0, 0, 8, 0)
+
+    run_btn = Button()
+    run_btn.Content = u"Загрузить отмеченные"
+    run_btn.Padding = Thickness(10, 4, 10, 4)
+    run_btn.FontWeight = FontWeights.Bold
+
+    def on_run(sender, args):
+        try:
+            grid.CommitEdit()
+        except:
+            pass
+        picked = {}
+        for row in data:
+            if row.Selected:
+                picked.setdefault(row.entry, set()).add(row.TypeName)
+        if not picked:
+            forms.alert(u"Не отмечено ни одного типоразмера.")
+            return
+        result["map"] = picked
+        win.Close()
+
+    def on_close(sender, args):
+        win.Close()
+
+    run_btn.Click += on_run
+    close_btn.Click += on_close
+
+    buttons.Children.Add(all_btn)
+    buttons.Children.Add(none_btn)
+    buttons.Children.Add(close_btn)
+    buttons.Children.Add(run_btn)
+
+    outer.Children.Add(header)
+    outer.Children.Add(bottom)
+    outer.Children.Add(grid)
+
+    win.Content = outer
+    win.ShowDialog()
+
+    return result["map"]
+
+
+def read_family_type_names(app, path):
+    """
+    Имена типоразмеров в файле .rfa: открывает семейство как отдельный
+    документ (app.OpenDocumentFile), читает FamilyManager.Types и
+    закрывает без сохранения. [] при сбое или если типоразмеров нет.
+    Вызывать ВНЕ транзакции (открытие документа).
+    """
+    names = []
+    fdoc = None
+    try:
+        fdoc = app.OpenDocumentFile(path)
+        for t in fdoc.FamilyManager.Types:
+            try:
+                if t.Name:
+                    names.append(t.Name)
+            except:
+                pass
+    except:
+        names = []
+    finally:
+        if fdoc is not None:
+            try:
+                fdoc.Close(False)
+            except:
+                pass
+    return sorted(set(names))
+
+
+def apply_loads(doc, jobs, present_names, overwrite_params=True):
+    """
+    Загружает выбранные семейства/типоразмеры из каталога в модель напрямую
+    (без переименования) и ставит семейству скрытую метку даты.
+
+    jobs — список (entry, type_names): type_names is None → грузить семейство
+    целиком (Document.LoadFamily); список имён → грузить только эти
+    типоразмеры (Document.LoadFamilySymbol на каждый).
+
+    Новые семейства — «loaded», уже бывшие в модели — «updated».
+    overwrite_params — см. OverwriteFamilyLoadOptions (влияет только на уже
+    присутствующие). Возвращает dict: loaded / updated / failed / stamp_failed.
     """
     result = {"loaded": [], "updated": [], "failed": [], "stamp_failed": []}
-    if not entries:
+    if not jobs:
         return result
 
     options = OverwriteFamilyLoadOptions(overwrite_params)
-    done = []  # (entry, family, was_present)
+    done = []  # (entry, family, was_present, n_types)
 
-    for e in entries:
+    for e, type_names in jobs:
         was_present = e.name in present_names
         try:
-            res = doc.LoadFamily(e.path, options)
+            if type_names:
+                for tn in type_names:
+                    doc.LoadFamilySymbol(e.path, tn, options)
+                fam = find_family_by_name(doc, e.name)
+            else:
+                res = doc.LoadFamily(e.path, options)
+                fam = None
+                if isinstance(res, tuple) and len(res) > 1:
+                    fam = res[1]
+                try:
+                    valid = fam is not None and fam.IsValidObject
+                except:
+                    valid = False
+                if not valid:
+                    fam = find_family_by_name(doc, e.name)
         except Exception as ex:
             result["failed"].append((e.name, e.rel, u"{}".format(ex)))
             continue
 
-        fam = None
-        if isinstance(res, tuple) and len(res) > 1:
-            fam = res[1]
-        try:
-            valid = fam is not None and fam.IsValidObject
-        except:
-            valid = False
-        if not valid:
-            fam = find_family_by_name(doc, e.name)
-
         if fam is None and not was_present:
-            result["failed"].append((e.name, e.rel, u"LoadFamily не загрузил семейство"))
+            result["failed"].append((e.name, e.rel, u"семейство не загрузилось"))
             continue
 
-        done.append((e, fam, was_present))
+        done.append((e, fam, was_present, len(type_names) if type_names else None))
 
     if not done:
         return result
@@ -1426,13 +1627,14 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
     t = Transaction(doc, u"Загрузка семейств из каталога: метки даты")
     t.Start()
     try:
-        for e, fam, was_present in done:
+        for e, fam, was_present, n_types in done:
             nm = (_safe_element_name(fam) if fam else None) or e.name
+            disp = e.rel if n_types is None else u"{} · типоразмеров: {}".format(e.rel, n_types)
             ok_stamp = write_stamp(fam, e.mtime, e.mtime_iso, e.rel) if fam else False
             if not ok_stamp:
                 result["stamp_failed"].append(nm)
             bucket = "updated" if was_present else "loaded"
-            result[bucket].append((nm, e.rel, e.mtime_iso))
+            result[bucket].append((nm, disp, e.mtime_iso))
         t.Commit()
     except:
         if t.HasStarted() and not t.HasEnded():
