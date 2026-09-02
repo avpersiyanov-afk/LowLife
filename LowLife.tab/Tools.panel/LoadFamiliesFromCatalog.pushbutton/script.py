@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 __title__ = u"Загрузить\nсемейства"
-__doc__ = u"Загружает семейства из папки-каталога .rfa в модель: выбор разделов (папок) каталога, затем таблица с галочками по файлам. Shift+клик — сменить папку каталога."
+__doc__ = u"Загружает семейства из папки-каталога .rfa в модель: выбор разделов (папок) каталога, таблица с галочками по файлам, затем выбор типоразмеров. Shift+клик — сменить папку каталога."
 __author__ = "Pipers"
 
 import os
@@ -69,7 +69,35 @@ try:
         script.exit()
     load_entries, overwrite_params = picked
 
-    result = fc.apply_loads(doc, load_entries, present, overwrite_params)
+    # Всегда даём выбрать типоразмеры: открываем каждый отмеченный .rfa,
+    # читаем список типов. Семейства с 0–1 типом грузятся целиком без окна.
+    app = doc.Application
+    type_map = []   # (entry, [имена типоразмеров])  — только где типов > 1
+    passthru = []   # грузим целиком (один тип или список не прочитался)
+    with forms.ProgressBar(title=u"Чтение типоразмеров… ({value}/{max_value})") as pb:
+        for i, e in enumerate(load_entries):
+            names = fc.read_family_type_names(app, e.path)
+            if len(names) > 1:
+                type_map.append((e, names))
+            else:
+                passthru.append(e)
+            pb.update_progress(i + 1, len(load_entries))
+
+    sel = fc.show_type_picker(type_map) if type_map else {}
+    if sel is None:
+        script.exit()
+
+    jobs = [(e, None) for e in passthru]
+    for e, names in type_map:
+        chosen = sel.get(e)
+        if not chosen:
+            continue
+        jobs.append((e, None if set(chosen) == set(names) else sorted(chosen)))
+
+    if not jobs:
+        forms.alert(u"Нечего загружать.", exitscript=True)
+
+    result = fc.apply_loads(doc, jobs, present, overwrite_params)
     fc.render_load_result_md(output, result)
 
     summary = [u"Готово.", u""] + fc.load_summary_lines(result)
