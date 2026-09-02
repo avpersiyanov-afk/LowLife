@@ -636,6 +636,31 @@ def _set_element_name(el, name):
             return False
 
 
+def _checkout_family(doc, family):
+    """
+    Совместная модель: «одалживает» элемент семейства из центральной
+    (WorksharingUtils.CheckoutElements) — программный аналог ручного
+    диалога «Семейство не является редактируемым. Сделать редактируемым и
+    продолжить? → Да». Без этого Document.LoadFamily молча возвращает
+    False, и геометрия/параметры не обновляются (переименование при этом
+    проходит, т.к. идёт в явной транзакции). **Вне транзакции.**
+
+    Тихо ничего не делает для несовместной модели / при недоступности API.
+    """
+    try:
+        if not doc.IsWorkshared:
+            return
+    except:
+        return
+    try:
+        from Autodesk.Revit.DB import WorksharingUtils
+        ids = List[ElementId]()
+        ids.Add(family.Id)
+        WorksharingUtils.CheckoutElements(doc, ids)
+    except:
+        pass
+
+
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
     """
     Перезагружает семейство target_family_name из файла src_path с заменой
@@ -659,6 +684,13 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         shutil.copyfile(src_path, dst)
     except Exception as ex:
         return (u"error", u"копирование во временный файл: {}".format(ex))
+
+    # Совместная модель: одолжить существующее семейство из центральной,
+    # иначе Document.LoadFamily молча вернёт False (не может ответить на
+    # диалог «Сделать семейство редактируемым?»).
+    existing = find_family_by_name(doc, target_family_name)
+    if existing is not None:
+        _checkout_family(doc, existing)
 
     try:
         res = doc.LoadFamily(dst, options)
@@ -1595,6 +1627,13 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
 
     for e, type_names in jobs:
         was_present = e.name in present_names
+
+        # совместная модель: если семейство уже есть — одолжить его,
+        # иначе перезагрузка молча не пройдёт
+        existing = find_family_by_name(doc, e.name)
+        if existing is not None:
+            _checkout_family(doc, existing)
+
         try:
             if type_names:
                 for tn in type_names:
