@@ -59,7 +59,7 @@ clr.AddReference('WindowsBase')
 
 from Autodesk.Revit.DB import (
     FilteredElementCollector, Family, FamilySymbol, Element, ElementId,
-    IFamilyLoadOptions, FamilySource, Transaction
+    IFamilyLoadOptions, FamilySource, Transaction, SaveAsOptions
 )
 from Autodesk.Revit.DB.ExtensibleStorage import (
     Schema, SchemaBuilder, AccessLevel, Entity
@@ -648,6 +648,42 @@ def _set_element_name(el, name):
             return False
 
 
+def _resave_family_file(app, src_path, out_path):
+    """
+    Открывает .rfa и пересохраняет в формате текущей версии Revit по пути
+    out_path (имя файла = будущее имя семейства). Лечит случаи, когда
+    старый .rfa Document.LoadFamily молча не принимает (возвращает False).
+    Возвращает out_path либо None. **Вне транзакции.**
+    """
+    fdoc = None
+    try:
+        fdoc = app.OpenDocumentFile(src_path)
+        opts = SaveAsOptions()
+        opts.OverwriteExistingFile = True
+        fdoc.SaveAs(out_path, opts)
+        fdoc.Close(False)
+        fdoc = None
+        return out_path
+    except:
+        return None
+    finally:
+        if fdoc is not None:
+            try:
+                fdoc.Close(False)
+            except:
+                pass
+
+
+def _resave_dir(temp_dir):
+    d = os.path.join(temp_dir, "resaved")
+    if not os.path.isdir(d):
+        try:
+            os.makedirs(d)
+        except:
+            pass
+    return d
+
+
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
     """
     Перезагружает семейство target_family_name из файла src_path с заменой
@@ -684,6 +720,23 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
             loaded = res[1]
     else:
         changed = bool(res)
+
+    # LoadFamily вернул False — часто это «содержимое совпало», но со старыми
+    # .rfa (напр. 2020 в 2024) Revit молча отказывается перезагружать. Пробуем
+    # пересохранить файл в текущем формате и загрузить ещё раз.
+    if not changed:
+        rs = os.path.join(_resave_dir(temp_dir), _safe_filename(target_family_name) + u".rfa")
+        if _resave_family_file(doc.Application, src_path, rs):
+            try:
+                res2 = doc.LoadFamily(rs, options)
+                if isinstance(res2, tuple):
+                    changed = bool(res2[0])
+                    if len(res2) > 1 and res2[1] is not None:
+                        loaded = res2[1]
+                else:
+                    changed = bool(res2)
+            except:
+                pass
 
     try:
         valid = loaded is not None and loaded.IsValidObject
@@ -1689,6 +1742,23 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
                 fam = _resolve_loaded_family(doc, e, outf, ok, ids_before)
                 if fam is not None:
                     break
+
+            # старый .rfa (2020 в 2024) Revit молча не берёт — пересохраняем
+            if fam is None:
+                rs = os.path.join(_resave_dir(temp_dir), _safe_filename(e.name) + u".rfa")
+                if _resave_family_file(doc.Application, src, rs):
+                    try:
+                        r = doc.LoadFamily(rs, options)
+                        ok = bool(r[0]) if isinstance(r, tuple) else bool(r)
+                        outf = r[1] if (isinstance(r, tuple) and len(r) > 1) else None
+                    except Exception as ex:
+                        ok, outf = False, None
+                        attempts.append(u"пересохранение: искл. {}".format(ex))
+                    else:
+                        attempts.append(u"пересохранение: {}".format(u"ok" if ok else u"False"))
+                        fam = _resolve_loaded_family(doc, e, outf, ok, ids_before)
+                else:
+                    attempts.append(u"пересохранение: не открылось")
 
             if fam is None:
                 already = was_present or (find_family_by_name(doc, e.name) is not None)
