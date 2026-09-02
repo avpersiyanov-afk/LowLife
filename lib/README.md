@@ -789,8 +789,9 @@ CPython-only зависимость (импортируется внутри ф�
 | `stamp_status` | `stamp_status(stamp, entry)` | `STATUS_*` по метке и текущей дате файла каталога (`STALE_TOLERANCE_SEC` запас на расхождение часов) |
 | `find_family_by_name` | `find_family_by_name(doc, name)` | `Family` по имени (запасной путь, если `LoadFamily` не вернул элемент) |
 | `OverwriteFamilyLoadOptions` | — | `IFamilyLoadOptions`, всегда `overwriteParameterValues = True`, для общих семейств `source = FamilySource.Family` |
-| `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `(True, family_element)` либо `(False, "ошибка")` |
-| `show_preview_form` | `show_preview_form(rows, entries, catalog_root)` | WPF-таблица «семейство → файл (N%) · статус» с галочками и кнопкой «Файл…»; авто-галочка на устаревших и (при похожести ≥ `AUTO_CHECK_SCORE`) на «без метки», «актуальные» — нет; список `(family, src_path, target_family_name, display)` для отмеченных либо `None` |
+| `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `("loaded", family)` — перезагружено, `("unchanged", family)` — `LoadFamily` вернул False (содержимое совпало, **не ошибка**), `("error", "текст")` |
+| `rename_family` | `rename_family(doc, family, new_name)` | Переименовывает семейство модели (напр. по имени файла каталога, когда его переименовали в каталоге). **Требует транзакции.** `(True, None)` либо `(False, "причина")` — имя совпадает / занято / отклонено. `Element.Name` под IronPython пишется через `_set_element_name` (рефлексия, как `_safe_element_name` для чтения) |
+| `show_preview_form` | `show_preview_form(rows, entries, catalog_root)` | WPF-таблица «семейство → файл (N%) · статус · [→ новое имя]» с галочками, кнопкой «Файл…» и флажком «переименовывать по имени файла каталога» (по умолчанию вкл.); авто-галочка на устаревших и (при похожести ≥ `AUTO_CHECK_SCORE`) на «без метки», «актуальные» — нет; `(confirmed, do_rename)` где `confirmed` — `[(family, src_path, target_family_name, display, catalog_name)]`, либо `None` |
 
 ## skud.py
 Константы и логика, специфичные для СКУД (контроль доступа, `SKUD.panel`) —

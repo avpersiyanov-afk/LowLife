@@ -21,7 +21,13 @@
    в имя семейства модели (Revit сопоставляет семейство при загрузке по
    имени файла), и вызывает Document.LoadFamily с IFamilyLoadOptions,
    возвращающим overwriteParameterValues = True — так значения параметров
-   типов берутся из файла каталога.
+   типов берутся из файла каталога;
+6. если в окне включён флажок «переименовывать» и имя файла каталога
+   отличается от имени семейства модели — после загрузки семейство модели
+   переименовывается в имя файла каталога (rename_family, в транзакции).
+   Это и есть сценарий «в каталоге семейство переименовали»: LoadFamily
+   при совпадающем содержимом вернёт False (status="unchanged", НЕ ошибка),
+   а нужное изменение — само переименование.
 
 Document.LoadFamily управляет собственной транзакцией и не должен
 вызываться внутри открытой транзакции, поэтому кнопка не оборачивает
@@ -565,6 +571,24 @@ def _safe_filename(name):
     return out.strip() or u"family"
 
 
+def _set_element_name(el, name):
+    """
+    Присвоение имени элементу: el.Name = ... у Family/FamilySymbol в
+    IronPython падает с ошибкой неоднозначного связывания так же, как
+    чтение (см. _safe_element_name), поэтому сначала пробуем статическое
+    свойство через рефлексию.
+    """
+    try:
+        Element.Name.SetValue(el, name)
+        return True
+    except:
+        try:
+            el.Name = name
+            return True
+        except:
+            return False
+
+
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
     """
     Перезагружает семейство target_family_name из файла src_path с заменой
@@ -573,32 +597,34 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     файл каталога с другим именем всё равно обновит нужное семейство
     модели, а не создаст новое.
 
-    Возвращает (True, family_element) при успехе либо (False, "текст ошибки").
-    family_element нужен вызывающему коду, чтобы затем (в транзакции)
-    проставить скрытую метку даты каталога через write_stamp.
+    Возвращает (status, payload):
+      ("loaded",    family_element) — семейство перезагружено;
+      ("unchanged", family_element) — Document.LoadFamily вернул False, т.е.
+            содержимое в модели и в файле совпадает (это НЕ ошибка — часто
+            бывает, когда в каталоге поменяли только имя файла: переименование
+            в модель переносит вызывающий код через rename_family);
+      ("error",     "текст ошибки").
+    family_element нужен вызывающему коду для write_stamp / rename_family.
     """
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
 
     try:
         shutil.copyfile(src_path, dst)
     except Exception as ex:
-        return (False, u"копирование во временный файл: {}".format(ex))
+        return (u"error", u"копирование во временный файл: {}".format(ex))
 
     try:
         res = doc.LoadFamily(dst, options)
     except Exception as ex:
-        return (False, u"{}".format(ex))
+        return (u"error", u"{}".format(ex))
 
     loaded = None
     if isinstance(res, tuple):
-        ok = bool(res[0])
+        changed = bool(res[0])
         if len(res) > 1:
             loaded = res[1]
     else:
-        ok = bool(res)
-
-    if not ok:
-        return (False, u"Revit отклонил загрузку (LoadFamily вернул False)")
+        changed = bool(res)
 
     try:
         valid = loaded is not None and loaded.IsValidObject
@@ -607,7 +633,32 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     if not valid:
         loaded = find_family_by_name(doc, target_family_name)
 
-    return (True, loaded)
+    return (u"loaded" if changed else u"unchanged", loaded)
+
+
+def rename_family(doc, family, new_name):
+    """
+    Переименовывает семейство модели в new_name (например по имени файла
+    каталога). **Требует открытой транзакции.** Возвращает (True, None)
+    либо (False, "причина") — если имя уже совпадает, занято другим
+    семейством, пустое или Revit его отклонил.
+    """
+    try:
+        new_name = unicode(new_name or u"").strip()
+        if not new_name:
+            return (False, u"пустое имя файла")
+        if _safe_element_name(family) == new_name:
+            return (False, u"имя уже совпадает")
+
+        existing = find_family_by_name(doc, new_name)
+        if existing is not None and existing.Id != family.Id:
+            return (False, u"в проекте уже есть семейство «{}»".format(new_name))
+
+        if _set_element_name(family, new_name):
+            return (True, None)
+        return (False, u"Revit отклонил имя «{}»".format(new_name))
+    except Exception as ex:
+        return (False, u"{}".format(ex))
 
 
 # --------------------------------------------------------------------------
@@ -627,16 +678,21 @@ class EntryOption(object):
 
 def show_preview_form(rows, entries, catalog_root):
     """
-    Таблица «семейство → файл каталога (N%)» с галочками. Возвращает список
-    (family, src_path, target_family_name, display) для отмеченных строк
-    либо None, если пользователь отменил.
+    Таблица «семейство → файл каталога (N%)» с галочками.
+
+    Возвращает (confirmed, do_rename) либо None, если пользователь отменил:
+      confirmed — список кортежей
+        (family, src_path, target_family_name, display, catalog_name)
+        для отмеченных строк (может быть пустым);
+      do_rename — bool: переименовывать ли семейство модели по имени файла
+        каталога, когда имена различаются.
     """
-    result = {"confirmed": None}
+    result = {"confirmed": None, "rename": True}
     entry_options = [EntryOption(e) for e in entries]
 
     win = Window()
     win.Title = u"Обновление семейств из каталога"
-    win.Width = 940
+    win.Width = 1100
     win.Height = 720
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     # Topmost намеренно не ставим — иначе forms.SelectFromList (кнопка
@@ -668,8 +724,17 @@ def show_preview_form(rows, entries, catalog_root):
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.TextWrapping = TextWrapping.Wrap
-    hint.Margin = Thickness(0, 0, 0, 10)
+    hint.Margin = Thickness(0, 0, 0, 8)
     root_panel.Children.Add(hint)
+
+    rename_cb = CheckBox()
+    rename_cb.Content = (
+        u"Переименовывать семейство модели по имени файла каталога, если они "
+        u"различаются (нужно, когда в каталоге переименовали семейство)"
+    )
+    rename_cb.IsChecked = True
+    rename_cb.Margin = Thickness(0, 0, 0, 10)
+    root_panel.Children.Add(rename_cb)
 
     row_states = []
 
@@ -710,17 +775,31 @@ def show_preview_form(rows, entries, catalog_root):
         else:
             status_tb.Foreground = Brushes.Gray
 
+        rename_tb = TextBlock()
+        rename_tb.Width = 160
+        rename_tb.TextWrapping = TextWrapping.Wrap
+        rename_tb.VerticalAlignment = VerticalAlignment.Center
+        rename_tb.Foreground = Brushes.SteelBlue
+
         st = {
             "row": r,
             "cb": cb,
             "tgt_tb": tgt,
+            "rename_tb": rename_tb,
             "path": r.entry.path if r.entry else None,
             "disp": r.entry.rel if r.entry else None,
+            "catalog_name": r.entry.name if r.entry else None,
         }
+
+        def _rename_note(catalog_name, fam_name):
+            if catalog_name and catalog_name != fam_name:
+                return u"→ «{}»".format(catalog_name)
+            return u""
 
         if r.entry:
             score_tb.Text = u"{}%".format(int(round(r.score * 100)))
             tgt.Text = u"{}  ({})".format(r.entry.rel, r.entry.mtime_iso or u"?")
+            rename_tb.Text = _rename_note(r.entry.name, r.family_name)
             if r.status == STATUS_STALE:
                 cb.IsChecked = True
             elif r.status == STATUS_NO_STAMP:
@@ -748,10 +827,14 @@ def show_preview_form(rows, entries, catalog_root):
             if sel:
                 st["path"] = sel.entry.path
                 st["disp"] = sel.entry.rel
+                st["catalog_name"] = sel.entry.name
                 st["tgt_tb"].Text = u"{}  ({})".format(
                     sel.entry.rel, sel.entry.mtime_iso or u"?"
                 )
                 st["tgt_tb"].Foreground = Brushes.Black
+                st["rename_tb"].Text = _rename_note(
+                    sel.entry.name, st["row"].family_name
+                )
                 st["cb"].IsChecked = True
 
         pick.Click += on_pick
@@ -761,6 +844,7 @@ def show_preview_form(rows, entries, catalog_root):
         rowp.Children.Add(tgt)
         rowp.Children.Add(score_tb)
         rowp.Children.Add(status_tb)
+        rowp.Children.Add(rename_tb)
         rowp.Children.Add(pick)
         root_panel.Children.Add(rowp)
         row_states.append(st)
@@ -811,8 +895,10 @@ def show_preview_form(rows, entries, catalog_root):
                     st["path"],
                     st["row"].family_name,
                     st["disp"],
+                    st["catalog_name"],
                 ))
         result["confirmed"] = confirmed
+        result["rename"] = bool(rename_cb.IsChecked)
         win.Close()
 
     def on_cancel(sender, args):
@@ -838,4 +924,6 @@ def show_preview_form(rows, entries, catalog_root):
     win.Content = outer
     win.ShowDialog()
 
-    return result["confirmed"]
+    if result["confirmed"] is None:
+        return None
+    return (result["confirmed"], result["rename"])
