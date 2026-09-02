@@ -684,6 +684,59 @@ def _resave_dir(temp_dir):
     return d
 
 
+def _copy_rfa(src_path, dst_path):
+    """
+    Копирует .rfa (через System.IO, снимая «только для чтения») и, если
+    рядом лежит одноимённый .txt (каталог типоразмеров) — копирует и его
+    рядом с dst под тем же базовым именем.
+    """
+    _NetFile.Copy(src_path, dst_path, True)
+    try:
+        _NetFile.SetAttributes(dst_path, _NetFileAttributes.Normal)
+    except:
+        pass
+
+    src_txt = os.path.splitext(src_path)[0] + u".txt"
+    if os.path.isfile(src_txt):
+        dst_txt = os.path.splitext(dst_path)[0] + u".txt"
+        try:
+            _NetFile.Copy(src_txt, dst_txt, True)
+            _NetFile.SetAttributes(dst_txt, _NetFileAttributes.Normal)
+        except:
+            pass
+
+
+def ensure_family_editable(doc, family):
+    """
+    В совместной модели «одалживает» элемент семейства из центральной —
+    ручной аналог диалога «Сделать семейство редактируемым и продолжить?».
+    Без этого Document.LoadFamily молча возвращает False и семейство не
+    перезагружается. **Вне транзакции.**
+
+    Возвращает (ok, note): ok=False, если владелец — другой пользователь
+    (перезаписать нельзя); note — необязательное примечание. Для
+    несовместных моделей — (True, None).
+    """
+    try:
+        if not doc.IsWorkshared:
+            return (True, None)
+    except:
+        return (True, None)
+
+    try:
+        from Autodesk.Revit.DB import WorksharingUtils, CheckoutStatus
+        status = WorksharingUtils.GetCheckoutStatus(doc, family.Id)
+        if status == CheckoutStatus.OwnedByOtherUser:
+            return (False, u"семейство занято другим пользователем — освободите его")
+        ids = List[ElementId]()
+        ids.Add(family.Id)
+        WorksharingUtils.CheckoutElements(doc, ids)
+        return (True, None)
+    except Exception as ex:
+        # не смогли одолжить заранее — LoadFamily всё равно попробует
+        return (True, u"checkout: {}".format(ex))
+
+
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
     """
     Перезагружает семейство target_family_name из файла src_path с заменой
@@ -704,9 +757,16 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
 
     try:
-        shutil.copyfile(src_path, dst)
+        _copy_rfa(src_path, dst)
     except Exception as ex:
         return (u"error", u"копирование во временный файл: {}".format(ex))
+
+    # совместная модель: одолжить семейство, иначе LoadFamily вернёт False
+    existing = find_family_by_name(doc, target_family_name)
+    if existing is not None:
+        ok_co, _note = ensure_family_editable(doc, existing)
+        if not ok_co:
+            return (u"error", _note)
 
     try:
         res = doc.LoadFamily(dst, options)
@@ -1706,9 +1766,7 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
 
             dst = os.path.join(temp_dir, _safe_filename(e.name) + u".rfa")
             try:
-                _NetFile.Copy(src, dst, True)
-                # снять «только для чтения», если унаследовалось из библиотеки
-                _NetFile.SetAttributes(dst, _NetFileAttributes.Normal)
+                _copy_rfa(src, dst)
             except Exception as ex:
                 result["failed"].append((e.name, e.rel, u"копирование во временную папку: {}".format(ex)))
                 continue
@@ -1717,6 +1775,15 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
                 dst_size = os.path.getsize(dst)
             except:
                 dst_size = -1
+
+            # совместная модель: если семейство уже есть — одолжить его,
+            # иначе LoadFamily молча вернёт False
+            existing = find_family_by_name(doc, e.name)
+            if existing is not None:
+                ok_co, co_note = ensure_family_editable(doc, existing)
+                if not ok_co:
+                    result["failed"].append((e.name, e.rel, co_note))
+                    continue
 
             # Пробуем несколько способов: копия+опции, копия без опций,
             # прямой путь из каталога. Успех = LoadFamily вернул True ЛИБО
