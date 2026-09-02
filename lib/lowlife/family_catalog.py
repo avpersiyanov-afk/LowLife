@@ -598,18 +598,21 @@ class OverwriteFamilyLoadOptions(IFamilyLoadOptions):
     Для общих (shared) вложенных семейств источник — сам загружаемый файл.
     """
 
-    # Трейс вызовов колбэков — чтобы понять, зовёт ли их Revit вообще
-    # (LOAD_OPTS_TRACE очищает вызывающий код перед LoadFamily).
-    trace = []
+    # ВАЖНО: у класса, реализующего .NET-интерфейс, под IronPython НЕ должно
+    # быть собственного __init__ — иначе Revit не распознаёт реализацию и не
+    # вызывает OnFamilyFound (проверено: «колбэки НЕ вызывались»). Режим
+    # перезаписи держим в модульном _OVERWRITE_PARAM_VALUES, экземпляр
+    # создаём через make_load_options().
 
-    def __init__(self, overwrite_parameter_values=True):
-        self._overwrite = bool(overwrite_parameter_values)
+    trace = []  # трейс вызовов колбэков (диагностика)
 
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
         try:
-            overwriteParameterValues.Value = self._overwrite
+            overwriteParameterValues.Value = _OVERWRITE_PARAM_VALUES[0]
             OverwriteFamilyLoadOptions.trace.append(
-                u"OnFamilyFound(inUse={}) -> overwrite={}".format(familyInUse, self._overwrite)
+                u"OnFamilyFound(inUse={}) -> overwrite={}".format(
+                    familyInUse, _OVERWRITE_PARAM_VALUES[0]
+                )
             )
         except Exception as ex:
             OverwriteFamilyLoadOptions.trace.append(u"OnFamilyFound ИСКЛ: {}".format(ex))
@@ -618,11 +621,20 @@ class OverwriteFamilyLoadOptions(IFamilyLoadOptions):
     def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
         try:
             source.Value = FamilySource.Family
-            overwriteParameterValues.Value = self._overwrite
+            overwriteParameterValues.Value = _OVERWRITE_PARAM_VALUES[0]
             OverwriteFamilyLoadOptions.trace.append(u"OnSharedFamilyFound")
         except Exception as ex:
             OverwriteFamilyLoadOptions.trace.append(u"OnSharedFamilyFound ИСКЛ: {}".format(ex))
         return True
+
+
+_OVERWRITE_PARAM_VALUES = [True]
+
+
+def make_load_options(overwrite_parameter_values=True):
+    """Экземпляр OverwriteFamilyLoadOptions с нужным режимом перезаписи."""
+    _OVERWRITE_PARAM_VALUES[0] = bool(overwrite_parameter_values)
+    return OverwriteFamilyLoadOptions()
 
 
 def _safe_filename(name):
@@ -1177,7 +1189,7 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
     if not jobs:
         return result
 
-    options = OverwriteFamilyLoadOptions(overwrite_params)
+    options = make_load_options(overwrite_params)
     temp_dir = tempfile.mkdtemp(prefix="lowlife_famcat_")
     loaded = []
 
@@ -1677,7 +1689,7 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     if not jobs:
         return result
 
-    options = OverwriteFamilyLoadOptions(overwrite_params)
+    options = make_load_options(overwrite_params)
     done = []  # (entry, family, was_present, n_types)
 
     for e, type_names in jobs:
