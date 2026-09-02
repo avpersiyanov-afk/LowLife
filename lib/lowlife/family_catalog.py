@@ -700,6 +700,52 @@ def _checkout_family(doc, family):
     return u"co: {} -> {}{}".format(before, after, err)
 
 
+def _load_rfa_into_project(doc, rfa_path, options):
+    """
+    Загружает семейство из rfa_path в проект «как из редактора семейств»:
+    OpenDocumentFile(.rfa) -> Document.LoadFamily(targetDoc, opts) -> Close.
+
+    Это путь ручного «Загрузить в проект»: он форсирует перезагрузку и
+    вызывает IFamilyLoadOptions.OnFamilyFound. Путевой doc.LoadFamily(path,
+    opts) молча возвращает False (и не зовёт колбэк), если версия файла не
+    новее уже загруженного семейства — типичный случай при обновлении
+    каталожной 2020-версии поверх апгрейженной до 2024. Запасной вариант —
+    путевой вызов.
+
+    Возвращает (family_or_None, note).
+    """
+    notes = []
+    fam = None
+    try:
+        fdoc = doc.Application.OpenDocumentFile(rfa_path)
+        try:
+            fam = fdoc.LoadFamily(doc, options)
+            notes.append(u"FamilyDoc.LoadFamily -> {}".format(
+                u"ok" if fam is not None else u"None"
+            ))
+        finally:
+            try:
+                fdoc.Close(False)
+            except Exception as cex:
+                notes.append(u"Close искл: {}".format(cex))
+    except Exception as ex:
+        notes.append(u"FamilyDoc.LoadFamily искл: {}".format(ex))
+
+    if fam is None:
+        try:
+            res = doc.LoadFamily(rfa_path, options)
+            if isinstance(res, tuple):
+                if len(res) > 1 and res[1] is not None:
+                    fam = res[1]
+                notes.append(u"doc.LoadFamily -> {}".format(bool(res[0])))
+            else:
+                notes.append(u"doc.LoadFamily -> {}".format(bool(res)))
+        except Exception as ex:
+            notes.append(u"doc.LoadFamily искл: {}".format(ex))
+
+    return (fam, u"; ".join(notes))
+
+
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
     """
     Перезагружает семейство target_family_name из файла src_path с заменой
@@ -708,14 +754,16 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     файл каталога с другим именем всё равно обновит нужное семейство
     модели, а не создаст новое.
 
-    Возвращает (status, payload):
-      ("loaded",    family_element) — семейство перезагружено;
-      ("unchanged", family_element) — Document.LoadFamily вернул False, т.е.
-            содержимое в модели и в файле совпадает (это НЕ ошибка — часто
-            бывает, когда в каталоге поменяли только имя файла: переименование
-            в модель переносит вызывающий код через rename_family);
+    Грузит через _load_rfa_into_project (OpenDocumentFile -> LoadFamily в
+    целевой документ) — это форсирует перезагрузку даже для старой версии
+    файла и вызывает OnFamilyFound.
+
+    Возвращает (status, family_element, note):
+      ("loaded",    family) — семейство перезагружено;
+      ("unchanged", family) — перезагрузка не прошла (вернулся None), но
+            семейство в модели найдено (для метки/переименования);
       ("error",     "текст ошибки").
-    family_element нужен вызывающему коду для write_stamp / rename_family.
+    note — строка-диагностика для отчёта.
     """
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
     diag = [u"файл: {}".format(src_path)]
@@ -739,66 +787,27 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         diag.append(u"типоразмеров до: {}".format(n_before))
         diag.append(_checkout_family(doc, existing))
 
-    try:
-        diag.append(u"opts isinstance IFamilyLoadOptions: {}".format(
-            isinstance(options, IFamilyLoadOptions)
-        ))
-    except:
-        pass
-
-    loaded = None
-    changed = False
-
-    # Способ 1 — открыть .rfa как документ семейства и «Загрузить в проект»
-    # (Document.LoadFamily(targetDoc, opts)). Это путь ручного диалога: он
-    # форсирует перезагрузку и вызывает OnFamilyFound. Путевой
-    # doc.LoadFamily(path, opts) молча отдаёт False, если версия файла не
-    # новее уже загруженной (наш случай: файл 2020, семейство в модели
-    # обновлено до 2024).
     del OverwriteFamilyLoadOptions.trace[:]
-    try:
-        fam_doc = doc.Application.OpenDocumentFile(dst)
-        try:
-            fam = fam_doc.LoadFamily(doc, options)
-            loaded = fam
-            changed = fam is not None
-            diag.append(u"FamilyDoc.LoadFamily -> {}".format(
-                u"Family" if fam is not None else u"None"
-            ))
-        finally:
-            try:
-                fam_doc.Close(False)
-            except Exception as cex:
-                diag.append(u"Close искл: {}".format(cex))
-    except Exception as ex:
-        diag.append(u"FamilyDoc.LoadFamily искл: {}".format(ex))
-
-    # Способ 2 (запасной) — путевой doc.LoadFamily(path, opts)
-    if loaded is None:
-        try:
-            res = doc.LoadFamily(dst, options)
-            if isinstance(res, tuple):
-                changed = bool(res[0])
-                loaded = res[1] if len(res) > 1 else None
-                diag.append(u"doc.LoadFamily: tuple res[0]={}".format(changed))
-            else:
-                changed = bool(res)
-                diag.append(u"doc.LoadFamily: {}={}".format(type(res).__name__, changed))
-        except Exception as ex:
-            diag.append(u"doc.LoadFamily искл: {}".format(ex))
+    fam, note = _load_rfa_into_project(doc, dst, options)
+    diag.append(note)
+    # реально перезагрузилось, только если вернулся элемент Family
+    changed = fam is not None
 
     if OverwriteFamilyLoadOptions.trace:
         diag.append(u"колбэки: " + u" | ".join(OverwriteFamilyLoadOptions.trace))
     else:
-        diag.append(u"колбэки IFamilyLoadOptions НЕ вызывались")
+        diag.append(u"колбэки НЕ вызывались")
 
+    loaded = fam
     try:
-        valid = loaded is not None and loaded.IsValidObject
+        if loaded is None or not loaded.IsValidObject:
+            loaded = None
     except:
-        valid = False
-    if not valid:
+        loaded = None
+    if loaded is None:
+        # ссылка для метки/переименования (даже если перезагрузка не прошла)
         loaded = find_family_by_name(doc, target_family_name)
-    diag.append(u"ссылка на семейство: {}".format(u"есть" if loaded is not None else u"НЕТ"))
+    diag.append(u"ссылка: {}".format(u"есть" if loaded is not None else u"НЕТ"))
 
     try:
         if loaded is not None:
@@ -1727,31 +1736,26 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     for e, type_names in jobs:
         was_present = e.name in present_names
 
-        # совместная модель: если семейство уже есть — одолжить его,
-        # иначе перезагрузка молча не пройдёт
+        # совместная модель: если семейство уже есть — одолжить его
         existing = find_family_by_name(doc, e.name)
         if existing is not None:
             _checkout_family(doc, existing)
 
+        # грузим семейство целиком тем же способом, что reload_family
+        # (OpenDocumentFile -> LoadFamily(targetDoc, opts)); частичный
+        # выбор типоразмеров пока не применяется — грузятся все типы файла
         try:
-            if type_names:
-                for tn in type_names:
-                    doc.LoadFamilySymbol(e.path, tn, options)
-                fam = find_family_by_name(doc, e.name)
-            else:
-                res = doc.LoadFamily(e.path, options)
-                fam = None
-                if isinstance(res, tuple) and len(res) > 1:
-                    fam = res[1]
-                try:
-                    valid = fam is not None and fam.IsValidObject
-                except:
-                    valid = False
-                if not valid:
-                    fam = find_family_by_name(doc, e.name)
+            fam, _note = _load_rfa_into_project(doc, e.path, options)
         except Exception as ex:
             result["failed"].append((e.name, e.rel, u"{}".format(ex)))
             continue
+        try:
+            if fam is None or not fam.IsValidObject:
+                fam = None
+        except:
+            fam = None
+        if fam is None:
+            fam = find_family_by_name(doc, e.name)
 
         if fam is None and not was_present:
             result["failed"].append((e.name, e.rel, u"семейство не загрузилось"))
