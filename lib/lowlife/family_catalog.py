@@ -26,12 +26,21 @@ Document.LoadFamily управляет собственной транзакци
 вызываться внутри открытой транзакции, поэтому кнопка не оборачивает
 цикл загрузки в revit.Transaction — каждая перезагрузка семейства
 является отдельным шагом отмены.
+
+После успешной загрузки в сам элемент Family пишется скрытая метка
+(ExtensibleStorage, схема SCHEMA_GUID) с датой изменения файла .rfa в
+каталоге. Кнопка «Актуальность семейств» потом сравнивает эту метку с
+текущей датой файла и показывает, какие семейства устарели. Запись метки
+идёт SetEntity — это уже требует открытой транзакции, поэтому пометка
+выполняется отдельным проходом ПОСЛЕ всех LoadFamily, внутри
+revit.Transaction (см. write_stamp).
 """
 
 import os
 import io
 import json
 import shutil
+import datetime
 
 import clr
 clr.AddReference('RevitAPI')
@@ -42,6 +51,11 @@ from Autodesk.Revit.DB import (
     FilteredElementCollector, Family, Element, ElementId,
     IFamilyLoadOptions, FamilySource
 )
+from Autodesk.Revit.DB.ExtensibleStorage import (
+    Schema, SchemaBuilder, AccessLevel, Entity
+)
+
+from System import Guid, String
 
 from pyrevit import forms
 
@@ -62,8 +76,34 @@ CATALOG_ROOT_KEY = "catalog_root"
 # Порог, при котором строка предпросмотра включается галочкой сразу.
 AUTO_CHECK_SCORE = 0.72
 
+# Ниже этой похожести имя-в-каталоге считается «не тем файлом»: подсказка
+# в таблице остаётся, но статус актуальности = «нет в каталоге» (иначе
+# дату метки сравнивали бы со случайным непохожим файлом).
+MATCH_FLOOR = 0.45
+
 # Недопустимые в имени файла символы (заменяем на "_" во временном .rfa).
 _BAD_FILENAME_CHARS = u'\\/:*?"<>|'
+
+# Схема скрытой метки на элементе Family (ExtensibleStorage). GUID
+# фиксированный — менять нельзя, иначе старые метки перестанут читаться.
+SCHEMA_GUID = Guid("d7b1e6a2-4c3f-4b9a-9e21-6f8c1a2b3c4d")
+SCHEMA_NAME = "LowLifeFamilyCatalogStamp"
+SCHEMA_VENDOR = "LOWLIFE"
+
+_F_MTIME_EPOCH = "catalog_mtime_epoch"   # строка float-секунд (для сравнения)
+_F_MTIME_ISO = "catalog_mtime_iso"       # "ГГГГ-ММ-ДД ЧЧ:ММ" (для человека)
+_F_CATALOG_FILE = "catalog_file"         # относительный путь файла каталога
+_F_UPDATED_AT = "updated_at_iso"         # когда кнопка проставила метку
+
+# Насколько новее должен быть файл каталога, чтобы считать семейство
+# устаревшим (сек) — запас против расхождения часов/округления mtime.
+STALE_TOLERANCE_SEC = 90
+
+# Статусы актуальности (assess_families / MatchRow.status).
+STATUS_STALE = u"устарело"
+STATUS_NO_STAMP = u"нет метки"
+STATUS_CURRENT = u"актуально"
+STATUS_NO_CATALOG = u"нет в каталоге"
 
 
 # --------------------------------------------------------------------------
@@ -118,6 +158,39 @@ def save_catalog_root(path):
     data = _read_all()
     data[CATALOG_ROOT_KEY] = unicode(path or u"")
     _write_all(data)
+
+
+def pick_catalog_root(current=None):
+    """
+    Диалог выбора папки-каталога + сохранение. Возвращает новый путь; если
+    пользователь отменил — прежний current (когда он валиден) либо None.
+    """
+    try:
+        picked = forms.pick_folder(
+            title=u"Папка-каталог семейств (.rfa, включая подпапки)"
+        )
+    except TypeError:
+        picked = forms.pick_folder()
+
+    if picked and os.path.isdir(picked):
+        save_catalog_root(picked)
+        return picked
+
+    if current and os.path.isdir(current):
+        return current
+    return None
+
+
+def resolve_catalog_root(force_pick=False):
+    """
+    Путь к каталогу для рабочих кнопок: сохранённый; если его нет/он битый
+    или force_pick=True (Shift+клик / config.py) — спросить папку и сохранить.
+    Возвращает путь либо None.
+    """
+    root = load_catalog_root()
+    if force_pick or not root or not os.path.isdir(root):
+        root = pick_catalog_root(root)
+    return root
 
 
 # --------------------------------------------------------------------------
@@ -189,6 +262,19 @@ def _is_backup_rfa(filename):
     return len(tail) == 4 and tail.isdigit()
 
 
+def file_mtime(path):
+    """(epoch_float, "ГГГГ-ММ-ДД ЧЧ:ММ") для файла либо (None, None)."""
+    try:
+        epoch = os.path.getmtime(path)
+    except:
+        return (None, None)
+    try:
+        iso = datetime.datetime.fromtimestamp(epoch).strftime("%Y-%m-%d %H:%M")
+    except:
+        iso = u""
+    return (epoch, iso)
+
+
 class CatalogEntry(object):
     """Файл семейства из каталога."""
 
@@ -199,6 +285,7 @@ class CatalogEntry(object):
             self.rel = os.path.relpath(path, root)
         except:
             self.rel = os.path.basename(path)
+        self.mtime, self.mtime_iso = file_mtime(path)
 
     def __str__(self):
         return self.rel
@@ -222,6 +309,98 @@ def scan_catalog(root):
 
     entries.sort(key=lambda e: e.rel.lower())
     return entries
+
+
+# --------------------------------------------------------------------------
+# Скрытая метка даты каталога на элементе Family (ExtensibleStorage)
+# --------------------------------------------------------------------------
+
+def _get_or_create_schema():
+    schema = Schema.Lookup(SCHEMA_GUID)
+    if schema is not None:
+        return schema
+
+    sb = SchemaBuilder(SCHEMA_GUID)
+    sb.SetSchemaName(SCHEMA_NAME)
+    sb.SetVendorId(SCHEMA_VENDOR)
+    sb.SetReadAccessLevel(AccessLevel.Public)
+    sb.SetWriteAccessLevel(AccessLevel.Public)
+    # Все поля строковые — так у SimpleField не требуется указывать
+    # единицы/спецификацию (обязательно для double/int в Revit 2022+).
+    sb.AddSimpleField(_F_MTIME_EPOCH, String)
+    sb.AddSimpleField(_F_MTIME_ISO, String)
+    sb.AddSimpleField(_F_CATALOG_FILE, String)
+    sb.AddSimpleField(_F_UPDATED_AT, String)
+    return sb.Finish()
+
+
+def read_stamp(family):
+    """
+    dict со скрытой меткой семейства {epoch, iso, file, updated_at} либо
+    None, если метки нет. epoch — float или None.
+    """
+    try:
+        schema = Schema.Lookup(SCHEMA_GUID)
+        if schema is None:
+            return None
+        ent = family.GetEntity(schema)
+        if ent is None or not ent.IsValid():
+            return None
+        epoch_str = ent.Get[String](_F_MTIME_EPOCH)
+        try:
+            epoch = float(epoch_str) if epoch_str else None
+        except:
+            epoch = None
+        return {
+            "epoch": epoch,
+            "iso": ent.Get[String](_F_MTIME_ISO),
+            "file": ent.Get[String](_F_CATALOG_FILE),
+            "updated_at": ent.Get[String](_F_UPDATED_AT),
+        }
+    except:
+        return None
+
+
+def write_stamp(family, mtime_epoch, mtime_iso, catalog_file):
+    """
+    Пишет скрытую метку даты каталога в элемент Family. **Требует открытой
+    транзакции** (SetEntity). Возвращает True/False.
+    """
+    try:
+        schema = _get_or_create_schema()
+        ent = Entity(schema)
+        ent.Set[String](_F_MTIME_EPOCH, u"{}".format(mtime_epoch if mtime_epoch is not None else u""))
+        ent.Set[String](_F_MTIME_ISO, mtime_iso or u"")
+        ent.Set[String](_F_CATALOG_FILE, catalog_file or u"")
+        ent.Set[String](_F_UPDATED_AT, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        family.SetEntity(ent)
+        return True
+    except:
+        return False
+
+
+def stamp_status(stamp, entry):
+    """
+    Статус актуальности семейства по скрытой метке и текущему файлу
+    каталога: STATUS_NO_CATALOG / STATUS_NO_STAMP / STATUS_STALE / STATUS_CURRENT.
+    """
+    if entry is None:
+        return STATUS_NO_CATALOG
+    if not stamp:
+        return STATUS_NO_STAMP
+    stamp_epoch = stamp.get("epoch")
+    if stamp_epoch is None or entry.mtime is None:
+        return STATUS_NO_STAMP
+    if entry.mtime > stamp_epoch + STALE_TOLERANCE_SEC:
+        return STATUS_STALE
+    return STATUS_CURRENT
+
+
+def find_family_by_name(doc, name):
+    for fam in FilteredElementCollector(doc).OfClass(Family):
+        if _safe_element_name(fam) == name:
+            return fam
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -292,17 +471,29 @@ def list_families_in_category(doc, cat_id):
 class MatchRow(object):
     """Строка сопоставления: семейство модели и подобранный файл каталога."""
 
-    def __init__(self, family, family_name, entry, score):
+    def __init__(self, family, family_name, entry, score, stamp, status):
         self.family = family
         self.family_name = family_name
         self.entry = entry          # CatalogEntry или None
         self.score = score          # 0..1
+        self.stamp = stamp          # dict скрытой метки или None
+        self.status = status        # STATUS_* — актуальность по метке
+
+
+# Порядок статусов для сортировки/отчёта: сперва то, что требует внимания.
+_STATUS_ORDER = {
+    STATUS_STALE: 0,
+    STATUS_NO_STAMP: 1,
+    STATUS_NO_CATALOG: 2,
+    STATUS_CURRENT: 3,
+}
 
 
 def build_matches(families, entries):
     """
-    Для каждого семейства — лучший по имени файл каталога. Сортировка:
-    сперва с наибольшей похожестью, затем по имени семейства.
+    Для каждого семейства — лучший по имени файл каталога + статус
+    актуальности по скрытой метке. Сортировка: сперва устаревшие/без
+    метки, затем по убыванию похожести и имени.
     """
     rows = []
 
@@ -317,9 +508,14 @@ def build_matches(families, entries):
                 best_score = sc
                 best = e
 
-        rows.append(MatchRow(fam, fam_name, best, best_score))
+        stamp = read_stamp(fam)
+        confident = best if best_score >= MATCH_FLOOR else None
+        status = stamp_status(stamp, confident)
+        rows.append(MatchRow(fam, fam_name, best, best_score, stamp, status))
 
-    rows.sort(key=lambda r: (-r.score, r.family_name.lower()))
+    rows.sort(key=lambda r: (
+        _STATUS_ORDER.get(r.status, 9), -r.score, r.family_name.lower()
+    ))
     return rows
 
 
@@ -359,7 +555,9 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     файл каталога с другим именем всё равно обновит нужное семейство
     модели, а не создаст новое.
 
-    Возвращает (True, None) при успехе либо (False, "текст ошибки").
+    Возвращает (True, family_element) при успехе либо (False, "текст ошибки").
+    family_element нужен вызывающему коду, чтобы затем (в транзакции)
+    проставить скрытую метку даты каталога через write_stamp.
     """
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
 
@@ -373,11 +571,25 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     except Exception as ex:
         return (False, u"{}".format(ex))
 
-    ok = bool(res[0]) if isinstance(res, tuple) else bool(res)
+    loaded = None
+    if isinstance(res, tuple):
+        ok = bool(res[0])
+        if len(res) > 1:
+            loaded = res[1]
+    else:
+        ok = bool(res)
+
     if not ok:
         return (False, u"Revit отклонил загрузку (LoadFamily вернул False)")
 
-    return (True, None)
+    try:
+        valid = loaded is not None and loaded.IsValidObject
+    except:
+        valid = False
+    if not valid:
+        loaded = find_family_by_name(doc, target_family_name)
+
+    return (True, loaded)
 
 
 # --------------------------------------------------------------------------
@@ -430,7 +642,8 @@ def show_preview_form(rows, entries, catalog_root):
         u"Каталог: {}\n"
         u"Отмеченные семейства перезагружаются из подобранного файла с заменой "
         u"значений параметров. «Файл…» — указать другой файл каталога вручную. "
-        u"Уже отмечены совпадения от {}%.".format(
+        u"Автоматически отмечены устаревшие (файл каталога новее метки в модели) "
+        u"и семейства без метки с совпадением имени от {}%; «актуальные» — нет.".format(
             catalog_root, int(round(AUTO_CHECK_SCORE * 100))
         )
     )
@@ -463,9 +676,21 @@ def show_preview_form(rows, entries, catalog_root):
         tgt.VerticalAlignment = VerticalAlignment.Center
 
         score_tb = TextBlock()
-        score_tb.Width = 55
+        score_tb.Width = 50
         score_tb.VerticalAlignment = VerticalAlignment.Center
         score_tb.Foreground = Brushes.Gray
+
+        status_tb = TextBlock()
+        status_tb.Width = 105
+        status_tb.VerticalAlignment = VerticalAlignment.Center
+        status_tb.Text = r.status
+        if r.status == STATUS_STALE:
+            status_tb.Foreground = Brushes.DarkOrange
+            status_tb.FontWeight = FontWeights.Bold
+        elif r.status == STATUS_CURRENT:
+            status_tb.Foreground = Brushes.Green
+        else:
+            status_tb.Foreground = Brushes.Gray
 
         st = {
             "row": r,
@@ -477,8 +702,13 @@ def show_preview_form(rows, entries, catalog_root):
 
         if r.entry:
             score_tb.Text = u"{}%".format(int(round(r.score * 100)))
-            tgt.Text = r.entry.rel
-            cb.IsChecked = r.score >= AUTO_CHECK_SCORE
+            tgt.Text = u"{}  ({})".format(r.entry.rel, r.entry.mtime_iso or u"?")
+            if r.status == STATUS_STALE:
+                cb.IsChecked = True
+            elif r.status == STATUS_NO_STAMP:
+                cb.IsChecked = r.score >= AUTO_CHECK_SCORE
+            else:  # STATUS_CURRENT — уже актуально
+                cb.IsChecked = False
         else:
             score_tb.Text = u"—"
             tgt.Text = u"(файл не подобран)"
@@ -500,7 +730,9 @@ def show_preview_form(rows, entries, catalog_root):
             if sel:
                 st["path"] = sel.entry.path
                 st["disp"] = sel.entry.rel
-                st["tgt_tb"].Text = sel.entry.rel
+                st["tgt_tb"].Text = u"{}  ({})".format(
+                    sel.entry.rel, sel.entry.mtime_iso or u"?"
+                )
                 st["tgt_tb"].Foreground = Brushes.Black
                 st["cb"].IsChecked = True
 
@@ -510,6 +742,7 @@ def show_preview_form(rows, entries, catalog_root):
         rowp.Children.Add(arrow)
         rowp.Children.Add(tgt)
         rowp.Children.Add(score_tb)
+        rowp.Children.Add(status_tb)
         rowp.Children.Add(pick)
         root_panel.Children.Add(rowp)
         row_states.append(st)
