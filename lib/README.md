@@ -787,11 +787,12 @@ Shift+клик меняет папку. Обе кнопки принимают *
 `LoadingRow`, галочка — `DataGridCheckBoxColumn` TwoWay, двойной клик по строке
 или «Файл…» — вручную выбрать другой файл каталога. Отмеченные уходят в тот же
 `apply_updates`. `show_load_form` — аналогичная таблица кнопки «Загрузить
-семейства» (файл, папка, «в модели», дата); дальше скрипт кнопки **всегда**
-открывает отмеченные `.rfa` (`read_family_type_names`, под `forms.ProgressBar`) и
-для семейств с >1 типоразмером показывает `show_type_picker` с галочками по типам,
-затем `apply_loads` грузит через `LoadFamilySymbol` только выбранные (или
-`LoadFamily` целиком, если отмечены все / у семейства один тип).
+семейства» (файл, папка, «в модели», дата). Дальше: `apply_loads` грузит
+отмеченные `.rfa` **целиком** (`LoadFamily`), затем `collect_symbol_names` читает
+типоразмеры у загруженных семейств (по `GetFamilySymbolIds`, без открытия `.rfa`
+отдельным документом — так надёжнее), для семейств с >1 типом показывается
+`show_type_picker`, и `prune_family_types` удаляет снятые типоразмеры (или всё
+семейство, если сняты все).
 Общие помощники таблиц: `_text_col` / `_check_col` / `_star` / `_attach_row_coloring`
 / `_attach_datagrid_sorting`.
 
@@ -809,15 +810,16 @@ Shift+клик меняет папку. Обе кнопки принимают *
 | `read_stamp` / `write_stamp` | `read_stamp(family)` / `write_stamp(family, mtime_epoch, mtime_iso, catalog_file)` | Чтение/запись скрытой метки на `Family`. `write_stamp` **требует транзакции** |
 | `stamp_status` | `stamp_status(stamp, entry)` | `STATUS_*` по метке и текущей дате файла каталога (`STALE_TOLERANCE_SEC` запас на расхождение часов) |
 | `find_family_by_name` | `find_family_by_name(doc, name)` | `Family` по имени (запасной путь, если `LoadFamily` не вернул элемент) |
-| `OverwriteFamilyLoadOptions` | `OverwriteFamilyLoadOptions(overwrite_parameter_values=True)` | `IFamilyLoadOptions`: `overwriteParameterValues` = аргумент (True = «Перезаписать существующую версию и значения параметров» как в диалоге браузера; False = только определение семейства, значения параметров у имеющихся типоразмеров сохраняются). Определение семейства/набор типоразмеров обновляются всегда; отсутствующие в файле типоразмеры Revit не удаляет. Для shared-семейств `source = FamilySource.Family` |
+| `OverwriteFamilyLoadOptions` / `make_load_options` | `make_load_options(overwrite_parameter_values=True)` | `IFamilyLoadOptions`: `overwriteParameterValues` = аргумент (True = «Перезаписать существующую версию и значения параметров» как в диалоге браузера; False = только определение семейства). Флаг хранится в модульном `_OVERWRITE_STATE`, а не в `self` — класс без `__init__` (надёжнее для .NET-интерфейса под IronPython); экземпляр создавать через `make_load_options`. Для shared-семейств `source = FamilySource.Family` |
 | `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `("loaded", family)` — перезагружено, `("unchanged", family)` — `LoadFamily` вернул False (содержимое совпало, **не ошибка**), `("error", "текст")` |
 | `rename_family` | `rename_family(doc, family, new_name)` | Переименовывает семейство модели (напр. по имени файла каталога, когда его переименовали в каталоге). **Требует транзакции.** `(True, None)` либо `(False, "причина")` — имя совпадает / занято / отклонено. `Element.Name` под IronPython пишется через `_set_element_name` (рефлексия, как `_safe_element_name` для чтения) |
 | `show_status_form` | `show_status_form(rows, catalog_root, entries)` | Единое окно «Семейства из каталога»: сортируемый `DataGrid` (галочка, имя, категория, статус цветом, даты, файл, похожесть) + флажки «заменять значения параметров» и «переименовывать» + «Файл…» (или двойной клик — сменить файл строки) + «Отметить требующие обновления» / «Снять все» / «Обновить отмеченные» / «Закрыть». `(jobs, do_rename, overwrite_params)` для отмеченных строк либо `None` |
 | `show_load_form` | `show_load_form(entries, present_names, catalog_root)` | Окно «Загрузить семейства»: сортируемый `DataGrid` (галочка, файл, папка, «в модели», дата файла) + флажок «заменять значения параметров»; зелёным — новые, серым — уже в модели. `(entries, overwrite_params)` либо `None` |
-| `read_family_type_names` | `read_family_type_names(app, path)` | Имена типоразмеров в `.rfa` через `app.OpenDocumentFile` → `FamilyManager.Types` → `Close(False)`. `[]` при сбое. **Вне транзакции** |
-| `show_type_picker` | `show_type_picker(type_map)` | `type_map` — `[(entry, [имена])]`. `DataGrid` (галочка, семейство, типоразмер). `{entry: set(отмеченные)}` (семейства без галочек выпадают) либо `None` |
+| `show_type_picker` | `show_type_picker(type_map)` | `type_map` — `[(entry, [имена])]` уже загруженных семейств. `DataGrid` (галочка, семейство, типоразмер). `{entry: set(отмеченные)}` (пустой набор = «снять всё»); `None` = закрыли, ничего не трогать |
+| `collect_symbol_names` | `collect_symbol_names(doc, {entry: Family})` | `[(entry, [имена типоразмеров])]` только для семейств с >1 типоразмером (по `GetFamilySymbolIds`) |
+| `prune_family_types` | `prune_family_types(doc, {entry: set(keep)})` | В своей `Transaction` удаляет типоразмеры не из `keep`; пустой `keep` → удаляет семейство целиком. `(удалено_типов, удалено_семейств, [ошибки])` |
 | `apply_updates` | `apply_updates(doc, jobs, do_rename, overwrite_params=True)` | Конвейер обновления: `reload_family` каждого (вне транзакции) → одна `Transaction`: `rename_family` при `do_rename` и различии имён + `write_stamp`. dict: `updated / unchanged / renamed / rename_failed / failed / stamp_failed` |
-| `apply_loads` | `apply_loads(doc, jobs, present_names, overwrite_params=True)` | `jobs` — `[(entry, type_names)]`: `None` → `doc.LoadFamily` целиком, список → `doc.LoadFamilySymbol` на каждый тип. Ссылку на семейство берёт из out-параметра (`clr.Reference`), иначе по имени файла, иначе — по «новизне» (`_resolve_loaded_family`). → `Transaction`: `write_stamp`. dict: `loaded` (новые) / `updated` (уже были) / `failed` / `stamp_failed` |
+| `apply_loads` | `apply_loads(doc, entries, present_names, overwrite_params=True)` | Грузит каждый `.rfa` **целиком** (`doc.LoadFamily(path, opts, clr.Reference[Family]())`, вне транзакции); ссылку ищет `_resolve_loaded_family` (out-параметр → имя файла → «новизна»). → `Transaction`: `write_stamp`. dict: `loaded` / `updated` / `skipped` (LoadFamily=False, уже в модели) / `failed` / `stamp_failed` + `families` = `{entry: Family}` |
 | `render_result_md` / `result_summary_lines` | `(output, result)` | Отчёт `apply_updates` в окно вывода / сводка для `forms.alert` |
 | `render_load_result_md` / `load_summary_lines` | `(output, result)` | То же для `apply_loads` |
 

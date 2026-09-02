@@ -596,19 +596,30 @@ class OverwriteFamilyLoadOptions(IFamilyLoadOptions):
     которых в файле нет, Revit из проекта не удаляет.
 
     Для общих (shared) вложенных семейств источник — сам загружаемый файл.
+
+    Флаг перезаписи хранится в _OVERWRITE_STATE (модульный), а не в
+    self через __init__: класс реализует .NET-интерфейс, и под IronPython
+    надёжнее держать его без собственного конструктора (известный рабочий
+    паттерн pyRevit). Экземпляр создавайте через make_load_options().
     """
 
-    def __init__(self, overwrite_parameter_values=True):
-        self._overwrite = bool(overwrite_parameter_values)
-
     def OnFamilyFound(self, familyInUse, overwriteParameterValues):
-        overwriteParameterValues.Value = self._overwrite
+        overwriteParameterValues.Value = _OVERWRITE_STATE["value"]
         return True
 
     def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
         source.Value = FamilySource.Family
-        overwriteParameterValues.Value = self._overwrite
+        overwriteParameterValues.Value = _OVERWRITE_STATE["value"]
         return True
+
+
+_OVERWRITE_STATE = {"value": True}
+
+
+def make_load_options(overwrite_parameter_values=True):
+    """Экземпляр OverwriteFamilyLoadOptions с нужным режимом перезаписи."""
+    _OVERWRITE_STATE["value"] = bool(overwrite_parameter_values)
+    return OverwriteFamilyLoadOptions()
 
 
 def _safe_filename(name):
@@ -1095,7 +1106,7 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
     if not jobs:
         return result
 
-    options = OverwriteFamilyLoadOptions(overwrite_params)
+    options = make_load_options(overwrite_params)
     temp_dir = tempfile.mkdtemp(prefix="lowlife_famcat_")
     loaded = []
 
@@ -1391,40 +1402,13 @@ class _TypeRow(object):
         self.Selected = True
 
 
-def read_family_type_names(app, path):
-    """
-    Имена типоразмеров в файле .rfa: открывает семейство как отдельный
-    документ (app.OpenDocumentFile), читает FamilyManager.Types и
-    закрывает без сохранения. [] при сбое или если типоразмеров нет.
-    Вызывать ВНЕ транзакции (открытие документа).
-    """
-    names = []
-    fdoc = None
-    try:
-        fdoc = app.OpenDocumentFile(path)
-        for t in fdoc.FamilyManager.Types:
-            try:
-                if t.Name:
-                    names.append(t.Name)
-            except:
-                pass
-    except:
-        names = []
-    finally:
-        if fdoc is not None:
-            try:
-                fdoc.Close(False)
-            except:
-                pass
-    return sorted(set(names))
-
-
 def show_type_picker(type_map):
     """
-    type_map — список (entry, [имена_типоразмеров]). Окно с галочками по
-    каждому типоразмеру каждого семейства (все отмечены). Возвращает
-    {entry: set(отмеченные_имена)} (семейства без единой галочки не
-    попадают) либо None, если окно закрыли.
+    type_map — список (entry, [имена_типоразмеров]) уже загруженных
+    семейств. Окно с галочками по каждому типоразмеру (все отмечены).
+    Возвращает {entry: set(отмеченные_имена)} (семейства без единой
+    галочки в словарь не попадают — их зовущий код удаляет целиком)
+    либо None, если окно закрыли (тогда ничего не трогаем).
     """
     if not type_map:
         return {}
@@ -1459,9 +1443,10 @@ def show_type_picker(type_map):
     info = TextBlock()
     info.Text = (
         u"Семейств с несколькими типоразмерами: {}   ·   типоразмеров всего: {}\n"
-        u"Снятые типоразмеры не загружаются. Если у семейства отмечены все "
-        u"типоразмеры — оно грузится целиком. Семейства с одним типоразмером "
-        u"грузятся сразу и в этом списке не показаны.".format(len(type_map), data.Count)
+        u"Семейства уже загружены целиком. Снятые типоразмеры будут удалены "
+        u"из модели. Если у семейства снять все типоразмеры — семейство "
+        u"удаляется полностью. Семейства с одним типоразмером в списке не "
+        u"показаны.".format(len(type_map), data.Count)
     )
     info.FontSize = 11
     info.Foreground = Brushes.Gray
@@ -1523,7 +1508,7 @@ def show_type_picker(type_map):
     close_btn.Margin = Thickness(0, 0, 8, 0)
 
     run_btn = Button()
-    run_btn.Content = u"Загрузить отмеченные"
+    run_btn.Content = u"Оставить отмеченные"
     run_btn.Padding = Thickness(10, 4, 10, 4)
     run_btn.FontWeight = FontWeights.Bold
 
@@ -1536,10 +1521,7 @@ def show_type_picker(type_map):
         for row in data:
             if row.Selected:
                 picked.setdefault(row.entry, set()).add(row.TypeName)
-        if not picked:
-            forms.alert(u"Не отмечено ни одного типоразмера.")
-            return
-        result["map"] = picked
+        result["map"] = picked  # может быть пустым — снятые всё удалит
         win.Close()
 
     def on_close(sender, args):
@@ -1597,72 +1579,60 @@ def _resolve_loaded_family(doc, entry, out_family, any_ok, ids_before):
     return fam
 
 
-def apply_loads(doc, jobs, present_names, overwrite_params=True):
+def apply_loads(doc, entries, present_names, overwrite_params=True):
     """
-    jobs — список (entry, type_names): type_names is None → грузить семейство
-    целиком (Document.LoadFamily); список имён → грузить только эти
-    типоразмеры (Document.LoadFamilySymbol на каждый).
+    Грузит каждый .rfa из entries в модель ЦЕЛИКОМ (Document.LoadFamily,
+    вне транзакции) и ставит семейству скрытую метку даты. Отбор нужных
+    типоразмеров делается ПОСЛЕ — зовущий код читает типы у загруженного
+    семейства и вызывает prune_family_types (открывать .rfa отдельным
+    документом ради списка типов ненадёжно).
 
-    Ставит семейству скрытую метку даты. Новые семейства — «loaded», уже
-    бывшие в модели — «updated». overwrite_params — см. OverwriteFamilyLoadOptions.
-    Возвращает dict: loaded / updated / failed / stamp_failed.
+    Новые семейства — «loaded», уже бывшие в модели — «updated», «уже в
+    модели без изменений» (LoadFamily вернул False) — «skipped», исключения
+    — «failed». overwrite_params — см. OverwriteFamilyLoadOptions.
+
+    Возвращает dict: loaded / updated / skipped / failed / stamp_failed +
+    "families" = {entry: Family} для реально загруженных (для prune-шага).
     """
-    result = {"loaded": [], "updated": [], "failed": [], "stamp_failed": []}
-    if not jobs:
+    result = {
+        "loaded": [], "updated": [], "skipped": [], "failed": [],
+        "stamp_failed": [], "families": {},
+    }
+    if not entries:
         return result
 
-    options = OverwriteFamilyLoadOptions(overwrite_params)
-    done = []  # (entry, family, was_present, n_types)
+    options = make_load_options(overwrite_params)
+    done = []  # (entry, family, was_present)
 
-    for e, type_names in jobs:
+    for e in entries:
         was_present = e.name in present_names
         ids_before = set(
             f.Id.IntegerValue
             for f in FilteredElementCollector(doc).OfClass(Family)
         )
 
-        out_family = None
-        any_ok = False
-        n_types = None
-        type_errs = []
-
-        if type_names:
-            n_types = len(type_names)
-            for tn in type_names:
-                try:
-                    sym_ref = clr.Reference[FamilySymbol]()
-                    r = doc.LoadFamilySymbol(e.path, tn, options, sym_ref)
-                    any_ok = any_ok or bool(r)
-                    sym = sym_ref.Value
-                    if sym is not None and out_family is None:
-                        try:
-                            out_family = sym.Family
-                        except:
-                            pass
-                except Exception as ex:
-                    type_errs.append(u"«{}»: {}".format(tn, ex))
-        else:
-            try:
-                fam_ref = clr.Reference[Family]()
-                any_ok = bool(doc.LoadFamily(e.path, options, fam_ref))
-                out_family = fam_ref.Value
-            except Exception as ex:
-                result["failed"].append((e.name, e.rel, u"{}".format(ex)))
-                continue
+        try:
+            fam_ref = clr.Reference[Family]()
+            any_ok = bool(doc.LoadFamily(e.path, options, fam_ref))
+            out_family = fam_ref.Value
+        except Exception as ex:
+            result["failed"].append((e.name, e.rel, u"{}".format(ex)))
+            continue
 
         fam = _resolve_loaded_family(doc, e, out_family, any_ok, ids_before)
 
-        if fam is None and not was_present and not any_ok:
-            if type_errs:
-                msg = u"; ".join(type_errs)
+        if fam is None:
+            if not any_ok:
+                result["skipped"].append((e.name, e.rel, u"уже в модели или без изменений"))
             else:
-                msg = (u"Document.LoadFamily вернул False — файл не подошёл "
-                       u"(несовместимая версия Revit?) или семейство уже "
-                       u"загружено под другим именем")
-            result["failed"].append((e.name, e.rel, msg))
+                # загрузилось, но ссылку не нашли — метку ставить не на что
+                result["updated" if was_present else "loaded"].append(
+                    (e.name, e.rel, e.mtime_iso)
+                )
             continue
 
-        done.append((e, fam, was_present, n_types))
+        done.append((e, fam, was_present))
+        result["families"][e] = fam
 
     if not done:
         return result
@@ -1670,14 +1640,13 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     t = Transaction(doc, u"Загрузка семейств из каталога: метки даты")
     t.Start()
     try:
-        for e, fam, was_present, n_types in done:
+        for e, fam, was_present in done:
             nm = (_safe_element_name(fam) if fam else None) or e.name
-            disp = e.rel if n_types is None else u"{} · типоразмеров: {}".format(e.rel, n_types)
             ok_stamp = write_stamp(fam, e.mtime, e.mtime_iso, e.rel) if fam else False
             if fam and not ok_stamp:
                 result["stamp_failed"].append(nm)
             bucket = "updated" if was_present else "loaded"
-            result[bucket].append((nm, disp, e.mtime_iso))
+            result[bucket].append((nm, e.rel, e.mtime_iso))
         t.Commit()
     except:
         if t.HasStarted() and not t.HasEnded():
@@ -1687,9 +1656,80 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     return result
 
 
+def collect_symbol_names(doc, families_by_entry):
+    """
+    families_by_entry — {entry: Family}. Возвращает [(entry, [имена типоразмеров])]
+    только для семейств, где типоразмеров больше одного (только их и есть смысл
+    показывать в окне выбора типов).
+    """
+    out = []
+    for entry, fam in families_by_entry.items():
+        try:
+            ids = list(fam.GetFamilySymbolIds())
+        except:
+            continue
+        names = []
+        for sid in ids:
+            nm = _safe_element_name(doc.GetElement(sid))
+            if nm:
+                names.append(nm)
+        names = sorted(set(names))
+        if len(names) > 1:
+            out.append((entry, names))
+    return out
+
+
+def prune_family_types(doc, keep_map):
+    """
+    keep_map — {entry: set(имена оставляемых типоразмеров)}. Удаляет из
+    модели типоразмеры семейства, которых нет в наборе; если набор пуст —
+    удаляет семейство целиком. Работает в своей транзакции.
+    Возвращает (удалено_типоразмеров, удалено_семейств, [ошибки]).
+    """
+    removed_types = 0
+    removed_fams = 0
+    errors = []
+    if not keep_map:
+        return (0, 0, errors)
+
+    t = Transaction(doc, u"Загрузка семейств: отбор типоразмеров")
+    t.Start()
+    try:
+        for entry, keep in keep_map.items():
+            fam = find_family_by_name(doc, entry.name)
+            if fam is None:
+                continue
+
+            if not keep:
+                try:
+                    if doc.Delete(fam.Id):
+                        removed_fams += 1
+                except Exception as ex:
+                    errors.append(u"{} — {}".format(entry.name, ex))
+                continue
+
+            for sid in list(fam.GetFamilySymbolIds()):
+                nm = _safe_element_name(doc.GetElement(sid))
+                if nm and nm not in keep:
+                    try:
+                        res = doc.Delete(sid)
+                        if res and len(list(res)) > 0:
+                            removed_types += 1
+                    except Exception as ex:
+                        errors.append(u"{} : {} — {}".format(entry.name, nm, ex))
+        t.Commit()
+    except:
+        if t.HasStarted() and not t.HasEnded():
+            t.RollBack()
+        raise
+
+    return (removed_types, removed_fams, errors)
+
+
 def render_load_result_md(output, result):
     ld = result["loaded"]
     up = result["updated"]
+    sk = result.get("skipped", [])
     fl = result["failed"]
     sf = result["stamp_failed"]
 
@@ -1702,6 +1742,11 @@ def render_load_result_md(output, result):
         output.print_md(u"### Перезагружены (уже были в модели) ({})".format(len(up)))
         output.print_md(u"\n".join(
             u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in up
+        ))
+    if sk:
+        output.print_md(u"### Пропущены — уже в модели без изменений ({})".format(len(sk)))
+        output.print_md(u"\n".join(
+            u"- **{}**  ←  `{}`".format(n, d) for n, d, _e in sk
         ))
     if fl:
         output.print_md(u"### Не удалось загрузить ({})".format(len(fl)))
@@ -1718,6 +1763,8 @@ def load_summary_lines(result):
     lines = [u"Загружено новых: {}".format(len(result["loaded"]))]
     if result["updated"]:
         lines.append(u"Перезагружено: {}".format(len(result["updated"])))
+    if result.get("skipped"):
+        lines.append(u"Пропущено (уже в модели): {}".format(len(result["skipped"])))
     if result["failed"]:
         lines.append(u"Ошибок: {}".format(len(result["failed"])))
     if result["stamp_failed"]:
