@@ -67,6 +67,7 @@ from Autodesk.Revit.DB.ExtensibleStorage import (
 
 from System import Guid, String
 from System.Collections.Generic import List
+from System.IO import File as _NetFile, FileAttributes as _NetFileAttributes
 
 from pyrevit import forms
 
@@ -1652,40 +1653,51 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
 
             dst = os.path.join(temp_dir, _safe_filename(e.name) + u".rfa")
             try:
-                shutil.copyfile(src, dst)
+                _NetFile.Copy(src, dst, True)
+                # снять «только для чтения», если унаследовалось из библиотеки
+                _NetFile.SetAttributes(dst, _NetFileAttributes.Normal)
             except Exception as ex:
                 result["failed"].append((e.name, e.rel, u"копирование во временную папку: {}".format(ex)))
                 continue
 
-            out_family = None
             try:
-                # ровно как reload_family в apply_updates (работает у кнопки обновления)
-                res = doc.LoadFamily(dst, options)
-                if isinstance(res, tuple):
-                    any_ok = bool(res[0])
-                    if len(res) > 1:
-                        out_family = res[1]
-                else:
-                    any_ok = bool(res)
-            except Exception as ex:
-                result["failed"].append((e.name, e.rel, u"{}".format(ex)))
-                continue
+                dst_size = os.path.getsize(dst)
+            except:
+                dst_size = -1
 
-            fam = _resolve_loaded_family(doc, e, out_family, any_ok, ids_before)
+            # Пробуем несколько способов: копия+опции, копия без опций,
+            # прямой путь из каталога. Успех = LoadFamily вернул True ЛИБО
+            # в документе появилось новое семейство.
+            fam = None
+            attempts = []
+            for label, path, use_opts in (
+                (u"копия+опции", dst, True),
+                (u"копия", dst, False),
+                (u"каталог", src, False),
+            ):
+                try:
+                    if use_opts:
+                        r = doc.LoadFamily(path, options)
+                    else:
+                        r = doc.LoadFamily(path)
+                    ok = bool(r[0]) if isinstance(r, tuple) else bool(r)
+                    outf = r[1] if (isinstance(r, tuple) and len(r) > 1) else None
+                except Exception as ex:
+                    attempts.append(u"{}: искл. {}".format(label, ex))
+                    continue
+                attempts.append(u"{}: {}".format(label, u"ok" if ok else u"False"))
+                fam = _resolve_loaded_family(doc, e, outf, ok, ids_before)
+                if fam is not None:
+                    break
 
             if fam is None:
                 already = was_present or (find_family_by_name(doc, e.name) is not None)
-                if any_ok:
-                    result["updated" if was_present else "loaded"].append(
-                        (e.name, e.rel, e.mtime_iso)
-                    )
-                elif already:
+                if already:
                     result["skipped"].append((e.name, e.rel, u"уже в модели"))
                 else:
                     result["failed"].append((
                         e.name, e.rel,
-                        u"Document.LoadFamily вернул False — семейство не загружено "
-                        u"(файл битый / несовместимый формат)"
+                        u"не загрузилось [{} Б; {}]".format(dst_size, u"; ".join(attempts))
                     ))
                 continue
 
