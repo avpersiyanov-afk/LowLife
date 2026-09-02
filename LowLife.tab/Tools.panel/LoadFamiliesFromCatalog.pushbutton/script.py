@@ -29,6 +29,12 @@ class FolderOption(object):
 
 
 try:
+    if doc.IsFamilyDocument:
+        forms.alert(
+            u"Кнопка работает в проекте, а не в редакторе семейств.",
+            exitscript=True
+        )
+
     try:
         config_mode = bool(EXEC_PARAMS.config_mode)
     except Exception:
