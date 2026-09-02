@@ -1604,52 +1604,69 @@ def apply_loads(doc, entries, present_names, overwrite_params=True):
     options = make_load_options(overwrite_params)
     done = []  # (entry, family, was_present)
 
-    for e in entries:
-        was_present = e.name in present_names
-        ids_before = set(
-            f.Id.IntegerValue
-            for f in FilteredElementCollector(doc).OfClass(Family)
-        )
+    # Грузим не из каталога напрямую, а из локальной копии — так же, как
+    # apply_updates (устраняет проблемы с сетевыми/длинными путями, правами,
+    # и гарантирует, что имя семейства при загрузке = имя файла).
+    temp_dir = tempfile.mkdtemp(prefix="lowlife_famload_")
+    try:
+        for e in entries:
+            was_present = e.name in present_names
+            ids_before = set(
+                f.Id.IntegerValue
+                for f in FilteredElementCollector(doc).OfClass(Family)
+            )
 
-        out_family = None
-        try:
-            # самый простой оверлоуд (1 аргумент, без out) — для новых семейств
-            any_ok = bool(doc.LoadFamily(e.path))
-            if not any_ok:
-                # уже есть в проекте (или идентично) — грузим с опциями перезаписи
-                res = doc.LoadFamily(e.path, options)
-                if isinstance(res, tuple):
-                    any_ok = bool(res[0])
-                    if len(res) > 1:
-                        out_family = res[1]
+            src = os.path.normpath(e.path)
+            if not os.path.isfile(src):
+                result["failed"].append((e.name, e.rel, u"файл не найден: {}".format(src)))
+                continue
+
+            dst = os.path.join(temp_dir, _safe_filename(e.name) + u".rfa")
+            try:
+                shutil.copyfile(src, dst)
+            except Exception as ex:
+                result["failed"].append((e.name, e.rel, u"копирование во временную папку: {}".format(ex)))
+                continue
+
+            out_family = None
+            try:
+                # простой оверлоуд (1 аргумент) — для новых семейств
+                any_ok = bool(doc.LoadFamily(dst))
+                if not any_ok:
+                    # уже есть в проекте (или идентично) — с опциями перезаписи
+                    res = doc.LoadFamily(dst, options)
+                    if isinstance(res, tuple):
+                        any_ok = bool(res[0])
+                        if len(res) > 1:
+                            out_family = res[1]
+                    else:
+                        any_ok = bool(res)
+            except Exception as ex:
+                result["failed"].append((e.name, e.rel, u"{}".format(ex)))
+                continue
+
+            fam = _resolve_loaded_family(doc, e, out_family, any_ok, ids_before)
+
+            if fam is None:
+                already = was_present or (find_family_by_name(doc, e.name) is not None)
+                if any_ok:
+                    result["updated" if was_present else "loaded"].append(
+                        (e.name, e.rel, e.mtime_iso)
+                    )
+                elif already:
+                    result["skipped"].append((e.name, e.rel, u"уже в модели"))
                 else:
-                    any_ok = bool(res)
-        except Exception as ex:
-            result["failed"].append((e.name, e.rel, u"{}".format(ex)))
-            continue
+                    result["failed"].append((
+                        e.name, e.rel,
+                        u"Document.LoadFamily вернул False — семейство не загружено "
+                        u"(файл битый / несовместимый формат)"
+                    ))
+                continue
 
-        fam = _resolve_loaded_family(doc, e, out_family, any_ok, ids_before)
-
-        if fam is None:
-            already = was_present or (find_family_by_name(doc, e.name) is not None)
-            if any_ok:
-                # загрузилось, но ссылку не нашли — метку ставить не на что
-                result["updated" if was_present else "loaded"].append(
-                    (e.name, e.rel, e.mtime_iso)
-                )
-            elif already:
-                result["skipped"].append((e.name, e.rel, u"уже в модели"))
-            else:
-                result["failed"].append((
-                    e.name, e.rel,
-                    u"Document.LoadFamily вернул False, семейство не загружено — "
-                    u"вероятно, файл сохранён в более новой версии Revit; путь: "
-                    u"{}".format(e.path)
-                ))
-            continue
-
-        done.append((e, fam, was_present))
-        result["families"][e] = fam
+            done.append((e, fam, was_present))
+            result["families"][e] = fam
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     if not done:
         return result
