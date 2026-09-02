@@ -636,6 +636,51 @@ def _set_element_name(el, name):
             return False
 
 
+def _copy_rfa(src_path, dst_path):
+    """
+    Копирует .rfa во временный файл. Если рядом с исходником лежит
+    одноимённый .txt (каталог типоразмеров) — копирует и его рядом с dst
+    под тем же базовым именем, чтобы Revit при загрузке видел типоразмеры.
+    """
+    shutil.copyfile(src_path, dst_path)
+    src_txt = os.path.splitext(src_path)[0] + u".txt"
+    if os.path.isfile(src_txt):
+        try:
+            shutil.copyfile(src_txt, os.path.splitext(dst_path)[0] + u".txt")
+        except:
+            pass
+
+
+def ensure_family_editable(doc, family):
+    """
+    Совместная модель: «одалживает» элемент семейства из центральной
+    (WorksharingUtils.CheckoutElements) — программный аналог ручного
+    диалога «Семейство не является редактируемым. Сделать редактируемым и
+    продолжить? → Да». Без этого Document.LoadFamily молча возвращает
+    False и семейство не перезагружается. **Вне транзакции.**
+
+    Возвращает (ok, note): ok=False — владелец другой пользователь, писать
+    нельзя; note — необязательное примечание. Несовместная модель или
+    ошибка самой проверки → (True, ...).
+    """
+    try:
+        if not doc.IsWorkshared:
+            return (True, None)
+    except:
+        return (True, None)
+    try:
+        from Autodesk.Revit.DB import WorksharingUtils, CheckoutStatus
+        status = WorksharingUtils.GetCheckoutStatus(doc, family.Id)
+        if status == CheckoutStatus.OwnedByOtherUser:
+            return (False, u"семейство занято другим пользователем — освободите его")
+        ids = List[ElementId]()
+        ids.Add(family.Id)
+        WorksharingUtils.CheckoutElements(doc, ids)
+        return (True, None)
+    except Exception as ex:
+        return (True, u"checkout: {}".format(ex))
+
+
 def reload_family(doc, src_path, target_family_name, temp_dir, options):
     """
     Перезагружает семейство target_family_name из файла src_path с заменой
@@ -656,9 +701,15 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     dst = os.path.join(temp_dir, _safe_filename(target_family_name) + u".rfa")
 
     try:
-        shutil.copyfile(src_path, dst)
+        _copy_rfa(src_path, dst)
     except Exception as ex:
         return (u"error", u"копирование во временный файл: {}".format(ex))
+
+    existing = find_family_by_name(doc, target_family_name)
+    if existing is not None:
+        ok_co, co_note = ensure_family_editable(doc, existing)
+        if not ok_co:
+            return (u"error", co_note)
 
     try:
         res = doc.LoadFamily(dst, options)
@@ -1545,13 +1596,50 @@ def show_type_picker(type_map):
     return result["map"]
 
 
+def _read_type_catalog_names(txt_path):
+    """
+    Имена типоразмеров из каталога типоразмеров .txt (первая строка —
+    заголовок параметров; её первый символ — разделитель; дальше по строке
+    на типоразмер, имя — до первого разделителя). [] при сбое.
+    """
+    lines = None
+    for enc in ("utf-16", "utf-8-sig", "cp1251"):
+        try:
+            with io.open(txt_path, "r", encoding=enc) as f:
+                lines = f.read().splitlines()
+            break
+        except:
+            lines = None
+    if not lines:
+        return []
+
+    header = lines[0] if lines[0] else u","
+    delim = header[0] if header[0] in u",;\t" else u","
+
+    names = []
+    for ln in lines[1:]:
+        ln = ln.strip()
+        if not ln:
+            continue
+        name = ln.split(delim, 1)[0].strip().strip(u'"')
+        if name:
+            names.append(name)
+    return sorted(set(names))
+
+
 def read_family_type_names(app, path):
     """
-    Имена типоразмеров в файле .rfa: открывает семейство как отдельный
-    документ (app.OpenDocumentFile), читает FamilyManager.Types и
-    закрывает без сохранения. [] при сбое или если типоразмеров нет.
-    Вызывать ВНЕ транзакции (открытие документа).
+    Имена типоразмеров семейства. Если рядом лежит каталог типоразмеров
+    .txt — берём из него (у таких семейств встроенных типов почти нет).
+    Иначе открываем .rfa отдельным документом и читаем FamilyManager.Types.
+    [] при сбое. Вызывать ВНЕ транзакции.
     """
+    txt = os.path.splitext(path)[0] + u".txt"
+    if os.path.isfile(txt):
+        names = _read_type_catalog_names(txt)
+        if names:
+            return names
+
     names = []
     fdoc = None
     try:
@@ -1593,33 +1681,54 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     options = OverwriteFamilyLoadOptions(overwrite_params)
     done = []  # (entry, family, was_present, n_types)
 
-    for e, type_names in jobs:
-        was_present = e.name in present_names
-        try:
-            if type_names:
-                for tn in type_names:
-                    doc.LoadFamilySymbol(e.path, tn, options)
-                fam = find_family_by_name(doc, e.name)
-            else:
-                res = doc.LoadFamily(e.path, options)
-                fam = None
-                if isinstance(res, tuple) and len(res) > 1:
-                    fam = res[1]
-                try:
-                    valid = fam is not None and fam.IsValidObject
-                except:
-                    valid = False
-                if not valid:
+    # Грузим из локальной копии (+ .txt рядом), как reload_family.
+    temp_dir = tempfile.mkdtemp(prefix="lowlife_famload_")
+    try:
+        for e, type_names in jobs:
+            was_present = e.name in present_names
+
+            dst = os.path.join(temp_dir, _safe_filename(e.name) + u".rfa")
+            try:
+                _copy_rfa(e.path, dst)
+            except Exception as ex:
+                result["failed"].append((e.name, e.rel, u"копирование во временную папку: {}".format(ex)))
+                continue
+
+            # совместная модель: если семейство уже есть — одолжить его
+            existing = find_family_by_name(doc, e.name)
+            if existing is not None:
+                ok_co, co_note = ensure_family_editable(doc, existing)
+                if not ok_co:
+                    result["failed"].append((e.name, e.rel, co_note))
+                    continue
+
+            try:
+                if type_names:
+                    for tn in type_names:
+                        doc.LoadFamilySymbol(dst, tn, options)
                     fam = find_family_by_name(doc, e.name)
-        except Exception as ex:
-            result["failed"].append((e.name, e.rel, u"{}".format(ex)))
-            continue
+                else:
+                    res = doc.LoadFamily(dst, options)
+                    fam = None
+                    if isinstance(res, tuple) and len(res) > 1:
+                        fam = res[1]
+                    try:
+                        valid = fam is not None and fam.IsValidObject
+                    except:
+                        valid = False
+                    if not valid:
+                        fam = find_family_by_name(doc, e.name)
+            except Exception as ex:
+                result["failed"].append((e.name, e.rel, u"{}".format(ex)))
+                continue
 
-        if fam is None and not was_present:
-            result["failed"].append((e.name, e.rel, u"семейство не загрузилось"))
-            continue
+            if fam is None and not was_present:
+                result["failed"].append((e.name, e.rel, u"семейство не загрузилось (Document.LoadFamily вернул False)"))
+                continue
 
-        done.append((e, fam, was_present, len(type_names) if type_names else None))
+            done.append((e, fam, was_present, len(type_names) if type_names else None))
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     if not done:
         return result
