@@ -4,6 +4,7 @@ __title__ = u"Экспорт\nв Эксель"
 __doc__ = u"Экспорт спецификации в .xlsx: первый столбец Revit ID, дальше параметры по столбцам"
 __author__ = "Pipers"
 
+import os
 import traceback
 
 import clr
@@ -69,6 +70,11 @@ try:
         u"Правьте значения в Excel (столбец «Revit ID» не трогать) и "
         u"загружайте кнопкой «Импорт из Эксель».".format(name, n_els, n_cols, path)
     )
+
+    try:
+        os.startfile(path)
+    except Exception:
+        pass
 except Exception:
     forms.alert(
         u"Сбой при экспорте:\n\n{}".format(traceback.format_exc()),
