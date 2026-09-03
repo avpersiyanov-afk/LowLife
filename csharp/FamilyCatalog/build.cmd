@@ -32,8 +32,7 @@ mkdir "%PKG%"
 
 if errorlevel 1 ( echo [x] BUILD FAILED & exit /b 1 )
 
-copy /y "%~dp0sync.png" "%PKG%\sync.png" >nul
-copy /y "%~dp0load.png" "%PKG%\load.png" >nul
+for %%f in (sync.png sync16.png load.png load16.png) do copy /y "%~dp0%%f" "%PKG%\%%f" >nul
 copy /y "%~dp0FamilyCatalog.addin" "%OUT%\FamilyCatalog.addin" >nul
 
 echo [ok] built:  %PKG%\FamilyCatalog.dll

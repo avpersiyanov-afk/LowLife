@@ -32,6 +32,7 @@ namespace FamilyCatalog
                     "и обновить отмеченные (перезагрузка, замена значений параметров, " +
                     "при различии имён — переименование). Shift+клик — сменить папку каталога.";
                 sync.LargeImage = LoadPng(asmDir, "sync.png");
+                sync.Image = LoadPng(asmDir, "sync16.png");
 
                 var load = new PushButtonData(
                     "FamilyCatalog_Load", "Загрузить\nсемейства",
@@ -39,6 +40,7 @@ namespace FamilyCatalog
                 load.ToolTip = "Загрузить семейства из каталога .rfa в модель: выбор разделов, " +
                     "таблица файлов, окно выбора типоразмеров. Shift+клик — сменить папку каталога.";
                 load.LargeImage = LoadPng(asmDir, "load.png");
+                load.Image = LoadPng(asmDir, "load16.png");
 
                 panel.AddItem(sync);
                 panel.AddItem(load);

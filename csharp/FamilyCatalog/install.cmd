@@ -14,10 +14,9 @@ if not exist "%SRC%\FamilyCatalog.addin" (
 if not exist "%DST%" mkdir "%DST%"
 if not exist "%DST%\FamilyCatalog" mkdir "%DST%\FamilyCatalog"
 
-copy /y "%SRC%\FamilyCatalog.addin"          "%DST%\FamilyCatalog.addin"          >nul
+copy /y "%SRC%\FamilyCatalog.addin"             "%DST%\FamilyCatalog.addin"             >nul
 copy /y "%SRC%\FamilyCatalog\FamilyCatalog.dll" "%DST%\FamilyCatalog\FamilyCatalog.dll" >nul
-copy /y "%SRC%\FamilyCatalog\sync.png"       "%DST%\FamilyCatalog\sync.png"       >nul
-copy /y "%SRC%\FamilyCatalog\load.png"       "%DST%\FamilyCatalog\load.png"       >nul
+for %%f in (sync.png sync16.png load.png load16.png) do copy /y "%SRC%\FamilyCatalog\%%f" "%DST%\FamilyCatalog\%%f" >nul
 
 echo [ok] installed to: %DST%
 echo     Restart Revit 2024. Появится вкладка "Каталог семейств".
