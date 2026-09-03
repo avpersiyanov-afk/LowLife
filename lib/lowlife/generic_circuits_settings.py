@@ -200,6 +200,42 @@ def require(settings, keys):
         )
 
 
+# Русские пояснения к значениям ElectricalSystemType Revit — только для
+# показа в списке выбора («Data (данные)»). В настройках и в API Revit
+# (resolve_system_type -> getattr(ElectricalSystemType, ...)) хранится и
+# используется по-прежнему исходное английское имя.
+SYSTEM_TYPE_RU = {
+    u"UndefinedSystemType": u"не определён",
+    u"Data": u"данные",
+    u"Communication": u"связь",
+    u"Controls": u"управление",
+    u"FireAlarm": u"пожарная сигнализация",
+    u"NurseCall": u"вызов персонала",
+    u"Security": u"охранная",
+    u"Telephone": u"телефон",
+    u"PowerCircuit": u"силовая",
+    u"PowerBalanced": u"силовая сбалансированная",
+    u"PowerUnBalanced": u"силовая несбалансированная",
+}
+
+
+class SystemTypeOption(object):
+    """
+    Обёртка над именем ElectricalSystemType для списка выбора: .name —
+    отображаемая строка с русским пояснением («Data (данные)»),
+    .system_type_name — исходное английское имя, которое и попадёт в
+    настройки.
+    """
+
+    def __init__(self, name):
+        self.system_type_name = name
+        ru = SYSTEM_TYPE_RU.get(name)
+        self.name = u"{} ({})".format(name, ru) if ru else name
+
+    def __str__(self):
+        return self.name
+
+
 def _available_system_type_names():
     """
     Имена доступных в этой версии Revit значений ElectricalSystemType
@@ -278,14 +314,15 @@ def show_settings_form(doc, values):
                 if not names:
                     forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
                     return
+                options = [SystemTypeOption(n) for n in names]
                 selected = forms.SelectFromList.show(
-                    names,
-                    title=u"Тип электрической цепи",
+                    options,
+                    title=u"Тип электрической цепи (в скобках — пояснение)",
                     button_name=u"Выбрать",
                     multiselect=False
                 )
                 if selected:
-                    boxes["circuit_system_type"].Text = selected
+                    boxes["circuit_system_type"].Text = selected.system_type_name
 
             pick_btn.Click += on_pick_type
             row.Children.Add(pick_btn)
