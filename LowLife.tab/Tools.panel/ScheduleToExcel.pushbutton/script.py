@@ -14,8 +14,10 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import ViewSchedule
 from pyrevit import revit, forms, script
 
-from lowlife.schedule_excel import list_schedules, schedule_to_rows, schedule_name
-from lowlife.xlsx_io import write_xlsx
+from lowlife.schedule_excel import (
+    list_schedules, merge_export, schedule_to_rows, schedule_name,
+)
+from lowlife.xlsx_io import read_xlsx, read_xlsx_col_widths, write_xlsx
 
 doc = revit.doc
 
@@ -63,12 +65,40 @@ try:
     if not path:
         script.exit()
 
+    merge_line = u""
+    if os.path.isfile(path):
+        try:
+            existing = read_xlsx(path)
+            ex_widths = read_xlsx_col_widths(path)
+            rows, col_widths, st = merge_export(rows, col_widths, existing, ex_widths)
+            if st["merged"]:
+                merge_line = (
+                    u"\nОбновлён существующий файл: совмещено строк {}, "
+                    u"добавлено новых элементов {}, сохранено доп. столбцов {}, "
+                    u"ручных строк {}".format(
+                        st["matched"],
+                        n_els - st["matched"],
+                        st["added_cols"],
+                        st["manual"] + st["vanished"],
+                    )
+                )
+        except Exception as ex:
+            if not forms.alert(
+                u"Не удалось прочитать существующий файл для совмещения:\n{}\n\n"
+                u"Перезаписать его целиком (доп. столбцы будут потеряны)?".format(ex),
+                yes=True, no=True
+            ):
+                script.exit()
+
     write_xlsx(path, rows, sheet_name=name, col_widths=col_widths)
 
+    n_cols_final = len(rows[0]) - 1 if rows else n_cols
     forms.alert(
-        u"Готово.\n\nСпецификация: {}\nСтрок: {}\nСтолбцов-параметров: {}\n\n{}\n\n"
+        u"Готово.\n\nСпецификация: {}\nСтрок данных: {}\nСтолбцов: {}{}\n\n{}\n\n"
         u"Правьте значения в Excel (столбец «Revit ID» не трогать) и "
-        u"загружайте кнопкой «Импорт из Эксель».".format(name, n_els, n_cols, path)
+        u"загружайте кнопкой «Импорт из Эксель».".format(
+            name, n_els, n_cols_final, merge_line, path
+        )
     )
 
     try:

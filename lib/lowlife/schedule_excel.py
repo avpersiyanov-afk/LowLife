@@ -246,6 +246,135 @@ def schedule_to_rows(doc, sched):
     return rows, len(els), len(names), widths
 
 
+def _cell_int(row, idx):
+    if idx is None or idx >= len(row) or row[idx] is None:
+        return None
+    s = unicode(row[idx]).strip().replace(u",", u".")
+    if not s:
+        return None
+    try:
+        return int(float(s))
+    except ValueError:
+        return None
+
+
+def merge_export(new_rows, new_widths, existing_rows, existing_widths=None):
+    u"""
+    Совместить свежую выгрузку с уже существующим файлом: значения полей
+    спецификации обновляются, а добавленные пользователем столбцы (и их
+    ширины) и ручные строки (итоги/примечания без Revit ID) сохраняются.
+
+    Возвращает (rows, widths, stats). Если existing_rows не похож на наш
+    файл (нет столбца Revit ID) — вернёт свежую выгрузку без изменений.
+    """
+    existing_widths = existing_widths or {}
+    stats = {"matched": 0, "vanished": 0, "manual": 0, "added_cols": 0, "merged": False}
+
+    new_header = [unicode(c) if c is not None else u"" for c in new_rows[0]]
+
+    hidx = None
+    for i, r in enumerate(existing_rows):
+        if r and any(c is not None and unicode(c).strip() for c in r):
+            hidx = i
+            break
+    if hidx is None:
+        return new_rows, new_widths, stats
+
+    ex_header = [unicode(c).strip() if c is not None else u"" for c in existing_rows[hidx]]
+    ex_id_col = None
+    for i, h in enumerate(ex_header):
+        if h.lower() in _ID_ALIASES:
+            ex_id_col = i
+            break
+    if ex_id_col is None:
+        return new_rows, new_widths, stats
+
+    stats["merged"] = True
+
+    newname_to_idx = {}
+    for j, h in enumerate(new_header):
+        newname_to_idx.setdefault(h.strip().lower(), j)
+
+    ex_names_lower = [h.strip().lower() for h in ex_header]
+
+    # объединённый заголовок: существующий как есть + новые поля спеки в хвост
+    merged_header = list(ex_header)
+    appended_src = []
+    for j, h in enumerate(new_header):
+        if j == 0:
+            continue  # Revit ID уже есть (ex_id_col)
+        if h.strip().lower() not in ex_names_lower:
+            merged_header.append(h)
+            appended_src.append(j)
+    stats["added_cols"] = len(appended_src)
+
+    # план заполнения каждого столбца объединённого заголовка
+    plan = []
+    for k, h in enumerate(merged_header):
+        if k == ex_id_col:
+            plan.append(("id", 0))
+        else:
+            j = newname_to_idx.get(h.strip().lower())
+            plan.append(("revit", j) if j is not None else ("user", k))
+
+    # существующие строки: с валидным Revit ID -> в карту, прочие -> ручные
+    ex_by_id = {}
+    manual_rows = []
+    for r in existing_rows[hidx + 1:]:
+        rid = _cell_int(r, ex_id_col)
+        if rid is None:
+            if any(c is not None and unicode(c).strip() for c in r):
+                manual_rows.append(r)
+        else:
+            ex_by_id[rid] = r
+
+    def _pick(row, idx):
+        return row[idx] if (idx is not None and idx < len(row)) else u""
+
+    out = [merged_header]
+    seen = set()
+    for nr in new_rows[1:]:
+        nid = _cell_int(nr, 0)
+        er = ex_by_id.get(nid)
+        if er is not None:
+            stats["matched"] += 1
+            seen.add(nid)
+        row = []
+        for kind, idx in plan:
+            if kind == "id":
+                row.append(_pick(nr, 0))
+            elif kind == "revit":
+                row.append(_pick(nr, idx))
+            else:  # user — из существующей строки, без изменений
+                row.append(_pick(er, idx) if er is not None else u"")
+        out.append(row)
+
+    # хвост: ручные строки и строки исчезнувших элементов — как есть
+    leftover = list(manual_rows)
+    for rid, er in ex_by_id.items():
+        if rid not in seen:
+            stats["vanished"] += 1
+            leftover.append(er)
+    stats["manual"] = len(manual_rows)
+    for er in leftover:
+        out.append([_pick(er, k) for k in range(len(merged_header))])
+
+    # ширины: у существующих столбцов — из файла (или ширина поля спеки,
+    # если в файле не было), у дописанных — ширина поля спеки
+    widths = []
+    for k in range(len(ex_header)):
+        w = existing_widths.get(k)
+        if not w:
+            j = newname_to_idx.get(ex_names_lower[k])
+            if j is not None and j < len(new_widths):
+                w = new_widths[j]
+        widths.append(w or 0.0)
+    for pos, j in enumerate(appended_src):
+        widths.append(new_widths[j] if j < len(new_widths) else 0.0)
+
+    return out, widths, stats
+
+
 def rows_to_model(doc, rows):
     u"""
     Применить правки из rows к модели. Вызывать внутри транзакции.

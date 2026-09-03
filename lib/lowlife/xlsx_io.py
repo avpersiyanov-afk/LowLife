@@ -321,6 +321,44 @@ def _sheet_entry_name(zf):
     return None
 
 
+def read_xlsx_col_widths(path):
+    u"""{индекс столбца (0-based): ширина Excel} из <cols>. {} — если нет."""
+    fs = FileStream(path, FileMode.Open, FileAccess.Read)
+    try:
+        zf = ZipArchive(fs, ZipArchiveMode.Read)
+        try:
+            name = _sheet_entry_name(zf)
+            xml = _read_entry(zf, name) if name else None
+        finally:
+            zf.Dispose()
+    finally:
+        fs.Close()
+
+    out = {}
+    if not xml:
+        return out
+    rdr = _reader(xml)
+    try:
+        while rdr.Read():
+            if rdr.NodeType != XmlNodeType.Element:
+                continue
+            ln = rdr.LocalName
+            if ln == u"col":
+                try:
+                    mn = int(rdr.GetAttribute(u"min"))
+                    mx = int(rdr.GetAttribute(u"max"))
+                    w = float(rdr.GetAttribute(u"width"))
+                except (TypeError, ValueError):
+                    continue
+                for c in range(mn, mx + 1):
+                    out[c - 1] = w
+            elif ln == u"sheetData":
+                break
+    finally:
+        rdr.Close()
+    return out
+
+
 def read_xlsx(path):
     u"""Вернуть список строк (список ячеек: unicode или None)."""
     fs = FileStream(path, FileMode.Open, FileAccess.Read)
