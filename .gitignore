@@ -12,3 +12,7 @@ addins/*/obj/
 
 # Локальная сборка отдельного приложения — не в репозиторий
 /dist/
+
+# C# build output
+/csharp/**/bin/
+/csharp/**/obj/
