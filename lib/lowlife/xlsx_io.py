@@ -257,20 +257,51 @@ def _shared_strings(zf):
     return items
 
 
+_REF_RE = re.compile(r"(\$?)([A-Za-z]{1,3})(\$?)(\d+)")
+
+
+def _digits(ref):
+    d = u""
+    for ch in ref:
+        if ch.isdigit():
+            d += ch
+    return d
+
+
+def _shift_formula(f, dr, dc):
+    u"""Сдвинуть относительные ссылки в формуле на (dr строк, dc столбцов).
+    Абсолютные ($) части не трогаем. Для типовых расчётных формул спеки
+    (=D2*E2, =СУММ(I2:I9) и т.п.) этого достаточно."""
+    def repl(m):
+        adol, cols, rdol, rows_ = m.groups()
+        c = _col_index(cols.upper())
+        r = int(rows_)
+        if not adol:
+            c = max(c + dc, 0)
+        if not rdol:
+            r = max(r + dr, 1)
+        return u"%s%s%s%d" % (adol, _col_letter(c), rdol, r)
+    return _REF_RE.sub(repl, f)
+
+
 def _parse_sheet(xml, shared, keep_formulas=False):
     u"""
     Ячейку финализируем на </c>. keep_formulas=True — формулу отдаём
     строкой "=..." (для сохранения при перезаписи файла); иначе отдаём
-    её посчитанное значение (кэш <v>).
+    её посчитанное значение (кэш <v>). Разворачиваем shared-формулы
+    (Excel при протяжке хранит текст только в первой ячейке блока).
     """
     rows = []
     cells = {}
     maxc = -1
     col = -1
+    cur_row = 0
     ctype = None
     in_v = in_t = in_f = False
     vbuf, tparts, tbuf, fbuf = [], [], [], []
     cur_v = cur_f = None
+    cur_f_t = cur_f_si = None
+    shared_f = {}   # si -> (текст формулы, столбец-якорь, строка-якорь)
 
     def _finalize():
         if cur_f and keep_formulas:
@@ -298,7 +329,9 @@ def _parse_sheet(xml, shared, keep_formulas=False):
                     ref = rdr.GetAttribute(u"r")
                     ctype = rdr.GetAttribute(u"t")
                     col = _col_index(_letters(ref)) if ref else (maxc + 1)
+                    cur_row = int(_digits(ref)) if ref and _digits(ref) else (cur_row)
                     cur_v = cur_f = None
+                    cur_f_t = cur_f_si = None
                     vbuf, tparts, tbuf, fbuf = [], [], [], []
                     in_v = in_t = in_f = False
                     if rdr.IsEmptyElement:
@@ -311,8 +344,16 @@ def _parse_sheet(xml, shared, keep_formulas=False):
                     in_t = True
                     tbuf = []
                 elif ln == u"f":
-                    in_f = True
-                    fbuf = []
+                    cur_f_t = rdr.GetAttribute(u"t")
+                    cur_f_si = rdr.GetAttribute(u"si")
+                    if rdr.IsEmptyElement:
+                        # продолжение shared-формулы: текст только у первой ячейки
+                        if (cur_f_t == u"shared" and cur_f_si in shared_f):
+                            mtext, ac, ar = shared_f[cur_f_si]
+                            cur_f = _shift_formula(mtext, cur_row - ar, col - ac)
+                    else:
+                        in_f = True
+                        fbuf = []
                 elif ln == u"row":
                     cells = {}
                     maxc = -1
@@ -336,6 +377,8 @@ def _parse_sheet(xml, shared, keep_formulas=False):
                 elif ln == u"f":
                     in_f = False
                     cur_f = u"".join(fbuf)
+                    if cur_f_t == u"shared" and cur_f_si is not None and cur_f:
+                        shared_f[cur_f_si] = (cur_f, col, cur_row)
                 elif ln == u"c":
                     _finalize()
                     if col > maxc:
