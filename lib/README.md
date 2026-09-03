@@ -734,7 +734,7 @@ CPython-only зависимость (импортируется внутри ф�
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `write_xlsx` | `write_xlsx(path, rows, sheet_name=u"Лист1", col_widths=None)` | Пишет `rows` (список списков: str/число/None) одним листом; строки — `inlineStr`. `col_widths` — ширины столбцов в «символах» Excel (по столбцу; None/0 — по умолчанию), пишутся в `<cols>` |
-| `read_xlsx` | `read_xlsx(path)` | Список строк (список ячеек); потоковый `XmlReader`, понимает и `inlineStr`, и `sharedStrings` (так Excel пересохраняет файл); при сбое — резервный разбор регулярками |
+| `read_xlsx` | `read_xlsx(path)` | Список строк (список ячеек); потоковый `XmlReader`, понимает `inlineStr`, `sharedStrings` и формулы (`<f>` возвращается как строка `"=..."`, при записи снова пишется как `<f>`); при сбое — резервный разбор регулярками |
 | `read_xlsx_col_widths` | `read_xlsx_col_widths(path)` | `{индекс столбца (0-based): ширина}` из `<cols>`; `{}` если нет |
 
 ## schedule_excel.py

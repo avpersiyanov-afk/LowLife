@@ -51,7 +51,8 @@ _WB = (
     u'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     u'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
     u'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-    u'<sheets><sheet name="{name}" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    u'<sheets><sheet name="{name}" sheetId="1" r:id="rId1"/></sheets>'
+    u'<calcPr calcId="0" fullCalcOnLoad="1"/></workbook>'
 )
 
 _WB_RELS = (
@@ -122,6 +123,9 @@ def _sheet_xml(rows, col_widths=None):
                 val = u"1" if val else u"0"
             if isinstance(val, (int, long, float)):
                 out.append(u'<c r="%s"><v>%s</v></c>' % (ref, unicode(val)))
+            elif isinstance(val, basestring) and len(val) > 1 and val[0] == u"=":
+                # формула — пишем как <f>, Excel пересчитает при открытии
+                out.append(u'<c r="%s"><f>%s</f></c>' % (ref, _esc(val[1:])))
             else:
                 out.append(
                     u'<c r="%s" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>'
@@ -224,15 +228,34 @@ def _shared_strings(zf):
 
 
 def _parse_sheet(xml, shared):
+    u"""
+    Ячейку финализируем на </c>: формула (<f>) -> строка "=...", иначе
+    inlineStr / sharedString / число как есть. Так формулы переживают
+    круг «прочитать — записать».
+    """
     rows = []
     cells = {}
     maxc = -1
     col = -1
     ctype = None
-    in_v = False
-    in_t = False
-    vbuf = []
-    tbuf = []
+    in_v = in_t = in_f = False
+    vbuf, tparts, tbuf, fbuf = [], [], [], []
+    cur_v = cur_f = None
+
+    def _finalize():
+        if cur_f:
+            val = u"=" + cur_f
+        elif ctype == u"inlineStr" or tparts:
+            val = u"".join(tparts)
+        elif ctype == u"s":
+            try:
+                k = int(cur_v)
+                val = shared[k] if 0 <= k < len(shared) else None
+            except Exception:
+                val = None
+        else:
+            val = cur_v
+        cells[col] = val
 
     rdr = _reader(xml)
     try:
@@ -245,25 +268,21 @@ def _parse_sheet(xml, shared):
                     ref = rdr.GetAttribute(u"r")
                     ctype = rdr.GetAttribute(u"t")
                     col = _col_index(_letters(ref)) if ref else (maxc + 1)
-                    if rdr.IsEmptyElement and col > maxc:
-                        maxc = col
+                    cur_v = cur_f = None
+                    vbuf, tparts, tbuf, fbuf = [], [], [], []
+                    in_v = in_t = in_f = False
+                    if rdr.IsEmptyElement:
+                        if col > maxc:
+                            maxc = col
                 elif ln == u"v":
-                    if rdr.IsEmptyElement:
-                        cells[col] = None if ctype == u"s" else u""
-                        if col > maxc:
-                            maxc = col
-                    else:
-                        in_v = True
-                        vbuf = []
+                    in_v = True
+                    vbuf = []
                 elif ln == u"t":
-                    if rdr.IsEmptyElement:
-                        if col not in cells or cells[col] is None:
-                            cells[col] = u""
-                        if col > maxc:
-                            maxc = col
-                    else:
-                        in_t = True
-                        tbuf = []
+                    in_t = True
+                    tbuf = []
+                elif ln == u"f":
+                    in_f = True
+                    fbuf = []
                 elif ln == u"row":
                     cells = {}
                     maxc = -1
@@ -273,25 +292,22 @@ def _parse_sheet(xml, shared):
                     vbuf.append(rdr.Value)
                 elif in_t:
                     tbuf.append(rdr.Value)
+                elif in_f:
+                    fbuf.append(rdr.Value)
 
             elif nt == XmlNodeType.EndElement:
                 ln = rdr.LocalName
                 if ln == u"v":
                     in_v = False
-                    raw = u"".join(vbuf)
-                    if ctype == u"s":
-                        try:
-                            k = int(raw)
-                            raw = shared[k] if 0 <= k < len(shared) else None
-                        except Exception:
-                            raw = None
-                    cells[col] = raw
-                    if col > maxc:
-                        maxc = col
+                    cur_v = u"".join(vbuf)
                 elif ln == u"t":
                     in_t = False
-                    prev = cells.get(col) or u""
-                    cells[col] = prev + u"".join(tbuf)
+                    tparts.append(u"".join(tbuf))
+                elif ln == u"f":
+                    in_f = False
+                    cur_f = u"".join(fbuf)
+                elif ln == u"c":
+                    _finalize()
                     if col > maxc:
                         maxc = col
                 elif ln == u"row":
@@ -400,7 +416,10 @@ def _parse_sheet_regex(xml, shared):
             typ = tmatch.group(1) if tmatch else None
 
             val = None
-            if typ == u"inlineStr":
+            fmatch = re.search(r"<f\b[^>]*>(.*?)</f>", inner, re.S)
+            if fmatch and fmatch.group(1).strip():
+                val = u"=" + _unesc(fmatch.group(1))
+            elif typ == u"inlineStr":
                 chunks = re.findall(r"<t[^>]*>(.*?)</t>", inner, re.S)
                 val = _unesc(u"".join(chunks))
             elif typ == u"s":
