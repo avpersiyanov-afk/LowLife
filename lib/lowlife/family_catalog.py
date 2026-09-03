@@ -179,6 +179,20 @@ def save_catalog_root(path):
     _write_all(data)
 
 
+MONITOR_KEY = "monitor_on_open"
+
+
+def load_monitor_enabled():
+    """Проверять актуальность семейств при открытии проекта (тихо, toast)?"""
+    return bool(_read_all().get(MONITOR_KEY, False))
+
+
+def save_monitor_enabled(value):
+    data = _read_all()
+    data[MONITOR_KEY] = bool(value)
+    _write_all(data)
+
+
 def pick_catalog_root(current=None):
     """
     Диалог выбора папки-каталога + сохранение. Возвращает новый путь; если
@@ -430,6 +444,45 @@ def stamp_status(stamp, entry):
     if entry.mtime > stamp_epoch + STALE_TOLERANCE_SEC:
         return STATUS_STALE
     return STATUS_CURRENT
+
+
+def check_stale_against_catalog(doc):
+    """
+    Быстрая тихая проверка актуальности: НЕ сканирует каталог. Для каждого
+    семейства модели со скрытой меткой берёт путь файла и дату из самой
+    метки (write_stamp пишет и относительный путь, и epoch), делает один
+    os.path.getmtime по этому пути и сравнивает. Дёшево даже на сетевой
+    библиотеке (по одному stat на помеченное семейство).
+
+    Возвращает (stale, checked, names) — сколько устарело, сколько
+    проверено и имена устаревших (до 20).
+    """
+    root = load_catalog_root()
+    if not root or not os.path.isdir(root):
+        return (0, 0, [])
+
+    stale = 0
+    checked = 0
+    names = []
+    for fam in FilteredElementCollector(doc).OfClass(Family):
+        st = read_stamp(fam)
+        if not st:
+            continue
+        epoch = st.get("epoch")
+        rel = st.get("file")
+        if epoch is None or not rel:
+            continue
+        try:
+            mt = os.path.getmtime(os.path.join(root, rel))
+        except:
+            continue
+        checked += 1
+        if mt > epoch + STALE_TOLERANCE_SEC:
+            stale += 1
+            nm = _safe_element_name(fam)
+            if nm and len(names) < 20:
+                names.append(nm)
+    return (stale, checked, names)
 
 
 def find_family_by_name(doc, name):

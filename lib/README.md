@@ -797,6 +797,8 @@ Shift+клик меняет папку. Обе кнопки принимают *
 | Функция / класс | Сигнатура | Что делает |
 |---|---|---|
 | `resolve_catalog_root` / `pick_catalog_root` | `resolve_catalog_root(force_pick=False)` / `pick_catalog_root(current=None)` | Путь к каталогу для рабочих кнопок: сохранённый, иначе (или при Shift/`config.py`) — спросить папку и сохранить |
+| `load_monitor_enabled` / `save_monitor_enabled` | `load_monitor_enabled()` / `save_monitor_enabled(v)` | Флаг тихого мониторинга при открытии проекта (в том же JSON настроек). Переключается в `config.py` кнопки; читается хуком `hooks/doc-opened.py` |
+| `check_stale_against_catalog` | `check_stale_against_catalog(doc)` | Быстрая проверка БЕЗ сканирования каталога: для каждого семейства модели со скрытой меткой берёт путь+epoch из самой метки и делает один `os.path.getmtime`. `(stale, checked, [имена≤20])` |
 | `load_catalog_root` / `save_catalog_root` | `load_catalog_root()` / `save_catalog_root(path)` | Чтение/запись сохранённого пути к корню каталога |
 | `similarity` | `similarity(a, b)` | Похожесть имён `0..1` (Дайс по биграммам нормализованных имён); точное совпадение после нормализации — `1.0`, вхождение целиком — не ниже `0.9` |
 | `file_mtime` | `file_mtime(path)` | `(epoch_float, "ГГГГ-ММ-ДД ЧЧ:ММ")` либо `(None, None)` |
