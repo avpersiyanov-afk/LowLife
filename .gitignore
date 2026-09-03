@@ -9,3 +9,6 @@ __pycache__/
 # .NET build output for addins/*
 addins/*/bin/
 addins/*/obj/
+
+# Локальная сборка отдельного приложения — не в репозиторий
+/dist/
