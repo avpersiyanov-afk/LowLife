@@ -60,8 +60,19 @@ install.cmd
 
 ## Удаление
 
-Удалить `%APPDATA%\Autodesk\Revit\Addins\2024\FamilyCatalog.addin` и папку
-`%APPDATA%\Autodesk\Revit\Addins\2024\FamilyCatalog\`.
+```
+uninstall.cmd
+```
+Revit должен быть **закрыт** (пока он запущен, `FamilyCatalog.dll` заблокирован).
+Скрипт удаляет `FamilyCatalog.addin` и папку `FamilyCatalog\` из
+`%APPDATA%\Autodesk\Revit\Addins\2024\` и спрашивает про настройки
+(`%APPDATA%\FamilyCatalog\`).
+
+Вручную: удалить оба —
+`%APPDATA%\Autodesk\Revit\Addins\2024\FamilyCatalog.addin` **и** папку
+`%APPDATA%\Autodesk\Revit\Addins\2024\FamilyCatalog\`. Только папки
+недостаточно: Revit будет пытаться прочитать `.addin` и ругаться на отсутствие
+dll. Скрытые метки даты в `.rvt` останутся (невидимы, ничему не мешают).
 
 ## Файлы проекта
 
