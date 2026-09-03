@@ -6,18 +6,28 @@
 Столбцы — параметры по именам полей спецификации; на загрузке ищем
 параметр по имени столбца через LookupParameter. Только параметры
 экземпляра, только записываемые (не read-only, не ссылки на элементы).
+
+Порядок строк повторяет спецификацию: воспроизводим её поля
+сортировки/группировки (`GetSortGroupField`), строки — по одному
+экземпляру (без схлопывания одинаковых, чтобы можно было править
+каждый по отдельности).
 """
+
+import re
 
 from Autodesk.Revit.DB import (
     Element,
     ElementId,
     FilteredElementCollector,
+    ScheduleSortOrder,
     StorageType,
     ViewSchedule,
 )
 
 ID_HEADER = u"Revit ID"
 _ID_ALIASES = (u"revit id", u"id", u"ид", u"элемент id", u"elementid")
+
+_DIGITS = re.compile(r"(\d+)")
 
 
 def schedule_name(el):
@@ -111,6 +121,71 @@ def _set_param_text(p, text):
     return False
 
 
+def _natural_key(s):
+    u"""Ключ «естественной» сортировки: «Поз. 2» < «Поз. 10» (как в Revit)."""
+    parts = _DIGITS.split(s or u"")
+    key = []
+    for i, t in enumerate(parts):
+        if i % 2:
+            key.append((0, int(t), u""))
+        elif t:
+            key.append((1, 0, t.lower()))
+    return key
+
+
+def _sort_value(el, name):
+    u"""Значение параметра элемента для сортировки, повторяющей спецификацию."""
+    p = el.LookupParameter(name)
+    if p is None or not p.HasValue:
+        return (2, 0.0, [])          # пустые — в конец
+    st = p.StorageType
+    try:
+        if st == StorageType.Double:
+            return (0, p.AsDouble(), [])
+        if st == StorageType.Integer:
+            return (0, float(p.AsInteger()), [])
+        if st == StorageType.String:
+            return (1, 0.0, _natural_key(p.AsString()))
+        if st == StorageType.ElementId:
+            return (1, 0.0, _natural_key(p.AsValueString()))
+    except Exception:
+        pass
+    return (2, 0.0, [])
+
+
+def _ordered_elements(doc, sched):
+    u"""
+    Элементы спецификации в том же порядке, что и её строки: повторяем
+    поля сортировки/группировки (`GetSortGroupField`). Группировка в Revit —
+    это та же сортировка по полю группы в первую очередь.
+    """
+    els = list(FilteredElementCollector(doc, sched.Id)
+               .WhereElementIsNotElementType()
+               .ToElements())
+
+    d = sched.Definition
+    try:
+        cnt = d.GetSortGroupFieldCount()
+    except Exception:
+        cnt = 0
+
+    keys = []
+    for i in range(cnt):
+        try:
+            sgf = d.GetSortGroupField(i)
+            name = d.GetField(sgf.FieldId).GetName()
+            ascending = (sgf.SortOrder == ScheduleSortOrder.Ascending)
+            keys.append((name, ascending))
+        except Exception:
+            pass
+
+    # многоключевая устойчивая сортировка: от последнего поля к первому
+    for name, ascending in reversed(keys):
+        els.sort(key=lambda e, nm=name: _sort_value(e, nm), reverse=not ascending)
+
+    return els
+
+
 def _instance_param_map(el):
     u"""{имя параметра экземпляра: Parameter} за один проход — вместо
     LookupParameter на каждый столбец (тот каждый раз линейно сканирует
@@ -129,9 +204,7 @@ def schedule_to_rows(doc, sched):
     fields = _visible_fields(sched)
     names = [f.GetName() for f in fields]
 
-    els = (FilteredElementCollector(doc, sched.Id)
-           .WhereElementIsNotElementType()
-           .ToElements())
+    els = _ordered_elements(doc, sched)
 
     rows = [[ID_HEADER] + names]
     for el in els:
