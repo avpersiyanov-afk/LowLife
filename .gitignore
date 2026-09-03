@@ -16,3 +16,5 @@ addins/*/obj/
 # C# build output
 /csharp/**/bin/
 /csharp/**/obj/
+/csharp/**/*.zip
+/csharp/*.zip
