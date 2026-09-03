@@ -93,6 +93,28 @@ def _unesc(s):
             .replace(u"&#9;", u"\t").replace(u"&amp;", u"&"))
 
 
+_NUM_RE = re.compile(r"^[+-]?(\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?$")
+
+
+def _as_number(s):
+    u"""
+    «Чистое» число -> его каноничная запись для <v>, иначе None.
+    Десятичная запятая допускается (одна). Строки с ведущим нулём
+    («01», «007», артикулы, коды позиций) НЕ считаем числом.
+    """
+    t = s.strip()
+    if not t:
+        return None
+    if t.count(u",") == 1 and u"." not in t:
+        t = t.replace(u",", u".")
+    if not _NUM_RE.match(t):
+        return None
+    body = t.lstrip(u"+-")
+    if len(body) > 1 and body[0] == u"0" and body[1] != u".":
+        return None
+    return t
+
+
 def _sheet_xml(rows, col_widths=None):
     out = [
         u'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
@@ -123,13 +145,21 @@ def _sheet_xml(rows, col_widths=None):
                 val = u"1" if val else u"0"
             if isinstance(val, (int, long, float)):
                 out.append(u'<c r="%s"><v>%s</v></c>' % (ref, unicode(val)))
-            elif isinstance(val, basestring) and len(val) > 1 and val[0] == u"=":
+                continue
+
+            sval = unicode(val)
+            if len(sval) > 1 and sval[0] == u"=":
                 # формула — пишем как <f>, Excel пересчитает при открытии
-                out.append(u'<c r="%s"><f>%s</f></c>' % (ref, _esc(val[1:])))
+                out.append(u'<c r="%s"><f>%s</f></c>' % (ref, _esc(sval[1:])))
+                continue
+
+            num = _as_number(sval)
+            if num is not None:
+                out.append(u'<c r="%s"><v>%s</v></c>' % (ref, num))
             else:
                 out.append(
                     u'<c r="%s" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>'
-                    % (ref, _esc(unicode(val)))
+                    % (ref, _esc(sval))
                 )
         out.append(u'</row>')
     out.append(u'</sheetData></worksheet>')
