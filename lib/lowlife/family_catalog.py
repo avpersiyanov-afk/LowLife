@@ -59,7 +59,7 @@ clr.AddReference('WindowsBase')
 
 from Autodesk.Revit.DB import (
     FilteredElementCollector, Family, Element, ElementId,
-    IFamilyLoadOptions, FamilySource, Transaction
+    IFamilyLoadOptions, FamilySource, Transaction, StorageType
 )
 from Autodesk.Revit.DB.ExtensibleStorage import (
     Schema, SchemaBuilder, AccessLevel, Entity
@@ -180,6 +180,8 @@ def save_catalog_root(path):
 
 
 MONITOR_KEY = "monitor_on_open"
+AUTOSTAMP_KEY = "autostamp_on_load"
+STAMP_PARAM_KEY = "stamp_param_name"
 
 
 def load_monitor_enabled():
@@ -191,6 +193,104 @@ def save_monitor_enabled(value):
     data = _read_all()
     data[MONITOR_KEY] = bool(value)
     _write_all(data)
+
+
+def load_autostamp_enabled():
+    """Ставить метку даты при штатной загрузке семейства из каталога (хук)?"""
+    return bool(_read_all().get(AUTOSTAMP_KEY, False))
+
+
+def save_autostamp_enabled(value):
+    data = _read_all()
+    data[AUTOSTAMP_KEY] = bool(value)
+    _write_all(data)
+
+
+def load_stamp_param_name():
+    """Имя видимого текстового параметра типа, куда дублировать дату (или '')."""
+    return _read_all().get(STAMP_PARAM_KEY, u"") or u""
+
+
+def save_stamp_param_name(name):
+    data = _read_all()
+    data[STAMP_PARAM_KEY] = unicode(name or u"")
+    _write_all(data)
+
+
+def stamp_loaded_family(doc, family, family_path):
+    """
+    Для хука family-loaded: если family_path лежит ВНУТРИ настроенного
+    каталога — пишет скрытую метку (и видимый параметр, если задан) с
+    датой этого файла. Своя транзакция, всё под try. Возвращает True,
+    если пометил.
+    """
+    if family is None or not family_path:
+        return False
+    root = load_catalog_root()
+    if not root or not os.path.isdir(root):
+        return False
+    try:
+        full = os.path.normcase(os.path.abspath(family_path))
+        rootn = os.path.normcase(os.path.abspath(root))
+        if not (full == rootn or full.startswith(rootn + os.sep)):
+            return False
+        rel = os.path.relpath(family_path, root)
+    except:
+        return False
+
+    epoch, iso = file_mtime(family_path)
+    if epoch is None:
+        return False
+
+    pname = load_stamp_param_name()
+    t = Transaction(doc, u"Метка даты каталога (авто)")
+    try:
+        t.Start()
+        write_stamp(family, epoch, iso, rel)
+        if pname:
+            write_stamp_param(doc, family, iso, pname)
+        t.Commit()
+        return True
+    except:
+        try:
+            if t.HasStarted() and not t.HasEnded():
+                t.RollBack()
+        except:
+            pass
+        return False
+
+
+def write_stamp_param(doc, family, iso_text, param_name):
+    """
+    Дублирует дату каталога (строкой) в видимый текстовый параметр типа
+    param_name на всех типоразмерах семейства, у которых он есть.
+    **Требует открытой транзакции.** Тихо ничего не делает, если имя не
+    задано или параметра нет. Возвращает число обновлённых типоразмеров.
+    """
+    if not param_name or family is None:
+        return 0
+    n = 0
+    try:
+        sym_ids = list(family.GetFamilySymbolIds())
+    except:
+        return 0
+    for sid in sym_ids:
+        sym = doc.GetElement(sid)
+        if sym is None:
+            continue
+        try:
+            p = sym.LookupParameter(param_name)
+        except:
+            p = None
+        if p is None or p.IsReadOnly:
+            continue
+        try:
+            if p.StorageType == StorageType.String:
+                p.Set(iso_text or u"")
+                n += 1
+        except:
+            pass
+    return n
 
 
 def pick_catalog_root(current=None):
@@ -1326,6 +1426,8 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
     if not loaded:
         return result
 
+    pname = load_stamp_param_name()
+
     t = Transaction(doc, u"Обновление семейств из каталога: имена и метки")
     t.Start()
     try:
@@ -1346,6 +1448,8 @@ def apply_updates(doc, jobs, do_rename, overwrite_params=True):
             ok_stamp = write_stamp(fam_elem, epoch, iso, disp) if fam_elem else False
             if not ok_stamp:
                 result["stamp_failed"].append(final_name)
+            if pname and fam_elem:
+                write_stamp_param(doc, fam_elem, iso, pname)
 
             if status == u"loaded":
                 result["updated"].append((final_name, disp, iso))
@@ -1915,6 +2019,8 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     if not done:
         return result
 
+    pname = load_stamp_param_name()
+
     t = Transaction(doc, u"Загрузка семейств из каталога: метки даты")
     t.Start()
     try:
@@ -1924,6 +2030,8 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
             ok_stamp = write_stamp(fam, e.mtime, e.mtime_iso, e.rel) if fam else False
             if not ok_stamp:
                 result["stamp_failed"].append(nm)
+            if pname and fam:
+                write_stamp_param(doc, fam, e.mtime_iso, pname)
             bucket = "updated" if was_present else "loaded"
             result[bucket].append((nm, disp, e.mtime_iso))
         t.Commit()
