@@ -9,6 +9,7 @@ layout:
   - CircuitsSKUD
   - CircuitsSPS
   - CircuitsSPA
+  - CircuitsGeneric
   - CircuitsDelete
   - TrayLadder
   - TrayUnperforated

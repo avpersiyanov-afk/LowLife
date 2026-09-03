@@ -108,6 +108,7 @@ THEMES = {
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
         (u"CircuitsSPA", u"BuildCircuitsSPA"),
+        (u"CircuitsGeneric", u"BuildGenericCircuits"),
         (u"CircuitsDelete", u"DeleteViewCircuits"),
     ],
     u"Settings": [
@@ -116,6 +117,7 @@ THEMES = {
         (u"SOUE", u"SetupParameters"),
         (u"SPS", u"SetupParameters"),
         (u"SOT", u"SetupParameters"),
+        (u"CircuitsGeneric", u"GenericCircuitsSettings"),
         (u"Tools", u"RoomInfoSettings"),
     ],
     u"General": [
@@ -151,6 +153,7 @@ PANEL_RIBBON_NAMES = {
     u"CircuitsSKUD": u"Цепи СКУД",
     u"CircuitsSPS": u"Цепи СПС",
     u"CircuitsSPA": u"Цепи СПА",
+    u"CircuitsGeneric": u"Цепи (общее)",
     u"CircuitsDelete": u"Удаление",
     u"TrayLadder": u"Лестничный лоток",
     u"TrayUnperforated": u"Неперфорированный лоток",
