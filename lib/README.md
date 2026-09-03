@@ -733,8 +733,8 @@ CPython-only зависимость (импортируется внутри ф�
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `write_xlsx` | `write_xlsx(path, rows, sheet_name=u"Лист1")` | Пишет `rows` (список списков: str/число/None) одним листом; строки — `inlineStr` |
-| `read_xlsx` | `read_xlsx(path)` | Список строк (список ячеек); понимает и `inlineStr`, и `sharedStrings` (так Excel пересохраняет файл) |
+| `write_xlsx` | `write_xlsx(path, rows, sheet_name=u"Лист1", col_widths=None)` | Пишет `rows` (список списков: str/число/None) одним листом; строки — `inlineStr`. `col_widths` — ширины столбцов в «символах» Excel (по столбцу; None/0 — по умолчанию), пишутся в `<cols>` |
+| `read_xlsx` | `read_xlsx(path)` | Список строк (список ячеек); потоковый `XmlReader`, понимает и `inlineStr`, и `sharedStrings` (так Excel пересохраняет файл); при сбое — резервный разбор регулярками |
 
 ## schedule_excel.py
 Выгрузка спецификации в таблицу и обратная загрузка правок в модель. Ключ
@@ -748,7 +748,7 @@ CPython-only зависимость (импортируется внутри ф�
 |---|---|---|
 | `list_schedules` | `list_schedules(doc)` | Обычные спеки проекта (без шаблонов, ключевых, штамповых), отсортированы по имени |
 | `schedule_name` | `schedule_name(el)` | Имя вида через `Element.Name.GetValue` (обход неоднозначного связывания IronPython) |
-| `schedule_to_rows` | `schedule_to_rows(doc, sched)` | `(rows, число_элементов, число_столбцов)`; `rows[0]` — заголовок `["Revit ID", <поля>…]` |
+| `schedule_to_rows` | `schedule_to_rows(doc, sched)` | `(rows, число_элементов, число_столбцов, ширины_столбцов)`; `rows[0]` — заголовок `["Revit ID", <поля>…]`; порядок строк повторяет сортировку/группировку спеки; ширины — из `ScheduleField.GridColumnWidth`, в единицах Excel |
 | `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
 
 ## family_catalog.py

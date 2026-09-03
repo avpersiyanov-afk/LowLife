@@ -92,12 +92,26 @@ def _unesc(s):
             .replace(u"&#9;", u"\t").replace(u"&amp;", u"&"))
 
 
-def _sheet_xml(rows):
+def _sheet_xml(rows, col_widths=None):
     out = [
         u'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
         u'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
-        u'<sheetData>',
     ]
+    if col_widths:
+        cols = []
+        for i, w in enumerate(col_widths):
+            try:
+                w = float(w)
+            except (TypeError, ValueError):
+                continue
+            if w > 0:
+                cols.append(
+                    u'<col min="%d" max="%d" width="%.2f" customWidth="1"/>'
+                    % (i + 1, i + 1, w)
+                )
+        if cols:
+            out.append(u'<cols>' + u"".join(cols) + u'</cols>')
+    out.append(u'<sheetData>')
     for ri, row in enumerate(rows):
         out.append(u'<row r="%d">' % (ri + 1))
         for ci, val in enumerate(row):
@@ -118,14 +132,18 @@ def _sheet_xml(rows):
     return u"".join(out)
 
 
-def write_xlsx(path, rows, sheet_name=u"Лист1"):
-    u"""rows — список списков (str/число/None). Первая строка обычно заголовок."""
+def write_xlsx(path, rows, sheet_name=u"Лист1", col_widths=None):
+    u"""
+    rows — список списков (str/число/None). Первая строка обычно заголовок.
+    col_widths — ширины столбцов в «символах» Excel (как в диалоге ширины
+    столбца), по одному значению на столбец; None/0 — ширина по умолчанию.
+    """
     parts = [
         (u"[Content_Types].xml", _CT),
         (u"_rels/.rels", _RELS),
         (u"xl/workbook.xml", _WB.format(name=_esc(sheet_name[:31]))),
         (u"xl/_rels/workbook.xml.rels", _WB_RELS),
-        (u"xl/worksheets/sheet1.xml", _sheet_xml(rows)),
+        (u"xl/worksheets/sheet1.xml", _sheet_xml(rows, col_widths)),
     ]
     fs = FileStream(path, FileMode.Create)
     try:

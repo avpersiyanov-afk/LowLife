@@ -52,7 +52,7 @@ try:
     sched = pick_schedule()
     name = schedule_name(sched)
 
-    rows, n_els, n_cols = schedule_to_rows(doc, sched)
+    rows, n_els, n_cols, col_widths = schedule_to_rows(doc, sched)
     if n_els == 0:
         forms.alert(
             u"В спецификации «{}» нет элементов-экземпляров для выгрузки.".format(name),
@@ -63,7 +63,7 @@ try:
     if not path:
         script.exit()
 
-    write_xlsx(path, rows, sheet_name=name)
+    write_xlsx(path, rows, sheet_name=name, col_widths=col_widths)
 
     forms.alert(
         u"Готово.\n\nСпецификация: {}\nСтрок: {}\nСтолбцов-параметров: {}\n\n{}\n\n"

@@ -28,6 +28,24 @@ ID_HEADER = u"Revit ID"
 _ID_ALIASES = (u"revit id", u"id", u"ид", u"элемент id", u"elementid")
 
 _DIGITS = re.compile(r"(\d+)")
+_MM_IN_FOOT = 304.8
+# Ширина столбца Excel — в «символах» шрифта по умолчанию: примерно
+# (пиксели - 5) / 7, а пиксели ≈ мм * 96 / 25.4.
+_ID_COL_WIDTH = 11.0
+
+
+def _excel_col_width(width_ft):
+    u"""Ширина столбца Revit (внутренние футы) -> ширина столбца Excel."""
+    try:
+        px = width_ft * _MM_IN_FOOT * 96.0 / 25.4
+        chars = (px - 5.0) / 7.0
+    except Exception:
+        return 0.0
+    if chars < 3.0:
+        return 3.0
+    if chars > 120.0:
+        return 120.0
+    return chars
 
 
 def schedule_name(el):
@@ -200,9 +218,20 @@ def _instance_param_map(el):
 
 
 def schedule_to_rows(doc, sched):
-    u"""(rows, число_элементов, число_столбцов-параметров). rows[0] — заголовок."""
+    u"""
+    (rows, число_элементов, число_столбцов-параметров, ширины_столбцов).
+    rows[0] — заголовок; ширины — в «символах» Excel, по столбцу на каждый
+    (первый — под «Revit ID», дальше — из ширин граф спецификации).
+    """
     fields = _visible_fields(sched)
     names = [f.GetName() for f in fields]
+
+    widths = [_ID_COL_WIDTH]
+    for f in fields:
+        try:
+            widths.append(_excel_col_width(f.GridColumnWidth))
+        except Exception:
+            widths.append(0.0)
 
     els = _ordered_elements(doc, sched)
 
@@ -214,7 +243,7 @@ def schedule_to_rows(doc, sched):
             row.append(_param_to_text(pmap.get(nm)))
         rows.append(row)
 
-    return rows, len(els), len(names)
+    return rows, len(els), len(names), widths
 
 
 def rows_to_model(doc, rows):
