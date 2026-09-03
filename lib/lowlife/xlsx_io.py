@@ -227,11 +227,11 @@ def _shared_strings(zf):
     return items
 
 
-def _parse_sheet(xml, shared):
+def _parse_sheet(xml, shared, keep_formulas=False):
     u"""
-    Ячейку финализируем на </c>: формула (<f>) -> строка "=...", иначе
-    inlineStr / sharedString / число как есть. Так формулы переживают
-    круг «прочитать — записать».
+    Ячейку финализируем на </c>. keep_formulas=True — формулу отдаём
+    строкой "=..." (для сохранения при перезаписи файла); иначе отдаём
+    её посчитанное значение (кэш <v>).
     """
     rows = []
     cells = {}
@@ -243,7 +243,7 @@ def _parse_sheet(xml, shared):
     cur_v = cur_f = None
 
     def _finalize():
-        if cur_f:
+        if cur_f and keep_formulas:
             val = u"=" + cur_f
         elif ctype == u"inlineStr" or tparts:
             val = u"".join(tparts)
@@ -375,8 +375,12 @@ def read_xlsx_col_widths(path):
     return out
 
 
-def read_xlsx(path):
-    u"""Вернуть список строк (список ячеек: unicode или None)."""
+def read_xlsx(path, keep_formulas=False):
+    u"""
+    Список строк (список ячеек: unicode или None). keep_formulas=True —
+    ячейки-формулы отдаются как "=..." (для перезаписи файла без потери
+    формул); по умолчанию — их посчитанное значение.
+    """
     fs = FileStream(path, FileMode.Open, FileAccess.Read)
     try:
         zf = ZipArchive(fs, ZipArchiveMode.Read)
@@ -393,12 +397,12 @@ def read_xlsx(path):
         return []
 
     try:
-        return _parse_sheet(xml, shared)
+        return _parse_sheet(xml, shared, keep_formulas)
     except Exception:
-        return _parse_sheet_regex(xml, shared)
+        return _parse_sheet_regex(xml, shared, keep_formulas)
 
 
-def _parse_sheet_regex(xml, shared):
+def _parse_sheet_regex(xml, shared, keep_formulas=False):
     u"""Резервный разбор регулярками, если потоковый XmlReader почему-то упал."""
     rows = []
     for rm in re.finditer(r"<row\b[^>]*>(.*?)</row>", xml, re.S):
@@ -417,8 +421,11 @@ def _parse_sheet_regex(xml, shared):
 
             val = None
             fmatch = re.search(r"<f\b[^>]*>(.*?)</f>", inner, re.S)
-            if fmatch and fmatch.group(1).strip():
+            if fmatch and fmatch.group(1).strip() and keep_formulas:
                 val = u"=" + _unesc(fmatch.group(1))
+            elif fmatch and fmatch.group(1).strip():
+                vmatch = re.search(r"<v>(.*?)</v>", inner, re.S)
+                val = _unesc(vmatch.group(1)) if vmatch else None
             elif typ == u"inlineStr":
                 chunks = re.findall(r"<t[^>]*>(.*?)</t>", inner, re.S)
                 val = _unesc(u"".join(chunks))

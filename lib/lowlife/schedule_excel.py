@@ -382,7 +382,7 @@ def rows_to_model(doc, rows):
     """
     res = {
         "changed": 0, "unchanged": 0, "no_element": 0,
-        "no_param": 0, "read_only": 0, "errors": [],
+        "no_param": 0, "read_only": 0, "errors": [], "skipped_cols": [],
     }
     if not rows:
         return res
@@ -409,10 +409,14 @@ def rows_to_model(doc, rows):
     # столбцы-параметры считаем один раз
     cols = [(ci, h) for ci, h in enumerate(header) if h and ci != id_col]
 
-    changed = unchanged = no_element = no_param = read_only = 0
+    changed = unchanged = no_element = read_only = 0
     errors = res["errors"]
     get_el = doc.GetElement
     eid_type = StorageType.ElementId
+    # по каждому столбцу: сколько раз параметр нашёлся / не нашёлся —
+    # чтобы отличить «столбец не из модели» от точечных пропусков
+    hit = {}
+    miss = {}
 
     for r in rows[hidx + 1:]:
         n = len(r)
@@ -448,8 +452,9 @@ def rows_to_model(doc, rows):
         for h, new_text in pending:
             p = pmap.get(h)
             if p is None:
-                no_param += 1
+                miss[h] = miss.get(h, 0) + 1
                 continue
+            hit[h] = hit.get(h, 0) + 1
             if p.IsReadOnly or p.StorageType == eid_type:
                 read_only += 1
                 continue
@@ -463,9 +468,16 @@ def rows_to_model(doc, rows):
                     u"ID {} / «{}»: не удалось записать «{}»".format(eid, h, new_text)
                 )
 
+    # столбец, где параметр не нашёлся НИ РАЗУ — это не из модели (расчётный
+    # столбец пользователя); точечные пропуски у столбцов, которые в целом
+    # существуют, идут в no_param
+    skipped_cols = sorted(h for h in miss if h not in hit)
+    no_param = sum(c for h, c in miss.items() if h in hit)
+
     res["changed"] = changed
     res["unchanged"] = unchanged
     res["no_element"] = no_element
     res["no_param"] = no_param
     res["read_only"] = read_only
+    res["skipped_cols"] = skipped_cols
     return res
