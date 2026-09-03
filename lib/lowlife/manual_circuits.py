@@ -17,7 +17,7 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA: пользователь выбирает 
 pick_panel_and_devices отсюда, а остальное — из lowlife.scs_manual_circuits.
 """
 
-from Autodesk.Revit.DB import BuiltInCategory
+from Autodesk.Revit.DB import BuiltInCategory, CategoryType
 from Autodesk.Revit.DB.Electrical import ElectricalSystemType
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -40,6 +40,66 @@ class _NotLinkedSelectionFilter(ISelectionFilter):
         return True
 
 
+# Категории, которые заведомо не подключаются в электрическую цепь и
+# которые пользователь может случайно захватить рамкой при выборе панели
+# и устройств: оси, уровни, текст, линии (модельные и детализации),
+# обобщённые модели, обобщённые аннотации, вставки связанных файлов.
+# Плюс отдельно (см. фильтр) отсекается вся аннотация целиком по
+# CategoryType.Annotation — марки, размеры и т.п.
+_EXCLUDED_PICK_CATEGORY_IDS = set(
+    int(bic) for bic in (
+        BuiltInCategory.OST_Grids,
+        BuiltInCategory.OST_Levels,
+        BuiltInCategory.OST_TextNotes,
+        BuiltInCategory.OST_Lines,
+        BuiltInCategory.OST_GenericModel,
+        BuiltInCategory.OST_GenericAnnotation,
+        BuiltInCategory.OST_RvtLinks,
+    )
+)
+
+
+class _CircuitTargetSelectionFilter(ISelectionFilter):
+    """
+    Строгий фильтр выбора для кнопки «Цепь (общее)»: помимо элементов
+    связанных файлов (как _NotLinkedSelectionFilter) отсекает заведомо
+    не подключаемое — аннотации в целом, оси, уровни, текстовые
+    аннотации, линии детализации, обобщённые модели.
+    """
+
+    def AllowElement(self, elem):
+        try:
+            if elem.Document.IsLinked:
+                return False
+        except:
+            pass
+
+        try:
+            cat = elem.Category
+        except:
+            cat = None
+
+        if cat is None:
+            return False
+
+        try:
+            if cat.Id.IntegerValue in _EXCLUDED_PICK_CATEGORY_IDS:
+                return False
+        except:
+            pass
+
+        try:
+            if cat.CategoryType == CategoryType.Annotation:
+                return False
+        except:
+            pass
+
+        return True
+
+    def AllowReference(self, reference, position):
+        return True
+
+
 def _is_panel(el):
     try:
         return el.Category.Id.IntegerValue == int(BuiltInCategory.OST_ElectricalEquipment)
@@ -47,7 +107,7 @@ def _is_panel(el):
         return False
 
 
-def pick_panel_and_devices(uidoc, doc, prompt):
+def pick_panel_and_devices(uidoc, doc, prompt, strict=False):
     """
     Просит выбрать панель и устройства вместе, одним PickObjects (рамкой
     и/или кликами, подтверждение Enter/«Готово») — без определённого
@@ -56,8 +116,14 @@ def pick_panel_and_devices(uidoc, doc, prompt):
     устройствами. Останавливает скрипт (forms.alert exitscript), если
     пользователь отменил выбор (Esc), если панель в выборе не ровно одна,
     или если не выбрано ни одного устройства.
+
+    strict=True — использовать строгий фильтр выбора
+    (_CircuitTargetSelectionFilter): дополнительно к элементам связанных
+    файлов не даёт захватить аннотации, оси, уровни, текст, линии
+    детализации и обобщённые модели. По умолчанию (для кнопок СКС/СКУД/СПА)
+    фильтр прежний — только связанные файлы.
     """
-    selection_filter = _NotLinkedSelectionFilter()
+    selection_filter = _CircuitTargetSelectionFilter() if strict else _NotLinkedSelectionFilter()
 
     try:
         refs = uidoc.Selection.PickObjects(ObjectType.Element, selection_filter, prompt)
