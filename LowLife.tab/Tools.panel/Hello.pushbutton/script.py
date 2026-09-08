@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-__title__ = "Привет"
-__doc__ = "Тестовая кнопка LowLife"
+__title__ = u"Привет"
+__doc__ = u"Тестовая кнопка LowLife"
 __author__ = "Pipers"
 
 from pyrevit import forms
