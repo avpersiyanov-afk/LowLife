@@ -130,6 +130,7 @@ THEMES = {
         (u"Tools", u"LoadFamiliesFromCatalog"),
         (u"Tools", u"Hello"),
         (u"Tools", u"RoomInfo"),
+        (u"Tools", u"RoomTags"),
         (u"Tools", u"ZoomToElement"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
