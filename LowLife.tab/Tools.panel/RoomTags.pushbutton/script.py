@@ -93,33 +93,6 @@ if not chosen:
     forms.alert(u"Отменено.", exitscript=True)
 
 
-KEYS = ("added", "recreated", "deleted", "retyped", "already",
-        "link_unloaded", "orphan_unresolved", "out_of_view", "room_no_point")
-totals = dict((k, 0) for k in KEYS)
-
 with revit.Transaction(u"Марки помещений из связи"):
     for target in target_views:
-        stats = room_tags.run(doc, target, chosen.symbol.Id)
-        for k in KEYS:
-            totals[k] += stats[k]
-
-header = (
-    u"Готово. Обработано планов: {}\n\n".format(len(target_views))
-    if len(target_views) > 1 else u"Готово.\n\n"
-)
-
-lines = [
-    u"Добавлено марок: {added}",
-    u"Пересоздано «???»: {recreated}",
-    u"Удалено «???» без помещения: {deleted}",
-    u"Сменён типоразмер: {retyped}",
-    u"Уже стояли: {already}",
-    u"Помещений вне области вида: {out_of_view}",
-    u"Помещений без точки размещения: {room_no_point}",
-]
-if totals["link_unloaded"]:
-    lines.append(u"Пропущено (связь выгружена): {link_unloaded}")
-if totals["orphan_unresolved"]:
-    lines.append(u"Проблемные марки оставлены как есть: {orphan_unresolved}")
-
-forms.alert(header + u"\n".join(lines).format(**totals))
+        room_tags.run(doc, target, chosen.symbol.Id)
