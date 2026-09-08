@@ -31,6 +31,7 @@
 from Autodesk.Revit.DB import (
     FilteredElementCollector, BuiltInCategory, RevitLinkInstance,
     LinkElementId, ElementId, UV, LocationPoint, Element, Family,
+    View, ViewPlan, ViewType,
 )
 
 MM_IN_FOOT = 304.8
@@ -70,6 +71,43 @@ def get_room_tag_types(doc):
             if sym is not None:
                 result.append(sym)
     return result
+
+
+_VIEW_TYPE_RU = {
+    ViewType.FloorPlan: u"План этажа",
+    ViewType.CeilingPlan: u"План потолка",
+    ViewType.EngineeringPlan: u"Инж. план",
+    ViewType.AreaPlan: u"План зоны",
+}
+
+
+def get_taggable_plan_views(doc):
+    """Все планы (ViewPlan), пригодные для простановки марок помещений —
+    без шаблонов видов. Для Shift+клика (выбор нескольких видов)."""
+    result = []
+    for view in FilteredElementCollector(doc).OfClass(View):
+        try:
+            if isinstance(view, ViewPlan) and not view.IsTemplate:
+                result.append(view)
+        except Exception:
+            pass
+    return result
+
+
+def view_label(view):
+    """«Тип плана — Имя» для показа в списке выбора видов."""
+    try:
+        name = Element.Name.GetValue(view)
+    except Exception:
+        try:
+            name = view.Name
+        except Exception:
+            name = unicode(view.Id.IntegerValue)
+    try:
+        prefix = _VIEW_TYPE_RU.get(view.ViewType)
+    except Exception:
+        prefix = None
+    return u"{} — {}".format(prefix, name) if prefix else name
 
 
 def tag_type_label(sym):
