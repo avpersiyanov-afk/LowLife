@@ -148,47 +148,73 @@ def _bbox_world_center(bb):
         return mid
 
 
-def element_view_point(el):
+def build_visible_ids():
     """
-    (точка для зума, видно ли элемент на активном виде).
-
-    За основу берём мировой центр габарита элемента на активном виде. Точка
-    расположения (LocationPoint / середина LocationCurve) точнее, но только
-    если она реально рядом с этим габаритом — у групп, некоторых семейств и
-    аннотаций Location указывает на точку вставки/начало координат, далеко
-    от видимой геометрии, и зум по ней уводит «не туда». Такую точку
-    отбрасываем.
-
-    Если габарита на активном виде нет — элемент на нём не виден (скрыт
-    категорией/фильтром, вне диапазона вида или на другом уровне).
+    IntegerValue всех элементов, которые Revit реально показывает на
+    активном виде (FilteredElementCollector по Id вида учитывает видимость
+    категорий, фильтры, диапазон вида, скрытые элементы). Это надёжнее, чем
+    судить о видимости по наличию get_BoundingBox(view): у части семейств
+    (символьных, без 3D-геометрии в плане) габарит на виде None, хотя сам
+    элемент на виде виден.
     """
     try:
-        bb = el.get_BoundingBox(view)
+        return set(
+            x.IntegerValue
+            for x in FilteredElementCollector(doc, view.Id)
+            .WhereElementIsNotElementType()
+            .ToElementIds()
+        )
     except:
-        bb = None
-    if bb is None:
-        return None, False
+        return None
 
-    center = _bbox_world_center(bb)
 
+VISIBLE_IDS = build_visible_ids()
+
+
+def is_visible(el):
+    try:
+        if VISIBLE_IDS is not None and el.Id.IntegerValue in VISIBLE_IDS:
+            return True
+    except:
+        pass
+    try:
+        return el.get_BoundingBox(view) is not None
+    except:
+        return False
+
+
+def element_target_point(el):
+    """
+    Мировая точка элемента для зума, или None если определить не удалось.
+
+    Приоритет: точка расположения (LocationPoint) -> середина оси
+    (LocationCurve) -> мировой центр габарита (на активном виде, иначе
+    модельного). LocationPoint/ось берём как есть — для подавляющего
+    большинства семейств это и есть их видимое место; проверку «далеко ли
+    от габарита» убрали, потому что у символьных семейств габарит на виде
+    как раз мелкий/смещённый, и из-за той проверки зум уходил в пустоту.
+    """
     loc = getattr(el, "Location", None)
-    cand = None
     if isinstance(loc, LocationPoint):
-        cand = loc.Point
+        try:
+            return loc.Point
+        except:
+            pass
     elif isinstance(loc, LocationCurve):
         try:
-            cand = loc.Curve.Evaluate(0.5, True)
+            return loc.Curve.Evaluate(0.5, True)
         except:
-            cand = None
+            pass
 
-    if cand is not None:
-        diag = ((bb.Max.X - bb.Min.X) ** 2 + (bb.Max.Y - bb.Min.Y) ** 2) ** 0.5
-        tol = max(diag, 3.0)
-        dist = ((cand.X - center.X) ** 2 + (cand.Y - center.Y) ** 2) ** 0.5
-        if dist <= tol:
-            center = cand
+    for v in (view, None):
+        try:
+            bb = el.get_BoundingBox(v)
+        except:
+            bb = None
+        if bb is not None:
+            return _bbox_world_center(bb)
 
-    return center, True
+    return None
 
 
 def zoom_center_on_points(points, pad_ft=6.0):
@@ -240,10 +266,13 @@ def zoom_center_on_points(points, pad_ft=6.0):
     except:
         pass
 
-    uiview.ZoomAndCenterRectangle(
-        XYZ(cx - half_x, cy - half_y, z),
-        XYZ(cx + half_x, cy + half_y, z),
-    )
+    try:
+        uiview.ZoomAndCenterRectangle(
+            XYZ(cx - half_x, cy - half_y, z),
+            XYZ(cx + half_x, cy + half_y, z),
+        )
+    except:
+        pass
     try:
         uidoc.RefreshActiveView()
     except:
@@ -305,14 +334,21 @@ if not elements:
 points = []
 any_visible = False
 for el in elements:
-    pt, visible = element_view_point(el)
-    if visible:
-        any_visible = True
+    if not is_visible(el):
+        continue
+    any_visible = True
+    pt = element_target_point(el)
     if pt is not None:
         points.append(pt)
 
-if not any_visible or not points:
+if not any_visible:
     # Ни один из элементов не виден на активном виде — подсказываем куда смотреть.
     hint_where_to_look(elements)
+elif not points:
+    forms.alert(
+        u"Элемент(ы) на виде есть, но определить его положение для зума не "
+        u"удалось.",
+        title=u"Зум к элементу"
+    )
 else:
     zoom_center_on_points(points)
