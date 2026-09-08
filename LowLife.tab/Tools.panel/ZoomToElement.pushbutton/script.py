@@ -20,6 +20,8 @@ from Autodesk.Revit.DB import (
     ElementId,
     FilteredElementCollector,
     Level,
+    LocationCurve,
+    LocationPoint,
     XYZ,
 )
 from System.Collections.Generic import List
@@ -31,6 +33,14 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 MM_IN_FOOT = 304.8
+
+# Минимальный «радиус» кадра вокруг элемента (мм в плане) — чтобы кнопка не
+# приближала вплотную к мелкому символу устройства, а оставляла контекст.
+MIN_HALF_MM = 1500.0
+
+# Запас вокруг габарита элемента (доля от радиуса), чтобы элемент не упирался
+# в края экрана.
+PADDING_RATIO = 0.35
 
 # Параметры, в которых у разных категорий лежит ссылка на уровень элемента —
 # перебираем по очереди, если у элемента нет прямого свойства LevelId.
@@ -149,18 +159,48 @@ def view_bbox_world(el):
         return bb.Min, bb.Max
 
 
-def zoom_to(pmin, pmax, margin_ratio=0.4, min_margin_ft=3.0):
-    dx = pmax.X - pmin.X
-    dy = pmax.Y - pmin.Y
-    diag = (dx * dx + dy * dy) ** 0.5
-    margin = max(diag * margin_ratio, min_margin_ft)
+def element_center(el):
+    """
+    «Визуальный» центр элемента для зума. Точка/кривая расположения даёт
+    центр гораздо точнее, чем середина bounding box: у семейств bbox часто
+    несимметричен (учитывает выносные элементы, вложенные семейства, хост),
+    и центрирование по нему уводит элемент от середины экрана.
+    """
+    try:
+        loc = el.Location
+    except:
+        loc = None
 
-    p1 = XYZ(pmin.X - margin, pmin.Y - margin, pmin.Z)
-    p2 = XYZ(pmax.X + margin, pmax.Y + margin, pmax.Z)
+    if isinstance(loc, LocationPoint):
+        return loc.Point
+    if isinstance(loc, LocationCurve):
+        try:
+            return loc.Curve.Evaluate(0.5, True)
+        except:
+            pass
+    return None
+
+
+def zoom_center_radius(center, radius):
+    """
+    Приближает активный вид так, чтобы center оказался в середине экрана.
+    Прямоугольник строится СИММЕТРИЧНО вокруг center — тогда его середина
+    (а именно её ставит по центру ZoomAndCenterRectangle) точно совпадает
+    с центром элемента.
+    """
+    r = max(radius, MIN_HALF_MM / MM_IN_FOOT)
+    r = r * (1.0 + PADDING_RATIO)
+
+    p1 = XYZ(center.X - r, center.Y - r, center.Z)
+    p2 = XYZ(center.X + r, center.Y + r, center.Z)
 
     for uv in uidoc.GetOpenUIViews():
         if uv.ViewId == view.Id:
             uv.ZoomAndCenterRectangle(p1, p2)
+            try:
+                uidoc.RefreshActiveView()
+            except:
+                pass
             return True
     return False
 
@@ -216,29 +256,37 @@ if not elements:
     except:
         pass
 
-# Собираем общий габарит по тем элементам, что видны на активном виде.
-mins_x = []
-mins_y = []
-mins_z = []
-maxs_x = []
-maxs_y = []
-maxs_z = []
-
+# Габариты на активном виде — только по элементам, которые на нём видны.
+boxes = []
 for el in elements:
     pmin, pmax = view_bbox_world(el)
-    if pmin is None:
-        continue
-    mins_x.append(pmin.X); mins_y.append(pmin.Y); mins_z.append(pmin.Z)
-    maxs_x.append(pmax.X); maxs_y.append(pmax.Y); maxs_z.append(pmax.Z)
+    if pmin is not None:
+        boxes.append((pmin, pmax))
 
-if not mins_x:
+if not boxes:
     # Ни один из элементов не виден на активном виде — подсказываем куда смотреть.
     hint_where_to_look(elements)
 else:
-    pmin = XYZ(min(mins_x), min(mins_y), min(mins_z))
-    pmax = XYZ(max(maxs_x), max(maxs_y), max(maxs_z))
+    # Центр кадра: точка расположения единственного элемента (самый точный
+    # центр), иначе — середина общего габарита видимых элементов.
+    center = element_center(elements[0]) if len(elements) == 1 else None
+    if center is None:
+        cx = sum((b[0].X + b[1].X) for b in boxes) / (2.0 * len(boxes))
+        cy = sum((b[0].Y + b[1].Y) for b in boxes) / (2.0 * len(boxes))
+        cz = sum((b[0].Z + b[1].Z) for b in boxes) / (2.0 * len(boxes))
+        center = XYZ(cx, cy, cz)
 
-    if not zoom_to(pmin, pmax):
+    # Радиус кадра — самый дальний угол габарита(ов) от выбранного центра
+    # (в плане), чтобы элемент целиком попал в кадр и остался по центру.
+    radius = 0.0
+    for pmin, pmax in boxes:
+        for x in (pmin.X, pmax.X):
+            for y in (pmin.Y, pmax.Y):
+                d = ((x - center.X) ** 2 + (y - center.Y) ** 2) ** 0.5
+                if d > radius:
+                    radius = d
+
+    if not zoom_center_radius(center, radius):
         forms.alert(
             u"Не удалось приблизить вид: активный вид не открыт в отдельном "
             u"окне (например, вы находитесь на листе). Откройте сам вид и "
