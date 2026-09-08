@@ -26,6 +26,9 @@ from System.Collections.Generic import List
 
 from pyrevit import revit, forms
 
+from lowlife.geometry import get_point
+from lowlife.route_preview import zoom_to_fit_points
+
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
@@ -127,52 +130,28 @@ def get_elevation_m(el):
     return None
 
 
-def view_bbox_world(el):
-    """Габарит элемента на активном виде (в мировых координатах) или None, если элемента на виде не видно."""
+def element_view_point(el):
+    """
+    (точка для зума, видно ли элемент на активном виде).
+
+    Точку берём из расположения элемента (LocationPoint), иначе — из центра
+    его габарита на активном виде. Если габарита на активном виде нет —
+    элемент на нём не виден (скрыт категорией/фильтром, вне диапазона вида
+    или на другом уровне).
+    """
     try:
         bb = el.get_BoundingBox(view)
     except:
         bb = None
     if bb is None:
-        return None, None
-    try:
-        t = bb.Transform
-        pts = [
-            t.OfPoint(XYZ(bb.Min.X, bb.Min.Y, bb.Min.Z)),
-            t.OfPoint(XYZ(bb.Max.X, bb.Max.Y, bb.Max.Z)),
-        ]
-        xs = [p.X for p in pts]
-        ys = [p.Y for p in pts]
-        zs = [p.Z for p in pts]
-        return XYZ(min(xs), min(ys), min(zs)), XYZ(max(xs), max(ys), max(zs))
-    except:
-        return bb.Min, bb.Max
+        return None, False
 
-
-def zoom_to_elements(elements):
-    """
-    Ставит выбранные элементы в центр активного вида штатным
-    uidoc.ShowElements — это ровно то, что делает «Show» в браузере
-    проекта: Revit сам работает в правильной системе координат вида
-    (план/разрез/фасад/3D) и центрирует элемент.
-
-    Раньше здесь был самодельный ZoomAndCenterRectangle: сначала с плоским
-    прямоугольником в XY (на разрезе вырождался в линию), потом с
-    итеративной подгонкой центра по GetZoomCorners (на части видов эти
-    координаты несопоставимы с мировыми — вектор ошибки «разгонялся», и
-    вид уезжал совсем не туда). Оба варианта убраны: ShowElements надёжнее.
-    """
-    show_ids = List[ElementId]()
-    for el in elements:
-        show_ids.Add(el.Id)
-    try:
-        uidoc.ShowElements(show_ids)
-    except:
-        pass
-    try:
-        uidoc.RefreshActiveView()
-    except:
-        pass
+    pt = get_point(el)
+    if pt is None:
+        pt = XYZ((bb.Min.X + bb.Max.X) / 2.0,
+                 (bb.Min.Y + bb.Max.Y) / 2.0,
+                 (bb.Min.Z + bb.Max.Z) / 2.0)
+    return pt, True
 
 
 def hint_where_to_look(elements):
@@ -226,15 +205,20 @@ if not elements:
     except:
         pass
 
-# Габариты на активном виде — только по элементам, которые на нём видны.
-boxes = []
+# Точки для зума — только по элементам, которые видны на активном виде.
+points = []
+any_visible = False
 for el in elements:
-    pmin, pmax = view_bbox_world(el)
-    if pmin is not None:
-        boxes.append((pmin, pmax))
+    pt, visible = element_view_point(el)
+    if visible:
+        any_visible = True
+    if pt is not None:
+        points.append(pt)
 
-if not boxes:
+if not any_visible or not points:
     # Ни один из элементов не виден на активном виде — подсказываем куда смотреть.
     hint_where_to_look(elements)
 else:
-    zoom_to_elements(elements)
+    # Та же функция, что центрирует маршрут в кнопках «Маршрут цепи»
+    # (lowlife.route_preview) — вписывает вид в прямоугольник вокруг точек.
+    zoom_to_fit_points(uidoc, view, points, min_margin_ft=6.0)
