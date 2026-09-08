@@ -6,12 +6,15 @@
 
 Что делает :func:`run` за один проход по активному виду:
 
-  1. **Пересоздаёт «мёртвые» марки.** Если АР удалил/пересоздал помещение
-     (даже с тем же номером), старая марка в нашем документе перестаёт
-     находить своё помещение и показывает «???». Такие марки нельзя
-     «перепривязать» через API — поэтому под каждой из них ищется
-     помещение связи по координате головы марки, старая марка удаляется,
-     на её месте создаётся новая (голова и наличие полки сохраняются).
+  1. **Чинит или удаляет «мёртвые» марки.** Если АР удалил/пересоздал
+     помещение (даже с тем же номером), старая марка в нашем документе
+     перестаёт находить своё помещение и показывает «???». Перепривязать
+     её через API нельзя — поэтому под каждой такой маркой ищется
+     помещение связи по координате головы марки; если помещение нашлось —
+     старая марка заменяется новой (голова и наличие полки сохраняются),
+     если помещения под маркой уже нет — непривязанная марка удаляется.
+     Марки, чья связь сейчас *выгружена*, не трогаются (нельзя понять,
+     жива ли привязка).
   2. **Меняет типоразмер** всех живых марок помещений на виде на
      выбранный пользователем (единый вид марок на листе).
   3. **Добавляет недостающие марки** для тех помещений связи, что попадают
@@ -278,41 +281,55 @@ def _tagged_room_key(tag):
         return None
 
 
-def _resolve_tagged_room(doc, tag):
-    """Сам элемент Room, на который смотрит марка, либо None (мёртвая
-    ссылка на удалённое помещение связи)."""
+def _is_orphaned(tag):
+    try:
+        return bool(tag.IsOrphaned)
+    except Exception:
+        return False
+
+
+def _stale_kind(doc, tag):
+    """
+    Состояние привязки марки к помещению:
+      "live"          — помещение на месте, марку достаточно перетипировать;
+      "dead"          — связь удалена из проекта, либо помещение в связи
+                        исчезло (это и есть «???») — марку чинить/удалять;
+      "link_unloaded" — связь, на которую смотрит марка, сейчас выгружена;
+                        трогать нельзя — не знаем, жива ли привязка.
+    """
     try:
         leid = tag.TaggedRoomId
     except Exception:
-        return None
+        return "dead"
     if leid is None:
-        return None
+        return "dead"
+
     try:
         link_id = leid.LinkInstanceId
     except Exception:
         link_id = None
+
     if link_id is not None and link_id != ElementId.InvalidElementId:
         link = doc.GetElement(link_id)
-        linked_doc = link.GetLinkDocument() if link is not None else None
-        if linked_doc is None:
-            return None
+        if link is None:
+            return "dead"
         try:
-            return linked_doc.GetElement(leid.LinkedElementId)
+            linked_doc = link.GetLinkDocument()
         except Exception:
-            return None
-    try:
-        return doc.GetElement(leid.HostElementId)
-    except Exception:
-        return None
+            linked_doc = None
+        if linked_doc is None:
+            return "link_unloaded"
+        try:
+            room = linked_doc.GetElement(leid.LinkedElementId)
+        except Exception:
+            room = None
+        return "live" if room is not None else "dead"
 
-
-def _is_stale(doc, tag):
     try:
-        if tag.IsOrphaned:
-            return True
+        room = doc.GetElement(leid.HostElementId)
     except Exception:
-        pass
-    return _resolve_tagged_room(doc, tag) is None
+        room = None
+    return "live" if room is not None else "dead"
 
 
 def _recreate_stale_tag(doc, view, old_tag, tag_type_id):
@@ -396,14 +413,16 @@ def run(doc, view, tag_type_id):
     """
     Обновить и дорасставить марки помещений на ``view``. Транзакцию
     открывает вызывающий. Возвращает словарь-статистику с ключами:
-    added, recreated, retyped, already, orphan_unresolved, out_of_view,
-    room_no_point.
+    added, recreated, deleted, retyped, already, link_unloaded,
+    orphan_unresolved, out_of_view, room_no_point.
     """
     stats = {
         "added": 0,
         "recreated": 0,
+        "deleted": 0,
         "retyped": 0,
         "already": 0,
+        "link_unloaded": 0,
         "orphan_unresolved": 0,
         "out_of_view": 0,
         "room_no_point": 0,
@@ -425,23 +444,44 @@ def run(doc, view, tag_type_id):
 
         tagged_keys = set()
 
-        # 1) Существующие марки: мёртвые — пересоздать, живые — сменить тип.
+        # 1) Существующие марки:
+        #    - связь выгружена           -> не трогаем;
+        #    - «???» (dead) или orphaned -> пробуем пересоздать по месту;
+        #    - если пересоздать не вышло и марка именно "dead"
+        #      (помещения под ней уже нет) -> удаляем непривязанную марку;
+        #    - живые                     -> просто приводим типоразмер.
         for tag in existing_tags:
-            if _is_stale(doc, tag):
+            kind = _stale_kind(doc, tag)
+
+            if kind == "link_unloaded":
+                stats["link_unloaded"] += 1
+                continue
+
+            if kind == "dead" or _is_orphaned(tag):
                 new_tag = _recreate_stale_tag(doc, view, tag, tag_type_id)
-                if new_tag is None:
-                    stats["orphan_unresolved"] += 1
+                if new_tag is not None:
+                    stats["recreated"] += 1
+                    key = _tagged_room_key(new_tag)
+                    if key is not None:
+                        tagged_keys.add(key)
                     continue
-                stats["recreated"] += 1
-                key = _tagged_room_key(new_tag)
-                if key is not None:
-                    tagged_keys.add(key)
-            else:
-                if _apply_type(tag, tag_type_id):
-                    stats["retyped"] += 1
-                key = _tagged_room_key(tag)
-                if key is not None:
-                    tagged_keys.add(key)
+                if kind == "dead":
+                    try:
+                        doc.Delete(tag.Id)
+                        stats["deleted"] += 1
+                    except Exception:
+                        stats["orphan_unresolved"] += 1
+                else:
+                    # привязка формально жива (помещение есть), но марка
+                    # «висит» — оставляем как есть, не удаляем вслепую.
+                    stats["orphan_unresolved"] += 1
+                continue
+
+            if _apply_type(tag, tag_type_id):
+                stats["retyped"] += 1
+            key = _tagged_room_key(tag)
+            if key is not None:
+                tagged_keys.add(key)
 
         # 2) Дорасставить марки для непомеченных помещений связей.
         for link, transform, room in _iter_link_rooms(doc):
