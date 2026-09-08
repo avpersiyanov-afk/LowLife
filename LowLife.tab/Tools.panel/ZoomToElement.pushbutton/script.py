@@ -27,7 +27,6 @@ from System.Collections.Generic import List
 from pyrevit import revit, forms
 
 from lowlife.geometry import get_point
-from lowlife.route_preview import zoom_to_fit_points
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -154,6 +153,65 @@ def element_view_point(el):
     return pt, True
 
 
+def zoom_center_on_points(points, pad_ft=6.0):
+    """
+    Ставит облако points (список XYZ) в центр активного вида.
+
+    Отличие от route_preview.zoom_to_fit_points: тот прямоугольник для
+    маршрута всегда широкий и вытянутый — близко к соотношению сторон
+    экрана, поэтому ZoomAndCenterRectangle центрирует его точно. Для одного
+    (или нескольких рядом) элемента прямоугольник почти квадратный,
+    расхождение с экраном максимальное — и ZoomAndCenterRectangle
+    центрирует с заметным смещением. Поэтому здесь прямоугольник заранее
+    расширяется до соотношения сторон окна вида (GetWindowRectangle) —
+    тогда центрирование точное.
+    """
+    pts = [p for p in points if p is not None]
+    if not pts:
+        return
+
+    uiview = None
+    for uv in uidoc.GetOpenUIViews():
+        if uv.ViewId == view.Id:
+            uiview = uv
+            break
+    if uiview is None:
+        return
+
+    min_x = min(p.X for p in pts)
+    max_x = max(p.X for p in pts)
+    min_y = min(p.Y for p in pts)
+    max_y = max(p.Y for p in pts)
+    z = sum(p.Z for p in pts) / len(pts)
+
+    cx = (min_x + max_x) / 2.0
+    cy = (min_y + max_y) / 2.0
+    half_x = (max_x - min_x) / 2.0 + pad_ft
+    half_y = (max_y - min_y) / 2.0 + pad_ft
+
+    try:
+        rect = uiview.GetWindowRectangle()
+        win_w = abs(rect.Right - rect.Left)
+        win_h = abs(rect.Bottom - rect.Top)
+        if win_w > 0 and win_h > 0:
+            aspect = float(win_w) / float(win_h)
+            if half_x / half_y < aspect:
+                half_x = half_y * aspect
+            else:
+                half_y = half_x / aspect
+    except:
+        pass
+
+    uiview.ZoomAndCenterRectangle(
+        XYZ(cx - half_x, cy - half_y, z),
+        XYZ(cx + half_x, cy + half_y, z),
+    )
+    try:
+        uidoc.RefreshActiveView()
+    except:
+        pass
+
+
 def hint_where_to_look(elements):
     el = elements[0]
     level_name = get_level_name(el)
@@ -219,6 +277,4 @@ if not any_visible or not points:
     # Ни один из элементов не виден на активном виде — подсказываем куда смотреть.
     hint_where_to_look(elements)
 else:
-    # Та же функция, что центрирует маршрут в кнопках «Маршрут цепи»
-    # (lowlife.route_preview) — вписывает вид в прямоугольник вокруг точек.
-    zoom_to_fit_points(uidoc, view, points, min_margin_ft=6.0)
+    zoom_center_on_points(points)
