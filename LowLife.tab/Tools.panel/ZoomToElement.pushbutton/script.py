@@ -32,14 +32,6 @@ view = doc.ActiveView
 
 MM_IN_FOOT = 304.8
 
-# Минимальный «радиус» кадра вокруг элемента (мм в плане) — чтобы кнопка не
-# приближала вплотную к мелкому символу устройства, а оставляла контекст.
-MIN_HALF_MM = 1500.0
-
-# Запас вокруг габарита элемента (доля от радиуса), чтобы элемент не упирался
-# в края экрана.
-PADDING_RATIO = 0.35
-
 # Параметры, в которых у разных категорий лежит ссылка на уровень элемента —
 # перебираем по очереди, если у элемента нет прямого свойства LevelId.
 LEVEL_BIPS = (
@@ -157,64 +149,30 @@ def view_bbox_world(el):
         return bb.Min, bb.Max
 
 
-def active_uiview():
-    for uv in uidoc.GetOpenUIViews():
-        if uv.ViewId == view.Id:
-            return uv
-    return None
-
-
-def zoom_to_box(uiview, bmin, bmax):
+def zoom_to_elements(elements):
     """
-    Ставит середину габарита (bmin..bmax, мировые координаты) в центр экрана
-    активного вида.
+    Ставит выбранные элементы в центр активного вида штатным
+    uidoc.ShowElements — это ровно то, что делает «Show» в браузере
+    проекта: Revit сам работает в правильной системе координат вида
+    (план/разрез/фасад/3D) и центрирует элемент.
 
-    Прямоугольник передаётся в ZoomAndCenterRectangle в МИРОВЫХ координатах
-    трёхмерной рамкой (Revit сам проецирует её на плоскость вида — поэтому
-    работает и на планах, и на разрезах/фасадах/3D, в отличие от плоского
-    прямоугольника в XY, который на разрезе вырождается в линию).
-
-    ZoomAndCenterRectangle центрирует неточно (не учитывает панели/рамку
-    окна Revit — остаётся стабильное смещение). Поэтому после зума читаем
-    фактический центр видимой области (GetZoomCorners) и итеративно сдвигаем
-    рамку на вектор ошибки, пока центр не совпадёт с нужным.
+    Раньше здесь был самодельный ZoomAndCenterRectangle: сначала с плоским
+    прямоугольником в XY (на разрезе вырождался в линию), потом с
+    итеративной подгонкой центра по GetZoomCorners (на части видов эти
+    координаты несопоставимы с мировыми — вектор ошибки «разгонялся», и
+    вид уезжал совсем не туда). Оба варианта убраны: ShowElements надёжнее.
     """
-    pad = 1.0 + PADDING_RATIO
-    min_half = MIN_HALF_MM / MM_IN_FOOT
-
-    center = XYZ((bmin.X + bmax.X) / 2.0,
-                 (bmin.Y + bmax.Y) / 2.0,
-                 (bmin.Z + bmax.Z) / 2.0)
-
-    hx = max(abs(bmax.X - bmin.X) / 2.0, min_half) * pad
-    hy = max(abs(bmax.Y - bmin.Y) / 2.0, min_half) * pad
-    hz = max(abs(bmax.Z - bmin.Z) / 2.0, min_half) * pad
-
-    target = center
-    for _ in range(6):
-        uiview.ZoomAndCenterRectangle(
-            XYZ(target.X - hx, target.Y - hy, target.Z - hz),
-            XYZ(target.X + hx, target.Y + hy, target.Z + hz),
-        )
-        try:
-            uidoc.RefreshActiveView()
-        except:
-            pass
-
-        try:
-            corners = list(uiview.GetZoomCorners())
-        except:
-            break
-        if len(corners) < 2:
-            break
-
-        actual = XYZ((corners[0].X + corners[1].X) / 2.0,
-                     (corners[0].Y + corners[1].Y) / 2.0,
-                     (corners[0].Z + corners[1].Z) / 2.0)
-        err = center - actual
-        if err.GetLength() < min_half * 0.02:
-            break
-        target = target + err
+    show_ids = List[ElementId]()
+    for el in elements:
+        show_ids.Add(el.Id)
+    try:
+        uidoc.ShowElements(show_ids)
+    except:
+        pass
+    try:
+        uidoc.RefreshActiveView()
+    except:
+        pass
 
 
 def hint_where_to_look(elements):
@@ -279,31 +237,4 @@ if not boxes:
     # Ни один из элементов не виден на активном виде — подсказываем куда смотреть.
     hint_where_to_look(elements)
 else:
-    uiview = active_uiview()
-    if uiview is None:
-        forms.alert(
-            u"Не удалось приблизить вид: активный вид не открыт в отдельном "
-            u"окне (например, вы находитесь на листе). Откройте сам вид и "
-            u"запустите кнопку снова."
-        )
-    else:
-        # Общий габарит всех видимых на активном виде элементов (мировые
-        # координаты).
-        bmin = XYZ(min(b[0].X for b in boxes),
-                   min(b[0].Y for b in boxes),
-                   min(b[0].Z for b in boxes))
-        bmax = XYZ(max(b[1].X for b in boxes),
-                   max(b[1].Y for b in boxes),
-                   max(b[1].Z for b in boxes))
-
-        # Сначала штатный ShowElements — он центрирует надёжно (но грубо по
-        # масштабу), затем точная подгонка кадра.
-        try:
-            show_ids = List[ElementId]()
-            for el in elements:
-                show_ids.Add(el.Id)
-            uidoc.ShowElements(show_ids)
-        except:
-            pass
-
-        zoom_to_box(uiview, bmin, bmax)
+    zoom_to_elements(elements)
