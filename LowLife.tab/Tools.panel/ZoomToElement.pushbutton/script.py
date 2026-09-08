@@ -20,13 +20,13 @@ from Autodesk.Revit.DB import (
     ElementId,
     FilteredElementCollector,
     Level,
+    LocationCurve,
+    LocationPoint,
     XYZ,
 )
 from System.Collections.Generic import List
 
 from pyrevit import revit, forms
-
-from lowlife.geometry import get_point
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -129,14 +129,38 @@ def get_elevation_m(el):
     return None
 
 
+def _bbox_world_center(bb):
+    """Центр габаритного контейнера в МИРОВЫХ координатах.
+
+    У BoundingBoxXYZ есть собственный Transform: у большинства элементов он
+    единичный, но у части категорий (импорты, связи, некоторые семейства)
+    Min/Max заданы в локальной системе контейнера, и без применения
+    Transform центр оказывается «влево-вниз» или вообще далеко за краем.
+    Transform аффинный, поэтому достаточно применить его к середине
+    (Min+Max)/2 — это и есть мировой центр.
+    """
+    mid = XYZ((bb.Min.X + bb.Max.X) / 2.0,
+              (bb.Min.Y + bb.Max.Y) / 2.0,
+              (bb.Min.Z + bb.Max.Z) / 2.0)
+    try:
+        return bb.Transform.OfPoint(mid)
+    except:
+        return mid
+
+
 def element_view_point(el):
     """
     (точка для зума, видно ли элемент на активном виде).
 
-    Точку берём из расположения элемента (LocationPoint), иначе — из центра
-    его габарита на активном виде. Если габарита на активном виде нет —
-    элемент на нём не виден (скрыт категорией/фильтром, вне диапазона вида
-    или на другом уровне).
+    За основу берём мировой центр габарита элемента на активном виде. Точка
+    расположения (LocationPoint / середина LocationCurve) точнее, но только
+    если она реально рядом с этим габаритом — у групп, некоторых семейств и
+    аннотаций Location указывает на точку вставки/начало координат, далеко
+    от видимой геометрии, и зум по ней уводит «не туда». Такую точку
+    отбрасываем.
+
+    Если габарита на активном виде нет — элемент на нём не виден (скрыт
+    категорией/фильтром, вне диапазона вида или на другом уровне).
     """
     try:
         bb = el.get_BoundingBox(view)
@@ -145,12 +169,26 @@ def element_view_point(el):
     if bb is None:
         return None, False
 
-    pt = get_point(el)
-    if pt is None:
-        pt = XYZ((bb.Min.X + bb.Max.X) / 2.0,
-                 (bb.Min.Y + bb.Max.Y) / 2.0,
-                 (bb.Min.Z + bb.Max.Z) / 2.0)
-    return pt, True
+    center = _bbox_world_center(bb)
+
+    loc = getattr(el, "Location", None)
+    cand = None
+    if isinstance(loc, LocationPoint):
+        cand = loc.Point
+    elif isinstance(loc, LocationCurve):
+        try:
+            cand = loc.Curve.Evaluate(0.5, True)
+        except:
+            cand = None
+
+    if cand is not None:
+        diag = ((bb.Max.X - bb.Min.X) ** 2 + (bb.Max.Y - bb.Min.Y) ** 2) ** 0.5
+        tol = max(diag, 3.0)
+        dist = ((cand.X - center.X) ** 2 + (cand.Y - center.Y) ** 2) ** 0.5
+        if dist <= tol:
+            center = cand
+
+    return center, True
 
 
 def zoom_center_on_points(points, pad_ft=6.0):
