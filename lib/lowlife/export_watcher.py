@@ -78,20 +78,23 @@ _prev_tick = 0.0
 _last_fire = 0.0
 _ticks = 0
 _ie_seen = 0
-_worker_running = False
-_worker_started = 0.0
 # если фоновый поток завис/умер — через столько секунд снять флаг
 WORKER_STUCK_AFTER = 600.0
 
 
 def _pg():
-    """Словарь процесс-глобального состояния, живущий в ``sys``."""
+    """Словарь процесс-глобального состояния, живущий в ``sys`` — переживает
+    переимпорт модуля и общий для всех его копий (защита от двойных
+    подписок и двойного запуска воркера при перезагрузке движка pyRevit)."""
     d = getattr(sys, _SYS_KEY, None)
     if d is None:
         d = {"idling_installed": False, "item_installed": False,
              "idling_host": None, "idling_delegate": None,
-             "item_delegate": None}
+             "item_delegate": None,
+             "worker_running": False, "worker_started": 0.0}
         setattr(sys, _SYS_KEY, d)
+    d.setdefault("worker_running", False)
+    d.setdefault("worker_started", 0.0)
     return d
 
 
@@ -261,15 +264,15 @@ def _install_item_executed():
 
 
 def _tick():
-    global _last_scan, _prev_tick, _last_fire, _armed_until, _armed_hb
-    global _worker_running, _ticks
+    global _last_scan, _prev_tick, _last_fire, _armed_until, _armed_hb, _ticks
 
     if export_rename is None:
         return
-    if _worker_running:
-        if time.time() - _worker_started > WORKER_STUCK_AFTER:
+    pg = _pg()
+    if pg["worker_running"]:
+        if time.time() - pg["worker_started"] > WORKER_STUCK_AFTER:
             _log(u"фоновый поток завис — снимаю флаг")
-            _worker_running = False
+            pg["worker_running"] = False
         else:
             return
 
@@ -322,31 +325,32 @@ def _tick():
 
 
 def _start_worker(cfg, now, allow_ask):
-    global _worker_running, _worker_started
-    if _worker_running:
+    pg = _pg()
+    if pg["worker_running"]:
         return
-    _worker_running = True
-    _worker_started = time.time()
+    pg["worker_running"] = True
+    pg["worker_started"] = time.time()
+
+    def _done():
+        _pg()["worker_running"] = False
 
     try:
         from System.Threading import Thread, ThreadStart, ApartmentState
     except Exception:
-        # нет .NET-потоков — крайний случай, синхронно (может подвиснуть)
         _log(_exc(u"нет System.Threading — работаю синхронно"))
         try:
             _worker_body(cfg, now, allow_ask)
         finally:
-            _worker_running = False
+            _done()
         return
 
     def _run():
-        global _worker_running
         try:
             _worker_body(cfg, now, allow_ask)
         except Exception:
             _log(_exc(u"_worker_body упал"))
         finally:
-            _worker_running = False
+            _done()
 
     try:
         t = Thread(ThreadStart(_run))
@@ -361,7 +365,7 @@ def _start_worker(cfg, now, allow_ask):
         try:
             _worker_body(cfg, now, allow_ask)
         finally:
-            _worker_running = False
+            _done()
 
 
 def _msgbox(text, title, yesno=False):
@@ -429,7 +433,24 @@ def _worker_body(cfg, now, allow_ask):
     ok = [p for p in plans if p[2] == "ok"]
     coll = [p for p in plans if p[2] == "collision"]
     _log(u"worker: план {} — ok={} collision={}".format(folder, len(ok), len(coll)))
+    for s, d, _st in coll:
+        _log(u"  collision: {}  ->  {}".format(os.path.basename(s), os.path.basename(d)))
+
+    if not ok and not coll:
+        _log(u"worker: файлов с «{}» нет — молча выходим".format(cfg["from_token"]))
+        return
+
     if not ok:
+        # всё упёрлось в занятые имена — не молчим, показываем что и почему
+        clist = u"\n".join(u"  {}".format(os.path.basename(s)) for s, _d, _ in coll[:20])
+        _msgbox(
+            u"Папка: {}\n\nПереименовать нечего: у всех {} файла(ов) с «{}» "
+            u"целевое имя «{}…» уже занято другим файлом в этой папке "
+            u"(перезаписывать не стал — потеряется второй лист):\n{}\n\n"
+            u"Если это два РАЗНЫХ листа — дайте им разные имена листа; тогда "
+            u"имена файлов не совпадут.".format(
+                folder, len(coll), cfg["from_token"], cfg["to_token"], clist),
+            u"Переименование выгрузки")
         return
 
     sample = u"\n".join(u"  {}  →  {}".format(
@@ -591,7 +612,7 @@ def status_text():
         u"  тиков Idling обработано={}  кликов по ленте залогировано={}".format(
             _ticks, _ie_seen),
         u"  взведено={}  (осталось {}с)".format(bool(now < _armed_until), armed_left),
-        u"  фоновый поток работает={}".format(_worker_running),
+        u"  фоновый поток работает={}".format(pg.get("worker_running")),
         u"  последний тик {}с назад, последнее срабатывание {}с назад".format(
             since_tick, since_fire),
         u"  файл-выключатель {}: {}".format(
