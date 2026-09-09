@@ -373,13 +373,13 @@ def _msgbox(text, title, yesno=False):
         return None
 
 
-def _pick_folder(start):
+def _pick_folder(start, desc=u"Папка, куда ModPlus сложил файлы"):
     try:
         import clr
         clr.AddReference("System.Windows.Forms")
         from System.Windows.Forms import FolderBrowserDialog, DialogResult
         dlg = FolderBrowserDialog()
-        dlg.Description = u"Папка, куда ModPlus сложил файлы"
+        dlg.Description = desc
         if start and os.path.isdir(start):
             dlg.SelectedPath = start
         if dlg.ShowDialog() == DialogResult.OK and os.path.isdir(dlg.SelectedPath):
@@ -482,7 +482,27 @@ def _poll_and_rename(cfg, armed_at):
     """Фоновый поток: дождаться, пока ModPlus допишет папку выгрузки, и
     переименовать. Никакого Revit API — только os.* и WinForms-диалоги."""
     bases = _bases_to_watch(cfg)
-    _log(u"poll: слежу за {}".format(bases or u"— (нет ни export_root, ни last_folder)"))
+
+    # Первый запуск на этой машине: ни export_root, ни last_folder не заданы —
+    # смотреть не за чем. Спрашиваем корневую папку выгрузки СРАЗУ (а не
+    # висим 15 минут), запоминаем как export_root.
+    if not bases:
+        _log(u"poll: ни export_root, ни last_folder — спрашиваю корневую папку")
+        picked = _pick_folder(
+            u"",
+            desc=u"Корневая папка выгрузки ModPlus — та, ВНУТРИ которой ModPlus "
+                 u"создаёт папку с датой-временем. Запомню её (export_root).")
+        if not picked:
+            _log(u"poll: корневая папка не выбрана — выхожу")
+            return
+        try:
+            export_rename.save_config({"export_root": picked})
+        except Exception:
+            _log(_exc(u"poll: save_config(export_root) упал"))
+        cfg["export_root"] = picked
+        bases = _bases_to_watch(cfg)
+
+    _log(u"poll: слежу за {}".format(bases or u"—"))
     deadline = armed_at + ARM_WINDOW
     min_mtime = armed_at - NEW_FOLDER_GRACE
 
