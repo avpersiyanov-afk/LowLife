@@ -142,19 +142,29 @@ def _watcher_diag():
     """Сводка авто-режима переименования (export_watcher) + хвост его лога —
     чтобы понять, почему «не работает»."""
     out = []
+    ew = None
     try:
-        from lowlife import export_watcher
-        out.append(export_watcher.status_text())
-        try:
-            with io.open(export_watcher._log_path(), "r", encoding="utf-8") as f:
-                wl = f.read().splitlines()
-            out.append(u"\n--- watcher.log (последние 40 строк) ---")
-            out.extend(wl[-40:] or [u"(лог пуст — startup.py и hooks/doc-opened "
-                                    u"не выполнились или упали до записи)"])
-        except Exception:
-            out.append(u"watcher.log не прочитать")
+        from lowlife import export_watcher as ew
     except Exception as exc:
-        out.append(u"export_watcher не импортировать: {}".format(exc))
+        out.append(u"export_watcher НЕ ИМПОРТИРУЕТСЯ: {}".format(exc))
+
+    if ew is not None:
+        try:
+            out.append(ew.status_text())
+        except Exception as exc:
+            out.append(u"export_watcher.status_text() упал: {}".format(exc))
+
+    try:
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+        p = os.path.join(appdata, "pyRevit", "LowLifeExportRename_watcher.log")
+        with io.open(p, "r", encoding="utf-8") as f:
+            wl = f.read().splitlines()
+        out.append(u"\n--- watcher.log (последние 45 строк) ---")
+        out.extend(wl[-45:] if wl else
+                   [u"(лог ПУСТ — install() не отработал: ни startup.py, ни "
+                    u"hooks/doc-opened.py не дописали)"])
+    except Exception:
+        out.append(u"\n--- watcher.log нет / не прочитать ---")
     return u"\n".join(out)
 
 
@@ -188,9 +198,14 @@ def show_results():
     best = None
     for ln in tail:
         low = ln.lower()
-        if u"modplus" in low or u"экспорт" in low or u"export" in low:
+        if u"modplus" in low and (u"export" in low or u"экспорт" in low):
             best = ln
             break
+    if best is None:  # запаснее: любая строка ModPlus
+        for ln in tail:
+            if u"modplus" in ln.lower():
+                best = ln
+                break
 
     msg = u"Поймано после последнего включения:\n\n{}\n\nПолный лог:\n{}".format(
         u"\n".join(tail), path)

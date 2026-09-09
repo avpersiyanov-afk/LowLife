@@ -51,6 +51,10 @@ FRESH_SECONDS = 1800.0
 GAP_THRESHOLD = 5.0
 # На сколько секунд клик по кнопке экспорта «взводит» переименование.
 ARM_WINDOW = 900.0
+# Если паузы Idling так и не было (окно экспорта ModPlus не модальное) —
+# через столько секунд после клика всё равно проверить last_folder (но
+# только если там реально есть свежие файлы; папку не спрашивать).
+POST_CLICK_FALLBACK = 25.0
 # Не срабатывать повторно чаще, чем раз в столько секунд.
 REFIRE_GUARD = 20.0
 
@@ -64,6 +68,8 @@ _SYS_KEY = "_lowlife_export_watcher"
 
 
 _armed_until = 0.0
+_armed_at = 0.0
+_armed_hb = 0.0
 _last_scan = 0.0
 _prev_tick = 0.0
 _last_fire = 0.0
@@ -187,7 +193,7 @@ def _install_item_executed():
         return
 
     def _on_item_executed(sender, e):
-        global _armed_until, _ie_seen
+        global _armed_until, _armed_at, _ie_seen
         try:
             cfg = export_rename.load_config()
         except Exception:
@@ -208,6 +214,7 @@ def _install_item_executed():
             pass
         if matched and cfg.get("enabled", True):
             _armed_until = time.time() + ARM_WINDOW
+            _armed_at = time.time()
             _log(u"ItemExecuted: ВЗВОД по «{}»".format(blob[:160]))
         elif matched:
             _log(u"ItemExecuted: совпало, но enabled=выкл")
@@ -227,7 +234,7 @@ def _install_item_executed():
 
 
 def _tick():
-    global _last_scan, _prev_tick, _last_fire, _armed_until, _busy, _ticks
+    global _last_scan, _prev_tick, _last_fire, _armed_until, _armed_hb, _busy, _ticks
 
     if _busy or export_rename is None:
         return
@@ -250,8 +257,16 @@ def _tick():
         return
 
     dialog_just_closed = bool(prev) and gap >= GAP_THRESHOLD
-    if not dialog_just_closed:
-        return  # экспорт ещё идёт (модальное окно открыто) — ждём
+    since_arm = now - _armed_at if _armed_at else 0.0
+    fallback = since_arm >= POST_CLICK_FALLBACK
+
+    if now - _armed_hb >= 15.0:
+        _armed_hb = now
+        _log(u"tick #{}: взведено, ждём завершения (пауза={}с, с клика={}с)".format(
+            _ticks, int(gap), int(since_arm)))
+
+    if not (dialog_just_closed or fallback):
+        return  # экспорт ещё идёт — ждём
 
     try:
         cfg = export_rename.load_config()
@@ -262,8 +277,9 @@ def _tick():
 
     _armed_until = 0.0  # один клик по кнопке экспорта = одна попытка
     _last_fire = now
-    _log(u"tick #{}: взведено + пауза {:.0f}с (окно экспорта закрылось) → "
-         u"проверяем выгрузку".format(_ticks, gap))
+    trg = u"пауза {}с (окно закрылось)".format(int(gap)) if dialog_just_closed \
+        else u"прошло {}с после клика, паузы не было".format(int(since_arm))
+    _log(u"tick #{}: взведено + {} → проверяем выгрузку".format(_ticks, trg))
 
     _busy = True
     try:
@@ -278,7 +294,7 @@ def _tick():
                 res = None
                 _log(_exc(u"rename_folder_interactive упал"))
             _log(u"tick: результат {}".format(res))
-        else:
+        elif dialog_just_closed:
             _log(u"tick: last_folder={!r} без свежих файлов → спрашиваем "
                  u"папку".format(last))
             try:
@@ -286,6 +302,9 @@ def _tick():
                     command_id_text=u"ModPlus: экспорт листов")
             except Exception:
                 _log(_exc(u"run_after_export упал"))
+        else:
+            _log(u"tick: last_folder={!r} без свежих файлов, паузы не было "
+                 u"— не спрашиваем (нажми кнопку вручную)".format(last))
     finally:
         _busy = False
 
@@ -307,20 +326,23 @@ def _has_fresh_match(folder, cfg, now):
 
 
 def status_text():
-    """Сводка состояния — для диагностической кнопки."""
+    """Сводка состояния — для диагностической кнопки. Всё в int/строках:
+    IronPython 2.7 роняет ``{:.0f}`` на int («Precision not allowed in
+    integer format specifier»)."""
     pg = _pg()
     now = time.time()
+    armed_left = int(max(0.0, _armed_until - now))
+    since_tick = int(now - _last_scan) if _last_scan else -1
+    since_fire = int(now - _last_fire) if _last_fire else -1
     lines = [
         u"export_watcher (лёгкая версия, без опроса Проводника):",
         u"  Idling подписан={}  ItemExecuted подписан={}".format(
-            pg["idling_installed"], pg["item_installed"]),
+            pg.get("idling_installed"), pg.get("item_installed")),
         u"  тиков Idling обработано={}  кликов по ленте залогировано={}".format(
             _ticks, _ie_seen),
-        u"  взведено={}  (осталось {:.0f}с)".format(
-            now < _armed_until, max(0.0, _armed_until - now)),
-        u"  последний тик {:.0f}с назад, последнее срабатывание {:.0f}с назад".format(
-            (now - _last_scan) if _last_scan else -1,
-            (now - _last_fire) if _last_fire else -1),
+        u"  взведено={}  (осталось {}с)".format(bool(now < _armed_until), armed_left),
+        u"  последний тик {}с назад, последнее срабатывание {}с назад".format(
+            since_tick, since_fire),
         u"  файл-выключатель {}: {}".format(
             OFF_NAME, u"ЕСТЬ (авто выкл)" if os.path.isfile(_off_file()) else u"нет"),
     ]
