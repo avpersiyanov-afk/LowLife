@@ -4,7 +4,10 @@
 
 ``install(host_app)`` вызывается из ``startup.py``, ``hooks/doc-opened.py``
 и из скриптов кнопок (``ensure_installed``) — что-нибудь да сработает;
-дубли отсекает процесс-глобальный словарь в ``sys``.
+дубли отсекает словарь в ``AppDomain.CurrentDomain`` (общий на весь
+процесс Revit; у каждого движка pyRevit свой ``sys``, поэтому sys-глобал
+не годился — каждый движок подписывался на статический ItemExecuted и
+запускал свой поллер, окно спрашивало дважды).
 
 Подписка на ``Autodesk.Windows.ComponentManager.ItemExecuted``: клик по
 кнопке ленты, чьи ``Id``/``Text``/``Cookie`` подходят под
@@ -49,10 +52,18 @@ LOG_NAME = "LowLifeExportRename_watcher.log"
 OFF_NAME = "LowLifeExportRename_OFF"
 _MAX_LOG_BYTES = 200 * 1024
 
-# Процесс-глобальные (переживают переимпорт модуля при перезагрузке pyRevit) —
-# чтобы не наплодить подписок на Idling/ItemExecuted при каждой перезагрузке.
-_SYS_KEY = "_lowlife_export_watcher"
-
+# Состояние должно быть общим для ВСЕГО процесса Revit, а не для одного
+# движка pyRevit: у каждого движка (startup.py / хук / кнопка / clean
+# engine) — свой sys, поэтому sys-глобал НЕ годится (иначе каждый движок
+# подпишется на статический ItemExecuted и запустит свой поллер — окно
+# спрашивает дважды). Храним в AppDomain.CurrentDomain (один на процесс).
+_SYS_KEY = "LowLife_ExportWatcher_State"
+_PG_DEFAULTS = {
+    "idling_installed": False, "item_installed": False,
+    "idling_host": None, "idling_delegate": None, "item_delegate": None,
+    "worker_running": False, "worker_started": 0.0,
+}
+_PG_FALLBACK = {}
 
 _ticks = 0
 _ie_seen = 0
@@ -61,18 +72,21 @@ WORKER_STUCK_AFTER = 600.0
 
 
 def _pg():
-    """Словарь процесс-глобального состояния, живущий в ``sys`` — переживает
-    переимпорт модуля и общий для всех его копий (защита от двойных
-    подписок и двойного запуска воркера при перезагрузке движка pyRevit)."""
-    d = getattr(sys, _SYS_KEY, None)
-    if d is None:
-        d = {"idling_installed": False, "item_installed": False,
-             "idling_host": None, "idling_delegate": None,
-             "item_delegate": None,
-             "worker_running": False, "worker_started": 0.0}
-        setattr(sys, _SYS_KEY, d)
-    d.setdefault("worker_running", False)
-    d.setdefault("worker_started", 0.0)
+    """Словарь состояния, общий на весь процесс Revit (через
+    ``AppDomain.CurrentDomain``, а не sys — sys у каждого движка pyRevit
+    свой). Защита от двойных подписок и двойного поллера."""
+    try:
+        from System import AppDomain
+        dom = AppDomain.CurrentDomain
+        d = dom.GetData(_SYS_KEY)
+        if d is None:
+            d = dict(_PG_DEFAULTS)
+            dom.SetData(_SYS_KEY, d)
+    except Exception:
+        d = _PG_FALLBACK
+    for k, v in _PG_DEFAULTS.items():
+        if k not in d:
+            d[k] = v
     return d
 
 
@@ -93,6 +107,42 @@ def _log_path():
 
 def _off_file():
     return os.path.join(_appdata_pyrevit(), OFF_NAME)
+
+
+def _lock_path():
+    return os.path.join(_appdata_pyrevit(), "LowLifeExportRename_worker.lock")
+
+
+def _acquire_lock():
+    """Атомарный файловый мьютекс поллера — на случай, если два движка
+    pyRevit всё же попытаются стартовать одновременно. True — захватили."""
+    path = _lock_path()
+    try:
+        if os.path.isfile(path) and \
+                time.time() - os.path.getmtime(path) > WORKER_STUCK_AFTER:
+            os.remove(path)  # протухший
+    except Exception:
+        pass
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except Exception:
+        return False
+    try:
+        os.write(fd, str(int(time.time())).encode("ascii"))
+    except Exception:
+        pass
+    try:
+        os.close(fd)
+    except Exception:
+        pass
+    return True
+
+
+def _release_lock():
+    try:
+        os.remove(_lock_path())
+    except Exception:
+        pass
 
 
 def _log(msg):
@@ -258,16 +308,21 @@ def _tick():
 
 def _start_poller(cfg, armed_at):
     """Запустить фоновый STA-поток, который дождётся папки выгрузки и
-    переименует. Идемпотентно (pg['worker_running'])."""
+    переименует. Двойной запуск отсекают: pg['worker_running'] (в пределах
+    процесса) + файловый мьютекс _acquire_lock (между движками pyRevit)."""
     pg = _pg()
     if pg.get("worker_running"):
-        _log(u"poller: уже работает — второй не запускаю")
+        _log(u"poller: уже работает (pg) — второй не запускаю")
+        return
+    if not _acquire_lock():
+        _log(u"poller: уже запущен (lock-файл) — второй не запускаю")
         return
     pg["worker_running"] = True
     pg["worker_started"] = time.time()
 
     def _done():
         _pg()["worker_running"] = False
+        _release_lock()
 
     def _run():
         try:
@@ -518,7 +573,18 @@ def _do_rename(folder, cfg):
         _log(u"_do_rename: пользователь отказался")
         return
 
-    renamed, errors = export_rename.apply_renames(ok)
+    # пока висел диалог, файлы могли уже переименоваться (другой запуск /
+    # ручная кнопка) — берём только то, что всё ещё валидно
+    try:
+        fresh_ok = [p for p in export_rename.plan_renames(folder, cfg)
+                    if p[2] == "ok"]
+    except Exception:
+        fresh_ok = ok
+    if not fresh_ok:
+        _log(u"_do_rename: после диалога переименовывать уже нечего")
+        return
+
+    renamed, errors = export_rename.apply_renames(fresh_ok)
     try:
         export_rename.save_config({"last_folder": folder})
     except Exception:

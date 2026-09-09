@@ -1175,7 +1175,10 @@ room_number_param)` — запись по точкам прохода, возв�
 ## export_watcher.py
 Автозапуск `export_rename`. `install()` зовётся из `startup.py`,
 `hooks/doc-opened.py` и из скриптов кнопок (`ensure_installed()`);
-идемпотентность — на уровне процесса (словарь в `sys._lowlife_export_watcher`
+идемпотентность — на весь процесс Revit (словарь в `AppDomain.CurrentDomain`,
+не `sys` — у каждого движка pyRevit свой sys; иначе каждый движок
+подписывался на статический `ItemExecuted` и окно спрашивало дважды) +
+атомарный lock-файл на запуск поллера
 — переживает перезагрузку движка pyRevit; висящие подписки старых версий
 снимает только перезапуск Revit).
 

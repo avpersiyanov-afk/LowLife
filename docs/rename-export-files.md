@@ -39,9 +39,12 @@ ModPlus собирают имя файла выгрузки из «номер л
 
 `export_watcher.install()` вызывается из `startup.py`, `hooks/doc-opened.py`
 и из скриптов кнопок (`ensure_installed()` — на случай, если первые два в
-этой сборке pyRevit не отработали). Дубли отсекает процесс-глобальный
-словарь в `sys` (переживает перезагрузку движка pyRevit, но не перезапуск
-Revit).
+этой сборке pyRevit не отработали). Дубли отсекает словарь в
+`AppDomain.CurrentDomain` (общий на весь процесс Revit — у каждого движка
+pyRevit свой `sys`, поэтому sys-глобал не годился: каждый движок
+подписывался на статический `ItemExecuted` и запускал свой поллер, окно
+спрашивало дважды). Плюс на запуск поллера — атомарный lock-файл
+`%APPDATA%\pyRevit\LowLifeExportRename_worker.lock`.
 
 **Триггер — `Autodesk.Windows.ComponentManager.ItemExecuted`**
 (`clr.AddReference("AdWindows")`). Клик по кнопке ленты, чьи
