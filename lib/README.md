@@ -1171,30 +1171,29 @@ room_number_param)` — запись по точкам прохода, возв�
 | `configure` | `configure()` | Окно настроек (Shift+клик) |
 
 ## export_watcher.py
-Автозапуск `export_rename` из `startup.py` (`install(host_app)`, один раз).
-Подписывается на два события:
-- **`Autodesk.Windows.ComponentManager.ItemExecuted`** (`AdWindows`,
-  `_subscribe_item_executed`) — клик по кнопке ленты, чьи `Id`/`Text`/
-  `Cookie` подходят под `command_matches`/`trigger_substrings` (по
-  умолчанию `mprSheetExport`), «взводит» переименование на `ARM_WINDOW`
-  (15 мин). Требует `enabled`;
-- **`UIApplication.Idling`** (тот же механизм, что в
-  `route_preview.schedule_preview_cleanup`) — раз в `SCAN_INTERVAL` (2 с)
-  ищет признак завершения: новое окно Проводника (COM `Shell.Application`)
-  или пауза между тиками > `GAP_THRESHOLD` (5 с) = закрылось модальное
-  окно экспорта.
+Автозапуск `export_rename`. `install()` зовётся из `startup.py` **и** из
+`hooks/doc-opened.py`; идемпотентность — на уровне процесса, не модуля
+(флаг в `sys._lowlife_export_watcher`, чтобы перезагрузка pyRevit не
+плодила подписки; висящие подписки от старых версий снимает только
+перезапуск Revit). **Лёгкая версия — без опроса окон Проводника** (COM
+`Shell.Application` на UI-потоке каждый тик подвешивал Revit при
+накоплении подписок). Подписывается на:
+- **`Autodesk.Windows.ComponentManager.ItemExecuted`** (`AdWindows`) —
+  клик по кнопке ленты, чьи `Id`/`Text`/`Cookie` подходят под
+  `command_matches`/`trigger_substrings` (дефолт `mprSheetExport`),
+  «взводит» переименование на `ARM_WINDOW` (15 мин). Требует `enabled`;
+- **`UIApplication.Idling`** (как `route_preview.schedule_preview_cleanup`)
+  — раз в `SCAN_INTERVAL` (2 с). Пока не взведено — тик выходит сразу.
+  Взведено + пауза между тиками > `GAP_THRESHOLD` (5 с, = модальное окно
+  экспорта закрылось) → `last_folder`: свежие (< `FRESH_SECONDS` = 30 мин)
+  файлы → `rename_folder_interactive(quiet_if_empty=True)`, иначе
+  `run_after_export` (спросить). Один клик = одна попытка (`_armed_until`
+  сбрасывается), потом пауза `REFIRE_GUARD` (20 с).
 
-Взведено + признак завершения → папка нового окна Проводника, иначе
-`last_folder`, иначе `run_after_export` (спросить) → файлы моложе
-`FRESH_SECONDS` (30 мин) → `rename_folder_interactive(quiet_if_empty=True)`.
-Один клик = одна попытка (`_armed_until` сбрасывается). Без `enabled` /
-`AdWindows` — только эвристика по `Idling` (как раньше). Глобалы:
-`_item_exec_ok`, `_armed_until`, `_seen_hwnds`, `_declined` (`DECLINE_QUIET`
-= 10 мин), `_last_fire` (`REFIRE_GUARD` = 20 с); оба делегата держатся в
-глобалах (иначе GC — хотя статическое `ItemExecuted` и так держит ссылку).
-Каждый тик перечитывает `watch_explorer` — выключение сразу, включение —
-после перезагрузки pyRevit. Ограничения — в шапке модуля и
-`docs/rename-export-files.md`.
+Всё пишется в `%APPDATA%\pyRevit\LowLifeExportRename_watcher.log`.
+`status_text()` — живая сводка (для диагностической кнопки). Аварийный
+выключатель — файл `%APPDATA%\pyRevit\LowLifeExportRename_OFF`. Штатный —
+`watch_explorer` в настройках.
 
 ## command_probe.py
 Тело кнопки `Tools.panel/CaptureExportCommand` («Поймать id команды») —
