@@ -70,6 +70,9 @@ DEFAULTS = {
     "extensions": [u".dwg", u".pdf"],
     # заходить ли в подпапки выбранной папки
     "recursive": True,
+    # показывать окно, если в выгрузке НЕ оказалось файлов с from_token
+    # (переименовывать нечего). False — тихо, только в лог.
+    "notify_nothing": True,
     # корневая папка выгрузки ModPlus (стабильная): ModPlus кладёт файлы в
     # подпапку с датой-временем внутри неё. Если задана — авто-режим сам
     # находит самую свежую подпапку и переименовывает в ней, без вопросов.
@@ -149,6 +152,7 @@ def load_config():
     cfg["enabled"] = bool(cfg["enabled"])
     cfg["watch_explorer"] = bool(cfg["watch_explorer"])
     cfg["recursive"] = bool(cfg["recursive"])
+    cfg["notify_nothing"] = bool(cfg["notify_nothing"])
     cfg["from_token"] = unicode(cfg["from_token"])
     cfg["to_token"] = unicode(cfg["to_token"])
     cfg["export_root"] = unicode(cfg["export_root"] or u"")
@@ -478,6 +482,14 @@ def configure():
         yes=True, no=True,
     )
 
+    notify_nothing = forms.alert(
+        u"Показывать окно, когда в выгрузке нет файлов с «{}» "
+        u"(переименовывать нечего)?\n\nСейчас: {}".format(
+            cfg["from_token"], u"да" if cfg["notify_nothing"] else u"нет"),
+        title=u"Пустая выгрузка",
+        yes=True, no=True,
+    )
+
     cfg.update({
         "watch_explorer": bool(watch_explorer),
         "enabled": bool(enabled),
@@ -487,6 +499,7 @@ def configure():
         "extensions": extensions,
         "export_root": root,
         "recursive": bool(recursive),
+        "notify_nothing": bool(notify_nothing),
     })
     if save_config(cfg):
         forms.alert(

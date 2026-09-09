@@ -434,42 +434,48 @@ def _newest_subdir_since(bases, min_mtime):
 
 
 def _folder_sig(folder, cfg):
-    """Быстрый «отпечаток» папки для проверки, дописал ли экспорт: mtime и
-    число подходящих файлов в самой папке и в подпапках 1-го уровня."""
+    """Быстрый «отпечаток» папки: mtime + число подходящих (`from_token` +
+    расширение) и вообще всех файлов, в самой папке и в подпапках 1-го
+    уровня. Возвращает ``(отпечаток, match_total, any_total)``:
+    ``any_total`` > 0 = экспорт что-то положил; сравнение целых отпечатков
+    = «папка перестала меняться»."""
     frm = cfg.get("from_token") or u"0000"
     exts = tuple((e or u"").lower() for e in (cfg.get("extensions") or ()))
 
-    def _count(d):
-        n = 0
+    def _counts(d):
+        match = any_n = 0
         try:
-            for name in os.listdir(d)[:400]:
+            for name in os.listdir(d)[:500]:
+                if not os.path.isfile(os.path.join(d, name)):
+                    continue
+                any_n += 1
                 if frm not in name:
                     continue
                 if exts and os.path.splitext(name)[1].lower() not in exts:
                     continue
-                if os.path.isfile(os.path.join(d, name)):
-                    n += 1
+                match += 1
         except Exception:
             pass
-        return n
+        return match, any_n
 
     parts = []
     try:
-        parts.append((u"", os.path.getmtime(folder), _count(folder)))
+        m, a = _counts(folder)
+        parts.append((u"", os.path.getmtime(folder), m, a))
     except Exception:
-        parts.append((u"", 0, 0))
+        parts.append((u"", 0, 0, 0))
     try:
         for name in sorted(os.listdir(folder))[:20]:
             sub = os.path.join(folder, name)
             try:
                 if os.path.isdir(sub):
-                    parts.append((name, os.path.getmtime(sub), _count(sub)))
+                    m, a = _counts(sub)
+                    parts.append((name, os.path.getmtime(sub), m, a))
             except Exception:
                 continue
     except Exception:
         pass
-    total = sum(p[2] for p in parts)
-    return (tuple(parts), total)
+    return (tuple(parts), sum(p[2] for p in parts), sum(p[3] for p in parts))
 
 
 def _poll_and_rename(cfg, armed_at):
@@ -502,7 +508,8 @@ def _poll_and_rename(cfg, armed_at):
 
         if folder:
             sig = _folder_sig(folder, cfg)
-            if sig[1] > 0 and sig == prev_sig:
+            # экспорт что-то положил (any>0) И папка перестала меняться
+            if sig[2] > 0 and sig == prev_sig:
                 stable += 1
                 if stable >= STABLE_CYCLES and \
                         time.time() - folder_seen_at >= MIN_SETTLE:
@@ -514,8 +521,10 @@ def _poll_and_rename(cfg, armed_at):
 
         if time.time() - hb >= 20:
             hb = time.time()
-            _log(u"poll: жду… folder={} файлов={}".format(
-                folder or u"—", prev_sig[1] if prev_sig else 0))
+            _log(u"poll: жду… folder={} с«{}»={} всего={}".format(
+                folder or u"—", cfg.get("from_token"),
+                prev_sig[1] if prev_sig else 0,
+                prev_sig[2] if prev_sig else 0))
         time.sleep(POLL_INTERVAL)
 
     if not chosen:
@@ -546,7 +555,11 @@ def _do_rename(folder, cfg):
         _log(u"  collision: {}  ->  {}".format(os.path.basename(s), os.path.basename(d)))
 
     if not ok and not coll:
-        _log(u"_do_rename: файлов с «{}» нет — молча выходим".format(cfg["from_token"]))
+        _log(u"_do_rename: файлов с «{}» нет".format(cfg["from_token"]))
+        if cfg.get("notify_nothing", True):
+            _msgbox(u"Папка: {}\n\nВ выгрузке нет файлов с «{}» — "
+                    u"переименовывать нечего.".format(folder, cfg["from_token"]),
+                    u"Переименование выгрузки")
         return
 
     if not ok:

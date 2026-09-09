@@ -61,11 +61,17 @@ pyRevit свой `sys`, поэтому sys-глобал не годился: к�
   рядом с `last_folder` (`_bases_to_watch`), ищет **новую** подпапку,
   созданную после клика (`_newest_subdir_since`, только `listdir`+`stat`);
 - как нашёл — ждёт «стабилизации»: `_folder_sig` (mtime + число подходящих
-  файлов в папке и подпапках 1-го уровня) не меняется `STABLE_CYCLES` (3)
-  подряд И прошло ≥ `MIN_SETTLE` (8 с) с появления папки = ModPlus дописал;
-- затем `plan_renames` → WinForms `MessageBox` да/нет → `apply_renames` →
-  итоговый `MessageBox`. `MessageBox`/`FolderBrowserDialog` работают из
-  фонового потока, Revit не блокируют;
+  и вообще всех файлов в папке и подпапках 1-го уровня) не меняется
+  `STABLE_CYCLES` (3) подряд, при этом файлов в папке уже есть (any>0) и
+  прошло ≥ `MIN_SETTLE` (8 с) с появления папки = ModPlus дописал;
+- затем `_do_rename`: `plan_renames` →
+  - есть что переименовать → WinForms `MessageBox` да/нет → `apply_renames`
+    (с перечитыванием плана) → итоговый `MessageBox`;
+  - только коллизии (целевые имена заняты) → окно с пояснением;
+  - вообще нет файлов с `from_token` → окно «переименовывать нечего»
+    (только если `notify_nothing`, по умолчанию да) либо тихо в лог.
+  `MessageBox`/`FolderBrowserDialog` работают из фонового потока, Revit не
+  блокируют;
 - если за `ARM_WINDOW` (15 мин) новой папки так и нет — спрашивает папку
   (`FolderBrowserDialog`).
 
@@ -92,7 +98,8 @@ pyRevit свой `sys`, поэтому sys-глобал не годился: к�
 `EXEC_PARAMS.config_mode` → `export_rename.configure()`: авто-режим
 (`watch_explorer`), взвод по клику (`enabled`), подстроки для опознания
 кнопки экспорта (`trigger_substrings`), `from_token` / `to_token`,
-расширения, **корень выгрузки ModPlus (`export_root`)**, обход подпапок.
+расширения, **корень выгрузки ModPlus (`export_root`)**, обход подпапок,
+показывать ли окно при пустой выгрузке (`notify_nothing`).
 Хранятся простым JSON в
 `%APPDATA%\pyRevit\LowLifeExportRename_settings.json` (тот же подход, что
 `scs_settings.py`, а не `pyrevit.script.get_config()`).

@@ -1159,8 +1159,9 @@ room_number_param)` — запись по точкам прохода, возв�
 `["mprsheetexport"]`), `from_token`/`to_token`, `extensions`
 (`[".dwg", ".pdf"]`), `recursive`, `export_root` (стабильный корень
 выгрузки ModPlus — внутри него ModPlus создаёт подпапку с датой-временем),
-`last_folder`, `last_seen_command` (справочно). Shift+клик по кнопке —
-`configure()`.
+`notify_nothing` (показывать окно, когда в выгрузке нет файлов с
+`from_token`; по умолчанию да), `last_folder`, `last_seen_command`
+(справочно). Shift+клик по кнопке — `configure()`.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
