@@ -1,32 +1,39 @@
 # -*- coding: utf-8 -*-
 """
-Слежение за открытием папки выгрузки в Проводнике.
+Слежение за завершением экспорта ModPlus (без хука на команду).
 
-ModPlus в конце экспорта листов открывает папку с результатом в Проводнике
-Windows. Точную папку определить программно нельзя (плагина в среде
-разработки нет, конфиг его не читаем), поймать команду ModPlus хуком тоже
-не вышло (см. ``docs/rename-export-files.md``), поэтому ловим момент по
-косвенному признаку — появлению нового окна Проводника.
+Хук на команду ModPlus не завёлся (нет журналов Revit, чтобы достать её
+id — см. ``docs/rename-export-files.md``), поэтому ``install(host_app)`` из
+``startup.py`` подписывается на ``UIApplication.Idling`` (Revit дёргает его
+в паузах между действиями — тот же механизм, что в
+``route_preview.schedule_preview_cleanup``) и раз в ``SCAN_INTERVAL`` сек
+проверяет два косвенных признака того, что экспорт только что закончился:
 
-``install(host_app)`` вызывается один раз из ``startup.py`` расширения. Он
-подписывается на ``UIApplication.Idling`` (Revit сам дёргает его в паузах
-между действиями пользователя — тот же механизм, что в
-``route_preview.schedule_preview_cleanup``). Не чаще раза в
-``SCAN_INTERVAL`` секунд обработчик перечисляет открытые окна Проводника
-через COM ``Shell.Application`` и, если появилось НОВОЕ окно на папке, где
-есть свежие (моложе ``FRESH_SECONDS``) файлы с ``from_token`` в имени,
-вызывает ``export_rename.rename_folder_interactive`` по этой папке.
+1. Новое окно Проводника. ModPlus в конце экспорта открывает папку с
+   результатом. Обработчик перечисляет окна Проводника через COM
+   ``Shell.Application``; появилось НОВОЕ окно — берём его папку.
+2. Закрытие модального окна. Окно экспорта ModPlus модальное (пока оно
+   открыто, другие команды недоступны) — значит и ``Idling`` при нём не
+   вызывается. Если пауза между обработанными тиками вышла больше
+   ``GAP_THRESHOLD`` — модальное окно только что закрылось; тогда
+   дополнительно проверяем прошлую папку выгрузки (``last_folder``): ModPlus
+   мог Проводник и не открыть, а экспорт часто идёт туда же.
+
+В обоих случаях, если в папке есть файлы с ``from_token`` в имени моложе
+``FRESH_SECONDS`` — вызывается ``rename_folder_interactive(...,
+quiet_if_empty=True)``. Ответил «Нет» — папка молчит ``DECLINE_QUIET`` сек;
+после любого срабатывания — пауза ``REFIRE_GUARD``.
 
 Ограничения (осознанные):
 - работает всю сессию Revit; лёгкий COM-поллинг окон;
-- сработает на ЛЮБОМ новом окне Проводника, если там окажутся свежие
-  подходящие файлы (фильтр по свежести + «не спрашивать дважды про ту же
-  папку» это почти исключает);
-- Проводник с вкладками (Win11): если папку откроют новой вкладкой в
-  существующем окне, а не отдельным окном — момент не поймается;
+- п.1 сработает на ЛЮБОМ новом окне Проводника со свежими подходящими
+  файлами; п.2 — после любого модального диалога, но только если в
+  ``last_folder`` лежат свежие ``from_token``-файлы;
+- Проводник с вкладками (Win11): папку, открытую новой вкладкой в
+  существующем окне, п.1 не ловит (остаётся п.2);
 - отключается: Shift+клик по кнопке «Переименование выгрузки» → «Следить
-  за открытием папки… : нет» (ключ ``watch_explorer``), применяется после
-  перезагрузки pyRevit.
+  … : нет» (ключ ``watch_explorer``); выключение — сразу, включение —
+  после перезагрузки pyRevit.
 """
 
 import os
@@ -38,17 +45,28 @@ except Exception:
     export_rename = None
 
 
-# Как часто (не чаще) перечислять окна Проводника, сек.
+# Как часто (не чаще) обрабатывать тик Idling, сек.
 SCAN_INTERVAL = 2.0
 # Считаем файл «только что выгруженным», если он моложе этого, сек.
 FRESH_SECONDS = 1800.0
+# Пауза между обработанными тиками больше этого = Idling был подавлен
+# (открыт модальный диалог — например окно экспорта ModPlus — либо шла
+# долгая команда). Момент закрытия такого диалога и есть сигнал
+# «экспорт, возможно, только что закончился» → проверить папку.
+GAP_THRESHOLD = 5.0
+# Не срабатывать повторно чаще, чем раз в столько секунд.
+REFIRE_GUARD = 20.0
+# Пользователь ответил «Нет» по папке — не спрашивать про неё столько секунд.
+DECLINE_QUIET = 600.0
 
 
 _installed = False
 _handler = None          # держим ссылку на делегат, иначе GC его заберёт
 _last_scan = 0.0
+_prev_tick = 0.0
+_last_fire = 0.0
 _seen_hwnds = set()
-_handled_dirs = set()
+_declined = {}           # dir_key -> время отказа
 _busy = False
 
 
@@ -88,7 +106,7 @@ def install(host_app):
 
 
 def _tick():
-    global _last_scan, _busy
+    global _last_scan, _prev_tick, _last_fire, _busy
 
     if _busy or export_rename is None:
         return
@@ -96,7 +114,14 @@ def _tick():
     now = time.time()
     if now - _last_scan < SCAN_INTERVAL:
         return
+
+    gap = now - _last_scan if _last_scan else 0.0
     _last_scan = now
+
+    # Idling был подавлен дольше обычного → закрылся модальный диалог
+    # (окно экспорта ModPlus?) или отработала долгая команда.
+    dialog_just_closed = _prev_tick and gap >= GAP_THRESHOLD
+    _prev_tick = now
 
     try:
         cfg = export_rename.load_config()
@@ -108,37 +133,54 @@ def _tick():
     try:
         windows = _explorer_windows()
     except Exception:
+        windows = []
+
+    if now - _last_fire < REFIRE_GUARD:
+        # обновить набор окон, но ничего не предлагать
+        _seen_hwnds.clear()
+        _seen_hwnds.update(h for h, _p in windows)
         return
 
     current_hwnds = set()
-    fresh_dirs = []
+    candidates = []  # (dir_key, path, label)
+
     for hwnd, path in windows:
         current_hwnds.add(hwnd)
         if hwnd in _seen_hwnds:
             continue
         key = _dir_key(path)
-        if key and key not in _handled_dirs and _has_fresh_match(path, cfg, now):
-            fresh_dirs.append((key, path))
+        if key and _fresh_and_not_declined(key, path, cfg, now):
+            candidates.append((key, path, u"Открыта папка: {}".format(path)))
 
-    # запомнить текущий набор окон (и убрать закрытые)
     _seen_hwnds.clear()
     _seen_hwnds.update(current_hwnds)
 
-    if not fresh_dirs:
+    # После закрытия модального диалога — ещё и прошлая папка выгрузки:
+    # ModPlus мог не открыть Проводник, но экспорт часто идёт в ту же папку.
+    if dialog_just_closed:
+        last = cfg.get("last_folder") or u""
+        key = _dir_key(last)
+        if (key and key not in [c[0] for c in candidates] and os.path.isdir(last)
+                and _fresh_and_not_declined(key, last, cfg, now)):
+            candidates.append((key, last, u"Похоже, экспорт завершился."))
+
+    if not candidates:
         return
 
     _busy = True
     try:
-        for key, path in fresh_dirs:
-            _handled_dirs.add(key)
+        for key, path, label in candidates:
+            _last_fire = time.time()
             try:
-                export_rename.rename_folder_interactive(
-                    path, cfg=cfg,
-                    source_label=u"Открыта папка: {}".format(path),
-                    quiet_if_empty=True,
+                res = export_rename.rename_folder_interactive(
+                    path, cfg=cfg, source_label=label, quiet_if_empty=True,
                 )
             except Exception:
-                pass
+                res = None
+            if res == "declined":
+                _declined[key] = time.time()
+            elif res == "renamed":
+                _declined.pop(key, None)
     finally:
         _busy = False
 
@@ -148,6 +190,13 @@ def _dir_key(path):
         return os.path.normcase(os.path.abspath(path))
     except Exception:
         return None
+
+
+def _fresh_and_not_declined(key, folder, cfg, now):
+    declined_at = _declined.get(key, 0)
+    if declined_at and now - declined_at < DECLINE_QUIET:
+        return False
+    return _has_fresh_match(folder, cfg, now)
 
 
 def _has_fresh_match(folder, cfg, now):

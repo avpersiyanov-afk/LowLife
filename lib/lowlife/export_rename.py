@@ -300,11 +300,15 @@ def rename_folder_interactive(folder, cfg=None, source_label=None,
     ``source_label`` — строка для показа в диалоге (id команды / «Проводник:
     …»). ``quiet_if_empty`` — не всплывать, если переименовывать нечего
     (для авто-режимов, чтобы не мешать).
+
+    Возвращает: ``"renamed"`` / ``"declined"`` (пользователь ответил «Нет»)
+    / ``"nothing"`` (менять нечего) — авто-режимы по этому решают, стоит ли
+    ещё раз соваться с той же папкой.
     """
     if cfg is None:
         cfg = load_config()
     if not folder or not os.path.isdir(folder):
-        return
+        return "nothing"
 
     plans = plan_renames(folder, cfg)
     ok = [p for p in plans if p[2] == "ok"]
@@ -314,7 +318,7 @@ def rename_folder_interactive(folder, cfg=None, source_label=None,
         if not quiet_if_empty:
             _toast(u"Файлов с «{}» в имени не найдено:\n{}".format(
                 cfg["from_token"], folder))
-        return
+        return "nothing"
 
     sample = u"\n".join(u"  {}  →  {}".format(
         os.path.basename(s), os.path.basename(d)) for s, d, _ in ok[:12])
@@ -335,11 +339,11 @@ def rename_folder_interactive(folder, cfg=None, source_label=None,
     if not ok:
         if not quiet_if_empty:
             _toast(msg)
-        return
+        return "nothing"
 
     if forms is not None and not forms.alert(msg, title=u"Переименование выгрузки",
                                              yes=True, no=True):
-        return
+        return "declined"
 
     renamed, errors = apply_renames(ok)
     save_config({"last_folder": folder})
@@ -353,6 +357,7 @@ def rename_folder_interactive(folder, cfg=None, source_label=None,
             u"\n".join(u"  {} — {}".format(os.path.basename(s), m)
                        for s, _d, m in errors[:8]))
     _toast(result)
+    return "renamed"
 
 
 def run_after_export(command_id_text=None, cfg=None):
@@ -379,7 +384,8 @@ def configure():
     cfg = load_config()
 
     watch_explorer = forms.alert(
-        u"Следить за открытием папки выгрузки в Проводнике и сразу "
+        u"Сам замечать завершение экспорта ModPlus (новое окно Проводника "
+        u"с папкой выгрузки / закрытие модального окна экспорта) и сразу "
         u"предлагать переименование?\n\n"
         u"Работает всю сессию Revit (startup.py). Сейчас: {}".format(
             u"да" if cfg["watch_explorer"] else u"нет"),

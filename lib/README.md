@@ -1171,20 +1171,23 @@ room_number_param)` — запись по точкам прохода, возв�
 | `configure` | `configure()` | Окно настроек (Shift+клик) |
 
 ## export_watcher.py
-Слежение за открытием папки выгрузки в Проводнике — обходной «автозапуск»
-для `export_rename`, раз хук на команду ModPlus не вышел. `install(host_app)`
-вызывается один раз из `startup.py` расширения, подписывается на
-`UIApplication.Idling` (тот же механизм отложенной работы, что в
-`route_preview.schedule_preview_cleanup`). Не чаще раза в `SCAN_INTERVAL`
-(2 с) перечисляет окна Проводника через COM `Shell.Application`; новое окно
-на папке со свежими (моложе `FRESH_SECONDS` = 30 мин) файлами `from_token`
-→ `export_rename.rename_folder_interactive(..., quiet_if_empty=True)`.
-`_seen_hwnds` (не считать уже открытые окна новыми) и `_handled_dirs` (не
-спрашивать дважды про ту же папку) — в модульных глобалах, делегат тоже
-держится в глобале (иначе GC). Каждый тик перечитывает `watch_explorer` —
-выключение действует сразу, включение — после перезагрузки pyRevit.
-Ограничения (Проводник с вкладками Win11, ложное срабатывание на чужом
-окне со свежими 0000-файлами) — в шапке модуля и `docs/rename-export-files.md`.
+Обходной «автозапуск» для `export_rename`, раз хук на команду ModPlus не
+вышел. `install(host_app)` вызывается один раз из `startup.py` расширения,
+подписывается на `UIApplication.Idling` (тот же механизм отложенной
+работы, что в `route_preview.schedule_preview_cleanup`). Не чаще раза в
+`SCAN_INTERVAL` (2 с) проверяет два признака завершения экспорта:
+(1) появилось **новое** окно Проводника (COM `Shell.Application`) — берём
+его папку; (2) пауза между тиками > `GAP_THRESHOLD` (5 с) = закрылось
+модальное окно (окно экспорта ModPlus) — проверяем `last_folder`. Папка со
+свежими (моложе `FRESH_SECONDS` = 30 мин) файлами `from_token` →
+`export_rename.rename_folder_interactive(..., quiet_if_empty=True)`.
+`_seen_hwnds` (не считать уже открытые окна новыми), `_declined` (папка,
+где ответили «Нет», молчит `DECLINE_QUIET` = 10 мин), `_last_fire`
+(`REFIRE_GUARD` = 20 с) — в модульных глобалах; делегат тоже держится в
+глобале (иначе GC). Каждый тик перечитывает `watch_explorer` — выключение
+сразу, включение — после перезагрузки pyRevit. Ограничения (вкладки
+Проводника Win11, ложное срабатывание) — в шапке модуля и
+`docs/rename-export-files.md`.
 
 ## Куда добавлять новое
 
