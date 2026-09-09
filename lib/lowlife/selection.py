@@ -46,6 +46,7 @@ def _bic_ids(*names):
 _JUNK_PICK_CATEGORY_IDS = _bic_ids(
     "OST_Grids", "OST_Levels", "OST_Lines", "OST_CLines", "OST_SketchLines",
     "OST_TextNotes", "OST_GenericAnnotation", "OST_RvtLinks",
+    "OST_GenericModel",
     "OST_Rooms", "OST_MEPSpaces", "OST_Areas",
     "OST_SectionBox", "OST_Cameras", "OST_Viewers", "OST_ScopeBoxes",
 )
@@ -56,9 +57,9 @@ class ModelElementSelectionFilter(ISelectionFilter):
     Пропускает только элементы текущей модели, не являющиеся аннотацией
     или служебной геометрией: отсекает элементы связанных файлов, всю
     аннотацию (CategoryType.Annotation — марки, размеры, текст), оси,
-    уровни, линии, опорные плоскости, вставки связей, помещения/зоны/
-    площади, рамки подрезки, виды/камеры. Тот же смысл, что и
-    manual_circuits._CircuitTargetSelectionFilter.
+    уровни, линии, опорные плоскости, обобщённые модели, вставки связей,
+    помещения/зоны/площади, рамки подрезки, виды/камеры. Тот же смысл,
+    что и manual_circuits._CircuitTargetSelectionFilter.
     """
 
     def AllowElement(self, elem):
