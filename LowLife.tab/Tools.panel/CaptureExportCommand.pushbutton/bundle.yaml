@@ -1,0 +1,4 @@
+tooltip: |
+  Диагностика: узнать точный идентификатор кнопки «Экспорт» ModPlus (или любой кнопки ленты) через Autodesk.Windows.ComponentManager.ItemExecuted. Нужен для хука автозапуска переименования выгрузки, раз журналы Revit не пишутся.
+
+  Порядок: обычный клик — включить перехват; нажать «Экспорт» в ModPlus; Shift+клик — показать пойманный id. Всё пишется в %APPDATA%\pyRevit\LowLifeExportRename_commands.log.

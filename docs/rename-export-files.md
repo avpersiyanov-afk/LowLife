@@ -104,19 +104,23 @@ except Exception:
 export_rename.run_after_export(command_id_text=cid)
 ```
 
-Нужен `<command-id>` команды экспорта ModPlus. Как достать — запустить
-ModPlus «Экспорт» один раз и посмотреть журнал Revit
-(`%LOCALAPPDATA%\Autodesk\Revit\Autodesk Revit <версия>\Journals\journal.*.txt`,
-самый свежий), строка вида:
+Нужен `<command-id>` команды экспорта ModPlus. Журналы Revit у
+пользователя не пишутся (2026-09-09), поэтому id ловим кнопкой
+**«Поймать id команды»** (`Tools.panel/CaptureExportCommand`,
+`lib/lowlife/command_probe.py`): обычный клик подписывается на
+`Autodesk.Windows.ComponentManager.ItemExecuted` (срабатывает на клик по
+любой кнопке ленты, в т.ч. плагинов), пользователь жмёт «Экспорт» в
+ModPlus, `Id`/`Text`/`Cookie` пойманного `RibbonItem` пишутся в
+`%APPDATA%\pyRevit\LowLifeExportRename_commands.log`; Shift+клик по кнопке
+показывает пойманное после последнего маркера и, если в строке есть
+`modplus`/`экспорт`, кладёт её `Id` в `last_seen_command`.
 
-```
-Jrn.RibbonEvent "Execute external command:CustomCtrl_%CustomCtrl_%ModPlus%mprExport…:…"
-```
-
-Идентификатор — токен `CustomCtrl_%CustomCtrl_%ModPlus%…` из этой строки.
 `command_matches` в модуле уже готов сопоставлять по подстроке
 (`trigger_substrings`), так что в имя файла хука можно поставить точный id,
 а фильтр оставить как есть.
 
-У пользователя журналы Revit на месте не создаются (2026-09-09) —
-поэтому этот путь пока отложен, работает слежение за Проводником выше.
+Событие `ComponentManager.ItemExecuted` статическое и может служить не
+только диагностикой, но и самим триггером: `export_watcher` мог бы
+подписаться на него в `startup.py` и «вооружать» переименование по клику
+именно на кнопку ModPlus «Экспорт» — но сперва надо убедиться, что оно в
+этой сборке ловит клики (для того и кнопка).
