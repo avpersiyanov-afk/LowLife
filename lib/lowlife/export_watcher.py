@@ -2,35 +2,31 @@
 """
 Автозапуск переименования выгрузки после экспорта ModPlus.
 
-Лёгкая версия — без опроса окон Проводника (COM ``Shell.Application`` на
-UI-потоке каждый тик оказался слишком тяжёлым и мог подвесить Revit).
+``install(host_app)`` вызывается из ``startup.py``, ``hooks/doc-opened.py``
+и из скриптов кнопок (``ensure_installed``) — что-нибудь да сработает;
+дубли отсекает процесс-глобальный словарь в ``sys``.
 
-``install(host_app)`` вызывается из ``startup.py`` И из
-``hooks/doc-opened.py`` (что-нибудь да сработает; дубли отсекает
-процесс-глобальный флаг в ``sys``) и подписывается на два события:
-
-**A. ``Autodesk.Windows.ComponentManager.ItemExecuted``** — клик по кнопке
-ленты. Если у кнопки ``Id``/``Text``/``Cookie`` подходит под
+Подписка на ``Autodesk.Windows.ComponentManager.ItemExecuted``: клик по
+кнопке ленты, чьи ``Id``/``Text``/``Cookie`` подходят под
 ``trigger_substrings`` (по умолчанию ``mprSheetExport`` — «Экспорт листов»
-ModPlus), переименование «взводится» на ``ARM_WINDOW`` сек. Требует
-``enabled``.
+ModPlus, нужен ``enabled``), СРАЗУ (ещё до открытия модального окна
+экспорта) запускает фоновый STA-поток ``_poll_and_rename``. Тот раз в
+``POLL_INTERVAL`` сек смотрит подпапки ``export_root`` / папки рядом с
+``last_folder``, ждёт появления новой (созданной после клика) и её
+«стабилизации» (``_folder_sig`` не меняется цикл — ModPlus дописал), затем
+``plan_renames`` → WinForms ``MessageBox`` да/нет → ``apply_renames`` →
+итоговый ``MessageBox``. Поиск идёт ПАРАЛЛЕЛЬНО экспорту, поэтому окно о
+переименовании появляется почти сразу после закрытия окна ModPlus. Вся
+работа с файлами и диалоги — вне UI-потока Revit (на сетевой шаре секунды;
+на UI-потоке подвешивало Revit).
 
-**B. ``UIApplication.Idling``** — раз в ``SCAN_INTERVAL`` сек. Если
-переименование взведено (A) и между обработанными тиками была пауза больше
-``GAP_THRESHOLD`` (окно экспорта ModPlus модальное → при нём ``Idling`` не
-вызывается → пауза = окно закрылось) — запускается ФОНОВЫЙ поток
-(``_worker_body``): ``_find_export_folder`` (свежая подпапка ``export_root``
-→ ``last_folder`` → свежая соседняя подпапка), ``plan_renames``, WinForms
-``MessageBox`` да/нет, ``apply_renames``. Всё это — вне UI-потока Revit
-(на сетевой шаре секунды; на UI-потоке подвешивало Revit). Тик Idling лишь
-запускает поток и ждёт его завершения (``_worker_running``). Один клик по
-кнопке экспорта = одна попытка.
+Idling-подписка осталась только для снятия зависшего флага
+(``WORKER_STUCK_AFTER``) — логику переименования она больше не трогает.
 
 Аварийный выключатель: файл ``%APPDATA%\\pyRevit\\LowLifeExportRename_OFF``
-(любого содержимого) — ``install`` тогда ничего не делает. Штатно —
-``watch_explorer`` в настройках кнопки.
-
-Весь ход пишется в ``%APPDATA%\\pyRevit\\LowLifeExportRename_watcher.log``.
+— ``install`` тогда ничего не делает. Штатно — ``watch_explorer`` в
+настройках кнопки. Весь ход — в
+``%APPDATA%\\pyRevit\\LowLifeExportRename_watcher.log``.
 """
 
 import os
@@ -45,21 +41,9 @@ except Exception:
     export_rename = None
 
 
-# Как часто (не чаще) обрабатывать тик Idling, сек.
-SCAN_INTERVAL = 2.0
-# Считаем файл «только что выгруженным», если он моложе этого, сек.
-FRESH_SECONDS = 1800.0
-# Пауза между обработанными тиками больше этого = Idling был подавлен
-# (модальное окно экспорта ModPlus / долгая команда) и только что снят.
-GAP_THRESHOLD = 5.0
-# На сколько секунд клик по кнопке экспорта «взводит» переименование.
+# Сколько секунд после клика по кнопке экспорта фоновый поллер ждёт папку
+# выгрузки, прежде чем сдаться (и спросить папку вручную).
 ARM_WINDOW = 900.0
-# Если паузы Idling так и не было (окно экспорта ModPlus не модальное) —
-# через столько секунд после клика всё равно проверить last_folder (но
-# только если там реально есть свежие файлы; папку не спрашивать).
-POST_CLICK_FALLBACK = 25.0
-# Не срабатывать повторно чаще, чем раз в столько секунд.
-REFIRE_GUARD = 20.0
 
 LOG_NAME = "LowLifeExportRename_watcher.log"
 OFF_NAME = "LowLifeExportRename_OFF"
@@ -70,12 +54,6 @@ _MAX_LOG_BYTES = 200 * 1024
 _SYS_KEY = "_lowlife_export_watcher"
 
 
-_armed_until = 0.0
-_armed_at = 0.0
-_armed_hb = 0.0
-_last_scan = 0.0
-_prev_tick = 0.0
-_last_fire = 0.0
 _ticks = 0
 _ie_seen = 0
 # если фоновый поток завис/умер — через столько секунд снять флаг
@@ -223,7 +201,7 @@ def _install_item_executed():
         return
 
     def _on_item_executed(sender, e):
-        global _armed_until, _armed_at, _ie_seen
+        global _ie_seen
         try:
             cfg = export_rename.load_config()
         except Exception:
@@ -243,9 +221,12 @@ def _install_item_executed():
         except Exception:
             pass
         if matched and cfg.get("enabled", True):
-            _armed_until = time.time() + ARM_WINDOW
-            _armed_at = time.time()
-            _log(u"ItemExecuted: ВЗВОД по «{}»".format(blob[:160]))
+            _log(u"ItemExecuted: ВЗВОД по «{}» → фоновое ожидание выгрузки".format(
+                blob[:120]))
+            # запускаем фоновый поллер ПРЯМО СЕЙЧАС (до открытия модального
+            # окна экспорта) — поиск папки идёт параллельно самому экспорту,
+            # поэтому окно о переименовании появляется почти сразу после него.
+            _start_poller(cfg, time.time())
         elif matched:
             _log(u"ItemExecuted: совпало, но enabled=выкл")
         elif _ie_seen < 25:
@@ -264,69 +245,23 @@ def _install_item_executed():
 
 
 def _tick():
-    global _last_scan, _prev_tick, _last_fire, _armed_until, _armed_hb, _ticks
-
-    if export_rename is None:
-        return
-    pg = _pg()
-    if pg["worker_running"]:
-        if time.time() - pg["worker_started"] > WORKER_STUCK_AFTER:
-            _log(u"фоновый поток завис — снимаю флаг")
-            pg["worker_running"] = False
-        else:
-            return
-
-    now = time.time()
-    if now - _last_scan < SCAN_INTERVAL:
-        return
-
-    gap = now - _last_scan if _last_scan else 0.0
-    prev = _prev_tick
-    _last_scan = now
-    _prev_tick = now
+    """Idling больше не запускает переименование (это делает фоновый поллер
+    из обработчика ItemExecuted). Здесь только снятие зависшего флага."""
+    global _ticks
     _ticks += 1
-
-    # ничего не взведено — самый частый случай, выходим максимально дёшево
-    if now >= _armed_until:
-        return
-
-    if now - _last_fire < REFIRE_GUARD:
-        return
-
-    dialog_just_closed = bool(prev) and gap >= GAP_THRESHOLD
-    since_arm = now - _armed_at if _armed_at else 0.0
-    fallback = since_arm >= POST_CLICK_FALLBACK
-
-    if now - _armed_hb >= 15.0:
-        _armed_hb = now
-        _log(u"tick #{}: взведено, ждём завершения (пауза={}с, с клика={}с)".format(
-            _ticks, int(gap), int(since_arm)))
-
-    if not (dialog_just_closed or fallback):
-        return  # экспорт ещё идёт — ждём
-
-    try:
-        cfg = export_rename.load_config()
-    except Exception:
-        return
-    if not cfg.get("watch_explorer", True) or not cfg.get("enabled", True):
-        return
-
-    _armed_until = 0.0  # один клик по кнопке экспорта = одна попытка
-    _last_fire = now
-    trg = u"пауза {}с (окно закрылось)".format(int(gap)) if dialog_just_closed \
-        else u"прошло {}с после клика, паузы не было".format(int(since_arm))
-    _log(u"tick #{}: взведено + {} → фоновый поиск выгрузки".format(_ticks, trg))
-
-    # ВСЯ работа с файлами (поиск папки, план, os.rename) и диалоги — в
-    # фоновом потоке. На сетевой шаре это секунды; на UI-потоке Revit
-    # внутри Idling оно подвешивало Revit.
-    _start_worker(cfg, now, allow_ask=dialog_just_closed)
-
-
-def _start_worker(cfg, now, allow_ask):
     pg = _pg()
-    if pg["worker_running"]:
+    if pg.get("worker_running") and \
+            time.time() - pg.get("worker_started", 0) > WORKER_STUCK_AFTER:
+        _log(u"фоновый поток завис ({}с) — снимаю флаг".format(WORKER_STUCK_AFTER))
+        pg["worker_running"] = False
+
+
+def _start_poller(cfg, armed_at):
+    """Запустить фоновый STA-поток, который дождётся папки выгрузки и
+    переименует. Идемпотентно (pg['worker_running'])."""
+    pg = _pg()
+    if pg.get("worker_running"):
+        _log(u"poller: уже работает — второй не запускаю")
         return
     pg["worker_running"] = True
     pg["worker_started"] = time.time()
@@ -334,36 +269,27 @@ def _start_worker(cfg, now, allow_ask):
     def _done():
         _pg()["worker_running"] = False
 
-    try:
-        from System.Threading import Thread, ThreadStart, ApartmentState
-    except Exception:
-        _log(_exc(u"нет System.Threading — работаю синхронно"))
-        try:
-            _worker_body(cfg, now, allow_ask)
-        finally:
-            _done()
-        return
-
     def _run():
         try:
-            _worker_body(cfg, now, allow_ask)
+            _poll_and_rename(cfg, armed_at)
         except Exception:
-            _log(_exc(u"_worker_body упал"))
+            _log(_exc(u"_poll_and_rename упал"))
         finally:
             _done()
 
     try:
+        from System.Threading import Thread, ThreadStart, ApartmentState
         t = Thread(ThreadStart(_run))
         t.IsBackground = True
         try:
-            t.SetApartmentState(ApartmentState.STA)  # для диалогов выбора папки
+            t.SetApartmentState(ApartmentState.STA)
         except Exception:
             pass
         t.Start()
     except Exception:
-        _log(_exc(u"не удалось запустить поток"))
+        _log(_exc(u"poller: поток не запустился — синхронно"))
         try:
-            _worker_body(cfg, now, allow_ask)
+            _poll_and_rename(cfg, armed_at)
         finally:
             _done()
 
@@ -408,47 +334,173 @@ def _pick_folder(start):
     return None
 
 
-def _worker_body(cfg, now, allow_ask):
-    """Фоновый поток: найти папку, построить план, спросить, переименовать.
-    Никакого Revit API — только os.* и WinForms-диалоги."""
-    t0 = time.time()
-    folder = _find_export_folder(cfg, now)
-    _log(u"worker: поиск папки {}с → {}".format(int(time.time() - t0), folder or u"—"))
+POLL_INTERVAL = 2.0        # как часто фон опрашивает папку выгрузки, сек
+NEW_FOLDER_GRACE = 20.0    # подпапка «этого экспорта» — не старше клика минус это
+STABLE_CYCLES = 3          # столько опросов подряд без изменений = ModPlus дописал
+MIN_SETTLE = 8.0           # но не раньше стольких секунд с появления папки
 
-    if not folder:
-        if not allow_ask:
-            _log(u"worker: папку не нашёл, паузы не было — не спрашиваю")
-            return
-        start = (cfg.get("export_root") or cfg.get("last_folder") or u"").strip()
-        folder = _pick_folder(start)
-        if not folder:
-            _log(u"worker: выбор папки отменён")
+
+def _bases_to_watch(cfg):
+    """Папки, в подпапках которых ищем результат экспорта."""
+    out = []
+    root = (cfg.get("export_root") or u"").strip()
+    if root and os.path.isdir(root):
+        out.append(root)
+    last = (cfg.get("last_folder") or u"").strip()
+    if last:
+        parent = os.path.dirname(last.rstrip(u"\\/"))
+        if parent and os.path.isdir(parent) and parent not in out:
+            out.append(parent)
+    return out
+
+
+def _newest_subdir_since(bases, min_mtime):
+    """Самая свежая подпапка 1-го уровня среди bases, если она не старше
+    ``min_mtime``. Только listdir + stat на подпапку — дёшево."""
+    best = None  # (mtime, path)
+    for base in bases:
+        try:
+            names = os.listdir(base)
+        except Exception:
+            continue
+        for name in names[:200]:
+            p = os.path.join(base, name)
+            try:
+                if not os.path.isdir(p):
+                    continue
+                m = os.path.getmtime(p)
+            except Exception:
+                continue
+            if best is None or m > best[0]:
+                best = (m, p)
+    if best and best[0] >= min_mtime:
+        return best[1]
+    return None
+
+
+def _folder_sig(folder, cfg):
+    """Быстрый «отпечаток» папки для проверки, дописал ли экспорт: mtime и
+    число подходящих файлов в самой папке и в подпапках 1-го уровня."""
+    frm = cfg.get("from_token") or u"0000"
+    exts = tuple((e or u"").lower() for e in (cfg.get("extensions") or ()))
+
+    def _count(d):
+        n = 0
+        try:
+            for name in os.listdir(d)[:400]:
+                if frm not in name:
+                    continue
+                if exts and os.path.splitext(name)[1].lower() not in exts:
+                    continue
+                if os.path.isfile(os.path.join(d, name)):
+                    n += 1
+        except Exception:
+            pass
+        return n
+
+    parts = []
+    try:
+        parts.append((u"", os.path.getmtime(folder), _count(folder)))
+    except Exception:
+        parts.append((u"", 0, 0))
+    try:
+        for name in sorted(os.listdir(folder))[:20]:
+            sub = os.path.join(folder, name)
+            try:
+                if os.path.isdir(sub):
+                    parts.append((name, os.path.getmtime(sub), _count(sub)))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    total = sum(p[2] for p in parts)
+    return (tuple(parts), total)
+
+
+def _poll_and_rename(cfg, armed_at):
+    """Фоновый поток: дождаться, пока ModPlus допишет папку выгрузки, и
+    переименовать. Никакого Revit API — только os.* и WinForms-диалоги."""
+    bases = _bases_to_watch(cfg)
+    _log(u"poll: слежу за {}".format(bases or u"— (нет ни export_root, ни last_folder)"))
+    deadline = armed_at + ARM_WINDOW
+    min_mtime = armed_at - NEW_FOLDER_GRACE
+
+    prev_sig = None
+    stable = 0
+    chosen = None
+    folder = None
+    folder_seen_at = 0.0
+    last_rescan = 0.0
+    hb = time.time()
+
+    while time.time() < deadline:
+        # полный обзор подпапок — только пока папка не найдена, потом раз в 10с
+        if bases and (folder is None or time.time() - last_rescan > 10):
+            last_rescan = time.time()
+            nf = _newest_subdir_since(bases, min_mtime)
+            if nf and nf != folder:
+                folder = nf
+                folder_seen_at = time.time()
+                prev_sig = None
+                stable = 0
+                _log(u"poll: вижу папку {}".format(folder))
+
+        if folder:
+            sig = _folder_sig(folder, cfg)
+            if sig[1] > 0 and sig == prev_sig:
+                stable += 1
+                if stable >= STABLE_CYCLES and \
+                        time.time() - folder_seen_at >= MIN_SETTLE:
+                    chosen = folder
+                    break
+            else:
+                stable = 0
+            prev_sig = sig
+
+        if time.time() - hb >= 20:
+            hb = time.time()
+            _log(u"poll: жду… folder={} файлов={}".format(
+                folder or u"—", prev_sig[1] if prev_sig else 0))
+        time.sleep(POLL_INTERVAL)
+
+    if not chosen:
+        chosen = folder or (_newest_subdir_since(bases, min_mtime) if bases else None)
+    if not chosen:
+        _log(u"poll: папку выгрузки не нашёл за {}с — спрошу вручную".format(
+            int(ARM_WINDOW)))
+        chosen = _pick_folder((cfg.get("export_root")
+                               or cfg.get("last_folder") or u"").strip())
+        if not chosen:
+            _log(u"poll: папка не выбрана — выхожу")
             return
 
+    _log(u"poll: папка выгрузки → {}".format(chosen))
+    _do_rename(chosen, cfg)
+
+
+def _do_rename(folder, cfg):
     try:
         plans = export_rename.plan_renames(folder, cfg)
     except Exception:
-        _log(_exc(u"worker: plan_renames упал"))
+        _log(_exc(u"_do_rename: plan_renames упал"))
         return
     ok = [p for p in plans if p[2] == "ok"]
     coll = [p for p in plans if p[2] == "collision"]
-    _log(u"worker: план {} — ok={} collision={}".format(folder, len(ok), len(coll)))
+    _log(u"_do_rename: {} — ok={} collision={}".format(folder, len(ok), len(coll)))
     for s, d, _st in coll:
         _log(u"  collision: {}  ->  {}".format(os.path.basename(s), os.path.basename(d)))
 
     if not ok and not coll:
-        _log(u"worker: файлов с «{}» нет — молча выходим".format(cfg["from_token"]))
+        _log(u"_do_rename: файлов с «{}» нет — молча выходим".format(cfg["from_token"]))
         return
 
     if not ok:
-        # всё упёрлось в занятые имена — не молчим, показываем что и почему
         clist = u"\n".join(u"  {}".format(os.path.basename(s)) for s, _d, _ in coll[:20])
         _msgbox(
             u"Папка: {}\n\nПереименовать нечего: у всех {} файла(ов) с «{}» "
             u"целевое имя «{}…» уже занято другим файлом в этой папке "
             u"(перезаписывать не стал — потеряется второй лист):\n{}\n\n"
-            u"Если это два РАЗНЫХ листа — дайте им разные имена листа; тогда "
-            u"имена файлов не совпадут.".format(
+            u"Если это два РАЗНЫХ листа — дайте им разные имена листа.".format(
                 folder, len(coll), cfg["from_token"], cfg["to_token"], clist),
             u"Переименование выгрузки")
         return
@@ -463,7 +515,7 @@ def _worker_body(cfg, now, allow_ask):
         msg += u"\n\nПропущу {} (целевое имя занято).".format(len(coll))
 
     if not _msgbox(msg, u"Переименование выгрузки", yesno=True):
-        _log(u"worker: пользователь отказался")
+        _log(u"_do_rename: пользователь отказался")
         return
 
     renamed, errors = export_rename.apply_renames(ok)
@@ -471,7 +523,7 @@ def _worker_body(cfg, now, allow_ask):
         export_rename.save_config({"last_folder": folder})
     except Exception:
         pass
-    _log(u"worker: переименовано {} ошибок {}".format(renamed, len(errors)))
+    _log(u"_do_rename: переименовано {} ошибок {}".format(renamed, len(errors)))
     res = u"Переименовано: {}".format(renamed)
     if coll:
         res += u"\nПропущено (имя занято): {}".format(len(coll))
@@ -480,141 +532,18 @@ def _worker_body(cfg, now, allow_ask):
     _msgbox(res, u"Переименование выгрузки")
 
 
-# ВАЖНО: всё это выполняется на UI-потоке Revit внутри Idling. Никаких
-# os.walk / plan_renames по сетевой папке здесь — только строго
-# ограниченный обзор (иначе Revit виснет). Рекурсивный обход — уже потом,
-# в rename_folder_interactive, и только по ОДНОЙ найденной папке запуска.
-MAX_SUBDIRS_SCAN = 5      # проверяем только столько самых свежих подпапок
-SCAN_NAME_BUDGET = 400    # и не больше стольких имён всего за один обзор
-
-
-def _light_fresh_mtime(folder, cfg, budget, now):
-    """max mtime свежего подходящего файла ПРЯМО в folder (без рекурсии).
-    ``budget`` — список [n]: сколько имён ещё можно просмотреть."""
-    frm = cfg.get("from_token") or u"0000"
-    exts = tuple((e or u"").lower() for e in (cfg.get("extensions") or ()))
-    best = None
-    try:
-        names = os.listdir(folder)
-    except Exception:
-        return None
-    for name in names:
-        if budget[0] <= 0:
-            break
-        budget[0] -= 1
-        if frm not in name:
-            continue
-        if exts and os.path.splitext(name)[1].lower() not in exts:
-            continue
-        p = os.path.join(folder, name)
-        try:
-            if not os.path.isfile(p):
-                continue
-            m = os.path.getmtime(p)
-        except Exception:
-            continue
-        if now - m <= FRESH_SECONDS and (best is None or m > best):
-            best = m
-    return best
-
-
-def _scan_subdirs(base, cfg, now, include_base):
-    """Ограниченный обзор: до MAX_SUBDIRS_SCAN самых свежих (по mtime самой
-    папки) подпапок base; в каждой — файлы прямо в ней и на 1 уровень
-    глубже (ModPlus: «<дата-время>\\DWG\\», «...\\PDF\\»). Возвращает
-    подпапку 1-го уровня со свежими файлами, иначе (при include_base) сам
-    base, иначе None. Без рекурсии и без plan_renames."""
-    if not base or not os.path.isdir(base):
-        return None
-
-    budget = [SCAN_NAME_BUDGET]
-    subs = []
-    try:
-        for name in os.listdir(base):
-            p = os.path.join(base, name)
-            try:
-                if os.path.isdir(p):
-                    subs.append((os.path.getmtime(p), p))
-            except Exception:
-                continue
-    except Exception:
-        subs = []
-    subs.sort(reverse=True)
-    subs = subs[:MAX_SUBDIRS_SCAN]
-
-    best = None  # (file_mtime, level-1 subdir)
-    for _dm, d in subs:
-        if budget[0] <= 0:
-            break
-        m = _light_fresh_mtime(d, cfg, budget, now)
-        if m is None:
-            try:
-                for name in os.listdir(d):
-                    if budget[0] <= 0:
-                        break
-                    dd = os.path.join(d, name)
-                    try:
-                        if not os.path.isdir(dd):
-                            continue
-                    except Exception:
-                        continue
-                    mm = _light_fresh_mtime(dd, cfg, budget, now)
-                    if mm is not None and (m is None or mm > m):
-                        m = mm
-            except Exception:
-                pass
-        if m is not None and (best is None or m > best[0]):
-            best = (m, d)
-
-    if best:
-        return best[1]
-    if include_base and _light_fresh_mtime(base, cfg, [SCAN_NAME_BUDGET], now) is not None:
-        return base
-    return None
-
-
-def _find_export_folder(cfg, now):
-    """Где лежит только что выгруженное. По приоритету:
-    1) свежая подпапка export_root; 2) сам last_folder (+1 уровень);
-    3) свежая соседняя подпапка рядом с last_folder (ModPlus кладёт в
-    «<корень>\\<дата-время>\\»)."""
-    root = (cfg.get("export_root") or u"").strip()
-    if root:
-        f = _scan_subdirs(root, cfg, now, include_base=True)
-        if f:
-            return f
-
-    last = (cfg.get("last_folder") or u"").strip()
-    if last and os.path.isdir(last):
-        f = _scan_subdirs(last, cfg, now, include_base=True)
-        if f:
-            return f
-        parent = os.path.dirname(last.rstrip(u"\\/"))
-        f = _scan_subdirs(parent, cfg, now, include_base=False)
-        if f:
-            return f
-    return None
-
-
 def status_text():
     """Сводка состояния — для диагностической кнопки. Всё в int/строках:
     IronPython 2.7 роняет ``{:.0f}`` на int («Precision not allowed in
     integer format specifier»)."""
     pg = _pg()
-    now = time.time()
-    armed_left = int(max(0.0, _armed_until - now))
-    since_tick = int(now - _last_scan) if _last_scan else -1
-    since_fire = int(now - _last_fire) if _last_fire else -1
     lines = [
-        u"export_watcher (лёгкая версия, без опроса Проводника):",
+        u"export_watcher (поллер из ItemExecuted, без Idling-логики):",
         u"  Idling подписан={}  ItemExecuted подписан={}".format(
             pg.get("idling_installed"), pg.get("item_installed")),
-        u"  тиков Idling обработано={}  кликов по ленте залогировано={}".format(
+        u"  тиков Idling={}  кликов по ленте залогировано={}".format(
             _ticks, _ie_seen),
-        u"  взведено={}  (осталось {}с)".format(bool(now < _armed_until), armed_left),
-        u"  фоновый поток работает={}".format(pg.get("worker_running")),
-        u"  последний тик {}с назад, последнее срабатывание {}с назад".format(
-            since_tick, since_fire),
+        u"  фоновый поллер работает={}".format(pg.get("worker_running")),
         u"  файл-выключатель {}: {}".format(
             OFF_NAME, u"ЕСТЬ (авто выкл)" if os.path.isfile(_off_file()) else u"нет"),
     ]

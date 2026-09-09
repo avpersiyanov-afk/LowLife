@@ -1173,29 +1173,32 @@ room_number_param)` — запись по точкам прохода, возв�
 | `configure` | `configure()` | Окно настроек (Shift+клик) |
 
 ## export_watcher.py
-Автозапуск `export_rename`. `install()` зовётся из `startup.py` **и** из
-`hooks/doc-opened.py`; идемпотентность — на уровне процесса, не модуля
-(флаг в `sys._lowlife_export_watcher`, чтобы перезагрузка pyRevit не
-плодила подписки; висящие подписки от старых версий снимает только
-перезапуск Revit). **Лёгкая версия — без опроса окон Проводника** (COM
-`Shell.Application` на UI-потоке каждый тик подвешивал Revit при
-накоплении подписок). Подписывается на:
-- **`Autodesk.Windows.ComponentManager.ItemExecuted`** (`AdWindows`) —
-  клик по кнопке ленты, чьи `Id`/`Text`/`Cookie` подходят под
-  `command_matches`/`trigger_substrings` (дефолт `mprSheetExport`),
-  «взводит» переименование на `ARM_WINDOW` (15 мин). Требует `enabled`;
-- **`UIApplication.Idling`** (как `route_preview.schedule_preview_cleanup`)
-  — раз в `SCAN_INTERVAL` (2 с). Пока не взведено — тик выходит сразу.
-  Взведено + пауза между тиками > `GAP_THRESHOLD` (5 с, = модальное окно
-  экспорта закрылось) → `_find_export_folder` (свежая подпапка
-  `export_root` → сам `last_folder` → свежая соседняя подпапка рядом с
-  `last_folder`; свежесть = файл < `FRESH_SECONDS` = 30 мин) →
-  `rename_folder_interactive(quiet_if_empty=True)`, иначе `run_after_export`
-  (спросить). Один клик = одна попытка (`_armed_until` сбрасывается), потом
-  пауза `REFIRE_GUARD` (20 с).
+Автозапуск `export_rename`. `install()` зовётся из `startup.py`,
+`hooks/doc-opened.py` и из скриптов кнопок (`ensure_installed()`);
+идемпотентность — на уровне процесса (словарь в `sys._lowlife_export_watcher`
+— переживает перезагрузку движка pyRevit; висящие подписки старых версий
+снимает только перезапуск Revit).
+
+Подписка на **`Autodesk.Windows.ComponentManager.ItemExecuted`**
+(`AdWindows`): клик по кнопке ленты, чьи `Id`/`Text`/`Cookie` подходят под
+`command_matches`/`trigger_substrings` (дефолт `mprSheetExport`, нужен
+`enabled`), **сразу** (до открытия модального окна экспорта) запускает
+фоновый STA-поток `_poll_and_rename`. Тот раз в `POLL_INTERVAL` (2 с)
+через `_bases_to_watch` (`export_root` + папка рядом с `last_folder`)
+ищет новую подпапку (`_newest_subdir_since` — только `listdir`+`stat`),
+ждёт стабилизации `_folder_sig` (`STABLE_CYCLES`=3 без изменений и
+≥`MIN_SETTLE`=8 с с появления) = ModPlus дописал, затем
+`plan_renames` → WinForms `MessageBox` да/нет → `apply_renames` →
+итоговый `MessageBox` (`_do_rename`). Всё — вне UI-потока Revit (на
+сетевой шаре секунды, на UI-потоке подвешивало Revit); поиск идёт
+параллельно экспорту. Нет папки за `ARM_WINDOW` (15 мин) —
+`FolderBrowserDialog`.
+
+`Idling`-подписка (`_tick`) осталась только для снятия зависшего флага
+`worker_running` (`WORKER_STUCK_AFTER` = 10 мин).
 
 Всё пишется в `%APPDATA%\pyRevit\LowLifeExportRename_watcher.log`.
-`status_text()` — живая сводка (для диагностической кнопки). Аварийный
+`status_text()` — сводка (для диагностической кнопки). Аварийный
 выключатель — файл `%APPDATA%\pyRevit\LowLifeExportRename_OFF`. Штатный —
 `watch_explorer` в настройках.
 
