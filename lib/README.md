@@ -1153,12 +1153,14 @@ room_number_param)` — запись по точкам прохода, возв�
 `hooks/command-after-exec[<id>].py` уже есть.
 
 Настройки — обычный JSON `%APPDATA%\pyRevit\LowLifeExportRename_settings.json`
-(тот же подход, что `scs_settings.py`): `watch_explorer` (слежение за
-Проводником), `enabled` (автозапуск по команде), `trigger_substrings`
-(подстроки идентификатора команды-триггера, регистр не важен; по умолчанию
-`["modplus"]`), `from_token`/`to_token`, `extensions` (`[".dwg", ".pdf"]`),
-`recursive`, `last_folder`, `last_seen_command` (справочно). Shift+клик по
-кнопке — `configure()`.
+(тот же подход, что `scs_settings.py`): `watch_explorer` (авто-режим),
+`enabled` (взвод по клику на кнопку экспорта), `trigger_substrings`
+(подстроки Id/Text/Cookie кнопки, регистр не важен; по умолчанию
+`["mprsheetexport"]`), `from_token`/`to_token`, `extensions`
+(`[".dwg", ".pdf"]`), `recursive`, `export_root` (стабильный корень
+выгрузки ModPlus — внутри него ModPlus создаёт подпапку с датой-временем),
+`last_folder`, `last_seen_command` (справочно). Shift+клик по кнопке —
+`configure()`.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -1185,10 +1187,12 @@ room_number_param)` — запись по точкам прохода, возв�
 - **`UIApplication.Idling`** (как `route_preview.schedule_preview_cleanup`)
   — раз в `SCAN_INTERVAL` (2 с). Пока не взведено — тик выходит сразу.
   Взведено + пауза между тиками > `GAP_THRESHOLD` (5 с, = модальное окно
-  экспорта закрылось) → `last_folder`: свежие (< `FRESH_SECONDS` = 30 мин)
-  файлы → `rename_folder_interactive(quiet_if_empty=True)`, иначе
-  `run_after_export` (спросить). Один клик = одна попытка (`_armed_until`
-  сбрасывается), потом пауза `REFIRE_GUARD` (20 с).
+  экспорта закрылось) → `_find_export_folder` (свежая подпапка
+  `export_root` → сам `last_folder` → свежая соседняя подпапка рядом с
+  `last_folder`; свежесть = файл < `FRESH_SECONDS` = 30 мин) →
+  `rename_folder_interactive(quiet_if_empty=True)`, иначе `run_after_export`
+  (спросить). Один клик = одна попытка (`_armed_until` сбрасывается), потом
+  пауза `REFIRE_GUARD` (20 с).
 
 Всё пишется в `%APPDATA%\pyRevit\LowLifeExportRename_watcher.log`.
 `status_text()` — живая сводка (для диагностической кнопки). Аварийный

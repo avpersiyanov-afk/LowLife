@@ -304,46 +304,101 @@ def _tick():
 
     _busy = True
     try:
-        last = cfg.get("last_folder") or u""
-        if last and os.path.isdir(last) and _has_fresh_match(last, cfg, now):
-            _log(u"tick: last_folder со свежими файлами → {}".format(last))
+        folder = _find_export_folder(cfg, now)
+        if folder:
+            _log(u"tick: папка выгрузки → {}".format(folder))
             try:
                 res = export_rename.rename_folder_interactive(
-                    last, cfg=cfg, source_label=u"Экспорт ModPlus завершён.",
+                    folder, cfg=cfg, source_label=u"Экспорт ModPlus завершён.",
                     quiet_if_empty=True)
             except Exception:
                 res = None
                 _log(_exc(u"rename_folder_interactive упал"))
             _log(u"tick: результат {}".format(res))
         elif dialog_just_closed:
-            _log(u"tick: last_folder={!r} без свежих файлов → спрашиваем "
-                 u"папку".format(last))
+            _log(u"tick: свежую папку выгрузки не нашёл (export_root={!r}, "
+                 u"last_folder={!r}) → спрашиваем".format(
+                     cfg.get("export_root"), cfg.get("last_folder")))
             try:
                 export_rename.run_after_export(
                     command_id_text=u"ModPlus: экспорт листов")
             except Exception:
                 _log(_exc(u"run_after_export упал"))
         else:
-            _log(u"tick: last_folder={!r} без свежих файлов, паузы не было "
-                 u"— не спрашиваем (нажми кнопку вручную)".format(last))
+            _log(u"tick: свежую папку не нашёл, паузы не было — не спрашиваем "
+                 u"(нажми кнопку вручную)")
     finally:
         _busy = False
 
 
-def _has_fresh_match(folder, cfg, now):
+def _freshest_match_mtime(folder, cfg, now):
+    """Максимальный mtime среди свежих подходящих файлов в folder, иначе
+    None. Учитывает cfg['recursive']."""
     try:
         plans = export_rename.plan_renames(folder, cfg)
     except Exception:
-        return False
+        return None
+    best = None
     for src, _dst, status in plans:
         if status != "ok":
             continue
         try:
-            if now - os.path.getmtime(src) <= FRESH_SECONDS:
-                return True
+            m = os.path.getmtime(src)
         except Exception:
             continue
-    return False
+        if now - m <= FRESH_SECONDS and (best is None or m > best):
+            best = m
+    return best
+
+
+def _has_fresh_match(folder, cfg, now):
+    return _freshest_match_mtime(folder, cfg, now) is not None
+
+
+def _scan_subdirs(base, cfg, now, include_base):
+    """Подпапка 1-го уровня base с самыми свежими подходящими файлами.
+    Если ни в одной — и include_base — сам base (файлы могли лечь прямо в
+    корень). None, если нигде ничего свежего."""
+    if not base or not os.path.isdir(base):
+        return None
+    best = None  # (mtime, path)
+    try:
+        names = sorted(os.listdir(base))
+    except Exception:
+        names = []
+    for name in names:
+        p = os.path.join(base, name)
+        if not os.path.isdir(p):
+            continue
+        ts = _freshest_match_mtime(p, cfg, now)
+        if ts is not None and (best is None or ts > best[0]):
+            best = (ts, p)
+    if best:
+        return best[1]
+    if include_base and _freshest_match_mtime(base, cfg, now) is not None:
+        return base
+    return None
+
+
+def _find_export_folder(cfg, now):
+    """Где лежит только что выгруженное. По приоритету:
+    1) свежая подпапка export_root; 2) сам last_folder; 3) свежая соседняя
+    подпапка рядом с last_folder (ModPlus кладёт в «выпуск\\<дата-время>»)."""
+    root = (cfg.get("export_root") or u"").strip()
+    if root:
+        f = _scan_subdirs(root, cfg, now, include_base=True)
+        if f:
+            return f
+
+    last = (cfg.get("last_folder") or u"").strip()
+    if last:
+        if os.path.isdir(last) and _has_fresh_match(last, cfg, now):
+            return last
+        parent = os.path.dirname(last.rstrip(u"\\/"))
+        f = _scan_subdirs(parent, cfg, now, include_base=False)
+        if f:
+            return f
+    return None
 
 
 def status_text():
@@ -370,9 +425,11 @@ def status_text():
     try:
         cfg = export_rename.load_config()
         lines.append(
-            u"  cfg: watch_explorer={} enabled={} trigger={} last_folder={!r}".format(
+            u"  cfg: watch_explorer={} enabled={} trigger={}".format(
                 cfg.get("watch_explorer"), cfg.get("enabled"),
-                cfg.get("trigger_substrings"), cfg.get("last_folder")))
+                cfg.get("trigger_substrings")))
+        lines.append(u"  export_root={!r}".format(cfg.get("export_root")))
+        lines.append(u"  last_folder={!r}".format(cfg.get("last_folder")))
     except Exception:
         lines.append(u"  cfg: не прочитать")
     lines.append(u"  лог: {}".format(_log_path()))

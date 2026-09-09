@@ -66,6 +66,10 @@ DEFAULTS = {
     "extensions": [u".dwg", u".pdf"],
     # заходить ли в подпапки выбранной папки
     "recursive": True,
+    # корневая папка выгрузки ModPlus (стабильная): ModPlus кладёт файлы в
+    # подпапку с датой-временем внутри неё. Если задана — авто-режим сам
+    # находит самую свежую подпапку и переименовывает в ней, без вопросов.
+    "export_root": u"",
     # последняя использованная папка выгрузки (подставляется в диалоге)
     "last_folder": u"",
     # последний идентификатор команды, на котором сработал хук
@@ -143,6 +147,7 @@ def load_config():
     cfg["recursive"] = bool(cfg["recursive"])
     cfg["from_token"] = unicode(cfg["from_token"])
     cfg["to_token"] = unicode(cfg["to_token"])
+    cfg["export_root"] = unicode(cfg["export_root"] or u"")
     cfg["last_folder"] = unicode(cfg["last_folder"] or u"")
     cfg["last_seen_command"] = unicode(cfg["last_seen_command"] or u"")
     return cfg
@@ -444,6 +449,18 @@ def configure():
         return
     extensions = [_norm_ext(e) for e in exts.split(u",") if _norm_ext(e)]
 
+    root = forms.ask_for_string(
+        default=cfg["export_root"],
+        prompt=u"Корневая папка выгрузки ModPlus (та, ВНУТРИ которой ModPlus "
+               u"создаёт подпапку с датой-временем). Если задать — авто-режим "
+               u"сам найдёт свежую подпапку и переименует в ней без вопросов. "
+               u"Пусто — будет спрашивать папку.",
+        title=u"Папка выгрузки",
+    )
+    if root is None:
+        return
+    root = root.strip()
+
     recursive = forms.alert(
         u"Заходить в подпапки выбранной папки?\n\nСейчас: {}".format(
             u"да" if cfg["recursive"] else u"нет"),
@@ -458,18 +475,21 @@ def configure():
         "from_token": frm,
         "to_token": to,
         "extensions": extensions,
+        "export_root": root,
         "recursive": bool(recursive),
     })
     if save_config(cfg):
         forms.alert(
-            u"Сохранено.\n\nСлежение за Проводником: {}\nАвтозапуск по команде: "
-            u"{}\nТриггер: {}\nЗамена: «{}» → «{}»\nФайлы: {}\nПодпапки: {}\n\n"
-            u"Слежение за Проводником применится после перезагрузки pyRevit.".format(
+            u"Сохранено.\n\nАвто-режим: {}\nВзвод по клику: {}\nТриггер: {}\n"
+            u"Замена: «{}» → «{}»\nФайлы: {}\nКорень выгрузки: {}\nПодпапки: {}\n\n"
+            u"Авто-режим применится после перезагрузки pyRevit (или при первом "
+            u"клике по кнопке).".format(
                 u"да" if cfg["watch_explorer"] else u"нет",
                 u"да" if cfg["enabled"] else u"нет",
                 u", ".join(trigger_substrings) or u"—",
                 cfg["from_token"], cfg["to_token"],
                 u", ".join(extensions) or u"любые",
+                root or u"— (спрашивать)",
                 u"да" if cfg["recursive"] else u"нет"),
             title=u"Переименование выгрузки — настройки",
         )
