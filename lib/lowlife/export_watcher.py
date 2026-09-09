@@ -61,7 +61,7 @@ _SYS_KEY = "LowLife_ExportWatcher_State"
 _PG_DEFAULTS = {
     "idling_installed": False, "item_installed": False,
     "idling_host": None, "idling_delegate": None, "item_delegate": None,
-    "worker_running": False, "worker_started": 0.0,
+    "worker_running": False, "worker_started": 0.0, "worker_token": None,
 }
 _PG_FALLBACK = {}
 
@@ -309,7 +309,9 @@ def _tick():
 def _start_poller(cfg, armed_at):
     """Запустить фоновый STA-поток, который дождётся папки выгрузки и
     переименует. Двойной запуск отсекают: pg['worker_running'] (в пределах
-    процесса) + файловый мьютекс _acquire_lock (между движками pyRevit)."""
+    процесса) + файловый мьютекс _acquire_lock (между движками pyRevit).
+    Уникальный token: если стартует новый поллер, старый увидит чужой
+    token и выйдет сам."""
     pg = _pg()
     if pg.get("worker_running"):
         _log(u"poller: уже работает (pg) — второй не запускаю")
@@ -317,16 +319,20 @@ def _start_poller(cfg, armed_at):
     if not _acquire_lock():
         _log(u"poller: уже запущен (lock-файл) — второй не запускаю")
         return
+    token = u"{}-{}".format(int(time.time() * 1000), id(cfg))
     pg["worker_running"] = True
     pg["worker_started"] = time.time()
+    pg["worker_token"] = token
 
     def _done():
-        _pg()["worker_running"] = False
+        p = _pg()
+        if p.get("worker_token") == token:      # не сбрасываем чужой поллер
+            p["worker_running"] = False
         _release_lock()
 
     def _run():
         try:
-            _poll_and_rename(cfg, armed_at)
+            _poll_and_rename(cfg, armed_at, token)
         except Exception:
             _log(_exc(u"_poll_and_rename упал"))
         finally:
@@ -344,7 +350,7 @@ def _start_poller(cfg, armed_at):
     except Exception:
         _log(_exc(u"poller: поток не запустился — синхронно"))
         try:
-            _poll_and_rename(cfg, armed_at)
+            _poll_and_rename(cfg, armed_at, token)
         finally:
             _done()
 
@@ -478,9 +484,11 @@ def _folder_sig(folder, cfg):
     return (tuple(parts), sum(p[2] for p in parts), sum(p[3] for p in parts))
 
 
-def _poll_and_rename(cfg, armed_at):
+def _poll_and_rename(cfg, armed_at, token=None):
     """Фоновый поток: дождаться, пока ModPlus допишет папку выгрузки, и
-    переименовать. Никакого Revit API — только os.* и WinForms-диалоги."""
+    переименовать. Никакого Revit API — только os.* и WinForms-диалоги.
+    ``token`` — метка этого запуска; если в pg появился другой token,
+    поток лишний и выходит."""
     bases = _bases_to_watch(cfg)
 
     # Первый запуск на этой машине: ни export_root, ни last_folder не заданы —
@@ -515,6 +523,15 @@ def _poll_and_rename(cfg, armed_at):
     hb = time.time()
 
     while time.time() < deadline:
+        # этот поток лишний, если: флаг сняли (_tick по WORKER_STUCK_AFTER)
+        # или стартовал более новый поллер (другой token) — выходим, не
+        # плодим зомби-потоки
+        pgnow = _pg()
+        if not pgnow.get("worker_running") or \
+                (token is not None and pgnow.get("worker_token") not in (None, token)):
+            _log(u"poll: этот поток больше не активен — выхожу")
+            return
+
         # полный обзор подпапок — только пока папка не найдена, потом раз в 10с
         if bases and (folder is None or time.time() - last_rescan > 10):
             last_rescan = time.time()
