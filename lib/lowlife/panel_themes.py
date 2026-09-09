@@ -26,6 +26,11 @@ is cross-discipline (deletes any circuit type), so it is only listed under
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
 
+"Service" theme ("Служебное" in the ComboBox) holds rarely-needed helpers
+that live physically on Tools.panel — RenameExportFiles and
+CaptureExportCommand — kept off the "General" list so they don't clutter
+the everyday toolset (the rename runs itself on export anyway).
+
 Tray*.panel ("Лестничный лоток"/"Неперфорированный лоток"/"Перфорированный
 лоток"/"Проволочный лоток"/"Лотки на кровле") are grouped under their own
 theme, "КНК" — named after the workset every one of their buttons switches
@@ -131,17 +136,19 @@ THEMES = {
         (u"Tools", u"RoomInfo"),
         (u"Tools", u"RoomTags"),
         (u"Tools", u"ZoomToElement"),
-        (u"Tools", u"RenameExportFiles"),
-        (u"Tools", u"CaptureExportCommand"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),
         (u"Music", u"VolumeDown"),
         (u"Music", u"VolumeUp"),
     ],
+    u"Service": [
+        (u"Tools", u"RenameExportFiles"),
+        (u"Tools", u"CaptureExportCommand"),
+    ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"КНК", u"Circuits", u"Settings", u"General"]
+THEME_NAMES = [u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"КНК", u"Circuits", u"Settings", u"General", u"Service"]
 
 # A pyRevit RibbonPanel's runtime .name mirrors the Revit API RibbonPanel.Name,
 # which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
