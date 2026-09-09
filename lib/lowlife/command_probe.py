@@ -138,8 +138,28 @@ def arm():
         u"Лог: {}".format(_log_path()))
 
 
+def _watcher_diag():
+    """Сводка авто-режима переименования (export_watcher) + хвост его лога —
+    чтобы понять, почему «не работает»."""
+    out = []
+    try:
+        from lowlife import export_watcher
+        out.append(export_watcher.status_text())
+        try:
+            with io.open(export_watcher._log_path(), "r", encoding="utf-8") as f:
+                wl = f.read().splitlines()
+            out.append(u"\n--- watcher.log (последние 40 строк) ---")
+            out.extend(wl[-40:] or [u"(лог пуст — startup.py и hooks/doc-opened "
+                                    u"не выполнились или упали до записи)"])
+        except Exception:
+            out.append(u"watcher.log не прочитать")
+    except Exception as exc:
+        out.append(u"export_watcher не импортировать: {}".format(exc))
+    return u"\n".join(out)
+
+
 def show_results():
-    """Shift+клик: показать пойманное после последнего маркера."""
+    """Shift+клик: пойманные команды + диагностика авто-режима."""
     if forms is None:
         return
 
@@ -160,10 +180,9 @@ def show_results():
 
     if not tail:
         forms.alert(
-            u"После последнего включения ничего не поймано.\n\n"
-            u"Порядок: обычный клик по кнопке (включит перехват) → кнопка "
-            u"«Экспорт» в ModPlus → Shift+клик по кнопке.\n\n"
-            u"Лог: {}".format(path))
+            u"Перехват команд: после последнего включения ничего не поймано "
+            u"(обычный клик по кнопке → «Экспорт» в ModPlus → Shift+клик).\n\n"
+            u"{}".format(_watcher_diag()))
         return
 
     best = None
@@ -192,4 +211,5 @@ def show_results():
         else:
             msg += u"\n\n(строки Id нет — пришли мне эту строку целиком)"
 
+    msg += u"\n\n" + _watcher_diag()
     forms.alert(msg)
