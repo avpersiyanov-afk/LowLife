@@ -184,6 +184,45 @@ def _watcher_diag():
     return u"\n".join(out)
 
 
+def _report_path():
+    return os.path.join(os.path.dirname(_log_path()),
+                        "LowLifeExportRename_report.txt")
+
+
+def _emit(text):
+    """Показать текст так, чтобы его можно было СКОПИРОВАТЬ: файл в блокноте
+    + окно вывода pyRevit + короткий alert со ссылкой на файл."""
+    path = _report_path()
+    try:
+        with io.open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+    except Exception:
+        path = None
+
+    try:
+        from pyrevit import script
+        out = script.get_output()
+        out.print_md(u"```\n{}\n```".format(text))
+    except Exception:
+        try:
+            print(text)
+        except Exception:
+            pass
+
+    try:
+        if path:
+            os.startfile(path)  # откроется в Блокноте — оттуда копируется
+    except Exception:
+        pass
+
+    if forms is not None:
+        if path:
+            forms.alert(u"Отчёт открыт в Блокноте и сохранён:\n{}\n\n"
+                        u"Пришли этот файл (или его текст / скриншот).".format(path))
+        else:
+            forms.alert(text)
+
+
 def show_results():
     """Shift+клик: пойманные команды + диагностика авто-режима."""
     if forms is None:
@@ -205,44 +244,40 @@ def show_results():
     tail.reverse()
     tail = [ln for ln in tail if ln.strip()]
 
-    if not tail:
-        forms.alert(
-            u"{}\n\n"
-            u"Перехват команд: после последнего включения ничего не поймано "
-            u"(обычный клик по кнопке → «Экспорт листов» в ModPlus → "
-            u"Shift+клик).\n\n{}".format(kick, _watcher_diag()))
-        return
+    parts = [kick, u""]
 
-    best = None
-    for ln in tail:
-        low = ln.lower()
-        if u"modplus" in low and (u"export" in low or u"экспорт" in low):
-            best = ln
-            break
-    if best is None:  # запаснее: любая строка ModPlus
+    if tail:
+        best = None
         for ln in tail:
-            if u"modplus" in ln.lower():
+            low = ln.lower()
+            if u"modplus" in low and (u"export" in low or u"экспорт" in low):
                 best = ln
                 break
+        if best is None:
+            for ln in tail:
+                if u"modplus" in ln.lower():
+                    best = ln
+                    break
 
-    msg = u"{}\n\nПоймано после последнего включения:\n\n{}\n\nПолный лог:\n{}".format(
-        kick, u"\n".join(tail), path)
-
-    if best:
-        cid = u""
-        for part in best.split(u" | "):
-            if part.strip().startswith(u"Id="):
-                cid = part.split(u"=", 1)[1].strip()
-        msg += u"\n\nПохоже на ModPlus «Экспорт»:\n{}".format(best)
-        if cid:
-            msg += u"\n\nId для хука: {}".format(cid)
-            if export_rename is not None:
+        parts.append(u"=== перехваченные кнопки ленты ===")
+        parts.extend(tail)
+        if best:
+            cid = u""
+            for pt in best.split(u" | "):
+                if pt.strip().startswith(u"Id="):
+                    cid = pt.split(u"=", 1)[1].strip()
+            parts.append(u"\nПохоже на ModPlus «Экспорт»: {}".format(best))
+            if cid and export_rename is not None:
                 try:
                     export_rename.save_config({"last_seen_command": cid})
                 except Exception:
                     pass
-        else:
-            msg += u"\n\n(строки Id нет — пришли мне эту строку целиком)"
+    else:
+        parts.append(u"=== перехваченные кнопки: пусто ===")
+        parts.append(u"(обычный клик по кнопке → «Экспорт листов» в ModPlus "
+                     u"→ Shift+клик)")
 
-    msg += u"\n\n" + _watcher_diag()
-    forms.alert(msg)
+    parts.append(u"")
+    parts.append(_watcher_diag())
+
+    _emit(u"\n".join(parts))
