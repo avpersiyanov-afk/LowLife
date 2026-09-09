@@ -18,10 +18,13 @@ ModPlus), переименование «взводится» на ``ARM_WINDOW`
 **B. ``UIApplication.Idling``** — раз в ``SCAN_INTERVAL`` сек. Если
 переименование взведено (A) и между обработанными тиками была пауза больше
 ``GAP_THRESHOLD`` (окно экспорта ModPlus модальное → при нём ``Idling`` не
-вызывается → пауза = окно закрылось) — берётся ``last_folder``; если там
-есть свежие (моложе ``FRESH_SECONDS``) файлы с ``from_token`` в имени →
-``rename_folder_interactive``, иначе один раз спрашивается
-(``run_after_export``). Один клик по кнопке экспорта = одна попытка.
+вызывается → пауза = окно закрылось) — запускается ФОНОВЫЙ поток
+(``_worker_body``): ``_find_export_folder`` (свежая подпапка ``export_root``
+→ ``last_folder`` → свежая соседняя подпапка), ``plan_renames``, WinForms
+``MessageBox`` да/нет, ``apply_renames``. Всё это — вне UI-потока Revit
+(на сетевой шаре секунды; на UI-потоке подвешивало Revit). Тик Idling лишь
+запускает поток и ждёт его завершения (``_worker_running``). Один клик по
+кнопке экспорта = одна попытка.
 
 Аварийный выключатель: файл ``%APPDATA%\\pyRevit\\LowLifeExportRename_OFF``
 (любого содержимого) — ``install`` тогда ничего не делает. Штатно —
@@ -75,7 +78,10 @@ _prev_tick = 0.0
 _last_fire = 0.0
 _ticks = 0
 _ie_seen = 0
-_busy = False
+_worker_running = False
+_worker_started = 0.0
+# если фоновый поток завис/умер — через столько секунд снять флаг
+WORKER_STUCK_AFTER = 600.0
 
 
 def _pg():
@@ -255,10 +261,17 @@ def _install_item_executed():
 
 
 def _tick():
-    global _last_scan, _prev_tick, _last_fire, _armed_until, _armed_hb, _busy, _ticks
+    global _last_scan, _prev_tick, _last_fire, _armed_until, _armed_hb
+    global _worker_running, _ticks
 
-    if _busy or export_rename is None:
+    if export_rename is None:
         return
+    if _worker_running:
+        if time.time() - _worker_started > WORKER_STUCK_AFTER:
+            _log(u"фоновый поток завис — снимаю флаг")
+            _worker_running = False
+        else:
+            return
 
     now = time.time()
     if now - _last_scan < SCAN_INTERVAL:
@@ -300,42 +313,150 @@ def _tick():
     _last_fire = now
     trg = u"пауза {}с (окно закрылось)".format(int(gap)) if dialog_just_closed \
         else u"прошло {}с после клика, паузы не было".format(int(since_arm))
-    _log(u"tick #{}: взведено + {} → проверяем выгрузку".format(_ticks, trg))
+    _log(u"tick #{}: взведено + {} → фоновый поиск выгрузки".format(_ticks, trg))
 
-    _busy = True
+    # ВСЯ работа с файлами (поиск папки, план, os.rename) и диалоги — в
+    # фоновом потоке. На сетевой шаре это секунды; на UI-потоке Revit
+    # внутри Idling оно подвешивало Revit.
+    _start_worker(cfg, now, allow_ask=dialog_just_closed)
+
+
+def _start_worker(cfg, now, allow_ask):
+    global _worker_running, _worker_started
+    if _worker_running:
+        return
+    _worker_running = True
+    _worker_started = time.time()
+
     try:
-        t0 = time.time()
+        from System.Threading import Thread, ThreadStart, ApartmentState
+    except Exception:
+        # нет .NET-потоков — крайний случай, синхронно (может подвиснуть)
+        _log(_exc(u"нет System.Threading — работаю синхронно"))
         try:
-            folder = _find_export_folder(cfg, now)
+            _worker_body(cfg, now, allow_ask)
+        finally:
+            _worker_running = False
+        return
+
+    def _run():
+        global _worker_running
+        try:
+            _worker_body(cfg, now, allow_ask)
         except Exception:
-            folder = None
-            _log(_exc(u"_find_export_folder упал"))
-        _log(u"tick: поиск папки {}с → {}".format(
-            int(time.time() - t0), folder or u"—"))
-        if folder:
-            _log(u"tick: папка выгрузки → {}".format(folder))
-            try:
-                res = export_rename.rename_folder_interactive(
-                    folder, cfg=cfg, source_label=u"Экспорт ModPlus завершён.",
-                    quiet_if_empty=True)
-            except Exception:
-                res = None
-                _log(_exc(u"rename_folder_interactive упал"))
-            _log(u"tick: результат {}".format(res))
-        elif dialog_just_closed:
-            _log(u"tick: свежую папку выгрузки не нашёл (export_root={!r}, "
-                 u"last_folder={!r}) → спрашиваем".format(
-                     cfg.get("export_root"), cfg.get("last_folder")))
-            try:
-                export_rename.run_after_export(
-                    command_id_text=u"ModPlus: экспорт листов")
-            except Exception:
-                _log(_exc(u"run_after_export упал"))
-        else:
-            _log(u"tick: свежую папку не нашёл, паузы не было — не спрашиваем "
-                 u"(нажми кнопку вручную)")
-    finally:
-        _busy = False
+            _log(_exc(u"_worker_body упал"))
+        finally:
+            _worker_running = False
+
+    try:
+        t = Thread(ThreadStart(_run))
+        t.IsBackground = True
+        try:
+            t.SetApartmentState(ApartmentState.STA)  # для диалогов выбора папки
+        except Exception:
+            pass
+        t.Start()
+    except Exception:
+        _log(_exc(u"не удалось запустить поток"))
+        try:
+            _worker_body(cfg, now, allow_ask)
+        finally:
+            _worker_running = False
+
+
+def _msgbox(text, title, yesno=False):
+    """WinForms MessageBox — работает из фонового потока, не блокирует UI
+    Revit. Возвращает True/False для yesno, иначе None."""
+    try:
+        import clr
+        clr.AddReference("System.Windows.Forms")
+        from System.Windows.Forms import (
+            MessageBox, MessageBoxButtons, MessageBoxIcon,
+            MessageBoxDefaultButton, MessageBoxOptions, DialogResult)
+        opts = MessageBoxOptions.DefaultDesktopOnly  # показать поверх, без владельца
+        if yesno:
+            r = MessageBox.Show(text, title, MessageBoxButtons.YesNo,
+                                MessageBoxIcon.Question,
+                                MessageBoxDefaultButton.Button1, opts)
+            return r == DialogResult.Yes
+        MessageBox.Show(text, title, MessageBoxButtons.OK,
+                        MessageBoxIcon.Information,
+                        MessageBoxDefaultButton.Button1, opts)
+        return None
+    except Exception:
+        _log(_exc(u"_msgbox упал"))
+        return None
+
+
+def _pick_folder(start):
+    try:
+        import clr
+        clr.AddReference("System.Windows.Forms")
+        from System.Windows.Forms import FolderBrowserDialog, DialogResult
+        dlg = FolderBrowserDialog()
+        dlg.Description = u"Папка, куда ModPlus сложил файлы"
+        if start and os.path.isdir(start):
+            dlg.SelectedPath = start
+        if dlg.ShowDialog() == DialogResult.OK and os.path.isdir(dlg.SelectedPath):
+            return dlg.SelectedPath
+    except Exception:
+        _log(_exc(u"_pick_folder упал"))
+    return None
+
+
+def _worker_body(cfg, now, allow_ask):
+    """Фоновый поток: найти папку, построить план, спросить, переименовать.
+    Никакого Revit API — только os.* и WinForms-диалоги."""
+    t0 = time.time()
+    folder = _find_export_folder(cfg, now)
+    _log(u"worker: поиск папки {}с → {}".format(int(time.time() - t0), folder or u"—"))
+
+    if not folder:
+        if not allow_ask:
+            _log(u"worker: папку не нашёл, паузы не было — не спрашиваю")
+            return
+        start = (cfg.get("export_root") or cfg.get("last_folder") or u"").strip()
+        folder = _pick_folder(start)
+        if not folder:
+            _log(u"worker: выбор папки отменён")
+            return
+
+    try:
+        plans = export_rename.plan_renames(folder, cfg)
+    except Exception:
+        _log(_exc(u"worker: plan_renames упал"))
+        return
+    ok = [p for p in plans if p[2] == "ok"]
+    coll = [p for p in plans if p[2] == "collision"]
+    _log(u"worker: план {} — ok={} collision={}".format(folder, len(ok), len(coll)))
+    if not ok:
+        return
+
+    sample = u"\n".join(u"  {}  →  {}".format(
+        os.path.basename(s), os.path.basename(d)) for s, d, _ in ok[:15])
+    if len(ok) > 15:
+        sample += u"\n  … ещё {}".format(len(ok) - 15)
+    msg = u"Папка: {}\n\nПереименовать «{}» → «{}» в {} файле(ах)?\n{}".format(
+        folder, cfg["from_token"], cfg["to_token"], len(ok), sample)
+    if coll:
+        msg += u"\n\nПропущу {} (целевое имя занято).".format(len(coll))
+
+    if not _msgbox(msg, u"Переименование выгрузки", yesno=True):
+        _log(u"worker: пользователь отказался")
+        return
+
+    renamed, errors = export_rename.apply_renames(ok)
+    try:
+        export_rename.save_config({"last_folder": folder})
+    except Exception:
+        pass
+    _log(u"worker: переименовано {} ошибок {}".format(renamed, len(errors)))
+    res = u"Переименовано: {}".format(renamed)
+    if coll:
+        res += u"\nПропущено (имя занято): {}".format(len(coll))
+    if errors:
+        res += u"\nОшибок: {}".format(len(errors))
+    _msgbox(res, u"Переименование выгрузки")
 
 
 # ВАЖНО: всё это выполняется на UI-потоке Revit внутри Idling. Никаких
@@ -470,6 +591,7 @@ def status_text():
         u"  тиков Idling обработано={}  кликов по ленте залогировано={}".format(
             _ticks, _ie_seen),
         u"  взведено={}  (осталось {}с)".format(bool(now < _armed_until), armed_left),
+        u"  фоновый поток работает={}".format(_worker_running),
         u"  последний тик {}с назад, последнее срабатывание {}с назад".format(
             since_tick, since_fire),
         u"  файл-выключатель {}: {}".format(
