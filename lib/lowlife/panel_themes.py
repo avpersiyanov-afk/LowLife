@@ -132,6 +132,7 @@ THEMES = {
         (u"Tools", u"RoomInfo"),
         (u"Tools", u"RoomTags"),
         (u"Tools", u"ZoomToElement"),
+        (u"Tools", u"RenameExportFiles"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),

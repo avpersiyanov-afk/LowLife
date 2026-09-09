@@ -1129,6 +1129,36 @@ room_number_param)` — запись по точкам прохода, возв�
 |---|---|---|
 | `press_key` | `press_key(key)` | Имитирует нажатие и отпускание виртуальной клавиши `key` через `ctypes`/`user32` |
 
+## export_rename.py
+Тело кнопки `Tools.panel/RenameExportFiles` («Переименование выгрузки») и
+хука `hooks/command-after-exec.py`. После экспорта листов из Revit/ModPlus
+переименовывает выгруженные файлы, заменяя в имени одну подстроку на другую
+(по умолчанию «0000» → «000», меняются **все** вхождения) — обход конфликта
+имён, когда два листа идут под одним номером, но с разными именами.
+
+Папку выгрузки программно не определить (ModPlus в этой среде нет, его
+конфиг не читаем), поэтому `run_after_export` — полуавтомат: спрашивает
+папку с подставленным прошлым путём (`last_folder`), показывает список пар
+«старое → новое», переименовывает `os.rename`. В модели Revit ничего не
+меняется — транзакция не нужна. Коллизии (целевое имя уже занято) в план
+попадают со статусом `"collision"` и пропускаются.
+
+Настройки — обычный JSON `%APPDATA%\pyRevit\LowLifeExportRename_settings.json`
+(тот же подход, что `scs_settings.py`): `enabled` (автозапуск из хука),
+`trigger_substrings` (подстроки идентификатора команды-триггера, регистр не
+важен; по умолчанию `["modplus"]`), `from_token`/`to_token`, `extensions`
+(`[".dwg", ".pdf"]`), `recursive`, `last_folder`, `last_seen_command`
+(справочно). Shift+клик по кнопке — `configure()`.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `load_config` / `save_config` | `load_config()` / `save_config(cfg)` | Настройки из JSON поверх `DEFAULTS` (с нормализацией типов) / запись изменённых ключей |
+| `command_matches` | `command_matches(command_id_text, cfg=None)` | `True`, если текст идентификатора команды содержит любую из `trigger_substrings` |
+| `plan_renames` | `plan_renames(folder, cfg=None)` | Список `(src, dst, status)` (`"ok"`/`"collision"`) по файлам папки; при `cfg["recursive"]` — и подпапки |
+| `apply_renames` | `apply_renames(plans)` | Переименовывает пары со статусом `"ok"`; `(renamed, errors)` |
+| `run_after_export` | `run_after_export(command_id_text=None, cfg=None)` | Полный сценарий: спросить папку → показать план → подтверждение → переименовать → toast. Вызывается из хука и из кнопки |
+| `configure` | `configure()` | Окно настроек (Shift+клик) |
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
