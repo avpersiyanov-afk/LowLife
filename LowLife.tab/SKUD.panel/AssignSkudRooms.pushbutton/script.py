@@ -5,7 +5,8 @@ __doc__ = (
     u"«Помещение из связи» в СПС/СОТ), но по каждой точке прохода берёт "
     u"ОДНО значение — самое частое среди её устройств — и назначает его "
     u"всем устройствам этой точки прохода. Контроллерам — помещение "
-    u"индивидуально. Имена параметров берутся из «Параметры помещений»."
+    u"индивидуально. Параметр-приёмник и маска значения берутся из "
+    u"настроек «Помещение из связи» (Shift+клик по той кнопке)."
 )
 __author__ = "Pipers"
 
@@ -36,7 +37,7 @@ skud_settings.require(settings, [
 ])
 
 room_settings = room_info_settings.load_saved_values()
-room_info_settings.require(room_settings, ["target_param_name", "room_number_param_name"])
+room_info_settings.require(room_settings, ["target_param_name", "room_mask"])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
@@ -47,7 +48,7 @@ DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
 
 TARGET_PARAM = room_settings["target_param_name"]
-ROOM_NUMBER_PARAM = room_settings["room_number_param_name"]
+ROOM_MASK = room_settings["room_mask"]
 
 
 # ------------------------------------------------------------
@@ -89,13 +90,13 @@ controllers_written = 0
 
 with revit.Transaction("Assign SKUD rooms"):
     results = assign_rooms_by_passage_point(
-        doc, passage_point_device_lists, TARGET_PARAM, ROOM_NUMBER_PARAM
+        doc, passage_point_device_lists, TARGET_PARAM, ROOM_MASK
     )
 
     for controller in controllers_with_room:
         if controller.LookupParameter(TARGET_PARAM) is None:
             continue
-        value = device_room_value(doc, controller, ROOM_NUMBER_PARAM)
+        value = device_room_value(doc, controller, ROOM_MASK)
         if value and set_param_any(controller, TARGET_PARAM, value):
             controllers_written += 1
 

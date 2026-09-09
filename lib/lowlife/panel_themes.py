@@ -118,7 +118,6 @@ THEMES = {
         (u"SPS", u"SetupParameters"),
         (u"SOT", u"SetupParameters"),
         (u"CircuitsGeneric", u"GenericCircuitsSettings"),
-        (u"Tools", u"RoomInfoSettings"),
     ],
     u"General": [
         (u"Tools", u"DimensionGrids"),

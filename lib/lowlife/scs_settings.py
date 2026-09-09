@@ -156,9 +156,11 @@ TEXT_FIELDS = [
     ("room_param_name", u"[Схема] Параметр помещения (на устройстве, панели и на схемном "
         u"семействе)",
         u"", False, True, False),
-    ("room_number_param_name", u"[Схема] Параметр номера помещения в связанной модели "
-        u"(используется, если параметр помещения на устройстве ещё пуст)",
-        u"", False, True, False),
+    ("room_mask", u"[Схема] Маска значения помещения из связи — имена параметров Room "
+        u"через запятую и/или скобки: «Имя (Номер)» → «Офис (212)», «Имя, Номер» → "
+        u"«Офис, 212». «Имя»/«Номер» — имя и номер помещения. Используется, если "
+        u"параметр помещения на устройстве ещё пуст.",
+        u"Имя (Номер)", False, True, False),
     ("device_uid_param_name", u"[Схема] Служебный параметр схемного семейства для UniqueId "
         u"исходного устройства (текстовый, привязан к схемным семействам)",
         u"", False, True, False),
@@ -539,6 +541,10 @@ def load_saved_values():
 
     for key, _ in CONDUCTOR_FIELDS:
         values[key] = saved.get(key, "")
+
+    # Миграция room_number_param_name -> room_mask (см. room_info.py).
+    if not saved.get("room_mask") and saved.get("room_number_param_name"):
+        values["room_mask"] = u"Имя ({})".format(saved["room_number_param_name"])
 
     return values
 

@@ -53,7 +53,7 @@ from lowlife.sot_settings import (
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, sync_cable_connections
 from lowlife.sot_layout_state import find_layout_view, save_state
-from lowlife.room_info import get_point as get_room_point, find_room_info, format_room_value
+from lowlife.room_info import get_point as get_room_point, find_room_value
 
 doc = revit.doc
 output = pyrevit_script.get_output()
@@ -66,14 +66,14 @@ output = pyrevit_script.get_output()
 settings = get_settings_silent()
 
 sot_settings.require(settings, [
-    "room_param_name", "room_number_param_name", "address_param_name",
+    "room_param_name", "room_mask", "address_param_name",
     "node_label_offset_mm", "schematic_view_name", "layout_param_name", "device_uid_param_name",
     "schematic_device_categories_text"
 ])
 
 LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
-ROOM_NUMBER_PARAM_NAME = settings["room_number_param_name"]
+ROOM_MASK = settings["room_mask"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
 BUILDING_PARAM_NAME = settings["building_param_name"]
 BUILDING_FILTER_VALUE = settings["building_filter_value"].strip()
@@ -221,8 +221,7 @@ def resolve_room_value(doc, el, counters):
         return room_value.strip()
 
     point = get_room_point(el)
-    room_name, room_number = find_room_info(doc, point, ROOM_NUMBER_PARAM_NAME)
-    looked_up_value = format_room_value(room_name, room_number)
+    looked_up_value = find_room_value(doc, point, ROOM_MASK)
 
     if looked_up_value:
         set_param_any(el, ROOM_PARAM_NAME, looked_up_value)

@@ -10,23 +10,21 @@
 устройствам этой точки прохода. Так у всей точки прохода в спецификации
 одно помещение.
 
-Имена параметров (куда писать, из какого параметра Room связи брать
-номер) — общие с СПС/СОТ, берутся из room_info_settings, здесь не
-дублируются.
+Куда писать и маска значения помещения — общие с СПС/СОТ, берутся из
+room_info_settings, здесь не дублируются.
 """
 
-from lowlife.room_info import get_point, find_room_info, format_room_value
+from lowlife.room_info import get_point, find_room_value
 # majority_value живёт в skud_schematic (чистая функция, тестируется вне Revit).
 from lowlife.skud_schematic import majority_value  # noqa: F401 (реэкспорт)
 
 
-def device_room_value(doc, el, room_number_param):
-    """"Имя (Номер)" для одного элемента по связям, либо "" если не нашлось."""
-    name, number = find_room_info(doc, get_point(el), room_number_param)
-    return format_room_value(name, number)
+def device_room_value(doc, el, room_mask):
+    """Значение помещения по маске для одного элемента по связям, либо ""."""
+    return find_room_value(doc, get_point(el), room_mask)
 
 
-def assign_rooms_by_passage_point(doc, passage_points, target_param, room_number_param):
+def assign_rooms_by_passage_point(doc, passage_points, target_param, room_mask):
     """
     passage_points — список списков устройств (по одному списку на точку
     прохода). Для каждой точки прохода: значение помещения по каждому
@@ -47,7 +45,7 @@ def assign_rooms_by_passage_point(doc, passage_points, target_param, room_number
             results.append((idx, u"", 0, "no_devices"))
             continue
 
-        per_device = [device_room_value(doc, d, room_number_param) for d in devices]
+        per_device = [device_room_value(doc, d, room_mask) for d in devices]
         value = majority_value(per_device)
 
         if not value:
