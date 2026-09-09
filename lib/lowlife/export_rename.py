@@ -13,16 +13,16 @@ ModPlus/Revit собирает имя файла из «номер листа + 
 Как это запускается:
 - кнопка ``Tools.panel/RenameExportFiles`` — :func:`run_after_export`
   вручную (обычный клик) и настройки (Shift+клик, :func:`configure`);
-- слежение за Проводником (``lib/lowlife/export_watcher.py`` из
-  ``startup.py``): когда ModPlus в конце экспорта открывает папку
-  выгрузки, watcher замечает новое окно Проводника со свежими файлами
-  ``from_token`` и вызывает :func:`rename_folder_interactive` по этой
-  папке. Ключ ``watch_explorer``;
-- автозапуск из pyRevit-хука по команде — TODO: нужен точный
-  идентификатор команды ModPlus для ``hooks/command-after-exec[<id>].py``
-  (хук без ``[id]`` в имени эта сборка pyRevit не регистрирует). Способ
-  достать id — в ``docs/rename-export-files.md``. Модуль готов:
-  :func:`command_matches` и ключи ``enabled`` / ``trigger_substrings``.
+- автоматически — ``lib/lowlife/export_watcher.py`` из ``startup.py``:
+  клик по кнопке «Экспорт листов» ModPlus (ловится через
+  ``Autodesk.Windows.ComponentManager.ItemExecuted``, опознание по
+  :func:`command_matches` / ``trigger_substrings``) «взводит»
+  переименование; закрытие модального окна экспорта или новое окно
+  Проводника → :func:`rename_folder_interactive` по папке нового окна /
+  ``last_folder`` / спрошенной. Ключи ``enabled`` и ``watch_explorer``;
+- pyRevit-хук ``hooks/command-after-exec[<id>].py`` — не нужен (хук без
+  ``[id]`` в имени эта сборка pyRevit не регистрирует; ID «Экспорта
+  листов» — ``CustomCtrl_%CustomCtrl_%ModPlus%Экспорт и Импорт%mprSheetExport``).
 
 Полуавтомат: определить папку, куда ModPlus сложил файлы, программно
 нельзя (плагина в этой среде нет, его конфиг не читаем), поэтому
@@ -48,13 +48,16 @@ except Exception:
 SETTINGS_FILE_NAME = "LowLifeExportRename_settings.json"
 
 DEFAULTS = {
-    # автозапуск из хука после подходящей команды
+    # «взводить» переименование по клику на кнопку экспорта ModPlus
+    # (export_watcher ловит Autodesk.Windows.ComponentManager.ItemExecuted)
     "enabled": True,
-    # подстроки (регистр не важен) для сопоставления с идентификатором
-    # выполненной команды Revit; пустой список — хук не срабатывает
-    "trigger_substrings": [u"modplus"],
-    # следить за открытием нового окна Проводника (export_watcher, startup.py):
-    # окно на папке со свежими файлами «from_token» → предложить переименовать
+    # подстроки (регистр не важен) для опознания кнопки экспорта по её
+    # Id/Text/Cookie; пустой список — «взвод» по клику отключён.
+    # «Экспорт листов» ModPlus: Id .../mprSheetExport
+    "trigger_substrings": [u"mprsheetexport"],
+    # общий выключатель авто-режима (export_watcher, startup.py): и «взвод»
+    # по клику, и признаки завершения (новое окно Проводника / закрытие
+    # модального окна). Имя ключа историческое.
     "watch_explorer": True,
     # что на что менять в имени файла (меняются ВСЕ вхождения)
     "from_token": u"0000",
@@ -394,8 +397,10 @@ def configure():
     )
 
     enabled = forms.alert(
-        u"Запускать переименование автоматически после команды ModPlus "
-        u"(нужен id команды, см. docs/rename-export-files.md)?\n\n"
+        u"«Взводить» переименование по клику на кнопку «Экспорт листов» "
+        u"ModPlus (ловится через ComponentManager.ItemExecuted)? Точнее, "
+        u"чем эвристика выше; без него — только новое окно Проводника / "
+        u"закрытие модального окна.\n\n"
         u"Сейчас: {}".format(u"да" if cfg["enabled"] else u"нет"),
         title=u"Переименование выгрузки — настройки",
         yes=True, no=True,
@@ -403,12 +408,13 @@ def configure():
 
     hint = u""
     if cfg.get("last_seen_command"):
-        hint = u"\n\nПоследняя пойманная команда:\n{}".format(cfg["last_seen_command"])
+        hint = u"\n\nПоследняя пойманная кнопка:\n{}".format(cfg["last_seen_command"])
     subs = forms.ask_for_string(
         default=u", ".join(cfg["trigger_substrings"]),
-        prompt=u"Подстроки идентификатора команды-триггера (через запятую, "
-               u"регистр не важен). Пусто — авто-запуск выключен.{}".format(hint),
-        title=u"Триггер",
+        prompt=u"Подстроки для опознания кнопки экспорта по её Id/Text/Cookie "
+               u"(через запятую, регистр не важен). Пусто — «взвод» по клику "
+               u"выключен.{}".format(hint),
+        title=u"Кнопка экспорта ModPlus",
     )
     if subs is None:
         return

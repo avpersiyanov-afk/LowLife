@@ -1171,22 +1171,29 @@ room_number_param)` — запись по точкам прохода, возв�
 | `configure` | `configure()` | Окно настроек (Shift+клик) |
 
 ## export_watcher.py
-Обходной «автозапуск» для `export_rename`, раз хук на команду ModPlus не
-вышел. `install(host_app)` вызывается один раз из `startup.py` расширения,
-подписывается на `UIApplication.Idling` (тот же механизм отложенной
-работы, что в `route_preview.schedule_preview_cleanup`). Не чаще раза в
-`SCAN_INTERVAL` (2 с) проверяет два признака завершения экспорта:
-(1) появилось **новое** окно Проводника (COM `Shell.Application`) — берём
-его папку; (2) пауза между тиками > `GAP_THRESHOLD` (5 с) = закрылось
-модальное окно (окно экспорта ModPlus) — проверяем `last_folder`. Папка со
-свежими (моложе `FRESH_SECONDS` = 30 мин) файлами `from_token` →
-`export_rename.rename_folder_interactive(..., quiet_if_empty=True)`.
-`_seen_hwnds` (не считать уже открытые окна новыми), `_declined` (папка,
-где ответили «Нет», молчит `DECLINE_QUIET` = 10 мин), `_last_fire`
-(`REFIRE_GUARD` = 20 с) — в модульных глобалах; делегат тоже держится в
-глобале (иначе GC). Каждый тик перечитывает `watch_explorer` — выключение
-сразу, включение — после перезагрузки pyRevit. Ограничения (вкладки
-Проводника Win11, ложное срабатывание) — в шапке модуля и
+Автозапуск `export_rename` из `startup.py` (`install(host_app)`, один раз).
+Подписывается на два события:
+- **`Autodesk.Windows.ComponentManager.ItemExecuted`** (`AdWindows`,
+  `_subscribe_item_executed`) — клик по кнопке ленты, чьи `Id`/`Text`/
+  `Cookie` подходят под `command_matches`/`trigger_substrings` (по
+  умолчанию `mprSheetExport`), «взводит» переименование на `ARM_WINDOW`
+  (15 мин). Требует `enabled`;
+- **`UIApplication.Idling`** (тот же механизм, что в
+  `route_preview.schedule_preview_cleanup`) — раз в `SCAN_INTERVAL` (2 с)
+  ищет признак завершения: новое окно Проводника (COM `Shell.Application`)
+  или пауза между тиками > `GAP_THRESHOLD` (5 с) = закрылось модальное
+  окно экспорта.
+
+Взведено + признак завершения → папка нового окна Проводника, иначе
+`last_folder`, иначе `run_after_export` (спросить) → файлы моложе
+`FRESH_SECONDS` (30 мин) → `rename_folder_interactive(quiet_if_empty=True)`.
+Один клик = одна попытка (`_armed_until` сбрасывается). Без `enabled` /
+`AdWindows` — только эвристика по `Idling` (как раньше). Глобалы:
+`_item_exec_ok`, `_armed_until`, `_seen_hwnds`, `_declined` (`DECLINE_QUIET`
+= 10 мин), `_last_fire` (`REFIRE_GUARD` = 20 с); оба делегата держатся в
+глобалах (иначе GC — хотя статическое `ItemExecuted` и так держит ссылку).
+Каждый тик перечитывает `watch_explorer` — выключение сразу, включение —
+после перезагрузки pyRevit. Ограничения — в шапке модуля и
 `docs/rename-export-files.md`.
 
 ## command_probe.py
