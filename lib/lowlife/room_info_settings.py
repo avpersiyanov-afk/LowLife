@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Окно настроек параметров для кнопки «Помещение из связи» + их хранение
+Окно настроек параметров для кнопки «Запись номера помещения» + их хранение
 между запусками.
 
 Хранится в JSON-файле %APPDATA%\\pyRevit\\LowLifeRoomInfo_settings.json —
@@ -154,7 +154,7 @@ def require(settings, keys):
     if missing:
         forms.alert(
             u"Не заполнены обязательные настройки:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «Помещение из связи».".format(
+            u"Откройте настройки: Shift+клик по кнопке «Запись номера помещения».".format(
                 u"\n".join(missing)
             ),
             exitscript=True
@@ -167,7 +167,7 @@ def show_settings_form(values):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки: Помещение из связи"
+    win.Title = u"Настройки: Запись номера помещения"
     win.Width = 780
     win.Height = 520
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -278,7 +278,7 @@ def get_settings_interactive():
     """
     Показывает окно настроек, сохраняет введённые значения и возвращает
     их. Возвращает None, если пользователь нажал «Отмена». Открывается
-    по Shift+клику на кнопке «Помещение из связи».
+    по Shift+клику на кнопке «Запись номера помещения».
     """
     while True:
         saved = load_saved_values()
@@ -299,6 +299,6 @@ def get_settings_silent():
     """
     Настройки без показа окна — уже сохранённые значения (или пустые
     строки, если ещё ничего не настроено). Используется кнопкой
-    «Помещение из связи».
+    «Запись номера помещения».
     """
     return load_saved_values()

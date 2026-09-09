@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__title__ = u"Помещение\nиз связи"
+__title__ = u"Запись номера\nпомещения"
 __doc__ = (
     u"По нажатию просит выбрать элементы в модели (рамкой и/или кликами — "
     u"связи, аннотация, оси/уровни, обобщённые модели в рамку не "
@@ -97,7 +97,7 @@ def run_by_views(settings):
     if not elements:
         forms.alert(u"На выбранных видах нет подходящих элементов.", exitscript=True)
 
-    with revit.Transaction(u"Помещение из связи (по видам)"):
+    with revit.Transaction(u"Запись номера помещения (по видам)"):
         results = apply_room_info(
             doc, elements, settings["target_param_name"], settings["room_mask"]
         )
@@ -115,7 +115,7 @@ except Exception:
 
 if config_mode:
     choice = forms.alert(
-        u"Помещение из связи — Shift+клик",
+        u"Запись номера помещения — Shift+клик",
         options=[u"Настройки", u"Прогон по видам"]
     )
     if choice == u"Настройки":
@@ -136,7 +136,7 @@ elements = pick_model_elements(
     empty_message=u"Не выбрано ни одного элемента."
 )
 
-with revit.Transaction(u"Помещение из связи"):
+with revit.Transaction(u"Запись номера помещения"):
     results = apply_room_info(
         doc, elements,
         settings["target_param_name"],
