@@ -1,9 +1,8 @@
 # Переименование выгрузки (RenameExportFiles)
 
-Кнопка `Tools.panel/RenameExportFiles` («Переименование выгрузки») и хук
-`hooks/command-after-exec.py`. Логика — в `lib/lowlife/export_rename.py`,
-скрипт кнопки тонкий. Зарегистрирована в теме `General` переключателя
-`_Themes.panel` (рядом с `ZoomToElement`).
+Кнопка `Tools.panel/RenameExportFiles` («Переименование выгрузки»). Логика —
+в `lib/lowlife/export_rename.py`, скрипт кнопки тонкий. Зарегистрирована в
+теме `General` переключателя `_Themes.panel` (рядом с `ZoomToElement`).
 
 ## Зачем
 
@@ -33,29 +32,49 @@ ModPlus собирают имя файла выгрузки из «номер л
 4. **Переименовывает** `os.rename`. В модели Revit ничего не меняется —
    транзакция не нужна. По итогу — `forms.toast` со счётчиками.
 
-## Автозапуск после экспорта (хук)
-
-`hooks/command-after-exec.py` срабатывает после завершения команды Revit и,
-если `enabled` и идентификатор команды содержит любую из подстрок
-`trigger_substrings` (по умолчанию `["modplus"]`, регистр не важен),
-вызывает тот же `run_after_export`. Команды с отменённым/провальным
-статусом пропускаются.
-
-Хук без `[command_id]` в имени файла рассчитан на срабатывание после
-**любой** команды. Если конкретная сборка pyRevit так не умеет и хук
-молчит — переименуйте файл в
-`hooks/command-after-exec[<точный id команды>].py`. Точный идентификатор
-команды экспорта виден в окне настроек как «последняя пойманная команда»
-(`last_seen_command`) после первого срабатывания, а также в тексте
-диалога переименования («Команда: …»).
-
-Если триггер `["modplus"]` срабатывает на лишних командах ModPlus — сузьте
-`trigger_substrings` до точного идентификатора команды экспорта через
-Shift+клик.
+Обычный клик по кнопке = ровно этот сценарий, запускается вручную сразу
+после выгрузки ModPlus.
 
 ## Настройки (Shift+клик)
 
-`EXEC_PARAMS.config_mode` → `export_rename.configure()`: автозапуск из хука,
-подстроки-триггеры, `from_token`/`to_token`, расширения, обход подпапок.
-Хранятся простым JSON в `%APPDATA%\pyRevit\LowLifeExportRename_settings.json`
-(тот же подход, что `scs_settings.py`, а не `pyrevit.script.get_config()`).
+`EXEC_PARAMS.config_mode` → `export_rename.configure()`: `from_token` /
+`to_token`, расширения, обход подпапок, автозапуск из хука и подстроки
+идентификатора команды-триггера. Хранятся простым JSON в
+`%APPDATA%\pyRevit\LowLifeExportRename_settings.json` (тот же подход, что
+`scs_settings.py`, а не `pyrevit.script.get_config()`).
+
+## Автозапуск после экспорта — TODO
+
+Задумка: pyRevit-хук ловит завершение команды ModPlus «Экспорт» и сам
+вызывает `run_after_export`. Первый заход сделал хук
+`hooks/command-after-exec.py` **без** `[command_id]` в имени файла (расчёт
+на срабатывание после любой команды) — **эта сборка pyRevit такой хук не
+регистрирует**: `Failed registering hook script command-after-exec.py |
+Адресат вызова создал исключение`. Файл удалён.
+
+Рабочий вариант — хук с точным идентификатором команды в имени:
+`hooks/command-after-exec[<command-id>].py`, тело из трёх строк:
+
+```python
+from pyrevit import EXEC_PARAMS
+from lowlife import export_rename
+try:
+    cid = unicode(EXEC_PARAMS.event_args.CommandId.Name)
+except Exception:
+    cid = u""
+export_rename.run_after_export(command_id_text=cid)
+```
+
+Нужен `<command-id>` команды экспорта ModPlus. Как достать — запустить
+ModPlus «Экспорт» один раз и посмотреть журнал Revit
+(`%LOCALAPPDATA%\Autodesk\Revit\Autodesk Revit <версия>\Journals\journal.*.txt`,
+самый свежий), строка вида:
+
+```
+Jrn.RibbonEvent "Execute external command:CustomCtrl_%CustomCtrl_%ModPlus%mprExport…:…"
+```
+
+Идентификатор — токен `CustomCtrl_%CustomCtrl_%ModPlus%…` из этой строки.
+`command_matches` в модуле уже готов сопоставлять по подстроке
+(`trigger_substrings`), так что в имя файла хука можно поставить точный id,
+а фильтр оставить как есть.

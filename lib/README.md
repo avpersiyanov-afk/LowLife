@@ -1130,11 +1130,14 @@ room_number_param)` — запись по точкам прохода, возв�
 | `press_key` | `press_key(key)` | Имитирует нажатие и отпускание виртуальной клавиши `key` через `ctypes`/`user32` |
 
 ## export_rename.py
-Тело кнопки `Tools.panel/RenameExportFiles` («Переименование выгрузки») и
-хука `hooks/command-after-exec.py`. После экспорта листов из Revit/ModPlus
-переименовывает выгруженные файлы, заменяя в имени одну подстроку на другую
-(по умолчанию «0000» → «000», меняются **все** вхождения) — обход конфликта
-имён, когда два листа идут под одним номером, но с разными именами.
+Тело кнопки `Tools.panel/RenameExportFiles` («Переименование выгрузки»).
+После экспорта листов из Revit/ModPlus переименовывает выгруженные файлы,
+заменяя в имени одну подстроку на другую (по умолчанию «0000» → «000»,
+меняются **все** вхождения) — обход конфликта имён, когда два листа идут
+под одним номером, но с разными именами. Автозапуск из хука — пока TODO
+(нужен id команды ModPlus, см. `docs/rename-export-files.md`); модуль уже
+содержит `command_matches` и все ключи настроек под будущий
+`hooks/command-after-exec[<id>].py`.
 
 Папку выгрузки программно не определить (ModPlus в этой среде нет, его
 конфиг не читаем), поэтому `run_after_export` — полуавтомат: спрашивает
@@ -1156,7 +1159,7 @@ room_number_param)` — запись по точкам прохода, возв�
 | `command_matches` | `command_matches(command_id_text, cfg=None)` | `True`, если текст идентификатора команды содержит любую из `trigger_substrings` |
 | `plan_renames` | `plan_renames(folder, cfg=None)` | Список `(src, dst, status)` (`"ok"`/`"collision"`) по файлам папки; при `cfg["recursive"]` — и подпапки |
 | `apply_renames` | `apply_renames(plans)` | Переименовывает пары со статусом `"ok"`; `(renamed, errors)` |
-| `run_after_export` | `run_after_export(command_id_text=None, cfg=None)` | Полный сценарий: спросить папку → показать план → подтверждение → переименовать → toast. Вызывается из хука и из кнопки |
+| `run_after_export` | `run_after_export(command_id_text=None, cfg=None)` | Полный сценарий: спросить папку → показать план → подтверждение → переименовать → toast. Вызывается из кнопки (и из будущего хука `command-after-exec[<id>]`) |
 | `configure` | `configure()` | Окно настроек (Shift+клик) |
 
 ## Куда добавлять новое

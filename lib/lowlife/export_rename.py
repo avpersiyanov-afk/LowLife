@@ -11,11 +11,13 @@ ModPlus/Revit собирает имя файла из «номер листа + 
 к «000», чтобы на диске оба файла отличались только именем листа.
 
 Как это запускается:
-- хук ``hooks/command-after-exec.py`` ловит завершение команды ModPlus
-  (по подстроке в идентификаторе команды, см. ``trigger_substrings``) и
-  вызывает :func:`run_after_export`;
-- кнопка ``Tools.panel/RenameExportFiles`` — тот же :func:`run_after_export`
-  вручную (обычный клик) и настройки (Shift+клик, :func:`configure`).
+- кнопка ``Tools.panel/RenameExportFiles`` — :func:`run_after_export`
+  вручную (обычный клик) и настройки (Shift+клик, :func:`configure`);
+- автозапуск из pyRevit-хука — пока TODO: нужен точный идентификатор
+  команды ModPlus для ``hooks/command-after-exec[<id>].py`` (хук без
+  ``[id]`` в имени эта сборка pyRevit не регистрирует). Способ достать id
+  — в ``docs/rename-export-files.md``. Модуль к хуку готов:
+  :func:`command_matches` и ключи ``enabled`` / ``trigger_substrings``.
 
 Полуавтомат: определить папку, куда ModPlus сложил файлы, программно
 нельзя (плагина в этой среде нет, его конфиг не читаем), поэтому
