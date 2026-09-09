@@ -1,0 +1,5 @@
+title: Выгрузка
+tooltip: Служебное для выгрузки листов — переименование файлов и диагностика хука
+layout:
+  - RenameExportFiles
+  - CaptureExportCommand

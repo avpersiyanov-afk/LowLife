@@ -1,0 +1,6 @@
+title: Спецификации
+tooltip: Разбивка спецификаций на листе и обмен данными с Excel
+layout:
+  - SplitScheduleOnSheet
+  - ScheduleToExcel
+  - ScheduleFromExcel

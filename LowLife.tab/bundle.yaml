@@ -17,4 +17,8 @@ layout:
   - TrayWire
   - TrayRoof
   - Tools
+  - ToolsRooms
+  - ToolsSchedules
+  - ToolsFamilies
+  - ToolsExport
   - Music

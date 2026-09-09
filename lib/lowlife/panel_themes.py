@@ -26,10 +26,18 @@ is cross-discipline (deletes any circuit type), so it is only listed under
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible.
 
+The discipline-agnostic tools are split across several small panels for
+readability instead of one jumbled Tools.panel: Tools.panel ("Tools" —
+DimensionGrids/GenericModelLength/ZoomToElement/Hello), ToolsRooms.panel
+("Помещения"), ToolsSchedules.panel ("Спецификации") and
+ToolsFamilies.panel ("Семейства"). Every button on all four is listed
+under the single "General" theme ("Общее" in the ComboBox), so picking
+"Общее" shows the whole set together.
+
 "Service" theme ("Служебное" in the ComboBox) holds rarely-needed helpers
-that live physically on Tools.panel — RenameExportFiles and
-CaptureExportCommand — kept off the "General" list so they don't clutter
-the everyday toolset (the rename runs itself on export anyway).
+that live on their own ToolsExport.panel ("Выгрузка") — RenameExportFiles
+and CaptureExportCommand — kept off the "General" list so they don't
+clutter the everyday toolset (the rename runs itself on export anyway).
 
 Tray*.panel ("Лестничный лоток"/"Неперфорированный лоток"/"Перфорированный
 лоток"/"Проволочный лоток"/"Лотки на кровле") are grouped under their own
@@ -127,15 +135,15 @@ THEMES = {
     u"General": [
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
-        (u"Tools", u"SplitScheduleOnSheet"),
-        (u"Tools", u"ScheduleToExcel"),
-        (u"Tools", u"ScheduleFromExcel"),
-        (u"Tools", u"UpdateFamiliesFromCatalog"),
-        (u"Tools", u"LoadFamiliesFromCatalog"),
-        (u"Tools", u"Hello"),
-        (u"Tools", u"RoomInfo"),
-        (u"Tools", u"RoomTags"),
         (u"Tools", u"ZoomToElement"),
+        (u"Tools", u"Hello"),
+        (u"ToolsRooms", u"RoomInfo"),
+        (u"ToolsRooms", u"RoomTags"),
+        (u"ToolsSchedules", u"SplitScheduleOnSheet"),
+        (u"ToolsSchedules", u"ScheduleToExcel"),
+        (u"ToolsSchedules", u"ScheduleFromExcel"),
+        (u"ToolsFamilies", u"LoadFamiliesFromCatalog"),
+        (u"ToolsFamilies", u"UpdateFamiliesFromCatalog"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),
@@ -143,8 +151,8 @@ THEMES = {
         (u"Music", u"VolumeUp"),
     ],
     u"Service": [
-        (u"Tools", u"RenameExportFiles"),
-        (u"Tools", u"CaptureExportCommand"),
+        (u"ToolsExport", u"RenameExportFiles"),
+        (u"ToolsExport", u"CaptureExportCommand"),
     ],
 }
 
@@ -165,6 +173,10 @@ PANEL_RIBBON_NAMES = {
     u"CircuitsSPA": u"Цепи СПА",
     u"CircuitsGeneric": u"Цепи (общее)",
     u"CircuitsDelete": u"Удаление",
+    u"ToolsRooms": u"Помещения",
+    u"ToolsSchedules": u"Спецификации",
+    u"ToolsFamilies": u"Семейства",
+    u"ToolsExport": u"Выгрузка",
     u"TrayLadder": u"Лестничный лоток",
     u"TrayUnperforated": u"Неперфорированный лоток",
     u"TrayPerforated": u"Перфорированный лоток",

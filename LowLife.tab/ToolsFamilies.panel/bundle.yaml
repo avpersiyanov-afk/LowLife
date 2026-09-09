@@ -1,0 +1,5 @@
+title: Семейства
+tooltip: Загрузка и обновление семейств из папки-каталога .rfa
+layout:
+  - LoadFamiliesFromCatalog
+  - UpdateFamiliesFromCatalog
