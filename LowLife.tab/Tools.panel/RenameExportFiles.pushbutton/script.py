@@ -18,6 +18,14 @@ from pyrevit import EXEC_PARAMS
 
 from lowlife import export_rename
 
+# заодно поднять авто-режим на эту сессию — вдруг startup.py / doc-opened
+# в этой сборке pyRevit не отработали
+try:
+    from lowlife import export_watcher
+    export_watcher.ensure_installed()
+except Exception:
+    pass
+
 try:
     config_mode = bool(EXEC_PARAMS.config_mode)
 except Exception:

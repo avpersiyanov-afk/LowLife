@@ -128,6 +128,27 @@ def _exc(prefix):
     return u"{}: {}".format(prefix, traceback.format_exc().splitlines()[-1])
 
 
+def ensure_installed():
+    """Сам добыть приложение Revit и вызвать install(). Для вызова из
+    скриптов кнопок — на случай, если ни startup.py, ни hooks/doc-opened.py
+    в этой сборке pyRevit не отработали."""
+    app = None
+    try:
+        from pyrevit import HOST_APP
+        app = HOST_APP.uiapp
+    except Exception:
+        app = None
+    if app is None:
+        try:
+            import __builtin__
+            app = getattr(__builtin__, "__revit__", None)
+        except Exception:
+            app = None
+    _log(u"ensure_installed(): app={}".format(
+        type(app).__name__ if app is not None else None))
+    install(app)
+
+
 def install(host_app):
     """Подписаться на Idling и ItemExecuted. Идемпотентно на уровне процесса
     (не только модуля)."""

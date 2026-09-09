@@ -89,18 +89,34 @@ def _append(line):
         pass
 
 
+def _kick_watcher():
+    """Поднять авто-режим прямо отсюда — вдруг startup.py / doc-opened не
+    сработали. Возвращает строку-отчёт."""
+    try:
+        from lowlife import export_watcher
+    except Exception as exc:
+        return u"export_watcher НЕ ИМПОРТИРУЕТСЯ: {}".format(exc)
+    try:
+        export_watcher.ensure_installed()
+        return u"export_watcher.ensure_installed() выполнен"
+    except Exception as exc:
+        return u"export_watcher.ensure_installed() упал: {}".format(exc)
+
+
 def arm():
-    """Обычный клик по кнопке: включить перехват."""
+    """Обычный клик по кнопке: поднять авто-режим + включить перехват."""
     global _subscribed, _handler, _since_marker
 
     if forms is None:
         return
 
+    kick = _kick_watcher()
+
     try:
         cm = _component_manager()
     except Exception:
-        forms.alert(u"Не удалось подключить Autodesk.Windows (AdWindows) — "
-                    u"перехват команд в этой сборке недоступен.")
+        forms.alert(u"{}\n\nНе удалось подключить Autodesk.Windows "
+                    u"(AdWindows) — перехват команд недоступен.".format(kick))
         return
 
     _since_marker = 0
@@ -131,11 +147,11 @@ def arm():
         _subscribed = True
 
     forms.alert(
-        u"Перехват включён.\n\n"
-        u"1. Нажми кнопку «Экспорт» в ModPlus (сам экспорт запускать не "
-        u"обязательно — достаточно клика по кнопке ленты).\n"
-        u"2. Вернись сюда и нажми эту кнопку с Shift — покажу, что поймал.\n\n"
-        u"Лог: {}".format(_log_path()))
+        u"{}\n\n"
+        u"Перехват команд включён.\n\n"
+        u"1. Нажми «Экспорт листов» в ModPlus, доведи экспорт до конца.\n"
+        u"2. Вернись сюда, нажми эту кнопку с Shift — покажу лог и статус.\n\n"
+        u"Логи в {}".format(kick, os.path.dirname(_log_path())))
 
 
 def _watcher_diag():
@@ -173,6 +189,7 @@ def show_results():
     if forms is None:
         return
 
+    kick = _kick_watcher()
     path = _log_path()
     try:
         with io.open(path, "r", encoding="utf-8") as f:
@@ -190,9 +207,10 @@ def show_results():
 
     if not tail:
         forms.alert(
+            u"{}\n\n"
             u"Перехват команд: после последнего включения ничего не поймано "
-            u"(обычный клик по кнопке → «Экспорт» в ModPlus → Shift+клик).\n\n"
-            u"{}".format(_watcher_diag()))
+            u"(обычный клик по кнопке → «Экспорт листов» в ModPlus → "
+            u"Shift+клик).\n\n{}".format(kick, _watcher_diag()))
         return
 
     best = None
@@ -207,8 +225,8 @@ def show_results():
                 best = ln
                 break
 
-    msg = u"Поймано после последнего включения:\n\n{}\n\nПолный лог:\n{}".format(
-        u"\n".join(tail), path)
+    msg = u"{}\n\nПоймано после последнего включения:\n\n{}\n\nПолный лог:\n{}".format(
+        kick, u"\n".join(tail), path)
 
     if best:
         cid = u""
