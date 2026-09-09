@@ -2,12 +2,11 @@
 
 __title__ = u"Помещение\nиз связи"
 __doc__ = (
-    u"Переносит значение помещения из связанной модели в параметр "
-    u"выбранных элементов активного документа. Для каждого выбранного "
-    u"элемента ищется помещение (Room) во всех подключённых связях, в "
-    u"которое попадает точка/центр элемента, и по МАСКЕ собирается "
-    u"строка из параметров этого помещения — она пишется в целевой "
-    u"параметр.\n\n"
+    u"По нажатию просит выбрать элементы в модели (рамкой и/или кликами — "
+    u"связи, аннотация, оси/уровни в рамку не попадают). Для каждого "
+    u"ищется помещение (Room) во всех подключённых связях, в которое "
+    u"попадает точка/центр элемента, и по МАСКЕ собирается строка из "
+    u"параметров этого помещения — она пишется в целевой параметр.\n\n"
     u"Shift+клик — настройки: параметр-приёмник в этой модели и маска "
     u"(например «Имя (Номер)» или «Имя, Номер»)."
 )
@@ -17,6 +16,7 @@ from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife import room_info_settings
 from lowlife.room_info import apply_room_info
+from lowlife.selection import pick_model_elements
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -39,16 +39,13 @@ if config_mode:
 settings = room_info_settings.get_settings_silent()
 room_info_settings.require(settings, ["target_param_name", "room_mask"])
 
-selected_ids = uidoc.Selection.GetElementIds()
-
-if not selected_ids:
-    forms.alert(
-        u"Сначала выберите элементы в модели, потом запустите кнопку.\n\n"
-        u"Настройки (параметр-приёмник и маска) — Shift+клик по кнопке.",
-        exitscript=True
-    )
-
-elements = [doc.GetElement(eid) for eid in selected_ids]
+elements = pick_model_elements(
+    uidoc, doc,
+    prompt=u"Выберите элементы для простановки помещения "
+           u"(рамкой и/или кликами), Enter — готово",
+    cancel_message=u"Выбор отменён, ничего не записано.",
+    empty_message=u"Не выбрано ни одного элемента."
+)
 
 with revit.Transaction(u"Помещение из связи"):
     results = apply_room_info(
