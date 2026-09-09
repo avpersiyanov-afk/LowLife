@@ -556,7 +556,7 @@ def _do_rename(folder, cfg):
 
     if not ok and not coll:
         _log(u"_do_rename: файлов с «{}» нет".format(cfg["from_token"]))
-        if cfg.get("notify_nothing", True):
+        if cfg.get("notify_nothing", False):
             _msgbox(u"Папка: {}\n\nВ выгрузке нет файлов с «{}» — "
                     u"переименовывать нечего.".format(folder, cfg["from_token"]),
                     u"Переименование выгрузки")
