@@ -3,7 +3,9 @@
 
 from pyrevit import forms
 
-from Autodesk.Revit.DB import BuiltInCategory, CategoryType
+from Autodesk.Revit.DB import (
+    BuiltInCategory, CategoryType, FilteredElementCollector, View, ViewType
+)
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
@@ -52,47 +54,109 @@ _JUNK_PICK_CATEGORY_IDS = _bic_ids(
 )
 
 
-class ModelElementSelectionFilter(ISelectionFilter):
+def is_pickable_model_element(elem):
     """
-    Пропускает только элементы текущей модели, не являющиеся аннотацией
-    или служебной геометрией: отсекает элементы связанных файлов, всю
+    True для элемента текущей модели, который не является аннотацией или
+    служебной геометрией: отсекает элементы связанных файлов, всю
     аннотацию (CategoryType.Annotation — марки, размеры, текст), оси,
     уровни, линии, опорные плоскости, обобщённые модели, вставки связей,
     помещения/зоны/площади, рамки подрезки, виды/камеры. Тот же смысл,
     что и manual_circuits._CircuitTargetSelectionFilter.
     """
+    try:
+        if elem.Document.IsLinked:
+            return False
+    except Exception:
+        pass
+
+    try:
+        cat = elem.Category
+    except Exception:
+        cat = None
+
+    if cat is None:
+        return False
+
+    try:
+        if cat.Id.IntegerValue in _JUNK_PICK_CATEGORY_IDS:
+            return False
+    except Exception:
+        pass
+
+    try:
+        if cat.CategoryType == CategoryType.Annotation:
+            return False
+    except Exception:
+        pass
+
+    return True
+
+
+class ModelElementSelectionFilter(ISelectionFilter):
+    """ISelectionFilter поверх is_pickable_model_element."""
 
     def AllowElement(self, elem):
-        try:
-            if elem.Document.IsLinked:
-                return False
-        except Exception:
-            pass
-
-        try:
-            cat = elem.Category
-        except Exception:
-            cat = None
-
-        if cat is None:
-            return False
-
-        try:
-            if cat.Id.IntegerValue in _JUNK_PICK_CATEGORY_IDS:
-                return False
-        except Exception:
-            pass
-
-        try:
-            if cat.CategoryType == CategoryType.Annotation:
-                return False
-        except Exception:
-            pass
-
-        return True
+        return is_pickable_model_element(elem)
 
     def AllowReference(self, reference, position):
         return True
+
+
+def collect_model_elements(doc, view):
+    """
+    Все элементы модели, видимые на view (FilteredElementCollector по
+    виду), отфильтрованные тем же критерием, что и интерактивный выбор
+    (is_pickable_model_element). Возвращает список Element.
+    """
+    try:
+        raw = (FilteredElementCollector(doc, view.Id)
+               .WhereElementIsNotElementType()
+               .ToElements())
+    except Exception:
+        return []
+    return [el for el in raw if is_pickable_model_element(el)]
+
+
+def parse_name_prefixes(text):
+    """«1, 2, 20, 30, 60» -> ('1', '2', '20', '30', '60'). Разделители —
+    запятая, точка с запятой, перевод строки. Пустые куски отброшены."""
+    if not text:
+        return tuple()
+    for sep in (u";", u"\n", u"\r", u"\t"):
+        text = text.replace(sep, u",")
+    return tuple(part.strip() for part in text.split(u",") if part.strip())
+
+
+def views_with_name_prefix(doc, prefixes):
+    """
+    Графические виды (не шаблоны, не листы/легенды/спецификации/браузеры),
+    чьё имя начинается с одного из prefixes. Пустой prefixes -> все такие
+    виды. Отсортированы по имени.
+    """
+    prefixes = tuple(prefixes or ())
+    skip_types = set()
+    for name in ("Schedule", "DrawingSheet", "Legend", "Internal",
+                 "ProjectBrowser", "SystemBrowser", "Undefined", "Report",
+                 "PanelSchedule", "ColumnSchedule"):
+        t = getattr(ViewType, name, None)
+        if t is not None:
+            skip_types.add(t)
+
+    out = []
+    for view in FilteredElementCollector(doc).OfClass(View):
+        try:
+            if view.IsTemplate:
+                continue
+            if view.ViewType in skip_types:
+                continue
+            name = view.Name
+        except Exception:
+            continue
+        if not prefixes or name.startswith(prefixes):
+            out.append(view)
+
+    out.sort(key=lambda v: v.Name.lower())
+    return out
 
 
 def pick_model_elements(

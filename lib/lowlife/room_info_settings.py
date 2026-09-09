@@ -62,6 +62,16 @@ TEXT_FIELDS = [
         u"вместе с осиротевшими скобками/запятыми.",
         u"Имя (Номер)", True
     ),
+    (
+        "view_name_prefixes",
+        u"③ Пакетный прогон по видам (Shift+клик → «Прогон по видам»)",
+        u"Префиксы имён видов для списка",
+        u"В списке видов показываются только те, чьё имя начинается с "
+        u"одного из этих значений (через запятую). Например «1, 2, 20, 30, "
+        u"60». Пусто — показывать все виды. Не влияет на обычный запуск "
+        u"кнопки (там выбор элементов вручную).",
+        u"1, 2, 20, 30, 60", False
+    ),
 ]
 
 PLAIN_LABELS = {key: label for key, _section, label, _hint, _default, _required in TEXT_FIELDS}
@@ -159,7 +169,7 @@ def show_settings_form(values):
     win = Window()
     win.Title = u"Настройки: Помещение из связи"
     win.Width = 780
-    win.Height = 400
+    win.Height = 520
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
