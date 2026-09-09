@@ -754,9 +754,9 @@ CPython-only зависимость (импортируется внутри ф�
 | `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
 
 ## family_catalog.py
-Тело двух кнопок `Tools.panel`: `UpdateFamiliesFromCatalog` («Семейства из
-каталога» — актуальность + обновление) и `LoadFamiliesFromCatalog` («Загрузить
-семейства»). Работа с загружаемыми семействами из папки-каталога `.rfa`. Путь к
+Тело двух кнопок `ToolsFamilies.panel`: `UpdateFamiliesFromCatalog`
+(«Обновление/проверка семейств» — актуальность + обновление) и
+`LoadFamiliesFromCatalog` («Загрузить семейства»). Работа с загружаемыми семействами из папки-каталога `.rfa`. Путь к
 каталогу общий, хранится в `%APPDATA%\pyRevit\LowLifeFamilyCatalog_settings.json`
 (тот же подход, что `scs_settings.py`); у обеих кнопок есть `config.py` —
 Shift+клик меняет папку. Обе кнопки принимают **несколько категорий**
@@ -782,7 +782,7 @@ Shift+клик меняет папку. Обе кнопки принимают *
 через `Autodesk.Revit.DB.Transaction`, а не `revit.Transaction`, чтобы модуль не
 тянул `pyrevit.revit`).
 
-`show_status_form` — единое окно кнопки «Семейства из каталога»: `DataGrid`
+`show_status_form` — единое окно кнопки «Обновление/проверка семейств»: `DataGrid`
 (галочка, имя, категория, статус цветом, даты, похожесть), сортировка по клику на
 заголовок — своя (`grid.Sorting` сортирует `List[object]` по `SortMemberPath`,
 т.к. WPF не разрешает пути к python-объектам для сортировки), цвет строки — через
@@ -815,7 +815,7 @@ Shift+клик меняет папку. Обе кнопки принимают *
 | `OverwriteFamilyLoadOptions` | `OverwriteFamilyLoadOptions(overwrite_parameter_values=True)` | `IFamilyLoadOptions`: `overwriteParameterValues` = аргумент (True = «Перезаписать существующую версию и значения параметров» как в диалоге браузера; False = только определение семейства, значения параметров у имеющихся типоразмеров сохраняются). Определение семейства/набор типоразмеров обновляются всегда; отсутствующие в файле типоразмеры Revit не удаляет. Для shared-семейств `source = FamilySource.Family` |
 | `reload_family` | `reload_family(doc, src_path, target_family_name, temp_dir, options)` | Копирует `.rfa` в `temp_dir` под именем `<target_family_name>.rfa` и `doc.LoadFamily`; `("loaded", family)` — перезагружено, `("unchanged", family)` — `LoadFamily` вернул False (содержимое совпало, **не ошибка**), `("error", "текст")` |
 | `rename_family` | `rename_family(doc, family, new_name)` | Переименовывает семейство модели (напр. по имени файла каталога, когда его переименовали в каталоге). **Требует транзакции.** `(True, None)` либо `(False, "причина")` — имя совпадает / занято / отклонено. `Element.Name` под IronPython пишется через `_set_element_name` (рефлексия, как `_safe_element_name` для чтения) |
-| `show_status_form` | `show_status_form(rows, catalog_root, entries)` | Единое окно «Семейства из каталога»: сортируемый `DataGrid` (галочка, имя, категория, статус цветом, даты, файл, похожесть) + флажки «заменять значения параметров» и «переименовывать» + «Файл…» (или двойной клик — сменить файл строки) + «Отметить требующие обновления» / «Снять все» / «Обновить отмеченные» / «Закрыть». `(jobs, do_rename, overwrite_params)` для отмеченных строк либо `None` |
+| `show_status_form` | `show_status_form(rows, catalog_root, entries)` | Единое окно «Обновление/проверка семейств»: сортируемый `DataGrid` (галочка, имя, категория, статус цветом, даты, файл, похожесть) + флажки «заменять значения параметров» и «переименовывать» + «Файл…» (или двойной клик — сменить файл строки) + «Отметить требующие обновления» / «Снять все» / «Обновить отмеченные» / «Закрыть». `(jobs, do_rename, overwrite_params)` для отмеченных строк либо `None` |
 | `show_load_form` | `show_load_form(entries, present_names, catalog_root)` | Окно «Загрузить семейства»: сортируемый `DataGrid` (галочка, файл, папка, «в модели», дата файла) + флажки «заменять значения параметров» и «выбрать типоразмеры»; зелёным — новые, серым — уже в модели. `(entries, overwrite_params, choose_types)` либо `None` |
 | `read_family_type_names` | `read_family_type_names(app, path)` | Имена типоразмеров в `.rfa` через `app.OpenDocumentFile` → `FamilyManager.Types` → `Close(False)`. `[]` при сбое. **Вне транзакции** |
 | `show_type_picker` | `show_type_picker(type_map)` | `type_map` — `[(entry, [имена])]`. `DataGrid` (галочка, семейство, типоразмер). `{entry: set(отмеченные)}` (семейства без галочек выпадают) либо `None` |

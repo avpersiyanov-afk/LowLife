@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Shift+клик по кнопке «Семейства из каталога» — окно настроек:
+"""Shift+клик по кнопке «Обновление/проверка семейств» — окно настроек:
 папка-каталог, тихий мониторинг при открытии проекта, авто-метка даты
 при штатной загрузке семейства + имя видимого параметра для даты."""
 
@@ -29,7 +29,7 @@ def _row_label(text, hint=None):
 
 
 win = Window()
-win.Title = u"Семейства из каталога — настройки"
+win.Title = u"Обновление/проверка семейств — настройки"
 win.Width = 640
 win.Height = 440
 win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -145,4 +145,4 @@ if state["ok"]:
     fc.save_monitor_enabled(bool(monitor_cb.IsChecked))
     fc.save_autostamp_enabled(bool(autostamp_cb.IsChecked))
     fc.save_stamp_param_name(param_box.Text.strip())
-    forms.alert(u"Настройки сохранены.", title=u"Семейства из каталога")
+    forms.alert(u"Настройки сохранены.", title=u"Обновление/проверка семейств")

@@ -1179,7 +1179,7 @@ def show_status_form(rows, catalog_root, entries):
     result = {"jobs": None, "rename": True, "overwrite": True}
 
     win = Window()
-    win.Title = u"Семейства из каталога — актуальность и обновление"
+    win.Title = u"Обновление/проверка семейств — актуальность и обновление"
     win.Width = 1120
     win.Height = 720
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
