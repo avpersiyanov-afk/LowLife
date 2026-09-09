@@ -1134,24 +1134,31 @@ room_number_param)` — запись по точкам прохода, возв�
 После экспорта листов из Revit/ModPlus переименовывает выгруженные файлы,
 заменяя в имени одну подстроку на другую (по умолчанию «0000» → «000»,
 меняются **все** вхождения) — обход конфликта имён, когда два листа идут
-под одним номером, но с разными именами. Автозапуск из хука — пока TODO
-(нужен id команды ModPlus, см. `docs/rename-export-files.md`); модуль уже
-содержит `command_matches` и все ключи настроек под будущий
-`hooks/command-after-exec[<id>].py`.
+под одним номером, но с разными именами.
 
 Папку выгрузки программно не определить (ModPlus в этой среде нет, его
-конфиг не читаем), поэтому `run_after_export` — полуавтомат: спрашивает
-папку с подставленным прошлым путём (`last_folder`), показывает список пар
-«старое → новое», переименовывает `os.rename`. В модели Revit ничего не
-меняется — транзакция не нужна. Коллизии (целевое имя уже занято) в план
-попадают со статусом `"collision"` и пропускаются.
+конфиг не читаем), поэтому это полуавтомат:
+- **кнопка** (обычный клик) → `run_after_export` спрашивает папку с
+  подставленным прошлым путём (`last_folder`);
+- **слежение за Проводником** (`export_watcher.py` из `startup.py`) →
+  `rename_folder_interactive` по папке только что открытого окна.
+
+Дальше одинаково: показать список пар «старое → новое», подтверждение,
+`os.rename`. В модели Revit ничего не меняется — транзакция не нужна.
+Коллизии (целевое имя уже занято) в план попадают со статусом
+`"collision"` и пропускаются.
+
+Автозапуск по команде (хук) — TODO (нужен id команды ModPlus, см.
+`docs/rename-export-files.md`); `command_matches` и ключи под будущий
+`hooks/command-after-exec[<id>].py` уже есть.
 
 Настройки — обычный JSON `%APPDATA%\pyRevit\LowLifeExportRename_settings.json`
-(тот же подход, что `scs_settings.py`): `enabled` (автозапуск из хука),
-`trigger_substrings` (подстроки идентификатора команды-триггера, регистр не
-важен; по умолчанию `["modplus"]`), `from_token`/`to_token`, `extensions`
-(`[".dwg", ".pdf"]`), `recursive`, `last_folder`, `last_seen_command`
-(справочно). Shift+клик по кнопке — `configure()`.
+(тот же подход, что `scs_settings.py`): `watch_explorer` (слежение за
+Проводником), `enabled` (автозапуск по команде), `trigger_substrings`
+(подстроки идентификатора команды-триггера, регистр не важен; по умолчанию
+`["modplus"]`), `from_token`/`to_token`, `extensions` (`[".dwg", ".pdf"]`),
+`recursive`, `last_folder`, `last_seen_command` (справочно). Shift+клик по
+кнопке — `configure()`.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -1159,8 +1166,25 @@ room_number_param)` — запись по точкам прохода, возв�
 | `command_matches` | `command_matches(command_id_text, cfg=None)` | `True`, если текст идентификатора команды содержит любую из `trigger_substrings` |
 | `plan_renames` | `plan_renames(folder, cfg=None)` | Список `(src, dst, status)` (`"ok"`/`"collision"`) по файлам папки; при `cfg["recursive"]` — и подпапки |
 | `apply_renames` | `apply_renames(plans)` | Переименовывает пары со статусом `"ok"`; `(renamed, errors)` |
-| `run_after_export` | `run_after_export(command_id_text=None, cfg=None)` | Полный сценарий: спросить папку → показать план → подтверждение → переименовать → toast. Вызывается из кнопки (и из будущего хука `command-after-exec[<id>]`) |
+| `rename_folder_interactive` | `rename_folder_interactive(folder, cfg=None, source_label=None, quiet_if_empty=False)` | Готовая папка → план → подтверждение → переименовать → toast. `quiet_if_empty` — не всплывать, если менять нечего (для авто-режимов) |
+| `run_after_export` | `run_after_export(command_id_text=None, cfg=None)` | То же, но сначала спрашивает папку (`_ask_folder`). Вызывается из кнопки (и из будущего хука `command-after-exec[<id>]`) |
 | `configure` | `configure()` | Окно настроек (Shift+клик) |
+
+## export_watcher.py
+Слежение за открытием папки выгрузки в Проводнике — обходной «автозапуск»
+для `export_rename`, раз хук на команду ModPlus не вышел. `install(host_app)`
+вызывается один раз из `startup.py` расширения, подписывается на
+`UIApplication.Idling` (тот же механизм отложенной работы, что в
+`route_preview.schedule_preview_cleanup`). Не чаще раза в `SCAN_INTERVAL`
+(2 с) перечисляет окна Проводника через COM `Shell.Application`; новое окно
+на папке со свежими (моложе `FRESH_SECONDS` = 30 мин) файлами `from_token`
+→ `export_rename.rename_folder_interactive(..., quiet_if_empty=True)`.
+`_seen_hwnds` (не считать уже открытые окна новыми) и `_handled_dirs` (не
+спрашивать дважды про ту же папку) — в модульных глобалах, делегат тоже
+держится в глобале (иначе GC). Каждый тик перечитывает `watch_explorer` —
+выключение действует сразу, включение — после перезагрузки pyRevit.
+Ограничения (Проводник с вкладками Win11, ложное срабатывание на чужом
+окне со свежими 0000-файлами) — в шапке модуля и `docs/rename-export-files.md`.
 
 ## Куда добавлять новое
 

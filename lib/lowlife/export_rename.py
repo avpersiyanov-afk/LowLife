@@ -13,10 +13,15 @@ ModPlus/Revit собирает имя файла из «номер листа + 
 Как это запускается:
 - кнопка ``Tools.panel/RenameExportFiles`` — :func:`run_after_export`
   вручную (обычный клик) и настройки (Shift+клик, :func:`configure`);
-- автозапуск из pyRevit-хука — пока TODO: нужен точный идентификатор
-  команды ModPlus для ``hooks/command-after-exec[<id>].py`` (хук без
-  ``[id]`` в имени эта сборка pyRevit не регистрирует). Способ достать id
-  — в ``docs/rename-export-files.md``. Модуль к хуку готов:
+- слежение за Проводником (``lib/lowlife/export_watcher.py`` из
+  ``startup.py``): когда ModPlus в конце экспорта открывает папку
+  выгрузки, watcher замечает новое окно Проводника со свежими файлами
+  ``from_token`` и вызывает :func:`rename_folder_interactive` по этой
+  папке. Ключ ``watch_explorer``;
+- автозапуск из pyRevit-хука по команде — TODO: нужен точный
+  идентификатор команды ModPlus для ``hooks/command-after-exec[<id>].py``
+  (хук без ``[id]`` в имени эта сборка pyRevit не регистрирует). Способ
+  достать id — в ``docs/rename-export-files.md``. Модуль готов:
   :func:`command_matches` и ключи ``enabled`` / ``trigger_substrings``.
 
 Полуавтомат: определить папку, куда ModPlus сложил файлы, программно
@@ -48,6 +53,9 @@ DEFAULTS = {
     # подстроки (регистр не важен) для сопоставления с идентификатором
     # выполненной команды Revit; пустой список — хук не срабатывает
     "trigger_substrings": [u"modplus"],
+    # следить за открытием нового окна Проводника (export_watcher, startup.py):
+    # окно на папке со свежими файлами «from_token» → предложить переименовать
+    "watch_explorer": True,
     # что на что менять в имени файла (меняются ВСЕ вхождения)
     "from_token": u"0000",
     "to_token": u"000",
@@ -128,6 +136,7 @@ def load_config():
         cfg["extensions"] = [cfg["extensions"]]
     cfg["extensions"] = [_norm_ext(e) for e in cfg["extensions"] if _norm_ext(e)]
     cfg["enabled"] = bool(cfg["enabled"])
+    cfg["watch_explorer"] = bool(cfg["watch_explorer"])
     cfg["recursive"] = bool(cfg["recursive"])
     cfg["from_token"] = unicode(cfg["from_token"])
     cfg["to_token"] = unicode(cfg["to_token"])
@@ -284,21 +293,17 @@ def _ask_folder(cfg):
     return None
 
 
-def run_after_export(command_id_text=None, cfg=None):
-    """Основной сценарий: спросить папку, показать план, переименовать.
+def rename_folder_interactive(folder, cfg=None, source_label=None,
+                              quiet_if_empty=False):
+    """Показать план по готовой папке, спросить подтверждение, переименовать.
 
-    Вызывается из хука (после подходящей команды) и из кнопки вручную.
-    ``command_id_text`` — только для показа в диалоге и записи в настройки.
+    ``source_label`` — строка для показа в диалоге (id команды / «Проводник:
+    …»). ``quiet_if_empty`` — не всплывать, если переименовывать нечего
+    (для авто-режимов, чтобы не мешать).
     """
     if cfg is None:
         cfg = load_config()
-
-    if command_id_text:
-        cfg["last_seen_command"] = unicode(command_id_text)
-        save_config({"last_seen_command": cfg["last_seen_command"]})
-
-    folder = _ask_folder(cfg)
-    if not folder:
+    if not folder or not os.path.isdir(folder):
         return
 
     plans = plan_renames(folder, cfg)
@@ -306,8 +311,9 @@ def run_after_export(command_id_text=None, cfg=None):
     collisions = [p for p in plans if p[2] == "collision"]
 
     if not ok and not collisions:
-        _toast(u"Файлов с «{}» в имени не найдено:\n{}".format(
-            cfg["from_token"], folder))
+        if not quiet_if_empty:
+            _toast(u"Файлов с «{}» в имени не найдено:\n{}".format(
+                cfg["from_token"], folder))
         return
 
     sample = u"\n".join(u"  {}  →  {}".format(
@@ -316,8 +322,8 @@ def run_after_export(command_id_text=None, cfg=None):
         sample += u"\n  … ещё {}".format(len(ok) - 12)
 
     msg = u"Папка: {}\n\n".format(folder)
-    if command_id_text:
-        msg += u"Команда: {}\n\n".format(command_id_text)
+    if source_label:
+        msg += u"{}\n\n".format(source_label)
     msg += u"Переименовать «{}» → «{}» в {} файле(ах):\n{}".format(
         cfg["from_token"], cfg["to_token"], len(ok), sample or u"  —")
     if collisions:
@@ -327,7 +333,8 @@ def run_after_export(command_id_text=None, cfg=None):
                        for s, _d, _ in collisions[:12]))
 
     if not ok:
-        _toast(msg)
+        if not quiet_if_empty:
+            _toast(msg)
         return
 
     if forms is not None and not forms.alert(msg, title=u"Переименование выгрузки",
@@ -348,14 +355,41 @@ def run_after_export(command_id_text=None, cfg=None):
     _toast(result)
 
 
+def run_after_export(command_id_text=None, cfg=None):
+    """Основной сценарий кнопки/хука: спросить папку, показать план,
+    переименовать. ``command_id_text`` — только для показа/записи."""
+    if cfg is None:
+        cfg = load_config()
+
+    if command_id_text:
+        save_config({"last_seen_command": unicode(command_id_text)})
+
+    folder = _ask_folder(cfg)
+    if not folder:
+        return
+
+    label = u"Команда: {}".format(command_id_text) if command_id_text else None
+    rename_folder_interactive(folder, cfg=cfg, source_label=label)
+
+
 def configure():
     """Окно настроек (Shift+клик по кнопке)."""
     if forms is None:
         return
     cfg = load_config()
 
+    watch_explorer = forms.alert(
+        u"Следить за открытием папки выгрузки в Проводнике и сразу "
+        u"предлагать переименование?\n\n"
+        u"Работает всю сессию Revit (startup.py). Сейчас: {}".format(
+            u"да" if cfg["watch_explorer"] else u"нет"),
+        title=u"Переименование выгрузки — настройки",
+        yes=True, no=True,
+    )
+
     enabled = forms.alert(
-        u"Запускать переименование автоматически после команды ModPlus?\n\n"
+        u"Запускать переименование автоматически после команды ModPlus "
+        u"(нужен id команды, см. docs/rename-export-files.md)?\n\n"
         u"Сейчас: {}".format(u"да" if cfg["enabled"] else u"нет"),
         title=u"Переименование выгрузки — настройки",
         yes=True, no=True,
@@ -406,6 +440,7 @@ def configure():
     )
 
     cfg.update({
+        "watch_explorer": bool(watch_explorer),
         "enabled": bool(enabled),
         "trigger_substrings": trigger_substrings,
         "from_token": frm,
@@ -415,8 +450,10 @@ def configure():
     })
     if save_config(cfg):
         forms.alert(
-            u"Сохранено.\n\nАвтозапуск: {}\nТриггер: {}\nЗамена: «{}» → «{}»\n"
-            u"Файлы: {}\nПодпапки: {}".format(
+            u"Сохранено.\n\nСлежение за Проводником: {}\nАвтозапуск по команде: "
+            u"{}\nТриггер: {}\nЗамена: «{}» → «{}»\nФайлы: {}\nПодпапки: {}\n\n"
+            u"Слежение за Проводником применится после перезагрузки pyRevit.".format(
+                u"да" if cfg["watch_explorer"] else u"нет",
                 u"да" if cfg["enabled"] else u"нет",
                 u", ".join(trigger_substrings) or u"—",
                 cfg["from_token"], cfg["to_token"],
