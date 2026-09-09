@@ -47,6 +47,10 @@ except Exception:
 
 SETTINGS_FILE_NAME = "LowLifeExportRename_settings.json"
 
+# Потолок обхода в plan_renames — чтобы случайно указанный огромный/сетевой
+# корень не подвесил Revit (папка одного экспорта заведомо меньше).
+MAX_WALK_DIRS = 300
+
 DEFAULTS = {
     # «взводить» переименование по клику на кнопку экспорта ModPlus
     # (export_watcher ловит Autodesk.Windows.ComponentManager.ItemExecuted)
@@ -216,7 +220,13 @@ def plan_renames(folder, cfg=None):
         walk = [(folder, [], [n for n in os.listdir(folder)
                               if os.path.isfile(os.path.join(folder, n))])]
 
+    # Предохранитель: не зависнуть на огромной (тем более сетевой) папке,
+    # если folder оказался не той папкой запуска, а целым корнем выгрузки.
+    seen_dirs = 0
     for root, _dirs, files in walk:
+        seen_dirs += 1
+        if seen_dirs > MAX_WALK_DIRS:
+            break
         for name in files:
             stem, ext = os.path.splitext(name)
             if exts and ext.lower() not in exts:

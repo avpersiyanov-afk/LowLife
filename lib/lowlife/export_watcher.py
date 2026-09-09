@@ -304,7 +304,14 @@ def _tick():
 
     _busy = True
     try:
-        folder = _find_export_folder(cfg, now)
+        t0 = time.time()
+        try:
+            folder = _find_export_folder(cfg, now)
+        except Exception:
+            folder = None
+            _log(_exc(u"_find_export_folder упал"))
+        _log(u"tick: поиск папки {}с → {}".format(
+            int(time.time() - t0), folder or u"—"))
         if folder:
             _log(u"tick: папка выгрузки → {}".format(folder))
             try:
@@ -331,19 +338,37 @@ def _tick():
         _busy = False
 
 
-def _freshest_match_mtime(folder, cfg, now):
-    """Максимальный mtime среди свежих подходящих файлов в folder, иначе
-    None. Учитывает cfg['recursive']."""
+# ВАЖНО: всё это выполняется на UI-потоке Revit внутри Idling. Никаких
+# os.walk / plan_renames по сетевой папке здесь — только строго
+# ограниченный обзор (иначе Revit виснет). Рекурсивный обход — уже потом,
+# в rename_folder_interactive, и только по ОДНОЙ найденной папке запуска.
+MAX_SUBDIRS_SCAN = 5      # проверяем только столько самых свежих подпапок
+SCAN_NAME_BUDGET = 400    # и не больше стольких имён всего за один обзор
+
+
+def _light_fresh_mtime(folder, cfg, budget, now):
+    """max mtime свежего подходящего файла ПРЯМО в folder (без рекурсии).
+    ``budget`` — список [n]: сколько имён ещё можно просмотреть."""
+    frm = cfg.get("from_token") or u"0000"
+    exts = tuple((e or u"").lower() for e in (cfg.get("extensions") or ()))
+    best = None
     try:
-        plans = export_rename.plan_renames(folder, cfg)
+        names = os.listdir(folder)
     except Exception:
         return None
-    best = None
-    for src, _dst, status in plans:
-        if status != "ok":
+    for name in names:
+        if budget[0] <= 0:
+            break
+        budget[0] -= 1
+        if frm not in name:
             continue
+        if exts and os.path.splitext(name)[1].lower() not in exts:
+            continue
+        p = os.path.join(folder, name)
         try:
-            m = os.path.getmtime(src)
+            if not os.path.isfile(p):
+                continue
+            m = os.path.getmtime(p)
         except Exception:
             continue
         if now - m <= FRESH_SECONDS and (best is None or m > best):
@@ -351,39 +376,66 @@ def _freshest_match_mtime(folder, cfg, now):
     return best
 
 
-def _has_fresh_match(folder, cfg, now):
-    return _freshest_match_mtime(folder, cfg, now) is not None
-
-
 def _scan_subdirs(base, cfg, now, include_base):
-    """Подпапка 1-го уровня base с самыми свежими подходящими файлами.
-    Если ни в одной — и include_base — сам base (файлы могли лечь прямо в
-    корень). None, если нигде ничего свежего."""
+    """Ограниченный обзор: до MAX_SUBDIRS_SCAN самых свежих (по mtime самой
+    папки) подпапок base; в каждой — файлы прямо в ней и на 1 уровень
+    глубже (ModPlus: «<дата-время>\\DWG\\», «...\\PDF\\»). Возвращает
+    подпапку 1-го уровня со свежими файлами, иначе (при include_base) сам
+    base, иначе None. Без рекурсии и без plan_renames."""
     if not base or not os.path.isdir(base):
         return None
-    best = None  # (mtime, path)
+
+    budget = [SCAN_NAME_BUDGET]
+    subs = []
     try:
-        names = sorted(os.listdir(base))
+        for name in os.listdir(base):
+            p = os.path.join(base, name)
+            try:
+                if os.path.isdir(p):
+                    subs.append((os.path.getmtime(p), p))
+            except Exception:
+                continue
     except Exception:
-        names = []
-    for name in names:
-        p = os.path.join(base, name)
-        if not os.path.isdir(p):
-            continue
-        ts = _freshest_match_mtime(p, cfg, now)
-        if ts is not None and (best is None or ts > best[0]):
-            best = (ts, p)
+        subs = []
+    subs.sort(reverse=True)
+    subs = subs[:MAX_SUBDIRS_SCAN]
+
+    best = None  # (file_mtime, level-1 subdir)
+    for _dm, d in subs:
+        if budget[0] <= 0:
+            break
+        m = _light_fresh_mtime(d, cfg, budget, now)
+        if m is None:
+            try:
+                for name in os.listdir(d):
+                    if budget[0] <= 0:
+                        break
+                    dd = os.path.join(d, name)
+                    try:
+                        if not os.path.isdir(dd):
+                            continue
+                    except Exception:
+                        continue
+                    mm = _light_fresh_mtime(dd, cfg, budget, now)
+                    if mm is not None and (m is None or mm > m):
+                        m = mm
+            except Exception:
+                pass
+        if m is not None and (best is None or m > best[0]):
+            best = (m, d)
+
     if best:
         return best[1]
-    if include_base and _freshest_match_mtime(base, cfg, now) is not None:
+    if include_base and _light_fresh_mtime(base, cfg, [SCAN_NAME_BUDGET], now) is not None:
         return base
     return None
 
 
 def _find_export_folder(cfg, now):
     """Где лежит только что выгруженное. По приоритету:
-    1) свежая подпапка export_root; 2) сам last_folder; 3) свежая соседняя
-    подпапка рядом с last_folder (ModPlus кладёт в «выпуск\\<дата-время>»)."""
+    1) свежая подпапка export_root; 2) сам last_folder (+1 уровень);
+    3) свежая соседняя подпапка рядом с last_folder (ModPlus кладёт в
+    «<корень>\\<дата-время>\\»)."""
     root = (cfg.get("export_root") or u"").strip()
     if root:
         f = _scan_subdirs(root, cfg, now, include_base=True)
@@ -391,9 +443,10 @@ def _find_export_folder(cfg, now):
             return f
 
     last = (cfg.get("last_folder") or u"").strip()
-    if last:
-        if os.path.isdir(last) and _has_fresh_match(last, cfg, now):
-            return last
+    if last and os.path.isdir(last):
+        f = _scan_subdirs(last, cfg, now, include_base=True)
+        if f:
+            return f
         parent = os.path.dirname(last.rstrip(u"\\/"))
         f = _scan_subdirs(parent, cfg, now, include_base=False)
         if f:
