@@ -270,6 +270,15 @@ class _Placed(object):
         self.cable = cable
 
 
+class _Circ(object):
+    __slots__ = ("cx", "cy", "r")
+
+    def __init__(self, cx, cy, r):
+        self.cx = cx
+        self.cy = cy
+        self.r = r
+
+
 def _drop_y(x, r, placed):
     u"""Высота центра круга радиуса r при ВЕРТИКАЛЬНОМ падении в столбце x:
     пол (y=r) либо верх круга, оказавшегося под ним. Модель прямого
@@ -323,40 +332,26 @@ def _fits(x, y, r, tray_w, tray_h, placed):
     return True
 
 
-def arrange_cables(cables, tray_width_mm, tray_height_mm):
-    u"""
-    Раскладывает по одному экземпляру каждого кабеля (Quantity штук
-    каждой строки), от большего диаметра к меньшему — самые толстые
-    кабели оказываются внизу лотка, как на реальных исполнительных
-    чертежах. Возвращает (placed, unplaced): placed — список _Placed
-    (позиции в футах относительно левого нижнего угла лотка), unplaced —
-    кабели, для которых не нашлось места по высоте лотка.
-    """
-    tray_w = mm_to_feet(tray_width_mm)
-    tray_h = mm_to_feet(tray_height_mm)
-
-    all_cables = []
-    for c in cables:
-        all_cables.extend([c] * c.quantity)
-    all_cables.sort(key=lambda c: c.diameter, reverse=True)
-
+def _blf_pack(radii, tray_w, tray_h):
+    u"""Bottom-left-fill для набора кругов произвольных радиусов (футы,
+    tray_w/tray_h тоже футы). Крупные — первыми, каждый — в самую низкую
+    точку покоя, при равной высоте — в самую левую. Возвращает
+    (positions, unplaced): positions — dict {индекс: (x, y)}; unplaced —
+    список индексов, которым не хватило места."""
     placed = []
+    positions = {}
     unplaced = []
 
-    for cable in all_cables:
-        r = mm_to_feet(cable.diameter) / 2.0
-        if r <= 0 or 2 * r > tray_w + 1e-6:
-            unplaced.append(cable)
+    for idx in sorted(range(len(radii)), key=lambda i: -radii[i]):
+        r = radii[idx]
+        if r <= 0 or 2.0 * r > tray_w + 1e-6:
+            unplaced.append(idx)
             continue
 
-        # Кандидаты — готовые точки покоя (x, y), а не только x:
-        #   • у обеих стенок — вертикальное падение (_drop_y);
-        #   • над центром каждого уже уложенного круга — тоже падение;
-        #   • НА ПОЛУ вплотную к уже уложенному кругу сбоку (y=r) — именно
-        #     этой точки не хватало: _drop_y в такой x «цепляется» за плечо
-        #     соседа и отдаёт высоту больше, чем у дальней стенки, поэтому
-        #     кабель улетал к стенке и раскладка разваливалась на две кучи;
-        #   • в седле между двумя близкими по X кругами (_pair_xy).
+        # Кандидаты — готовые точки покоя (x, y): у обеих стенок и над
+        # центром уложенного круга (вертикальное падение _drop_y); НА ПОЛУ
+        # вплотную к уложенному кругу сбоку (y=r); в седле между двумя
+        # близкими по X кругами (_pair_xy).
         cands = []
         for wx in (r, tray_w - r):
             cands.append((wx, _drop_y(wx, r, placed)))
@@ -372,15 +367,13 @@ def arrange_cables(cables, tray_width_mm, tray_height_mm):
                         cands.append((fx, r))
 
         by_x = sorted(placed, key=lambda p: p.cx)
-        n = len(by_x)
-        for i in range(n):
-            for j in range(i + 1, min(i + 1 + _NEIGHBOR_WINDOW, n)):
+        m = len(by_x)
+        for i in range(m):
+            for j in range(i + 1, min(i + 1 + _NEIGHBOR_WINDOW, m)):
                 xy = _pair_xy(by_x[i], by_x[j], r)
                 if xy and r - 1e-6 <= xy[0] <= tray_w - r + 1e-6 and xy[1] >= r - 1e-6:
                     cands.append(xy)
 
-        # bottom-left-fill: ниже — лучше, при равной высоте — левее; берём
-        # первую точку, которая помещается.
         best = None
         for x, y in sorted(cands, key=lambda c: (c[1], c[0])):
             x = min(max(x, r), tray_w - r)
@@ -391,11 +384,28 @@ def arrange_cables(cables, tray_width_mm, tray_height_mm):
                 break
 
         if best is None:
-            unplaced.append(cable)
+            unplaced.append(idx)
             continue
 
-        placed.append(_Placed(best[0], best[1], r, cable))
+        placed.append(_Circ(best[0], best[1], r))
+        positions[idx] = (best[0], best[1])
 
+    return positions, unplaced
+
+
+def arrange_cables(cables, tray_width_mm, tray_height_mm):
+    u"""Одна bottom-left-fill куча из всех переданных кабелей (Quantity
+    штук каждой строки), без группировки по типам. Позиции в футах
+    относительно левого нижнего угла области. (placed, unplaced)."""
+    tray_w = mm_to_feet(tray_width_mm)
+    tray_h = mm_to_feet(tray_height_mm)
+    inst = _expand(cables)
+    radii = [mm_to_feet(c.diameter) / 2.0 for c in inst]
+
+    positions, unplaced_idx = _blf_pack(radii, tray_w, tray_h)
+    placed = [_Placed(positions[i][0], positions[i][1], radii[i], inst[i])
+              for i in sorted(positions)]
+    unplaced = [inst[i] for i in unplaced_idx]
     return placed, unplaced
 
 
