@@ -429,51 +429,71 @@ def _expand(cables):
 
 
 def _pyramid_offsets(n, r, avail_w, avail_h):
-    u"""Смещения (dx, dy) центров n кругов радиуса r в треугольной горке:
-    широкий низ, каждый ряд на 1 короче, верхний (неполный) ряд — по
-    центру; ряды со сдвигом на радиус, шаг по высоте r*SQRT3. Так руками
-    и складывают трубы/кабели: 2 — рядом, 3 — пирамидкой, 4 — 3 и 1
-    сверху и т.д. Кладёт столько, сколько влезает в avail_w x avail_h;
-    возвращает (offsets, block_w, block_h)."""
+    u"""Смещения (dx, dy) центров n кругов радиуса r «горкой»: ряды со
+    сдвигом на радиус, шаг по высоте r*SQRT3. Пока помещается —
+    центрированная треугольная пирамидка (2 — рядом, 3 — пирамидка,
+    4 — 3 снизу + 1 сверху, дальше низ по возрастанию). Если треугольник
+    по высоте не влезает — переходим на плотную укладку от левой стенки:
+    ряды не сужаются ниже, чем нужно, чтобы уместить остаток, лишние
+    круги идут добавочными рядами со стороны стенки лотка. Кладёт
+    столько, сколько влезло; возвращает (offsets, block_w, block_h)."""
     if n <= 0 or r <= 0:
         return [], 0.0, 0.0
 
-    # низ горки b: минимальное треугольное число >= n
+    b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
+    max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)
+
+    # низ горки b: минимальное треугольное число >= n, но не шире отсека
     b = 1
     while b * (b + 1) // 2 < n:
         b += 1
-    b = min(b, max(1, int((avail_w + 1e-9) / (2.0 * r))))       # не шире отсека
-    max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)  # не выше отсека
+    b = min(b, b_lim)
 
-    def capacity(bb, rows):
-        rows = min(rows, bb)
-        return rows * bb - rows * (rows - 1) // 2
-
-    b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
-    while capacity(b, max_rows) < n and b < b_lim:
-        b += 1
-
-    remaining = n
-    rows = []
-    w = b
-    while remaining > 0 and w > 0 and len(rows) < max_rows:
-        take = min(w, remaining)
-        rows.append(take)
-        remaining -= take
+    # ряды центрированной пирамидки: b, b-1, b-2, ...
+    tri_rows = []
+    rem, w = n, b
+    while rem > 0 and w > 0 and len(tri_rows) < max_rows:
+        take = min(w, rem)
+        tri_rows.append(take)
+        rem -= take
         w -= 1
 
+    if rem == 0:
+        offsets = []
+        for j, cnt in enumerate(tri_rows):
+            full = b - j
+            # неполный верхний ряд центрируем сдвигом кратным 2r — иначе он
+            # встаёт РОВНО над нижним рядом (тот же x) вместо сёдел -> нахлёст
+            base_x = r + j * r + ((full - cnt) // 2) * 2.0 * r
+            y = r + j * r * SQRT3
+            for k in range(cnt):
+                offsets.append((base_x + k * 2.0 * r, y))
+        return offsets, 2.0 * r * b, 2.0 * r + (len(tri_rows) - 1) * r * SQRT3
+
+    # не влезло треугольником -> плотно от стенки: ряд не уже, чем нужно,
+    # чтобы уместить остаток за оставшиеся ряды
     offsets = []
-    for j, cnt in enumerate(rows):
-        full = b - j
-        # неполный верхний ряд центрируем, но сдвигом кратным 2r — иначе
-        # он встаёт РОВНО над нижним рядом (тот же x) вместо сёдел -> нахлёст
-        base_x = r + j * r + ((full - cnt) // 2) * 2.0 * r
+    rem = n
+    used_rows = 0
+    right_edge = 0.0
+    for j in range(max_rows):
+        if rem <= 0:
+            break
+        start = r + (j % 2) * r          # от стенки, сохраняя сдвиг рядов
+        col_lim = max(1, int((avail_w - start + r + 1e-9) / (2.0 * r)))
+        rows_left = max_rows - j
+        cnt = min(col_lim, max(b - j, int(math.ceil(rem / float(rows_left)))), rem)
+        if cnt <= 0:
+            break
         y = r + j * r * SQRT3
         for k in range(cnt):
-            offsets.append((base_x + k * 2.0 * r, y))
+            offsets.append((start + k * 2.0 * r, y))
+        rem -= cnt
+        used_rows = j + 1
+        right_edge = max(right_edge, start + (cnt - 1) * 2.0 * r + r)
 
-    block_w = 2.0 * r * b
-    block_h = 2.0 * r + (len(rows) - 1) * r * SQRT3
+    block_w = right_edge
+    block_h = 2.0 * r + (used_rows - 1) * r * SQRT3
     return offsets, block_w, block_h
 
 
