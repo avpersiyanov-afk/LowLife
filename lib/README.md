@@ -790,12 +790,18 @@ Dynamo), а точная «гравитационная» упаковка: ка
 чертёжные виды**, запустив кнопку дважды (на одном виде «Только сечение», на
 другом «Только таблица»).
 
-**Раскладка (настройки кнопки).** `layout` = `LAYOUT_SOLID` (вперемешку,
-bottom-left-fill) или `LAYOUT_HONEYCOMB` (по типам, `_arrange_honeycomb` —
-каждый `original_mark` отдельным сотовым блоком, блоки полками слева направо).
-`divide_soue_ro` — кабели `is_soue_ro(system)` уходят в отдельный отсек за
-вертикальной перегородкой; ширины отсеков — по доле площади (15..50% под
-СОУЭ РО), `plan_section` возвращает X оси перегородки, `draw_section` её рисует.
+**Раскладка (настройки кнопки).** Оба режима группируют кабели по типам
+(`original_mark`) и кладут типы слева направо полками (`_group_by_type` +
+`_shelf_pack` / `_arrange_solid_by_type`), чтобы типы не сваливались в кучу.
+Отличие — форма кучи одного типа: `LAYOUT_SOLID` — плотная bottom-left-fill
+(`arrange_cables` в компактную по ширине полосу); `LAYOUT_HONEYCOMB` —
+треугольная горка (`_pyramid_offsets`: 2 → рядом, 3 → пирамидка, 4 → 3+1,
+дальше низ `b` = мин. треугольное число ≥ N и ряды по убыванию; неполный
+верхний ряд центрируется сдвигом кратным 2r, чтобы садиться в сёдла, а не
+поверх нижнего ряда). `divide_soue_ro` — кабели `is_soue_ro(system)` уходят в
+отдельный отсек за вертикальной перегородкой; ширины отсеков — по доле площади
+(15..50% под СОУЭ РО), `plan_section` возвращает X оси перегородки,
+`draw_section` её рисует.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -803,7 +809,7 @@ bottom-left-fill) или `LAYOUT_HONEYCOMB` (по типам, `_arrange_honeycom
 | `read_cables` | `read_cables(path, sheet_name=None)` | `(cables, error)` — список `CableData` с листа `sheet_name` (без него — `find_data_sheet`, иначе первый лист). Столбцы жёстко по номеру (0 марка, 1 диаметр, 2 участок, 3 кол-во, 5 система, 6 %, 7 высота, 8 ширина). Участок протягивается вниз по объединённым ячейкам |
 | `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
-| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — сплошная раскладка bottom-left-fill (см. выше) |
+| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — одна bottom-left-fill куча, без группировки по типам (используется как кирпич для `LAYOUT_SOLID` внутри каждого типа) |
 | `is_soue_ro` | `is_soue_ro(system)` | `True` для системы «СОУЭ РО» в любом написании |
 | `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm, layout=LAYOUT_SOLID, divide_soue_ro=False)` | `(placed, unplaced, fill_percent, partition_x_ft)` — раскладка (сплошняком/сотами, с перегородкой СОУЭ РО или без), без рисования |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |

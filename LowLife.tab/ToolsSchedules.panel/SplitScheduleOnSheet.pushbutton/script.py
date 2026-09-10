@@ -103,6 +103,35 @@ def parse_height_ft(raw):
     return to_float_mm(raw) / MM_IN_FOOT
 
 
+def body_total_ft(sched):
+    u"""Полная высота ТЕЛА спецификации = сумма высот строк секции Body из
+    модели таблицы, футы. Точно (как schedule_width_ft по столбцам), без
+    пробного Split. 0.0 — не вышло."""
+    try:
+        td = sched.GetTableData()
+        sd = td.GetSectionData(SectionType.Body)
+    except Exception as ex:
+        dbg(u"GetSectionData(Body): {}".format(ex))
+        return 0.0
+    if sd is None:
+        return 0.0
+    total = 0.0
+    rows = 0
+    try:
+        for r in range(sd.FirstRowNumber, sd.LastRowNumber + 1):
+            try:
+                h = sd.GetRowHeight(r)
+                if is_num(h) and h > 0:
+                    total += h
+                    rows += 1
+            except Exception:
+                pass
+    except Exception as ex:
+        dbg(u"строки тела: {}".format(ex))
+    dbg(u"тело таблицы: {:.1f} мм ({} строк)".format(total * MM_IN_FOOT, rows))
+    return total if (is_num(total) and total > 0) else 0.0
+
+
 def probe_body_ft(sched):
     u"""
     Оценка высоты ТЕЛА спеки (строки данных), футы. 0.0 — не вышло.

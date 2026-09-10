@@ -29,10 +29,14 @@ u"""
     Кабели, которым не хватило места по высоте лотка, возвращаются
     отдельным списком, а не молча пропадают.
 
-  - Режим раскладки (настройка кнопки): LAYOUT_SOLID — как выше,
-    вперемешку; LAYOUT_HONEYCOMB — «сотами по типам»: кабели каждого
-    типа (original_mark) отдельным плотным сотовым блоком, блоки —
-    полками слева направо (_arrange_honeycomb).
+  - Режим раскладки (настройка кнопки). Оба варианта группируют кабели
+    по типам (original_mark) и раскладывают типы слева направо полками —
+    чтобы разные типы не сваливались в одну кучу. Отличие только в форме
+    блока одного типа: LAYOUT_SOLID — плотная bottom-left-fill куча
+    (_arrange_solid_by_type, per-тип через arrange_cables);
+    LAYOUT_HONEYCOMB — треугольная горка (_pyramid_offsets): 2 — рядом,
+    3 — пирамидка, 4 — 3+1, дальше широкий низ и ряды по убыванию, как
+    складывают трубы руками.
 
   - Перегородка СОУЭ РО (настройка кнопки): если divide_soue_ro, кабели
     системы «СОУЭ РО» (is_soue_ro) уходят в отдельный отсек лотка,
@@ -395,65 +399,151 @@ def arrange_cables(cables, tray_width_mm, tray_height_mm):
     return placed, unplaced
 
 
-def _arrange_honeycomb(cables, tray_width_mm, tray_height_mm):
-    u"""Раскладка «сотами по типам»: кабели каждого типа (original_mark) —
-    отдельным плотным сотовым блоком (ряды со сдвигом на радиус); блоки
-    ставятся слева направо полками, при нехватке ширины — новая полка
-    выше. Тип с самым толстым кабелем идёт первым (внизу слева).
-    Возвращает (placed, unplaced) — как arrange_cables."""
-    tray_w = mm_to_feet(tray_width_mm)
-    tray_h = mm_to_feet(tray_height_mm)
-    gap = mm_to_feet(_BLOCK_GAP_MM)
-
+def _group_by_type(cables):
+    u"""Списки CableData по типам (original_mark); тип с самым толстым
+    кабелем — первым, внутри группы — порядок как во входе."""
     groups = OrderedDict()
     for c in cables:
         groups.setdefault(c.original_mark, []).append(c)
-    ordered = sorted(groups.values(), key=lambda g: (-g[0].diameter, g[0].original_mark))
-    # каждый экземпляр (Quantity) — отдельный кружок
-    ordered = [[c for c in g for _ in range(c.quantity)] for g in ordered]
+    return sorted(groups.values(), key=lambda g: (-g[0].diameter, g[0].original_mark))
+
+
+def _expand(cables):
+    out = []
+    for c in cables:
+        out.extend([c] * c.quantity)
+    return out
+
+
+def _pyramid_offsets(n, r, avail_w, avail_h):
+    u"""Смещения (dx, dy) центров n кругов радиуса r в треугольной горке:
+    широкий низ, каждый ряд на 1 короче, верхний (неполный) ряд — по
+    центру; ряды со сдвигом на радиус, шаг по высоте r*SQRT3. Так руками
+    и складывают трубы/кабели: 2 — рядом, 3 — пирамидкой, 4 — 3 и 1
+    сверху и т.д. Кладёт столько, сколько влезает в avail_w x avail_h;
+    возвращает (offsets, block_w, block_h)."""
+    if n <= 0 or r <= 0:
+        return [], 0.0, 0.0
+
+    # низ горки b: минимальное треугольное число >= n
+    b = 1
+    while b * (b + 1) // 2 < n:
+        b += 1
+    b = min(b, max(1, int((avail_w + 1e-9) / (2.0 * r))))       # не шире отсека
+    max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)  # не выше отсека
+
+    def capacity(bb, rows):
+        rows = min(rows, bb)
+        return rows * bb - rows * (rows - 1) // 2
+
+    b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
+    while capacity(b, max_rows) < n and b < b_lim:
+        b += 1
+
+    remaining = n
+    rows = []
+    w = b
+    while remaining > 0 and w > 0 and len(rows) < max_rows:
+        take = min(w, remaining)
+        rows.append(take)
+        remaining -= take
+        w -= 1
+
+    offsets = []
+    for j, cnt in enumerate(rows):
+        full = b - j
+        # неполный верхний ряд центрируем, но сдвигом кратным 2r — иначе
+        # он встаёт РОВНО над нижним рядом (тот же x) вместо сёдел -> нахлёст
+        base_x = r + j * r + ((full - cnt) // 2) * 2.0 * r
+        y = r + j * r * SQRT3
+        for k in range(cnt):
+            offsets.append((base_x + k * 2.0 * r, y))
+
+    block_w = 2.0 * r * b
+    block_h = 2.0 * r + (len(rows) - 1) * r * SQRT3
+    return offsets, block_w, block_h
+
+
+def _shelf_pack(groups, tray_w, tray_h, block_fn):
+    u"""Общая раскладка блоков по типам полками слева направо; block_fn(g,
+    avail_w) -> (offsets, block_w, block_h) относительно левого нижнего
+    угла блока."""
+    gap = mm_to_feet(_BLOCK_GAP_MM)
+    placed, unplaced = [], []
+    shelf_x = shelf_y = shelf_h = 0.0
+
+    for g in groups:
+        r = mm_to_feet(g[0].diameter) / 2.0
+        inst = _expand(g)
+        if r <= 0 or 2.0 * r > tray_w + 1e-6:
+            unplaced.extend(inst)
+            continue
+
+        avail_w = tray_w - shelf_x if shelf_x > 1e-9 else tray_w
+        offs, bw, bh = block_fn(inst, r, avail_w, tray_h - shelf_y)
+        if shelf_x > 1e-9 and (not offs or shelf_x + bw > tray_w + 1e-6):
+            shelf_y += shelf_h + gap
+            shelf_x = shelf_h = 0.0
+            offs, bw, bh = block_fn(inst, r, tray_w, tray_h - shelf_y)
+
+        if not offs or shelf_y + bh > tray_h + 1e-6:
+            unplaced.extend(inst)
+            continue
+
+        for idx, (dx, dy) in enumerate(offs):
+            placed.append(_Placed(shelf_x + dx, shelf_y + dy, r, inst[idx]))
+        if len(offs) < len(inst):
+            unplaced.extend(inst[len(offs):])
+        shelf_x += bw + gap
+        shelf_h = max(shelf_h, bh)
+
+    return placed, unplaced
+
+
+def _arrange_honeycomb(cables, tray_width_mm, tray_height_mm):
+    u"""«Сотами по типам»: каждый тип — треугольной горкой (_pyramid_offsets),
+    горки идут слева направо полками, при нехватке ширины — новая полка выше."""
+    tray_w = mm_to_feet(tray_width_mm)
+    tray_h = mm_to_feet(tray_height_mm)
+
+    def block_fn(inst, r, avail_w, avail_h):
+        return _pyramid_offsets(len(inst), r, avail_w, avail_h)
+
+    return _shelf_pack(_group_by_type(cables), tray_w, tray_h, block_fn)
+
+
+def _arrange_solid_by_type(cables, tray_width_mm, tray_height_mm):
+    u"""«Сплошняком, но по типам»: каждый тип плотно упаковывается
+    bottom-left-fill (arrange_cables) в свою КОМПАКТНУЮ полосу справа от
+    предыдущей — чтобы типы не сваливались в одну кучу и не растекались
+    по всему дну лотка одним рядом. Ширина полосы типа — по числу
+    кабелей и высоте лотка (примерно квадратная куча, но не ниже, чем
+    нужно, чтобы всё уместилось)."""
+    tray_w = mm_to_feet(tray_width_mm)
+    gap = mm_to_feet(_BLOCK_GAP_MM)
 
     placed, unplaced = [], []
-    shelf_x = 0.0
-    shelf_y = 0.0
-    shelf_h = 0.0
-
-    for g in ordered:
-        r = mm_to_feet(g[0].diameter) / 2.0
-        nn = len(g)
-        if r <= 0 or 2.0 * r > tray_w + 1e-6:
-            unplaced.extend(g)
+    x_cursor = 0.0
+    for g in _group_by_type(cables):
+        d = g[0].diameter
+        n = sum(c.quantity for c in g)
+        remaining_mm = feet_to_mm(tray_w - x_cursor)
+        if remaining_mm <= 0 or d <= 0 or n <= 0:
+            unplaced.extend(_expand(g))
             continue
 
-        cols_fit_w = max(1, int((tray_w - r) / (2.0 * r)))
-        max_rows = max(1, int((tray_h - r) / (r * SQRT3)) + 1)
-        cols = int(round(math.sqrt(nn))) or 1
-        cols = max(cols, int(math.ceil(nn / float(max_rows))))
-        cols = max(1, min(cols, cols_fit_w))
-        rows = int(math.ceil(nn / float(cols)))
+        rows_avail = max(1, int(tray_height_mm / d))
+        cols = max(1, int(math.ceil(n / float(rows_avail))), int(math.ceil(math.sqrt(n))))
+        region_mm = min(remaining_mm, max(d, cols * d * 1.15))
 
-        block_w = 2.0 * r * cols + r
-        block_h = 2.0 * r + (rows - 1) * r * SQRT3
-
-        if shelf_x > 1e-9 and shelf_x + block_w > tray_w + 1e-6:
-            shelf_y += shelf_h + gap
-            shelf_x = 0.0
-            shelf_h = 0.0
-        if shelf_y + block_h > tray_h + 1e-6:
-            unplaced.extend(g)
-            continue
-
-        k = 0
-        for j in range(rows):
-            row_n = min(cols, nn - k)
-            if row_n <= 0:
-                break
-            y = shelf_y + r + j * r * SQRT3
-            x_off = r if (j % 2) else 0.0
-            for i in range(row_n):
-                placed.append(_Placed(shelf_x + r + x_off + i * 2.0 * r, y, r, g[k]))
-                k += 1
-        shelf_x += block_w + gap
-        shelf_h = max(shelf_h, block_h)
+        sub_placed, sub_un = arrange_cables(g, region_mm, tray_height_mm)
+        right = x_cursor
+        for p in sub_placed:
+            p.cx += x_cursor
+            right = max(right, p.cx + p.r)
+        placed.extend(sub_placed)
+        unplaced.extend(sub_un)
+        x_cursor = right + gap
 
     return placed, unplaced
 
@@ -461,7 +551,7 @@ def _arrange_honeycomb(cables, tray_width_mm, tray_height_mm):
 def _pack_region(cables, region_width_mm, region_height_mm, layout):
     if layout == LAYOUT_HONEYCOMB:
         return _arrange_honeycomb(cables, region_width_mm, region_height_mm)
-    return arrange_cables(cables, region_width_mm, region_height_mm)
+    return _arrange_solid_by_type(cables, region_width_mm, region_height_mm)
 
 
 def is_soue_ro(system):
