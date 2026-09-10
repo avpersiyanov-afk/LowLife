@@ -35,6 +35,7 @@ room_info_settings).
 Транзакцию открывает скрипт кнопки, не этот модуль.
 """
 
+import re
 import math
 
 from Autodesk.Revit.DB import (
@@ -130,6 +131,104 @@ def _opt_param_radians(el, name, unit_mode):
     if p is None or not p.HasValue or p.StorageType != StorageType.Double:
         return None
     return _param_radians(p, unit_mode)
+
+
+# --- угол обзора из оптики (фокусное расстояние + матрица) --------------
+
+# Оптический формат матрицы -> (ширина, высота) активной области, мм.
+# Значения номинальные (историческое «дюймовое» обозначение), при
+# необходимости задайте размеры явно как «ШхВ» (например «5.37x4.04»).
+_SENSOR_FORMATS = {
+    u"1/4":   (3.60, 2.70),
+    u"1/3.6": (4.00, 3.00),
+    u"1/3.2": (4.54, 3.42),
+    u"1/3":   (4.80, 3.60),
+    u"1/2.9": (4.96, 3.72),
+    u"1/2.8": (5.37, 4.04),
+    u"1/2.7": (5.37, 4.04),
+    u"1/2.5": (5.76, 4.29),
+    u"1/2.3": (6.17, 4.55),
+    u"1/2":   (6.40, 4.80),
+    u"1/1.9": (6.74, 5.05),
+    u"1/1.8": (7.18, 5.32),
+    u"1/1.7": (7.60, 5.70),
+    u"2/3":   (8.80, 6.60),
+    u"1/1.2": (10.67, 8.00),
+    u"1":     (12.80, 9.60),
+}
+
+
+def _parse_sensor(text):
+    """
+    «Формат матрицы» -> (ширина_мм, высота_мм). Принимает:
+      «1/2.8», «1/3"», «2/3»  — по таблице оптических форматов;
+      «5.37x4.04», «5,37*4,04» — явные размеры;
+      «5.37» — только ширина (высота считается как 3/4 ширины).
+    None, если распознать не удалось.
+    """
+    if not text:
+        return None
+    s = unicode(text).strip().strip(u'"').strip(u'”')
+    s = s.replace(u",", u".").replace(u" ", u"").lower()
+    if not s:
+        return None
+    if s in _SENSOR_FORMATS:
+        return _SENSOR_FORMATS[s]
+    for sep in (u"x", u"×", u"*"):
+        if sep in s:
+            a, _, b = s.partition(sep)
+            try:
+                return (float(a), float(b))
+            except Exception:
+                return None
+    try:
+        w = float(s)
+        return (w, w * 3.0 / 4.0)
+    except Exception:
+        return None
+
+
+def _length_param_mm(param):
+    """Значение параметра длины в миллиметрах. Тип «Длина» -> из футов в мм;
+    иначе значение берётся как есть (считаем, что уже в мм)."""
+    v = param.AsDouble()
+    try:
+        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Length:
+            return v * 304.8
+    except Exception:
+        pass
+    try:
+        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Length:
+            return v * 304.8
+    except Exception:
+        pass
+    return v
+
+
+def _optical_fov(fi, settings):
+    """
+    (hfov_rad, vfov_rad|None) из параметра фокусного расстояния и формата
+    матрицы. None, если имя параметра не задано / параметра нет / формат
+    матрицы не задан — тогда используется прямой параметр угла обзора.
+    """
+    fname = (settings.get("focal_length_param_name") or u"").strip()
+    if not fname:
+        return None
+    p = fi.LookupParameter(fname)
+    if p is None or not p.HasValue or p.StorageType != StorageType.Double:
+        return None
+    f_mm = _length_param_mm(p)
+    if not f_mm or f_mm <= 0.01:
+        return None
+
+    sensor = _parse_sensor(settings.get("sensor_format"))
+    if sensor is None:
+        return None
+    w_mm, h_mm = sensor
+
+    hfov = 2.0 * math.atan(w_mm / (2.0 * f_mm))
+    vfov = 2.0 * math.atan(h_mm / (2.0 * f_mm)) if (h_mm and h_mm > 0) else None
+    return hfov, vfov
 
 
 # ======================================================================
@@ -615,14 +714,24 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     if not isinstance(cam.Location, LocationPoint):
         return (cam, u"no_location", u"")
 
-    ang_p = cam.LookupParameter((s.get("angle_param_name") or u"").strip())
-    if ang_p is None or not ang_p.HasValue:
-        return (cam, u"no_angle_param", s.get("angle_param_name") or u"")
-    dist_p = cam.LookupParameter((s.get("distance_param_name") or u"").strip())
+    dist_name = (s.get("distance_param_name") or u"").strip()
+    dist_p = cam.LookupParameter(dist_name)
     if dist_p is None or not dist_p.HasValue:
-        return (cam, u"no_distance_param", s.get("distance_param_name") or u"")
+        return (cam, u"no_distance_param", dist_name or u"(имя не задано)")
 
-    hfov = _param_radians(ang_p, unit_mode)
+    # горизонтальный угол: сначала из оптики (фокусное + матрица),
+    # иначе — из прямого параметра угла обзора
+    optic_vfov = None
+    optic = _optical_fov(cam, s)
+    if optic is not None:
+        hfov, optic_vfov = optic
+    else:
+        ang_name = (s.get("angle_param_name") or u"").strip()
+        ang_p = cam.LookupParameter(ang_name) if ang_name else None
+        if ang_p is None or not ang_p.HasValue:
+            return (cam, u"no_angle_param", ang_name or u"(имя не задано)")
+        hfov = _param_radians(ang_p, unit_mode)
+
     max_r = dist_p.AsDouble()
     if hfov <= 1e-4 or max_r <= 0.02:
         return (cam, u"bad_geometry", u"угол/дальность = 0")
@@ -639,6 +748,8 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
 
     tilt = _opt_param_radians(cam, s.get("tilt_param_name"), unit_mode)
     vfov = _opt_param_radians(cam, s.get("vfov_param_name"), unit_mode)
+    if vfov is None:
+        vfov = optic_vfov          # из оптики, если явного параметра нет
     h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
     if h_ft is not None:
         h_ft = h_ft - target_off_ft
@@ -676,6 +787,36 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         _draw_dori(doc, view, center, base, half, h_res, hfov, max_r, z, dori_style)
 
     return (cam, status, u"")
+
+
+def resolve_category_ids(doc, text):
+    """
+    Множество int-id категорий для фильтра выбора камер. Каждый токен
+    (через запятую / точку с запятой / перевод строки) трактуется как имя
+    BuiltInCategory (OST_SecurityDevices) либо как русское имя категории
+    («Оборудование систем безопасности»). Нераспознанные молча
+    пропускаются.
+    """
+    ids = set()
+    for tok in re.split(u"[,;\n\r\t]+", text or u""):
+        name = tok.strip()
+        if not name:
+            continue
+        bic = getattr(BuiltInCategory, name, None)
+        if bic is not None:
+            try:
+                ids.add(int(bic))
+                continue
+            except Exception:
+                pass
+        try:
+            for c in doc.Settings.Categories:
+                if c.Name and c.Name.strip().lower() == name.lower():
+                    ids.add(c.Id.IntegerValue)
+                    break
+        except Exception:
+            pass
+    return ids
 
 
 def build_fov_zones(doc, cameras, view, settings):
@@ -763,13 +904,51 @@ SETTINGS_FILE_NAME = "LowLifeCameraFov_settings.json"
 # (ключ, заголовок раздела, подпись поля, пояснение, значение по умолчанию, обязательное)
 TEXT_FIELDS = [
     (
+        "camera_categories",
+        u"⓪ Что выбирать",
+        u"Категории камер для фильтра выбора",
+        u"Через запятую. Имя BuiltInCategory (OST_SecurityDevices, "
+        u"OST_CommunicationDevices, OST_DataDevices, OST_ElectricalEquipment, "
+        u"OST_GenericModel) и/или русское имя категории как в дереве "
+        u"«Категории» («Оборудование систем безопасности»). Кнопка даст "
+        u"выбрать только элементы этих категорий. Если после нажатия ничего "
+        u"не выделяется — камера не в этой категории; посмотрите её "
+        u"категорию в свойствах и впишите сюда.",
+        u"OST_SecurityDevices", True
+    ),
+    (
         "angle_param_name",
         u"① Параметры камеры (в этой модели)",
         u"Параметр «горизонтальный угол обзора»",
-        u"Имя параметра экземпляра камеры с углом обзора в плане. Если это "
-        u"параметр типа «Угол» — значение берётся как есть (радианы); иначе "
-        u"см. поле «Единицы углов» ниже.",
-        u"УГО_ПВ_Угол обзора", True
+        u"Имя параметра экземпляра камеры с углом обзора в плане. Тип "
+        u"параметра — «Угол» (тогда значение читается в радианах) либо "
+        u"«Число» (тогда см. «Единицы углов»). Можно не задавать, если "
+        u"заполнены «Фокусное расстояние» + «Формат матрицы» ниже — тогда "
+        u"угол считается из оптики и это поле игнорируется.",
+        u"УГО_ПВ_Угол обзора", False
+    ),
+    (
+        "focal_length_param_name",
+        u"",
+        u"Параметр «фокусное расстояние», мм",
+        u"Имя параметра объектива. Если задан и найден (+ заполнен «Формат "
+        u"матрицы») — горизонтальный угол считается как "
+        u"θ = 2·arctg(ширина матрицы / (2·f)), а параметр угла обзора не "
+        u"используется. Тип «Длина» → пересчёт из футов; «Число» → как есть, "
+        u"в мм. Для варифокального объектива берётся текущее значение "
+        u"параметра.",
+        u"", False
+    ),
+    (
+        "sensor_format",
+        u"",
+        u"Формат матрицы",
+        u"Нужен вместе с фокусным расстоянием. Оптический формат — «1/2.8», "
+        u"«1/3», «1/1.8», «2/3», «1» (по таблице); либо явные размеры "
+        u"активной области «ШхВ» в мм — «5.37x4.04»; либо одна ширина «5.37» "
+        u"(высота = 3/4). По высоте матрицы дополнительно вычисляется "
+        u"вертикальный угол — если параметр вертикального угла не задан.",
+        u"", False
     ),
     (
         "distance_param_name",

@@ -26,17 +26,18 @@ from lowlife import sot_fov
 doc = revit.doc
 uidoc = revit.uidoc
 
-_SECURITY_CAT_ID = int(BuiltInCategory.OST_SecurityDevices)
 
+class _CategoryFilter(ISelectionFilter):
+    """Разрешает выбирать только элементы категорий из настроек
+    (по умолчанию — «Оборудование систем безопасности», OST_SecurityDevices)."""
 
-class _SecurityDeviceFilter(ISelectionFilter):
-    """Разрешает выбирать только элементы категории «Охранная сигнализация»
-    (OST_SecurityDevices) — обычно к ней относятся семейства видеокамер."""
+    def __init__(self, allowed_ids):
+        self._ids = set(allowed_ids)
 
     def AllowElement(self, elem):
         try:
             cat = elem.Category
-            return cat is not None and cat.Id.IntegerValue == _SECURITY_CAT_ID
+            return cat is not None and cat.Id.IntegerValue in self._ids
         except Exception:
             return False
 
@@ -94,7 +95,19 @@ if config_mode:
 
 # --- обычный запуск --------------------------------------------------
 settings = sot_fov.get_settings_silent()
-sot_fov.require(settings, ["angle_param_name", "distance_param_name", "zone_tag"])
+sot_fov.require(settings, ["distance_param_name", "zone_tag"])
+
+_has_angle = bool((settings.get("angle_param_name") or u"").strip())
+_has_optics = bool((settings.get("focal_length_param_name") or u"").strip()
+                   and (settings.get("sensor_format") or u"").strip())
+if not _has_angle and not _has_optics:
+    forms.alert(
+        u"В настройках не задан способ получить угол обзора:\n"
+        u"— либо «Параметр горизонтального угла обзора»,\n"
+        u"— либо пара «Фокусное расстояние» + «Формат матрицы».\n\n"
+        u"Откройте настройки: Shift+клик по кнопке «Зоны обзора».",
+        exitscript=True
+    )
 
 view = doc.ActiveView
 if not isinstance(view, (ViewPlan, ViewDrafting)):
@@ -104,11 +117,17 @@ if not isinstance(view, (ViewPlan, ViewDrafting)):
         exitscript=True
     )
 
+cat_ids = sot_fov.resolve_category_ids(
+    doc, settings.get("camera_categories") or u"OST_SecurityDevices"
+)
+if not cat_ids:
+    cat_ids = {int(BuiltInCategory.OST_SecurityDevices)}
+
 try:
     refs = uidoc.Selection.PickObjects(
         ObjectType.Element,
-        _SecurityDeviceFilter(),
-        u"Выберите видеокамеры (охранная сигнализация), затем Enter"
+        _CategoryFilter(cat_ids),
+        u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)"
     )
 except OperationCanceledException:
     forms.alert(u"Выбор отменён, ничего не построено.", exitscript=True)
@@ -117,7 +136,14 @@ cameras = [doc.GetElement(r) for r in refs]
 cameras = [c for c in cameras if c is not None]
 
 if not cameras:
-    forms.alert(u"Не выбрано ни одной камеры.", exitscript=True)
+    forms.alert(
+        u"Не выбрано ни одной камеры.\n\n"
+        u"Если камеры не выделялись вовсе — они не в тех категориях, что "
+        u"заданы в настройках («Категории камер для фильтра выбора»). "
+        u"Посмотрите категорию семейства камеры в свойствах и впишите её "
+        u"в настройки (Shift+клик).",
+        exitscript=True
+    )
 
 with revit.Transaction(u"СОТ: зоны обзора камер"):
     results = sot_fov.build_fov_zones(doc, cameras, view, settings)

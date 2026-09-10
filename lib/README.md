@@ -1304,12 +1304,20 @@ room_number_param)` — запись по точкам прохода, возв�
 
 - `build_fov_zones(doc, cameras, view, settings)` — главный вход, вызывается
   скриптом кнопки внутри транзакции. По каждой камере: горизонтальный угол
-  обзора и дальность из параметров экземпляра (имена — в настройках);
-  направление — `FamilyInstance.FacingOrientation` + необязательный доворот
+  обзора либо из параметра, либо из оптики (`_optical_fov`:
+  `focal_length_param_name` + `sensor_format` → `θ = 2·arctg(w / 2f)`,
+  форматы матрицы в `_SENSOR_FORMATS` / `_parse_sensor`, длины через
+  `_length_param_mm`); дальность — из параметра экземпляра; направление —
+  `FamilyInstance.FacingOrientation` + необязательный доворот
   (`direction_offset_deg`), параметр поворота отдельно **не** прибавляется.
   Возвращает `[(camera, status, detail)]` со `status`
   `ok`/`ok_no_room`/`no_location`/`no_angle_param`/`no_distance_param`/
   `bad_geometry`/`create_failed`/`no_fill_type`.
+- `resolve_category_ids(doc, text)` — множество int-id категорий для
+  фильтра выбора камер в `script.py` (токены — имена `BuiltInCategory`
+  и/или русские имена категорий). Дефолт настройки — `OST_SecurityDevices`;
+  если камеры проекта в другой категории, пользователь дописывает её в
+  поле `camera_categories`.
 - Учёт высоты установки: `_mounting_height_ft` (из параметра или из отметки
   точки вставки над уровнем), `_near_far_radius` — проекция конуса на
   плоскость расчёта: `near = h / tg(наклон + вертикальный/2)`,
