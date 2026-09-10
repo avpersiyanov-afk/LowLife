@@ -235,42 +235,77 @@ def _optical_fov(fi, settings):
 #  ГЕОМЕТРИЯ КАМЕРЫ
 # ======================================================================
 
+def _horiz(v):
+    """Горизонтальная проекция вектора как XYZ, либо None, если она почти нулевая."""
+    if v is None:
+        return None
+    try:
+        h = XYZ(v.X, v.Y, 0.0)
+    except Exception:
+        return None
+    return h if h.GetLength() > 1e-6 else None
+
+
 def _look_direction(fi, offset_deg):
     """
-    Горизонтальный единичный вектор «куда смотрит» камера. Основной
-    источник — FamilyInstance.FacingOrientation (учитывает поворот и
-    зеркалирование экземпляра). Резерв — оси её Transform. offset_deg —
-    фиксированный доворот против часовой стрелки, если «взгляд» семейства
-    не совпал с FacingOrientation. None, если направление не определить.
+    (горизонтальный единичный вектор «куда смотрит» камера, пояснение).
+    Источники по очереди: FacingOrientation, BasisY / BasisX её Transform,
+    HandOrientation. offset_deg — фиксированный доворот против часовой
+    стрелки. Первый элемент None, если направление определить не удалось
+    (тогда во втором — что перебрали, для диагностики).
     """
-    d = None
+    tried = []
+
+    src = None
     try:
         f = fi.FacingOrientation
-        if f is not None and f.GetLength() > 1e-9:
-            d = XYZ(f.X, f.Y, 0.0)
-    except Exception:
-        d = None
+        tried.append(u"Facing=({:.2f},{:.2f},{:.2f})".format(f.X, f.Y, f.Z))
+        src = _horiz(f)
+        if src is not None:
+            note = u"FacingOrientation"
+    except Exception as ex:
+        tried.append(u"Facing!{}".format(ex))
 
-    if d is None or d.GetLength() < 1e-9:
+    if src is None:
         try:
             t = fi.GetTransform()
-            d = XYZ(t.BasisX.X, t.BasisX.Y, 0.0)
-            if d.GetLength() < 1e-6:
-                d = XYZ(t.BasisY.X, t.BasisY.Y, 0.0)
-        except Exception:
-            d = None
+            tried.append(u"BasisY=({:.2f},{:.2f},{:.2f})".format(
+                t.BasisY.X, t.BasisY.Y, t.BasisY.Z))
+            src = _horiz(t.BasisY)
+            if src is not None:
+                note = u"Transform.BasisY"
+            if src is None:
+                tried.append(u"BasisX=({:.2f},{:.2f},{:.2f})".format(
+                    t.BasisX.X, t.BasisX.Y, t.BasisX.Z))
+                src = _horiz(t.BasisX)
+                if src is not None:
+                    note = u"Transform.BasisX"
+        except Exception as ex:
+            tried.append(u"Transform!{}".format(ex))
 
-    if d is None or d.GetLength() < 1e-9:
-        return None
+    if src is None:
+        try:
+            hnd = fi.HandOrientation
+            tried.append(u"Hand=({:.2f},{:.2f},{:.2f})".format(hnd.X, hnd.Y, hnd.Z))
+            # «взгляд» перпендикулярен руке в плане: повернём на -90°
+            hh = _horiz(hnd)
+            if hh is not None:
+                hh = hh.Normalize()
+                src = XYZ(hh.Y, -hh.X, 0.0)
+                note = u"HandOrientation⟂"
+        except Exception as ex:
+            tried.append(u"Hand!{}".format(ex))
 
-    d = d.Normalize()
+    if src is None:
+        return None, u" / ".join(tried)
 
+    d = src.Normalize()
     if offset_deg:
         a = math.radians(offset_deg)
         ca, sa = math.cos(a), math.sin(a)
         d = XYZ(d.X * ca - d.Y * sa, d.X * sa + d.Y * ca, 0.0)
 
-    return d
+    return d, note
 
 
 def _mounting_height_ft(doc, fi, view, height_param_name):
@@ -733,14 +768,22 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         hfov = _param_radians(ang_p, unit_mode)
 
     max_r = dist_p.AsDouble()
-    if hfov <= 1e-4 or max_r <= 0.02:
-        return (cam, u"bad_geometry", u"угол/дальность = 0")
+    if hfov <= 1e-4:
+        return (cam, u"bad_geometry",
+                u"угол обзора = {:.4f} рад ({:.1f}°) — параметр не заполнен "
+                u"или не тот; проверьте «Единицы углов»".format(
+                    hfov, math.degrees(hfov)))
+    if max_r <= 0.02:
+        return (cam, u"bad_geometry",
+                u"дальность = {:.3f} фт ({:.0f} мм) — параметр «{}» пуст или "
+                u"не типа «Длина»".format(max_r, max_r * 304.8, dist_name))
     hfov = min(hfov, 2.0 * math.pi - 1e-3)
     half = hfov / 2.0
 
-    d = _look_direction(cam, offset_deg)
+    d, dir_note = _look_direction(cam, offset_deg)
     if d is None:
-        return (cam, u"bad_geometry", u"нет направления")
+        return (cam, u"bad_geometry",
+                u"не удалось определить направление камеры [{}]".format(dir_note))
     base = math.atan2(d.Y, d.X)
 
     p = cam.Location.Point
@@ -766,8 +809,16 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
             status = u"ok_no_room"
 
     cl = _zone_curveloop(center, base, half, near_r, far_r, rings, ray_count, z)
+    if cl is None and rings is not None:
+        # обрезка «съела» весь контур (камера на самой границе / выбрано
+        # чужое помещение) — строим без обрезки, но помечаем
+        cl = _zone_curveloop(center, base, half, near_r, far_r, None, ray_count, z)
+        if cl is not None:
+            status = u"ok_clip_failed"
     if cl is None:
-        return (cam, u"bad_geometry", u"пустой контур")
+        return (cam, u"bad_geometry",
+                u"контур вырожден (near={:.2f} far={:.2f} фт, обрезка={})".format(
+                    near_r, far_r, u"да" if rings is not None else u"нет"))
 
     try:
         fr = FilledRegion.Create(doc, frt.Id, view.Id, List[CurveLoop]([cl]))
@@ -823,8 +874,9 @@ def build_fov_zones(doc, cameras, view, settings):
     """
     Построить/перестроить зоны обзора по списку камер на виде view.
     Возвращает список (camera, status, detail); status:
-      "ok" / "ok_no_room" / "no_location" / "no_angle_param" /
-      "no_distance_param" / "bad_geometry" / "create_failed".
+      "ok" / "ok_no_room" / "ok_clip_failed" / "no_location" /
+      "no_angle_param" / "no_distance_param" / "bad_geometry" /
+      "create_failed". detail — текст с числами/векторами для диагностики.
     Транзакция — на вызывающей стороне.
     """
     s = settings

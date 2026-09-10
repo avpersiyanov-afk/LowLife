@@ -53,31 +53,33 @@ def _open_settings():
     )
 
 
+_OK_STATUSES = (u"ok", u"ok_no_room", u"ok_clip_failed")
+
+
 def _report(results):
-    ok = [r for r in results if r[1] in (u"ok", u"ok_no_room")]
+    ok = [r for r in results if r[1] in _OK_STATUSES]
     no_room = [r for r in results if r[1] == u"ok_no_room"]
-    no_loc = [r for r in results if r[1] == u"no_location"]
-    no_ang = [r for r in results if r[1] == u"no_angle_param"]
-    no_dist = [r for r in results if r[1] == u"no_distance_param"]
-    bad = [r for r in results if r[1] == u"bad_geometry"]
-    failed = [r for r in results if r[1] in (u"create_failed", u"no_fill_type")]
+    clip_failed = [r for r in results if r[1] == u"ok_clip_failed"]
+    problems = [r for r in results if r[1] not in _OK_STATUSES]
 
     lines = [
         u"Готово.",
         u"",
         u"Построено зон: {}".format(len(ok)),
         u"  из них без обрезки (помещение не найдено): {}".format(len(no_room)),
-        u"Нет точки вставки: {}".format(len(no_loc)),
-        u"Нет параметра угла обзора: {}".format(len(no_ang)),
-        u"Нет параметра дальности: {}".format(len(no_dist)),
-        u"Вырожденная геометрия (угол/дальность/направление): {}".format(len(bad)),
-        u"Ошибка создания: {}".format(len(failed)),
+        u"  из них без обрезки (обрезка дала пустой контур): {}".format(len(clip_failed)),
+        u"Не построено: {}".format(len(problems)),
     ]
 
-    if failed:
-        detail = failed[0][2]
-        if detail:
-            lines += [u"", u"Первая ошибка: {}".format(detail)]
+    if problems:
+        lines.append(u"")
+        lines.append(u"Подробности по непостроенным:")
+        for cam, status, detail in problems:
+            try:
+                cid = cam.Id.IntegerValue if cam is not None else u"—"
+            except Exception:
+                cid = u"—"
+            lines.append(u"  • [{}] {}: {}".format(cid, status, detail or u""))
 
     forms.alert(u"\n".join(lines))
 
