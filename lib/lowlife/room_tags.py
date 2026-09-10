@@ -6,15 +6,15 @@
 
 Что делает :func:`run` за один проход по активному виду:
 
-  1. **Чинит или удаляет «мёртвые» марки.** Если АР удалил/пересоздал
-     помещение (даже с тем же номером), старая марка в нашем документе
-     перестаёт находить своё помещение и показывает «???». Перепривязать
-     её через API нельзя — поэтому под каждой такой маркой ищется
-     помещение связи по координате головы марки; если помещение нашлось —
-     старая марка заменяется новой (голова и наличие полки сохраняются),
-     если помещения под маркой уже нет — непривязанная марка удаляется.
-     Марки, чья связь сейчас *выгружена*, не трогаются (нельзя понять,
-     жива ли привязка).
+  1. **Чинит или удаляет «битые» марки.** Марка считается битой, если её
+     привязка мертва (АР удалил/пересоздал помещение — `TaggedRoomId` не
+     разрешается), марка `IsOrphaned`, либо она привязана к неразмещённому
+     / незамкнутому Room — во всех этих случаях марка показывает «?».
+     Перепривязать через API нельзя, поэтому под каждой такой маркой
+     ищется помещение связи по координате головы марки: нашлось — старая
+     марка заменяется новой (голова и полка сохраняются), не нашлось —
+     непривязанная марка удаляется. Марки, чья связь сейчас *выгружена*,
+     не трогаются (нельзя понять, жива ли привязка).
   2. **Меняет типоразмер** всех живых марок помещений на виде на
      выбранный пользователем (единый вид марок на листе).
   3. **Добавляет недостающие марки** для тех помещений связи, что попадают
@@ -288,21 +288,24 @@ def _is_orphaned(tag):
         return False
 
 
-def _stale_kind(doc, tag):
+def _resolve_tag_room(doc, tag):
     """
-    Состояние привязки марки к помещению:
-      "live"          — помещение на месте, марку достаточно перетипировать;
+    (kind, room) — где kind:
+      "live"          — TaggedRoomId разрешается в существующий Room
+                        (сам элемент — во втором значении);
       "dead"          — связь удалена из проекта, либо помещение в связи
-                        исчезло (это и есть «???») — марку чинить/удалять;
+                        исчезло (осиротевшая марка, показывает «?»);
       "link_unloaded" — связь, на которую смотрит марка, сейчас выгружена;
                         трогать нельзя — не знаем, жива ли привязка.
+    room is None для "dead"/"link_unloaded" и может быть None даже при
+    "live", если GetElement вернул пусто.
     """
     try:
         leid = tag.TaggedRoomId
     except Exception:
-        return "dead"
+        return "dead", None
     if leid is None:
-        return "dead"
+        return "dead", None
 
     try:
         link_id = leid.LinkInstanceId
@@ -312,24 +315,43 @@ def _stale_kind(doc, tag):
     if link_id is not None and link_id != ElementId.InvalidElementId:
         link = doc.GetElement(link_id)
         if link is None:
-            return "dead"
+            return "dead", None
         try:
             linked_doc = link.GetLinkDocument()
         except Exception:
             linked_doc = None
         if linked_doc is None:
-            return "link_unloaded"
+            return "link_unloaded", None
         try:
             room = linked_doc.GetElement(leid.LinkedElementId)
         except Exception:
             room = None
-        return "live" if room is not None else "dead"
+        return ("live", room) if room is not None else ("dead", None)
 
     try:
         room = doc.GetElement(leid.HostElementId)
     except Exception:
         room = None
-    return "live" if room is not None else "dead"
+    return ("live", room) if room is not None else ("dead", None)
+
+
+def _room_ok(room):
+    """
+    Помещение реально размещено и замкнуто — марка по нему покажет
+    значение, а не «?» / «Не окружено» / «Избыточное». False, если Room
+    нет, он не размещён (нет Location) или у него нулевая площадь.
+    """
+    if room is None:
+        return False
+    try:
+        if room.Location is None:
+            return False
+    except Exception:
+        pass
+    try:
+        return room.Area > 0
+    except Exception:
+        return True
 
 
 def _recreate_stale_tag(doc, view, old_tag, tag_type_id):
@@ -445,19 +467,22 @@ def run(doc, view, tag_type_id):
         tagged_keys = set()
 
         # 1) Существующие марки:
-        #    - связь выгружена           -> не трогаем;
-        #    - «???» (dead) или orphaned -> пробуем пересоздать по месту;
-        #    - если пересоздать не вышло и марка именно "dead"
-        #      (помещения под ней уже нет) -> удаляем непривязанную марку;
-        #    - живые                     -> просто приводим типоразмер.
+        #    - связь выгружена              -> не трогаем (не знаем, жива ли
+        #      привязка), считаем отдельно;
+        #    - «битая» марка — dead / orphaned / привязана к неразмещённому
+        #      или незамкнутому Room (показывает «?») -> пробуем пересоздать
+        #      по месту; не вышло -> УДАЛЯЕМ (толку от неё нет);
+        #    - нормальные                   -> только приводим типоразмер.
         for tag in existing_tags:
-            kind = _stale_kind(doc, tag)
+            kind, room = _resolve_tag_room(doc, tag)
 
             if kind == "link_unloaded":
                 stats["link_unloaded"] += 1
                 continue
 
-            if kind == "dead" or _is_orphaned(tag):
+            broken = (kind == "dead") or _is_orphaned(tag) or not _room_ok(room)
+
+            if broken:
                 new_tag = _recreate_stale_tag(doc, view, tag, tag_type_id)
                 if new_tag is not None:
                     stats["recreated"] += 1
@@ -465,15 +490,10 @@ def run(doc, view, tag_type_id):
                     if key is not None:
                         tagged_keys.add(key)
                     continue
-                if kind == "dead":
-                    try:
-                        doc.Delete(tag.Id)
-                        stats["deleted"] += 1
-                    except Exception:
-                        stats["orphan_unresolved"] += 1
-                else:
-                    # привязка формально жива (помещение есть), но марка
-                    # «висит» — оставляем как есть, не удаляем вслепую.
+                try:
+                    doc.Delete(tag.Id)
+                    stats["deleted"] += 1
+                except Exception:
                     stats["orphan_unresolved"] += 1
                 continue
 
