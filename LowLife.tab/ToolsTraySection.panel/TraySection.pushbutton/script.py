@@ -31,7 +31,9 @@ view = doc.ActiveView
 if not isinstance(view, ViewDrafting):
     forms.alert(u"Откройте чертёжный вид (Drafting View) и запустите кнопку ещё раз.", exitscript=True)
 
-path = forms.pick_file(file_ext='xlsx')
+# .xlsm — тот же формат (ZIP + тот же XML), что .xlsx, отличие только в
+# макросах, парсеру не нужных: читается тем же xlsx_io. Дело за фильтром.
+path = forms.pick_file(files_filter=u"Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Все файлы (*.*)|*.*")
 if not path:
     pyrevit_script.exit()
 
