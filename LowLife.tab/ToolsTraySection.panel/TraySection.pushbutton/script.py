@@ -17,6 +17,7 @@ from lowlife.tray_section import (
     SECTION_GAP_MM, TITLE_BAND_MM, draw_section, draw_table, list_sections, mm_to_feet,
     paper_to_model, plan_section, read_cables, renumber_cables
 )
+from lowlife.xlsx_io import list_sheet_names
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -37,7 +38,21 @@ path = forms.pick_file(files_filter=u"Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Все
 if not path:
     pyrevit_script.exit()
 
-cables, error = read_cables(path)
+# Лист не угадываем по имени: один лист — берём его, несколько — спрашиваем.
+sheet_names = list_sheet_names(path)
+if not sheet_names:
+    forms.alert(u"Не удалось прочитать книгу Excel (не видно ни одного листа).", exitscript=True)
+elif len(sheet_names) == 1:
+    sheet_name = sheet_names[0]
+else:
+    sheet_name = forms.SelectFromList.show(
+        sheet_names, title=u"Лист со сводными данными для плагина",
+        button_name=u"Выбрать", multiselect=False
+    )
+    if not sheet_name:
+        pyrevit_script.exit()
+
+cables, error = read_cables(path, sheet_name)
 if error:
     forms.alert(error, exitscript=True)
 

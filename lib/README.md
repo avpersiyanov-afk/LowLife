@@ -792,7 +792,7 @@ Dynamo), а точная «гравитационная» упаковка: ка
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `read_cables` | `read_cables(path)` | `(cables, error)` — список `CableData` из листа «Сводный» (или первого листа книги) |
+| `read_cables` | `read_cables(path, sheet_name=None)` | `(cables, error)` — список `CableData` с листа `sheet_name` (без него — «Сводный», иначе первый лист). Столбцы жёстко по номеру (0 марка, 1 диаметр, 2 участок, 3 кол-во, 5 система, 6 %, 7 высота, 8 ширина). Участок протягивается вниз по объединённым ячейкам |
 | `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
 | `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — раскладка (см. выше) |

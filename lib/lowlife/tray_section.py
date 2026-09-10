@@ -10,7 +10,10 @@ u"""
     IronPython 2 недоступен (нет pip), как и у остальных кнопок обмена с
     Excel (см. ScheduleToExcel/ScheduleFromExcel). Из-за этого числовые
     ячейки приходят как unicode-строки, не float/int — отсюда _to_float/
-    _to_int ниже (в Dynamo это делал openpyxl сам).
+    _to_int ниже (в Dynamo это делал openpyxl сам). Лист по имени не
+    угадываем (в Dynamo был жёсткий «Сводный» / активный лист) — script.py
+    спрашивает лист, если их в книге несколько. Участок в read_cables
+    протягивается вниз по объединённым ячейкам.
 
   - Раскладка кругов (arrange_cables) — не перебор по сетке с шагом
     radius/5 (итоговая плотность/скорость зависели от масштаба лотка и
@@ -131,34 +134,49 @@ class CableData(object):
         self.tray_height = _to_float(tray_height)
 
 
-def read_cables(path):
+def read_cables(path, sheet_name=None):
     u"""
-    Читает лист SHEET_NAME («Сводный»), если он есть в книге, иначе —
-    первый лист. Столбцы (0-based), как в исходном скрипте Dynamo:
+    Читает лист sheet_name; если не задан — лист SHEET_NAME («Сводный»),
+    а его нет — первый лист книги. Столбцы (0-based), как в исходном
+    скрипте Dynamo:
       0 марка, 1 диаметр(мм), 2 участок, 3 кол-во, 5 система,
       6 % заполнения (справочно), 7 высота лотка(мм), 8 ширина лотка(мм).
     Столбец 4 в исходнике не задействован — оставлен пустым намеренно,
     чтобы не ломать уже существующие файлы выгрузки под этот формат.
     Первая строка — заголовок, пропускается.
 
+    Участок протягивается вниз: если в строке кабеля ячейка «участок»
+    пустая (обычно так выглядят объединённые по вертикали ячейки Excel —
+    значение только в верхней строке блока), берётся последний
+    непустой участок сверху.
+
     Возвращает (cables, error); error — текст ошибки или None.
     """
-    names = list_sheet_names(path)
-    sheet_name = SHEET_NAME if SHEET_NAME in names else None
+    if sheet_name is None:
+        names = list_sheet_names(path)
+        sheet_name = SHEET_NAME if SHEET_NAME in names else (names[0] if names else None)
+
     rows = read_xlsx(path, sheet_name=sheet_name)
 
     if not rows or len(rows) < 2:
-        return [], u"Файл пустой или не прочитался."
+        return [], u"Лист пустой или не прочитался."
 
     def cell(row, i):
         return row[i] if i < len(row) else None
 
     cables = []
+    last_section = u""
     for row in rows[1:]:
         if not row or cell(row, 0) is None:
             continue
+        raw_section = cell(row, 2)
+        section = unicode(raw_section).strip() if raw_section is not None else u""
+        if section:
+            last_section = section
+        else:
+            section = last_section
         cables.append(CableData(
-            mark=cell(row, 0), diameter=cell(row, 1), section=cell(row, 2),
+            mark=cell(row, 0), diameter=cell(row, 1), section=section,
             quantity=cell(row, 3) or 1, system=cell(row, 5),
             fill_percent=cell(row, 6), tray_height=cell(row, 7), tray_width=cell(row, 8),
         ))
