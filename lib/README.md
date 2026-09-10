@@ -1308,11 +1308,18 @@ room_number_param)` — запись по точкам прохода, возв�
   `focal_length_param_name` + `sensor_format` → `θ = 2·arctg(w / 2f)`,
   форматы матрицы в `_SENSOR_FORMATS` / `_parse_sensor`, длины через
   `_length_param_mm`); дальность — из параметра экземпляра; направление —
-  `FamilyInstance.FacingOrientation` + необязательный доворот
-  (`direction_offset_deg`), параметр поворота отдельно **не** прибавляется.
+  `_look_direction` (FacingOrientation → Transform.BasisY → BasisX →
+  HandOrientation⟂, возвращает вектор + текстовое пояснение источника) плюс
+  `rotation_param_name` (индивидуальный разворот параметром ВНУТРИ
+  семейства — прибавляется к азимуту, если сам экземпляр не крутится) плюс
+  общий `direction_offset_deg`.
   Возвращает `[(camera, status, detail)]` со `status`
-  `ok`/`ok_no_room`/`no_location`/`no_angle_param`/`no_distance_param`/
-  `bad_geometry`/`create_failed`/`no_fill_type`.
+  `ok`/`ok_no_room`/`ok_clip_failed`/`no_location`/`no_angle_param`/
+  `no_distance_param`/`bad_geometry`/`create_failed`/`no_fill_type`; для
+  построенных зон `detail` — сводка (азимут, угол, R, источник
+  направления, режим обрезки), для отказов — числа/векторы для
+  диагностики. `script.py` печатает `detail` построчно на каждую камеру в
+  окне вывода pyRevit с `output.linkify`.
 - `resolve_category_ids(doc, text)` — множество int-id категорий для
   фильтра выбора камер в `script.py` (токены — имена `BuiltInCategory`
   и/или русские имена категорий). Дефолт настройки — `OST_SecurityDevices`;

@@ -786,6 +786,12 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
                 u"не удалось определить направление камеры [{}]".format(dir_note))
     base = math.atan2(d.Y, d.X)
 
+    # индивидуальный разворот камеры параметром внутри семейства
+    rot = _opt_param_radians(cam, s.get("rotation_param_name"), unit_mode)
+    if rot:
+        base += rot
+        dir_note = u"{} + поворот {:.1f}°".format(dir_note, math.degrees(rot))
+
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
 
@@ -837,7 +843,21 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     if dori_style is not None and h_res > 0:
         _draw_dori(doc, view, center, base, half, h_res, hfov, max_r, z, dori_style)
 
-    return (cam, status, u"")
+    if status == u"ok_no_room":
+        clip_note = u"без обрезки (помещение не найдено)"
+    elif status == u"ok_clip_failed":
+        clip_note = u"без обрезки (обрезка дала пустой контур)"
+    elif rings is not None:
+        clip_note = u"обрезка по помещению ({} сегм.)".format(sum(len(r) for r in rings))
+    else:
+        clip_note = u"без обрезки (выключена)"
+
+    az = math.degrees(base) % 360.0
+    summary = (u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; напр.: {}; {}"
+               .format(az, math.degrees(hfov),
+                       near_r * _M_PER_FT, far_r * _M_PER_FT,
+                       dir_note, clip_note))
+    return (cam, status, summary)
 
 
 def resolve_category_ids(doc, text):
@@ -1050,14 +1070,27 @@ TEXT_FIELDS = [
         u"", False
     ),
     (
+        "rotation_param_name",
+        u"",
+        u"Параметр «поворот камеры» (угол внутри семейства)",
+        u"Имя углового параметра экземпляра, которым камера разворачивается "
+        u"НЕ поворотом самого экземпляра, а внутри семейства (тогда "
+        u"FacingOrientation не меняется, и без этого поля все зоны смотрят "
+        u"в одну сторону). Его значение прибавляется к направлению "
+        u"(против часовой стрелки). В исходном Dynamo-скрипте это был "
+        u"«Вращение (поворот)». Пусто — если камера разворачивается "
+        u"поворотом экземпляра в модели.",
+        u"", False
+    ),
+    (
         "direction_offset_deg",
         u"",
         u"Доворот направления «взгляда», градусы",
-        u"Фиксированная поправка направления относительно FacingOrientation "
-        u"семейства (против часовой стрелки), если геометрия камеры в "
-        u"семействе смотрит не «вперёд». Обычно 0. Параметр поворота "
-        u"экземпляра отдельно НЕ прибавляется — FacingOrientation его уже "
-        u"учитывает.",
+        u"Фиксированная поправка направления (одинаковая для всех камер, "
+        u"против часовой стрелки), если геометрия камеры в семействе "
+        u"смотрит не «вперёд» относительно FacingOrientation. Обычно 0. "
+        u"Индивидуальный разворот каждой камеры — это поле выше "
+        u"«Параметр поворот камеры», а не это.",
         u"0", False
     ),
     (

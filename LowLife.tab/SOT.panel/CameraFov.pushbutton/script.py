@@ -17,7 +17,9 @@ __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
-from Autodesk.Revit.DB import ViewPlan, ViewDrafting, BuiltInCategory
+from Autodesk.Revit.DB import (
+    ViewPlan, ViewDrafting, BuiltInCategory, BuiltInParameter, Element
+)
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
@@ -55,33 +57,63 @@ def _open_settings():
 
 _OK_STATUSES = (u"ok", u"ok_no_room", u"ok_clip_failed")
 
+_STATUS_RU = {
+    u"ok": u"построена",
+    u"ok_no_room": u"построена (без обрезки — помещение не найдено)",
+    u"ok_clip_failed": u"построена (без обрезки — обрезка дала пустой контур)",
+    u"no_location": u"нет точки вставки (LocationPoint)",
+    u"no_angle_param": u"нет параметра угла обзора",
+    u"no_distance_param": u"нет параметра дальности",
+    u"bad_geometry": u"вырожденная геометрия",
+    u"create_failed": u"ошибка создания области заливки",
+    u"no_fill_type": u"в проекте нет типа области заливки",
+}
+
+
+def _cam_label(cam):
+    if cam is None:
+        return u""
+    parts = []
+    try:
+        parts.append(Element.Name.GetValue(cam))
+    except Exception:
+        pass
+    try:
+        mp = cam.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
+        mv = mp.AsString() if mp is not None else None
+        if mv and mv.strip():
+            parts.append(u"марка {}".format(mv.strip()))
+    except Exception:
+        pass
+    return u" · ".join(p for p in parts if p)
+
 
 def _report(results):
-    ok = [r for r in results if r[1] in _OK_STATUSES]
-    no_room = [r for r in results if r[1] == u"ok_no_room"]
-    clip_failed = [r for r in results if r[1] == u"ok_clip_failed"]
-    problems = [r for r in results if r[1] not in _OK_STATUSES]
+    output = script.get_output()
+    output.print_md(u"# Зоны обзора — отчёт ({} камер)".format(len(results)))
 
-    lines = [
-        u"Готово.",
-        u"",
-        u"Построено зон: {}".format(len(ok)),
-        u"  из них без обрезки (помещение не найдено): {}".format(len(no_room)),
-        u"  из них без обрезки (обрезка дала пустой контур): {}".format(len(clip_failed)),
-        u"Не построено: {}".format(len(problems)),
-    ]
+    ok_n = 0
+    bad_n = 0
+    for cam, status, detail in results:
+        is_ok = status in _OK_STATUSES
+        ok_n += 1 if is_ok else 0
+        bad_n += 0 if is_ok else 1
 
-    if problems:
-        lines.append(u"")
-        lines.append(u"Подробности по непостроенным:")
-        for cam, status, detail in problems:
-            try:
-                cid = cam.Id.IntegerValue if cam is not None else u"—"
-            except Exception:
-                cid = u"—"
-            lines.append(u"  • [{}] {}: {}".format(cid, status, detail or u""))
+        try:
+            link = output.linkify(cam.Id) if cam is not None else u"—"
+        except Exception:
+            link = u"[{}]".format(cam.Id.IntegerValue if cam is not None else u"—")
 
-    forms.alert(u"\n".join(lines))
+        marker = u"OK  " if status == u"ok" else (u"~   " if is_ok else u"FAIL")
+        print(u"{}  {}  {}  —  {}: {}".format(
+            marker, link, _cam_label(cam),
+            _STATUS_RU.get(status, status), detail or u""
+        ))
+
+    output.print_md(u"---")
+    output.print_md(u"**Построено: {}  ·  Не построено: {}**".format(ok_n, bad_n))
+    if bad_n:
+        output.print_md(u"_Клик по ссылке в строке — выделить камеру в модели._")
 
 
 # --- Shift+клик -> настройки ------------------------------------------
