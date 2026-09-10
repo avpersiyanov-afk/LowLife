@@ -44,6 +44,12 @@ u"""
     площади кабелей (15..50% под СОУЭ РО). plan_section возвращает X
     осевой линии перегородки, draw_section её рисует.
 
+  - Пучки (настройка кнопки): если bundle, типы с числом кабелей >=
+    BUNDLE_SIZE стягиваются в пучки по 8 «ромашкой» (_daisy_offsets:
+    центр + кольцо лепестков), вокруг каждого пучка — кольцо-стяжка;
+    сами пучки раскладываются как большие круги (пирамидкой или
+    bottom-left-fill по layout). ties из plan_section — эти кольца.
+
   - Файл, участки (список с галочками — можно несколько), режим и точка
     вставки выбираются интерактивно (pyrevit.forms + PickPoint), а не
     через позиционные входы IN[..]. Режим: сечение+таблица / только
@@ -474,12 +480,49 @@ def _pyramid_offsets(n, r, avail_w, avail_h):
     return offsets, block_w, block_h
 
 
+BUNDLE_SIZE = 8  # кабелей в пучке под стяжку
+
+
+def _split_bundles(n):
+    u"""[8, 8, ..., остаток] — как реально стягивают: по BUNDLE_SIZE, хвост отдельно."""
+    out = []
+    while n > 0:
+        take = min(BUNDLE_SIZE, n)
+        out.append(take)
+        n -= take
+    return out
+
+
+def _daisy_offsets(m, r):
+    u"""Пучок m кабелей радиуса r «ромашкой»: смещения (dx, dy) центров от
+    центра пучка + tie_r (радиус кольца стяжки). 2 — рядом, 3 —
+    треугольник, 4 — квадрат, 5..8 — центр + кольцо лепестков."""
+    if m <= 1:
+        return [(0.0, 0.0)], r
+    if m == 2:
+        return [(-r, 0.0), (r, 0.0)], 2.0 * r
+    if m == 3:
+        rc = 2.0 * r / SQRT3
+        ang = (math.pi / 2, math.pi / 2 + 2.0 * math.pi / 3, math.pi / 2 + 4.0 * math.pi / 3)
+        return [(rc * math.cos(a), rc * math.sin(a)) for a in ang], rc + r
+    if m == 4:
+        return [(-r, -r), (r, -r), (-r, r), (r, r)], r * math.sqrt(2.0) + r
+    k = m - 1
+    ring = max(2.0 * r, r / math.sin(math.pi / k))
+    offs = [(0.0, 0.0)]
+    for i in range(k):
+        a = math.pi / 2 + i * 2.0 * math.pi / k
+        offs.append((ring * math.cos(a), ring * math.sin(a)))
+    return offs, ring + r
+
+
 def _shelf_pack(groups, tray_w, tray_h, block_fn):
-    u"""Общая раскладка блоков по типам полками слева направо; block_fn(g,
-    avail_w) -> (offsets, block_w, block_h) относительно левого нижнего
-    угла блока."""
+    u"""Раскладка блоков по типам полками слева направо. block_fn(inst, r,
+    avail_w, avail_h) -> (cable_offsets, tie_list, block_w, block_h)
+    относительно левого нижнего угла блока; tie_list — (tx, ty, tie_r).
+    Возвращает (placed, ties, unplaced)."""
     gap = mm_to_feet(_BLOCK_GAP_MM)
-    placed, unplaced = [], []
+    placed, ties, unplaced = [], [], []
     shelf_x = shelf_y = shelf_h = 0.0
 
     for g in groups:
@@ -490,11 +533,11 @@ def _shelf_pack(groups, tray_w, tray_h, block_fn):
             continue
 
         avail_w = tray_w - shelf_x if shelf_x > 1e-9 else tray_w
-        offs, bw, bh = block_fn(inst, r, avail_w, tray_h - shelf_y)
+        offs, tlist, bw, bh = block_fn(inst, r, avail_w, tray_h - shelf_y)
         if shelf_x > 1e-9 and (not offs or shelf_x + bw > tray_w + 1e-6):
             shelf_y += shelf_h + gap
             shelf_x = shelf_h = 0.0
-            offs, bw, bh = block_fn(inst, r, tray_w, tray_h - shelf_y)
+            offs, tlist, bw, bh = block_fn(inst, r, tray_w, tray_h - shelf_y)
 
         if not offs or shelf_y + bh > tray_h + 1e-6:
             unplaced.extend(inst)
@@ -502,66 +545,90 @@ def _shelf_pack(groups, tray_w, tray_h, block_fn):
 
         for idx, (dx, dy) in enumerate(offs):
             placed.append(_Placed(shelf_x + dx, shelf_y + dy, r, inst[idx]))
+        for tx, ty, tr in tlist:
+            ties.append((shelf_x + tx, shelf_y + ty, tr))
         if len(offs) < len(inst):
             unplaced.extend(inst[len(offs):])
         shelf_x += bw + gap
         shelf_h = max(shelf_h, bh)
 
-    return placed, unplaced
+    return placed, ties, unplaced
 
 
-def _arrange_honeycomb(cables, tray_width_mm, tray_height_mm):
-    u"""«Сотами по типам»: каждый тип — треугольной горкой (_pyramid_offsets),
-    горки идут слева направо полками, при нехватке ширины — новая полка выше."""
+def _block_solid(inst, r, avail_w, avail_h):
+    n = len(inst)
+    d = 2.0 * r
+    rows_avail = max(1, int(avail_h / d))
+    cols = max(1, int(math.ceil(n / float(rows_avail))), int(math.ceil(math.sqrt(n))))
+    target_w = min(avail_w, max(d, cols * d * 1.15))
+    pos, _un = _blf_pack([r] * n, target_w, avail_h)
+    if not pos:
+        return [], [], 0.0, 0.0
+    offs = [pos[i] for i in sorted(pos)]
+    bw = max(x + r for x, y in offs)
+    bh = max(y + r for x, y in offs)
+    return offs, [], bw, bh
+
+
+def _bundled_block(inst, r, avail_w, avail_h, honeycomb):
+    u"""Кабели одного типа, стянутые в пучки по BUNDLE_SIZE «ромашкой»;
+    пучки (как большие круги радиуса tie_r) раскладываются пирамидкой
+    (honeycomb) или bottom-left-fill (solid)."""
+    daisies = []  # (cable_offsets, tie_r, m)
+    i = 0
+    for m in _split_bundles(len(inst)):
+        d_offs, tie_r = _daisy_offsets(m, r)
+        daisies.append((d_offs, tie_r, m))
+        i += m
+    tie_radii = [d[1] for d in daisies]
+    max_tr = max(tie_radii)
+    if 2.0 * max_tr > avail_w + 1e-6:
+        return [], [], 0.0, 0.0
+
+    if honeycomb:
+        centres, bw, bh = _pyramid_offsets(len(daisies), max_tr, avail_w, avail_h)
+        used = list(range(len(centres)))
+    else:
+        pos, _un = _blf_pack(tie_radii, avail_w, avail_h)
+        if not pos:
+            return [], [], 0.0, 0.0
+        used = sorted(pos)
+        centres = [pos[i] for i in used]
+        bw = max(pos[i][0] + tie_radii[i] for i in used)
+        bh = max(pos[i][1] + tie_radii[i] for i in used)
+
+    cable_offs = []
+    ties = []
+    for slot, (bx, by) in zip(used, centres):
+        d_offs, tie_r, m = daisies[slot]
+        for dx, dy in d_offs:
+            cable_offs.append((bx + dx, by + dy))
+        if m >= 2:
+            ties.append((bx, by, tie_r))
+    # cable_offs идёт в порядке пучков; при honeycomb все пучки на месте,
+    # при solid — только влезшие (в порядке индексов), хвост -> unplaced
+    return cable_offs, ties, bw, bh
+
+
+def _arrange_by_type(cables, tray_width_mm, tray_height_mm, layout, bundle):
     tray_w = mm_to_feet(tray_width_mm)
     tray_h = mm_to_feet(tray_height_mm)
+    honeycomb = (layout == LAYOUT_HONEYCOMB)
 
     def block_fn(inst, r, avail_w, avail_h):
-        return _pyramid_offsets(len(inst), r, avail_w, avail_h)
+        if bundle and len(inst) >= BUNDLE_SIZE:
+            return _bundled_block(inst, r, avail_w, avail_h, honeycomb)
+        if honeycomb:
+            offs, bw, bh = _pyramid_offsets(len(inst), r, avail_w, avail_h)
+            return offs, [], bw, bh
+        return _block_solid(inst, r, avail_w, avail_h)
 
     return _shelf_pack(_group_by_type(cables), tray_w, tray_h, block_fn)
 
 
-def _arrange_solid_by_type(cables, tray_width_mm, tray_height_mm):
-    u"""«Сплошняком, но по типам»: каждый тип плотно упаковывается
-    bottom-left-fill (arrange_cables) в свою КОМПАКТНУЮ полосу справа от
-    предыдущей — чтобы типы не сваливались в одну кучу и не растекались
-    по всему дну лотка одним рядом. Ширина полосы типа — по числу
-    кабелей и высоте лотка (примерно квадратная куча, но не ниже, чем
-    нужно, чтобы всё уместилось)."""
-    tray_w = mm_to_feet(tray_width_mm)
-    gap = mm_to_feet(_BLOCK_GAP_MM)
-
-    placed, unplaced = [], []
-    x_cursor = 0.0
-    for g in _group_by_type(cables):
-        d = g[0].diameter
-        n = sum(c.quantity for c in g)
-        remaining_mm = feet_to_mm(tray_w - x_cursor)
-        if remaining_mm <= 0 or d <= 0 or n <= 0:
-            unplaced.extend(_expand(g))
-            continue
-
-        rows_avail = max(1, int(tray_height_mm / d))
-        cols = max(1, int(math.ceil(n / float(rows_avail))), int(math.ceil(math.sqrt(n))))
-        region_mm = min(remaining_mm, max(d, cols * d * 1.15))
-
-        sub_placed, sub_un = arrange_cables(g, region_mm, tray_height_mm)
-        right = x_cursor
-        for p in sub_placed:
-            p.cx += x_cursor
-            right = max(right, p.cx + p.r)
-        placed.extend(sub_placed)
-        unplaced.extend(sub_un)
-        x_cursor = right + gap
-
-    return placed, unplaced
-
-
-def _pack_region(cables, region_width_mm, region_height_mm, layout):
-    if layout == LAYOUT_HONEYCOMB:
-        return _arrange_honeycomb(cables, region_width_mm, region_height_mm)
-    return _arrange_solid_by_type(cables, region_width_mm, region_height_mm)
+def _pack_region(cables, region_width_mm, region_height_mm, layout, bundle):
+    u"""Возвращает (placed, ties, unplaced)."""
+    return _arrange_by_type(cables, region_width_mm, region_height_mm, layout, bundle)
 
 
 def is_soue_ro(system):
@@ -634,18 +701,21 @@ def _fill_percent(placed, tray_width_mm, tray_height_mm):
 
 
 def plan_section(cables, tray_width_mm, tray_height_mm,
-                 layout=LAYOUT_SOLID, divide_soue_ro=False):
+                 layout=LAYOUT_SOLID, divide_soue_ro=False, bundle=False):
     u"""Раскладка без рисования.
 
-    layout — LAYOUT_SOLID (вперемешку, bottom-left-fill) или
-    LAYOUT_HONEYCOMB (по типам, сотами).
+    layout — LAYOUT_SOLID (по типам, плотной кучей) или LAYOUT_HONEYCOMB
+    (по типам, треугольной горкой).
     divide_soue_ro — кабели системы «СОУЭ РО» (is_soue_ro) кладутся в
-    отдельный отсек лотка, отделённый перегородкой от остальных; ширина
-    отсеков — по доле площади кабелей (15..50% под СОУЭ РО).
+    отдельный отсек лотка, отделённый перегородкой; ширина отсеков — по
+    доле площади кабелей (15..50% под СОУЭ РО).
+    bundle — типы, где кабелей >= BUNDLE_SIZE, стягиваются в пучки по 8
+    «ромашкой» (кольцо-стяжка вокруг каждого пучка).
 
-    Возвращает (placed, unplaced, fill_percent, partition_x_ft):
+    Возвращает (placed, unplaced, fill_percent, partition_x_ft, ties):
     partition_x_ft — X осевой линии перегородки от левой стенки лотка
-    (в футах) либо None, если перегородки нет.
+    (футы) либо None; ties — список (cx, cy, r) колец-стяжек (футы,
+    от левого нижнего угла лотка).
     """
     partition_x_ft = None
 
@@ -666,26 +736,30 @@ def plan_section(cables, tray_width_mm, tray_height_mm,
         w_ro = usable * frac
         w_rest = usable - w_ro
 
-        placed_rest, un_rest = _pack_region(rest, w_rest, tray_height_mm, layout)
-        placed_ro, un_ro = _pack_region(ro, w_ro, tray_height_mm, layout)
+        placed_rest, ties_rest, un_rest = _pack_region(rest, w_rest, tray_height_mm, layout, bundle)
+        placed_ro, ties_ro, un_ro = _pack_region(ro, w_ro, tray_height_mm, layout, bundle)
         dx = mm_to_feet(w_rest + gap_mm)
         for p in placed_ro:
             p.cx += dx
+        ties_ro = [(tx + dx, ty, tr) for tx, ty, tr in ties_ro]
         placed = placed_rest + placed_ro
+        ties = ties_rest + ties_ro
         unplaced = un_rest + un_ro
         partition_x_ft = mm_to_feet(w_rest + gap_mm / 2.0)
     else:
-        placed, unplaced = _pack_region(cables, tray_width_mm, tray_height_mm, layout)
+        placed, ties, unplaced = _pack_region(cables, tray_width_mm, tray_height_mm, layout, bundle)
 
-    return placed, unplaced, _fill_percent(placed, tray_width_mm, tray_height_mm), partition_x_ft
+    return (placed, unplaced, _fill_percent(placed, tray_width_mm, tray_height_mm),
+            partition_x_ft, ties)
 
 
 def draw_section(doc, view, section_name, tray_width_mm, tray_height_mm,
-                 placed, insertion_point, show_marks=True, scale=1.0, partition_x_ft=None):
+                 placed, insertion_point, show_marks=True, scale=1.0,
+                 partition_x_ft=None, ties=None):
     u"""Контур лотка (реальный размер — масштабируется видом) + подпись
-    участка над ним + кружки кабелей из placed + перегородка отсека
-    (если partition_x_ft задан). insertion_point — левый нижний угол
-    лотка. Вызывать в транзакции."""
+    участка над ним + кружки кабелей из placed + кольца-стяжки пучков
+    (ties) + перегородка отсека (если partition_x_ft задан).
+    insertion_point — левый нижний угол лотка. Вызывать в транзакции."""
     tray_w_ft = mm_to_feet(tray_width_mm)
     tray_h_ft = mm_to_feet(tray_height_mm)
     text_type_id = _text_note_type_id(doc)
@@ -698,6 +772,10 @@ def draw_section(doc, view, section_name, tray_width_mm, tray_height_mm,
             x = insertion_point.X + px
             doc.Create.NewDetailCurve(view, Line.CreateBound(
                 XYZ(x, insertion_point.Y, 0), XYZ(x, insertion_point.Y + tray_h_ft, 0)))
+
+    for tx, ty, tr in (ties or []):
+        c = XYZ(insertion_point.X + tx, insertion_point.Y + ty, 0)
+        doc.Create.NewDetailCurve(view, Arc.Create(c, tr, 0, 2 * math.pi, XYZ.BasisX, XYZ.BasisY))
 
     if section_name:
         opts = TextNoteOptions(text_type_id)

@@ -93,6 +93,7 @@ want_table = mode in (MODE_BOTH, MODE_TABLE)
 show_marks = False
 layout = LAYOUT_SOLID
 divide_ro = False
+bundle = False
 if want_section:
     show_marks = bool(forms.alert(u"Показывать марки кабелей на кружках?", yes=True, no=True))
     lay = forms.SelectFromList.show(
@@ -105,6 +106,9 @@ if want_section:
     divide_ro = bool(forms.alert(
         u"Кабели системы «СОУЭ РО» класть в отдельный отсек за перегородкой?",
         yes=True, no=True
+    ))
+    bundle = bool(forms.alert(
+        u"Стягивать однотипные кабели в пучки по 8 (ромашкой)?", yes=True, no=True
     ))
 
 # готовим данные по каждому участку заранее — чтобы не рисовать половину,
@@ -137,8 +141,9 @@ unplaced_by_section = []
 with revit.Transaction(u"Сечения кабельных лотков"):
     prev_bottom_y = None  # самая нижняя нарисованная точка предыдущего блока
     for name, section_cables, first_cable in jobs:
-        placed, unplaced, fill_percent, partition_x_ft = plan_section(
-            section_cables, first_cable.tray_width, first_cable.tray_height, layout, divide_ro
+        placed, unplaced, fill_percent, partition_x_ft, ties = plan_section(
+            section_cables, first_cable.tray_width, first_cable.tray_height,
+            layout, divide_ro, bundle
         )
         tray_w_ft = mm_to_feet(first_cable.tray_width)
         tray_h_ft = mm_to_feet(first_cable.tray_height)
@@ -154,7 +159,8 @@ with revit.Transaction(u"Сечения кабельных лотков"):
         if want_section:
             draw_section(
                 doc, view, name, first_cable.tray_width, first_cable.tray_height,
-                placed, XYZ(origin.X, tray_bottom_y, origin.Z), show_marks, scale, partition_x_ft
+                placed, XYZ(origin.X, tray_bottom_y, origin.Z), show_marks, scale,
+                partition_x_ft, ties
             )
 
         if want_table and placed:
