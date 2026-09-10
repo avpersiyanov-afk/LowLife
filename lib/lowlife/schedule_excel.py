@@ -19,7 +19,9 @@ from Autodesk.Revit.DB import (
     Element,
     ElementId,
     FilteredElementCollector,
+    ScheduleFieldType,
     ScheduleSortOrder,
+    SectionType,
     StorageType,
     ViewSchedule,
 )
@@ -217,6 +219,78 @@ def _instance_param_map(el):
     return m
 
 
+def _is_calc_field(f):
+    u"""Поле спеки, которое НЕ читается как параметр экземпляра: вычисляемое
+    значение (формула), объединённый параметр, счётчик, процент, параметр
+    типа. Значение таких столбцов берём из отрисованной таблицы (GetCellText)."""
+    try:
+        return f.FieldType != ScheduleFieldType.Instance
+    except Exception:
+        return False
+
+
+def _calc_cell_texts(sched, els, names, calc_flags):
+    u"""
+    {element_id: {индекс столбца: текст}} для расчётных столбцов.
+    Строки тела спеки сопоставляем с элементами по совпадению НЕрасчётных
+    столбцов (значение параметра <-> GetCellText); строки-заголовки групп
+    и т.п. просто не находят пары и пропускаются.
+    """
+    try:
+        body = sched.GetTableData().GetSectionData(SectionType.Body)
+        nrows = body.NumberOfRows
+    except Exception:
+        return {}
+
+    ncols = len(names)
+    plain = [j for j in range(ncols) if not calc_flags[j]]
+    calc = [j for j in range(ncols) if calc_flags[j]]
+
+    def cell(i, j):
+        try:
+            t = sched.GetCellText(SectionType.Body, i, j)
+            return t if t is not None else u""
+        except Exception:
+            return u""
+
+    def norm(s):
+        return u" ".join(
+            (s or u"").replace(u" ", u" ").replace(u",", u".").split()
+        ).lower()
+
+    def calc_vals(i):
+        return dict((j, cell(i, j)) for j in calc)
+
+    sig_els = {}
+    for el in els:
+        pmap = _instance_param_map(el)
+        sig = tuple(norm(_param_to_text(pmap.get(names[j]))) for j in plain)
+        sig_els.setdefault(sig, []).append(el)
+
+    out = {}
+    cursor = {}
+    for i in range(nrows):
+        sig = tuple(norm(cell(i, j)) for j in plain)
+        bucket = sig_els.get(sig)
+        if not bucket:
+            continue
+        k = cursor.get(sig, 0)
+        if k >= len(bucket):
+            continue
+        cursor[sig] = k + 1
+        out[bucket[k].Id.IntegerValue] = calc_vals(i)
+
+    # запасной путь: сопоставить по значениям не вышло, но строк тела
+    # РОВНО столько же, сколько элементов (значит группировка не добавляет
+    # строк-заголовков) — берём построчно, в порядке _ordered_elements
+    if len(out) < len(els) and nrows == len(els):
+        out = {}
+        for i, el in enumerate(els):
+            out[el.Id.IntegerValue] = calc_vals(i)
+
+    return out
+
+
 def schedule_to_rows(doc, sched):
     u"""
     (rows, число_элементов, число_столбцов-параметров, ширины_столбцов).
@@ -225,6 +299,7 @@ def schedule_to_rows(doc, sched):
     """
     fields = _visible_fields(sched)
     names = [f.GetName() for f in fields]
+    calc_flags = [_is_calc_field(f) for f in fields]
 
     widths = [_ID_COL_WIDTH]
     for f in fields:
@@ -235,12 +310,19 @@ def schedule_to_rows(doc, sched):
 
     els = _ordered_elements(doc, sched)
 
+    calc_map = _calc_cell_texts(sched, els, names, calc_flags) if any(calc_flags) else {}
+
     rows = [[ID_HEADER] + names]
     for el in els:
         pmap = _instance_param_map(el)
-        row = [el.Id.IntegerValue]
-        for nm in names:
-            row.append(_param_to_text(pmap.get(nm)))
+        eid = el.Id.IntegerValue
+        cm = calc_map.get(eid, {})
+        row = [eid]
+        for j, nm in enumerate(names):
+            if calc_flags[j]:
+                row.append(cm.get(j, u""))
+            else:
+                row.append(_param_to_text(pmap.get(nm)))
         rows.append(row)
 
     return rows, len(els), len(names), widths
