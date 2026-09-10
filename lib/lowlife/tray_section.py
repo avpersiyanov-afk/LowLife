@@ -10,10 +10,11 @@ u"""
     IronPython 2 недоступен (нет pip), как и у остальных кнопок обмена с
     Excel (см. ScheduleToExcel/ScheduleFromExcel). Из-за этого числовые
     ячейки приходят как unicode-строки, не float/int — отсюда _to_float/
-    _to_int ниже (в Dynamo это делал openpyxl сам). Лист по имени не
-    угадываем (в Dynamo был жёсткий «Сводный» / активный лист) — script.py
-    спрашивает лист, если их в книге несколько. Участок в read_cables
-    протягивается вниз по объединённым ячейкам.
+    _to_int ниже (в Dynamo это делал openpyxl сам). Нужный лист
+    («сводные данные для плагина») ищется по имени среди многих листов
+    книги (find_data_sheet, терпит регистр/пробелы/«пагина»); не нашёлся —
+    script.py спрашивает список. Участок в read_cables протягивается вниз
+    по объединённым ячейкам.
 
   - Раскладка кругов (arrange_cables) — не перебор по сетке с шагом
     radius/5 (итоговая плотность/скорость зависели от масштаба лотка и
@@ -57,7 +58,30 @@ from Autodesk.Revit.DB import (
 from lowlife.xlsx_io import read_xlsx, list_sheet_names
 
 MM_TO_FEET = 1.0 / 304.8
-SHEET_NAME = u"Сводный"
+SHEET_NAME = u"Сводный"  # старое имя из скрипта Dynamo (запасной вариант)
+
+
+def _norm_sheet(s):
+    return u" ".join(s.lower().split())
+
+
+def find_data_sheet(names):
+    u"""Ищет лист со сводными данными для плагина среди имён листов книги
+    (их там бывает много): без учёта регистра/лишних пробелов, терпит
+    написание «плагина»/«пагина». Возвращает точное имя листа или None."""
+    wanted = _norm_sheet(u"сводные данные для плагина")
+    for n in names:
+        nn = _norm_sheet(n)
+        if nn == wanted:
+            return n
+    for n in names:
+        nn = _norm_sheet(n)
+        if u"свод" in nn and (u"плагин" in nn or u"пагин" in nn):
+            return n
+    for n in names:
+        if _norm_sheet(n) == _norm_sheet(SHEET_NAME):
+            return n
+    return None
 
 # Ниже — размеры "на бумаге" (мм готового чертежа). Контур лотка и кружки
 # кабелей рисуются в реальном размере и масштабируются видом; а таблица,
@@ -154,7 +178,7 @@ def read_cables(path, sheet_name=None):
     """
     if sheet_name is None:
         names = list_sheet_names(path)
-        sheet_name = SHEET_NAME if SHEET_NAME in names else (names[0] if names else None)
+        sheet_name = find_data_sheet(names) or (names[0] if names else None)
 
     rows = read_xlsx(path, sheet_name=sheet_name)
 
