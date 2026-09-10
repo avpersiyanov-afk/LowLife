@@ -32,14 +32,15 @@ u"""
   - Режим раскладки (настройка кнопки) — два варианта:
     LAYOUT_SCATTER — все кабели вперемешку, bottom-left-fill слева
     направо (_blf_pack, без группировки);
-    LAYOUT_GROUPED — по типам (original_mark), типы полками слева
-    направо; тип с числом кабелей > BUNDLE_SIZE (8) — «ромашки» по 8
-    (_daisy_offsets: 2 — рядом, 3 — треугольник, 4 — квадрат, 5..8 —
-    центр + кольцо), вокруг каждой ромашки кольцо-стяжка, а сами ромашки
-    раскладываются пирамидкой как большие круги; тип с числом кабелей
-    <= 8 — просто пирамидка (_pyramid_offsets: 2 — рядом, 3 —
-    пирамидка, 4 — 3 снизу + 1 сверху, дальше низ по возрастанию).
-    ties из plan_section — кольца-стяжек.
+    LAYOUT_GROUPED (_arrange_grouped) — по типам (original_mark):
+    маленькие типы (кабелей <= 8) — пирамидками на полу слева направо
+    (_pyramid_offsets: 2 — рядом, 3 — пирамидка, 4 — 3 снизу + 1
+    сверху); большие типы (> 8) — стянуты в пучки по ~8 «ромашкой»
+    (_daisy_offsets, _split_bundles — без крошечного хвоста), и каждая
+    ромашка ПАДАЕТ bottom-left в свободное место лотка поверх уже
+    уложенного (_blf_pack с obstacles) — заполняет пустоты над короткими
+    кучками и по бокам, не обрезается по высоте, ничего не висит в
+    воздухе. ties из plan_section — кольца-стяжек.
 
   - Перегородка СОУЭ РО (настройка кнопки): если divide_soue_ro, кабели
     системы «СОУЭ РО» (is_soue_ro) уходят в отдельный отсек лотка,
@@ -335,17 +336,20 @@ def _fits(x, y, r, tray_w, tray_h, placed):
     return True
 
 
-def _blf_pack(radii, tray_w, tray_h):
+def _blf_pack(radii, tray_w, tray_h, obstacles=None, keep_order=False):
     u"""Bottom-left-fill для набора кругов произвольных радиусов (футы,
-    tray_w/tray_h тоже футы). Крупные — первыми, каждый — в самую низкую
-    точку покоя, при равной высоте — в самую левую. Возвращает
-    (positions, unplaced): positions — dict {индекс: (x, y)}; unplaced —
-    список индексов, которым не хватило места."""
-    placed = []
+    tray_w/tray_h тоже футы). Каждый — в самую низкую точку покоя, при
+    равной высоте — в самую левую (никогда не висит в воздухе: опора —
+    пол, стенка или другой круг). obstacles — уже занятые круги (_Circ),
+    их огибаем, но не возвращаем. keep_order=False — крупные кладём
+    первыми; True — в порядке подачи (для пучков одного типа подряд).
+    Возвращает (positions, unplaced): positions — dict {индекс: (x, y)}."""
+    placed = list(obstacles) if obstacles else []
     positions = {}
     unplaced = []
 
-    for idx in sorted(range(len(radii)), key=lambda i: -radii[i]):
+    order = range(len(radii)) if keep_order else sorted(range(len(radii)), key=lambda i: -radii[i])
+    for idx in order:
         r = radii[idx]
         if r <= 0 or 2.0 * r > tray_w + 1e-6:
             unplaced.append(idx)
@@ -429,96 +433,53 @@ def _expand(cables):
 
 
 def _pyramid_offsets(n, r, avail_w, avail_h):
-    u"""Смещения (dx, dy) центров n кругов радиуса r «горкой»: ряды со
-    сдвигом на радиус, шаг по высоте r*SQRT3.
-
-    Форма — центрированная треугольная пирамидка (2 — рядом, 3 —
-    пирамидка, 4 — 3 снизу + 1 сверху, дальше низ по возрастанию). Если
-    полный треугольник упирается в верх лотка, лишние круги идут
-    ОТДЕЛЬНЫМ столбиком (1..N рядов) вплотную к боковой стенке лотка —
-    сама пирамидка при этом сдвигается вправо на ширину столбика.
-
-    Кладёт столько, сколько влезло; возвращает (offsets, block_w, block_h)."""
+    u"""Смещения (dx, dy) центров n кругов радиуса r центрированной
+    треугольной горкой: 2 — рядом, 3 — пирамидка, 4 — 3 снизу + 1
+    сверху, дальше низ по возрастанию; ряды со сдвигом на радиус, шаг по
+    высоте r*SQRT3, неполный верхний ряд центрируется сдвигом кратным 2r.
+    Обрезается по avail_w/avail_h — кладёт столько, сколько влезло.
+    Возвращает (offsets, block_w, block_h)."""
     if n <= 0 or r <= 0:
         return [], 0.0, 0.0
 
     b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
     max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)
 
-    def _tri(base):
-        u"""ряды пирамидки base, base-1, ... (обрезанные по высоте лотка)."""
-        rows, left, w = [], n, base
-        while left > 0 and w > 0 and len(rows) < max_rows:
-            take = min(w, left)
-            rows.append(take)
-            left -= take
-            w -= 1
-        return rows, left  # left — остаток, не влезший в пирамидку
-
-    # низ пирамидки b: минимальное треугольное число >= n, не шире лотка
     b = 1
     while b * (b + 1) // 2 < n:
         b += 1
     b = min(b, b_lim)
 
-    tri_rows, leftover = _tri(b)
-    wall_cols = 0
-    if leftover > 0 and b_lim - b < 1:
-        # пирамидка занимает всю ширину — ужимаем её, освобождая место
-        # под столбик остатка у стенки
-        b = max(1, b_lim - 1)
-        tri_rows, leftover = _tri(b)
+    rows, left, w = [], n, b
+    while left > 0 and w > 0 and len(rows) < max_rows:
+        take = min(w, left)
+        rows.append(take)
+        left -= take
+        w -= 1
 
-    if leftover > 0:
-        wall_cols = min(b_lim - b, int(math.ceil(leftover / float(max_rows))))
-        wall_cols = max(1, wall_cols)
-
-    # зазор между столбиком и пирамидкой — до r, если по ширине остаётся место
-    gap = max(0.0, min(r, avail_w - wall_cols * 2.0 * r - 2.0 * r * b)) if wall_cols else 0.0
-    x_shift = wall_cols * 2.0 * r + gap
     offsets = []
-
-    # 1) столбик лишних групп вплотную к боковой стенке лотка, снизу вверх
-    wall_used_rows = 0
-    placed = 0
-    for row in range(max_rows):
-        if placed >= leftover:
-            break
-        start = r + (row % 2) * r
-        room = max(0, int((x_shift - start + r + 1e-9) / (2.0 * r)))
-        take = min(wall_cols, leftover - placed, room)
-        if take <= 0:
-            break
-        y = r + row * r * SQRT3
-        for k in range(take):
-            offsets.append((start + k * 2.0 * r, y))
-        placed += take
-        wall_used_rows = row + 1
-
-    # 2) центрированная пирамидка правее столбика
-    for j, cnt in enumerate(tri_rows):
+    for j, cnt in enumerate(rows):
         full = b - j
-        base_x = x_shift + r + j * r + ((full - cnt) // 2) * 2.0 * r
+        base_x = r + j * r + ((full - cnt) // 2) * 2.0 * r
         y = r + j * r * SQRT3
         for k in range(cnt):
             offsets.append((base_x + k * 2.0 * r, y))
 
-    block_w = x_shift + 2.0 * r * b
-    block_h = 2.0 * r + (max(len(tri_rows), wall_used_rows) - 1) * r * SQRT3
-    return offsets, block_w, block_h
+    return offsets, 2.0 * r * b, 2.0 * r + (len(rows) - 1) * r * SQRT3
 
 
 BUNDLE_SIZE = 8  # кабелей в пучке под стяжку
 
 
 def _split_bundles(n):
-    u"""[8, 8, ..., остаток] — как реально стягивают: по BUNDLE_SIZE, хвост отдельно."""
-    out = []
-    while n > 0:
-        take = min(BUNDLE_SIZE, n)
-        out.append(take)
-        n -= take
-    return out
+    u"""Пучки размером около BUNDLE_SIZE, но БЕЗ крошечного хвоста: n=10 -> [5,5],
+    n=11 -> [6,5], n=128 -> 16 по 8. Иначе одиночный «пучок» из 1-2 кабелей
+    висел бы отдельной точкой в верху пирамиды."""
+    if n <= 0:
+        return []
+    k = int(math.ceil(n / float(BUNDLE_SIZE)))
+    base, extra = divmod(n, k)
+    return [base + 1] * extra + [base] * (k - extra)
 
 
 def _daisy_offsets(m, r):
@@ -544,83 +505,81 @@ def _daisy_offsets(m, r):
     return offs, ring + r
 
 
-def _shelf_pack(groups, tray_w, tray_h, block_fn):
-    u"""Раскладка блоков по типам полками слева направо. block_fn(inst, r,
-    avail_w, avail_h) -> (cable_offsets, tie_list, block_w, block_h)
-    относительно левого нижнего угла блока; tie_list — (tx, ty, tie_r).
-    Возвращает (placed, ties, unplaced)."""
-    gap = mm_to_feet(_BLOCK_GAP_MM)
-    placed, ties, unplaced = [], [], []
-    shelf_x = shelf_y = shelf_h = 0.0
+def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
+    u"""«Группами (ромашкой)».
 
-    for g in groups:
-        r = mm_to_feet(g[0].diameter) / 2.0
+    Маленькие типы (кабелей <= BUNDLE_SIZE) — аккуратными пирамидками на
+    полу лотка, слева направо. Большие типы (> BUNDLE_SIZE) — стягиваются
+    в пучки по ~8 «ромашкой», и каждая ромашка ПАДАЕТ bottom-left в
+    свободное место лотка поверх уже уложенного (_blf_pack с obstacles),
+    заполняя пустоты над короткими кучками и по бокам, а не обрезается по
+    высоте. Ничего не висит в воздухе — у каждого круга есть опора."""
+    tray_w = mm_to_feet(tray_width_mm)
+    tray_h = mm_to_feet(tray_height_mm)
+    gap = mm_to_feet(_BLOCK_GAP_MM)
+
+    placed, ties, unplaced = [], [], []
+    obstacles = []
+    x_cursor = 0.0
+    big_groups, loose_inst = [], []
+
+    def _drop_circles(insts, r):
+        u"""BLF кучкой (без стяжки) в свободное место лотка."""
+        pos, un = _blf_pack([r] * len(insts), tray_w, tray_h, obstacles, keep_order=True)
+        for i in sorted(pos):
+            cx, cy = pos[i]
+            placed.append(_Placed(cx, cy, r, insts[i]))
+            obstacles.append(_Circ(cx, cy, r))
+        for i in un:
+            unplaced.append(insts[i])
+
+    # 1) маленькие типы — пирамидками на полу
+    for g in _group_by_type(cables):
         inst = _expand(g)
+        r = mm_to_feet(g[0].diameter) / 2.0
         if r <= 0 or 2.0 * r > tray_w + 1e-6:
             unplaced.extend(inst)
             continue
-
-        avail_w = tray_w - shelf_x if shelf_x > 1e-9 else tray_w
-        offs, tlist, bw, bh = block_fn(inst, r, avail_w, tray_h - shelf_y)
-        if shelf_x > 1e-9 and (not offs or shelf_x + bw > tray_w + 1e-6):
-            shelf_y += shelf_h + gap
-            shelf_x = shelf_h = 0.0
-            offs, tlist, bw, bh = block_fn(inst, r, tray_w, tray_h - shelf_y)
-
-        if not offs or shelf_y + bh > tray_h + 1e-6:
-            unplaced.extend(inst)
+        if len(inst) > BUNDLE_SIZE:
+            big_groups.append(g)
             continue
+        offs, bw, bh = _pyramid_offsets(len(inst), r, tray_w - x_cursor, tray_h)
+        if len(offs) < len(inst) or x_cursor + bw > tray_w + 1e-6:
+            loose_inst.append((inst, r))  # не влез на полу -> позже BLF
+            continue
+        for k, (dx, dy) in enumerate(offs):
+            cx, cy = x_cursor + dx, dy
+            placed.append(_Placed(cx, cy, r, inst[k]))
+            obstacles.append(_Circ(cx, cy, r))
+        x_cursor += bw + gap
 
-        for idx, (dx, dy) in enumerate(offs):
-            placed.append(_Placed(shelf_x + dx, shelf_y + dy, r, inst[idx]))
-        for tx, ty, tr in tlist:
-            ties.append((shelf_x + tx, shelf_y + ty, tr))
-        if len(offs) < len(inst):
-            unplaced.extend(inst[len(offs):])
-        shelf_x += bw + gap
-        shelf_h = max(shelf_h, bh)
+    # 2) большие типы — ромашки, gravity-fill в свободное место
+    for g in big_groups:
+        inst = _expand(g)
+        r = mm_to_feet(g[0].diameter) / 2.0
+        clusters = []  # (cable_offsets, tie_r, [cables])
+        i = 0
+        for m in _split_bundles(len(inst)):
+            d_offs, tie_r = _daisy_offsets(m, r)
+            clusters.append((d_offs, tie_r, inst[i:i + m]))
+            i += m
+        pos, un = _blf_pack([c[1] for c in clusters], tray_w, tray_h, obstacles, keep_order=True)
+        for ci in sorted(pos):
+            bx, by = pos[ci]
+            d_offs, tie_r, cabs = clusters[ci]
+            for (dx, dy), cab in zip(d_offs, cabs):
+                placed.append(_Placed(bx + dx, by + dy, r, cab))
+            obstacles.append(_Circ(bx, by, tie_r))
+            if len(cabs) >= 2:
+                ties.append((bx, by, tie_r))
+        for ci in un:
+            unplaced.extend(clusters[ci][2])
+
+    # 3) маленькие типы, не влезшие на пол — просто кучкой в остаток места
+    for inst, r in loose_inst:
+        _drop_circles(inst, r)
 
     return placed, ties, unplaced
-
-
-def _bundled_block(inst, r, avail_w, avail_h):
-    u"""Кабели одного типа (> BUNDLE_SIZE штук), стянутые в пучки по 8
-    «ромашкой»; пучки (как большие круги радиуса tie_r) — пирамидкой."""
-    daisies = []  # (cable_offsets, tie_r, m)
-    for m in _split_bundles(len(inst)):
-        d_offs, tie_r = _daisy_offsets(m, r)
-        daisies.append((d_offs, tie_r, m))
-
-    max_tr = max(d[1] for d in daisies)
-    if 2.0 * max_tr > avail_w + 1e-6:
-        return [], [], 0.0, 0.0
-
-    centres, bw, bh = _pyramid_offsets(len(daisies), max_tr, avail_w, avail_h)
-
-    cable_offs, ties = [], []
-    for (bx, by), (d_offs, tie_r, m) in zip(centres, daisies):
-        for dx, dy in d_offs:
-            cable_offs.append((bx + dx, by + dy))
-        if m >= 2:
-            ties.append((bx, by, tie_r))
-    # centres короче daisies -> часть пучков не влезла, их кабели в хвосте
-    # cable_offs отсутствуют, _shelf_pack пометит их unplaced
-    return cable_offs, ties, bw, bh
-
-
-def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
-    u"""«Группами (ромашкой)»: по типам, полками слева направо. Тип с
-    числом кабелей > BUNDLE_SIZE — ромашки по 8; иначе — пирамидка."""
-    tray_w = mm_to_feet(tray_width_mm)
-    tray_h = mm_to_feet(tray_height_mm)
-
-    def block_fn(inst, r, avail_w, avail_h):
-        if len(inst) > BUNDLE_SIZE:
-            return _bundled_block(inst, r, avail_w, avail_h)
-        offs, bw, bh = _pyramid_offsets(len(inst), r, avail_w, avail_h)
-        return offs, [], bw, bh
-
-    return _shelf_pack(_group_by_type(cables), tray_w, tray_h, block_fn)
 
 
 def _pack_region(cables, region_width_mm, region_height_mm, layout):
