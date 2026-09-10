@@ -382,6 +382,7 @@ def _near_far_radius(h_ft, tilt_rad, vfov_rad, max_r):
 # ======================================================================
 
 _ROOM_TOLERANCE_FT = 90.0 * _FT_PER_MM   # как в room_info.py: точка часто «в стене»
+_ROOM_Z_PAD_FT = 1.0                     # запас по высоте при выборе этажа
 
 
 def _boundary_options(mode):
@@ -407,9 +408,18 @@ def _room_boundary_rings(room, opt, tf):
     for loop in loops:
         pts = []
         for seg in loop:
+            crv = None
             try:
-                curve = seg.GetCurve().CreateTransformed(tf)
-                tess = curve.Tessellate()
+                crv = seg.GetCurve()
+            except Exception:
+                try:
+                    crv = seg.Curve            # старое имя (Revit < 2016)
+                except Exception:
+                    crv = None
+            if crv is None:
+                continue
+            try:
+                tess = crv.CreateTransformed(tf).Tessellate()
             except Exception:
                 continue
             for i in range(tess.Count - 1):
@@ -457,20 +467,35 @@ def _dist_point_to_rings(px, py, rings):
 
 def room_rings_for_point(doc, host_point, boundary_mode):
     """
-    Контуры помещения (в координатах хоста), в котором находится
-    host_point, перебирая все RevitLinkInstance. Проход 1 — точное
-    попадание (Room.IsPointInRoom в координатах связи). Проход 2 —
-    ближайший Room, чей контур не дальше 90 мм по горизонтали (камера
-    «сидит» в стене). None, если ничего не нашлось.
+    (контуры помещения в координатах ХОСТА [Z=0], пояснение).
+
+    host_point — точка камеры С РЕАЛЬНОЙ ОТМЕТКОЙ (не сплющенная в Z=0).
+    Помещение ищется во всех загруженных RevitLinkInstance двумерным
+    тестом «точка внутри контура по XY» (это надёжнее Room.IsPointInRoom,
+    который чувствителен к Z и отсекает камеру под потолком). Если по XY
+    подошло несколько помещений (этажи друг над другом) — выбирается то,
+    чей вертикальный габарит содержит Z камеры, иначе ближайшее по высоте.
+    Если точка вне всех контуров — ближайшее в пределах 90 мм («камера
+    сидит в стене»). Первый элемент None + пояснение, если не нашлось.
     """
     opt = _boundary_options(boundary_mode)
+    opt_center = SpatialElementBoundaryOptions()
+    opt_center.SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Center
 
-    candidates = []   # (dist, rings) для прохода 2
+    links = list(FilteredElementCollector(doc).OfClass(RevitLinkInstance))
+    if not links:
+        return None, u"в проекте нет связей (RevitLinkInstance)"
 
-    for li in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+    loaded = 0
+    total_rooms = 0
+    xy_hits = []   # (area, rings, zmin, zmax, pz)
+    near = []      # (dist_ft, rings)
+
+    for li in links:
         ldoc = li.GetLinkDocument()
         if ldoc is None:
             continue
+        loaded += 1
         try:
             tf = li.GetTotalTransform()
             p_link = tf.Inverse.OfPoint(host_point)
@@ -488,35 +513,68 @@ def room_rings_for_point(doc, host_point, boundary_mode):
                     continue
             except Exception:
                 continue
+            total_rooms += 1
 
-            hit = False
-            try:
-                hit = room.IsPointInRoom(p_link)
-            except Exception:
-                hit = False
+            rings = _room_boundary_rings(room, opt, tf)
+            if not rings:
+                rings = _room_boundary_rings(room, opt_center, tf)
+            if not rings:
+                continue
 
-            rings = None
-            if hit:
-                rings = _room_boundary_rings(room, opt, tf)
-                if rings:
-                    return rings
+            inside = (_point_in_ring(host_point.X, host_point.Y, rings[0])
+                      and not any(_point_in_ring(host_point.X, host_point.Y, h)
+                                  for h in rings[1:]))
 
-            # для прохода 2
-            if not hit:
-                rings = rings or _room_boundary_rings(room, opt, tf)
-                if not rings:
-                    continue
-                if _point_in_ring(host_point.X, host_point.Y, rings[0]) and \
-                   not any(_point_in_ring(host_point.X, host_point.Y, h) for h in rings[1:]):
-                    return rings
+            if inside:
+                zmin = zmax = None
+                try:
+                    bb = room.get_BoundingBox(None)
+                    if bb is not None:
+                        zmin, zmax = bb.Min.Z, bb.Max.Z
+                except Exception:
+                    pass
+                try:
+                    area = room.Area
+                except Exception:
+                    area = 0.0
+                xy_hits.append((area, rings, zmin, zmax, p_link.Z))
+            else:
                 d = _dist_point_to_rings(host_point.X, host_point.Y, rings)
                 if d is not None and d <= _ROOM_TOLERANCE_FT:
-                    candidates.append((d, rings))
+                    near.append((d, rings))
 
-    if candidates:
-        candidates.sort(key=lambda c: c[0])
-        return candidates[0][1]
-    return None
+    if loaded == 0:
+        return None, u"связи есть, но не загружены (GetLinkDocument = None)"
+    if total_rooms == 0:
+        return None, u"в связях ({} шт.) нет размещённых помещений".format(loaded)
+
+    if xy_hits:
+        if len(xy_hits) == 1:
+            return xy_hits[0][1], u"помещение (1 по XY)"
+
+        def _contains_z(h):
+            _, _, zmin, zmax, pz = h
+            return zmin is not None and (zmin - _ROOM_Z_PAD_FT <= pz <= zmax + _ROOM_Z_PAD_FT)
+
+        in_z = [h for h in xy_hits if _contains_z(h)]
+        if in_z:
+            in_z.sort(key=lambda h: h[0])   # меньшая площадь = более точное
+            return in_z[0][1], u"помещение (из {} по XY — по высоте)".format(len(xy_hits))
+
+        def _zdist(h):
+            _, _, zmin, zmax, pz = h
+            if zmin is None:
+                return 1e9
+            return abs(0.5 * (zmin + zmax) - pz)
+
+        xy_hits.sort(key=_zdist)
+        return xy_hits[0][1], u"помещение (из {} по XY — ближайшее по высоте)".format(len(xy_hits))
+
+    if near:
+        near.sort(key=lambda c: c[0])
+        return near[0][1], u"вне контура, взято ближайшее ({:.0f} мм)".format(near[0][0] * 304.8)
+
+    return None, u"проверено помещений: {}, точка вне всех контуров по XY".format(total_rooms)
 
 
 # ======================================================================
@@ -809,8 +867,9 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
 
     status = u"ok"
     rings = None
+    room_note = u""
     if clip:
-        rings = room_rings_for_point(doc, center, boundary_mode)
+        rings, room_note = room_rings_for_point(doc, p, boundary_mode)
         if rings is None:
             status = u"ok_no_room"
 
@@ -843,14 +902,17 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     if dori_style is not None and h_res > 0:
         _draw_dori(doc, view, center, base, half, h_res, hfov, max_r, z, dori_style)
 
-    if status == u"ok_no_room":
-        clip_note = u"без обрезки (помещение не найдено)"
-    elif status == u"ok_clip_failed":
-        clip_note = u"без обрезки (обрезка дала пустой контур)"
-    elif rings is not None:
-        clip_note = u"обрезка по помещению ({} сегм.)".format(sum(len(r) for r in rings))
-    else:
+    if not clip:
         clip_note = u"без обрезки (выключена)"
+    elif status == u"ok_no_room":
+        clip_note = u"без обрезки — {}".format(room_note or u"помещение не найдено")
+    elif status == u"ok_clip_failed":
+        clip_note = u"без обрезки (обрезка дала пустой контур); {}".format(room_note)
+    elif rings is not None:
+        clip_note = u"обрезка: {} ({} сегм.)".format(
+            room_note or u"помещение", sum(len(r) for r in rings))
+    else:
+        clip_note = u"без обрезки"
 
     az = math.degrees(base) % 360.0
     summary = (u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; напр.: {}; {}"
