@@ -37,11 +37,11 @@ u"""
     на полу лотка, пирамидки идут слева направо. Тип, где кабелей > 8,
     стянут в пучки по ~8 «ромашкой» (_daisy_offsets, _split_bundles — без
     крошечного хвоста) — тогда пирамидка складывается из ромашек, вокруг
-    каждой кольцо-стяжка (ties из plan_section). Что не влезло в свою
-    пирамидку (упёрлась в верх/бок лотка) — не обрезается и не висит:
-    докладывается bottom-left в ближайшее свободное место лотка поверх
-    уже уложенного (_blf_pack с obstacles). Совсем не поместилось — в
-    unplaced.
+    каждой кольцо-стяжка (ties из plan_section). Если пирамидка упирается
+    в верх лотка, остаток НЕ раскидывается: _pyramid_offsets достраивает
+    её добавочными столбиками вплотную к боковой (стеночной) стороне —
+    пирамидка продолжается вбок вдоль стенки лотка. Что не влезло даже
+    так — в unplaced.
 
   - Перегородка СОУЭ РО (настройка кнопки): если divide_soue_ro, кабели
     системы «СОУЭ РО» (is_soue_ro) уходят в отдельный отсек лотка,
@@ -447,8 +447,15 @@ def _pyramid_offsets(n, r, avail_w, avail_h):
     u"""Центрированная треугольная пирамидка из n кругов радиуса r: 2 —
     рядом, 3 — пирамидка, 4 — 3 снизу + 1 сверху, дальше низ по
     возрастанию; ряды со сдвигом на радиус, шаг по высоте r*SQRT3,
-    неполный верхний ряд центрируется сдвигом кратным 2r. Обрезается по
-    avail_w/avail_h — кладёт столько кругов, сколько влезло.
+    неполный верхний ряд центрируется сдвигом кратным 2r.
+
+    Если полный треугольник упирается в верх лотка, остаток НЕ
+    выбрасывается: он идёт добавочными столбиками (1..N рядов, во всю
+    доступную высоту) вплотную к боковой стороне пирамидки — пирамидка
+    при этом сдвигается вправо на ширину столбиков. Так пирамидка
+    продолжается «в бок» вдоль стенки лотка, а не обрезается.
+
+    Кладёт столько кругов, сколько влезло в avail_w x avail_h.
     Возвращает (offsets, n_placed, block_w, block_h)."""
     if n <= 0 or r <= 0 or avail_w < 2.0 * r - 1e-9 or avail_h < 2.0 * r - 1e-9:
         return [], 0, 0.0, 0.0
@@ -456,26 +463,62 @@ def _pyramid_offsets(n, r, avail_w, avail_h):
     b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
     max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)
 
+    def _tri(base):
+        rows, left, w = [], n, base
+        while left > 0 and w > 0 and len(rows) < max_rows:
+            take = min(w, left)
+            rows.append(take)
+            left -= take
+            w -= 1
+        return rows, left
+
+    # низ пирамидки b: минимальное треугольное число >= n, не шире лотка
     b = 1
     while b * (b + 1) // 2 < n:
         b += 1
     b = min(b, b_lim)
 
-    rows, left, w = [], n, b
-    while left > 0 and w > 0 and len(rows) < max_rows:
-        take = min(w, left)
-        rows.append(take)
-        left -= take
-        w -= 1
+    tri_rows, leftover = _tri(b)
+    wall_cols = 0
+    if leftover > 0:
+        wall_cols = int(math.ceil(leftover / float(max_rows)))
+        if wall_cols > b_lim - b:                 # рядом с пирамидкой не помещается
+            b = max(1, b_lim - 1)                 # ужимаем низ, освобождая место
+            tri_rows, leftover = _tri(b)
+            wall_cols = int(math.ceil(leftover / float(max_rows))) if leftover else 0
+        wall_cols = max(0, min(wall_cols, b_lim - b))
 
+    x_shift = wall_cols * 2.0 * r
     offsets = []
-    for j, cnt in enumerate(rows):
-        base_x = r + j * r + ((b - j - cnt) // 2) * 2.0 * r
+
+    # добавочные столбики остатка вплотную к боковой стороне пирамидки,
+    # снизу вверх, со сдвигом рядов (садятся в сёдла)
+    placed_wall = 0
+    wall_used_rows = 0
+    for row in range(max_rows):
+        if placed_wall >= leftover:
+            break
+        start = r + (row % 2) * r
+        col_room = max(0, int((x_shift - start + r + 1e-9) / (2.0 * r)))
+        take = min(wall_cols, leftover - placed_wall, col_room)
+        if take <= 0:
+            break
+        y = r + row * r * SQRT3
+        for k in range(take):
+            offsets.append((start + k * 2.0 * r, y))
+        placed_wall += take
+        wall_used_rows = row + 1
+
+    # сама центрированная пирамидка правее столбиков
+    for j, cnt in enumerate(tri_rows):
+        base_x = x_shift + r + j * r + ((b - j - cnt) // 2) * 2.0 * r
         y = r + j * r * SQRT3
         for k in range(cnt):
             offsets.append((base_x + k * 2.0 * r, y))
 
-    return offsets, len(offsets), 2.0 * r * b, 2.0 * r + (len(rows) - 1) * r * SQRT3
+    block_w = x_shift + 2.0 * r * b
+    block_h = 2.0 * r + (max(len(tri_rows), wall_used_rows) - 1) * r * SQRT3
+    return offsets, len(offsets), block_w, block_h
 
 
 BUNDLE_SIZE = 8  # кабелей в пучке под стяжку
@@ -524,24 +567,16 @@ def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
     «ромашкой» (кольцо-стяжка вокруг каждого) — тогда пирамидка
     складывается из ромашек как из больших кругов.
 
-    Что не влезло в свою пирамидку (пирамидка упёрлась в верх/бок лотка)
-    — не обрезается и не висит в воздухе: докладывается bottom-left в
-    ближайшее свободное место лотка поверх уже уложенного (заполняет
-    пустоты над короткими пирамидками и по бокам). Совсем не поместилось
-    — в unplaced."""
+    Если пирамидка типа упирается в верх лотка, остаток НЕ раскидывается:
+    _pyramid_offsets достраивает пирамидку добавочными столбиками вплотную
+    к её боковой (стеночной) стороне (1..N рядов, во всю высоту лотка).
+    Что не влезло даже так — в unplaced."""
     tray_w = mm_to_feet(tray_width_mm)
     tray_h = mm_to_feet(tray_height_mm)
     gap = mm_to_feet(_BLOCK_GAP_MM)
 
     placed, ties, unplaced = [], [], []
-    obstacles = []
     x_cursor = 0.0
-    overflow = []   # (r, [cables], tie_r|None) — доложить BLF-ом после всех пирамидок
-
-    def _put(x, y, r, cable, tie_center=None):
-        placed.append(_Placed(x, y, r, cable))
-        if tie_center is None:
-            obstacles.append(_Circ(x, y, r))
 
     for g in _group_by_type(cables):
         inst = _expand(g)
@@ -551,10 +586,6 @@ def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
             continue
 
         avail_w = tray_w - x_cursor
-        if avail_w < 2.0 * r:  # места на полу больше нет — весь тип в доклад
-            if inst:
-                overflow.append((r, list(inst), len(inst) > BUNDLE_SIZE))
-            continue
 
         if len(inst) > BUNDLE_SIZE:
             bundles = []  # (daisy_offsets, tie_r, [cables])
@@ -563,67 +594,31 @@ def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
                 d_offs, tie_r = _daisy_offsets(bsize, r)
                 bundles.append((d_offs, tie_r, inst[i:i + bsize]))
                 i += bsize
-            tie_r = max(b[1] for b in bundles)
-            slots, n_fit, bw, bh = _pyramid_offsets(len(bundles), tie_r, avail_w, tray_h)
+            slots, n_fit, bw, bh = _pyramid_offsets(
+                len(bundles), max(b[1] for b in bundles), avail_w, tray_h)
             daisy_obs = []  # ромашки этого типа — опора для снапа вниз
             for si in range(n_fit):
                 sx, sy = slots[si]
                 d_offs, this_tie, cabs = bundles[si]
                 bx = x_cursor + sx
-                # ромашки идут снизу вверх по рядам пирамидки — снапаем
-                # каждую на уже уложенные, чтобы меньшие пучки (в наборе
-                # разного размера) не висели в своей крупной ячейке
                 by = _drop_y(bx, this_tie, daisy_obs)
                 if by > sy + 1e-9:
                     by = sy
                 for (dx, dy), cab in zip(d_offs, cabs):
-                    _put(bx + dx, by + dy, r, cab, tie_center=(bx, by))
-                obstacles.append(_Circ(bx, by, this_tie))
+                    placed.append(_Placed(bx + dx, by + dy, r, cab))
                 daisy_obs.append(_Circ(bx, by, this_tie))
                 if len(cabs) >= 2:
                     ties.append((bx, by, this_tie))
-            rest = [c for bi in range(n_fit, len(bundles)) for c in bundles[bi][2]]
-            if rest:
-                overflow.append((r, rest, len(rest) > BUNDLE_SIZE))
-            x_cursor += (bw if n_fit else 0.0) + gap
+            for bi in range(n_fit, len(bundles)):
+                unplaced.extend(bundles[bi][2])
         else:
             slots, n_fit, bw, bh = _pyramid_offsets(len(inst), r, avail_w, tray_h)
             for k in range(n_fit):
                 dx, dy = slots[k]
-                _put(x_cursor + dx, dy, r, inst[k])
-            if n_fit < len(inst):
-                rest = inst[n_fit:]
-                overflow.append((r, rest, len(rest) > BUNDLE_SIZE))
-            x_cursor += (bw if n_fit else 0.0) + gap
+                placed.append(_Placed(x_cursor + dx, dy, r, inst[k]))
+            unplaced.extend(inst[n_fit:])
 
-    # доклад: bottom-left в ближайшие свободные места (поверх уже уложенного)
-    for r, cabs, is_bundle in overflow:
-        if is_bundle:
-            bundles = []
-            i = 0
-            for bsize in _split_bundles(len(cabs)):
-                d_offs, tie_r = _daisy_offsets(bsize, r)
-                bundles.append((d_offs, tie_r, cabs[i:i + bsize]))
-                i += bsize
-            pos, un = _blf_pack([b[1] for b in bundles], tray_w, tray_h, obstacles, keep_order=True)
-            for bi in sorted(pos):
-                bx, by = pos[bi]
-                d_offs, tie_r, cs = bundles[bi]
-                for (dx, dy), cab in zip(d_offs, cs):
-                    placed.append(_Placed(bx + dx, by + dy, r, cab))
-                obstacles.append(_Circ(bx, by, tie_r))
-                if len(cs) >= 2:
-                    ties.append((bx, by, tie_r))
-            for bi in un:
-                unplaced.extend(bundles[bi][2])
-        else:
-            pos, un = _blf_pack([r] * len(cabs), tray_w, tray_h, obstacles, keep_order=True)
-            for k in sorted(pos):
-                x, y = pos[k]
-                placed.append(_Placed(x, y, r, cabs[k]))
-                obstacles.append(_Circ(x, y, r))
-            for k in un:
-                unplaced.append(cabs[k])
+        x_cursor += (bw if n_fit else 0.0) + gap
 
     return placed, ties, unplaced
 
