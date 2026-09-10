@@ -29,26 +29,23 @@ u"""
     Кабели, которым не хватило места по высоте лотка, возвращаются
     отдельным списком, а не молча пропадают.
 
-  - Режим раскладки (настройка кнопки). Оба варианта группируют кабели
-    по типам (original_mark) и раскладывают типы слева направо полками —
-    чтобы разные типы не сваливались в одну кучу. Отличие только в форме
-    блока одного типа: LAYOUT_SOLID — плотная bottom-left-fill куча
-    (_arrange_solid_by_type, per-тип через arrange_cables);
-    LAYOUT_HONEYCOMB — треугольная горка (_pyramid_offsets): 2 — рядом,
-    3 — пирамидка, 4 — 3+1, дальше широкий низ и ряды по убыванию, как
-    складывают трубы руками.
+  - Режим раскладки (настройка кнопки) — два варианта:
+    LAYOUT_SCATTER — все кабели вперемешку, bottom-left-fill слева
+    направо (_blf_pack, без группировки);
+    LAYOUT_GROUPED — по типам (original_mark), типы полками слева
+    направо; тип с числом кабелей > BUNDLE_SIZE (8) — «ромашки» по 8
+    (_daisy_offsets: 2 — рядом, 3 — треугольник, 4 — квадрат, 5..8 —
+    центр + кольцо), вокруг каждой ромашки кольцо-стяжка, а сами ромашки
+    раскладываются пирамидкой как большие круги; тип с числом кабелей
+    <= 8 — просто пирамидка (_pyramid_offsets: 2 — рядом, 3 —
+    пирамидка, 4 — 3 снизу + 1 сверху, дальше низ по возрастанию).
+    ties из plan_section — кольца-стяжек.
 
   - Перегородка СОУЭ РО (настройка кнопки): если divide_soue_ro, кабели
     системы «СОУЭ РО» (is_soue_ro) уходят в отдельный отсек лотка,
     отделённый вертикальной перегородкой; ширины отсеков — по доле
     площади кабелей (15..50% под СОУЭ РО). plan_section возвращает X
     осевой линии перегородки, draw_section её рисует.
-
-  - Пучки (настройка кнопки): если bundle, типы с числом кабелей >=
-    BUNDLE_SIZE стягиваются в пучки по 8 «ромашкой» (_daisy_offsets:
-    центр + кольцо лепестков), вокруг каждого пучка — кольцо-стяжка;
-    сами пучки раскладываются как большие круги (пирамидкой или
-    bottom-left-fill по layout). ties из plan_section — эти кольца.
 
   - Файл, участки (список с галочками — можно несколько), режим и точка
     вставки выбираются интерактивно (pyrevit.forms + PickPoint), а не
@@ -83,10 +80,10 @@ MM_TO_FEET = 1.0 / 304.8
 SQRT3 = math.sqrt(3.0)
 SHEET_NAME = u"Сводный"  # старое имя из скрипта Dynamo (запасной вариант)
 
-LAYOUT_SOLID = u"solid"          # bottom-left-fill, кабели вперемешку
-LAYOUT_HONEYCOMB = u"honeycomb"  # по типам, каждый тип — сотовым блоком
+LAYOUT_SCATTER = u"scatter"  # все кабели вперемешку, bottom-left-fill слева направо
+LAYOUT_GROUPED = u"grouped"  # по типам: >8 кабелей — ромашки по 8, иначе пирамидка
 
-_BLOCK_GAP_MM = 3.0        # зазор между сотовыми блоками разных типов
+_BLOCK_GAP_MM = 3.0        # зазор между блоками разных типов
 PARTITION_GAP_MM = 5.0     # ширина перегородки между отсеками (СОУЭ РО)
 
 
@@ -555,80 +552,52 @@ def _shelf_pack(groups, tray_w, tray_h, block_fn):
     return placed, ties, unplaced
 
 
-def _block_solid(inst, r, avail_w, avail_h):
-    n = len(inst)
-    d = 2.0 * r
-    rows_avail = max(1, int(avail_h / d))
-    cols = max(1, int(math.ceil(n / float(rows_avail))), int(math.ceil(math.sqrt(n))))
-    target_w = min(avail_w, max(d, cols * d * 1.15))
-    pos, _un = _blf_pack([r] * n, target_w, avail_h)
-    if not pos:
-        return [], [], 0.0, 0.0
-    offs = [pos[i] for i in sorted(pos)]
-    bw = max(x + r for x, y in offs)
-    bh = max(y + r for x, y in offs)
-    return offs, [], bw, bh
-
-
-def _bundled_block(inst, r, avail_w, avail_h, honeycomb):
-    u"""Кабели одного типа, стянутые в пучки по BUNDLE_SIZE «ромашкой»;
-    пучки (как большие круги радиуса tie_r) раскладываются пирамидкой
-    (honeycomb) или bottom-left-fill (solid)."""
+def _bundled_block(inst, r, avail_w, avail_h):
+    u"""Кабели одного типа (> BUNDLE_SIZE штук), стянутые в пучки по 8
+    «ромашкой»; пучки (как большие круги радиуса tie_r) — пирамидкой."""
     daisies = []  # (cable_offsets, tie_r, m)
-    i = 0
     for m in _split_bundles(len(inst)):
         d_offs, tie_r = _daisy_offsets(m, r)
         daisies.append((d_offs, tie_r, m))
-        i += m
-    tie_radii = [d[1] for d in daisies]
-    max_tr = max(tie_radii)
+
+    max_tr = max(d[1] for d in daisies)
     if 2.0 * max_tr > avail_w + 1e-6:
         return [], [], 0.0, 0.0
 
-    if honeycomb:
-        centres, bw, bh = _pyramid_offsets(len(daisies), max_tr, avail_w, avail_h)
-        used = list(range(len(centres)))
-    else:
-        pos, _un = _blf_pack(tie_radii, avail_w, avail_h)
-        if not pos:
-            return [], [], 0.0, 0.0
-        used = sorted(pos)
-        centres = [pos[i] for i in used]
-        bw = max(pos[i][0] + tie_radii[i] for i in used)
-        bh = max(pos[i][1] + tie_radii[i] for i in used)
+    centres, bw, bh = _pyramid_offsets(len(daisies), max_tr, avail_w, avail_h)
 
-    cable_offs = []
-    ties = []
-    for slot, (bx, by) in zip(used, centres):
-        d_offs, tie_r, m = daisies[slot]
+    cable_offs, ties = [], []
+    for (bx, by), (d_offs, tie_r, m) in zip(centres, daisies):
         for dx, dy in d_offs:
             cable_offs.append((bx + dx, by + dy))
         if m >= 2:
             ties.append((bx, by, tie_r))
-    # cable_offs идёт в порядке пучков; при honeycomb все пучки на месте,
-    # при solid — только влезшие (в порядке индексов), хвост -> unplaced
+    # centres короче daisies -> часть пучков не влезла, их кабели в хвосте
+    # cable_offs отсутствуют, _shelf_pack пометит их unplaced
     return cable_offs, ties, bw, bh
 
 
-def _arrange_by_type(cables, tray_width_mm, tray_height_mm, layout, bundle):
+def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
+    u"""«Группами (ромашкой)»: по типам, полками слева направо. Тип с
+    числом кабелей > BUNDLE_SIZE — ромашки по 8; иначе — пирамидка."""
     tray_w = mm_to_feet(tray_width_mm)
     tray_h = mm_to_feet(tray_height_mm)
-    honeycomb = (layout == LAYOUT_HONEYCOMB)
 
     def block_fn(inst, r, avail_w, avail_h):
-        if bundle and len(inst) >= BUNDLE_SIZE:
-            return _bundled_block(inst, r, avail_w, avail_h, honeycomb)
-        if honeycomb:
-            offs, bw, bh = _pyramid_offsets(len(inst), r, avail_w, avail_h)
-            return offs, [], bw, bh
-        return _block_solid(inst, r, avail_w, avail_h)
+        if len(inst) > BUNDLE_SIZE:
+            return _bundled_block(inst, r, avail_w, avail_h)
+        offs, bw, bh = _pyramid_offsets(len(inst), r, avail_w, avail_h)
+        return offs, [], bw, bh
 
     return _shelf_pack(_group_by_type(cables), tray_w, tray_h, block_fn)
 
 
-def _pack_region(cables, region_width_mm, region_height_mm, layout, bundle):
+def _pack_region(cables, region_width_mm, region_height_mm, layout):
     u"""Возвращает (placed, ties, unplaced)."""
-    return _arrange_by_type(cables, region_width_mm, region_height_mm, layout, bundle)
+    if layout == LAYOUT_GROUPED:
+        return _arrange_grouped(cables, region_width_mm, region_height_mm)
+    placed, unplaced = arrange_cables(cables, region_width_mm, region_height_mm)
+    return placed, [], unplaced
 
 
 def is_soue_ro(system):
@@ -701,16 +670,15 @@ def _fill_percent(placed, tray_width_mm, tray_height_mm):
 
 
 def plan_section(cables, tray_width_mm, tray_height_mm,
-                 layout=LAYOUT_SOLID, divide_soue_ro=False, bundle=False):
+                 layout=LAYOUT_SCATTER, divide_soue_ro=False):
     u"""Раскладка без рисования.
 
-    layout — LAYOUT_SOLID (по типам, плотной кучей) или LAYOUT_HONEYCOMB
-    (по типам, треугольной горкой).
+    layout — LAYOUT_SCATTER (все кабели вперемешку, bottom-left-fill
+    слева направо) или LAYOUT_GROUPED (по типам: тип с числом кабелей
+    > BUNDLE_SIZE — ромашки по 8 с кольцом-стяжкой, иначе — пирамидка).
     divide_soue_ro — кабели системы «СОУЭ РО» (is_soue_ro) кладутся в
     отдельный отсек лотка, отделённый перегородкой; ширина отсеков — по
     доле площади кабелей (15..50% под СОУЭ РО).
-    bundle — типы, где кабелей >= BUNDLE_SIZE, стягиваются в пучки по 8
-    «ромашкой» (кольцо-стяжка вокруг каждого пучка).
 
     Возвращает (placed, unplaced, fill_percent, partition_x_ft, ties):
     partition_x_ft — X осевой линии перегородки от левой стенки лотка
@@ -736,8 +704,8 @@ def plan_section(cables, tray_width_mm, tray_height_mm,
         w_ro = usable * frac
         w_rest = usable - w_ro
 
-        placed_rest, ties_rest, un_rest = _pack_region(rest, w_rest, tray_height_mm, layout, bundle)
-        placed_ro, ties_ro, un_ro = _pack_region(ro, w_ro, tray_height_mm, layout, bundle)
+        placed_rest, ties_rest, un_rest = _pack_region(rest, w_rest, tray_height_mm, layout)
+        placed_ro, ties_ro, un_ro = _pack_region(ro, w_ro, tray_height_mm, layout)
         dx = mm_to_feet(w_rest + gap_mm)
         for p in placed_ro:
             p.cx += dx
@@ -747,7 +715,7 @@ def plan_section(cables, tray_width_mm, tray_height_mm,
         unplaced = un_rest + un_ro
         partition_x_ft = mm_to_feet(w_rest + gap_mm / 2.0)
     else:
-        placed, ties, unplaced = _pack_region(cables, tray_width_mm, tray_height_mm, layout, bundle)
+        placed, ties, unplaced = _pack_region(cables, tray_width_mm, tray_height_mm, layout)
 
     return (placed, unplaced, _fill_percent(placed, tray_width_mm, tray_height_mm),
             partition_x_ft, ties)

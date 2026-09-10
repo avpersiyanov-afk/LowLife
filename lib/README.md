@@ -790,26 +790,22 @@ Dynamo), а точная «гравитационная» упаковка: ка
 чертёжные виды**, запустив кнопку дважды (на одном виде «Только сечение», на
 другом «Только таблица»).
 
-**Раскладка (настройки кнопки).** Оба режима группируют кабели по типам
-(`original_mark`) и кладут типы слева направо полками (`_group_by_type` +
-`_shelf_pack` / `_arrange_solid_by_type`), чтобы типы не сваливались в кучу.
-Отличие — форма кучи одного типа: `LAYOUT_SOLID` — плотная bottom-left-fill
-(`arrange_cables` в компактную по ширине полосу); `LAYOUT_HONEYCOMB` —
-треугольная горка (`_pyramid_offsets`: 2 → рядом, 3 → пирамидка, 4 → 3+1,
-дальше низ `b` = мин. треугольное число ≥ N и ряды по убыванию; неполный
-верхний ряд центрируется сдвигом кратным 2r, чтобы садиться в сёдла, а не
-поверх нижнего ряда). `divide_soue_ro` — кабели `is_soue_ro(system)` уходят в
-отдельный отсек за вертикальной перегородкой; ширины отсеков — по доле площади
-(15..50% под СОУЭ РО), `plan_section` возвращает X оси перегородки,
-`draw_section` её рисует.
+**Раскладка (`layout`, настройка кнопки) — два режима.**
+`LAYOUT_SCATTER` — все кабели вперемешку, `arrange_cables` (bottom-left-fill,
+крупные ниже, при равной высоте левее), без группировки, без стяжек.
+`LAYOUT_GROUPED` (`_arrange_grouped`) — по типам (`_group_by_type`), типы
+полками слева направо (`_shelf_pack`); для типа с числом кабелей **> 8**
+(`BUNDLE_SIZE`) — «ромашки» по 8 (`_bundled_block` + `_daisy_offsets`: 2 —
+рядом, 3 — треугольник, 4 — квадрат, 5–8 — центр + кольцо), вокруг каждой
+кольцо-стяжка, ромашки лежат пирамидкой; для типа с ≤ 8 — просто пирамидка
+(`_pyramid_offsets`: 2 — рядом, 3 — пирамидка, 4 — 3 снизу + 1 сверху,
+дальше низ по возрастанию; неполный верхний ряд центрируется сдвигом кратным
+2r, чтобы садиться в сёдла). `ties` из `plan_section` — кольца-стяжек,
+`draw_section` их рисует. BLF-движок для обоих — `_blf_pack(radii, w, h)`.
 
-**Пучки (`bundle`).** Типы, где кабелей ≥ `BUNDLE_SIZE` (8), стягиваются в
-пучки по 8 «ромашкой» (`_daisy_offsets`: 2 — рядом, 3 — треугольник, 4 —
-квадрат, 5–8 — центр + кольцо лепестков); вокруг каждого пучка — кольцо-стяжка.
-Сами пучки раскладываются как большие круги (`_bundled_block`: пирамидкой при
-honeycomb, `_blf_pack` при solid). `plan_section` отдаёт список колец в `ties`,
-`draw_section` их рисует. Внутренний общий движок раскладки — `_blf_pack(radii,
-tray_w, tray_h)` (bottom-left-fill по произвольным радиусам).
+`divide_soue_ro` — кабели `is_soue_ro(system)` уходят в отдельный отсек за
+вертикальной перегородкой; ширины отсеков — по доле площади (15..50% под
+СОУЭ РО), `plan_section` возвращает X оси перегородки, `draw_section` её рисует.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -817,9 +813,9 @@ tray_w, tray_h)` (bottom-left-fill по произвольным радиуса�
 | `read_cables` | `read_cables(path, sheet_name=None)` | `(cables, error)` — список `CableData` с листа `sheet_name` (без него — `find_data_sheet`, иначе первый лист). Столбцы жёстко по номеру (0 марка, 1 диаметр, 2 участок, 3 кол-во, 5 система, 6 %, 7 высота, 8 ширина). Участок протягивается вниз по объединённым ячейкам |
 | `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
-| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — одна bottom-left-fill куча, без группировки по типам (используется как кирпич для `LAYOUT_SOLID` внутри каждого типа) |
+| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — одна bottom-left-fill куча, без группировки (режим `LAYOUT_SCATTER`) |
 | `is_soue_ro` | `is_soue_ro(system)` | `True` для системы «СОУЭ РО» в любом написании |
-| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm, layout=LAYOUT_SOLID, divide_soue_ro=False, bundle=False)` | `(placed, unplaced, fill_percent, partition_x_ft, ties)` — раскладка (сплошняком/сотами, перегородка СОУЭ РО, пучки по 8), без рисования |
+| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm, layout=LAYOUT_SCATTER, divide_soue_ro=False)` | `(placed, unplaced, fill_percent, partition_x_ft, ties)` — раскладка (россыпью / группами-ромашкой, перегородка СОУЭ РО), без рисования |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
 | `paper_to_model` | `paper_to_model(mm, scale)` | мм на бумаге → футы в модели на виде с масштабом 1:scale |
 | `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0, partition_x_ft=None, ties=None)` | Контур лотка (реальный размер) + подпись + кружки + кольца-стяжки (`ties`) + перегородка отсека. `insertion_point` — левый нижний угол лотка. **В транзакции** |
