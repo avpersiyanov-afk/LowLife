@@ -6,15 +6,16 @@
 
 Что делает :func:`run` за один проход по активному виду:
 
-  1. **Чинит или удаляет «битые» марки.** Марка считается битой, если её
-     привязка мертва (АР удалил/пересоздал помещение — `TaggedRoomId` не
-     разрешается), марка `IsOrphaned`, либо она привязана к неразмещённому
-     / незамкнутому Room — во всех этих случаях марка показывает «?».
-     Перепривязать через API нельзя, поэтому под каждой такой маркой
-     ищется помещение связи по координате головы марки: нашлось — старая
-     марка заменяется новой (голова и полка сохраняются), не нашлось —
-     непривязанная марка удаляется. Марки, чья связь сейчас *выгружена*,
-     не трогаются (нельзя понять, жива ли привязка).
+  1. **Чинит или удаляет «битые» марки.** Марка считается битой, если:
+     `TaggedRoomId` не разрешается (АР удалил/пересоздал помещение);
+     `RoomTag.IsOrphaned`; ссылка ведёт не на Room / на неразмещённый /
+     незамкнутый Room; либо марка без выноски, а под её головой в связи
+     лежит другое помещение, чем то, на которое она ссылается (после
+     пересоздания помещений у АР ElementId'ы сдвигаются, ссылка формально
+     ещё разрешается, но Revit рисует «?»). Во всех случаях под головой
+     марки ищется помещение связи: нашлось — старая марка заменяется
+     новой (голова и полка сохраняются), не нашлось — марка удаляется.
+     Марки, чья связь сейчас *выгружена*, не трогаются.
   2. **Меняет типоразмер** всех живых марок помещений на виде на
      выбранный пользователем (единый вид марок на листе).
   3. **Добавляет недостающие марки** для тех помещений связи, что попадают
@@ -51,6 +52,7 @@ _NEAR_TOL_MM = 400.0
 _NEAR_TOL_FT = _NEAR_TOL_MM / MM_IN_FOOT
 
 _OST_ROOM_TAGS = int(BuiltInCategory.OST_RoomTags)
+_OST_ROOMS = int(BuiltInCategory.OST_Rooms)
 
 
 # ---------------------------------------------------------------------------
@@ -335,13 +337,25 @@ def _resolve_tag_room(doc, tag):
     return ("live", room) if room is not None else ("dead", None)
 
 
+def _is_room_element(room):
+    """room действительно Room (а не элемент, случайно занявший тот же
+    ElementId после пересоздания помещений в связи)."""
+    if room is None:
+        return False
+    try:
+        cat = room.Category
+        return cat is not None and cat.Id.IntegerValue == _OST_ROOMS
+    except Exception:
+        return False
+
+
 def _room_ok(room):
     """
     Помещение реально размещено и замкнуто — марка по нему покажет
-    значение, а не «?» / «Не окружено» / «Избыточное». False, если Room
-    нет, он не размещён (нет Location) или у него нулевая площадь.
+    значение, а не «?» / «Не окружено» / «Избыточное». False, если это не
+    Room, он не размещён (нет Location) или у него нулевая площадь.
     """
-    if room is None:
+    if not _is_room_element(room):
         return False
     try:
         if room.Location is None:
@@ -352,6 +366,37 @@ def _room_ok(room):
         return room.Area > 0
     except Exception:
         return True
+
+
+def _tag_head(tag):
+    try:
+        return tag.TagHeadPosition
+    except Exception:
+        return None
+
+
+def _tag_has_leader(tag):
+    try:
+        return bool(tag.HasLeader)
+    except Exception:
+        return False
+
+
+def _room_under_tag_key(doc, tag):
+    """(link_instance_id, room_id) помещения связи, физически лежащего под
+    головой марки, либо None. Для сверки: марка без выноски должна
+    ссылаться именно на это помещение."""
+    head = _tag_head(tag)
+    if head is None:
+        return None
+    found = _find_link_room_at(doc, head)
+    if found is None:
+        return None
+    link, _transform, room = found
+    try:
+        return (link.Id.IntegerValue, room.Id.IntegerValue)
+    except Exception:
+        return None
 
 
 def _recreate_stale_tag(doc, view, old_tag, tag_type_id):
@@ -458,20 +503,45 @@ def run(doc, view, tag_type_id):
         except Exception:
             view_elev = None
 
-        existing_tags = list(
+        # Марки вида: и через вид-скоуп, и общим сбором с фильтром по
+        # OwnerViewId — осиротевшие «?»-марки из вид-скоупа иногда
+        # выпадают.
+        existing_tags = []
+        seen_tag_ids = set()
+        for coll in (
             FilteredElementCollector(doc, view.Id)
             .OfCategory(BuiltInCategory.OST_RoomTags)
-            .WhereElementIsNotElementType()
-        )
+            .WhereElementIsNotElementType(),
+            FilteredElementCollector(doc)
+            .OfCategory(BuiltInCategory.OST_RoomTags)
+            .WhereElementIsNotElementType(),
+        ):
+            for tag in coll:
+                tid = tag.Id.IntegerValue
+                if tid in seen_tag_ids:
+                    continue
+                try:
+                    if tag.OwnerViewId != view.Id:
+                        continue
+                except Exception:
+                    continue
+                seen_tag_ids.add(tid)
+                existing_tags.append(tag)
 
         tagged_keys = set()
 
         # 1) Существующие марки:
         #    - связь выгружена              -> не трогаем (не знаем, жива ли
         #      привязка), считаем отдельно;
-        #    - «битая» марка — dead / orphaned / привязана к неразмещённому
-        #      или незамкнутому Room (показывает «?») -> пробуем пересоздать
-        #      по месту; не вышло -> УДАЛЯЕМ (толку от неё нет);
+        #    - «битая» марка — пробуем пересоздать по месту; не вышло ->
+        #      УДАЛЯЕМ (толку от неё нет). Битой считаем, если:
+        #        * kind == "dead" (ссылка не разрешается);
+        #        * tag.IsOrphaned;
+        #        * привязана не к Room / к неразмещённому / незамкнутому;
+        #        * марка без выноски, а под её головой в связи лежит другое
+        #          помещение, чем то, на которое она ссылается (после
+        #          пересоздания помещений у АР ссылка «съезжает», но
+        #          формально ещё разрешается — Revit рисует «?»).
         #    - нормальные                   -> только приводим типоразмер.
         for tag in existing_tags:
             kind, room = _resolve_tag_room(doc, tag)
@@ -481,6 +551,11 @@ def run(doc, view, tag_type_id):
                 continue
 
             broken = (kind == "dead") or _is_orphaned(tag) or not _room_ok(room)
+
+            if not broken and not _tag_has_leader(tag):
+                under_key = _room_under_tag_key(doc, tag)
+                if under_key is not None and under_key != _tagged_room_key(tag):
+                    broken = True
 
             if broken:
                 new_tag = _recreate_stale_tag(doc, view, tag, tag_type_id)
