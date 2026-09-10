@@ -430,70 +430,81 @@ def _expand(cables):
 
 def _pyramid_offsets(n, r, avail_w, avail_h):
     u"""Смещения (dx, dy) центров n кругов радиуса r «горкой»: ряды со
-    сдвигом на радиус, шаг по высоте r*SQRT3. Пока помещается —
-    центрированная треугольная пирамидка (2 — рядом, 3 — пирамидка,
-    4 — 3 снизу + 1 сверху, дальше низ по возрастанию). Если треугольник
-    по высоте не влезает — переходим на плотную укладку от левой стенки:
-    ряды не сужаются ниже, чем нужно, чтобы уместить остаток, лишние
-    круги идут добавочными рядами со стороны стенки лотка. Кладёт
-    столько, сколько влезло; возвращает (offsets, block_w, block_h)."""
+    сдвигом на радиус, шаг по высоте r*SQRT3.
+
+    Форма — центрированная треугольная пирамидка (2 — рядом, 3 —
+    пирамидка, 4 — 3 снизу + 1 сверху, дальше низ по возрастанию). Если
+    полный треугольник упирается в верх лотка, лишние круги идут
+    ОТДЕЛЬНЫМ столбиком (1..N рядов) вплотную к боковой стенке лотка —
+    сама пирамидка при этом сдвигается вправо на ширину столбика.
+
+    Кладёт столько, сколько влезло; возвращает (offsets, block_w, block_h)."""
     if n <= 0 or r <= 0:
         return [], 0.0, 0.0
 
     b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
     max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)
 
-    # низ горки b: минимальное треугольное число >= n, но не шире отсека
+    def _tri(base):
+        u"""ряды пирамидки base, base-1, ... (обрезанные по высоте лотка)."""
+        rows, left, w = [], n, base
+        while left > 0 and w > 0 and len(rows) < max_rows:
+            take = min(w, left)
+            rows.append(take)
+            left -= take
+            w -= 1
+        return rows, left  # left — остаток, не влезший в пирамидку
+
+    # низ пирамидки b: минимальное треугольное число >= n, не шире лотка
     b = 1
     while b * (b + 1) // 2 < n:
         b += 1
     b = min(b, b_lim)
 
-    # ряды центрированной пирамидки: b, b-1, b-2, ...
-    tri_rows = []
-    rem, w = n, b
-    while rem > 0 and w > 0 and len(tri_rows) < max_rows:
-        take = min(w, rem)
-        tri_rows.append(take)
-        rem -= take
-        w -= 1
+    tri_rows, leftover = _tri(b)
+    wall_cols = 0
+    if leftover > 0 and b_lim - b < 1:
+        # пирамидка занимает всю ширину — ужимаем её, освобождая место
+        # под столбик остатка у стенки
+        b = max(1, b_lim - 1)
+        tri_rows, leftover = _tri(b)
 
-    if rem == 0:
-        offsets = []
-        for j, cnt in enumerate(tri_rows):
-            full = b - j
-            # неполный верхний ряд центрируем сдвигом кратным 2r — иначе он
-            # встаёт РОВНО над нижним рядом (тот же x) вместо сёдел -> нахлёст
-            base_x = r + j * r + ((full - cnt) // 2) * 2.0 * r
-            y = r + j * r * SQRT3
-            for k in range(cnt):
-                offsets.append((base_x + k * 2.0 * r, y))
-        return offsets, 2.0 * r * b, 2.0 * r + (len(tri_rows) - 1) * r * SQRT3
+    if leftover > 0:
+        wall_cols = min(b_lim - b, int(math.ceil(leftover / float(max_rows))))
+        wall_cols = max(1, wall_cols)
 
-    # не влезло треугольником -> плотно от стенки: ряд не уже, чем нужно,
-    # чтобы уместить остаток за оставшиеся ряды
+    # зазор между столбиком и пирамидкой — до r, если по ширине остаётся место
+    gap = max(0.0, min(r, avail_w - wall_cols * 2.0 * r - 2.0 * r * b)) if wall_cols else 0.0
+    x_shift = wall_cols * 2.0 * r + gap
     offsets = []
-    rem = n
-    used_rows = 0
-    right_edge = 0.0
-    for j in range(max_rows):
-        if rem <= 0:
+
+    # 1) столбик лишних групп вплотную к боковой стенке лотка, снизу вверх
+    wall_used_rows = 0
+    placed = 0
+    for row in range(max_rows):
+        if placed >= leftover:
             break
-        start = r + (j % 2) * r          # от стенки, сохраняя сдвиг рядов
-        col_lim = max(1, int((avail_w - start + r + 1e-9) / (2.0 * r)))
-        rows_left = max_rows - j
-        cnt = min(col_lim, max(b - j, int(math.ceil(rem / float(rows_left)))), rem)
-        if cnt <= 0:
+        start = r + (row % 2) * r
+        room = max(0, int((x_shift - start + r + 1e-9) / (2.0 * r)))
+        take = min(wall_cols, leftover - placed, room)
+        if take <= 0:
             break
+        y = r + row * r * SQRT3
+        for k in range(take):
+            offsets.append((start + k * 2.0 * r, y))
+        placed += take
+        wall_used_rows = row + 1
+
+    # 2) центрированная пирамидка правее столбика
+    for j, cnt in enumerate(tri_rows):
+        full = b - j
+        base_x = x_shift + r + j * r + ((full - cnt) // 2) * 2.0 * r
         y = r + j * r * SQRT3
         for k in range(cnt):
-            offsets.append((start + k * 2.0 * r, y))
-        rem -= cnt
-        used_rows = j + 1
-        right_edge = max(right_edge, start + (cnt - 1) * 2.0 * r + r)
+            offsets.append((base_x + k * 2.0 * r, y))
 
-    block_w = right_edge
-    block_h = 2.0 * r + (used_rows - 1) * r * SQRT3
+    block_w = x_shift + 2.0 * r * b
+    block_h = 2.0 * r + (max(len(tri_rows), wall_used_rows) - 1) * r * SQRT3
     return offsets, block_w, block_h
 
 
