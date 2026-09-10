@@ -14,12 +14,17 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.tray_section import (
-    SECTION_GAP_MM, TITLE_BAND_MM, build_tray_section, list_sections, mm_to_feet,
-    read_cables, renumber_cables
+    SECTION_GAP_MM, TITLE_BAND_MM, draw_section, draw_table, list_sections, mm_to_feet,
+    paper_to_model, plan_section, read_cables, renumber_cables
 )
 
 doc = revit.doc
 uidoc = revit.uidoc
+
+MODE_BOTH = u"Сечение и таблица"
+MODE_SECTION = u"Только сечение"
+MODE_TABLE = u"Только таблица"
+_TABLE_GAP_MM = 16.0  # отступ таблицы от правой стенки лотка (режим «сечение и таблица»)
 
 
 view = doc.ActiveView
@@ -39,18 +44,31 @@ if not all_sections:
     forms.alert(u"В файле не заполнен ни один участок (столбец «Участок»).", exitscript=True)
 
 chosen = forms.SelectFromList.show(
-    all_sections, title=u"Участки лотков (можно несколько — построятся стопкой сверху вниз)",
+    all_sections, title=u"Участки — отметьте, какие вывести (построятся стопкой сверху вниз)",
     button_name=u"Построить", multiselect=True
 )
 if not chosen:
     pyrevit_script.exit()
 
-# порядок в ряду — как в файле (первое появление участка), а не как кликали
+# порядок в стопке — как в файле (первое появление участка), а не как отмечали
 chosen_set = set(chosen)
 sections = [s for s in all_sections if s in chosen_set]
 
-show_marks = bool(forms.alert(u"Показывать марки кабелей на кружках?", yes=True, no=True))
-show_table = bool(forms.alert(u"Показывать сводную таблицу рядом с каждым сечением?", yes=True, no=True))
+mode = forms.SelectFromList.show(
+    [MODE_BOTH, MODE_SECTION, MODE_TABLE],
+    title=u"Что построить на этом виде? "
+          u"(сечение и таблицу на разных видах — запустите кнопку дважды)",
+    button_name=u"Выбрать", multiselect=False
+)
+if not mode:
+    pyrevit_script.exit()
+
+want_section = mode in (MODE_BOTH, MODE_SECTION)
+want_table = mode in (MODE_BOTH, MODE_TABLE)
+
+show_marks = False
+if want_section:
+    show_marks = bool(forms.alert(u"Показывать марки кабелей на кружках?", yes=True, no=True))
 
 # готовим данные по каждому участку заранее — чтобы не рисовать половину,
 # а потом упереться в незаполненный размер лотка
@@ -66,40 +84,59 @@ for name in sections:
             exitscript=True
         )
     renumber_cables(section_cables)
-    jobs.append((name, section_cables))
+    jobs.append((name, section_cables, first_cable))
 
 try:
-    origin = uidoc.Selection.PickPoint(
-        u"Укажите точку вставки (левый нижний угол первого сечения); дальше участки уйдут вниз"
-    )
+    origin = uidoc.Selection.PickPoint(u"Укажите точку вставки первого блока; дальше участки уйдут вниз")
 except OperationCanceledException:
     pyrevit_script.exit()
 
-gap_ft = mm_to_feet(SECTION_GAP_MM)
-title_band_ft = mm_to_feet(TITLE_BAND_MM)
+scale = float(view.Scale) if view.Scale else 1.0
+gap_ft = paper_to_model(SECTION_GAP_MM, scale)
+title_band_ft = paper_to_model(TITLE_BAND_MM, scale)
+table_gap_ft = paper_to_model(_TABLE_GAP_MM, scale)
 unplaced_by_section = []
 
 with revit.Transaction(u"Сечения кабельных лотков"):
-    prev_lowest_y = None  # самая нижняя точка предыдущего участка
-    for name, section_cables in jobs:
-        first_cable = section_cables[0]
-        tray_h_ft = mm_to_feet(first_cable.tray_height)
-        if prev_lowest_y is None:
-            insertion_y = origin.Y
-        else:
-            # подпись нового участка должна начаться на gap ниже низа предыдущего
-            insertion_y = prev_lowest_y - gap_ft - title_band_ft - tray_h_ft
-        insertion_point = XYZ(origin.X, insertion_y, origin.Z)
-        placed, unplaced, fill_percent, extent_down_ft = build_tray_section(
-            doc, view, name, first_cable.tray_width, first_cable.tray_height,
-            section_cables, insertion_point, show_marks, show_table
+    prev_bottom_y = None  # самая нижняя нарисованная точка предыдущего блока
+    for name, section_cables, first_cable in jobs:
+        placed, unplaced, fill_percent = plan_section(
+            section_cables, first_cable.tray_width, first_cable.tray_height
         )
+        tray_w_ft = mm_to_feet(first_cable.tray_width)
+        tray_h_ft = mm_to_feet(first_cable.tray_height)
+
+        # над лотком есть ещё подпись участка, у одиночной таблицы — нет
+        top_offset_ft = (title_band_ft + tray_h_ft) if want_section else 0.0
+        if prev_bottom_y is None:
+            tray_bottom_y = origin.Y  # первый блок — от указанной точки
+        else:
+            tray_bottom_y = (prev_bottom_y - gap_ft) - top_offset_ft
+        lowest_y = tray_bottom_y
+
+        if want_section:
+            draw_section(
+                doc, view, name, first_cable.tray_width, first_cable.tray_height,
+                placed, XYZ(origin.X, tray_bottom_y, origin.Z), show_marks, scale
+            )
+
+        if want_table and placed:
+            if want_section:
+                table_tl = XYZ(origin.X + tray_w_ft + table_gap_ft, tray_bottom_y + tray_h_ft, origin.Z)
+            else:
+                table_tl = XYZ(origin.X, tray_bottom_y, origin.Z)
+            table_low = draw_table(
+                doc, view, name, first_cable.tray_width, first_cable.tray_height,
+                placed, fill_percent, table_tl, scale
+            )
+            lowest_y = min(lowest_y, table_low)
+
+        prev_bottom_y = lowest_y
         if unplaced:
             unplaced_by_section.append((name, Counter(c.mark for c in unplaced)))
-        prev_lowest_y = insertion_y - extent_down_ft
 
-# Отчёт не показываем. Единственное, о чём предупреждаем, — кабели, которые
-# физически не влезли в лоток по высоте (иначе они молча пропали бы с чертежа).
+# Отчёт не показываем. Предупреждаем только про кабели, которые физически
+# не влезли в лоток по высоте (иначе бы молча пропали с чертежа).
 if unplaced_by_section:
     lines = [u"Не поместились в лоток (не нарисованы):", u""]
     for name, counts in unplaced_by_section:

@@ -29,12 +29,19 @@ u"""
     время незачем). Кабели, которым не хватило места, возвращаются
     отдельным списком, а не молча пропускаются.
 
-  - Файл, участки (можно несколько — строятся стопкой сверху вниз от
-    одной точки, внахлёст не заходят: build_tray_section возвращает
-    extent_down_ft, script.py сдвигает следующий участок ниже на
-    это + подпись + SECTION_GAP_MM) и точка вставки выбираются
-    интерактивно (pyrevit.forms + PickPoint) в script.py, а не через
-    позиционные входы IN[..].
+  - Файл, участки (список с галочками — можно несколько), режим и точка
+    вставки выбираются интерактивно (pyrevit.forms + PickPoint), а не
+    через позиционные входы IN[..]. Режим: сечение+таблица / только
+    сечение / только таблица — рисование разбито на plan_section (только
+    раскладка), draw_section и draw_table, чтобы сечение и таблицу можно
+    было положить на разные чертёжные виды (запустить кнопку дважды).
+    Несколько участков строятся стопкой сверху вниз от одной точки,
+    внахлёст не заходят.
+
+  - Масштаб. Контур лотка и кружки — реальный размер (масштабируются
+    видом). Таблица, подписи и зазоры между блоками — "бумажные" мм,
+    умноженные на view.Scale (paper_to_model), поэтому одинаково
+    читаются при любом масштабе вида и на видах с разным масштабом.
 """
 
 import math
@@ -48,8 +55,23 @@ from lowlife.xlsx_io import read_xlsx, list_sheet_names
 
 MM_TO_FEET = 1.0 / 304.8
 SHEET_NAME = u"Сводный"
-SECTION_GAP_MM = 40.0   # вертикальный зазор между сечениями, когда их строят стопкой
-TITLE_BAND_MM = 9.0     # запас над лотком под подпись участка (5 мм отступ + ~строка текста)
+
+# Ниже — размеры "на бумаге" (мм готового чертежа). Контур лотка и кружки
+# кабелей рисуются в реальном размере и масштабируются видом; а таблица,
+# подписи и зазоры между блоками должны на бумаге выглядеть одинаково при
+# любом масштабе вида — поэтому их умножают на view.Scale (paper_to_model).
+SECTION_GAP_MM = 30.0    # вертикальный зазор между блоками, когда их строят стопкой
+TITLE_BAND_MM = 8.0      # запас над лотком под подпись участка
+_TITLE_GAP_MM = 4.0      # отступ от верха лотка до подписи
+_ROW_MM = 5.0            # высота строки таблицы
+_COL_MM = 22.0           # ширина колонок №/Система/Диаметр/Кол-во
+_MARK_CHAR_MM = 2.2      # ширина колонки «Марка» на символ
+_INSET_MM = 1.2          # отступ текста от левой линии колонки
+
+
+def paper_to_model(mm, scale):
+    u"""мм на бумаге -> футы в модели на чертёжном виде с масштабом 1:scale."""
+    return mm_to_feet(mm) * scale
 
 
 def mm_to_feet(mm):
@@ -347,17 +369,6 @@ def _draw_outline(doc, view, insertion_point, tray_w_ft, tray_h_ft):
         doc.Create.NewDetailCurve(view, Line.CreateBound(corners[i], corners[(i + 1) % 4]))
 
 
-def _draw_title(doc, view, insertion_point, tray_w_ft, tray_h_ft, section_name, text_type_id):
-    if not section_name:
-        return
-    opts = TextNoteOptions(text_type_id)
-    opts.HorizontalAlignment = HorizontalTextAlignment.Center
-    opts.VerticalAlignment = VerticalTextAlignment.Bottom
-    mid_x = insertion_point.X + tray_w_ft / 2.0
-    text_y = insertion_point.Y + tray_h_ft + mm_to_feet(5.0)
-    TextNote.Create(doc, view.Id, XYZ(mid_x, text_y, 0), section_name, opts)
-
-
 def _draw_cables(doc, view, insertion_point, placed, text_type_id, show_marks):
     opts = TextNoteOptions(text_type_id)
     opts.HorizontalAlignment = HorizontalTextAlignment.Center
@@ -371,19 +382,60 @@ def _draw_cables(doc, view, insertion_point, placed, text_type_id, show_marks):
             TextNote.Create(doc, view.Id, center, p.cable.mark, opts)
 
 
-def _draw_table(doc, view, rows, start_point, fill_percent, tray_width_mm, tray_height_mm,
-                 section_name, text_type_id):
-    row_height = mm_to_feet(6.0)
-    text_offset_x = mm_to_feet(1.5)
-    start_x, start_y = start_point.X, start_point.Y
+def plan_section(cables, tray_width_mm, tray_height_mm):
+    u"""Раскладка без рисования. (placed, unplaced, fill_percent);
+    fill_percent — по фактически уложенным кабелям."""
+    placed, unplaced = arrange_cables(cables, tray_width_mm, tray_height_mm)
+    tray_area_mm2 = tray_width_mm * tray_height_mm
+    placed_area_mm2 = sum(math.pi * (feet_to_mm(p.r)) ** 2 for p in placed)
+    fill_percent = (placed_area_mm2 / tray_area_mm2 * 100.0) if tray_area_mm2 > 0 else 0.0
+    return placed, unplaced, fill_percent
+
+
+def draw_section(doc, view, section_name, tray_width_mm, tray_height_mm,
+                 placed, insertion_point, show_marks=True, scale=1.0):
+    u"""Контур лотка (реальный размер — масштабируется видом) + подпись
+    участка над ним + кружки кабелей из placed. insertion_point — левый
+    нижний угол лотка. Вызывать в транзакции."""
+    tray_w_ft = mm_to_feet(tray_width_mm)
+    tray_h_ft = mm_to_feet(tray_height_mm)
+    text_type_id = _text_note_type_id(doc)
+
+    _draw_outline(doc, view, insertion_point, tray_w_ft, tray_h_ft)
+
+    if section_name:
+        opts = TextNoteOptions(text_type_id)
+        opts.HorizontalAlignment = HorizontalTextAlignment.Center
+        opts.VerticalAlignment = VerticalTextAlignment.Bottom
+        TextNote.Create(doc, view.Id, XYZ(
+            insertion_point.X + tray_w_ft / 2.0,
+            insertion_point.Y + tray_h_ft + paper_to_model(_TITLE_GAP_MM, scale), 0
+        ), section_name, opts)
+
+    _draw_cables(doc, view, insertion_point, placed, text_type_id, show_marks)
+
+
+def draw_table(doc, view, section_name, tray_width_mm, tray_height_mm,
+               placed, fill_percent, top_left, scale=1.0):
+    u"""Сводная таблица (марка/система/диаметр/кол-во) + строки про
+    заполнение и размер лотка. Размеры — "бумажные" (умножены на scale),
+    чтобы таблица одинаково читалась при любом масштабе вида. top_left —
+    левый ВЕРХНИЙ угол таблицы. Возвращает Y самой нижней нарисованной
+    точки. Вызывать в транзакции."""
+    rows = group_for_table(placed)
+    text_type_id = _text_note_type_id(doc)
+
+    row_h = paper_to_model(_ROW_MM, scale)
+    inset = paper_to_model(_INSET_MM, scale)
+    start_x, start_y = top_left.X, top_left.Y
 
     max_mark_len = max([len(r["mark"]) for r in rows]) if rows else 5
-    col_widths = [
-        mm_to_feet(20.0),                            # №
-        mm_to_feet(20.0),                            # Система
-        mm_to_feet(max(max_mark_len, 5) * 2.0),       # Марка
-        mm_to_feet(20.0),                            # Диаметр
-        mm_to_feet(20.0),                            # Кол-во
+    col_w = [
+        paper_to_model(_COL_MM, scale),
+        paper_to_model(_COL_MM, scale),
+        paper_to_model(max(max_mark_len, 5) * _MARK_CHAR_MM, scale),
+        paper_to_model(_COL_MM, scale),
+        paper_to_model(_COL_MM, scale),
     ]
 
     opts = TextNoteOptions(text_type_id)
@@ -391,8 +443,8 @@ def _draw_table(doc, view, rows, start_point, fill_percent, tray_width_mm, tray_
     opts.VerticalAlignment = VerticalTextAlignment.Middle
 
     def put(col, row_idx, text):
-        x = start_x + sum(col_widths[:col]) + text_offset_x
-        y = start_y - row_idx * row_height - row_height / 2.0
+        x = start_x + sum(col_w[:col]) + inset
+        y = start_y - row_idx * row_h - row_h / 2.0
         TextNote.Create(doc, view.Id, XYZ(x, y, 0), text, opts)
 
     if section_name:
@@ -400,7 +452,7 @@ def _draw_table(doc, view, rows, start_point, fill_percent, tray_width_mm, tray_
         title_opts.HorizontalAlignment = HorizontalTextAlignment.Left
         title_opts.VerticalAlignment = VerticalTextAlignment.Bottom
         TextNote.Create(
-            doc, view.Id, XYZ(start_x, start_y + mm_to_feet(2.0), 0),
+            doc, view.Id, XYZ(start_x, start_y + paper_to_model(1.5, scale), 0),
             u"Сводная таблица кабелей на участке {}".format(section_name), title_opts
         )
 
@@ -414,76 +466,27 @@ def _draw_table(doc, view, rows, start_point, fill_percent, tray_width_mm, tray_
         put(3, row_idx, u"{:.1f}".format(row["diameter"]))
         put(4, row_idx, unicode(row["count"]))
 
-    total_width = sum(col_widths)
+    total_width = sum(col_w)
     total_rows = len(rows) + 1
-    bottom_y = start_y - total_rows * row_height
+    bottom_y = start_y - total_rows * row_h
 
     for i in range(total_rows + 1):
-        y = start_y - i * row_height
+        y = start_y - i * row_h
         doc.Create.NewDetailCurve(view, Line.CreateBound(XYZ(start_x, y, 0), XYZ(start_x + total_width, y, 0)))
 
-    xs = [start_x + sum(col_widths[:i]) for i in range(len(col_widths) + 1)]
+    xs = [start_x + sum(col_w[:i]) for i in range(len(col_w) + 1)]
     for x in xs:
         doc.Create.NewDetailCurve(view, Line.CreateBound(XYZ(x, start_y, 0), XYZ(x, bottom_y, 0)))
 
-    info_y1 = bottom_y - row_height * 0.7
-    info_y2 = info_y1 - row_height
+    info_y1 = bottom_y - row_h * 0.7
+    info_y2 = info_y1 - row_h
     info_opts = TextNoteOptions(text_type_id)
     info_opts.HorizontalAlignment = HorizontalTextAlignment.Left
     info_opts.VerticalAlignment = VerticalTextAlignment.Middle
-    TextNote.Create(doc, view.Id, XYZ(start_x + text_offset_x, info_y1, 0),
+    TextNote.Create(doc, view.Id, XYZ(start_x + inset, info_y1, 0),
                      u"Заполнение лотка: {}%".format(round_half_up(fill_percent)), info_opts)
-    TextNote.Create(doc, view.Id, XYZ(start_x + text_offset_x, info_y2, 0),
+    TextNote.Create(doc, view.Id, XYZ(start_x + inset, info_y2, 0),
                      u"Размер лотка: {}×{} мм".format(format_number(tray_width_mm), format_number(tray_height_mm)),
                      info_opts)
 
-    # самая нижняя нарисованная точка таблицы — низ строки «Размер лотка»
-    # (текст по центру своей строки, отсюда ещё ~полстроки вниз)
-    return info_y2 - row_height * 0.5
-
-
-TABLE_GAP_MM = 20.0  # зазор между правой стенкой лотка и левым краем таблицы
-
-
-def build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm,
-                        cables, insertion_point, show_marks=True, show_table=True):
-    u"""
-    Рисует контур лотка, укладывает cables (arrange_cables) и по желанию
-    — марки на кружках и сводную таблицу справа от сечения. Вызывающий
-    код должен обернуть вызов транзакцией (см. script.py).
-
-    Возвращает (placed, unplaced, fill_percent, extent_down_ft):
-    fill_percent посчитан по фактически уложенным кабелям (не по
-    "запрошенным"), даже если show_table=False; extent_down_ft —
-    насколько всё нарисованное уходит ВНИЗ от insertion_point.Y (низа
-    лотка): 0, если таблицы нет или она не свисает ниже лотка, иначе —
-    до нижней строки таблицы. Нужно, чтобы вызывающий код мог поставить
-    следующее сечение под текущим, не внахлёст.
-    """
-    tray_w_ft = mm_to_feet(tray_width_mm)
-    tray_h_ft = mm_to_feet(tray_height_mm)
-    text_type_id = _text_note_type_id(doc)
-
-    _draw_outline(doc, view, insertion_point, tray_w_ft, tray_h_ft)
-    _draw_title(doc, view, insertion_point, tray_w_ft, tray_h_ft, section_name, text_type_id)
-
-    placed, unplaced = arrange_cables(cables, tray_width_mm, tray_height_mm)
-    _draw_cables(doc, view, insertion_point, placed, text_type_id, show_marks)
-
-    tray_area_mm2 = tray_width_mm * tray_height_mm
-    placed_area_mm2 = sum(math.pi * (feet_to_mm(p.r)) ** 2 for p in placed)
-    fill_percent = (placed_area_mm2 / tray_area_mm2 * 100.0) if tray_area_mm2 > 0 else 0.0
-
-    lowest_y = insertion_point.Y
-    if show_table and placed:
-        table_rows = group_for_table(placed)
-        table_point = XYZ(
-            insertion_point.X + tray_w_ft + mm_to_feet(TABLE_GAP_MM),
-            insertion_point.Y + tray_h_ft,
-            0,
-        )
-        table_lowest_y = _draw_table(doc, view, table_rows, table_point, fill_percent,
-                                     tray_width_mm, tray_height_mm, section_name, text_type_id)
-        lowest_y = min(lowest_y, table_lowest_y)
-
-    return placed, unplaced, fill_percent, insertion_point.Y - lowest_y
+    return info_y2 - row_h * 0.5

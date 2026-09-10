@@ -774,13 +774,20 @@ Dynamo), а точная «гравитационная» упаковка: ка
 почти вдвое худшее заполнение при проверке). Кабели, которым не хватило
 места по высоте лотка, возвращаются отдельно, а не пропускаются молча.
 
-Кнопка принимает **несколько участков** (`forms.SelectFromList` с
-`multiselect=True`) — они строятся стопкой сверху вниз от одной выбранной
-точки, по общему левому краю; `build_tray_section` возвращает
-`extent_down_ft` (насколько таблица свисает ниже лотка), скрипт опускает
-следующий участок на это + подпись (`TITLE_BAND_MM`) + `SECTION_GAP_MM`,
-поэтому сечения и их таблицы не пересекаются. Марки (`renumber_cables`) у
-каждого участка свои, с 1.
+Кнопка: список участков с галочками (`forms.SelectFromList` `multiselect=True`)
++ режим (`Сечение и таблица` / `Только сечение` / `Только таблица`). Отмеченные
+участки строятся стопкой сверху вниз от одной точки по общему левому краю;
+скрипт сам считает нижнюю границу нарисованного блока и опускает следующий
+на `SECTION_GAP_MM` (+ `TITLE_BAND_MM` под подпись, если есть сечение).
+Марки (`renumber_cables`) у каждого участка свои, с 1.
+
+**Масштаб и разные виды.** Контур лотка и кружки рисуются в реальном размере
+(масштабируются видом). Таблица, подписи и зазоры — «бумажные» мм, умноженные
+на `view.Scale` (`paper_to_model`), поэтому читаются одинаково при любом
+масштабе. Рисование разбито на `plan_section` (раскладка без геометрии),
+`draw_section` и `draw_table` — сечение и таблицу можно положить на **разные
+чертёжные виды**, запустив кнопку дважды (на одном виде «Только сечение», на
+другом «Только таблица»).
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -788,8 +795,11 @@ Dynamo), а точная «гравитационная» упаковка: ка
 | `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
 | `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — раскладка (см. выше) |
+| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced, fill_percent)` — раскладка + % заполнения, без рисования |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
-| `build_tray_section` | `build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm, cables, insertion_point, show_marks=True, show_table=True)` | Рисует контур, кабели и (опционально) таблицу; `(placed, unplaced, fill_percent, extent_down_ft)` — `extent_down_ft` = насколько нарисованное уходит вниз от `insertion_point.Y` (низа лотка), чтобы ставить следующее сечение под текущим без нахлёста. **Вызывать в транзакции** |
+| `paper_to_model` | `paper_to_model(mm, scale)` | мм на бумаге → футы в модели на виде с масштабом 1:scale |
+| `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0)` | Контур лотка (реальный размер) + подпись + кружки. `insertion_point` — левый нижний угол лотка. **В транзакции** |
+| `draw_table` | `draw_table(doc, view, section_name, tray_width_mm, tray_height_mm, placed, fill_percent, top_left, scale=1.0)` | Сводная таблица («бумажные» размеры × scale); `top_left` — левый верхний угол; возвращает Y нижней нарисованной точки. **В транзакции** |
 
 ## family_catalog.py
 Тело двух кнопок `ToolsFamilies.panel`: `UpdateFamiliesFromCatalog`
