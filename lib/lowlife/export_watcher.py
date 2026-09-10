@@ -15,13 +15,21 @@
 ModPlus, нужен ``enabled``), СРАЗУ (ещё до открытия модального окна
 экспорта) запускает фоновый STA-поток ``_poll_and_rename``. Тот раз в
 ``POLL_INTERVAL`` сек смотрит подпапки ``export_root`` / папки рядом с
-``last_folder``, ждёт появления новой (созданной после клика) и её
-«стабилизации» (``_folder_sig`` не меняется цикл — ModPlus дописал), затем
-``plan_renames`` → WinForms ``MessageBox`` да/нет → ``apply_renames`` →
-итоговый ``MessageBox``. Поиск идёт ПАРАЛЛЕЛЬНО экспорту, поэтому окно о
-переименовании появляется почти сразу после закрытия окна ModPlus. Вся
-работа с файлами и диалоги — вне UI-потока Revit (на сетевой шаре секунды;
-на UI-потоке подвешивало Revit).
+``last_folder``, ждёт появления новой (созданной после клика). Считает
+экспорт завершённым, когда:
+- **окно ModPlus закрылось** — по заголовкам видимых top-level окон
+  процесса Revit (``_modplus_window_open``, Win32 из фонового потока):
+  пока видно окно с ``MODPLUS_WINDOW_SUBSTRINGS`` в заголовке —
+  переименование не запускаем даже при «тихой» папке (между листами
+  большого пакета папка тоже не меняется). Окно видели и оно исчезло →
+  хватает ``STABLE_CYCLES_AFTER_WINDOW`` тихих опросов;
+- **фолбэк** (окно не поймали — ctypes не сработал / не то имя): папка не
+  меняется ``STABLE_CYCLES`` опросов подряд и прошло ≥ ``MIN_SETTLE`` сек.
+
+Затем ``plan_renames`` → WinForms ``MessageBox`` да/нет → ``apply_renames``
+→ итоговый ``MessageBox``. Поиск идёт ПАРАЛЛЕЛЬНО экспорту. Вся работа с
+файлами и диалоги — вне UI-потока Revit (на сетевой шаре секунды; на
+UI-потоке подвешивало Revit).
 
 Idling-подписка осталась только для снятия зависшего флага
 (``WORKER_STUCK_AFTER``) — логику переименования она больше не трогает.
@@ -397,8 +405,73 @@ def _pick_folder(start, desc=u"Папка, куда ModPlus сложил фай�
 
 POLL_INTERVAL = 2.0        # как часто фон опрашивает папку выгрузки, сек
 NEW_FOLDER_GRACE = 20.0    # подпапка «этого экспорта» — не старше клика минус это
-STABLE_CYCLES = 3          # столько опросов подряд без изменений = ModPlus дописал
-MIN_SETTLE = 8.0           # но не раньше стольких секунд с появления папки
+# Пока видно окно ModPlus (заголовок с одной из этих подстрок) —
+# переименование НЕ запускаем, даже если папка временно не меняется
+# (между листами большого пакета). Окно закрылось = экспорт точно готов.
+MODPLUS_WINDOW_SUBSTRINGS = (u"modplus", u"экспорт")
+# Пока окно ModPlus не поймано (не то имя / ctypes не сработал) — фолбэк
+# на «папка не меняется N опросов подряд и прошло M секунд».
+STABLE_CYCLES = 5          # ~10 с тишины (было 3 — на большом пакете срабатывало рано)
+MIN_SETTLE = 10.0
+# Если окно ModPlus видели и оно закрылось — хватает короткой проверки.
+STABLE_CYCLES_AFTER_WINDOW = 2
+
+
+def _visible_window_titles():
+    """Заголовки видимых top-level окон ТЕКУЩЕГО процесса (Revit).
+    Пустой список, если ctypes/user32 недоступны. Вызывается из фонового
+    потока — на UI-поток Revit не лезет."""
+    out = []
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        k = ctypes.windll.kernel32
+        u.GetTopWindow.restype = ctypes.c_void_p
+        u.GetTopWindow.argtypes = [ctypes.c_void_p]
+        u.GetWindow.restype = ctypes.c_void_p
+        u.GetWindow.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        u.IsWindowVisible.argtypes = [ctypes.c_void_p]
+        u.GetWindowTextW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_int]
+        u.GetWindowTextLengthW.argtypes = [ctypes.c_void_p]
+        u.GetWindowThreadProcessId.argtypes = [ctypes.c_void_p,
+                                               ctypes.POINTER(ctypes.c_ulong)]
+        mypid = k.GetCurrentProcessId()
+        hwnd = u.GetTopWindow(0)
+        guard = 0
+        while hwnd and guard < 5000:
+            guard += 1
+            try:
+                if u.IsWindowVisible(hwnd):
+                    pid = ctypes.c_ulong(0)
+                    u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                    if pid.value == mypid:
+                        n = u.GetWindowTextLengthW(hwnd)
+                        if n:
+                            buf = ctypes.create_unicode_buffer(n + 2)
+                            u.GetWindowTextW(hwnd, buf, n + 2)
+                            if buf.value:
+                                out.append(buf.value)
+            except Exception:
+                pass
+            hwnd = u.GetWindow(hwnd, 2)   # GW_HWNDNEXT
+    except Exception:
+        return []
+    return out
+
+
+def _modplus_window_open():
+    """True, если сейчас видно окно с заголовком, похожим на окно экспорта
+    ModPlus (см. MODPLUS_WINDOW_SUBSTRINGS)."""
+    try:
+        titles = _visible_window_titles()
+    except Exception:
+        return False
+    for t in titles:
+        tl = t.lower()
+        for s in MODPLUS_WINDOW_SUBSTRINGS:
+            if s in tl:
+                return True
+    return False
 
 
 def _bases_to_watch(cfg):
@@ -521,6 +594,7 @@ def _poll_and_rename(cfg, armed_at, token=None):
     folder_seen_at = 0.0
     last_rescan = 0.0
     hb = time.time()
+    saw_modplus_win = False
 
     while time.time() < deadline:
         # этот поток лишний, если: флаг сняли (_tick по WORKER_STUCK_AFTER)
@@ -531,6 +605,10 @@ def _poll_and_rename(cfg, armed_at, token=None):
                 (token is not None and pgnow.get("worker_token") not in (None, token)):
             _log(u"poll: этот поток больше не активен — выхожу")
             return
+
+        win_open = _modplus_window_open()
+        if win_open:
+            saw_modplus_win = True
 
         # полный обзор подпапок — только пока папка не найдена, потом раз в 10с
         if bases and (folder is None or time.time() - last_rescan > 10):
@@ -545,23 +623,35 @@ def _poll_and_rename(cfg, armed_at, token=None):
 
         if folder:
             sig = _folder_sig(folder, cfg)
-            # экспорт что-то положил (any>0) И папка перестала меняться
-            if sig[2] > 0 and sig == prev_sig:
+            if sig[2] > 0 and sig == prev_sig:   # что-то положено И не меняется
                 stable += 1
-                if stable >= STABLE_CYCLES and \
-                        time.time() - folder_seen_at >= MIN_SETTLE:
-                    chosen = folder
-                    break
             else:
                 stable = 0
             prev_sig = sig
 
+            ready = folder and prev_sig and prev_sig[2] > 0
+
+            # пока окно ModPlus открыто — НЕ трогаем (между листами большого
+            # пакета папка тоже временно не меняется, экспорт ещё идёт)
+            if ready and not win_open:
+                if saw_modplus_win:
+                    # окно видели и оно закрылось — экспорт точно завершён
+                    if stable >= STABLE_CYCLES_AFTER_WINDOW:
+                        _log(u"poll: окно ModPlus закрылось, папка стабильна → готово")
+                        chosen = folder
+                        break
+                elif stable >= STABLE_CYCLES and \
+                        time.time() - folder_seen_at >= MIN_SETTLE:
+                    # окно так и не поймали — фолбэк на длинную тишину
+                    _log(u"poll: окно ModPlus не поймано, длинная тишина → готово")
+                    chosen = folder
+                    break
+
         if time.time() - hb >= 20:
             hb = time.time()
-            _log(u"poll: жду… folder={} с«{}»={} всего={}".format(
-                folder or u"—", cfg.get("from_token"),
-                prev_sig[1] if prev_sig else 0,
-                prev_sig[2] if prev_sig else 0))
+            _log(u"poll: жду… folder={} всего={} окно_ModPlus={} видели_окно={}".format(
+                folder or u"—", prev_sig[2] if prev_sig else 0,
+                win_open, saw_modplus_win))
         time.sleep(POLL_INTERVAL)
 
     if not chosen:
