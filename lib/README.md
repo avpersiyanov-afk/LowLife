@@ -774,6 +774,14 @@ Dynamo), а точная «гравитационная» упаковка: ка
 почти вдвое худшее заполнение при проверке). Кабели, которым не хватило
 места по высоте лотка, возвращаются отдельно, а не пропускаются молча.
 
+Кнопка принимает **несколько участков** (`forms.SelectFromList` с
+`multiselect=True`) — они строятся в один ряд слева направо от одной
+выбранной точки, по общей нижней линии; `build_tray_section` возвращает
+`footprint_width_ft` (ширину лотка, а с таблицей — и таблицы), скрипт
+сдвигает следующий участок на неё + `SECTION_GAP_MM`, поэтому сечения и
+их таблицы не пересекаются. Марки (`renumber_cables`) у каждого участка
+свои, с 1.
+
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `read_cables` | `read_cables(path)` | `(cables, error)` — список `CableData` из листа «Сводный» (или первого листа книги) |
@@ -781,7 +789,7 @@ Dynamo), а точная «гравитационная» упаковка: ка
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
 | `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — раскладка (см. выше) |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
-| `build_tray_section` | `build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm, cables, insertion_point, show_marks=True, show_table=True)` | Рисует контур, кабели и (опционально) таблицу; `(placed, unplaced, fill_percent)`. **Вызывать в транзакции** |
+| `build_tray_section` | `build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm, cables, insertion_point, show_marks=True, show_table=True)` | Рисует контур, кабели и (опционально) таблицу; `(placed, unplaced, fill_percent, footprint_width_ft)` — `footprint_width_ft` = ширина нарисованного вправо от `insertion_point.X`, чтобы ставить следующее сечение в ряд без нахлёста. **Вызывать в транзакции** |
 
 ## family_catalog.py
 Тело двух кнопок `ToolsFamilies.panel`: `UpdateFamiliesFromCatalog`

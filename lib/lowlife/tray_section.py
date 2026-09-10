@@ -29,8 +29,10 @@ u"""
     время незачем). Кабели, которым не хватило места, возвращаются
     отдельным списком, а не молча пропускаются.
 
-  - Участок, файл и точка вставки выбираются интерактивно (pyrevit.forms
-    + PickPoint) в script.py, а не через позиционные входы IN[..].
+  - Файл, участки (можно несколько — строятся в ряд слева направо,
+    внахлёст не заходят, см. footprint_width_ft из build_tray_section) и
+    точка вставки выбираются интерактивно (pyrevit.forms + PickPoint) в
+    script.py, а не через позиционные входы IN[..].
 """
 
 import math
@@ -44,6 +46,7 @@ from lowlife.xlsx_io import read_xlsx, list_sheet_names
 
 MM_TO_FEET = 1.0 / 304.8
 SHEET_NAME = u"Сводный"
+SECTION_GAP_MM = 40.0  # зазор между соседними сечениями, когда их строят в ряд
 
 
 def mm_to_feet(mm):
@@ -431,6 +434,11 @@ def _draw_table(doc, view, rows, start_point, fill_percent, tray_width_mm, tray_
                      u"Размер лотка: {}×{} мм".format(format_number(tray_width_mm), format_number(tray_height_mm)),
                      info_opts)
 
+    return total_width
+
+
+TABLE_GAP_MM = 20.0  # зазор между правой стенкой лотка и левым краем таблицы
+
 
 def build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm,
                         cables, insertion_point, show_marks=True, show_table=True):
@@ -439,9 +447,12 @@ def build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm,
     — марки на кружках и сводную таблицу справа от сечения. Вызывающий
     код должен обернуть вызов транзакцией (см. script.py).
 
-    Возвращает (placed, unplaced, fill_percent) — fill_percent посчитан
-    по фактически уложенным кабелям (не по "запрошенным"), даже если
-    show_table=False, чтобы script.py мог включить его в отчёт.
+    Возвращает (placed, unplaced, fill_percent, footprint_width_ft):
+    fill_percent посчитан по фактически уложенным кабелям (не по
+    "запрошенным"), даже если show_table=False; footprint_width_ft —
+    ширина всего нарисованного от insertion_point.X вправо (лоток, а с
+    таблицей — и таблица), чтобы вызывающий код мог поставить следующее
+    сечение в ряд, не внахлёст.
     """
     tray_w_ft = mm_to_feet(tray_width_mm)
     tray_h_ft = mm_to_feet(tray_height_mm)
@@ -457,14 +468,17 @@ def build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm,
     placed_area_mm2 = sum(math.pi * (feet_to_mm(p.r)) ** 2 for p in placed)
     fill_percent = (placed_area_mm2 / tray_area_mm2 * 100.0) if tray_area_mm2 > 0 else 0.0
 
+    footprint_width_ft = tray_w_ft
     if show_table and placed:
         table_rows = group_for_table(placed)
+        table_left_ft = tray_w_ft + mm_to_feet(TABLE_GAP_MM)
         table_point = XYZ(
-            insertion_point.X + tray_w_ft + mm_to_feet(20.0),
+            insertion_point.X + table_left_ft,
             insertion_point.Y + tray_h_ft,
             0,
         )
-        _draw_table(doc, view, table_rows, table_point, fill_percent,
-                    tray_width_mm, tray_height_mm, section_name, text_type_id)
+        table_width_ft = _draw_table(doc, view, table_rows, table_point, fill_percent,
+                                     tray_width_mm, tray_height_mm, section_name, text_type_id)
+        footprint_width_ft = table_left_ft + table_width_ft
 
-    return placed, unplaced, fill_percent
+    return placed, unplaced, fill_percent, footprint_width_ft
