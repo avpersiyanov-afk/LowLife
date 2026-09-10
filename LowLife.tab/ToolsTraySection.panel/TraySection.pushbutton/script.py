@@ -14,8 +14,9 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.tray_section import (
-    SECTION_GAP_MM, TITLE_BAND_MM, draw_section, draw_table, find_data_sheet, list_sections,
-    mm_to_feet, paper_to_model, plan_section, read_cables, renumber_cables
+    LAYOUT_HONEYCOMB, LAYOUT_SOLID, SECTION_GAP_MM, TITLE_BAND_MM, draw_section, draw_table,
+    find_data_sheet, list_sections, mm_to_feet, paper_to_model, plan_section, read_cables,
+    renumber_cables
 )
 from lowlife.xlsx_io import list_sheet_names
 
@@ -25,6 +26,8 @@ uidoc = revit.uidoc
 MODE_BOTH = u"Сечение и таблица"
 MODE_SECTION = u"Только сечение"
 MODE_TABLE = u"Только таблица"
+LAY_SOLID = u"Сплошняком"
+LAY_HONEY = u"Сотами (по типам)"
 _TABLE_GAP_MM = 16.0  # отступ таблицы от правой стенки лотка (режим «сечение и таблица»)
 
 
@@ -88,8 +91,21 @@ want_section = mode in (MODE_BOTH, MODE_SECTION)
 want_table = mode in (MODE_BOTH, MODE_TABLE)
 
 show_marks = False
+layout = LAYOUT_SOLID
+divide_ro = False
 if want_section:
     show_marks = bool(forms.alert(u"Показывать марки кабелей на кружках?", yes=True, no=True))
+    lay = forms.SelectFromList.show(
+        [LAY_SOLID, LAY_HONEY], title=u"Раскладка кабелей в сечении",
+        button_name=u"Выбрать", multiselect=False
+    )
+    if not lay:
+        pyrevit_script.exit()
+    layout = LAYOUT_HONEYCOMB if lay == LAY_HONEY else LAYOUT_SOLID
+    divide_ro = bool(forms.alert(
+        u"Кабели системы «СОУЭ РО» класть в отдельный отсек за перегородкой?",
+        yes=True, no=True
+    ))
 
 # готовим данные по каждому участку заранее — чтобы не рисовать половину,
 # а потом упереться в незаполненный размер лотка
@@ -121,8 +137,8 @@ unplaced_by_section = []
 with revit.Transaction(u"Сечения кабельных лотков"):
     prev_bottom_y = None  # самая нижняя нарисованная точка предыдущего блока
     for name, section_cables, first_cable in jobs:
-        placed, unplaced, fill_percent = plan_section(
-            section_cables, first_cable.tray_width, first_cable.tray_height
+        placed, unplaced, fill_percent, partition_x_ft = plan_section(
+            section_cables, first_cable.tray_width, first_cable.tray_height, layout, divide_ro
         )
         tray_w_ft = mm_to_feet(first_cable.tray_width)
         tray_h_ft = mm_to_feet(first_cable.tray_height)
@@ -138,7 +154,7 @@ with revit.Transaction(u"Сечения кабельных лотков"):
         if want_section:
             draw_section(
                 doc, view, name, first_cable.tray_width, first_cable.tray_height,
-                placed, XYZ(origin.X, tray_bottom_y, origin.Z), show_marks, scale
+                placed, XYZ(origin.X, tray_bottom_y, origin.Z), show_marks, scale, partition_x_ft
             )
 
         if want_table and placed:

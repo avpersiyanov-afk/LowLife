@@ -29,6 +29,17 @@ u"""
     Кабели, которым не хватило места по высоте лотка, возвращаются
     отдельным списком, а не молча пропадают.
 
+  - Режим раскладки (настройка кнопки): LAYOUT_SOLID — как выше,
+    вперемешку; LAYOUT_HONEYCOMB — «сотами по типам»: кабели каждого
+    типа (original_mark) отдельным плотным сотовым блоком, блоки —
+    полками слева направо (_arrange_honeycomb).
+
+  - Перегородка СОУЭ РО (настройка кнопки): если divide_soue_ro, кабели
+    системы «СОУЭ РО» (is_soue_ro) уходят в отдельный отсек лотка,
+    отделённый вертикальной перегородкой; ширины отсеков — по доле
+    площади кабелей (15..50% под СОУЭ РО). plan_section возвращает X
+    осевой линии перегородки, draw_section её рисует.
+
   - Файл, участки (список с галочками — можно несколько), режим и точка
     вставки выбираются интерактивно (pyrevit.forms + PickPoint), а не
     через позиционные входы IN[..]. Режим: сечение+таблица / только
@@ -46,6 +57,11 @@ u"""
 
 import math
 
+try:
+    from collections import OrderedDict
+except ImportError:
+    OrderedDict = dict
+
 from Autodesk.Revit.DB import (
     Arc, ElementId, ElementTypeGroup, HorizontalTextAlignment, Line,
     TextNote, TextNoteOptions, TextNoteType, VerticalTextAlignment, XYZ,
@@ -54,7 +70,14 @@ from Autodesk.Revit.DB import (
 from lowlife.xlsx_io import read_xlsx, list_sheet_names
 
 MM_TO_FEET = 1.0 / 304.8
+SQRT3 = math.sqrt(3.0)
 SHEET_NAME = u"Сводный"  # старое имя из скрипта Dynamo (запасной вариант)
+
+LAYOUT_SOLID = u"solid"          # bottom-left-fill, кабели вперемешку
+LAYOUT_HONEYCOMB = u"honeycomb"  # по типам, каждый тип — сотовым блоком
+
+_BLOCK_GAP_MM = 3.0        # зазор между сотовыми блоками разных типов
+PARTITION_GAP_MM = 5.0     # ширина перегородки между отсеками (СОУЭ РО)
 
 
 def _norm_sheet(s):
@@ -372,6 +395,82 @@ def arrange_cables(cables, tray_width_mm, tray_height_mm):
     return placed, unplaced
 
 
+def _arrange_honeycomb(cables, tray_width_mm, tray_height_mm):
+    u"""Раскладка «сотами по типам»: кабели каждого типа (original_mark) —
+    отдельным плотным сотовым блоком (ряды со сдвигом на радиус); блоки
+    ставятся слева направо полками, при нехватке ширины — новая полка
+    выше. Тип с самым толстым кабелем идёт первым (внизу слева).
+    Возвращает (placed, unplaced) — как arrange_cables."""
+    tray_w = mm_to_feet(tray_width_mm)
+    tray_h = mm_to_feet(tray_height_mm)
+    gap = mm_to_feet(_BLOCK_GAP_MM)
+
+    groups = OrderedDict()
+    for c in cables:
+        groups.setdefault(c.original_mark, []).append(c)
+    ordered = sorted(groups.values(), key=lambda g: (-g[0].diameter, g[0].original_mark))
+    # каждый экземпляр (Quantity) — отдельный кружок
+    ordered = [[c for c in g for _ in range(c.quantity)] for g in ordered]
+
+    placed, unplaced = [], []
+    shelf_x = 0.0
+    shelf_y = 0.0
+    shelf_h = 0.0
+
+    for g in ordered:
+        r = mm_to_feet(g[0].diameter) / 2.0
+        nn = len(g)
+        if r <= 0 or 2.0 * r > tray_w + 1e-6:
+            unplaced.extend(g)
+            continue
+
+        cols_fit_w = max(1, int((tray_w - r) / (2.0 * r)))
+        max_rows = max(1, int((tray_h - r) / (r * SQRT3)) + 1)
+        cols = int(round(math.sqrt(nn))) or 1
+        cols = max(cols, int(math.ceil(nn / float(max_rows))))
+        cols = max(1, min(cols, cols_fit_w))
+        rows = int(math.ceil(nn / float(cols)))
+
+        block_w = 2.0 * r * cols + r
+        block_h = 2.0 * r + (rows - 1) * r * SQRT3
+
+        if shelf_x > 1e-9 and shelf_x + block_w > tray_w + 1e-6:
+            shelf_y += shelf_h + gap
+            shelf_x = 0.0
+            shelf_h = 0.0
+        if shelf_y + block_h > tray_h + 1e-6:
+            unplaced.extend(g)
+            continue
+
+        k = 0
+        for j in range(rows):
+            row_n = min(cols, nn - k)
+            if row_n <= 0:
+                break
+            y = shelf_y + r + j * r * SQRT3
+            x_off = r if (j % 2) else 0.0
+            for i in range(row_n):
+                placed.append(_Placed(shelf_x + r + x_off + i * 2.0 * r, y, r, g[k]))
+                k += 1
+        shelf_x += block_w + gap
+        shelf_h = max(shelf_h, block_h)
+
+    return placed, unplaced
+
+
+def _pack_region(cables, region_width_mm, region_height_mm, layout):
+    if layout == LAYOUT_HONEYCOMB:
+        return _arrange_honeycomb(cables, region_width_mm, region_height_mm)
+    return arrange_cables(cables, region_width_mm, region_height_mm)
+
+
+def is_soue_ro(system):
+    u"""True для системы «СОУЭ РО» (в любом написании: «СОУЭ РО», «СОУЭ-РО»,
+    «СОУЭ(РО)»…). Такие кабели по требованию кладут в отдельный отсек лотка."""
+    n = u"".join(ch for ch in (system or u"").lower() if ch.isalnum())
+    return n.startswith(u"соуэро")
+
+
 def group_for_table(placed):
     u"""Кабели placed, сгруппированные по (марка, система, диаметр) — строки сводной таблицы."""
     counts = {}
@@ -428,26 +527,77 @@ def _draw_cables(doc, view, insertion_point, placed, text_type_id, show_marks):
             TextNote.Create(doc, view.Id, center, p.cable.mark, opts)
 
 
-def plan_section(cables, tray_width_mm, tray_height_mm):
-    u"""Раскладка без рисования. (placed, unplaced, fill_percent);
-    fill_percent — по фактически уложенным кабелям."""
-    placed, unplaced = arrange_cables(cables, tray_width_mm, tray_height_mm)
-    tray_area_mm2 = tray_width_mm * tray_height_mm
-    placed_area_mm2 = sum(math.pi * (feet_to_mm(p.r)) ** 2 for p in placed)
-    fill_percent = (placed_area_mm2 / tray_area_mm2 * 100.0) if tray_area_mm2 > 0 else 0.0
-    return placed, unplaced, fill_percent
+def _fill_percent(placed, tray_width_mm, tray_height_mm):
+    tray_area = tray_width_mm * tray_height_mm
+    placed_area = sum(math.pi * (feet_to_mm(p.r)) ** 2 for p in placed)
+    return (placed_area / tray_area * 100.0) if tray_area > 0 else 0.0
+
+
+def plan_section(cables, tray_width_mm, tray_height_mm,
+                 layout=LAYOUT_SOLID, divide_soue_ro=False):
+    u"""Раскладка без рисования.
+
+    layout — LAYOUT_SOLID (вперемешку, bottom-left-fill) или
+    LAYOUT_HONEYCOMB (по типам, сотами).
+    divide_soue_ro — кабели системы «СОУЭ РО» (is_soue_ro) кладутся в
+    отдельный отсек лотка, отделённый перегородкой от остальных; ширина
+    отсеков — по доле площади кабелей (15..50% под СОУЭ РО).
+
+    Возвращает (placed, unplaced, fill_percent, partition_x_ft):
+    partition_x_ft — X осевой линии перегородки от левой стенки лотка
+    (в футах) либо None, если перегородки нет.
+    """
+    partition_x_ft = None
+
+    ro = [c for c in cables if is_soue_ro(c.system)] if divide_soue_ro else []
+    ro_ids = set(id(c) for c in ro)
+    rest = [c for c in cables if id(c) not in ro_ids] if ro else cables
+
+    if ro and rest:
+        gap_mm = PARTITION_GAP_MM
+        usable = max(0.0, tray_width_mm - gap_mm)
+
+        def _area(cs):
+            return sum(math.pi * (c.diameter / 2.0) ** 2 * c.quantity for c in cs)
+
+        a_ro, a_rest = _area(ro), _area(rest)
+        frac = (a_ro / (a_ro + a_rest)) if (a_ro + a_rest) > 0 else 0.3
+        frac = min(0.5, max(0.15, frac))
+        w_ro = usable * frac
+        w_rest = usable - w_ro
+
+        placed_rest, un_rest = _pack_region(rest, w_rest, tray_height_mm, layout)
+        placed_ro, un_ro = _pack_region(ro, w_ro, tray_height_mm, layout)
+        dx = mm_to_feet(w_rest + gap_mm)
+        for p in placed_ro:
+            p.cx += dx
+        placed = placed_rest + placed_ro
+        unplaced = un_rest + un_ro
+        partition_x_ft = mm_to_feet(w_rest + gap_mm / 2.0)
+    else:
+        placed, unplaced = _pack_region(cables, tray_width_mm, tray_height_mm, layout)
+
+    return placed, unplaced, _fill_percent(placed, tray_width_mm, tray_height_mm), partition_x_ft
 
 
 def draw_section(doc, view, section_name, tray_width_mm, tray_height_mm,
-                 placed, insertion_point, show_marks=True, scale=1.0):
+                 placed, insertion_point, show_marks=True, scale=1.0, partition_x_ft=None):
     u"""Контур лотка (реальный размер — масштабируется видом) + подпись
-    участка над ним + кружки кабелей из placed. insertion_point — левый
-    нижний угол лотка. Вызывать в транзакции."""
+    участка над ним + кружки кабелей из placed + перегородка отсека
+    (если partition_x_ft задан). insertion_point — левый нижний угол
+    лотка. Вызывать в транзакции."""
     tray_w_ft = mm_to_feet(tray_width_mm)
     tray_h_ft = mm_to_feet(tray_height_mm)
     text_type_id = _text_note_type_id(doc)
 
     _draw_outline(doc, view, insertion_point, tray_w_ft, tray_h_ft)
+
+    if partition_x_ft is not None:
+        half = mm_to_feet(PARTITION_GAP_MM) / 2.0
+        for px in (partition_x_ft - half, partition_x_ft + half):
+            x = insertion_point.X + px
+            doc.Create.NewDetailCurve(view, Line.CreateBound(
+                XYZ(x, insertion_point.Y, 0), XYZ(x, insertion_point.Y + tray_h_ft, 0)))
 
     if section_name:
         opts = TextNoteOptions(text_type_id)

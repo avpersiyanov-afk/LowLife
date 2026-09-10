@@ -790,17 +790,25 @@ Dynamo), а точная «гравитационная» упаковка: ка
 чертёжные виды**, запустив кнопку дважды (на одном виде «Только сечение», на
 другом «Только таблица»).
 
+**Раскладка (настройки кнопки).** `layout` = `LAYOUT_SOLID` (вперемешку,
+bottom-left-fill) или `LAYOUT_HONEYCOMB` (по типам, `_arrange_honeycomb` —
+каждый `original_mark` отдельным сотовым блоком, блоки полками слева направо).
+`divide_soue_ro` — кабели `is_soue_ro(system)` уходят в отдельный отсек за
+вертикальной перегородкой; ширины отсеков — по доле площади (15..50% под
+СОУЭ РО), `plan_section` возвращает X оси перегородки, `draw_section` её рисует.
+
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `find_data_sheet` | `find_data_sheet(sheet_names)` | Имя листа «сводные данные для плагина» среди многих (регистр/пробелы/«пагина» не важны); `None`, если не нашёлся |
 | `read_cables` | `read_cables(path, sheet_name=None)` | `(cables, error)` — список `CableData` с листа `sheet_name` (без него — `find_data_sheet`, иначе первый лист). Столбцы жёстко по номеру (0 марка, 1 диаметр, 2 участок, 3 кол-во, 5 система, 6 %, 7 высота, 8 ширина). Участок протягивается вниз по объединённым ячейкам |
 | `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
-| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — раскладка (см. выше) |
-| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced, fill_percent)` — раскладка + % заполнения, без рисования |
+| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — сплошная раскладка bottom-left-fill (см. выше) |
+| `is_soue_ro` | `is_soue_ro(system)` | `True` для системы «СОУЭ РО» в любом написании |
+| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm, layout=LAYOUT_SOLID, divide_soue_ro=False)` | `(placed, unplaced, fill_percent, partition_x_ft)` — раскладка (сплошняком/сотами, с перегородкой СОУЭ РО или без), без рисования |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
 | `paper_to_model` | `paper_to_model(mm, scale)` | мм на бумаге → футы в модели на виде с масштабом 1:scale |
-| `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0)` | Контур лотка (реальный размер) + подпись + кружки. `insertion_point` — левый нижний угол лотка. **В транзакции** |
+| `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0, partition_x_ft=None)` | Контур лотка (реальный размер) + подпись + кружки + перегородка отсека. `insertion_point` — левый нижний угол лотка. **В транзакции** |
 | `draw_table` | `draw_table(doc, view, section_name, tray_width_mm, tray_height_mm, placed, fill_percent, top_left, scale=1.0)` | Сводная таблица («бумажные» размеры × scale); `top_left` — левый верхний угол; возвращает Y нижней нарисованной точки. **В транзакции** |
 
 ## family_catalog.py
