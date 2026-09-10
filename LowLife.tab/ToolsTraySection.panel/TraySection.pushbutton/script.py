@@ -14,13 +14,11 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.tray_section import (
-    SECTION_GAP_MM, build_tray_section, format_number, list_sections, mm_to_feet,
-    read_cables, renumber_cables, round_half_up
+    SECTION_GAP_MM, build_tray_section, list_sections, mm_to_feet, read_cables, renumber_cables
 )
 
 doc = revit.doc
 uidoc = revit.uidoc
-output = pyrevit_script.get_output()
 
 
 view = doc.ActiveView
@@ -67,7 +65,7 @@ for name in sections:
             exitscript=True
         )
     renumber_cables(section_cables)
-    jobs.append((name, section_cables, first_cable))
+    jobs.append((name, section_cables))
 
 try:
     origin = uidoc.Selection.PickPoint(
@@ -77,44 +75,26 @@ except OperationCanceledException:
     pyrevit_script.exit()
 
 gap_ft = mm_to_feet(SECTION_GAP_MM)
-results = []
+unplaced_by_section = []
 
 with revit.Transaction(u"Сечения кабельных лотков"):
     x_cursor = origin.X
-    for name, section_cables, first_cable in jobs:
+    for name, section_cables in jobs:
+        first_cable = section_cables[0]
         insertion_point = XYZ(x_cursor, origin.Y, origin.Z)
         placed, unplaced, fill_percent, footprint_ft = build_tray_section(
             doc, view, name, first_cable.tray_width, first_cable.tray_height,
             section_cables, insertion_point, show_marks, show_table
         )
-        results.append({
-            "name": name, "first": first_cable, "placed": placed, "unplaced": unplaced,
-            "fill": fill_percent, "requested": sum(c.quantity for c in section_cables),
-        })
+        if unplaced:
+            unplaced_by_section.append((name, Counter(c.mark for c in unplaced)))
         x_cursor += footprint_ft + gap_ft
 
-output.print_md(u"### Сечения лотков — участков: {}".format(len(results)))
-total_unplaced = 0
-for r in results:
-    output.print_md(u"**{}** — лоток {}×{} мм, кабелей {}/{}, заполнение {}%{}".format(
-        r["name"], format_number(r["first"].tray_width), format_number(r["first"].tray_height),
-        len(r["placed"]), r["requested"], round_half_up(r["fill"]),
-        u"" if r["first"].fill_percent == 0 else u" (в Excel {}%)".format(format_number(r["first"].fill_percent))
-    ))
-    if r["unplaced"]:
-        total_unplaced += len(r["unplaced"])
-        counts = Counter(c.mark for c in r["unplaced"])
-        for mark, n in sorted(counts.items()):
-            output.print_md(u"- не уместилось: марка {} — {} шт.".format(mark, n))
-
-forms.alert(
-    u"Готово.\n\n"
-    u"Построено сечений: {}\n"
-    u"Всего уложено кабелей: {}\n"
-    u"{}"
-    u"Подробности — в окне вывода pyRevit.".format(
-        len(results),
-        sum(len(r["placed"]) for r in results),
-        u"" if not total_unplaced else u"Не уместилось всего: {} шт.\n".format(total_unplaced),
-    )
-)
+# Отчёт не показываем. Единственное, о чём предупреждаем, — кабели, которые
+# физически не влезли в лоток по высоте (иначе они молча пропали бы с чертежа).
+if unplaced_by_section:
+    lines = [u"Не поместились в лоток (не нарисованы):", u""]
+    for name, counts in unplaced_by_section:
+        parts = u", ".join(u"марка {} — {} шт.".format(m, n) for m, n in sorted(counts.items()))
+        lines.append(u"{}: {}".format(name, parts))
+    forms.alert(u"\n".join(lines))
