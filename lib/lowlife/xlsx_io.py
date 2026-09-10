@@ -400,7 +400,15 @@ def _letters(ref):
     return u"".join(out)
 
 
-def _sheet_entry_name(zf):
+def _sheet_entry_name(zf, sheet_name=None):
+    if sheet_name:
+        target = _sheet_target_by_name(zf, sheet_name)
+        if target and zf.GetEntry(target) is not None:
+            return target
+        # Явно запрошенный лист не нашли — не откатываемся молча на
+        # первый лист (вызывающий код сам решает, что делать: read_xlsx
+        # в этом случае вернёт []).
+        return None
     if zf.GetEntry(u"xl/worksheets/sheet1.xml") is not None:
         return u"xl/worksheets/sheet1.xml"
     for e in zf.Entries:
@@ -408,6 +416,57 @@ def _sheet_entry_name(zf):
         if fn.startswith(u"xl/worksheets/") and fn.endswith(u".xml"):
             return fn
     return None
+
+
+def _sheet_target_by_name(zf, sheet_name):
+    u"""xl/workbook.xml -> <sheet name=".." r:id="rIdN"/> -> xl/_rels/workbook.xml.rels
+    -> Relationship Target -> путь листа внутри архива ("xl/worksheets/sheetN.xml")."""
+    wb_xml = _read_entry(zf, u"xl/workbook.xml")
+    if not wb_xml:
+        return None
+
+    rid = None
+    for m in re.finditer(r"<sheet\b([^>]*)/>", wb_xml):
+        attrs = m.group(1)
+        nm = re.search(r'\bname="([^"]*)"', attrs)
+        if nm and _unesc(nm.group(1)) == sheet_name:
+            rm = re.search(r'\br:id="([^"]*)"', attrs)
+            if rm:
+                rid = rm.group(1)
+            break
+    if not rid:
+        return None
+
+    rels_xml = _read_entry(zf, u"xl/_rels/workbook.xml.rels")
+    if not rels_xml:
+        return None
+    for m in re.finditer(r"<Relationship\b([^>]*)/>", rels_xml):
+        attrs = m.group(1)
+        idm = re.search(r'\bId="([^"]*)"', attrs)
+        if not idm or idm.group(1) != rid:
+            continue
+        tm = re.search(r'\bTarget="([^"]*)"', attrs)
+        if not tm:
+            return None
+        target = tm.group(1)
+        return target if target.startswith(u"xl/") else u"xl/" + target
+    return None
+
+
+def list_sheet_names(path):
+    u"""Имена листов книги в порядке, как в Excel. [] — если не прочиталось."""
+    fs = FileStream(path, FileMode.Open, FileAccess.Read)
+    try:
+        zf = ZipArchive(fs, ZipArchiveMode.Read)
+        try:
+            wb_xml = _read_entry(zf, u"xl/workbook.xml")
+        finally:
+            zf.Dispose()
+    finally:
+        fs.Close()
+    if not wb_xml:
+        return []
+    return [_unesc(m.group(1)) for m in re.finditer(r'<sheet\b[^>]*\bname="([^"]*)"', wb_xml)]
 
 
 def read_xlsx_col_widths(path):
@@ -448,9 +507,11 @@ def read_xlsx_col_widths(path):
     return out
 
 
-def read_xlsx(path, keep_formulas=False):
+def read_xlsx(path, sheet_name=None, keep_formulas=False):
     u"""
-    Список строк (список ячеек: unicode или None). keep_formulas=True —
+    Список строк (список ячеек: unicode или None). sheet_name — читать
+    конкретный лист по имени (None — первый лист книги, как раньше);
+    если лист с таким именем не найден, возвращает []. keep_formulas=True —
     ячейки-формулы отдаются как "=..." (для перезаписи файла без потери
     формул); по умолчанию — их посчитанное значение.
     """
@@ -459,8 +520,8 @@ def read_xlsx(path, keep_formulas=False):
         zf = ZipArchive(fs, ZipArchiveMode.Read)
         try:
             shared = _shared_strings(zf)
-            sheet_name = _sheet_entry_name(zf)
-            xml = _read_entry(zf, sheet_name) if sheet_name else None
+            entry_name = _sheet_entry_name(zf, sheet_name)
+            xml = _read_entry(zf, entry_name) if entry_name else None
         finally:
             zf.Dispose()
     finally:

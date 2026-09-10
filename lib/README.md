@@ -727,15 +727,19 @@ CPython-only зависимость (импортируется внутри ф�
 ## xlsx_io.py
 Мини чтение/запись `.xlsx` **без сторонних пакетов** (openpyxl не нужен, Excel
 запускать не надо). `.xlsx` — это zip с XML; работаем через
-`System.IO.Compression.ZipArchive` на IronPython 2. Один лист, без
-стилей/формул. Значения на чтении — `unicode` или `None`. Используется
-кнопками `Tools.panel/ScheduleToExcel` и `ScheduleFromExcel`.
+`System.IO.Compression.ZipArchive` на IronPython 2. Запись — один лист, без
+стилей/формул. Чтение — любой лист книги по имени (через `workbook.xml` +
+`workbook.xml.rels`), по умолчанию первый. Значения на чтении — `unicode`
+или `None` (числа тоже приходят строкой — конвертация на совести
+вызывающего кода, см. `tray_section.py`). Используется кнопками
+`Tools.panel/ScheduleToExcel`, `ScheduleFromExcel` и `ToolsTraySection.panel/TraySection`.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `write_xlsx` | `write_xlsx(path, rows, sheet_name=u"Лист1", col_widths=None)` | Пишет `rows` (список списков: str/число/None) одним листом; строки — `inlineStr`. `col_widths` — ширины столбцов в «символах» Excel (по столбцу; None/0 — по умолчанию), пишутся в `<cols>` |
-| `read_xlsx` | `read_xlsx(path)` | Список строк (список ячеек); потоковый `XmlReader`, понимает `inlineStr`, `sharedStrings` и формулы (`<f>` возвращается как строка `"=..."`, при записи снова пишется как `<f>`); при сбое — резервный разбор регулярками |
-| `read_xlsx_col_widths` | `read_xlsx_col_widths(path)` | `{индекс столбца (0-based): ширина}` из `<cols>`; `{}` если нет |
+| `read_xlsx` | `read_xlsx(path, sheet_name=None, keep_formulas=False)` | Список строк (список ячеек) листа `sheet_name` (`None` — первый лист книги; лист с таким именем не найден — `[]`); потоковый `XmlReader`, понимает `inlineStr`, `sharedStrings` и формулы (`<f>` возвращается как строка `"=..."`, при записи снова пишется как `<f>`); при сбое — резервный разбор регулярками |
+| `read_xlsx_col_widths` | `read_xlsx_col_widths(path)` | `{индекс столбца (0-based): ширина}` из `<cols>` первого листа; `{}` если нет |
+| `list_sheet_names` | `list_sheet_names(path)` | Имена листов книги по порядку, как в Excel; `[]` если не прочиталось |
 
 ## schedule_excel.py
 Выгрузка спецификации в таблицу и обратная загрузка правок в модель. Ключ
@@ -752,6 +756,32 @@ CPython-only зависимость (импортируется внутри ф�
 | `schedule_to_rows` | `schedule_to_rows(doc, sched)` | `(rows, число_элементов, число_столбцов, ширины_столбцов)`; `rows[0]` — заголовок `["Revit ID", <поля>…]`; порядок строк повторяет сортировку/группировку спеки; ширины — из `ScheduleField.GridColumnWidth`, в единицах Excel |
 | `merge_export` | `merge_export(new_rows, new_widths, existing_rows, existing_widths=None)` | Совмещает свежую выгрузку с уже существующим файлом: значения полей спеки обновляются, добавленные пользователем столбцы/их ширины и ручные строки (без Revit ID) сохраняются. `(rows, widths, stats)`; если файл не наш (нет столбца Revit ID) — вернёт выгрузку без изменений (`stats["merged"]=False`) |
 | `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
+
+## tray_section.py
+Тело кнопки `ToolsTraySection.panel/TraySection` — сечение кабельного
+лотка с фактической раскладкой кабелей на чертёжном виде, по данным из
+Excel (лист `«Сводный»`, столбцы как у исходного скрипта Dynamo: марка,
+диаметр, участок, кол-во, система, % заполнения, высота/ширина лотка).
+Чтение — через `xlsx_io` (не `openpyxl`, недоступен на IronPython 2).
+
+Укладка кругов (`arrange_cables`) — не перебор по сетке (как было в
+Dynamo), а точная «гравитационная» упаковка: каждый следующий кабель (от
+большего диаметра к меньшему) опускается в самую низкую точку касания
+пола/стенки/уже уложенного кабеля; кандидаты X — стены, X над каждым
+уже уложенным кругом, X одновременной опоры на пол+один круг и на пары
+БЛИЗКИХ по X кругов (см. докстринг функции — без опоры «пол+один круг»
+между кабелями на полу оставались большие пустые клинья, это давало
+почти вдвое худшее заполнение при проверке). Кабели, которым не хватило
+места по высоте лотка, возвращаются отдельно, а не пропускаются молча.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `read_cables` | `read_cables(path)` | `(cables, error)` — список `CableData` из листа «Сводный» (или первого листа книги) |
+| `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
+| `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
+| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — раскладка (см. выше) |
+| `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
+| `build_tray_section` | `build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm, cables, insertion_point, show_marks=True, show_table=True)` | Рисует контур, кабели и (опционально) таблицу; `(placed, unplaced, fill_percent)`. **Вызывать в транзакции** |
 
 ## family_catalog.py
 Тело двух кнопок `ToolsFamilies.panel`: `UpdateFamiliesFromCatalog`
