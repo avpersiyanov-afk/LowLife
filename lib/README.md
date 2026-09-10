@@ -775,12 +775,12 @@ Dynamo), а точная «гравитационная» упаковка: ка
 места по высоте лотка, возвращаются отдельно, а не пропускаются молча.
 
 Кнопка принимает **несколько участков** (`forms.SelectFromList` с
-`multiselect=True`) — они строятся в один ряд слева направо от одной
-выбранной точки, по общей нижней линии; `build_tray_section` возвращает
-`footprint_width_ft` (ширину лотка, а с таблицей — и таблицы), скрипт
-сдвигает следующий участок на неё + `SECTION_GAP_MM`, поэтому сечения и
-их таблицы не пересекаются. Марки (`renumber_cables`) у каждого участка
-свои, с 1.
+`multiselect=True`) — они строятся стопкой сверху вниз от одной выбранной
+точки, по общему левому краю; `build_tray_section` возвращает
+`extent_down_ft` (насколько таблица свисает ниже лотка), скрипт опускает
+следующий участок на это + подпись (`TITLE_BAND_MM`) + `SECTION_GAP_MM`,
+поэтому сечения и их таблицы не пересекаются. Марки (`renumber_cables`) у
+каждого участка свои, с 1.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -789,7 +789,7 @@ Dynamo), а точная «гравитационная» упаковка: ка
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
 | `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — раскладка (см. выше) |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
-| `build_tray_section` | `build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm, cables, insertion_point, show_marks=True, show_table=True)` | Рисует контур, кабели и (опционально) таблицу; `(placed, unplaced, fill_percent, footprint_width_ft)` — `footprint_width_ft` = ширина нарисованного вправо от `insertion_point.X`, чтобы ставить следующее сечение в ряд без нахлёста. **Вызывать в транзакции** |
+| `build_tray_section` | `build_tray_section(doc, view, section_name, tray_width_mm, tray_height_mm, cables, insertion_point, show_marks=True, show_table=True)` | Рисует контур, кабели и (опционально) таблицу; `(placed, unplaced, fill_percent, extent_down_ft)` — `extent_down_ft` = насколько нарисованное уходит вниз от `insertion_point.Y` (низа лотка), чтобы ставить следующее сечение под текущим без нахлёста. **Вызывать в транзакции** |
 
 ## family_catalog.py
 Тело двух кнопок `ToolsFamilies.panel`: `UpdateFamiliesFromCatalog`

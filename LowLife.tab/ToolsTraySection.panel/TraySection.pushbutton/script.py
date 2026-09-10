@@ -14,7 +14,8 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.tray_section import (
-    SECTION_GAP_MM, build_tray_section, list_sections, mm_to_feet, read_cables, renumber_cables
+    SECTION_GAP_MM, TITLE_BAND_MM, build_tray_section, list_sections, mm_to_feet,
+    read_cables, renumber_cables
 )
 
 doc = revit.doc
@@ -38,7 +39,7 @@ if not all_sections:
     forms.alert(u"В файле не заполнен ни один участок (столбец «Участок»).", exitscript=True)
 
 chosen = forms.SelectFromList.show(
-    all_sections, title=u"Участки лотков (можно несколько — построятся в ряд слева направо)",
+    all_sections, title=u"Участки лотков (можно несколько — построятся стопкой сверху вниз)",
     button_name=u"Построить", multiselect=True
 )
 if not chosen:
@@ -69,26 +70,33 @@ for name in sections:
 
 try:
     origin = uidoc.Selection.PickPoint(
-        u"Укажите точку вставки (левый нижний угол первого сечения); дальше участки уйдут вправо"
+        u"Укажите точку вставки (левый нижний угол первого сечения); дальше участки уйдут вниз"
     )
 except OperationCanceledException:
     pyrevit_script.exit()
 
 gap_ft = mm_to_feet(SECTION_GAP_MM)
+title_band_ft = mm_to_feet(TITLE_BAND_MM)
 unplaced_by_section = []
 
 with revit.Transaction(u"Сечения кабельных лотков"):
-    x_cursor = origin.X
+    prev_lowest_y = None  # самая нижняя точка предыдущего участка
     for name, section_cables in jobs:
         first_cable = section_cables[0]
-        insertion_point = XYZ(x_cursor, origin.Y, origin.Z)
-        placed, unplaced, fill_percent, footprint_ft = build_tray_section(
+        tray_h_ft = mm_to_feet(first_cable.tray_height)
+        if prev_lowest_y is None:
+            insertion_y = origin.Y
+        else:
+            # подпись нового участка должна начаться на gap ниже низа предыдущего
+            insertion_y = prev_lowest_y - gap_ft - title_band_ft - tray_h_ft
+        insertion_point = XYZ(origin.X, insertion_y, origin.Z)
+        placed, unplaced, fill_percent, extent_down_ft = build_tray_section(
             doc, view, name, first_cable.tray_width, first_cable.tray_height,
             section_cables, insertion_point, show_marks, show_table
         )
         if unplaced:
             unplaced_by_section.append((name, Counter(c.mark for c in unplaced)))
-        x_cursor += footprint_ft + gap_ft
+        prev_lowest_y = insertion_y - extent_down_ft
 
 # Отчёт не показываем. Единственное, о чём предупреждаем, — кабели, которые
 # физически не влезли в лоток по высоте (иначе они молча пропали бы с чертежа).
