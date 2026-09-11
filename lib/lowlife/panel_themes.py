@@ -89,6 +89,7 @@ THEMES = {
         (u"SPS", u"ShowCircuitRoute"),
         (u"SPS", u"InspectConnectors"),
         (u"SPS", u"BuildSpsSchematic"),
+        (u"SPS", u"PlaceCompanionDevices"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
     ],
     u"SPA": [
