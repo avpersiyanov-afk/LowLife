@@ -175,16 +175,24 @@ def _restore_underlay(view, saved):
 # ---------------------------------------------------------------------------
 
 def _iter_link_rooms(doc):
-    """(link_instance, total_transform, room) по всем подключённым связям."""
+    """(link_instance, total_transform, room) по всем подключённым связям.
+    Проблемная связь (не читается GetLinkDocument/GetTotalTransform/сбор
+    Room) молча пропускается — не должна ронять весь проход по остальным."""
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        linked_doc = link.GetLinkDocument()
+        try:
+            linked_doc = link.GetLinkDocument()
+        except Exception:
+            continue
         if linked_doc is None:
             continue
-        transform = link.GetTotalTransform()
-        rooms = FilteredElementCollector(linked_doc) \
-            .OfCategory(BuiltInCategory.OST_Rooms) \
-            .WhereElementIsNotElementType() \
-            .ToElements()
+        try:
+            transform = link.GetTotalTransform()
+            rooms = FilteredElementCollector(linked_doc) \
+                .OfCategory(BuiltInCategory.OST_Rooms) \
+                .WhereElementIsNotElementType() \
+                .ToElements()
+        except Exception:
+            continue
         for room in rooms:
             yield link, transform, room
 
@@ -223,15 +231,21 @@ def _find_link_room_at(doc, host_point):
     """
     candidates = []
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        linked_doc = link.GetLinkDocument()
+        try:
+            linked_doc = link.GetLinkDocument()
+        except Exception:
+            continue
         if linked_doc is None:
             continue
-        transform = link.GetTotalTransform()
-        local = transform.Inverse.OfPoint(host_point)
-        rooms = FilteredElementCollector(linked_doc) \
-            .OfCategory(BuiltInCategory.OST_Rooms) \
-            .WhereElementIsNotElementType() \
-            .ToElements()
+        try:
+            transform = link.GetTotalTransform()
+            local = transform.Inverse.OfPoint(host_point)
+            rooms = FilteredElementCollector(linked_doc) \
+                .OfCategory(BuiltInCategory.OST_Rooms) \
+                .WhereElementIsNotElementType() \
+                .ToElements()
+        except Exception:
+            continue
         for room in rooms:
             try:
                 if room.Area <= 0:
@@ -481,7 +495,12 @@ def run(doc, view, tag_type_id):
     Обновить и дорасставить марки помещений на ``view``. Транзакцию
     открывает вызывающий. Возвращает словарь-статистику с ключами:
     added, recreated, deleted, retyped, already, link_unloaded,
-    orphan_unresolved, out_of_view, room_no_point.
+    orphan_unresolved, out_of_view, room_no_point, errors.
+
+    Каждая марка/помещение обрабатывается в своём try/except — падение на
+    одной не должно прерывать проход по остальным (и тем более — ронять
+    исключение из run() наружу: это откатило бы всю транзакцию целиком,
+    отменив уже сделанные исправления). Такие случаи считаются в "errors".
     """
     stats = {
         "added": 0,
@@ -493,6 +512,7 @@ def run(doc, view, tag_type_id):
         "orphan_unresolved": 0,
         "out_of_view": 0,
         "room_no_point": 0,
+        "errors": 0,
     }
 
     saved_underlay = _suppress_underlay(view)
@@ -517,16 +537,16 @@ def run(doc, view, tag_type_id):
             .WhereElementIsNotElementType(),
         ):
             for tag in coll:
-                tid = tag.Id.IntegerValue
-                if tid in seen_tag_ids:
-                    continue
                 try:
+                    tid = tag.Id.IntegerValue
+                    if tid in seen_tag_ids:
+                        continue
                     if tag.OwnerViewId != view.Id:
                         continue
+                    seen_tag_ids.add(tid)
+                    existing_tags.append(tag)
                 except Exception:
-                    continue
-                seen_tag_ids.add(tid)
-                existing_tags.append(tag)
+                    stats["errors"] += 1
 
         tagged_keys = set()
 
@@ -544,69 +564,75 @@ def run(doc, view, tag_type_id):
         #          формально ещё разрешается — Revit рисует «?»).
         #    - нормальные                   -> только приводим типоразмер.
         for tag in existing_tags:
-            kind, room = _resolve_tag_room(doc, tag)
+            try:
+                kind, room = _resolve_tag_room(doc, tag)
 
-            if kind == "link_unloaded":
-                stats["link_unloaded"] += 1
-                continue
-
-            broken = (kind == "dead") or _is_orphaned(tag) or not _room_ok(room)
-
-            if not broken and not _tag_has_leader(tag):
-                under_key = _room_under_tag_key(doc, tag)
-                if under_key is not None and under_key != _tagged_room_key(tag):
-                    broken = True
-
-            if broken:
-                new_tag = _recreate_stale_tag(doc, view, tag, tag_type_id)
-                if new_tag is not None:
-                    stats["recreated"] += 1
-                    key = _tagged_room_key(new_tag)
-                    if key is not None:
-                        tagged_keys.add(key)
+                if kind == "link_unloaded":
+                    stats["link_unloaded"] += 1
                     continue
-                try:
-                    doc.Delete(tag.Id)
-                    stats["deleted"] += 1
-                except Exception:
-                    stats["orphan_unresolved"] += 1
-                continue
 
-            if _apply_type(tag, tag_type_id):
-                stats["retyped"] += 1
-            key = _tagged_room_key(tag)
-            if key is not None:
-                tagged_keys.add(key)
+                broken = (kind == "dead") or _is_orphaned(tag) or not _room_ok(room)
+
+                if not broken and not _tag_has_leader(tag):
+                    under_key = _room_under_tag_key(doc, tag)
+                    if under_key is not None and under_key != _tagged_room_key(tag):
+                        broken = True
+
+                if broken:
+                    new_tag = _recreate_stale_tag(doc, view, tag, tag_type_id)
+                    if new_tag is not None:
+                        stats["recreated"] += 1
+                        key = _tagged_room_key(new_tag)
+                        if key is not None:
+                            tagged_keys.add(key)
+                        continue
+                    try:
+                        doc.Delete(tag.Id)
+                        stats["deleted"] += 1
+                    except Exception:
+                        stats["orphan_unresolved"] += 1
+                    continue
+
+                if _apply_type(tag, tag_type_id):
+                    stats["retyped"] += 1
+                key = _tagged_room_key(tag)
+                if key is not None:
+                    tagged_keys.add(key)
+            except Exception:
+                stats["errors"] += 1
 
         # 2) Дорасставить марки для непомеченных помещений связей.
         for link, transform, room in _iter_link_rooms(doc):
-            if not _room_placed(room):
-                continue
-            key = (link.Id.IntegerValue, room.Id.IntegerValue)
-            if key in tagged_keys:
-                stats["already"] += 1
-                continue
-
-            center = _room_center_host(room, transform)
-            if center is None:
-                stats["room_no_point"] += 1
-                continue
-            if view_elev is not None and abs(center.Z - view_elev) > _LEVEL_TOL_FT:
-                continue
-            if not _point_in_view_crop(view, center):
-                stats["out_of_view"] += 1
-                continue
-
             try:
-                new_tag = doc.Create.NewRoomTag(
-                    LinkElementId(link.Id, room.Id),
-                    UV(center.X, center.Y), view.Id)
+                if not _room_placed(room):
+                    continue
+                key = (link.Id.IntegerValue, room.Id.IntegerValue)
+                if key in tagged_keys:
+                    stats["already"] += 1
+                    continue
+
+                center = _room_center_host(room, transform)
+                if center is None:
+                    stats["room_no_point"] += 1
+                    continue
+                if view_elev is not None and abs(center.Z - view_elev) > _LEVEL_TOL_FT:
+                    continue
+                if not _point_in_view_crop(view, center):
+                    stats["out_of_view"] += 1
+                    continue
+
+                try:
+                    new_tag = doc.Create.NewRoomTag(
+                        LinkElementId(link.Id, room.Id),
+                        UV(center.X, center.Y), view.Id)
+                except Exception:
+                    new_tag = None
+                if new_tag is None:
+                    continue
+                _apply_type(new_tag, tag_type_id)
+                stats["added"] += 1
             except Exception:
-                new_tag = None
-            if new_tag is None:
-                continue
-            _apply_type(new_tag, tag_type_id)
-            stats["added"] += 1
+                stats["errors"] += 1
     finally:
         _restore_underlay(view, saved_underlay)
 

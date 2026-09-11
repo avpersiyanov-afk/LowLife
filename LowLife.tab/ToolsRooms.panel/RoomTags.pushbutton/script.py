@@ -15,6 +15,8 @@ __doc__ = (
 )
 __author__ = "Pipers"
 
+import traceback
+
 from Autodesk.Revit.DB import ViewPlan
 from pyrevit import revit, forms, EXEC_PARAMS
 
@@ -94,6 +96,23 @@ if not chosen:
     forms.alert(u"Отменено.", exitscript=True)
 
 
-with revit.Transaction(u"Марки помещений из связи"):
-    for target in target_views:
-        room_tags.run(doc, target, chosen.symbol.Id)
+errors = 0
+try:
+    with revit.Transaction(u"Марки помещений из связи"):
+        for target in target_views:
+            stats = room_tags.run(doc, target, chosen.symbol.Id)
+            errors += stats.get("errors", 0)
+except Exception:
+    forms.alert(
+        u"Сбой при обновлении марок помещений (транзакция отменена, "
+        u"изменения не сохранены):\n\n{}".format(traceback.format_exc()),
+        title=u"Марки помещений"
+    )
+else:
+    if errors:
+        forms.alert(
+            u"Готово, но на {} марк(ах)/помещени(ях) обработка сорвалась "
+            u"с ошибкой — они пропущены, остальные марки обновлены. Если "
+            u"после этого какие-то марки всё ещё показывают «?», "
+            u"сообщите — нужно разбираться отдельно.".format(errors)
+        )
