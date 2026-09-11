@@ -908,6 +908,23 @@ def _clip_distance(ox, oy, ux, uy, max_d, rings):
     return best
 
 
+# Минимальная длина отрезка контура зоны, футы (~3 мм) — с запасом выше
+# минимальной длины кривой, которую примет Revit (около 0.79 мм,
+# Application.ShortCurveTolerance). Раньше здесь стояло 1e-4 фт
+# (~0.03 мм) — куда меньше этого порога: соседние точки проходили дедуп
+# как «разные», но Line.CreateBound на них падал с исключением, а один
+# такой отрезок обрывал построение ВСЕГО контура (см. ниже) — типичная
+# причина «обрезка дала пустой контур» на помещениях с частой сеткой
+# вершин (много сегментов границы / много препятствий).
+_MIN_SEG_FT = 0.01
+
+# Угловой зазор между «до» и «после» вершины препятствия/помещения при
+# добавлении лучей точности — вместе с радиусом даёт длину дуги; должен
+# быть настолько большим, чтобы эта длина не схлопнулась дедупом выше
+# (_MIN_SEG_FT) на обычных для камеры расстояниях.
+_VERTEX_RAY_EPS = 0.01
+
+
 def _zone_curveloop(center, base, half, near_r, far_r, rings, ray_count, z):
     """
     CurveLoop контура зоны обзора (звёздный многоугольник от центра либо
@@ -922,9 +939,9 @@ def _zone_curveloop(center, base, half, near_r, far_r, rings, ray_count, z):
         for p in ring:
             a = math.atan2(p.Y - center.Y, p.X - center.X)
             da = math.atan2(math.sin(a - base), math.cos(a - base))
-            if -half - 1e-4 <= da <= half + 1e-4:
-                offs.append(max(-half, da - 5e-5))
-                offs.append(min(half, da + 5e-5))
+            if -half - _VERTEX_RAY_EPS <= da <= half + _VERTEX_RAY_EPS:
+                offs.append(max(-half, da - _VERTEX_RAY_EPS))
+                offs.append(min(half, da + _VERTEX_RAY_EPS))
 
     offs = sorted(set(round(o, 9) for o in offs))
 
@@ -951,9 +968,9 @@ def _zone_curveloop(center, base, half, near_r, far_r, rings, ray_count, z):
 
     clean = []
     for p in pts:
-        if not clean or clean[-1].DistanceTo(p) > 1e-4:
+        if not clean or clean[-1].DistanceTo(p) > _MIN_SEG_FT:
             clean.append(p)
-    if len(clean) >= 2 and clean[0].DistanceTo(clean[-1]) <= 1e-4:
+    if len(clean) >= 2 and clean[0].DistanceTo(clean[-1]) <= _MIN_SEG_FT:
         clean.pop()
     if len(clean) < 3:
         return None
@@ -964,13 +981,16 @@ def _zone_curveloop(center, base, half, near_r, far_r, rings, ray_count, z):
     for i in range(n):
         a = clean[i]
         b = clean[(i + 1) % n]
-        if a.DistanceTo(b) < 1e-4:
+        if a.DistanceTo(b) < _MIN_SEG_FT:
             continue
         try:
             cl.Append(Line.CreateBound(a, b))
             made += 1
         except Exception:
-            return None
+            # единичный «плохой» отрезок не должен ронять весь контур —
+            # пропускаем вершину-виновника и продолжаем достраивать
+            # оставшиеся; итог проверяется по made >= 3 ниже
+            continue
     return cl if made >= 3 else None
 
 
