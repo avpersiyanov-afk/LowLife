@@ -184,9 +184,9 @@ class CategorySelectionFilter(ISelectionFilter):
 
 
 class CategoryOption(object):
-    """Категория со счётчиком элементов на виде — для forms.SelectFromList."""
+    """Категория — для forms.SelectFromList."""
 
-    def __init__(self, category, count):
+    def __init__(self, category):
         self.category_id = category.Id
         try:
             base = category.Name
@@ -195,7 +195,7 @@ class CategoryOption(object):
         base = base or u"?"
         self.raw_name = base
         self.sort_name = base.lower()
-        self.name = u"{} ({})".format(base, count)
+        self.name = base
 
     def __str__(self):
         return self.name
@@ -204,20 +204,17 @@ class CategoryOption(object):
 def list_view_categories(doc, view):
     """
     Категории «модельных» элементов (is_pickable_model_element), видимых на
-    view, со счётчиком элементов каждой — отсортированный по имени список
-    CategoryOption для forms.SelectFromList(multiselect=True).
+    view — отсортированный по имени список CategoryOption для
+    forms.SelectFromList(multiselect=True).
     """
     cats = {}
-    counts = {}
     for el in collect_model_elements(doc, view):
         cat = el.Category
         if cat is None:
             continue
-        cid = cat.Id.IntegerValue
-        cats[cid] = cat
-        counts[cid] = counts.get(cid, 0) + 1
+        cats[cat.Id.IntegerValue] = cat
 
-    options = [CategoryOption(cats[cid], counts[cid]) for cid in cats]
+    options = [CategoryOption(cat) for cat in cats.values()]
     options.sort(key=lambda o: o.sort_name)
     return options
 
