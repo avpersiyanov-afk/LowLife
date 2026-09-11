@@ -14,8 +14,9 @@ from lowlife.geometry import get_point
 from lowlife.params import get_string_param, get_type_string_param, set_param_any
 from lowlife.scs import is_excluded_device, get_workset_name
 from lowlife.scs_circuits import clean_text_value, balance_round_parts
+from lowlife.sot_levels import get_level_display_name
 from lowlife.fire_alarm import (
-    parse_device_address, parse_panel_address, is_isolator
+    parse_device_address, parse_panel_address, is_isolator, is_riser
 )
 from lowlife.fire_alarm_loops import calc_loop_length_ft, FT_TO_M
 from lowlife.electrical_circuits import resolve_system_type, create_circuit
@@ -81,6 +82,17 @@ for _system_key, _names in _SYSTEM_EXCLUDED_CATEGORY_NAMES.items():
             _ids.add(int(_cat))
     if _ids:
         _SYSTEM_EXCLUDED_CATEGORY_IDS[_system_key] = _ids
+
+# Категории, среди которых ищется стояк (find_risers) — те же, что и для
+# устройств, плюс «Обобщённые модели» (типичная категория для маркера
+# стояка/шахты, которая сама по себе не адресное устройство шлейфа и
+# поэтому не входит в DEVICE_CATEGORIES). Стояк отличается от обычного
+# устройства/панели только по ключевому слову в имени семейства
+# (riser_keyword), не по категории.
+RISER_CATEGORIES = list(DEVICE_CATEGORIES)
+_riser_generic_model_cat = getattr(BuiltInCategory, "OST_GenericModel", None)
+if _riser_generic_model_cat is not None and _riser_generic_model_cat not in RISER_CATEGORIES:
+    RISER_CATEGORIES.append(_riser_generic_model_cat)
 
 
 def category_title(builtin_category):
@@ -195,6 +207,70 @@ def find_devices(doc, config):
     return devices, address_by_id, address_text_by_id, skipped
 
 
+def find_risers(doc, config):
+    """
+    Экземпляры стояка (по ключевому слову «riser_keyword» в имени
+    семейства/типа) в рабочем наборе системы — для расчёта перехода
+    шлейфа между этажами и обратного участка кольцевого шлейфа (см.
+    fire_alarm_loops.calc_loop_length_ft). Категории поиска —
+    RISER_CATEGORIES (устройства + «Обобщённые модели»).
+
+    Пустой список, если ключевое слово не задано в настройках (стояк не
+    используется — переход между этажами считается напрямую).
+
+    Возвращает [{"id":, "pt":, "floor": имя этажа}, ...] — этаж тем же
+    способом, что и у устройств (level_param_name, см. build_loop_nodes).
+    """
+    riser_keyword = config.get("riser_keyword")
+    if not riser_keyword:
+        return []
+
+    level_param_name = config.get("level_param_name")
+    risers = []
+    seen_ids = set()
+
+    for cat in RISER_CATEGORIES:
+        try:
+            found = FilteredElementCollector(doc) \
+                .OfCategory(cat) \
+                .WhereElementIsNotElementType() \
+                .ToElements()
+        except:
+            continue
+
+        for el in found:
+            eid = el.Id.IntegerValue
+            if eid in seen_ids:
+                continue
+
+            if not in_workset(el, config["workset_param_name"], config["workset_filter_key"]):
+                continue
+
+            if not is_riser(el, riser_keyword):
+                continue
+
+            pt = get_point(el)
+            if pt is None:
+                continue
+
+            seen_ids.add(eid)
+            risers.append({
+                "id": eid,
+                "pt": pt,
+                "floor": get_level_display_name(doc, el, level_param_name),
+            })
+
+    return risers
+
+
+def group_risers_by_floor(risers):
+    """{имя этажа: [риски, ...]} из find_risers — вход для calc_loop_length_ft."""
+    by_floor = {}
+    for r in risers:
+        by_floor.setdefault(r["floor"], []).append(r)
+    return by_floor
+
+
 def existing_circuits_by_number(doc, config):
     """Уже созданные цепи системы по значению «Номер цепи»."""
     number_param = config["circuit_number_param"]
@@ -296,8 +372,16 @@ def isolator_branch_device_map(doc, isolator_ids=None):
     return result
 
 
-def build_loop_nodes(device_els, address_by_id, isolator_keyword):
-    """Узлы шлейфа для build_loop_tree — из элементов Revit."""
+def build_loop_nodes(doc, device_els, address_by_id, isolator_keyword, level_param_name=None):
+    """
+    Узлы шлейфа для build_loop_tree — из элементов Revit.
+
+    "floor" — имя этажа устройства (level_param_name, тот же параметр, что
+    и у структурной схемы; при пустом значении — реальный Level элемента,
+    см. sot_levels.get_level_display_name) — нужен, чтобы calc_loop_length_ft
+    мог посчитать переход между этажами через стояк, если этаж соседних по
+    адресу узлов различается.
+    """
     nodes = []
 
     for el in device_els:
@@ -311,15 +395,19 @@ def build_loop_nodes(device_els, address_by_id, isolator_keyword):
             "index": address_by_id[eid][2],
             "pt": pt,
             "is_isolator": is_isolator(el, isolator_keyword),
+            "floor": get_level_display_name(doc, el, level_param_name),
             "element": el,
         })
 
     return nodes
 
 
-def write_loop_length(circuit, ordered_nodes, panel_point, config):
+def write_loop_length(circuit, ordered_nodes, panel_point, panel_floor, risers_by_floor, ring_loop, config):
     """Считает и записывает длину шлейфа и сопутствующие параметры цепи."""
-    length_ft = calc_loop_length_ft(ordered_nodes, panel_point)
+    length_ft = calc_loop_length_ft(
+        ordered_nodes, panel_point, panel_floor=panel_floor,
+        risers_by_floor=risers_by_floor, ring_loop=ring_loop
+    )
     length_m = length_ft * FT_TO_M * float(config["length_coef"])
 
     total = balance_round_parts(length_m, [length_m])[0]

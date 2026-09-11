@@ -2,4 +2,5 @@ title: Цепи СПА
 tooltip: Построение электрических цепей СПА по адресу устройства (как СПС, но рабочий набор с ключевым словом «СПА»)
 layout:
   - BuildLoopCircuitsSPA
+  - CalcLoopLengthsSPA
   - SetupParametersSPA

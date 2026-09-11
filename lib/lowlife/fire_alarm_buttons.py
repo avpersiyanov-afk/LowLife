@@ -12,11 +12,13 @@ from pyrevit import revit, forms, script as pyrevit_script
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, get_type_string_param, set_param_any, set_element_id_param
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
+from lowlife.sot_levels import get_level_display_name
 from lowlife.fire_alarm import make_full_mark, group_devices_by_loop, is_isolator
 from lowlife.fire_alarm_loops import build_loop_tree, build_route_text, previous_address_by_id, FT_TO_M
 from lowlife.fire_alarm_circuits import (
     find_panels, find_devices, existing_circuits_by_number, create_circuit,
-    build_loop_nodes, write_loop_length, device_category_id, circuit_membership_map
+    build_loop_nodes, write_loop_length, device_category_id, circuit_membership_map,
+    find_risers, group_risers_by_floor
 )
 from lowlife.fire_alarm_wire_marks import collect_member_points, mark_wire_lines
 from lowlife import fire_alarm_settings
@@ -297,6 +299,13 @@ def calc_loop_lengths(doc, settings):
     existing = existing_circuits_by_number(doc, config)
 
     isolator_keyword = config.get("isolator_keyword")
+    level_param_name = config.get("level_param_name")
+
+    # Стояк (для перехода шлейфа между этажами) и признак кольцевого
+    # шлейфа — оба необязательные, отсутствие любого просто отключает
+    # соответствующую часть расчёта (см. fire_alarm_loops.calc_loop_length_ft).
+    risers_by_floor = group_risers_by_floor(find_risers(doc, config))
+    ring_loop = (config.get("ring_loop") or u"").strip().lower() == u"да"
 
     processed = 0
     no_circuit = []
@@ -313,13 +322,14 @@ def calc_loop_lengths(doc, settings):
             circuit_number = number_format.format(u"{}.{}".format(panel_num, loop_num))
             circuit = existing.get(circuit_number)
 
-            nodes = build_loop_nodes(loop_devices, address_by_id, isolator_keyword)
+            nodes = build_loop_nodes(doc, loop_devices, address_by_id, isolator_keyword, level_param_name)
 
             if not nodes:
                 continue
 
             panel_el = panels.get(panel_num)
             panel_point = get_point(panel_el) if panel_el is not None else None
+            panel_floor = get_level_display_name(doc, panel_el, level_param_name) if panel_el is not None else None
 
             ordered = build_loop_tree(nodes, panel_point)
 
@@ -350,7 +360,7 @@ def calc_loop_lengths(doc, settings):
                 )
                 continue
 
-            write_loop_length(circuit, ordered, panel_point, config)
+            write_loop_length(circuit, ordered, panel_point, panel_floor, risers_by_floor, ring_loop, config)
 
             if config.get("circuit_route_param"):
                 set_param_any(circuit, config["circuit_route_param"],

@@ -94,6 +94,7 @@ THEMES = {
     ],
     u"SPA": [
         (u"CircuitsSPA", u"BuildLoopCircuitsSPA"),
+        (u"CircuitsSPA", u"CalcLoopLengthsSPA"),
         (u"SPA", u"PlaceCompanionDevices"),
     ],
     u"КНК": [

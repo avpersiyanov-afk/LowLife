@@ -1053,7 +1053,11 @@ room_number_param)` — запись по точкам прохода, возв�
 | `parse_panel_address` | `parse_panel_address(address)` | `"3"` → `3`; `None`, если это не одно целое число |
 | `make_full_mark` | `make_full_mark(designation, address)` | `"BTH"` + `"3.1.2"` → `"BTH3.1.2"` |
 | `is_isolator` | `is_isolator(el, isolator_keyword)` | Изолятор/ответвитель — по ключевому слову в имени семейства |
+| `is_riser` | `is_riser(el, riser_keyword)` | Стояк — по ключевому слову в имени семейства (аналогично `is_isolator`) |
 | `group_devices_by_loop` | `group_devices_by_loop(devices, address_by_id)` | `{(панель, шлейф): [устройства по порядковому номеру]}` |
+
+Константы: `ISOLATOR_KEYWORD` (`"изолятор"`), `RISER_KEYWORD` (`"стояк"`) —
+дефолты полей `isolator_keyword`/`riser_keyword` в `fire_alarm_settings`.
 
 ## fire_alarm_loops.py
 Построение шлейфа и расчёт его длины по координатам (без Revit API —
@@ -1064,15 +1068,29 @@ room_number_param)` — запись по точкам прохода, возв�
 Решает геометрия — каждое следующее устройство цепляется к ближайшему из
 кандидатов (предыдущее по порядку либо любой уже размещённый изолятор).
 При равном расстоянии предпочитается изолятор, затем меньший `id`, чтобы
-результат не зависел от порядка перебора.
+результат не зависел от порядка перебора. `build_loop_tree` про этажи и
+стояк ничего не знает — дерево строится так же, как раньше; про них знает
+только `calc_loop_length_ft` (ниже).
+
+**Переход между этажами и кольцо** — оба необязательные (по умолчанию
+выключены/не влияют на результат, если не переданы соответствующие
+аргументы): если у ребра разные `node["floor"]` — участок считается через
+ближайший `риск` на каждом из двух этажей (`_edge_length_ft`), независимо
+выбранный для каждого конца (без явного сопоставления шахт между
+этажами). `ring_loop=True` добавляет обратный участок от последнего узла
+МАГИСТРАЛИ (родитель — непосредственно предыдущий по адресу узел, не
+изолятор веткой) до ближайшего стояка на его этаже — резерв: прямой
+участок до панели. Ветви изоляторов в кольцо не входят.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `build_loop_tree` | `build_loop_tree(nodes, panel_point=None)` | Проставляет `parent_id` каждому узлу; возвращает узлы в порядке обхода |
-| `calc_loop_length_ft` | `calc_loop_length_ft(ordered_nodes, panel_point=None)` | Длина по дереву: каждое ребро один раз, ветви назад не возвращаются |
-| `build_route_text` | `build_route_text(ordered_nodes, address_text_by_id)` | `"3.1.1 -> 3.1.2; 3.1.2 -> 3.1.5"` — вторая пара показывает ветвь |
+| `calc_loop_length_ft` | `calc_loop_length_ft(ordered_nodes, panel_point=None, panel_floor=None, risers_by_floor=None, ring_loop=False)` | Длина по дереву: каждое ребро один раз (через стояк, если этажи разные), ветви назад не возвращаются; `ring_loop=True` — + обратный участок от последнего узла магистрали |
+| `build_route_text` | `build_route_text(ordered_nodes, address_text_by_id)` | `"3.1.1 -> 3.1.2; 3.1.2 -> 3.1.5"` — вторая пара показывает ветвь. Переход через стояк/кольцо в тексте НЕ отражается — только сам граф по адресам |
 | `previous_address_by_id` | `previous_address_by_id(ordered_nodes, address_text_by_id)` | `{id: адрес родителя}` — для записи «Предыдущего адреса» на устройства |
 | `manhattan_ft` | `manhattan_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между точками |
+| `_edge_length_ft` | `_edge_length_ft(pt_a, floor_a, pt_b, floor_b, risers_by_floor)` | Длина ребра — напрямую (`manhattan_ft`) или через ближайший стояк на каждом из двух этажей, если этажи различаются и стояки нашлись на обоих |
+| `_nearest_riser` | `_nearest_riser(risers, pt)` | Ближайший (по `manhattan_ft`) риск из списка к точке, либо `None` |
 
 ## fire_alarm_circuits.py
 Поиск панелей/устройств СПС/СОУЭ/СПА в документе, создание электрических
@@ -1100,8 +1118,10 @@ room_number_param)` — запись по точкам прохода, возв�
 | `existing_circuits_by_number` | `existing_circuits_by_number(doc, config)` | Уже созданные цепи по «Номеру цепи» — чтобы не пересоздавать |
 | `circuit_membership_map` | `circuit_membership_map(doc, number_param)` | `{id элемента: (номер цепи, id цепи)}` по ВСЕМ цепям документа — устройство, уже входящее в цепь, нельзя добавить в другую |
 | `device_category_id` | `device_category_id(el)` | `int(BuiltInCategory)` устройства, если это одна из `DEVICE_CATEGORIES`, иначе `None` — для подбора типа проводника по категории |
-| `build_loop_nodes` | `build_loop_nodes(device_els, address_by_id, isolator_keyword)` | Узлы для `build_loop_tree` из элементов Revit |
-| `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, config)` | Считает и пишет длину и способ прокладки |
+| `build_loop_nodes` | `build_loop_nodes(doc, device_els, address_by_id, isolator_keyword, level_param_name=None)` | Узлы для `build_loop_tree` из элементов Revit; каждому узлу проставляет `"floor"` (`sot_levels.get_level_display_name`) |
+| `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, panel_floor, risers_by_floor, ring_loop, config)` | Считает (`calc_loop_length_ft`) и пишет длину и способ прокладки |
+| `find_risers` | `find_risers(doc, config)` | `[{"id":, "pt":, "floor":}, ...]` — экземпляры стояка (`config["riser_keyword"]` в имени семейства) в рабочем наборе системы; категории поиска `RISER_CATEGORIES` (`DEVICE_CATEGORIES` + `OST_GenericModel`). `[]`, если ключевое слово не задано |
+| `group_risers_by_floor` | `group_risers_by_floor(risers)` | `{этаж: [риски, ...]}` из `find_risers` — вход для `calc_loop_length_ft` |
 
 ## fire_alarm_settings.py
 Настройки СПС/СОУЭ/СПА. Один модуль на все три системы, но **разные
@@ -1120,9 +1140,9 @@ room_number_param)` — запись по точкам прохода, возв�
 
 ## fire_alarm_buttons.py
 Тела кнопок СПС/СОУЭ/СПА — общие для всех систем, чтобы `script.py`
-остался тонким (выбрать систему и вызвать функцию). У СПА пока
-используется только `build_loop_circuits` («Цепи шлейфов СПА») — без
-`calc_loop_lengths`/структурной схемы/изолятор-цепей.
+остался тонким (выбрать систему и вызвать функцию). У СПА используются
+`build_loop_circuits` и `calc_loop_lengths` («Цепи»/«Длины шлейфов СПА»,
+`CircuitsSPA.panel`) — без структурной схемы/изолятор-цепей.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|

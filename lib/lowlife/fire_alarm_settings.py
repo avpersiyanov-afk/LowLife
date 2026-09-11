@@ -37,7 +37,7 @@ from System.Windows.Controls import (
 from System.Windows.Media import Brushes
 
 from lowlife import settings_transfer
-from lowlife.fire_alarm import ISOLATOR_KEYWORD
+from lowlife.fire_alarm import ISOLATOR_KEYWORD, RISER_KEYWORD
 from lowlife.fire_alarm_circuits import DEVICE_CATEGORIES, category_title
 from lowlife.skud import parse_category_names
 from lowlife.scs_settings import (
@@ -130,6 +130,10 @@ TEXT_FIELDS = [
         u"", True, False),
     ("isolator_keyword", u"[Оборудование] Ключевое слово изолятора/ответвителя в имени семейства",
         ISOLATOR_KEYWORD, False, False),
+    ("riser_keyword", u"[Оборудование] Ключевое слово стояка в имени семейства (для расчёта перехода "
+        u"шлейфа между этажами — необязательно; если пусто, переход между этажами считается напрямую "
+        u"по координатам, без стояка)",
+        RISER_KEYWORD, False, False),
 
     # --- цепи ---
     ("circuit_panel_param", u"[Цепи] Параметр цепи «Панель»",
@@ -138,6 +142,12 @@ TEXT_FIELDS = [
         u"", False, True),
     ("circuit_number_format", u"[Цепи] Формат номера цепи (используйте {} для номера шлейфа)",
         u"ШС-{}", False, True),
+    ("ring_loop", u"[Цепи] Кольцевой шлейф — впишите «да», чтобы магистраль шлейфа замыкалась обратно "
+        u"на панель. Длина обратного участка — по катетам от последнего устройства магистрали до "
+        u"ближайшего стояка на его этаже (см. «Ключевое слово стояка» выше); если стояк не найден/не "
+        u"задан — прямой участок по катетам до панели. Ветви изоляторов в кольцо не входят и не "
+        u"удваиваются. По умолчанию «нет» — шлейф открытый, как раньше",
+        u"нет", False, False),
     ("circuit_system_type", u"[Цепи] Тип электрической цепи Revit (FireAlarm, Data, Communication, Security, Power)",
         u"FireAlarm", False, True),
     ("load_name_param", u"[Цепи] Параметр цепи «Имя нагрузки»",

@@ -121,3 +121,63 @@ def test_parse_route_edges_is_the_inverse_of_build_route_text():
 def test_parse_route_edges_empty_text():
     assert fal.parse_route_edges(u"") == []
     assert fal.parse_route_edges(None) == []
+
+
+def _two_floor_nodes():
+    return [
+        {"id": 1, "index": 1, "pt": FakeXYZ(0, 0, 0), "is_isolator": False, "floor": u"Этаж 1"},
+        {"id": 2, "index": 2, "pt": FakeXYZ(0, 0, 10), "is_isolator": False, "floor": u"Этаж 2"},
+    ]
+
+
+def test_calc_loop_length_ft_routes_through_riser_between_floors():
+    ordered = fal.build_loop_tree(_two_floor_nodes())
+    risers_by_floor = {
+        u"Этаж 1": [{"id": 100, "pt": FakeXYZ(5, 0, 0)}],
+        u"Этаж 2": [{"id": 101, "pt": FakeXYZ(5, 0, 10)}],
+    }
+
+    # 1 -> стояк(этаж 1) = 5ft, стояк(этаж 1) -> стояк(этаж 2) = 10ft,
+    # стояк(этаж 2) -> 2 = 5ft => 20ft, а не прямые 10ft.
+    length = fal.calc_loop_length_ft(ordered, risers_by_floor=risers_by_floor)
+    assert length == pytest.approx(20.0)
+
+    # Без risers_by_floor — как раньше, напрямую по катетам.
+    assert fal.calc_loop_length_ft(ordered) == pytest.approx(10.0)
+
+
+def test_calc_loop_length_ft_falls_back_to_direct_when_riser_missing_on_one_floor():
+    ordered = fal.build_loop_tree(_two_floor_nodes())
+    # Стояк есть только на этаже 1 — этажа 2 в словаре нет.
+    risers_by_floor = {u"Этаж 1": [{"id": 100, "pt": FakeXYZ(5, 0, 0)}]}
+
+    length = fal.calc_loop_length_ft(ordered, risers_by_floor=risers_by_floor)
+    assert length == pytest.approx(10.0)
+
+
+def test_calc_loop_length_ft_ring_loop_closes_to_panel_without_riser():
+    ordered = fal.build_loop_tree(_isolator_branch_nodes())
+    panel_point = FakeXYZ(-1, 0, 0)
+
+    # Магистраль (без кольца, см. test_calc_loop_length_ft_includes_panel_segment) = 8ft.
+    # + обратный участок: от узла 3 (последний узел МАГИСТРАЛИ, не узел 4 —
+    # он на ветви изолятора) до панели = |2-(-1)| = 3ft => 11ft.
+    length = fal.calc_loop_length_ft(ordered, panel_point, ring_loop=True)
+    assert length == pytest.approx(11.0)
+
+
+def test_calc_loop_length_ft_ring_loop_closes_to_riser_when_available():
+    nodes = _isolator_branch_nodes()
+    for n in nodes:
+        n["floor"] = u"Этаж 1"
+    ordered = fal.build_loop_tree(nodes)
+    panel_point = FakeXYZ(-1, 0, 0)
+    # panel_floor не передан (None) — участок панель->1 остаётся прямым,
+    # риск участвует только в обратном участке кольца.
+    risers_by_floor = {u"Этаж 1": [{"id": 100, "pt": FakeXYZ(2, 5, 0)}]}
+
+    # 8ft (как раньше) + узел 3 (2,0,0) -> стояк (2,5,0) = 5ft => 13ft.
+    length = fal.calc_loop_length_ft(
+        ordered, panel_point, risers_by_floor=risers_by_floor, ring_loop=True
+    )
+    assert length == pytest.approx(13.0)

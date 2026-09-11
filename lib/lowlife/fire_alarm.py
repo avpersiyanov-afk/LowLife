@@ -21,6 +21,11 @@ from lowlife.scs import classify_element
 # устройства уходит ветвь.
 ISOLATOR_KEYWORD = u"изолятор"
 
+# Ключевое слово стояка в имени семейства — переход шлейфа между этажами
+# считается через ближайший экземпляр такого семейства на каждом из двух
+# этажей (fire_alarm_loops._edge_length_ft), а не напрямую по координатам.
+RISER_KEYWORD = u"стояк"
+
 
 def parse_device_address(address):
     """
@@ -76,6 +81,13 @@ def is_isolator(el, isolator_keyword=ISOLATOR_KEYWORD):
     if not isolator_keyword:
         return False
     return classify_element(el, [("isolator", [isolator_keyword], [])]) == "isolator"
+
+
+def is_riser(el, riser_keyword=RISER_KEYWORD):
+    """Стояк — по ключевому слову в имени семейства/типа."""
+    if not riser_keyword:
+        return False
+    return classify_element(el, [("riser", [riser_keyword], [])]) == "riser"
 
 
 def group_devices_by_loop(devices, address_by_id):
