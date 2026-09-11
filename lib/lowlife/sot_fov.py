@@ -39,13 +39,18 @@ import re
 import math
 
 from Autodesk.Revit.DB import (
-    XYZ, Line, Arc, CurveLoop, Element, ElementId,
+    XYZ, Line, Arc, CurveLoop, Element, ElementId, Transform,
     FilteredElementCollector, RevitLinkInstance, BuiltInCategory,
-    BuiltInParameter, StorageType, LocationPoint,
+    BuiltInParameter, StorageType, LocationPoint, ElementMulticategoryFilter,
     FilledRegion, FilledRegionType, CurveElement,
     SpatialElementBoundaryOptions, SpatialElementBoundaryLocation,
-    Color, GraphicsStyleType,
+    Color, GraphicsStyleType, Options, Solid, PlanarFace,
 )
+
+try:
+    from Autodesk.Revit.DB import ViewDetailLevel as _ViewDetailLevel
+except Exception:
+    _ViewDetailLevel = None
 
 # Определение «это угловой параметр?» — модульный SpecTypeId (Revit 2021+),
 # с откатом на устаревший enum ParameterType, если он ещё доступен. Оба —
@@ -378,6 +383,122 @@ def _near_far_radius(h_ft, tilt_rad, vfov_rad, max_r):
 
 
 # ======================================================================
+#  ОБЩАЯ 3D-ГЕОМЕТРИЯ: ГОРИЗОНТАЛЬНОЕ СЕЧЕНИЕ ТЕЛА ЭЛЕМЕНТА
+# ======================================================================
+#
+# Резерв для помещений, чей контур GetBoundarySegments не отдаёт
+# (повреждённая/разомкнутая граница), и основной способ получить контур
+# препятствия (колонны и т.п.) — в обоих случаях берём уже готовое тело,
+# которое Revit сам считает для площади/объёма или для показа элемента, и
+# вырезаем его нижнюю горизонтальную грань. Работает для любой формы
+# (вогнутой, с несколькими контурами, с дугами) без ручной геометрии.
+
+def _geom_options():
+    o = Options()
+    try:
+        o.ComputeReferences = False
+    except Exception:
+        pass
+    try:
+        o.IncludeNonVisibleObjects = False
+    except Exception:
+        pass
+    if _ViewDetailLevel is not None:
+        try:
+            o.DetailLevel = _ViewDetailLevel.Fine
+        except Exception:
+            pass
+    return o
+
+
+def _element_solids(el, opts):
+    """Список Solid элемента (в его собственных координатах), включая
+    вложенную геометрию семейства (GeometryInstance). Тела с нулевым
+    объёмом (грани/кромки-заглушки) отбрасываются."""
+    try:
+        geo = el.get_Geometry(opts)
+    except Exception:
+        geo = None
+    if geo is None:
+        return []
+
+    out = []
+    for g in geo:
+        try:
+            if isinstance(g, Solid):
+                if g.Volume > 1e-6:
+                    out.append(g)
+                continue
+        except Exception:
+            pass
+        inst_geo = None
+        try:
+            inst_geo = g.GetInstanceGeometry()   # GeometryInstance (семейство)
+        except Exception:
+            inst_geo = None
+        if inst_geo is None:
+            continue
+        for g2 in inst_geo:
+            try:
+                if isinstance(g2, Solid) and g2.Volume > 1e-6:
+                    out.append(g2)
+            except Exception:
+                continue
+    return out
+
+
+def _horizontal_face_rings(solid, tf):
+    """
+    [[XYZ,...], ...] — контуры нижней горизонтальной плоской грани тела
+    (в координатах ХОСТА, Z=0), т.е. его горизонтальное сечение/подошва.
+    Для призматических объёмов (помещение, колонна постоянного сечения)
+    это и есть их контур в плане. None, если такой грани нет.
+    """
+    best_face = None
+    best_z = None
+    try:
+        faces = solid.Faces
+    except Exception:
+        return None
+
+    for face in faces:
+        try:
+            if not isinstance(face, PlanarFace):
+                continue
+            n = face.FaceNormal
+            if abs(n.Z) < 0.98:
+                continue
+            z = face.Origin.Z
+        except Exception:
+            continue
+        if best_z is None or z < best_z:
+            best_z = z
+            best_face = face
+
+    if best_face is None:
+        return None
+
+    rings = []
+    try:
+        loops = best_face.GetEdgesAsCurveLoops()
+    except Exception:
+        return None
+    for loop in loops:
+        pts = []
+        for curve in loop:
+            try:
+                tess = curve.CreateTransformed(tf).Tessellate()
+            except Exception:
+                continue
+            for i in range(tess.Count - 1):
+                q = tess[i]
+                pts.append(XYZ(q.X, q.Y, 0.0))
+        if len(pts) >= 3:
+            rings.append(pts)
+    return rings or None
+
+
+# ======================================================================
 #  ПОМЕЩЕНИЕ ИЗ СВЯЗИ  ->  КОНТУР В КООРДИНАТАХ ХОСТА
 # ======================================================================
 
@@ -394,15 +515,29 @@ def _boundary_options(mode):
     return opt
 
 
+def _room_solid_rings(room, tf):
+    """Резерв для _room_boundary_rings: сечение тела помещения, которое
+    Revit сам строит для площади/объёма. None, если у помещения нет
+    вычисленной геометрии (совсем не ограничено)."""
+    for solid in _element_solids(room, _geom_options()):
+        rings = _horizontal_face_rings(solid, tf)
+        if rings:
+            return rings
+    return None
+
+
 def _room_boundary_rings(room, opt, tf):
     """[[XYZ,...], ...] — контуры Room в координатах ХОСТА, Z=0. Первый —
-    внешний, остальные — «дыры». None, если контур не получить."""
+    внешний, остальные — «дыры». Основной путь — GetBoundarySegments;
+    если он не дал ни одного пригодного контура (разомкнутая/повреждённая
+    граница) — резерв _room_solid_rings. None, если не получилось ни так,
+    ни так (помещение действительно не ограничено)."""
     try:
         loops = room.GetBoundarySegments(opt)
     except Exception:
         loops = None
     if not loops:
-        return None
+        return _room_solid_rings(room, tf)
 
     rings = []
     for loop in loops:
@@ -427,7 +562,7 @@ def _room_boundary_rings(room, opt, tf):
                 pts.append(XYZ(q.X, q.Y, 0.0))
         if len(pts) >= 3:
             rings.append(pts)
-    return rings or None
+    return rings or _room_solid_rings(room, tf)
 
 
 def _point_in_ring(px, py, ring):
@@ -575,6 +710,123 @@ def room_rings_for_point(doc, host_point, boundary_mode):
         return near[0][1], u"вне контура, взято ближайшее ({:.0f} мм)".format(near[0][0] * 304.8)
 
     return None, u"проверено помещений: {}, точка вне всех контуров по XY".format(total_rooms)
+
+
+# ======================================================================
+#  ПРЕПЯТСТВИЯ ВНУТРИ ПОМЕЩЕНИЯ (КОЛОННЫ И Т.П.)
+# ======================================================================
+#
+# Отдельно от границы помещения: колонны нередко стоят в СВОЁМ,
+# конструктивном файле-связи (не в архитектурном, откуда берутся Room), и
+# сама Room чаще всего не огибает их контуром (если колонна не отмечена
+# «граница помещения»). Поэтому препятствия ищутся своим проходом по ВСЕМ
+# связям и по текущей модели, независимо от того, где нашлось помещение.
+
+DEFAULT_OBSTACLE_CATEGORIES = u"OST_Columns, OST_StructuralColumns"
+
+
+def _prepare_obstacle_sources(doc, cat_ids):
+    """
+    [(source_doc, transform_в_хост, [(element, bbox_в_координатах_source), ...])]
+    — кандидаты-препятствия из текущей модели и ВСЕХ связей, по категориям
+    cat_ids. Геометрия тела ещё не строится (дорого) — только элемент и
+    его bbox, для быстрой отбраковки по высоте/удалённости на камеру.
+    Вызывается один раз на весь прогон кнопки (не на камеру).
+    """
+    if not cat_ids:
+        return []
+
+    id_objs = List[ElementId]([ElementId(i) for i in cat_ids])
+    cat_filter = ElementMulticategoryFilter(id_objs)
+
+    sources = [(doc, Transform.Identity)]
+    for li in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        ldoc = li.GetLinkDocument()
+        if ldoc is None:
+            continue
+        try:
+            tf = li.GetTotalTransform()
+        except Exception:
+            continue
+        sources.append((ldoc, tf))
+
+    out = []
+    for src_doc, tf in sources:
+        try:
+            elems = (FilteredElementCollector(src_doc)
+                     .WherePasses(cat_filter)
+                     .WhereElementIsNotElementType()
+                     .ToElements())
+        except Exception:
+            elems = []
+        items = []
+        for el in elems:
+            try:
+                bbox = el.get_BoundingBox(None)
+            except Exception:
+                bbox = None
+            if bbox is not None:
+                items.append((el, bbox))
+        if items:
+            out.append((src_doc, tf, items))
+    return out
+
+
+def _footprint_rings(el, tf):
+    """Горизонтальный контур препятствия (в координатах хоста, Z=0) по
+    его реальному телу — не по прямоугольнику bounding box."""
+    for solid in _element_solids(el, _geom_options()):
+        rings = _horizontal_face_rings(solid, tf)
+        if rings:
+            return rings
+    return None
+
+
+def _gather_obstacle_rings(obstacle_sources, ring_cache, center, plane_z_host, max_r):
+    """
+    Контуры препятствий рядом с center, чей вертикальный габарит
+    захватывает plane_z_host (высоту плоскости расчёта в координатах
+    хоста) — как дополнительные «дыры» для обрезки лучей зоны.
+    ring_cache — {(id(source_doc), int(ElementId)): rings|None}, общий на
+    весь прогон кнопки: контур препятствия не зависит от камеры и
+    считается один раз, даже если в его тень попадает несколько камер.
+    """
+    if not obstacle_sources:
+        return []
+
+    out = []
+    reach2 = (max_r + 10.0) ** 2   # запас в футах на габарит препятствия
+
+    for src_doc, tf, items in obstacle_sources:
+        try:
+            plane_local = tf.Inverse.OfPoint(XYZ(center.X, center.Y, plane_z_host)).Z
+        except Exception:
+            plane_local = plane_z_host
+
+        for el, bbox in items:
+            if not (bbox.Min.Z - 1.0 <= plane_local <= bbox.Max.Z + 1.0):
+                continue
+
+            cx = 0.5 * (bbox.Min.X + bbox.Max.X)
+            cy = 0.5 * (bbox.Min.Y + bbox.Max.Y)
+            try:
+                c_host = tf.OfPoint(XYZ(cx, cy, bbox.Min.Z))
+            except Exception:
+                c_host = XYZ(cx, cy, 0.0)
+            dx, dy = c_host.X - center.X, c_host.Y - center.Y
+            if dx * dx + dy * dy > reach2:
+                continue
+
+            key = (id(src_doc), el.Id.IntegerValue)
+            if key in ring_cache:
+                rings = ring_cache[key]
+            else:
+                rings = _footprint_rings(el, tf)
+                ring_cache[key] = rings
+            if rings:
+                out.extend(rings)
+
+    return out
 
 
 # ======================================================================
@@ -803,7 +1055,8 @@ def _draw_dori(doc, view, center, base, half, h_res_px, hfov_rad, max_r, z, gsty
 
 def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
                 clip, ray_count, boundary_mode, target_off_ft, offset_deg,
-                dead_zone_on, unit_mode, h_res, tag, z):
+                dead_zone_on, unit_mode, h_res, tag, z,
+                obstacle_sources, ring_cache):
     if not isinstance(cam.Location, LocationPoint):
         return (cam, u"no_location", u"")
 
@@ -866,18 +1119,39 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         near_r = 0.0
 
     status = u"ok"
-    rings = None
+    room_rings = None
     room_note = u""
     if clip:
-        rings, room_note = room_rings_for_point(doc, p, boundary_mode)
-        if rings is None:
+        room_rings, room_note = room_rings_for_point(doc, p, boundary_mode)
+        if room_rings is None:
             status = u"ok_no_room"
+
+    # препятствия (колонны и т.п.) — независимо от обрезки по помещению,
+    # ищутся во всех связях + текущей модели на высоте плоскости расчёта
+    plane_z_host = z + target_off_ft
+    obstacle_rings = _gather_obstacle_rings(
+        obstacle_sources, ring_cache, center, plane_z_host, max_r)
+
+    rings = None
+    if room_rings is not None or obstacle_rings:
+        rings = list(room_rings or []) + list(obstacle_rings or [])
+
+    used_room = room_rings is not None
+    used_obstacles = bool(obstacle_rings)
 
     cl = _zone_curveloop(center, base, half, near_r, far_r, rings, ray_count, z)
     if cl is None and rings is not None:
-        # обрезка «съела» весь контур (камера на самой границе / выбрано
-        # чужое помещение) — строим без обрезки, но помечаем
-        cl = _zone_curveloop(center, base, half, near_r, far_r, None, ray_count, z)
+        # обрезка «съела» весь контур — сначала пробуем без препятствий
+        # (осталась только граница помещения), потом вовсе без обрезки
+        if used_room and used_obstacles:
+            cl = _zone_curveloop(center, base, half, near_r, far_r, room_rings, ray_count, z)
+            if cl is not None:
+                used_obstacles = False
+        if cl is None:
+            cl = _zone_curveloop(center, base, half, near_r, far_r, None, ray_count, z)
+            if cl is not None:
+                used_room = False
+                used_obstacles = False
         if cl is not None:
             status = u"ok_clip_failed"
     if cl is None:
@@ -902,17 +1176,24 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     if dori_style is not None and h_res > 0:
         _draw_dori(doc, view, center, base, half, h_res, hfov, max_r, z, dori_style)
 
+    parts = []
     if not clip:
-        clip_note = u"без обрезки (выключена)"
+        parts.append(u"без обрезки по помещению (выключена)")
     elif status == u"ok_no_room":
-        clip_note = u"без обрезки — {}".format(room_note or u"помещение не найдено")
-    elif status == u"ok_clip_failed":
-        clip_note = u"без обрезки (обрезка дала пустой контур); {}".format(room_note)
-    elif rings is not None:
-        clip_note = u"обрезка: {} ({} сегм.)".format(
-            room_note or u"помещение", sum(len(r) for r in rings))
-    else:
-        clip_note = u"без обрезки"
+        parts.append(u"без обрезки по помещению — {}".format(room_note or u"не найдено"))
+    elif used_room:
+        parts.append(u"обрезка по помещению: {} ({} сегм.)".format(
+            room_note or u"", sum(len(r) for r in room_rings)))
+    elif room_rings is not None:
+        parts.append(u"обрезка по помещению не удалась — без неё")
+
+    if used_obstacles:
+        parts.append(u"препятствий на пути: {}".format(len(obstacle_rings)))
+    elif obstacle_rings:
+        parts.append(u"препятствия рядом есть ({}), но обрезка по ним не удалась".format(
+            len(obstacle_rings)))
+
+    clip_note = u"; ".join(p for p in parts if p) or u"—"
 
     az = math.degrees(base) % 360.0
     summary = (u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; напр.: {}; {}"
@@ -985,6 +1266,11 @@ def build_fov_zones(doc, cameras, view, settings):
     dead_zone_on = _as_bool(s.get("draw_dead_zone"), default=True)
     unit_mode = s.get("angle_unit") or u"авто"
 
+    obstacle_cat_ids = resolve_category_ids(
+        doc, s.get("obstacle_categories") or DEFAULT_OBSTACLE_CATEGORIES)
+    obstacle_sources = _prepare_obstacle_sources(doc, obstacle_cat_ids)
+    ring_cache = {}
+
     cam_ids = set(c.Id.IntegerValue for c in cameras)
     _delete_previous(doc, view, tag, cam_ids, dori_style_name if dori_on else None)
 
@@ -1002,7 +1288,8 @@ def build_fov_zones(doc, cameras, view, settings):
             results.append(_one_camera(
                 doc, cam, view, s, frt, line_style, dori_style,
                 clip, ray_count, boundary_mode, target_off_ft, offset_deg,
-                dead_zone_on, unit_mode, h_res, tag, z))
+                dead_zone_on, unit_mode, h_res, tag, z,
+                obstacle_sources, ring_cache))
         except Exception as ex:
             results.append((cam, u"create_failed", u"{}".format(ex)))
     return results
@@ -1183,11 +1470,13 @@ TEXT_FIELDS = [
     ),
     (
         "clip_to_rooms",
-        u"③ Обрезка по помещению из связи",
+        u"③ Обрезка по помещению и препятствиям",
         u"Резать зону по границе помещения (да/нет)",
         u"«да» — зона обрезается по контуру Room из связанной модели, в "
         u"котором стоит камера (учитываются вогнутые помещения и «дыры» — "
-        u"колонны/шахты). «нет» — зона строится без обрезки.",
+        u"колонны/шахты, вписанные в саму границу помещения). «нет» — "
+        u"граница помещения не учитывается (препятствия из поля ниже — "
+        u"учитываются независимо от этой настройки).",
         u"да", False
     ),
     (
@@ -1195,8 +1484,27 @@ TEXT_FIELDS = [
         u"",
         u"Граница помещения",
         u"«отделка» — по чистовой поверхности стен (Finish); «центр» — по "
-        u"осям стен (Center).",
+        u"осям стен (Center). Если для конкретного помещения контур так и "
+        u"не построился (открытый/повреждённый контур) — используется "
+        u"резервный способ: сечение уже готового тела помещения, которое "
+        u"сам Revit строит для площади/объёма — работает для помещений "
+        u"любой формы (вогнутых, с несколькими контурами, с дугами).",
         u"отделка", False
+    ),
+    (
+        "obstacle_categories",
+        u"",
+        u"Категории препятствий внутри помещения (колонны и т.п.)",
+        u"Через запятую — имена BuiltInCategory (OST_Columns — архитектурные "
+        u"колонны, OST_StructuralColumns — конструктивные, "
+        u"OST_StructuralFraming — балки) и/или русские имена категорий. "
+        u"Ищутся и в этой модели, и во ВСЕХ связях — конструктивные колонны "
+        u"обычно в отдельной связи, не в той, где помещения. Каждый элемент "
+        u"такой категории, чей вертикальный габарит захватывает высоту "
+        u"плоскости расчёта, вырезает в зоне обзора тень по своему реальному "
+        u"горизонтальному контуру (не по прямоугольнику габаритов). Пусто — "
+        u"препятствия не учитываются.",
+        u"OST_Columns, OST_StructuralColumns", False
     ),
     (
         "fill_type_name",
