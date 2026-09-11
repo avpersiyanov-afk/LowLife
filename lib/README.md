@@ -1226,7 +1226,8 @@ room_number_param)` — запись по точкам прохода, возв�
 `hooks/command-after-exec[<id>].py` уже есть.
 
 Настройки — обычный JSON `%APPDATA%\pyRevit\LowLifeExportRename_settings.json`
-(тот же подход, что `scs_settings.py`): `watch_explorer` (авто-режим),
+(тот же подход, что `scs_settings.py`): `watch_explorer` (авто-режим,
+**выключен по умолчанию** — только кнопка вручную; включить Shift+клик),
 `enabled` (взвод по клику на кнопку экспорта), `trigger_substrings`
 (подстроки Id/Text/Cookie кнопки, регистр не важен; по умолчанию
 `["mprsheetexport"]`), `from_token`/`to_token`, `extensions`
