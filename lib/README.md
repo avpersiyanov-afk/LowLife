@@ -790,40 +790,17 @@ Dynamo), а точная «гравитационная» упаковка: ка
 чертёжные виды**, запустив кнопку дважды (на одном виде «Только сечение», на
 другом «Только таблица»).
 
-**Раскладка (`layout`, настройка кнопки) — два режима.**
-`LAYOUT_SCATTER` — все кабели вперемешку, `arrange_cables` (bottom-left-fill,
-крупные ниже, при равной высоте левее), без группировки, без стяжек.
-`LAYOUT_GROUPED` (`_arrange_grouped`) — каждый тип (`_group_by_type`, от
-толстого к тонкому) своей ЦЕНТРИРОВАННОЙ ПИРАМИДКОЙ (`_pyramid_offsets`: 2 —
-рядом, 3 — пирамидка, 4 — 3 снизу + 1 сверху; неполный верхний ряд
-центрируется сдвигом кратным 2r) на полу лотка, пирамидки идут слева
-направо. Тип, где кабелей **> 8** (`BUNDLE_SIZE`), стянут в пучки по ~8
-«ромашкой» (`_split_bundles` — без крошечного хвоста: 10→[5,5], 11→[6,5];
-`_daisy_offsets`: 2 — рядом, 3 — треугольник, 4 — квадрат, 5–8 — центр +
-кольцо) — тогда пирамидка складывается из ромашек, каждая снапается вниз
-(`_drop_y`), вокруг рисуется кольцо-стяжка (`ties` из `plan_section`).
-**Если пирамидка упирается в верх лотка**, остаток не раскидывается —
-`_pyramid_offsets` достраивает её добавочными столбиками (1..N рядов, во всю
-высоту) вплотную к боковой (стеночной) стороне, пирамидка при этом
-сдвигается вправо на их ширину; что не влезло даже так — в `unplaced`.
-BLF-движок для `LAYOUT_SCATTER` — `_blf_pack(radii, w, h)`.
-
-`divide_soue_ro` — кабели `is_soue_ro(system)` уходят в отдельный отсек за
-вертикальной перегородкой; ширины отсеков — по доле площади (15..50% под
-СОУЭ РО), `plan_section` возвращает X оси перегородки, `draw_section` её рисует.
-
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `find_data_sheet` | `find_data_sheet(sheet_names)` | Имя листа «сводные данные для плагина» среди многих (регистр/пробелы/«пагина» не важны); `None`, если не нашёлся |
 | `read_cables` | `read_cables(path, sheet_name=None)` | `(cables, error)` — список `CableData` с листа `sheet_name` (без него — `find_data_sheet`, иначе первый лист). Столбцы жёстко по номеру (0 марка, 1 диаметр, 2 участок, 3 кол-во, 5 система, 6 %, 7 высота, 8 ширина). Участок протягивается вниз по объединённым ячейкам |
 | `list_sections` | `list_sections(cables)` | Уникальные участки в порядке первого появления |
 | `renumber_cables` | `renumber_cables(cables)` | Проставляет `.mark` = "1,2,3..." по порядку появления в переданном списке |
-| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — одна bottom-left-fill куча, без группировки (режим `LAYOUT_SCATTER`) |
-| `is_soue_ro` | `is_soue_ro(system)` | `True` для системы «СОУЭ РО» в любом написании |
-| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm, layout=LAYOUT_SCATTER, divide_soue_ro=False)` | `(placed, unplaced, fill_percent, partition_x_ft, ties)` — раскладка (россыпью / группами-ромашкой, перегородка СОУЭ РО), без рисования |
+| `arrange_cables` | `arrange_cables(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced)` — одна bottom-left-fill куча (`_blf_pack`), все кабели вперемешку |
+| `plan_section` | `plan_section(cables, tray_width_mm, tray_height_mm)` | `(placed, unplaced, fill_percent)` — раскладка без рисования |
 | `group_for_table` | `group_for_table(placed)` | Строки сводной таблицы: группировка по (марка, система, диаметр) |
 | `paper_to_model` | `paper_to_model(mm, scale)` | мм на бумаге → футы в модели на виде с масштабом 1:scale |
-| `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0, partition_x_ft=None, ties=None)` | Контур лотка (реальный размер) + подпись + кружки + кольца-стяжки (`ties`) + перегородка отсека. `insertion_point` — левый нижний угол лотка. **В транзакции** |
+| `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0)` | Контур лотка (реальный размер) + подпись + кружки. `insertion_point` — левый нижний угол лотка. **В транзакции** |
 | `draw_table` | `draw_table(doc, view, section_name, tray_width_mm, tray_height_mm, placed, fill_percent, top_left, scale=1.0)` | Сводная таблица («бумажные» размеры × scale); `top_left` — левый верхний угол; возвращает Y нижней нарисованной точки. **В транзакции** |
 
 ## family_catalog.py

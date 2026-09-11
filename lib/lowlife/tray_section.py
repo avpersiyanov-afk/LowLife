@@ -4,7 +4,7 @@ u"""
 кнопки «Сечение лотка» (ToolsTraySection.panel/TraySection.pushbutton).
 
 Портировано со скрипта Dynamo (тот же состав входных данных и оформление
-таблицы), с тремя отличиями от оригинала:
+таблицы), с отличиями от оригинала:
 
   - Excel читается через lowlife.xlsx_io, а не openpyxl — openpyxl в
     IronPython 2 недоступен (нет pip), как и у остальных кнопок обмена с
@@ -29,26 +29,6 @@ u"""
     Кабели, которым не хватило места по высоте лотка, возвращаются
     отдельным списком, а не молча пропадают.
 
-  - Режим раскладки (настройка кнопки) — два варианта:
-    LAYOUT_SCATTER — все кабели вперемешку, bottom-left-fill слева
-    направо (_blf_pack, без группировки, без стяжек);
-    LAYOUT_GROUPED (_arrange_grouped) — каждый тип (original_mark, от
-    толстого к тонкому) своей ЦЕНТРИРОВАННОЙ ПИРАМИДКОЙ (_pyramid_offsets)
-    на полу лотка, пирамидки идут слева направо. Тип, где кабелей > 8,
-    стянут в пучки по ~8 «ромашкой» (_daisy_offsets, _split_bundles — без
-    крошечного хвоста) — тогда пирамидка складывается из ромашек, вокруг
-    каждой кольцо-стяжка (ties из plan_section). Если пирамидка упирается
-    в верх лотка, остаток НЕ раскидывается: _pyramid_offsets достраивает
-    её добавочными столбиками вплотную к боковой (стеночной) стороне —
-    пирамидка продолжается вбок вдоль стенки лотка. Что не влезло даже
-    так — в unplaced.
-
-  - Перегородка СОУЭ РО (настройка кнопки): если divide_soue_ro, кабели
-    системы «СОУЭ РО» (is_soue_ro) уходят в отдельный отсек лотка,
-    отделённый вертикальной перегородкой; ширины отсеков — по доле
-    площади кабелей (15..50% под СОУЭ РО). plan_section возвращает X
-    осевой линии перегородки, draw_section её рисует.
-
   - Файл, участки (список с галочками — можно несколько), режим и точка
     вставки выбираются интерактивно (pyrevit.forms + PickPoint), а не
     через позиционные входы IN[..]. Режим: сечение+таблица / только
@@ -66,11 +46,6 @@ u"""
 
 import math
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    OrderedDict = dict
-
 from Autodesk.Revit.DB import (
     Arc, ElementId, ElementTypeGroup, HorizontalTextAlignment, Line,
     TextNote, TextNoteOptions, TextNoteType, VerticalTextAlignment, XYZ,
@@ -81,12 +56,6 @@ from lowlife.xlsx_io import read_xlsx, list_sheet_names
 MM_TO_FEET = 1.0 / 304.8
 SQRT3 = math.sqrt(3.0)
 SHEET_NAME = u"Сводный"  # старое имя из скрипта Dynamo (запасной вариант)
-
-LAYOUT_SCATTER = u"scatter"  # все кабели вперемешку, bottom-left-fill слева направо
-LAYOUT_GROUPED = u"grouped"  # по типам: >8 кабелей — ромашки по 8, иначе пирамидка
-
-_BLOCK_GAP_MM = 3.0        # зазор между пирамидками разных типов
-PARTITION_GAP_MM = 5.0     # ширина перегородки между отсеками (СОУЭ РО)
 
 
 def _norm_sheet(s):
@@ -337,41 +306,28 @@ def _fits(x, y, r, tray_w, tray_h, placed):
     return True
 
 
-def _blf_pack(radii, tray_w, tray_h, obstacles=None, keep_order=False, center_x=None):
+def _blf_pack(radii, tray_w, tray_h):
     u"""Bottom-left-fill для набора кругов произвольных радиусов (футы,
-    tray_w/tray_h тоже футы). Каждый — в самую низкую точку покоя
-    (никогда не висит в воздухе: опора — пол, стенка или другой круг).
-    obstacles — уже занятые круги (_Circ), их огибаем, но не возвращаем.
-    keep_order=False — крупные кладём первыми; True — в порядке подачи
-    (для кабелей/пучков одного типа подряд). center_x задан — при равной
-    высоте берём точку БЛИЖЕ К ЦЕНТРУ (ряды растут из центра наружу —
-    получается пирамидка), иначе — самую левую.
+    tray_w/tray_h тоже футы). Крупные — первыми, каждый — в самую низкую
+    точку покоя, при равной высоте — в самую левую (никогда не висит в
+    воздухе: опора — пол, стенка или другой круг).
     Возвращает (positions, unplaced): positions — dict {индекс: (x, y)}."""
-    placed = list(obstacles) if obstacles else []
+    placed = []
     positions = {}
     unplaced = []
 
-    if center_x is None:
-        sort_key = lambda c: (c[1], c[0])
-    else:
-        sort_key = lambda c: (c[1], abs(c[0] - center_x), c[0])
-
-    order = range(len(radii)) if keep_order else sorted(range(len(radii)), key=lambda i: -radii[i])
-    for idx in order:
+    for idx in sorted(range(len(radii)), key=lambda i: -radii[i]):
         r = radii[idx]
         if r <= 0 or 2.0 * r > tray_w + 1e-6:
             unplaced.append(idx)
             continue
 
-        # Кандидаты — готовые точки покоя (x, y): у обеих стенок, в центре
-        # лотка и над центром уложенного круга (вертикальное падение
-        # _drop_y); НА ПОЛУ вплотную к уложенному кругу сбоку (y=r); в
-        # седле между двумя близкими по X кругами (_pair_xy).
+        # Кандидаты — готовые точки покоя (x, y): у обеих стенок и над
+        # центром уложенного круга (вертикальное падение _drop_y); НА
+        # ПОЛУ вплотную к уложенному кругу сбоку (y=r); в седле между
+        # двумя близкими по X кругами (_pair_xy).
         cands = []
-        walls = [r, tray_w - r]
-        if center_x is not None:
-            walls.append(min(max(center_x, r), tray_w - r))
-        for wx in walls:
+        for wx in (r, tray_w - r):
             cands.append((wx, _drop_y(wx, r, placed)))
         for p in placed:
             cx = min(max(p.cx, r), tray_w - r)
@@ -393,7 +349,7 @@ def _blf_pack(radii, tray_w, tray_h, obstacles=None, keep_order=False, center_x=
                     cands.append(xy)
 
         best = None
-        for x, y in sorted(cands, key=sort_key):
+        for x, y in sorted(cands, key=lambda c: (c[1], c[0])):
             x = min(max(x, r), tray_w - r)
             if y + r > tray_h + 1e-6:
                 continue
@@ -427,216 +383,11 @@ def arrange_cables(cables, tray_width_mm, tray_height_mm):
     return placed, unplaced
 
 
-def _group_by_type(cables):
-    u"""Списки CableData по типам (original_mark); тип с самым толстым
-    кабелем — первым, внутри группы — порядок как во входе."""
-    groups = OrderedDict()
-    for c in cables:
-        groups.setdefault(c.original_mark, []).append(c)
-    return sorted(groups.values(), key=lambda g: (-g[0].diameter, g[0].original_mark))
-
-
 def _expand(cables):
     out = []
     for c in cables:
         out.extend([c] * c.quantity)
     return out
-
-
-def _pyramid_offsets(n, r, avail_w, avail_h):
-    u"""Центрированная треугольная пирамидка из n кругов радиуса r: 2 —
-    рядом, 3 — пирамидка, 4 — 3 снизу + 1 сверху, дальше низ по
-    возрастанию; ряды со сдвигом на радиус, шаг по высоте r*SQRT3,
-    неполный верхний ряд центрируется сдвигом кратным 2r.
-
-    Если полный треугольник упирается в верх лотка, остаток НЕ
-    выбрасывается: он идёт добавочными столбиками (1..N рядов, во всю
-    доступную высоту) вплотную к боковой стороне пирамидки — пирамидка
-    при этом сдвигается вправо на ширину столбиков. Так пирамидка
-    продолжается «в бок» вдоль стенки лотка, а не обрезается.
-
-    Кладёт столько кругов, сколько влезло в avail_w x avail_h.
-    Возвращает (offsets, n_placed, block_w, block_h)."""
-    if n <= 0 or r <= 0 or avail_w < 2.0 * r - 1e-9 or avail_h < 2.0 * r - 1e-9:
-        return [], 0, 0.0, 0.0
-
-    b_lim = max(1, int((avail_w + 1e-9) / (2.0 * r)))
-    max_rows = max(1, int((avail_h - 2.0 * r) / (r * SQRT3) + 1e-9) + 1)
-
-    def _tri(base):
-        rows, left, w = [], n, base
-        while left > 0 and w > 0 and len(rows) < max_rows:
-            take = min(w, left)
-            rows.append(take)
-            left -= take
-            w -= 1
-        return rows, left
-
-    # низ пирамидки b: минимальное треугольное число >= n, не шире лотка
-    b = 1
-    while b * (b + 1) // 2 < n:
-        b += 1
-    b = min(b, b_lim)
-
-    tri_rows, leftover = _tri(b)
-    wall_cols = 0
-    if leftover > 0:
-        wall_cols = int(math.ceil(leftover / float(max_rows)))
-        if wall_cols > b_lim - b:                 # рядом с пирамидкой не помещается
-            b = max(1, b_lim - 1)                 # ужимаем низ, освобождая место
-            tri_rows, leftover = _tri(b)
-            wall_cols = int(math.ceil(leftover / float(max_rows))) if leftover else 0
-        wall_cols = max(0, min(wall_cols, b_lim - b))
-
-    x_shift = wall_cols * 2.0 * r
-    offsets = []
-
-    # добавочные столбики остатка вплотную к боковой стороне пирамидки,
-    # снизу вверх, со сдвигом рядов (садятся в сёдла)
-    placed_wall = 0
-    wall_used_rows = 0
-    for row in range(max_rows):
-        if placed_wall >= leftover:
-            break
-        start = r + (row % 2) * r
-        col_room = max(0, int((x_shift - start + r + 1e-9) / (2.0 * r)))
-        take = min(wall_cols, leftover - placed_wall, col_room)
-        if take <= 0:
-            break
-        y = r + row * r * SQRT3
-        for k in range(take):
-            offsets.append((start + k * 2.0 * r, y))
-        placed_wall += take
-        wall_used_rows = row + 1
-
-    # сама центрированная пирамидка правее столбиков
-    for j, cnt in enumerate(tri_rows):
-        base_x = x_shift + r + j * r + ((b - j - cnt) // 2) * 2.0 * r
-        y = r + j * r * SQRT3
-        for k in range(cnt):
-            offsets.append((base_x + k * 2.0 * r, y))
-
-    block_w = x_shift + 2.0 * r * b
-    block_h = 2.0 * r + (max(len(tri_rows), wall_used_rows) - 1) * r * SQRT3
-    return offsets, len(offsets), block_w, block_h
-
-
-BUNDLE_SIZE = 8  # кабелей в пучке под стяжку
-
-
-def _split_bundles(n):
-    u"""Пучки размером около BUNDLE_SIZE, но БЕЗ крошечного хвоста: n=10 -> [5,5],
-    n=11 -> [6,5], n=128 -> 16 по 8. Иначе одиночный «пучок» из 1-2 кабелей
-    висел бы отдельной точкой в верху пирамиды."""
-    if n <= 0:
-        return []
-    k = int(math.ceil(n / float(BUNDLE_SIZE)))
-    base, extra = divmod(n, k)
-    return [base + 1] * extra + [base] * (k - extra)
-
-
-def _daisy_offsets(m, r):
-    u"""Пучок m кабелей радиуса r «ромашкой»: смещения (dx, dy) центров от
-    центра пучка + tie_r (радиус кольца стяжки). 2 — рядом, 3 —
-    треугольник, 4 — квадрат, 5..8 — центр + кольцо лепестков."""
-    if m <= 1:
-        return [(0.0, 0.0)], r
-    if m == 2:
-        return [(-r, 0.0), (r, 0.0)], 2.0 * r
-    if m == 3:
-        rc = 2.0 * r / SQRT3
-        ang = (math.pi / 2, math.pi / 2 + 2.0 * math.pi / 3, math.pi / 2 + 4.0 * math.pi / 3)
-        return [(rc * math.cos(a), rc * math.sin(a)) for a in ang], rc + r
-    if m == 4:
-        return [(-r, -r), (r, -r), (-r, r), (r, r)], r * math.sqrt(2.0) + r
-    k = m - 1
-    ring = max(2.0 * r, r / math.sin(math.pi / k))
-    offs = [(0.0, 0.0)]
-    for i in range(k):
-        a = math.pi / 2 + i * 2.0 * math.pi / k
-        offs.append((ring * math.cos(a), ring * math.sin(a)))
-    return offs, ring + r
-
-
-def _arrange_grouped(cables, tray_width_mm, tray_height_mm):
-    u"""«Группами (ромашкой)».
-
-    Каждый тип (original_mark, от толстого к тонкому) — своей
-    ЦЕНТРИРОВАННОЙ ПИРАМИДКОЙ на полу лотка, пирамидки идут слева
-    направо. Тип с числом кабелей > BUNDLE_SIZE стянут в пучки по ~8
-    «ромашкой» (кольцо-стяжка вокруг каждого) — тогда пирамидка
-    складывается из ромашек как из больших кругов.
-
-    Если пирамидка типа упирается в верх лотка, остаток НЕ раскидывается:
-    _pyramid_offsets достраивает пирамидку добавочными столбиками вплотную
-    к её боковой (стеночной) стороне (1..N рядов, во всю высоту лотка).
-    Что не влезло даже так — в unplaced."""
-    tray_w = mm_to_feet(tray_width_mm)
-    tray_h = mm_to_feet(tray_height_mm)
-    gap = mm_to_feet(_BLOCK_GAP_MM)
-
-    placed, ties, unplaced = [], [], []
-    x_cursor = 0.0
-
-    for g in _group_by_type(cables):
-        inst = _expand(g)
-        r = mm_to_feet(g[0].diameter) / 2.0
-        if r <= 0 or 2.0 * r > tray_w + 1e-6:
-            unplaced.extend(inst)
-            continue
-
-        avail_w = tray_w - x_cursor
-
-        if len(inst) > BUNDLE_SIZE:
-            bundles = []  # (daisy_offsets, tie_r, [cables])
-            i = 0
-            for bsize in _split_bundles(len(inst)):
-                d_offs, tie_r = _daisy_offsets(bsize, r)
-                bundles.append((d_offs, tie_r, inst[i:i + bsize]))
-                i += bsize
-            slots, n_fit, bw, bh = _pyramid_offsets(
-                len(bundles), max(b[1] for b in bundles), avail_w, tray_h)
-            daisy_obs = []  # ромашки этого типа — опора для снапа вниз
-            for si in range(n_fit):
-                sx, sy = slots[si]
-                d_offs, this_tie, cabs = bundles[si]
-                bx = x_cursor + sx
-                by = _drop_y(bx, this_tie, daisy_obs)
-                if by > sy + 1e-9:
-                    by = sy
-                for (dx, dy), cab in zip(d_offs, cabs):
-                    placed.append(_Placed(bx + dx, by + dy, r, cab))
-                daisy_obs.append(_Circ(bx, by, this_tie))
-                if len(cabs) >= 2:
-                    ties.append((bx, by, this_tie))
-            for bi in range(n_fit, len(bundles)):
-                unplaced.extend(bundles[bi][2])
-        else:
-            slots, n_fit, bw, bh = _pyramid_offsets(len(inst), r, avail_w, tray_h)
-            for k in range(n_fit):
-                dx, dy = slots[k]
-                placed.append(_Placed(x_cursor + dx, dy, r, inst[k]))
-            unplaced.extend(inst[n_fit:])
-
-        x_cursor += (bw if n_fit else 0.0) + gap
-
-    return placed, ties, unplaced
-
-
-
-def _pack_region(cables, region_width_mm, region_height_mm, layout):
-    u"""Возвращает (placed, ties, unplaced)."""
-    if layout == LAYOUT_GROUPED:
-        return _arrange_grouped(cables, region_width_mm, region_height_mm)
-    placed, unplaced = arrange_cables(cables, region_width_mm, region_height_mm)
-    return placed, [], unplaced
-
-
-def is_soue_ro(system):
-    u"""True для системы «СОУЭ РО» (в любом написании: «СОУЭ РО», «СОУЭ-РО»,
-    «СОУЭ(РО)»…). Такие кабели по требованию кладут в отдельный отсек лотка."""
-    n = u"".join(ch for ch in (system or u"").lower() if ch.isalnum())
-    return n.startswith(u"соуэро")
 
 
 def group_for_table(placed):
@@ -701,81 +452,23 @@ def _fill_percent(placed, tray_width_mm, tray_height_mm):
     return (placed_area / tray_area * 100.0) if tray_area > 0 else 0.0
 
 
-def plan_section(cables, tray_width_mm, tray_height_mm,
-                 layout=LAYOUT_SCATTER, divide_soue_ro=False):
-    u"""Раскладка без рисования.
-
-    layout — LAYOUT_SCATTER (все кабели вперемешку, bottom-left-fill
-    слева направо) или LAYOUT_GROUPED (по типам: тип с числом кабелей
-    > BUNDLE_SIZE — ромашки по 8 с кольцом-стяжкой, иначе — пирамидка).
-    divide_soue_ro — кабели системы «СОУЭ РО» (is_soue_ro) кладутся в
-    отдельный отсек лотка, отделённый перегородкой; ширина отсеков — по
-    доле площади кабелей (15..50% под СОУЭ РО).
-
-    Возвращает (placed, unplaced, fill_percent, partition_x_ft, ties):
-    partition_x_ft — X осевой линии перегородки от левой стенки лотка
-    (футы) либо None; ties — список (cx, cy, r) колец-стяжек (футы,
-    от левого нижнего угла лотка).
-    """
-    partition_x_ft = None
-
-    ro = [c for c in cables if is_soue_ro(c.system)] if divide_soue_ro else []
-    ro_ids = set(id(c) for c in ro)
-    rest = [c for c in cables if id(c) not in ro_ids] if ro else cables
-
-    if ro and rest:
-        gap_mm = PARTITION_GAP_MM
-        usable = max(0.0, tray_width_mm - gap_mm)
-
-        def _area(cs):
-            return sum(math.pi * (c.diameter / 2.0) ** 2 * c.quantity for c in cs)
-
-        a_ro, a_rest = _area(ro), _area(rest)
-        frac = (a_ro / (a_ro + a_rest)) if (a_ro + a_rest) > 0 else 0.3
-        frac = min(0.5, max(0.15, frac))
-        w_ro = usable * frac
-        w_rest = usable - w_ro
-
-        placed_rest, ties_rest, un_rest = _pack_region(rest, w_rest, tray_height_mm, layout)
-        placed_ro, ties_ro, un_ro = _pack_region(ro, w_ro, tray_height_mm, layout)
-        dx = mm_to_feet(w_rest + gap_mm)
-        for p in placed_ro:
-            p.cx += dx
-        ties_ro = [(tx + dx, ty, tr) for tx, ty, tr in ties_ro]
-        placed = placed_rest + placed_ro
-        ties = ties_rest + ties_ro
-        unplaced = un_rest + un_ro
-        partition_x_ft = mm_to_feet(w_rest + gap_mm / 2.0)
-    else:
-        placed, ties, unplaced = _pack_region(cables, tray_width_mm, tray_height_mm, layout)
-
-    return (placed, unplaced, _fill_percent(placed, tray_width_mm, tray_height_mm),
-            partition_x_ft, ties)
+def plan_section(cables, tray_width_mm, tray_height_mm):
+    u"""Раскладка без рисования (bottom-left-fill, все кабели вперемешку).
+    Возвращает (placed, unplaced, fill_percent)."""
+    placed, unplaced = arrange_cables(cables, tray_width_mm, tray_height_mm)
+    return placed, unplaced, _fill_percent(placed, tray_width_mm, tray_height_mm)
 
 
 def draw_section(doc, view, section_name, tray_width_mm, tray_height_mm,
-                 placed, insertion_point, show_marks=True, scale=1.0,
-                 partition_x_ft=None, ties=None):
+                 placed, insertion_point, show_marks=True, scale=1.0):
     u"""Контур лотка (реальный размер — масштабируется видом) + подпись
-    участка над ним + кружки кабелей из placed + кольца-стяжки пучков
-    (ties) + перегородка отсека (если partition_x_ft задан).
-    insertion_point — левый нижний угол лотка. Вызывать в транзакции."""
+    участка над ним + кружки кабелей из placed. insertion_point — левый
+    нижний угол лотка. Вызывать в транзакции."""
     tray_w_ft = mm_to_feet(tray_width_mm)
     tray_h_ft = mm_to_feet(tray_height_mm)
     text_type_id = _text_note_type_id(doc)
 
     _draw_outline(doc, view, insertion_point, tray_w_ft, tray_h_ft)
-
-    if partition_x_ft is not None:
-        half = mm_to_feet(PARTITION_GAP_MM) / 2.0
-        for px in (partition_x_ft - half, partition_x_ft + half):
-            x = insertion_point.X + px
-            doc.Create.NewDetailCurve(view, Line.CreateBound(
-                XYZ(x, insertion_point.Y, 0), XYZ(x, insertion_point.Y + tray_h_ft, 0)))
-
-    for tx, ty, tr in (ties or []):
-        c = XYZ(insertion_point.X + tx, insertion_point.Y + ty, 0)
-        doc.Create.NewDetailCurve(view, Arc.Create(c, tr, 0, 2 * math.pi, XYZ.BasisX, XYZ.BasisY))
 
     if section_name:
         opts = TextNoteOptions(text_type_id)
