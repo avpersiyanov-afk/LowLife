@@ -45,6 +45,7 @@ export_rename.configure()/RenameExportFiles.pushbutton.
 import os
 import io
 import json
+import datetime
 
 from Autodesk.Revit.DB import ElementId
 from System.Collections.Generic import List
@@ -54,6 +55,46 @@ from pyrevit import forms
 from lowlife.selection import list_view_categories
 
 SETTINGS_FILE_NAME = "LowLifeFilterSelection_settings.json"
+LOG_NAME = "LowLifeFilterSelection_log.log"
+_MAX_LOG_BYTES = 200 * 1024
+
+
+def _appdata_pyrevit():
+    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+    folder = os.path.join(appdata, "pyRevit")
+    if not os.path.isdir(folder):
+        try:
+            os.makedirs(folder)
+        except Exception:
+            pass
+    return folder
+
+
+def _log(msg):
+    """Диагностический след — временно, пока отлаживаем подписку на
+    SelectionChanged (не работает у пользователя, причина не ясна).
+    %APPDATA%\\pyRevit\\LowLifeFilterSelection_log.log."""
+    try:
+        path = os.path.join(_appdata_pyrevit(), LOG_NAME)
+        try:
+            if os.path.getsize(path) > _MAX_LOG_BYTES:
+                os.remove(path)
+        except Exception:
+            pass
+        with io.open(path, "a", encoding="utf-8") as f:
+            f.write(u"{}  {}\n".format(
+                datetime.datetime.now().strftime(u"%Y-%m-%d %H:%M:%S"), msg))
+    except Exception:
+        pass
+
+
+def _exc(prefix):
+    import traceback
+    try:
+        last = traceback.format_exc().splitlines()[-1]
+    except Exception:
+        last = u"?"
+    return u"{}: {}".format(prefix, last)
 
 DEFAULTS = {
     # имена категорий, отмеченных в прошлый раз (Shift+клик, configure())
@@ -248,22 +289,32 @@ def _on_selection_changed(sender, args):
 
     category_ids = st.get("category_ids")
     if not category_ids:
+        _log(u"handler: enabled, но category_ids пуст/None — выхожу")
         return
 
+    # Предпочитаем uiapp, сохранённый при подписке (st['host']) — sender
+    # ДОЛЖЕН быть той же UIApplication, но на случай, если в этой сборке
+    # Revit это не так, не полагаемся только на него.
+    uiapp = st.get("host") or sender
     try:
-        uidoc = sender.ActiveUIDocument
+        uidoc = uiapp.ActiveUIDocument
         if uidoc is None:
+            _log(u"handler: ActiveUIDocument is None — выхожу")
             return
         doc = uidoc.Document
     except Exception:
+        _log(_exc(u"handler: не достал ActiveUIDocument"))
         return
 
     try:
         elem_ids = list(args.GetSelectedElements())
     except Exception:
+        _log(_exc(u"handler: GetSelectedElements упал"))
         return
 
     keep, dropped = _trim_to_categories(uidoc, doc, elem_ids, category_ids)
+    _log(u"handler: выбрано={} оставляем={} dropped={}".format(
+        len(elem_ids), keep.Count, dropped))
     if not dropped:
         # уже только разрешённые категории — ничего трогать не нужно, это
         # самый частый случай (обычный клик по нужному элементу)
@@ -273,22 +324,28 @@ def _on_selection_changed(sender, args):
     try:
         uidoc.Selection.SetElementIds(keep)
     except Exception:
-        pass
+        _log(_exc(u"handler: SetElementIds упал"))
     finally:
         st["suppress"] = False
 
 
 def _ensure_installed(uiapp):
     st = _state()
-    if st.get("installed") or uiapp is None:
+    if st.get("installed"):
+        _log(u"_ensure_installed: уже подписан")
+        return
+    if uiapp is None:
+        _log(u"_ensure_installed: uiapp is None — не подписался")
         return
     try:
         uiapp.SelectionChanged += _on_selection_changed
     except Exception:
+        _log(_exc(u"_ensure_installed: подписка на SelectionChanged упала"))
         return
     st["installed"] = True
     st["host"] = uiapp
     st["delegate"] = _on_selection_changed
+    _log(u"_ensure_installed: подписка ОК (uiapp={})".format(type(uiapp).__name__))
 
 
 def run(doc, uidoc, view):
@@ -305,9 +362,12 @@ def run(doc, uidoc, view):
     скрипт, не трогая текущее состояние фильтра.
     """
     st = _state()
+    _log(u"run(): вызвана, текущее enabled={} installed={}".format(
+        st.get("enabled"), st.get("installed")))
 
     if st.get("enabled"):
         st["enabled"] = False
+        _log(u"run(): выключаю фильтр")
         forms.alert(
             u"Фильтр выбора выключен — выделение снова работает без "
             u"ограничений.",
@@ -341,6 +401,8 @@ def run(doc, uidoc, view):
 
     st["category_ids"] = set(category_ids)
     st["enabled"] = True
+    _log(u"run(): включаю фильтр, category_ids={} installed={}".format(
+        sorted(category_ids), st.get("installed")))
 
     # Если что-то уже выбрано прямо сейчас — сразу обрезаем под фильтр,
     # не дожидаясь следующего клика пользователя.
