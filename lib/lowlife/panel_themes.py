@@ -89,11 +89,11 @@ THEMES = {
         (u"SPS", u"ShowCircuitRoute"),
         (u"SPS", u"InspectConnectors"),
         (u"SPS", u"BuildSpsSchematic"),
-        (u"SPS", u"PlaceCompanionDevices"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
     ],
     u"SPA": [
         (u"CircuitsSPA", u"BuildCircuitsSPA"),
+        (u"SPA", u"PlaceCompanionDevices"),
     ],
     u"КНК": [
         (u"TrayLadder", u"TraySPZo"),

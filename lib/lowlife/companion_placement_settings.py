@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Окно настроек кнопки «Расстановка РМ, АМ, МДУ» (SPS.panel/PlaceCompanionDevices)
+Окно настроек кнопки «Расстановка РМ, АМ, МДУ» (SPA.panel/PlaceCompanionDevices)
 + их хранение между запусками.
 
 Хранится в отдельном JSON-файле %APPDATA%\\pyRevit\\LowLifeCompanionPlacement_settings.json
