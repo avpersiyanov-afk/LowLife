@@ -47,6 +47,8 @@ total_groups_found = 0
 total_created_groups = 0
 total_duplicate_groups = 0
 total_failed_groups = 0
+total_circuits_created = 0
+total_circuits_failed = 0
 report_rows = []
 
 with revit.Transaction("Place companion devices"):
@@ -64,12 +66,15 @@ with revit.Transaction("Place companion devices"):
         total_created_groups += len(result["created_groups"])
         total_duplicate_groups += result["skipped_duplicate_groups"]
         total_failed_groups += result["failed_groups"]
+        total_circuits_created += result["circuits_created"]
+        total_circuits_failed += result["circuits_failed"]
 
         report_rows.append((
             pair["name"], len(base_elements), len(result["created"]),
             result["skipped_duplicate"], result["skipped_no_point"], result["failed"],
             result["groups_found"], len(result["created_groups"]),
-            result["skipped_duplicate_groups"], result["failed_groups"]
+            result["skipped_duplicate_groups"], result["failed_groups"],
+            result["circuits_created"], result["circuits_failed"]
         ))
 
 
@@ -79,7 +84,8 @@ with revit.Transaction("Place companion devices"):
 
 output.print_md(u"### Расстановка РМ, АМ, МДУ — по парам")
 for (name, base_count, created_count, dup_count, no_point_count, failed_count,
-     groups_found, created_groups_count, dup_groups_count, failed_groups_count) in report_rows:
+     groups_found, created_groups_count, dup_groups_count, failed_groups_count,
+     circuits_created_count, circuits_failed_count) in report_rows:
     line = (
         u"- **{}** — базовых объектов на виде: {}, поставлено поштучно: {}, "
         u"уже стояло (пропущено): {}, без точки расположения (пропущено): {}, "
@@ -94,6 +100,10 @@ for (name, base_count, created_count, dup_count, no_point_count, failed_count,
                 groups_found, created_groups_count, dup_groups_count, failed_groups_count
             )
         )
+    if circuits_created_count or circuits_failed_count:
+        line += u"; цепей построено: {}, не удалось: {}".format(
+            circuits_created_count, circuits_failed_count
+        )
     output.print_md(line)
 
 group_summary = u""
@@ -107,12 +117,19 @@ if total_groups_found:
         )
     )
 
+circuit_summary = u""
+if total_circuits_created or total_circuits_failed:
+    circuit_summary = (
+        u"\n\nЦепей построено: {}\n"
+        u"Не удалось построить: {}".format(total_circuits_created, total_circuits_failed)
+    )
+
 forms.alert(
     u"Готово.\n\n"
     u"Поставлено компаньонов поштучно: {}\n"
     u"Уже стояли (пропущено): {}\n"
     u"Без точки расположения (пропущено): {}\n"
-    u"Не удалось создать: {}{}".format(
-        total_created, total_duplicate, total_no_point, total_failed, group_summary
+    u"Не удалось создать: {}{}{}".format(
+        total_created, total_duplicate, total_no_point, total_failed, group_summary, circuit_summary
     )
 )

@@ -39,6 +39,14 @@
 Значения параметров на компаньоне группы — источники со всех объектов
 группы склеиваются через ", " в один и тот же приёмник (см.
 companion_placement._expected_values_for_group).
+
+Опционально на пару — цепь (галочка "Строить электрическую цепь..."):
+сразу после расстановки строится электрическая цепь между компаньоном
+(источник/панель, как изолятор у «Цепи изолятор-устройства») и его
+базовым объектом (при поштучной расстановке) либо объектами группы (при
+групповой) — см. lowlife.companion_placement.build_companion_circuit.
+Нужен тип цепи Revit (ElectricalSystemType); параметр цепи «Панель» —
+опционален (если задан, туда пишется имя компаньона).
 """
 
 import os
@@ -66,6 +74,7 @@ from System.Windows.Media import Brushes
 
 from lowlife import settings_transfer
 from lowlife.scs_settings import TypeOption, _type_display_name, _type_names_display
+from lowlife.generic_circuits_settings import SystemTypeOption, _available_system_type_names
 
 SETTINGS_FILE_NAME = "LowLifeCompanionPlacement_settings.json"
 
@@ -157,6 +166,9 @@ def _default_pair_values():
         "group_enabled": False,
         "group_companion_symbol_id": "",
         "group_radius_mm": u"2000",
+        "circuit_enabled": False,
+        "circuit_system_type": u"",
+        "circuit_panel_param": u"",
     }
     for key, _label, default in OFFSET_FIELDS:
         values[key] = default
@@ -256,6 +268,9 @@ def to_runtime_settings(doc, values):
             "group_enabled": bool(raw.get("group_enabled")),
             "group_companion_symbol": group_companion_symbol,
             "group_radius_mm": _to_float("group_radius_mm", 2000.0),
+            "circuit_enabled": bool(raw.get("circuit_enabled")),
+            "circuit_system_type": (raw.get("circuit_system_type") or u"").strip(),
+            "circuit_panel_param": (raw.get("circuit_panel_param") or u"").strip(),
         })
 
     return {"pairs": runtime_pairs}
@@ -272,6 +287,7 @@ def require_valid_pairs(runtime_settings):
     valid = []
     incomplete = []
     group_misconfigured = []
+    circuit_misconfigured = []
 
     for pair in runtime_settings["pairs"]:
         has_base = bool(pair["base_symbols"])
@@ -280,6 +296,9 @@ def require_valid_pairs(runtime_settings):
             if pair["group_enabled"] and pair["group_companion_symbol"] is None:
                 group_misconfigured.append(pair["name"])
                 pair["group_enabled"] = False
+            if pair["circuit_enabled"] and not pair["circuit_system_type"]:
+                circuit_misconfigured.append(pair["name"])
+                pair["circuit_enabled"] = False
             valid.append(pair)
         elif has_base or has_companion:
             incomplete.append(pair["name"])
@@ -289,6 +308,14 @@ def require_valid_pairs(runtime_settings):
             u"У этих пар включена группировка, но не выбран «Компаньон на "
             u"группу» — для них группировка отключена, объекты расставятся "
             u"обычным компаньоном по одному:\n\n{}".format(u"\n".join(group_misconfigured))
+        )
+
+    if circuit_misconfigured:
+        forms.alert(
+            u"У этих пар включено построение цепи, но не выбран «Тип "
+            u"электрической цепи» — для них цепь строиться не будет:\n\n{}".format(
+                u"\n".join(circuit_misconfigured)
+            )
         )
 
     if not valid:
@@ -621,6 +648,90 @@ def show_settings_form(doc, values):
 
         group_radius_box.TextChanged += on_group_radius_changed
         container.Children.Add(group_radius_box)
+
+        # --- цепь между компаньоном и его базовым объектом(ами) (опционально) ---
+
+        circuit_checkbox = CheckBox()
+        circuit_checkbox.Content = (
+            u"Строить электрическую цепь между компаньоном и его базовым "
+            u"объектом (или объектами группы) сразу при расстановке — "
+            u"компаньон становится источником/панелью, как изолятор в "
+            u"«Цепи изолятор-устройства»"
+        )
+        circuit_checkbox.IsChecked = bool(pair_values.get("circuit_enabled"))
+        circuit_checkbox.Margin = Thickness(0, 10, 0, 2)
+
+        def on_circuit_toggle(sender, args, pair_values=pair_values, circuit_checkbox=circuit_checkbox):
+            pair_values["circuit_enabled"] = bool(circuit_checkbox.IsChecked)
+
+        circuit_checkbox.Checked += on_circuit_toggle
+        circuit_checkbox.Unchecked += on_circuit_toggle
+        container.Children.Add(circuit_checkbox)
+
+        circuit_type_label = TextBlock()
+        circuit_type_label.Text = u"Тип электрической цепи Revit (ElectricalSystemType — «Выбрать...» справа)"
+        circuit_type_label.TextWrapping = TextWrapping.Wrap
+        circuit_type_label.Margin = Thickness(0, 4, 0, 2)
+        container.Children.Add(circuit_type_label)
+
+        circuit_type_row = StackPanel()
+        circuit_type_row.Orientation = Orientation.Horizontal
+
+        circuit_type_box = TextBox()
+        circuit_type_box.Text = pair_values.get("circuit_system_type", u"")
+        circuit_type_box.Width = 360
+        circuit_type_box.Padding = Thickness(4, 2, 4, 2)
+        circuit_type_row.Children.Add(circuit_type_box)
+
+        def on_circuit_type_changed(sender, args, pair_values=pair_values, circuit_type_box=circuit_type_box):
+            pair_values["circuit_system_type"] = circuit_type_box.Text
+
+        circuit_type_box.TextChanged += on_circuit_type_changed
+
+        circuit_type_pick_btn = Button()
+        circuit_type_pick_btn.Content = u"Выбрать..."
+        circuit_type_pick_btn.Padding = Thickness(8, 2, 8, 2)
+        circuit_type_pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_circuit_type(sender, args, pair_values=pair_values, circuit_type_box=circuit_type_box):
+            names = _available_system_type_names()
+            if not names:
+                forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
+                return
+            options = [SystemTypeOption(n) for n in names]
+            selected = forms.SelectFromList.show(
+                options,
+                title=u"Тип электрической цепи (в скобках — пояснение) — пара «{}»".format(name),
+                button_name=u"Выбрать",
+                multiselect=False
+            )
+            if selected:
+                pair_values["circuit_system_type"] = selected.system_type_name
+                circuit_type_box.Text = selected.system_type_name
+
+        circuit_type_pick_btn.Click += on_pick_circuit_type
+        circuit_type_row.Children.Add(circuit_type_pick_btn)
+        container.Children.Add(circuit_type_row)
+
+        circuit_panel_label = TextBlock()
+        circuit_panel_label.Text = (
+            u"Параметр цепи «Панель» — необязательно; если задан, туда пишется имя компаньона"
+        )
+        circuit_panel_label.TextWrapping = TextWrapping.Wrap
+        circuit_panel_label.Margin = Thickness(0, 4, 0, 2)
+        container.Children.Add(circuit_panel_label)
+
+        circuit_panel_box = TextBox()
+        circuit_panel_box.Text = pair_values.get("circuit_panel_param", u"")
+        circuit_panel_box.Width = 360
+        circuit_panel_box.HorizontalAlignment = HorizontalAlignment.Left
+        circuit_panel_box.Padding = Thickness(4, 2, 4, 2)
+
+        def on_circuit_panel_changed(sender, args, pair_values=pair_values, circuit_panel_box=circuit_panel_box):
+            pair_values["circuit_panel_param"] = circuit_panel_box.Text
+
+        circuit_panel_box.TextChanged += on_circuit_panel_changed
+        container.Children.Add(circuit_panel_box)
 
     refresh_btn.Click += rebuild_pairs_panel
     root.Children.Add(pairs_panel)
