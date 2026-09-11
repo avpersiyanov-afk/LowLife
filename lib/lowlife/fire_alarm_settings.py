@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Окно настроек СПС и СОУЭ + хранение между запусками.
+Окно настроек СПС, СОУЭ и СПА + хранение между запусками.
 
-Один модуль на обе системы, но РАЗНЫЕ файлы настроек: у СПС и СОУЭ свои
+Один модуль на все системы, но РАЗНЫЕ файлы настроек: у каждой свои
 панели, свои рабочие наборы и свои параметры длин, поэтому каждая система
 настраивается независимо. Файл выбирается через set_system() при импорте
 в скрипте кнопки:
 
     from lowlife import fire_alarm_settings
-    fire_alarm_settings.set_system("SPS")   # или "SOUE"
+    fire_alarm_settings.set_system("SPS")   # или "SOUE", "SPA"
 
-Хранится в %APPDATA%\\pyRevit\\LowLifeSPS_settings.json (соотв. SOUE).
+Хранится в %APPDATA%\\pyRevit\\LowLifeSPS_settings.json (соотв. SOUE, SPA).
 """
 
 import os
@@ -71,13 +71,27 @@ SYSTEMS = {
             "schematic_view_name": u"Структурная схема СОУЭ",
         },
     },
+    "SPA": {
+        "file": "LowLifeSPA_settings.json",
+        "title": u"СПА",
+        # У СПА своя адресация и свой рабочий набор — та же логика, что у
+        # СПС (шлейф по адресу устройства вида "панель.шлейф.номер"), но
+        # ключевое слово рабочего набора по умолчанию "СПА", а не "СПС", и
+        # своя система (Controls, а не FireAlarm — как в старой ручной
+        # кнопке СПА).
+        "defaults": {
+            "circuit_system_type": u"Controls",
+            "workset_filter_key": u"СПА",
+            "schematic_view_name": u"Структурная схема СПА",
+        },
+    },
 }
 
 _current_system = "SPS"
 
 
 def set_system(system_key):
-    """Выбирает, с какой системой работать: "SPS" или "SOUE"."""
+    """Выбирает, с какой системой работать: "SPS", "SOUE" или "SPA"."""
     global _current_system
     if system_key not in SYSTEMS:
         raise ValueError("Unknown system: %s" % system_key)

@@ -93,7 +93,7 @@ THEMES = {
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
     ],
     u"SPA": [
-        (u"CircuitsSPA", u"BuildCircuitsSPA"),
+        (u"CircuitsSPA", u"BuildLoopCircuitsSPA"),
         (u"SPA", u"PlaceCompanionDevices"),
     ],
     u"КНК": [
@@ -123,7 +123,7 @@ THEMES = {
         (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
-        (u"CircuitsSPA", u"BuildCircuitsSPA"),
+        (u"CircuitsSPA", u"BuildLoopCircuitsSPA"),
         (u"CircuitsGeneric", u"BuildGenericCircuits"),
         (u"CircuitsDelete", u"DeleteViewCircuits"),
     ],
@@ -133,6 +133,7 @@ THEMES = {
         (u"SOUE", u"SetupParameters"),
         (u"SPS", u"SetupParameters"),
         (u"SOT", u"SetupParameters"),
+        (u"CircuitsSPA", u"SetupParametersSPA"),
         (u"CircuitsGeneric", u"GenericCircuitsSettings"),
     ],
     u"General": [
