@@ -43,6 +43,10 @@ total_created = 0
 total_duplicate = 0
 total_no_point = 0
 total_failed = 0
+total_groups_found = 0
+total_created_groups = 0
+total_duplicate_groups = 0
+total_failed_groups = 0
 report_rows = []
 
 with revit.Transaction("Place companion devices"):
@@ -56,10 +60,16 @@ with revit.Transaction("Place companion devices"):
         total_duplicate += result["skipped_duplicate"]
         total_no_point += result["skipped_no_point"]
         total_failed += result["failed"]
+        total_groups_found += result["groups_found"]
+        total_created_groups += len(result["created_groups"])
+        total_duplicate_groups += result["skipped_duplicate_groups"]
+        total_failed_groups += result["failed_groups"]
 
         report_rows.append((
             pair["name"], len(base_elements), len(result["created"]),
-            result["skipped_duplicate"], result["skipped_no_point"], result["failed"]
+            result["skipped_duplicate"], result["skipped_no_point"], result["failed"],
+            result["groups_found"], len(result["created_groups"]),
+            result["skipped_duplicate_groups"], result["failed_groups"]
         ))
 
 
@@ -68,21 +78,41 @@ with revit.Transaction("Place companion devices"):
 # ------------------------------------------------------------
 
 output.print_md(u"### Расстановка РМ, АМ, МДУ — по парам")
-for name, base_count, created_count, dup_count, no_point_count, failed_count in report_rows:
-    output.print_md(
-        u"- **{}** — базовых объектов на виде: {}, поставлено: {}, уже "
-        u"стояло (пропущено): {}, без точки расположения (пропущено): {}, "
+for (name, base_count, created_count, dup_count, no_point_count, failed_count,
+     groups_found, created_groups_count, dup_groups_count, failed_groups_count) in report_rows:
+    line = (
+        u"- **{}** — базовых объектов на виде: {}, поставлено поштучно: {}, "
+        u"уже стояло (пропущено): {}, без точки расположения (пропущено): {}, "
         u"не удалось создать: {}".format(
             name, base_count, created_count, dup_count, no_point_count, failed_count
+        )
+    )
+    if groups_found:
+        line += (
+            u"; групп найдено: {}, компаньонов на группу поставлено: {}, "
+            u"уже стояло: {}, не удалось: {}".format(
+                groups_found, created_groups_count, dup_groups_count, failed_groups_count
+            )
+        )
+    output.print_md(line)
+
+group_summary = u""
+if total_groups_found:
+    group_summary = (
+        u"\n\nГрупп найдено: {}\n"
+        u"Поставлено компаньонов на группу: {}\n"
+        u"Уже стояли (пропущено): {}\n"
+        u"Не удалось создать: {}".format(
+            total_groups_found, total_created_groups, total_duplicate_groups, total_failed_groups
         )
     )
 
 forms.alert(
     u"Готово.\n\n"
-    u"Поставлено компаньонов: {}\n"
+    u"Поставлено компаньонов поштучно: {}\n"
     u"Уже стояли (пропущено): {}\n"
     u"Без точки расположения (пропущено): {}\n"
-    u"Не удалось создать: {}".format(
-        total_created, total_duplicate, total_no_point, total_failed
+    u"Не удалось создать: {}{}".format(
+        total_created, total_duplicate, total_no_point, total_failed, group_summary
     )
 )

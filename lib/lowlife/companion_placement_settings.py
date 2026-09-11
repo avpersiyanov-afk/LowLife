@@ -25,6 +25,20 @@
 Конфигурация каждой пары сохраняется по её имени и не пропадает, если имя
 временно убрать из списка (как и в skud_settings) — восстанавливается при
 повторном добавлении того же имени.
+
+Опционально на пару — группировка (галочка "Группировать по 2-4"):
+    компаньон на группу — отдельный тип семейства с несколькими входами
+                     (например, на 4), ставится один на группу вместо
+                     обычного компаньона на каждый базовый объект;
+    радиус группировки — базовые объекты считаются одной группой, если
+                     стоят в одном помещении (Room текущего документа в
+                     точке объекта) и в пределах этого радиуса друг от
+                     друга (мм). Объекты без определяемого помещения или
+                     без пары в группировке идут по обычному пути — им
+                     ставится обычный компаньон, по одному на объект.
+Значения параметров на компаньоне группы — источники со всех объектов
+группы склеиваются через ", " в один и тот же приёмник (см.
+companion_placement._expected_values_for_group).
 """
 
 import os
@@ -45,7 +59,7 @@ from System.Windows import (
     FontWeights, HorizontalAlignment, VerticalAlignment, TextWrapping
 )
 from System.Windows.Controls import (
-    StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock,
+    StackPanel, TextBlock, TextBox, Button, CheckBox, Orientation, DockPanel, Dock,
     ScrollViewer, ScrollBarVisibility
 )
 from System.Windows.Media import Brushes
@@ -136,7 +150,14 @@ def _parse_param_map(text):
 
 
 def _default_pair_values():
-    values = {"base_symbol_ids": [], "companion_symbol_id": "", "param_map_text": u""}
+    values = {
+        "base_symbol_ids": [],
+        "companion_symbol_id": "",
+        "param_map_text": u"",
+        "group_enabled": False,
+        "group_companion_symbol_id": "",
+        "group_radius_mm": u"2000",
+    }
     for key, _label, default in OFFSET_FIELDS:
         values[key] = default
     return values
@@ -210,11 +231,19 @@ def to_runtime_settings(doc, values):
             except:
                 companion_symbol = None
 
-        def _to_float(key):
+        def _to_float(key, default=0.0):
             try:
-                return float(raw.get(key) or 0)
+                return float(raw.get(key) or default)
             except:
-                return 0.0
+                return default
+
+        group_companion_symbol = None
+        group_companion_id = raw.get("group_companion_symbol_id")
+        if group_companion_id:
+            try:
+                group_companion_symbol = doc.GetElement(ElementId(int(group_companion_id)))
+            except:
+                group_companion_symbol = None
 
         runtime_pairs.append({
             "name": name,
@@ -224,6 +253,9 @@ def to_runtime_settings(doc, values):
             "offset_side_mm": _to_float("offset_side_mm"),
             "offset_up_mm": _to_float("offset_up_mm"),
             "param_map": _parse_param_map(raw.get("param_map_text")),
+            "group_enabled": bool(raw.get("group_enabled")),
+            "group_companion_symbol": group_companion_symbol,
+            "group_radius_mm": _to_float("group_radius_mm", 2000.0),
         })
 
     return {"pairs": runtime_pairs}
@@ -239,14 +271,25 @@ def require_valid_pairs(runtime_settings):
     """
     valid = []
     incomplete = []
+    group_misconfigured = []
 
     for pair in runtime_settings["pairs"]:
         has_base = bool(pair["base_symbols"])
         has_companion = pair["companion_symbol"] is not None
         if has_base and has_companion:
+            if pair["group_enabled"] and pair["group_companion_symbol"] is None:
+                group_misconfigured.append(pair["name"])
+                pair["group_enabled"] = False
             valid.append(pair)
         elif has_base or has_companion:
             incomplete.append(pair["name"])
+
+    if group_misconfigured:
+        forms.alert(
+            u"У этих пар включена группировка, но не выбран «Компаньон на "
+            u"группу» — для них группировка отключена, объекты расставятся "
+            u"обычным компаньоном по одному:\n\n{}".format(u"\n".join(group_misconfigured))
+        )
 
     if not valid:
         forms.alert(
@@ -503,6 +546,81 @@ def show_settings_form(doc, values):
 
         param_box.TextChanged += on_param_changed
         container.Children.Add(param_box)
+
+        # --- группировка по 2-4 (опционально) ---
+
+        group_checkbox = CheckBox()
+        group_checkbox.Content = (
+            u"Группировать по 2-4 близких базовых объекта одного помещения — "
+            u"ставить один компаньон на группу вместо компаньона на каждый"
+        )
+        group_checkbox.IsChecked = bool(pair_values.get("group_enabled"))
+        group_checkbox.Margin = Thickness(0, 10, 0, 2)
+
+        def on_group_toggle(sender, args, pair_values=pair_values, group_checkbox=group_checkbox):
+            pair_values["group_enabled"] = bool(group_checkbox.IsChecked)
+
+        group_checkbox.Checked += on_group_toggle
+        group_checkbox.Unchecked += on_group_toggle
+        container.Children.Add(group_checkbox)
+
+        group_companion_label = TextBlock()
+        group_companion_label.Text = u"Компаньон на группу (семейство с несколькими входами, например на 4)"
+        group_companion_label.Margin = Thickness(0, 4, 0, 2)
+        container.Children.Add(group_companion_label)
+
+        group_companion_row = StackPanel()
+        group_companion_row.Orientation = Orientation.Horizontal
+
+        group_companion_value_label = TextBlock()
+        group_companion_value_label.Text = _type_display_name(doc, pair_values.get("group_companion_symbol_id") or u"")
+        group_companion_value_label.VerticalAlignment = VerticalAlignment.Center
+        group_companion_value_label.Width = 460
+        group_companion_value_label.TextWrapping = TextWrapping.Wrap
+        group_companion_row.Children.Add(group_companion_value_label)
+
+        group_companion_pick_btn = Button()
+        group_companion_pick_btn.Content = u"Выбрать..."
+        group_companion_pick_btn.Padding = Thickness(8, 2, 8, 2)
+        group_companion_pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_group_companion(sender, args, pair_values=pair_values, group_companion_value_label=group_companion_value_label):
+            symbols = list_all_symbols(doc)
+            if not symbols:
+                forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
+                return
+            options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options,
+                title=u"Компаньон на группу — пара «{}»".format(name),
+                button_name=u"Выбрать",
+                multiselect=False
+            )
+            if selected:
+                pair_values["group_companion_symbol_id"] = str(selected.symbol.Id.IntegerValue)
+                group_companion_value_label.Text = selected.name
+
+        group_companion_pick_btn.Click += on_pick_group_companion
+        group_companion_row.Children.Add(group_companion_pick_btn)
+        container.Children.Add(group_companion_row)
+
+        group_radius_label = TextBlock()
+        group_radius_label.Text = u"Радиус группировки, мм (+ обязательно одно помещение — Room в точке базового объекта)"
+        group_radius_label.TextWrapping = TextWrapping.Wrap
+        group_radius_label.Margin = Thickness(0, 4, 0, 2)
+        container.Children.Add(group_radius_label)
+
+        group_radius_box = TextBox()
+        group_radius_box.Text = pair_values.get("group_radius_mm", u"2000")
+        group_radius_box.Width = 100
+        group_radius_box.HorizontalAlignment = HorizontalAlignment.Left
+        group_radius_box.Padding = Thickness(4, 2, 4, 2)
+
+        def on_group_radius_changed(sender, args, pair_values=pair_values, group_radius_box=group_radius_box):
+            pair_values["group_radius_mm"] = group_radius_box.Text
+
+        group_radius_box.TextChanged += on_group_radius_changed
+        container.Children.Add(group_radius_box)
 
     refresh_btn.Click += rebuild_pairs_panel
     root.Children.Add(pairs_panel)
