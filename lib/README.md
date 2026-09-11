@@ -1274,11 +1274,16 @@ room_number_param)` — запись по точкам прохода, возв�
 ок).
 
 ## sot_fov.py
-Тело кнопки `SOT.panel/CameraFov` («Зоны обзора») — построение зоны обзора
-видеокамеры на активном виде **отдельно от структурной схемы СОТ**: это не
-`sot_schematic.py`, поэтому и логика, и окно настроек живут здесь, со своим
-файлом `%APPDATA%\pyRevit\LowLifeCameraFov_settings.json` (приём «своя
+Тело ДВУХ кнопок `SOT.panel` — «Зоны обзора» (`CameraFov`, только читает
+параметры и рисует зону) и «Навести на помещение» (`AimCameras`, только
+подбирает и ЗАПИСЫВАЕТ наклон, ничего не рисует) — обе **отдельно от
+структурной схемы СОТ**: это не `sot_schematic.py`, поэтому и логика, и
+общее окно настроек живут здесь, со своим файлом
+`%APPDATA%\pyRevit\LowLifeCameraFov_settings.json` (приём «своя
 дисциплина — свой файл», как у `room_info_settings.py`).
+`CategorySelectionFilter(allowed_ids)` — общий `ISelectionFilter` для
+фильтра выбора камер в обеих кнопок (категории из `camera_categories`,
+резолвятся `resolve_category_ids`).
 
 - `_find_param(doc, el, name)` — параметр камеры по имени: сначала
   параметр ЭКЗЕМПЛЯРА (`el.LookupParameter`, который параметры ТИПА не
@@ -1372,11 +1377,31 @@ room_number_param)` — запись по точкам прохода, возв�
   `d = H_res / (2·пикс/м·tg(угол/2))`.
 - Окно настроек (`get_settings_interactive` / `get_settings_silent` /
   `require`, `TEXT_FIELDS`) — тот же каркас, что у `room_info_settings.py`,
-  с `settings_transfer.add_transfer_buttons` (метка «зон обзора»).
+  с `settings_transfer.add_transfer_buttons` (метка «зон обзора»); общее
+  для обеих кнопок панели.
+- `auto_aim_cameras(doc, cameras, view, settings)` / `_auto_aim_one` —
+  тело кнопки «Навести на помещение», внутри транзакции ПИШЕТ параметры
+  (единственное место в модуле, которое это делает). Находит помещение
+  камеры (`room_rings_for_point`) и расстояние до его границы вдоль луча
+  взгляда (`_clip_distance` по тому же азимуту, что у `_one_camera`),
+  решает `наклон = arctg(высота / расстояние) + вертикальный_угол/2` и
+  пишет в `tilt_param_name`. Высота/вертикальный угол — как в
+  `_one_camera` (параметр камеры или оптика), с откатом на
+  `auto_default_height_mm`/`auto_default_vfov_deg`, которые тоже
+  записываются, если их не нашлось. `tilt_param_name` ищется через
+  голый `cam.LookupParameter` (НЕ `_find_param`) — намеренно: писать
+  наклон нужно per-instance, и если он существует только параметром
+  типа, кнопка отказывается (`tilt_not_instance`), чтобы не переставить
+  наклон разом у всех камер этого типа в разных помещениях.
+  `_mm_to_param_value`/`_radians_to_param_value` — обратные к
+  `_length_param_mm`/`_param_radians`: значение в единицах, которые
+  примет конкретный параметр (футы/радианы для «Длины»/«Угла», иначе
+  мм/градусы или радианы по `angle_unit`).
 
-Фильтр выбора камер (`ISelectionFilter` по `OST_SecurityDevices` —
-«Охранная сигнализация») и проверка типа вида (`ViewPlan`/`ViewDrafting`) —
-в самом `script.py` кнопки, не здесь.
+Фильтр выбора камер (`CategorySelectionFilter` по `camera_categories`,
+по умолчанию `OST_SecurityDevices` — «Охранная сигнализация») и проверка
+типа вида (`ViewPlan`/`ViewDrafting`) — в `script.py` каждой кнопки, не
+здесь.
 
 ## Куда добавлять новое
 

@@ -78,6 +78,7 @@ THEMES = {
     u"SOT": [
         (u"SOT", u"BuildSotSchematic"),
         (u"SOT", u"CameraFov"),
+        (u"SOT", u"AimCameras"),
     ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),

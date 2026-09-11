@@ -20,31 +20,13 @@ from pyrevit import revit, forms, script, EXEC_PARAMS
 from Autodesk.Revit.DB import (
     ViewPlan, ViewDrafting, BuiltInCategory, BuiltInParameter, Element
 )
-from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
+from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
 from lowlife import sot_fov
 
 doc = revit.doc
 uidoc = revit.uidoc
-
-
-class _CategoryFilter(ISelectionFilter):
-    """Разрешает выбирать только элементы категорий из настроек
-    (по умолчанию — «Оборудование систем безопасности», OST_SecurityDevices)."""
-
-    def __init__(self, allowed_ids):
-        self._ids = set(allowed_ids)
-
-    def AllowElement(self, elem):
-        try:
-            cat = elem.Category
-            return cat is not None and cat.Id.IntegerValue in self._ids
-        except Exception:
-            return False
-
-    def AllowReference(self, reference, position):
-        return True
 
 
 def _open_settings():
@@ -133,12 +115,14 @@ sot_fov.require(settings, ["distance_param_name", "zone_tag"])
 
 _has_angle = bool((settings.get("angle_param_name") or u"").strip())
 _has_optics = bool((settings.get("focal_length_param_name") or u"").strip()
-                   and (settings.get("sensor_format") or u"").strip())
+                   and ((settings.get("sensor_format") or u"").strip()
+                        or (settings.get("sensor_format_param_name") or u"").strip()))
 if not _has_angle and not _has_optics:
     forms.alert(
         u"В настройках не задан способ получить угол обзора:\n"
         u"— либо «Параметр горизонтального угла обзора»,\n"
-        u"— либо пара «Фокусное расстояние» + «Формат матрицы».\n\n"
+        u"— либо «Фокусное расстояние» + «Формат матрицы» (или параметр "
+        u"формата матрицы на самой камере).\n\n"
         u"Откройте настройки: Shift+клик по кнопке «Зоны обзора».",
         exitscript=True
     )
@@ -160,7 +144,7 @@ if not cat_ids:
 try:
     refs = uidoc.Selection.PickObjects(
         ObjectType.Element,
-        _CategoryFilter(cat_ids),
+        sot_fov.CategorySelectionFilter(cat_ids),
         u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)"
     )
 except OperationCanceledException:

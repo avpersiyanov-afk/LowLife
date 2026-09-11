@@ -11,7 +11,8 @@ room_info_settings).
 
 Что строит кнопка «Зоны обзора» (SOT.panel):
   1. по каждой выбранной камере берёт горизонтальный угол обзора и
-     дальность из параметров экземпляра (имена — в настройках);
+     дальность из параметров камеры (экземпляра или типа — имена в
+     настройках, ищутся автоматически там и там, см. _find_param);
   2. направление «взгляда» — FamilyInstance.FacingOrientation (уже
      учитывает поворот и отражения экземпляра; параметр поворота НЕ
      складывается отдельно — иначе двойной учёт), плюс необязательный
@@ -32,6 +33,12 @@ room_info_settings).
      идентификация/распознавание/наблюдение/обнаружение) по горизонтальному
      разрешению матрицы.
 
+Вторая кнопка панели — «Навести на помещение» (auto_aim_cameras): не
+рисует зону, а ПОДБИРАЕТ и записывает наклон камеры (параметр экземпляра)
+так, чтобы дальний край конуса приходился на границу её помещения по
+направлению взгляда. Единственное место в модуле, которое пишет
+параметры на камеру.
+
 Транзакцию открывает скрипт кнопки, не этот модуль.
 """
 
@@ -46,6 +53,7 @@ from Autodesk.Revit.DB import (
     SpatialElementBoundaryOptions, SpatialElementBoundaryLocation,
     Color, GraphicsStyleType, Options, Solid, PlanarFace,
 )
+from Autodesk.Revit.UI.Selection import ISelectionFilter
 
 try:
     from Autodesk.Revit.DB import ViewDetailLevel as _ViewDetailLevel
@@ -262,6 +270,52 @@ def _length_param_mm(param):
     except Exception:
         pass
     return v
+
+
+def _is_length_param(param):
+    try:
+        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Length:
+            return True
+    except Exception:
+        pass
+    try:
+        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Length:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _is_angle_param(param):
+    try:
+        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Angle:
+            return True
+    except Exception:
+        pass
+    try:
+        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Angle:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _mm_to_param_value(param, mm_value):
+    """Обратное к _length_param_mm: мм -> значение, которое примет именно
+    этот параметр (футы для типа «Длина», иначе как есть)."""
+    return mm_value / 304.8 if _is_length_param(param) else mm_value
+
+
+def _radians_to_param_value(param, radians_value, unit_mode):
+    """Обратное к _param_radians: радианы -> значение, которое примет
+    именно этот параметр (радианы для типа «Угол»; для «Число» — градусы
+    или радианы по unit_mode, тем же правилом, что и при чтении)."""
+    mode = (unit_mode or u"авто").strip().lower()
+    if mode.startswith(u"град"):
+        return math.degrees(radians_value)
+    if mode.startswith(u"рад"):
+        return radians_value
+    return radians_value if _is_angle_param(param) else math.degrees(radians_value)
 
 
 def _optical_fov(doc, fi, settings):
@@ -1196,6 +1250,28 @@ def resolve_category_ids(doc, text):
     return ids
 
 
+class CategorySelectionFilter(ISelectionFilter):
+    """
+    ISelectionFilter, пропускающий только элементы категорий из
+    allowed_ids (см. resolve_category_ids) — общий для обеих кнопок
+    панели («Зоны обзора» и «Навести на помещение»), чтобы фильтр выбора
+    камер не дублировался в их script.py.
+    """
+
+    def __init__(self, allowed_ids):
+        self._ids = set(allowed_ids)
+
+    def AllowElement(self, elem):
+        try:
+            cat = elem.Category
+            return cat is not None and cat.Id.IntegerValue in self._ids
+        except Exception:
+            return False
+
+    def AllowReference(self, reference, position):
+        return True
+
+
 def build_fov_zones(doc, cameras, view, settings):
     """
     Построить/перестроить зоны обзора по списку камер на виде view.
@@ -1249,6 +1325,145 @@ def build_fov_zones(doc, cameras, view, settings):
                 dead_zone_on, unit_mode, h_res, tag, z))
         except Exception as ex:
             results.append((cam, u"create_failed", u"{}".format(ex)))
+    return results
+
+
+# ======================================================================
+#  АВТОНАВЕДЕНИЕ: НАКЛОН ПО РАЗМЕРУ ПОМЕЩЕНИЯ (кнопка «Навести на помещение»)
+# ======================================================================
+#
+# Отдельная кнопка, не «Зоны обзора»: сама зона — только чтение и отрисовка,
+# автонаведение — единственное место в СОТ, где кнопка ЗАПИСЫВАЕТ значения
+# на камеру. Логика: вертикальный угол обзора — это свойство объектива
+# (фиксированное, известное заранее), высота установки — факт монтажа;
+# единственное, что имеет смысл ПОДБИРАТЬ под конкретное помещение — это
+# наклон, чтобы дальний край конуса приходился на дальнюю стену по
+# направлению взгляда камеры:
+#
+#   far = h / tg(наклон − верт.угол/2)  =>  наклон = arctg(h / far) + верт.угол/2
+#
+# где far — расстояние от камеры до границы помещения ВДОЛЬ направления
+# взгляда (не по прямой до любой стены, а именно по лучу, куда камера
+# смотрит). Высота и вертикальный угол при этом берутся как есть (параметр
+# камеры или расчёт из оптики), либо, если их вовсе нет — записывается
+# значение по умолчанию из настроек автонаведения (тоже параметром
+# ЭКЗЕМПЛЯРА).
+
+def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad):
+    if not isinstance(cam.Location, LocationPoint):
+        return (cam, u"no_location", u"")
+
+    tilt_name = (s.get("tilt_param_name") or u"").strip()
+    if not tilt_name:
+        return (cam, u"no_tilt_param", u"в настройках не задано имя параметра наклона")
+
+    # Наклон подбирается ПОД КОНКРЕТНУЮ камеру (её помещение, её
+    # направление) — параметр должен быть параметром ЭКЗЕМПЛЯРА: если бы
+    # он был параметром типа, запись одного значения переставила бы
+    # наклон и у всех остальных камер того же типа.
+    tilt_p = cam.LookupParameter(tilt_name)
+    if tilt_p is None:
+        return (cam, u"tilt_not_instance",
+                u"«{}» не найден как параметр ЭКЗЕМПЛЯРА этой камеры (если он "
+                u"параметр типа — сделайте его параметром экземпляра: наклон "
+                u"должен подбираться отдельно для каждой камеры)".format(tilt_name))
+    if tilt_p.IsReadOnly or tilt_p.StorageType != StorageType.Double:
+        return (cam, u"tilt_readonly",
+                u"параметр «{}» недоступен для записи".format(tilt_name))
+
+    offset_deg = _as_float(s.get("direction_offset_deg"), 0.0)
+    d, dir_note = _look_direction(cam, offset_deg)
+    if d is None:
+        return (cam, u"bad_geometry", u"нет направления камеры [{}]".format(dir_note))
+    base = math.atan2(d.Y, d.X)
+    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
+    if rot:
+        base += rot
+
+    p = cam.Location.Point
+    center = XYZ(p.X, p.Y, 0.0)
+
+    dist_name = (s.get("distance_param_name") or u"").strip()
+    dist_p = _find_param(doc, cam, dist_name) if dist_name else None
+    search_r = dist_p.AsDouble() if (dist_p is not None and dist_p.HasValue) else 300.0
+
+    boundary_mode = s.get("room_boundary") or u"отделка"
+    rings, room_note = room_rings_for_point(doc, p, boundary_mode)
+    if rings is None:
+        return (cam, u"no_room", room_note)
+
+    wall_ft = _clip_distance(center.X, center.Y, math.cos(base), math.sin(base), search_r, rings)
+    if wall_ft >= search_r - 1e-6:
+        return (cam, u"no_wall_hit",
+                u"по направлению камеры (азимут {:.0f}°) граница помещения не "
+                u"встретилась в пределах {:.1f} м — проверьте направление/поворот "
+                u"камеры или дальность".format(math.degrees(base) % 360.0, search_r * _M_PER_FT))
+
+    h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
+    h_written = False
+    if h_ft is None:
+        h_ft = default_h_ft
+        hname = (s.get("height_param_name") or u"").strip()
+        if hname:
+            hp = cam.LookupParameter(hname)
+            if hp is not None and not hp.IsReadOnly and hp.StorageType == StorageType.Double:
+                hp.Set(_mm_to_param_value(hp, default_h_ft * 304.8))
+                h_written = True
+
+    vfov = _opt_param_radians(doc, cam, s.get("vfov_param_name"), unit_mode)
+    if vfov is None:
+        optic = _optical_fov(doc, cam, s)
+        if optic is not None:
+            vfov = optic[1]
+    vfov_written = False
+    if vfov is None:
+        vfov = default_vfov_rad
+        vname = (s.get("vfov_param_name") or u"").strip()
+        if vname:
+            vp = cam.LookupParameter(vname)
+            if vp is not None and not vp.IsReadOnly and vp.StorageType == StorageType.Double:
+                vp.Set(_radians_to_param_value(vp, default_vfov_rad, unit_mode))
+                vfov_written = True
+
+    if h_ft is None or h_ft <= 0.1 or vfov is None or vfov <= 1e-4:
+        return (cam, u"missing_inputs",
+                u"нет высоты и/или вертикального угла обзора, и не задано значение "
+                u"по умолчанию в настройках автонаведения")
+
+    tilt = math.atan2(h_ft, wall_ft) + vfov / 2.0
+    tilt = max(0.0, min(tilt, math.radians(89.0)))
+    tilt_p.Set(_radians_to_param_value(tilt_p, tilt, unit_mode))
+
+    extra = u"".join([
+        u"; высота по умолчанию" if h_written else u"",
+        u"; верт.угол по умолчанию" if vfov_written else u"",
+    ])
+    return (cam, u"ok",
+            u"до стены {:.2f} м, h={:.2f} м, верт.угол={:.0f}° -> наклон "
+            u"{:.1f}°{}".format(wall_ft * _M_PER_FT, h_ft * _M_PER_FT,
+                                math.degrees(vfov), math.degrees(tilt), extra))
+
+
+def auto_aim_cameras(doc, cameras, view, settings):
+    """
+    Подобрать и ЗАПИСАТЬ наклон (tilt_param_name, параметр экземпляра)
+    каждой камеры так, чтобы дальний край конуса приходился на границу её
+    помещения по направлению взгляда. Возвращает [(camera, status, detail)]
+    со status: "ok"/"no_location"/"no_tilt_param"/"tilt_not_instance"/
+    "tilt_readonly"/"bad_geometry"/"no_room"/"no_wall_hit"/"missing_inputs".
+    Транзакция — на вызывающей стороне (пишет параметры).
+    """
+    s = settings
+    unit_mode = s.get("angle_unit") or u"авто"
+    default_h_ft = _as_float(s.get("auto_default_height_mm"), 3000.0) * _FT_PER_MM
+    default_vfov_rad = math.radians(_as_float(s.get("auto_default_vfov_deg"), 30.0))
+
+    results = []
+    for cam in cameras:
+        try:
+            results.append(_auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad))
+        except Exception as ex:
+            results.append((cam, u"error", u"{}".format(ex)))
     return results
 
 
@@ -1512,6 +1727,26 @@ TEXT_FIELDS = [
         u"Нужно только для дуг DORI. Например 1920 (Full HD), 2560, 3840. "
         u"Расстояние: d = H / (2 · пикс/м · tg(гор.угол / 2)).",
         u"", False
+    ),
+    (
+        "auto_default_height_mm",
+        u"⑥ Автонаведение (кнопка «Навести на помещение»)",
+        u"Высота установки по умолчанию, мм",
+        u"Используется кнопкой «Навести на помещение», только если у "
+        u"конкретной камеры высоту не удалось определить (нет параметра "
+        u"высоты и нет уровня для расчёта по отметке) — тогда это значение "
+        u"записывается в параметр высоты (если он есть на экземпляре).",
+        u"3000", False
+    ),
+    (
+        "auto_default_vfov_deg",
+        u"",
+        u"Вертикальный угол обзора по умолчанию, °",
+        u"Используется той же кнопкой, только если у камеры не нашёлся "
+        u"вертикальный угол (ни параметром, ни из фокусного+матрицы) — "
+        u"записывается в параметр вертикального угла (если он есть на "
+        u"экземпляре). Возьмите из паспорта объектива/камеры.",
+        u"30", False
     ),
 ]
 
