@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 Кнопка «Фильтр выбора» (FilterSelection.panel/CategoryFilterSelect):
-выделение элементов на активном виде, ограниченное отмеченными
-категориями.
+ограничивает, что можно выбрать на активном виде, отмеченными
+категориями — через штатную временную изоляцию Revit (Isolate Category),
+а не через модальный API-пик, чтобы панель «Свойства» продолжала работать
+как обычно.
 
-Обычный клик — run(): сразу запускает интерактивный выбор по категориям,
+Обычный клик — run(): сразу накладывает изоляцию по категориям,
 сохранённым в прошлый раз, без диалога. Shift+клик — configure(): чек-лист
 категорий активного вида, отмеченное сохраняется на следующий обычный
 клик. Тот же приём Shift+клика, что у
@@ -21,14 +23,12 @@ import os
 import io
 import json
 
-from Autodesk.Revit.DB import ElementId
+from Autodesk.Revit.DB import ElementId, TemporaryViewMode
 from System.Collections.Generic import List
 
-from pyrevit import forms
+from pyrevit import revit, forms
 
-from lowlife.selection import (
-    list_view_categories, pick_elements_by_categories, show_properties_palette
-)
+from lowlife.selection import list_view_categories
 
 SETTINGS_FILE_NAME = "LowLifeFilterSelection_settings.json"
 
@@ -165,18 +165,34 @@ def configure(doc, view):
 
 def run(doc, uidoc, view):
     """
-    Обычный клик: сразу интерактивный выбор по категориям из настроек,
-    без диалога. Если список пуст или ни одна из сохранённых категорий не
-    нашлась в этом документе — просит настроить (Shift+клик) и
-    останавливает скрипт.
+    Обычный клик: временно изолирует на активном виде категории из
+    настроек (то же самое «Isolate Category», что в стандартном Revit —
+    View.IsolateCategoriesTemporary). Дальше пользователь выбирает
+    элементы сколько угодно раз обычным способом Revit (клик, рамка,
+    Ctrl/Shift) — это штатное выделение, а не модальный API-пик
+    (PickObjects), поэтому панель «Свойства» работает как всегда и сразу
+    показывает параметры каждого выбранного элемента. Раньше здесь
+    использовался PickObjects — но пока он ждёт клики, Revit блокирует
+    панель «Свойства» (она относится к API-командам, а не к обычному
+    выделению), и увидеть параметры можно было только после завершения
+    выбора Enter'ом. Isolate этого недостатка лишён.
+
+    Снять изоляцию — стандартными средствами Revit: значок в строке
+    состояния окна вида (внизу) -> «Reset Temporary Hide/Isolate», либо
+    просто повторный клик по этой кнопке (сначала сбрасывает прежнюю
+    изоляцию, затем накладывает новую по актуальным настройкам).
+
+    Если список пуст или ни одна из сохранённых категорий не нашлась в
+    этом документе — просит настроить (Shift+клик) и останавливает
+    скрипт.
     """
     names = load_config()["category_names"]
     if not names:
         forms.alert(
             u"Категории для фильтра выбора ещё не настроены. Нажмите "
             u"кнопку с зажатым Shift, отметьте нужные категории и "
-            u"сохраните — дальше обычный клик будет сразу выделять по "
-            u"ним, без вопросов.",
+            u"сохраните — дальше обычный клик будет сразу ограничивать "
+            u"выбор ими, без вопросов.",
             title=u"Фильтр выбора",
             exitscript=True
         )
@@ -191,17 +207,11 @@ def run(doc, uidoc, view):
             exitscript=True
         )
 
-    elements = pick_elements_by_categories(uidoc, doc, category_ids)
+    id_list = List[ElementId]()
+    for cid in category_ids:
+        id_list.Add(ElementId(cid))
 
-    # Явно фиксируем выбор как текущее выделение Revit, чтобы оно осталось
-    # активным (подсветка, панель «Свойства») после завершения инструмента —
-    # сами по себе результаты PickObjects этого не гарантируют.
-    ids = List[ElementId]()
-    for el in elements:
-        ids.Add(el.Id)
-    uidoc.Selection.SetElementIds(ids)
-
-    # Сразу поднимаем вкладку «Свойства» — чтобы после выбора можно было
-    # тут же менять параметры отмеченных элементов, не выцепляя вкладку
-    # вручную (её обычно задвигает вкладка «Диспетчер проекта»).
-    show_properties_palette()
+    with revit.Transaction(u"Фильтр выбора: изоляция категорий"):
+        if view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate):
+            view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate)
+        view.IsolateCategoriesTemporary(id_list)
