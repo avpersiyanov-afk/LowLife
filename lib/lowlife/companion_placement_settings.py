@@ -44,9 +44,21 @@ companion_placement._expected_values_for_group).
 сразу после расстановки строится электрическая цепь между компаньоном
 (источник/панель, как изолятор у «Цепи изолятор-устройства») и его
 базовым объектом (при поштучной расстановке) либо объектами группы (при
-групповой) — см. lowlife.companion_placement.build_companion_circuit.
-Нужен тип цепи Revit (ElectricalSystemType); параметр цепи «Панель» —
-опционален (если задан, туда пишется имя компаньона).
+групповой) — см. lowlife.companion_placement.build_companion_circuits.
+
+У некоторых компаньонов нужны СРАЗУ ДВЕ цепи разной категории с одним и
+тем же базовым объектом (например силовая + сигнальная) — поэтому цепь
+задаётся не одним типом, а двумя независимыми слотами «Цепь 1»/«Цепь 2»;
+второй слот необязателен (пусто — строится только первая цепь). У каждого
+слота свой тип цепи Revit (ElectricalSystemType) и свой кабель из
+справочника (см. ниже); параметр цепи «Панель» и параметр цепи для кабеля
+(«Проводник») — общие для обоих слотов пары.
+
+Кабель для цепи выбирается из справочника кабелей документа — тем же
+способом, что и в «Параметры цепей (общее)»/СКС: строки справочника
+находятся по общему для ВСЕХ пар параметру-признаку («Параметр-признак
+строки справочника кабелей», задаётся один раз вверху окна, а не на
+каждую пару).
 """
 
 import os
@@ -73,7 +85,10 @@ from System.Windows.Controls import (
 from System.Windows.Media import Brushes
 
 from lowlife import settings_transfer
-from lowlife.scs_settings import TypeOption, _type_display_name, _type_names_display
+from lowlife.scs_settings import (
+    TypeOption, _type_display_name, _type_names_display,
+    list_wire_catalog_items, WireTypeOption
+)
 from lowlife.generic_circuits_settings import SystemTypeOption, _available_system_type_names
 
 SETTINGS_FILE_NAME = "LowLifeCompanionPlacement_settings.json"
@@ -167,8 +182,12 @@ def _default_pair_values():
         "group_companion_symbol_id": "",
         "group_radius_mm": u"2000",
         "circuit_enabled": False,
-        "circuit_system_type": u"",
         "circuit_panel_param": u"",
+        "circuit_conductor_param": u"",
+        "circuit_1_system_type": u"",
+        "circuit_1_conductor_type_id": u"",
+        "circuit_2_system_type": u"",
+        "circuit_2_conductor_type_id": u"",
     }
     for key, _label, default in OFFSET_FIELDS:
         values[key] = default
@@ -178,7 +197,10 @@ def _default_pair_values():
 def load_saved_values():
     """Строковые/сырые значения настроек: из JSON-файла, иначе — пусто."""
     saved = _read_all()
-    values = {"pair_names_text": saved.get("pair_names_text", u"")}
+    values = {
+        "pair_names_text": saved.get("pair_names_text", u""),
+        "wire_catalog_marker_param": saved.get("wire_catalog_marker_param", u""),
+    }
 
     pairs = {}
     for name, raw in (saved.get("pairs") or {}).items():
@@ -193,6 +215,7 @@ def load_saved_values():
 def save_values(values):
     data = _read_all()
     data["pair_names_text"] = values["pair_names_text"]
+    data["wire_catalog_marker_param"] = values["wire_catalog_marker_param"]
     data["pairs"] = values["pairs"]
     _write_all(data)
 
@@ -257,6 +280,23 @@ def to_runtime_settings(doc, values):
             except:
                 group_companion_symbol = None
 
+        circuits = []
+        for slot in (1, 2):
+            system_type_name = (raw.get("circuit_{}_system_type".format(slot)) or u"").strip()
+            if not system_type_name:
+                continue
+            conductor_id = raw.get("circuit_{}_conductor_type_id".format(slot))
+            conductor_type_id = None
+            if conductor_id:
+                try:
+                    conductor_type_id = ElementId(int(conductor_id))
+                except:
+                    conductor_type_id = None
+            circuits.append({
+                "system_type": system_type_name,
+                "conductor_type_id": conductor_type_id,
+            })
+
         runtime_pairs.append({
             "name": name,
             "base_symbols": base_symbols,
@@ -269,8 +309,9 @@ def to_runtime_settings(doc, values):
             "group_companion_symbol": group_companion_symbol,
             "group_radius_mm": _to_float("group_radius_mm", 2000.0),
             "circuit_enabled": bool(raw.get("circuit_enabled")),
-            "circuit_system_type": (raw.get("circuit_system_type") or u"").strip(),
             "circuit_panel_param": (raw.get("circuit_panel_param") or u"").strip(),
+            "circuit_conductor_param": (raw.get("circuit_conductor_param") or u"").strip(),
+            "circuits": circuits,
         })
 
     return {"pairs": runtime_pairs}
@@ -296,7 +337,7 @@ def require_valid_pairs(runtime_settings):
             if pair["group_enabled"] and pair["group_companion_symbol"] is None:
                 group_misconfigured.append(pair["name"])
                 pair["group_enabled"] = False
-            if pair["circuit_enabled"] and not pair["circuit_system_type"]:
+            if pair["circuit_enabled"] and not pair["circuits"]:
                 circuit_misconfigured.append(pair["name"])
                 pair["circuit_enabled"] = False
             valid.append(pair)
@@ -312,8 +353,9 @@ def require_valid_pairs(runtime_settings):
 
     if circuit_misconfigured:
         forms.alert(
-            u"У этих пар включено построение цепи, но не выбран «Тип "
-            u"электрической цепи» — для них цепь строиться не будет:\n\n{}".format(
+            u"У этих пар включено построение цепи, но не выбран тип "
+            u"электрической цепи ни в «Цепь 1», ни в «Цепь 2» — для них "
+            u"цепь строиться не будет:\n\n{}".format(
                 u"\n".join(circuit_misconfigured)
             )
         )
@@ -371,6 +413,25 @@ def show_settings_form(doc, values):
     hint.TextWrapping = TextWrapping.Wrap
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
+
+    # --- параметр-признак строки справочника кабелей (общий на все пары) ---
+
+    marker_label = TextBlock()
+    marker_label.Text = (
+        u"Параметр-признак строки справочника кабелей (нужен для выбора "
+        u"кабеля у цепей ниже — общий на все пары)"
+    )
+    marker_label.TextWrapping = TextWrapping.Wrap
+    marker_label.Margin = Thickness(0, 0, 0, 2)
+    root.Children.Add(marker_label)
+
+    marker_box = TextBox()
+    marker_box.Text = values.get("wire_catalog_marker_param", u"")
+    marker_box.Width = 360
+    marker_box.HorizontalAlignment = HorizontalAlignment.Left
+    marker_box.Padding = Thickness(4, 2, 4, 2)
+    marker_box.Margin = Thickness(0, 0, 0, 10)
+    root.Children.Add(marker_box)
 
     # --- строка имён пар ---
 
@@ -649,14 +710,17 @@ def show_settings_form(doc, values):
         group_radius_box.TextChanged += on_group_radius_changed
         container.Children.Add(group_radius_box)
 
-        # --- цепь между компаньоном и его базовым объектом(ами) (опционально) ---
+        # --- цепь(и) между компаньоном и его базовым объектом(ами) (опционально) ---
 
         circuit_checkbox = CheckBox()
         circuit_checkbox.Content = (
             u"Строить электрическую цепь между компаньоном и его базовым "
             u"объектом (или объектами группы) сразу при расстановке — "
             u"компаньон становится источником/панелью, как изолятор в "
-            u"«Цепи изолятор-устройства»"
+            u"«Цепи изолятор-устройства». Второй слот («Цепь 2») — для "
+            u"компаньонов, которым к базовому объекту нужны СРАЗУ ДВЕ цепи "
+            u"разной категории (например силовая + сигнальная); пусто — "
+            u"строится только «Цепь 1»"
         )
         circuit_checkbox.IsChecked = bool(pair_values.get("circuit_enabled"))
         circuit_checkbox.Margin = Thickness(0, 10, 0, 2)
@@ -668,57 +732,137 @@ def show_settings_form(doc, values):
         circuit_checkbox.Unchecked += on_circuit_toggle
         container.Children.Add(circuit_checkbox)
 
-        circuit_type_label = TextBlock()
-        circuit_type_label.Text = u"Тип электрической цепи Revit (ElectricalSystemType — «Выбрать...» справа)"
-        circuit_type_label.TextWrapping = TextWrapping.Wrap
-        circuit_type_label.Margin = Thickness(0, 4, 0, 2)
-        container.Children.Add(circuit_type_label)
+        def add_circuit_slot(slot_number, required_hint):
+            type_key = "circuit_{}_system_type".format(slot_number)
+            conductor_key = "circuit_{}_conductor_type_id".format(slot_number)
 
-        circuit_type_row = StackPanel()
-        circuit_type_row.Orientation = Orientation.Horizontal
+            slot_title = TextBlock()
+            slot_title.Text = u"Цепь {}{}".format(slot_number, required_hint)
+            slot_title.FontWeight = FontWeights.Bold
+            slot_title.Margin = Thickness(0, 8, 0, 2)
+            container.Children.Add(slot_title)
 
-        circuit_type_box = TextBox()
-        circuit_type_box.Text = pair_values.get("circuit_system_type", u"")
-        circuit_type_box.Width = 360
-        circuit_type_box.Padding = Thickness(4, 2, 4, 2)
-        circuit_type_row.Children.Add(circuit_type_box)
+            type_label = TextBlock()
+            type_label.Text = u"Тип электрической цепи Revit (ElectricalSystemType — «Выбрать...» справа)"
+            type_label.TextWrapping = TextWrapping.Wrap
+            type_label.Margin = Thickness(0, 2, 0, 2)
+            container.Children.Add(type_label)
 
-        def on_circuit_type_changed(sender, args, pair_values=pair_values, circuit_type_box=circuit_type_box):
-            pair_values["circuit_system_type"] = circuit_type_box.Text
+            type_row = StackPanel()
+            type_row.Orientation = Orientation.Horizontal
 
-        circuit_type_box.TextChanged += on_circuit_type_changed
+            type_box = TextBox()
+            type_box.Text = pair_values.get(type_key, u"")
+            type_box.Width = 360
+            type_box.Padding = Thickness(4, 2, 4, 2)
+            type_row.Children.Add(type_box)
 
-        circuit_type_pick_btn = Button()
-        circuit_type_pick_btn.Content = u"Выбрать..."
-        circuit_type_pick_btn.Padding = Thickness(8, 2, 8, 2)
-        circuit_type_pick_btn.Margin = Thickness(8, 0, 0, 0)
+            def on_type_changed(sender, args, pair_values=pair_values, type_key=type_key, type_box=type_box):
+                pair_values[type_key] = type_box.Text
 
-        def on_pick_circuit_type(sender, args, pair_values=pair_values, circuit_type_box=circuit_type_box):
-            names = _available_system_type_names()
-            if not names:
-                forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
-                return
-            options = [SystemTypeOption(n) for n in names]
-            selected = forms.SelectFromList.show(
-                options,
-                title=u"Тип электрической цепи (в скобках — пояснение) — пара «{}»".format(name),
-                button_name=u"Выбрать",
-                multiselect=False
-            )
-            if selected:
-                pair_values["circuit_system_type"] = selected.system_type_name
-                circuit_type_box.Text = selected.system_type_name
+            type_box.TextChanged += on_type_changed
 
-        circuit_type_pick_btn.Click += on_pick_circuit_type
-        circuit_type_row.Children.Add(circuit_type_pick_btn)
-        container.Children.Add(circuit_type_row)
+            type_pick_btn = Button()
+            type_pick_btn.Content = u"Выбрать..."
+            type_pick_btn.Padding = Thickness(8, 2, 8, 2)
+            type_pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+            def on_pick_type(sender, args, pair_values=pair_values, type_key=type_key, type_box=type_box):
+                type_names = _available_system_type_names()
+                if not type_names:
+                    forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
+                    return
+                options = [SystemTypeOption(n) for n in type_names]
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Тип электрической цепи {} (в скобках — пояснение) — пара «{}»".format(
+                        slot_number, name
+                    ),
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+                if selected:
+                    pair_values[type_key] = selected.system_type_name
+                    type_box.Text = selected.system_type_name
+
+            type_pick_btn.Click += on_pick_type
+            type_row.Children.Add(type_pick_btn)
+            container.Children.Add(type_row)
+
+            conductor_label = TextBlock()
+            conductor_label.Text = u"Кабель (строка справочника) для этой цепи — необязательно"
+            conductor_label.TextWrapping = TextWrapping.Wrap
+            conductor_label.Margin = Thickness(0, 4, 0, 2)
+            container.Children.Add(conductor_label)
+
+            conductor_row = StackPanel()
+            conductor_row.Orientation = Orientation.Horizontal
+
+            conductor_value_label = TextBlock()
+            conductor_value_label.Text = _type_display_name(doc, pair_values.get(conductor_key) or u"")
+            conductor_value_label.VerticalAlignment = VerticalAlignment.Center
+            conductor_value_label.Width = 360
+            conductor_value_label.TextWrapping = TextWrapping.Wrap
+            conductor_row.Children.Add(conductor_value_label)
+
+            conductor_pick_btn = Button()
+            conductor_pick_btn.Content = u"Выбрать..."
+            conductor_pick_btn.Padding = Thickness(8, 2, 8, 2)
+            conductor_pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+            def on_pick_conductor(sender, args, pair_values=pair_values, conductor_key=conductor_key,
+                                   conductor_value_label=conductor_value_label):
+                marker_param_name = marker_box.Text.strip()
+                if not marker_param_name:
+                    forms.alert(u"Сначала заполните поле «Параметр-признак строки справочника кабелей» вверху окна.")
+                    return
+
+                wire_items = list_wire_catalog_items(doc, marker_param_name)
+                if not wire_items:
+                    forms.alert(
+                        u"Не найдено строк справочника кабелей (ни один элемент документа "
+                        u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(marker_param_name)
+                    )
+                    return
+
+                options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Кабель — цепь {}, пара «{}»".format(slot_number, name),
+                    button_name=u"Выбрать",
+                    multiselect=False
+                )
+                if selected:
+                    pair_values[conductor_key] = str(selected.wire_type.Id.IntegerValue)
+                    conductor_value_label.Text = selected.name
+
+            conductor_pick_btn.Click += on_pick_conductor
+            conductor_row.Children.Add(conductor_pick_btn)
+
+            conductor_clear_btn = Button()
+            conductor_clear_btn.Content = u"Очистить"
+            conductor_clear_btn.Padding = Thickness(8, 2, 8, 2)
+            conductor_clear_btn.Margin = Thickness(8, 0, 0, 0)
+
+            def on_clear_conductor(sender, args, pair_values=pair_values, conductor_key=conductor_key,
+                                    conductor_value_label=conductor_value_label):
+                pair_values[conductor_key] = u""
+                conductor_value_label.Text = _type_display_name(doc, u"")
+
+            conductor_clear_btn.Click += on_clear_conductor
+            conductor_row.Children.Add(conductor_clear_btn)
+            container.Children.Add(conductor_row)
+
+        add_circuit_slot(1, u" (обязательна, если галочка выше включена)")
+        add_circuit_slot(2, u" (необязательно — вторая цепь другой категории к тому же базовому объекту)")
 
         circuit_panel_label = TextBlock()
         circuit_panel_label.Text = (
-            u"Параметр цепи «Панель» — необязательно; если задан, туда пишется имя компаньона"
+            u"Параметр цепи «Панель» — необязательно, общий для обеих цепей; "
+            u"если задан, туда пишется имя компаньона"
         )
         circuit_panel_label.TextWrapping = TextWrapping.Wrap
-        circuit_panel_label.Margin = Thickness(0, 4, 0, 2)
+        circuit_panel_label.Margin = Thickness(0, 8, 0, 2)
         container.Children.Add(circuit_panel_label)
 
         circuit_panel_box = TextBox()
@@ -732,6 +876,27 @@ def show_settings_form(doc, values):
 
         circuit_panel_box.TextChanged += on_circuit_panel_changed
         container.Children.Add(circuit_panel_box)
+
+        circuit_conductor_param_label = TextBlock()
+        circuit_conductor_param_label.Text = (
+            u"Параметр цепи для кабеля (например «Проводник») — необязательно, общий для обеих цепей"
+        )
+        circuit_conductor_param_label.TextWrapping = TextWrapping.Wrap
+        circuit_conductor_param_label.Margin = Thickness(0, 4, 0, 2)
+        container.Children.Add(circuit_conductor_param_label)
+
+        circuit_conductor_param_box = TextBox()
+        circuit_conductor_param_box.Text = pair_values.get("circuit_conductor_param", u"")
+        circuit_conductor_param_box.Width = 360
+        circuit_conductor_param_box.HorizontalAlignment = HorizontalAlignment.Left
+        circuit_conductor_param_box.Padding = Thickness(4, 2, 4, 2)
+
+        def on_circuit_conductor_param_changed(sender, args, pair_values=pair_values,
+                                                circuit_conductor_param_box=circuit_conductor_param_box):
+            pair_values["circuit_conductor_param"] = circuit_conductor_param_box.Text
+
+        circuit_conductor_param_box.TextChanged += on_circuit_conductor_param_changed
+        container.Children.Add(circuit_conductor_param_box)
 
     refresh_btn.Click += rebuild_pairs_panel
     root.Children.Add(pairs_panel)
@@ -758,6 +923,7 @@ def show_settings_form(doc, values):
     def on_ok(sender, args):
         result["values"] = {
             "pair_names_text": names_box.Text,
+            "wire_catalog_marker_param": marker_box.Text,
             "pairs": {name: dict(pair) for name, pair in pairs_state.items()},
         }
         win.Close()

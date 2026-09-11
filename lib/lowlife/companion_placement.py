@@ -28,13 +28,17 @@ lowlife.companion_placement_settings (Shift+клик по кнопке). Зде�
 поставить ОДИН компаньон-на-группу (например, модуль на 4 входа) — см.
 place_companions_for_pair(..., pair["group_enabled"]).
 
-Цепь между компаньоном и его базовым объектом(ами) (опционально, на
+Цепь(и) между компаньоном и его базовым объектом(ами) (опционально, на
 пару): сразу после расстановки строится электрическая цепь — та же
 логика, что и у «Цепи изолятор-устройства»
 (lowlife.fire_alarm_isolator_circuits/lowlife.electrical_circuits):
 компаньон назначается источником/панелью через SelectPanel (как изолятор
 там), а обслуживаемые им базовый объект (при поштучной расстановке) или
-объекты группы (при групповой) — нагрузкой. См. build_companion_circuit.
+объекты группы (при групповой) — нагрузкой. У некоторых компаньонов к
+одному и тому же базовому объекту нужны СРАЗУ ДВЕ цепи разной категории
+(например силовая + сигнальная) — поэтому строится по одной цепи на
+каждый настроенный слот (1-2), с опциональным кабелем на каждую. См.
+build_companion_circuits.
 """
 
 import math
@@ -43,7 +47,7 @@ from Autodesk.Revit.DB import XYZ, LocationPoint, FilteredElementCollector
 from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife.geometry import get_point, get_element_level, find_level_for_elevation
-from lowlife.params import get_param_any, set_param_any
+from lowlife.params import get_param_any, set_param_any, set_element_id_param
 from lowlife.scs import safe_element_name
 from lowlife.electrical_circuits import create_circuit
 
@@ -346,40 +350,24 @@ def _place_one_group(doc, group_elements, pair, sorted_levels, candidates, radiu
     return "created", new_el
 
 
-def build_companion_circuit(doc, companion_el, member_elements, pair):
+def _build_one_circuit(doc, companion_el, member_elements, circuit_spec, panel_param, conductor_param):
     """
-    Строит электрическую цепь между только что поставленным компаньоном и
-    базовым объектом(ами), которым он служит — той же логикой, что и
-    «Цепи изолятор-устройства»: компаньон играет роль изолятора (источник
-    цепи, назначается через ElectricalSystem.SelectPanel), базовый(е)
-    объект(ы) — роль устройств (нагрузка). См.
-    lowlife.electrical_circuits.create_circuit — там же обработан частый
-    случай Revit "Not allow circular connection..." (панели пришлось
-    временно попасть в список элементов цепи).
-
-    pair — {"circuit_system_type", "circuit_panel_param"} (см.
-    companion_placement_settings). circuit_panel_param опционален: если
-    задан, в этот параметр цепи пишется имя компаньона (аналог «Панель» =
-    имя изолятора у «Цепи изолятор-устройства»).
-
-    После успешного создания цепи ей, как и там, сразу проставляется
-    режим траектории Revit «Все устройства» (CircuitPathMode.AllDevices) —
-    чтобы Revit сам посчитал Length по фактическому положению элементов,
-    без ручной прорисовки проводки.
-
-    Возвращает (цепь, текст ошибки) — цепь может быть не None даже при
-    непустом error (например «создана, но не подключена к панели»).
+    Строит одну электрическую цепь по одному слоту circuit_spec —
+    {"system_type", "conductor_type_id"}. Возвращает (цепь, текст ошибки).
     """
-    circuit, error = create_circuit(doc, companion_el, member_elements, pair["circuit_system_type"])
+    circuit, error = create_circuit(doc, companion_el, member_elements, circuit_spec["system_type"])
 
     if circuit is None:
         return None, error
 
-    panel_param = pair.get("circuit_panel_param")
     if panel_param:
         panel_name = safe_element_name(companion_el)
         if panel_name:
             set_param_any(circuit, panel_param, panel_name)
+
+    conductor_type_id = circuit_spec.get("conductor_type_id")
+    if conductor_param and conductor_type_id is not None:
+        set_element_id_param(circuit, conductor_param, conductor_type_id)
 
     try:
         path_mode_type = type(circuit.CircuitPathMode)
@@ -392,13 +380,53 @@ def build_companion_circuit(doc, companion_el, member_elements, pair):
     return circuit, error
 
 
+def build_companion_circuits(doc, companion_el, member_elements, pair):
+    """
+    Строит одну или две электрические цепи между только что поставленным
+    компаньоном и базовым объектом(ами), которым он служит — той же
+    логикой, что и «Цепи изолятор-устройства»: компаньон играет роль
+    изолятора (источник цепи, назначается через ElectricalSystem.SelectPanel),
+    базовый(е) объект(ы) — роль устройств (нагрузка). См.
+    lowlife.electrical_circuits.create_circuit — там же обработан частый
+    случай Revit "Not allow circular connection..." (панели пришлось
+    временно попасть в список элементов цепи).
+
+    Одна цепь строится на каждый настроенный слот в pair["circuits"] (1-2
+    штуки — второй слот нужен компаньонам, которым к одному и тому же
+    базовому объекту нужны сразу две цепи разной категории, например
+    силовая + сигнальная). pair — {"circuits": [{"system_type",
+    "conductor_type_id"}, ...], "circuit_panel_param",
+    "circuit_conductor_param"} (см. companion_placement_settings) —
+    "circuit_panel_param"/"circuit_conductor_param" опциональны и общие
+    для всех слотов: если заданы, в них пишутся имя компаньона (аналог
+    «Панель» = имя изолятора у «Цепи изолятор-устройства») и, если у слота
+    выбран кабель, ссылка на строку справочника кабелей.
+
+    После успешного создания каждой цепи ей, как и там, сразу
+    проставляется режим траектории Revit «Все устройства»
+    (CircuitPathMode.AllDevices) — чтобы Revit сам посчитал Length по
+    фактическому положению элементов, без ручной прорисовки проводки.
+
+    Возвращает список (цепь, текст ошибки) — по одному на слот; цепь
+    может быть не None даже при непустом error (например «создана, но не
+    подключена к панели»).
+    """
+    panel_param = pair.get("circuit_panel_param")
+    conductor_param = pair.get("circuit_conductor_param")
+
+    return [
+        _build_one_circuit(doc, companion_el, member_elements, circuit_spec, panel_param, conductor_param)
+        for circuit_spec in (pair.get("circuits") or [])
+    ]
+
+
 def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
     """
     Обрабатывает одну настроенную пару для уже собранного списка базовых
     объектов. pair — {"companion_symbol", "param_map", "offset_forward_mm",
     "offset_side_mm", "offset_up_mm", "group_enabled", "group_companion_symbol",
-    "group_radius_mm", "circuit_enabled", "circuit_system_type",
-    "circuit_panel_param"} (см. companion_placement_settings).
+    "group_radius_mm", "circuit_enabled", "circuits", "circuit_panel_param",
+    "circuit_conductor_param"} (см. companion_placement_settings).
 
     Если group_enabled и задан group_companion_symbol — сначала ищутся
     группы по 2-4 близких базовых объекта одного помещения (см.
@@ -406,12 +434,12 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
     объекты, не попавшие ни в одну группу, обрабатываются как раньше —
     обычным компаньоном, по одному на объект.
 
-    Если circuit_enabled и задан circuit_system_type — сразу после каждого
+    Если circuit_enabled и задан хотя бы один слот в circuits — сразу после каждого
     успешно поставленного компаньона (поштучного или на группу) строится
-    электрическая цепь между ним и его базовым объектом(ами) (см.
-    build_companion_circuit) — только для компаньонов, поставленных в этом
-    запуске (не для уже существующих, обнаруженных защитой от повторной
-    расстановки).
+    одна или две электрические цепи между ним и его базовым объектом(ами)
+    (см. build_companion_circuits) — только для компаньонов, поставленных
+    в этом запуске (не для уже существующих, обнаруженных защитой от
+    повторной расстановки).
 
     Возвращает {"created": [...], "created_groups": [...], "groups_found": N,
     "skipped_duplicate": N, "skipped_duplicate_groups": N,
@@ -434,7 +462,7 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
     skipped_duplicate_groups = 0
     failed_groups = 0
 
-    circuit_enabled = bool(pair.get("circuit_enabled") and pair.get("circuit_system_type"))
+    circuit_enabled = bool(pair.get("circuit_enabled") and pair.get("circuits"))
     circuits_created = 0
     circuits_failed = 0
 
@@ -457,11 +485,11 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
                 created_groups.append(new_el)
                 group_candidates.append(new_el)
                 if circuit_enabled:
-                    circuit, _circuit_error = build_companion_circuit(doc, new_el, group_elements, pair)
-                    if circuit is None:
-                        circuits_failed += 1
-                    else:
-                        circuits_created += 1
+                    for circuit, _circuit_error in build_companion_circuits(doc, new_el, group_elements, pair):
+                        if circuit is None:
+                            circuits_failed += 1
+                        else:
+                            circuits_created += 1
             elif outcome == "duplicate":
                 skipped_duplicate_groups += 1
             else:
@@ -506,11 +534,11 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
         candidates.append(new_el)
 
         if circuit_enabled:
-            circuit, _circuit_error = build_companion_circuit(doc, new_el, [base_element], pair)
-            if circuit is None:
-                circuits_failed += 1
-            else:
-                circuits_created += 1
+            for circuit, _circuit_error in build_companion_circuits(doc, new_el, [base_element], pair):
+                if circuit is None:
+                    circuits_failed += 1
+                else:
+                    circuits_created += 1
 
     return {
         "created": created,
