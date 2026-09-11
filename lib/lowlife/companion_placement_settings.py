@@ -59,6 +59,19 @@ companion_placement._expected_values_for_group).
 находятся по общему для ВСЕХ пар параметру-признаку («Параметр-признак
 строки справочника кабелей», задаётся один раз вверху окна, а не на
 каждую пару).
+
+Подпись линий проводки (как у СПС, см. docs/fire-alarm-panels.md
+"Подпись линий проводки номером цепи" и «Цепи изолятор-устройства»):
+если заполнены оба поля вверху окна — «Ключевое слово в имени семейства
+линии провода» и «Параметр линии для подписи» — после каждой успешно
+построенной цепи компаньона кнопка находит на активном виде уже
+нарисованные вручную линии проводки (line-based Generic Model) рядом с
+базовым объектом/компаньоном и подписывает им этот параметр собственным
+именем цепи в Revit (circuit.Name, например «Цепь 1») — у цепей этой
+кнопки нет своего «Номера цепи», поэтому подпись такая же, как у «Цепи
+изолятор-устройства». Общие на все пары поля, не на каждую. Сами линии
+кнопка не рисует, только подписывает уже нарисованное; если поля не
+заполнены — ничего не делает.
 """
 
 import os
@@ -200,6 +213,8 @@ def load_saved_values():
     values = {
         "pair_names_text": saved.get("pair_names_text", u""),
         "wire_catalog_marker_param": saved.get("wire_catalog_marker_param", u""),
+        "wire_line_family_filter": saved.get("wire_line_family_filter", u""),
+        "wire_mark_param": saved.get("wire_mark_param", u""),
     }
 
     pairs = {}
@@ -216,6 +231,8 @@ def save_values(values):
     data = _read_all()
     data["pair_names_text"] = values["pair_names_text"]
     data["wire_catalog_marker_param"] = values["wire_catalog_marker_param"]
+    data["wire_line_family_filter"] = values["wire_line_family_filter"]
+    data["wire_mark_param"] = values["wire_mark_param"]
     data["pairs"] = values["pairs"]
     _write_all(data)
 
@@ -245,6 +262,9 @@ def to_runtime_settings(doc, values):
     names = _split_names(values["pair_names_text"])
     pairs = values["pairs"]
     runtime_pairs = []
+
+    wire_line_family_filter = (values.get("wire_line_family_filter") or u"").strip()
+    wire_mark_param = (values.get("wire_mark_param") or u"").strip()
 
     for name in names:
         raw = pairs.get(name) or _default_pair_values()
@@ -312,6 +332,8 @@ def to_runtime_settings(doc, values):
             "circuit_panel_param": (raw.get("circuit_panel_param") or u"").strip(),
             "circuit_conductor_param": (raw.get("circuit_conductor_param") or u"").strip(),
             "circuits": circuits,
+            "wire_line_family_filter": wire_line_family_filter,
+            "wire_mark_param": wire_mark_param,
         })
 
     return {"pairs": runtime_pairs}
@@ -432,6 +454,40 @@ def show_settings_form(doc, values):
     marker_box.Padding = Thickness(4, 2, 4, 2)
     marker_box.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(marker_box)
+
+    # --- подпись линий проводки номером/именем цепи (как у СПС, общая на все пары) ---
+
+    wire_line_label = TextBlock()
+    wire_line_label.Text = (
+        u"Ключевое слово в имени семейства линии провода — необязательно, "
+        u"общее на все пары (как у СПС: подпись уже нарисованных вручную "
+        u"линий проводки собственным именем построенной цепи в Revit)"
+    )
+    wire_line_label.TextWrapping = TextWrapping.Wrap
+    wire_line_label.Margin = Thickness(0, 0, 0, 2)
+    root.Children.Add(wire_line_label)
+
+    wire_line_filter_box = TextBox()
+    wire_line_filter_box.Text = values.get("wire_line_family_filter", u"")
+    wire_line_filter_box.Width = 360
+    wire_line_filter_box.HorizontalAlignment = HorizontalAlignment.Left
+    wire_line_filter_box.Padding = Thickness(4, 2, 4, 2)
+    wire_line_filter_box.Margin = Thickness(0, 0, 0, 6)
+    root.Children.Add(wire_line_filter_box)
+
+    wire_mark_label = TextBlock()
+    wire_mark_label.Text = u"Параметр линии для подписи — необязательно, общий на все пары"
+    wire_mark_label.TextWrapping = TextWrapping.Wrap
+    wire_mark_label.Margin = Thickness(0, 0, 0, 2)
+    root.Children.Add(wire_mark_label)
+
+    wire_mark_box = TextBox()
+    wire_mark_box.Text = values.get("wire_mark_param", u"")
+    wire_mark_box.Width = 360
+    wire_mark_box.HorizontalAlignment = HorizontalAlignment.Left
+    wire_mark_box.Padding = Thickness(4, 2, 4, 2)
+    wire_mark_box.Margin = Thickness(0, 0, 0, 10)
+    root.Children.Add(wire_mark_box)
 
     # --- строка имён пар ---
 
@@ -924,6 +980,8 @@ def show_settings_form(doc, values):
         result["values"] = {
             "pair_names_text": names_box.Text,
             "wire_catalog_marker_param": marker_box.Text,
+            "wire_line_family_filter": wire_line_filter_box.Text,
+            "wire_mark_param": wire_mark_box.Text,
             "pairs": {name: dict(pair) for name, pair in pairs_state.items()},
         }
         win.Close()

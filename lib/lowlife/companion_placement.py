@@ -39,6 +39,14 @@ place_companions_for_pair(..., pair["group_enabled"]).
 (например силовая + сигнальная) — поэтому строится по одной цепи на
 каждый настроенный слот (1-2), с опциональным кабелем на каждую. См.
 build_companion_circuits.
+
+Подпись линий проводки (опционально, общая настройка на все пары, как у
+СПС): если заполнены оба поля "wire_line_family_filter"/"wire_mark_param",
+после каждой успешно построенной цепи компаньона находятся уже
+нарисованные вручную линии проводки рядом с базовым объектом/компаньоном
+и подписываются собственным именем цепи в Revit (circuit.Name) — тем же
+способом, что и в «Цепи изолятор-устройства»
+(lowlife.fire_alarm_wire_marks.mark_wire_lines).
 """
 
 import math
@@ -50,6 +58,7 @@ from lowlife.geometry import get_point, get_element_level, find_level_for_elevat
 from lowlife.params import get_param_any, set_param_any, set_element_id_param
 from lowlife.scs import safe_element_name
 from lowlife.electrical_circuits import create_circuit
+from lowlife.fire_alarm_wire_marks import collect_member_points, mark_wire_lines
 
 MM_TO_FT = 1.0 / 304.8
 
@@ -350,15 +359,17 @@ def _place_one_group(doc, group_elements, pair, sorted_levels, candidates, radiu
     return "created", new_el
 
 
-def _build_one_circuit(doc, companion_el, member_elements, circuit_spec, panel_param, conductor_param):
+def _build_one_circuit(doc, view, companion_el, member_elements, circuit_spec,
+                        panel_param, conductor_param, wire_family_filter, wire_mark_param):
     """
     Строит одну электрическую цепь по одному слоту circuit_spec —
-    {"system_type", "conductor_type_id"}. Возвращает (цепь, текст ошибки).
+    {"system_type", "conductor_type_id"}. Возвращает (цепь, текст ошибки,
+    число подписанных линий проводки).
     """
     circuit, error = create_circuit(doc, companion_el, member_elements, circuit_spec["system_type"])
 
     if circuit is None:
-        return None, error
+        return None, error, 0
 
     if panel_param:
         panel_name = safe_element_name(companion_el)
@@ -377,10 +388,18 @@ def _build_one_circuit(doc, companion_el, member_elements, circuit_spec, panel_p
     except:
         pass
 
-    return circuit, error
+    marked = 0
+    if wire_family_filter and wire_mark_param:
+        try:
+            member_points = collect_member_points(member_elements, companion_el)
+            marked = mark_wire_lines(doc, view, member_points, circuit.Name, wire_family_filter, wire_mark_param)
+        except:
+            pass
+
+    return circuit, error, marked
 
 
-def build_companion_circuits(doc, companion_el, member_elements, pair):
+def build_companion_circuits(doc, view, companion_el, member_elements, pair):
     """
     Строит одну или две электрические цепи между только что поставленным
     компаньоном и базовым объектом(ами), которым он служит — той же
@@ -396,37 +415,49 @@ def build_companion_circuits(doc, companion_el, member_elements, pair):
     базовому объекту нужны сразу две цепи разной категории, например
     силовая + сигнальная). pair — {"circuits": [{"system_type",
     "conductor_type_id"}, ...], "circuit_panel_param",
-    "circuit_conductor_param"} (см. companion_placement_settings) —
-    "circuit_panel_param"/"circuit_conductor_param" опциональны и общие
-    для всех слотов: если заданы, в них пишутся имя компаньона (аналог
-    «Панель» = имя изолятора у «Цепи изолятор-устройства») и, если у слота
-    выбран кабель, ссылка на строку справочника кабелей.
+    "circuit_conductor_param", "wire_line_family_filter", "wire_mark_param"}
+    (см. companion_placement_settings) — все, кроме "circuits", опциональны
+    и общие для всех слотов: "circuit_panel_param"/"circuit_conductor_param"
+    пишут имя компаньона (аналог «Панель» = имя изолятора у «Цепи
+    изолятор-устройства») и, если у слота выбран кабель, ссылку на строку
+    справочника кабелей; "wire_line_family_filter"/"wire_mark_param" — как
+    у СПС, подписывают уже нарисованные вручную линии проводки рядом с
+    компаньоном/базовым объектом собственным именем построенной цепи в
+    Revit (circuit.Name), тем же способом, что и «Цепи изолятор-устройства»
+    (lowlife.fire_alarm_wire_marks.mark_wire_lines).
 
     После успешного создания каждой цепи ей, как и там, сразу
     проставляется режим траектории Revit «Все устройства»
     (CircuitPathMode.AllDevices) — чтобы Revit сам посчитал Length по
     фактическому положению элементов, без ручной прорисовки проводки.
 
-    Возвращает список (цепь, текст ошибки) — по одному на слот; цепь
-    может быть не None даже при непустом error (например «создана, но не
-    подключена к панели»).
+    Возвращает список (цепь, текст ошибки, число подписанных линий) — по
+    одному на слот; цепь может быть не None даже при непустом error
+    (например «создана, но не подключена к панели»).
     """
     panel_param = pair.get("circuit_panel_param")
     conductor_param = pair.get("circuit_conductor_param")
+    wire_family_filter = pair.get("wire_line_family_filter")
+    wire_mark_param = pair.get("wire_mark_param")
 
     return [
-        _build_one_circuit(doc, companion_el, member_elements, circuit_spec, panel_param, conductor_param)
+        _build_one_circuit(
+            doc, view, companion_el, member_elements, circuit_spec,
+            panel_param, conductor_param, wire_family_filter, wire_mark_param
+        )
         for circuit_spec in (pair.get("circuits") or [])
     ]
 
 
-def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
+def place_companions_for_pair(doc, view, base_elements, pair, sorted_levels):
     """
     Обрабатывает одну настроенную пару для уже собранного списка базовых
     объектов. pair — {"companion_symbol", "param_map", "offset_forward_mm",
     "offset_side_mm", "offset_up_mm", "group_enabled", "group_companion_symbol",
     "group_radius_mm", "circuit_enabled", "circuits", "circuit_panel_param",
-    "circuit_conductor_param"} (см. companion_placement_settings).
+    "circuit_conductor_param", "wire_line_family_filter", "wire_mark_param"}
+    (см. companion_placement_settings). view — активный вид, нужен только
+    для подписи линий проводки (mark_wire_lines ищет их на view).
 
     Если group_enabled и задан group_companion_symbol — сначала ищутся
     группы по 2-4 близких базовых объекта одного помещения (см.
@@ -444,7 +475,7 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
     Возвращает {"created": [...], "created_groups": [...], "groups_found": N,
     "skipped_duplicate": N, "skipped_duplicate_groups": N,
     "skipped_no_point": N, "failed": N, "failed_groups": N,
-    "circuits_created": N, "circuits_failed": N}.
+    "circuits_created": N, "circuits_failed": N, "wire_lines_marked": N}.
     """
     symbol = pair["companion_symbol"]
     param_map = pair["param_map"]
@@ -465,6 +496,7 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
     circuit_enabled = bool(pair.get("circuit_enabled") and pair.get("circuits"))
     circuits_created = 0
     circuits_failed = 0
+    wire_lines_marked = 0
 
     elements_for_solo = base_elements
 
@@ -485,11 +517,14 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
                 created_groups.append(new_el)
                 group_candidates.append(new_el)
                 if circuit_enabled:
-                    for circuit, _circuit_error in build_companion_circuits(doc, new_el, group_elements, pair):
+                    for circuit, _circuit_error, marked in build_companion_circuits(
+                        doc, view, new_el, group_elements, pair
+                    ):
                         if circuit is None:
                             circuits_failed += 1
                         else:
                             circuits_created += 1
+                        wire_lines_marked += marked
             elif outcome == "duplicate":
                 skipped_duplicate_groups += 1
             else:
@@ -534,11 +569,14 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
         candidates.append(new_el)
 
         if circuit_enabled:
-            for circuit, _circuit_error in build_companion_circuits(doc, new_el, [base_element], pair):
+            for circuit, _circuit_error, marked in build_companion_circuits(
+                doc, view, new_el, [base_element], pair
+            ):
                 if circuit is None:
                     circuits_failed += 1
                 else:
                     circuits_created += 1
+                wire_lines_marked += marked
 
     return {
         "created": created,
@@ -551,4 +589,5 @@ def place_companions_for_pair(doc, base_elements, pair, sorted_levels):
         "failed_groups": failed_groups,
         "circuits_created": circuits_created,
         "circuits_failed": circuits_failed,
+        "wire_lines_marked": wire_lines_marked,
     }
