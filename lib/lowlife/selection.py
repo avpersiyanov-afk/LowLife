@@ -159,6 +159,30 @@ def views_with_name_prefix(doc, prefixes):
     return out
 
 
+class CategorySelectionFilter(ISelectionFilter):
+    """
+    ISelectionFilter, пропускающий только «модельные» элементы
+    (is_pickable_model_element) заданных категорий. Используется кнопкой
+    «Фильтр выбора», чтобы при выделении рамкой/кликом подхватывались
+    только отмеченные пользователем категории.
+    """
+
+    def __init__(self, category_ids):
+        # category_ids: набор int (Category.Id.IntegerValue)
+        self._category_ids = set(category_ids)
+
+    def AllowElement(self, elem):
+        if not is_pickable_model_element(elem):
+            return False
+        try:
+            return elem.Category.Id.IntegerValue in self._category_ids
+        except Exception:
+            return False
+
+    def AllowReference(self, reference, position):
+        return True
+
+
 class CategoryOption(object):
     """Категория — для forms.SelectFromList."""
 
@@ -193,6 +217,37 @@ def list_view_categories(doc, view):
     options = [CategoryOption(cat) for cat in cats.values()]
     options.sort(key=lambda o: o.sort_name)
     return options
+
+
+def pick_elements_by_categories(
+    uidoc,
+    doc,
+    category_ids,
+    prompt=(u"Выделяйте элементы кликом и/или рамкой. Enter (или ПКМ — "
+            u"«Готово») — завершить, Esc — отмена."),
+    cancel_message=u"Выбор отменён.",
+    empty_message=u"Не выбрано ни одного элемента.",
+):
+    """
+    То же самое, что pick_model_elements, но выбор дополнительно ограничен
+    заданными категориями (CategorySelectionFilter). category_ids — набор
+    int (Category.Id.IntegerValue). Возвращает список Element.
+    """
+    try:
+        refs = uidoc.Selection.PickObjects(
+            ObjectType.Element, CategorySelectionFilter(category_ids), prompt
+        )
+    except OperationCanceledException:
+        forms.alert(cancel_message, exitscript=True)
+        return []
+
+    els = [doc.GetElement(r) for r in refs]
+    els = [el for el in els if el is not None]
+
+    if not els:
+        forms.alert(empty_message, exitscript=True)
+
+    return els
 
 
 def pick_model_elements(
