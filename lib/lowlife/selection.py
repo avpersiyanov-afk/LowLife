@@ -159,30 +159,6 @@ def views_with_name_prefix(doc, prefixes):
     return out
 
 
-class CategorySelectionFilter(ISelectionFilter):
-    """
-    ISelectionFilter, пропускающий только «модельные» элементы
-    (is_pickable_model_element) заданных категорий. Используется кнопкой
-    «Фильтр выбора», чтобы при выделении рамкой/кликом подхватывались
-    только отмеченные пользователем категории.
-    """
-
-    def __init__(self, category_ids):
-        # category_ids: набор int (Category.Id.IntegerValue)
-        self._category_ids = set(category_ids)
-
-    def AllowElement(self, elem):
-        if not is_pickable_model_element(elem):
-            return False
-        try:
-            return elem.Category.Id.IntegerValue in self._category_ids
-        except Exception:
-            return False
-
-    def AllowReference(self, reference, position):
-        return True
-
-
 class CategoryOption(object):
     """Категория — для forms.SelectFromList."""
 
@@ -219,6 +195,14 @@ def list_view_categories(doc, view):
     return options
 
 
+def _category_id_of(elem):
+    try:
+        cat = elem.Category
+        return cat.Id.IntegerValue if cat is not None else None
+    except Exception:
+        return None
+
+
 def pick_elements_by_categories(
     uidoc,
     doc,
@@ -229,20 +213,32 @@ def pick_elements_by_categories(
     empty_message=u"Не выбрано ни одного элемента.",
 ):
     """
-    То же самое, что pick_model_elements, но выбор дополнительно ограничен
-    заданными категориями (CategorySelectionFilter). category_ids — набор
-    int (Category.Id.IntegerValue). Возвращает список Element.
+    Интерактивный выбор, отфильтрованный по категориям (category_ids —
+    набор int Category.Id.IntegerValue), но БЕЗ ISelectionFilter-колбэка
+    во время самого PickObjects — фильтрация происходит один раз, после,
+    на уже отобранных элементах.
+
+    Раньше здесь был CategorySelectionFilter (ISelectionFilter.AllowElement
+    на каждый элемент). Revit вызывает AllowElement для КАЖДОГО кандидата,
+    который проверяет при разрешении рамки/клика — не только для итогово
+    попавших в выбор, а Python-колбэк на границе managed/IronPython на
+    порядок медленнее нативной C#-проверки. На захламлённом виде с сотнями
+    элементов под рамкой это ощутимо тормозило именно момент завершения
+    выбора (Enter/отпускание рамки) — то, на что жаловался пользователь.
+    Без колбэка PickObjects целиком нативный и быстрый; отбор по
+    категориям — один проход по уже picked-элементам (их всегда на
+    порядки меньше кандидатов под рамкой).
     """
     try:
-        refs = uidoc.Selection.PickObjects(
-            ObjectType.Element, CategorySelectionFilter(category_ids), prompt
-        )
+        refs = uidoc.Selection.PickObjects(ObjectType.Element, prompt)
     except OperationCanceledException:
         forms.alert(cancel_message, exitscript=True)
         return []
 
+    category_ids = set(category_ids)
     els = [doc.GetElement(r) for r in refs]
-    els = [el for el in els if el is not None]
+    els = [el for el in els
+           if el is not None and _category_id_of(el) in category_ids]
 
     if not els:
         forms.alert(empty_message, exitscript=True)
