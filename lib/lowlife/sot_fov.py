@@ -600,6 +600,17 @@ def _dist_point_to_rings(px, py, rings):
     return best
 
 
+def _ring_area(ring):
+    """Площадь простого многоугольника (формула шнурования), кв.футы."""
+    a = 0.0
+    n = len(ring)
+    for i in range(n):
+        x1, y1 = ring[i].X, ring[i].Y
+        x2, y2 = ring[(i + 1) % n].X, ring[(i + 1) % n].Y
+        a += x1 * y2 - x2 * y1
+    return abs(a) * 0.5
+
+
 def room_rings_for_point(doc, host_point, boundary_mode):
     """
     (контуры помещения в координатах ХОСТА [Z=0], пояснение).
@@ -782,19 +793,40 @@ def _footprint_rings(el, tf):
     return None
 
 
+# Камера, смонтированная на самом препятствии (типично — на колонне),
+# либо на консоли вплотную к нему: контур не может «загораживать сам
+# себя» — препятствие в пределах этого запаса от центра камеры в счёт не
+# идёт. ~300 мм — обычный вылет кронштейна камеры.
+_OBSTACLE_SELF_CLEARANCE_FT = 1.0
+
+# Подозрительно большая площадь горизонтального сечения — крупнее любой
+# реальной колонны. Revit автоматически «сшивает» (joins) геометрию
+# пересекающихся элементов, поэтому Solid колонны, примыкающей к плите
+# перекрытия или стене, иногда оказывается их объединением — тогда нижняя
+# грань такого Solid — это контур ПЕРЕКРЫТИЯ (площадь всего этажа), а не
+# колонны. Такой контур почти наверняка накрывает саму камеру (та стоит
+# на этом же перекрытии) и полностью «съедает» зону — поэтому отсекается.
+_OBSTACLE_MAX_AREA_FT2 = 200.0   # ~18.6 м²
+
+
 def _gather_obstacle_rings(obstacle_sources, ring_cache, center, plane_z_host, max_r):
     """
-    Контуры препятствий рядом с center, чей вертикальный габарит
-    захватывает plane_z_host (высоту плоскости расчёта в координатах
-    хоста) — как дополнительные «дыры» для обрезки лучей зоны.
+    (контуры препятствий рядом с center, чей вертикальный габарит
+    захватывает plane_z_host, пояснение). Пояснение непустое, только если
+    что-то отсеяно как «камера смонтирована на этом же препятствии» или
+    «подозрительно большой контур» (см. константы выше) — иначе такой
+    контур почти всегда даёт пустую зону вместо тени.
+
     ring_cache — {(id(source_doc), int(ElementId)): rings|None}, общий на
     весь прогон кнопки: контур препятствия не зависит от камеры и
     считается один раз, даже если в его тень попадает несколько камер.
     """
     if not obstacle_sources:
-        return []
+        return [], u""
 
     out = []
+    skipped_self = 0
+    skipped_huge = 0
     reach2 = (max_r + 10.0) ** 2   # запас в футах на габарит препятствия
 
     for src_doc, tf, items in obstacle_sources:
@@ -823,10 +855,32 @@ def _gather_obstacle_rings(obstacle_sources, ring_cache, center, plane_z_host, m
             else:
                 rings = _footprint_rings(el, tf)
                 ring_cache[key] = rings
-            if rings:
-                out.extend(rings)
+            if not rings:
+                continue
 
-    return out
+            outer = rings[0]
+            if (_point_in_ring(center.X, center.Y, outer)
+                    or (_dist_point_to_rings(center.X, center.Y, [outer]) or 1e9)
+                    < _OBSTACLE_SELF_CLEARANCE_FT):
+                skipped_self += 1
+                continue
+            if _ring_area(outer) > _OBSTACLE_MAX_AREA_FT2:
+                skipped_huge += 1
+                continue
+
+            out.extend(rings)
+
+    note = u""
+    if skipped_self or skipped_huge:
+        bits = []
+        if skipped_self:
+            bits.append(u"{} вплотную к камере".format(skipped_self))
+        if skipped_huge:
+            bits.append(u"{} с подозрительно большим контуром (сшито "
+                        u"с соседним элементом?)".format(skipped_huge))
+        note = u"не в счёт: " + u", ".join(bits)
+
+    return out, note
 
 
 # ======================================================================
@@ -1129,7 +1183,7 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     # препятствия (колонны и т.п.) — независимо от обрезки по помещению,
     # ищутся во всех связях + текущей модели на высоте плоскости расчёта
     plane_z_host = z + target_off_ft
-    obstacle_rings = _gather_obstacle_rings(
+    obstacle_rings, obstacle_note = _gather_obstacle_rings(
         obstacle_sources, ring_cache, center, plane_z_host, max_r)
 
     rings = None
@@ -1192,6 +1246,8 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     elif obstacle_rings:
         parts.append(u"препятствия рядом есть ({}), но обрезка по ним не удалась".format(
             len(obstacle_rings)))
+    if obstacle_note:
+        parts.append(obstacle_note)
 
     clip_note = u"; ".join(p for p in parts if p) or u"—"
 
