@@ -1075,10 +1075,18 @@ room_number_param)` — запись по точкам прохода, возв�
 | `manhattan_ft` | `manhattan_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между точками |
 
 ## fire_alarm_circuits.py
-Поиск панелей/устройств СПС/СОУЭ в документе, создание электрических
+Поиск панелей/устройств СПС/СОУЭ/СПА в документе, создание электрических
 цепей и запись длин. Категории устройств берутся через `getattr` —
 набор `BuiltInCategory` отличается между версиями Revit, и отсутствующее
 имя иначе уронило бы модуль на импорте.
+
+`_SYSTEM_EXCLUDED_CATEGORY_IDS` — категории `DEVICE_CATEGORIES`,
+исключаемые из `find_devices` для конкретной системы (ключ — `config["_system"]`,
+проставляется `fire_alarm_settings.to_runtime_settings`). Сейчас только СПА:
+`OST_ElectricalFixtures` («Электроприборы») исключена — рядом с устройствами
+СПА стоят сопутствующие electrical fixtures-устройства (РМ/АМ/МДУ, см.
+`companion_placement.py`), физически подключённые к устройствам СПА, но не
+являющиеся адресными устройствами шлейфа.
 
 `resolve_system_type`/`create_circuit` здесь больше не определены — они
 переехали в `electrical_circuits.py` (не специфичны для СПС/СОУЭ), но
@@ -1088,7 +1096,7 @@ room_number_param)` — запись по точкам прохода, возв�
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `find_panels` | `find_panels(doc, config)` | `{номер панели: элемент}` — по рабочему набору и «Обозначению» |
-| `find_devices` | `find_devices(doc, config)` | `(devices, address_by_id, address_text_by_id, skipped)`; `skipped` — с неразбираемым адресом |
+| `find_devices` | `find_devices(doc, config)` | `(devices, address_by_id, address_text_by_id, skipped)`; `skipped` — с неразбираемым адресом. Категории, исключённые для `config["_system"]` (`_SYSTEM_EXCLUDED_CATEGORY_IDS`), из сбора пропускаются целиком |
 | `existing_circuits_by_number` | `existing_circuits_by_number(doc, config)` | Уже созданные цепи по «Номеру цепи» — чтобы не пересоздавать |
 | `circuit_membership_map` | `circuit_membership_map(doc, number_param)` | `{id элемента: (номер цепи, id цепи)}` по ВСЕМ цепям документа — устройство, уже входящее в цепь, нельзя добавить в другую |
 | `device_category_id` | `device_category_id(el)` | `int(BuiltInCategory)` устройства, если это одна из `DEVICE_CATEGORIES`, иначе `None` — для подбора типа проводника по категории |
@@ -1096,19 +1104,25 @@ room_number_param)` — запись по точкам прохода, возв�
 | `write_loop_length` | `write_loop_length(circuit, ordered_nodes, panel_point, config)` | Считает и пишет длину и способ прокладки |
 
 ## fire_alarm_settings.py
-Настройки СПС/СОУЭ. Один модуль на обе системы, но **разные файлы**:
-`set_system("SPS")` или `set_system("SOUE")` в начале скрипта кнопки
-выбирает, какой JSON читать/писать. Функции те же, что в
-`scs_settings`/`skud_settings` (`get_settings_interactive`,
+Настройки СПС/СОУЭ/СПА. Один модуль на все три системы, но **разные
+файлы**: `set_system("SPS")`, `set_system("SOUE")` или `set_system("SPA")`
+в начале скрипта кнопки выбирает, какой JSON читать/писать. Функции те же,
+что в `scs_settings`/`skud_settings` (`get_settings_interactive`,
 `get_settings_silent`, `require`, ...).
 
 У системы могут быть свои значения по умолчанию (`SYSTEMS[...]["defaults"]`)
 — они перекрывают общие из `TEXT_FIELDS`. Так задаётся, например, тип
-электрической цепи: шлейф СПС создаётся как пожарная сигнализация.
+электрической цепи: шлейф СПС/СОУЭ создаётся как пожарная сигнализация
+(`FireAlarm`), а СПА — как `Controls`. `to_runtime_settings` также кладёт
+в результат `settings["_system"]` (текущий ключ системы) — читает
+`fire_alarm_circuits.find_devices` для исключения категорий, специфичных
+для одной системы (см. выше).
 
 ## fire_alarm_buttons.py
-Тела кнопок СПС/СОУЭ — общие для обеих систем, чтобы `script.py` остался
-тонким (выбрать систему и вызвать функцию).
+Тела кнопок СПС/СОУЭ/СПА — общие для всех систем, чтобы `script.py`
+остался тонким (выбрать систему и вызвать функцию). У СПА пока
+используется только `build_loop_circuits` («Цепи шлейфов СПА») — без
+`calc_loop_lengths`/структурной схемы/изолятор-цепей.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|

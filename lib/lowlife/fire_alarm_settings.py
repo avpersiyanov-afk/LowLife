@@ -509,6 +509,11 @@ def to_runtime_settings(values):
     settings = dict(values)
     for key in LIST_FIELDS:
         settings[key] = _split_list(values[key])
+    # Текущая система (см. fire_alarm_circuits._SYSTEM_EXCLUDED_CATEGORY_IDS) —
+    # чтобы find_devices мог по-разному исключать категории устройств для
+    # разных систем, не создавая циклический импорт (fire_alarm_settings уже
+    # импортирует из fire_alarm_circuits).
+    settings["_system"] = _current_system
     return settings
 
 

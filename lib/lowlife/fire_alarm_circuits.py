@@ -60,6 +60,28 @@ for _name in _CATEGORY_NAMES:
         DEVICE_CATEGORIES.append(_cat)
         CATEGORY_TITLE_BY_ID[int(_cat)] = _CATEGORY_TITLES[_name]
 
+# Категории, исключаемые из сбора устройств для КОНКРЕТНЫХ систем (ключ —
+# fire_alarm_settings.SYSTEMS, значение — имена BuiltInCategory).
+# У СПА рядом с устройствами (в том же рабочем наборе) стоят electrical
+# fixtures-устройства ("Электроприборы") — сопутствующее оборудование
+# (РМ/АМ/МДУ, см. lowlife.companion_placement), физически подключённое к
+# устройствам СПА, но это не адресные устройства шлейфа и не должны
+# попадать в него/в шлейфовые цепи. У СПС/СОУЭ эта категория по-прежнему
+# участвует как обычно — исключение только для СПА.
+_SYSTEM_EXCLUDED_CATEGORY_NAMES = {
+    "SPA": ("OST_ElectricalFixtures",),
+}
+
+_SYSTEM_EXCLUDED_CATEGORY_IDS = {}
+for _system_key, _names in _SYSTEM_EXCLUDED_CATEGORY_NAMES.items():
+    _ids = set()
+    for _name in _names:
+        _cat = getattr(BuiltInCategory, _name, None)
+        if _cat is not None:
+            _ids.add(int(_cat))
+    if _ids:
+        _SYSTEM_EXCLUDED_CATEGORY_IDS[_system_key] = _ids
+
 
 def category_title(builtin_category):
     """Читаемое название фиксированной категории устройств СПС/СОУЭ."""
@@ -127,6 +149,7 @@ def find_devices(doc, config):
     """
     address_param = config["device_address_param"]
     excluded = config.get("excluded_device_keywords") or []
+    excluded_category_ids = _SYSTEM_EXCLUDED_CATEGORY_IDS.get(config.get("_system"), ())
 
     devices = []
     address_by_id = {}
@@ -134,6 +157,9 @@ def find_devices(doc, config):
     skipped = []
 
     for cat in DEVICE_CATEGORIES:
+        if int(cat) in excluded_category_ids:
+            continue
+
         try:
             found = FilteredElementCollector(doc) \
                 .OfCategory(cat) \
