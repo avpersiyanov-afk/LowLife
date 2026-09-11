@@ -137,6 +137,7 @@ THEMES = {
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
         (u"Tools", u"ZoomToElement"),
+        (u"Tools", u"CopyElementId"),
         (u"Tools", u"Hello"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
