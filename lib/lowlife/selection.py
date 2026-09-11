@@ -159,6 +159,99 @@ def views_with_name_prefix(doc, prefixes):
     return out
 
 
+class CategorySelectionFilter(ISelectionFilter):
+    """
+    ISelectionFilter, пропускающий только «модельные» элементы
+    (is_pickable_model_element) заданных категорий. Используется кнопкой
+    «Фильтр выбора», чтобы при выделении рамкой/кликом подхватывались
+    только отмеченные пользователем категории.
+    """
+
+    def __init__(self, category_ids):
+        # category_ids: набор int (Category.Id.IntegerValue)
+        self._category_ids = set(category_ids)
+
+    def AllowElement(self, elem):
+        if not is_pickable_model_element(elem):
+            return False
+        try:
+            return elem.Category.Id.IntegerValue in self._category_ids
+        except Exception:
+            return False
+
+    def AllowReference(self, reference, position):
+        return True
+
+
+class CategoryOption(object):
+    """Категория со счётчиком элементов на виде — для forms.SelectFromList."""
+
+    def __init__(self, category, count):
+        self.category_id = category.Id
+        try:
+            base = category.Name
+        except Exception:
+            base = None
+        base = base or u"?"
+        self.sort_name = base.lower()
+        self.name = u"{} ({})".format(base, count)
+
+    def __str__(self):
+        return self.name
+
+
+def list_view_categories(doc, view):
+    """
+    Категории «модельных» элементов (is_pickable_model_element), видимых на
+    view, со счётчиком элементов каждой — отсортированный по имени список
+    CategoryOption для forms.SelectFromList(multiselect=True).
+    """
+    cats = {}
+    counts = {}
+    for el in collect_model_elements(doc, view):
+        cat = el.Category
+        if cat is None:
+            continue
+        cid = cat.Id.IntegerValue
+        cats[cid] = cat
+        counts[cid] = counts.get(cid, 0) + 1
+
+    options = [CategoryOption(cats[cid], counts[cid]) for cid in cats]
+    options.sort(key=lambda o: o.sort_name)
+    return options
+
+
+def pick_elements_by_categories(
+    uidoc,
+    doc,
+    category_ids,
+    prompt=(u"Выделяйте элементы кликом и/или рамкой. Enter (или ПКМ — "
+            u"«Готово») — завершить, Esc — отмена."),
+    cancel_message=u"Выбор отменён.",
+    empty_message=u"Не выбрано ни одного элемента.",
+):
+    """
+    То же самое, что pick_model_elements, но выбор дополнительно ограничен
+    заданными категориями (CategorySelectionFilter). category_ids — набор
+    int (Category.Id.IntegerValue). Возвращает список Element.
+    """
+    try:
+        refs = uidoc.Selection.PickObjects(
+            ObjectType.Element, CategorySelectionFilter(category_ids), prompt
+        )
+    except OperationCanceledException:
+        forms.alert(cancel_message, exitscript=True)
+        return []
+
+    els = [doc.GetElement(r) for r in refs]
+    els = [el for el in els if el is not None]
+
+    if not els:
+        forms.alert(empty_message, exitscript=True)
+
+    return els
+
+
 def pick_model_elements(
     uidoc,
     doc,
