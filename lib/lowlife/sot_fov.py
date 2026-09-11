@@ -100,6 +100,59 @@ def _as_int(value, default=0):
         return default
 
 
+def _find_param(doc, el, name):
+    """
+    Параметр el по имени: сначала параметр ЭКЗЕМПЛЯРА; если его нет или он
+    пуст — тот же параметр у ТИПА (family symbol) этого экземпляра.
+
+    Нужно потому, что у камер одни и те же характеристики на практике
+    бывают то экземплярными, то параметрами типа: высота установки, угол
+    наклона — обычно экземплярные (у каждой камеры своя точка и
+    ориентация); угол обзора/дальность/матрица — часто параметр ТИПА
+    (общая характеристика модели камеры), а фокусное расстояние — может
+    быть и тем, и другим (у вариофокального объектива это, как правило,
+    экземплярный параметр — его можно подстроить на месте для конкретной
+    камеры того же типа). `Element.LookupParameter` смотрит только среди
+    параметров экземпляра, поэтому параметр типа сам по себе не найдёт.
+
+    Возвращает Parameter либо None. Если параметр экземпляра существует,
+    но не заполнен, а на типе такого параметра нет вовсе — возвращает
+    именно параметр экземпляра (без значения), чтобы вызывающий код мог
+    отличить «нет такого параметра» от «параметр есть, но пуст».
+    """
+    if not name or not name.strip():
+        return None
+    name = name.strip()
+
+    inst_p = None
+    try:
+        inst_p = el.LookupParameter(name)
+    except Exception:
+        inst_p = None
+    if inst_p is not None and inst_p.HasValue:
+        return inst_p
+
+    try:
+        type_id = el.GetTypeId()
+    except Exception:
+        type_id = None
+    if type_id is not None and type_id != ElementId.InvalidElementId:
+        type_el = None
+        try:
+            type_el = doc.GetElement(type_id)
+        except Exception:
+            type_el = None
+        if type_el is not None:
+            try:
+                type_p = type_el.LookupParameter(name)
+            except Exception:
+                type_p = None
+            if type_p is not None and type_p.HasValue:
+                return type_p
+
+    return inst_p
+
+
 def _param_radians(param, unit_mode):
     """
     Значение углового параметра в радианах. unit_mode: «авто» — по типу
@@ -128,11 +181,12 @@ def _param_radians(param, unit_mode):
     return math.radians(v)
 
 
-def _opt_param_radians(el, name, unit_mode):
-    """Угловой параметр по имени в радианах или None, если имя пустое / нет значения."""
-    if not name or not name.strip():
-        return None
-    p = el.LookupParameter(name.strip())
+def _opt_param_radians(doc, el, name, unit_mode):
+    """
+    Угловой параметр по имени в радианах или None, если имя пустое / нет
+    значения ни на экземпляре, ни на типе (см. _find_param).
+    """
+    p = _find_param(doc, el, name)
     if p is None or not p.HasValue or p.StorageType != StorageType.Double:
         return None
     return _param_radians(p, unit_mode)
@@ -210,23 +264,38 @@ def _length_param_mm(param):
     return v
 
 
-def _optical_fov(fi, settings):
+def _optical_fov(doc, fi, settings):
     """
     (hfov_rad, vfov_rad|None) из параметра фокусного расстояния и формата
     матрицы. None, если имя параметра не задано / параметра нет / формат
     матрицы не задан — тогда используется прямой параметр угла обзора.
+
+    Фокусное расстояние ищется и на экземпляре, и на типе (_find_param) —
+    у вариофокального объектива это обычно параметр экземпляра (разный у
+    одинаковых по типу камер), у фикс-фокальных моделей нередко параметр
+    типа. Формат матрицы — либо тем же способом из параметра
+    `sensor_format_param_name` (текстовый параметр камеры), либо, если он
+    не задан/не распознан, общий текст `sensor_format` из настроек.
     """
     fname = (settings.get("focal_length_param_name") or u"").strip()
     if not fname:
         return None
-    p = fi.LookupParameter(fname)
+    p = _find_param(doc, fi, fname)
     if p is None or not p.HasValue or p.StorageType != StorageType.Double:
         return None
     f_mm = _length_param_mm(p)
     if not f_mm or f_mm <= 0.01:
         return None
 
-    sensor = _parse_sensor(settings.get("sensor_format"))
+    sensor = None
+    sensor_pname = (settings.get("sensor_format_param_name") or u"").strip()
+    if sensor_pname:
+        sp = _find_param(doc, fi, sensor_pname)
+        if sp is not None and sp.HasValue:
+            text = sp.AsString() if sp.StorageType == StorageType.String else sp.AsValueString()
+            sensor = _parse_sensor(text)
+    if sensor is None:
+        sensor = _parse_sensor(settings.get("sensor_format"))
     if sensor is None:
         return None
     w_mm, h_mm = sensor
@@ -322,7 +391,7 @@ def _mounting_height_ft(doc, fi, view, height_param_name):
     """
     name = (height_param_name or u"").strip()
     if name:
-        p = fi.LookupParameter(name)
+        p = _find_param(doc, fi, name)
         if p is not None and p.HasValue and p.StorageType == StorageType.Double:
             h = p.AsDouble()
             if h > 0:
@@ -967,19 +1036,20 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         return (cam, u"no_location", u"")
 
     dist_name = (s.get("distance_param_name") or u"").strip()
-    dist_p = cam.LookupParameter(dist_name)
+    dist_p = _find_param(doc, cam, dist_name)
     if dist_p is None or not dist_p.HasValue:
         return (cam, u"no_distance_param", dist_name or u"(имя не задано)")
 
     # горизонтальный угол: сначала из оптики (фокусное + матрица),
-    # иначе — из прямого параметра угла обзора
+    # иначе — из прямого параметра угла обзора; оба ищутся и на
+    # экземпляре, и на типе (_find_param)
     optic_vfov = None
-    optic = _optical_fov(cam, s)
+    optic = _optical_fov(doc, cam, s)
     if optic is not None:
         hfov, optic_vfov = optic
     else:
         ang_name = (s.get("angle_param_name") or u"").strip()
-        ang_p = cam.LookupParameter(ang_name) if ang_name else None
+        ang_p = _find_param(doc, cam, ang_name) if ang_name else None
         if ang_p is None or not ang_p.HasValue:
             return (cam, u"no_angle_param", ang_name or u"(имя не задано)")
         hfov = _param_radians(ang_p, unit_mode)
@@ -1004,7 +1074,7 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     base = math.atan2(d.Y, d.X)
 
     # индивидуальный разворот камеры параметром внутри семейства
-    rot = _opt_param_radians(cam, s.get("rotation_param_name"), unit_mode)
+    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
     if rot:
         base += rot
         dir_note = u"{} + поворот {:.1f}°".format(dir_note, math.degrees(rot))
@@ -1012,17 +1082,31 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
 
-    tilt = _opt_param_radians(cam, s.get("tilt_param_name"), unit_mode)
-    vfov = _opt_param_radians(cam, s.get("vfov_param_name"), unit_mode)
+    tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode)
+    vfov = _opt_param_radians(doc, cam, s.get("vfov_param_name"), unit_mode)
     if vfov is None:
         vfov = optic_vfov          # из оптики, если явного параметра нет
     h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
     if h_ft is not None:
         h_ft = h_ft - target_off_ft
 
+    if h_ft is not None and tilt is not None and vfov is not None:
+        cone_note = u"h={:.2f} м, наклон={:.0f}°, верт.угол={:.0f}°".format(
+            h_ft * _M_PER_FT, math.degrees(tilt), math.degrees(vfov))
+    else:
+        missing = []
+        if h_ft is None:
+            missing.append(u"высота")
+        if tilt is None:
+            missing.append(u"наклон")
+        if vfov is None:
+            missing.append(u"верт.угол")
+        cone_note = u"мёртвая зона не считается (не найдено: {})".format(u", ".join(missing))
+
     near_r, far_r = _near_far_radius(h_ft, tilt, vfov, max_r)
     if not dead_zone_on:
         near_r = 0.0
+        cone_note = u"мёртвая зона отключена (draw_dead_zone)"
 
     status = u"ok"
     room_rings = None
@@ -1075,10 +1159,10 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         clip_note = u"обрезка по помещению не удалась — без неё"
 
     az = math.degrees(base) % 360.0
-    summary = (u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; напр.: {}; {}"
+    summary = (u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; {}; напр.: {}; {}"
                .format(az, math.degrees(hfov),
                        near_r * _M_PER_FT, far_r * _M_PER_FT,
-                       dir_note, clip_note))
+                       cone_note, dir_note, clip_note))
     return (cam, status, summary)
 
 
@@ -1214,29 +1298,44 @@ TEXT_FIELDS = [
         "angle_param_name",
         u"① Параметры камеры (в этой модели)",
         u"Параметр «горизонтальный угол обзора»",
-        u"Имя параметра экземпляра камеры с углом обзора в плане. Тип "
-        u"параметра — «Угол» (тогда значение читается в радианах) либо "
-        u"«Число» (тогда см. «Единицы углов»). Можно не задавать, если "
-        u"заполнены «Фокусное расстояние» + «Формат матрицы» ниже — тогда "
-        u"угол считается из оптики и это поле игнорируется.",
+        u"Имя параметра камеры с углом обзора в плане — экземпляра ИЛИ "
+        u"типа (сначала ищется на экземпляре, если там пусто/нет — на его "
+        u"типе). Тип параметра — «Угол» (тогда значение читается в "
+        u"радианах) либо «Число» (тогда см. «Единицы углов»). Можно не "
+        u"задавать, если заполнены «Фокусное расстояние» + «Формат "
+        u"матрицы» ниже — тогда угол считается из оптики и это поле "
+        u"игнорируется.",
         u"УГО_ПВ_Угол обзора", False
     ),
     (
         "focal_length_param_name",
         u"",
         u"Параметр «фокусное расстояние», мм",
-        u"Имя параметра объектива. Если задан и найден (+ заполнен «Формат "
-        u"матрицы») — горизонтальный угол считается как "
-        u"θ = 2·arctg(ширина матрицы / (2·f)), а параметр угла обзора не "
-        u"используется. Тип «Длина» → пересчёт из футов; «Число» → как есть, "
-        u"в мм. Для варифокального объектива берётся текущее значение "
-        u"параметра.",
+        u"Имя параметра объектива — экземпляра ИЛИ типа. Если задан и "
+        u"найден (+ определён формат матрицы) — горизонтальный угол "
+        u"считается как θ = 2·arctg(ширина матрицы / (2·f)), а параметр "
+        u"угла обзора не используется. Тип «Длина» → пересчёт из футов; "
+        u"«Число» → как есть, в мм. Для вариофокального объектива обычно "
+        u"это параметр ЭКЗЕМПЛЯРА (сфокусировано по месту, отличается у "
+        u"одинаковых по типу камер) — берётся его текущее значение.",
+        u"", False
+    ),
+    (
+        "sensor_format_param_name",
+        u"",
+        u"Параметр «формат матрицы» (необязательно)",
+        u"Имя ТЕКСТОВОГО параметра камеры (экземпляра или типа) со "
+        u"значением формата матрицы — тем же, что принимает поле «Формат "
+        u"матрицы» ниже («1/2.8», «5.37x4.04» и т.п.). Нужен, только если "
+        u"разные типы/модели камер в проекте отличаются матрицей и она уже "
+        u"внесена в семейство. Пусто — берётся общее значение из поля "
+        u"«Формат матрицы» для всех камер сразу.",
         u"", False
     ),
     (
         "sensor_format",
         u"",
-        u"Формат матрицы",
+        u"Формат матрицы (общий, если нет параметра выше)",
         u"Нужен вместе с фокусным расстоянием. Оптический формат — «1/2.8», "
         u"«1/3», «1/1.8», «2/3», «1» (по таблице); либо явные размеры "
         u"активной области «ШхВ» в мм — «5.37x4.04»; либо одна ширина «5.37» "
@@ -1248,10 +1347,10 @@ TEXT_FIELDS = [
         "distance_param_name",
         u"",
         u"Параметр «дальность» (макс. радиус зоны)",
-        u"Имя параметра экземпляра с максимальной дальностью обзора. Должен "
-        u"быть параметром типа «Длина» (иначе значение уедет по единицам). "
-        u"Задаёт дальнюю границу зоны, если она не ограничена расчётом по "
-        u"наклону/вертикальному углу.",
+        u"Имя параметра камеры с максимальной дальностью обзора —  "
+        u"экземпляра ИЛИ типа. Должен быть параметром типа «Длина» (иначе "
+        u"значение уедет по единицам). Задаёт дальнюю границу зоны, если "
+        u"она не ограничена расчётом по наклону/вертикальному углу.",
         u"УГО_ПВ_Дистанция до объекта", True
     ),
     (
@@ -1267,40 +1366,46 @@ TEXT_FIELDS = [
         "height_param_name",
         u"",
         u"Параметр «высота установки» над уровнем",
-        u"Имя параметра высоты монтажа камеры (тип «Длина»). Если пусто — "
-        u"высота берётся как отметка точки вставки минус отметка уровня "
-        u"камеры. Нужна для расчёта ближней мёртвой зоны и дальней границы.",
+        u"Имя параметра высоты монтажа камеры (тип «Длина») — экземпляра "
+        u"ИЛИ типа; обычно экземпляра (у каждой камеры своя высота). Если "
+        u"пусто — высота берётся как отметка точки вставки минус отметка "
+        u"уровня камеры. Нужна для расчёта ближней мёртвой зоны и дальней "
+        u"границы — без неё (и без наклона/вертикального угла ниже) зона "
+        u"всегда плоский сектор от самой точки камеры, без мёртвой зоны.",
         u"", False
     ),
     (
         "tilt_param_name",
         u"",
         u"Параметр «наклон оптической оси вниз»",
-        u"Имя углового параметра наклона оси камеры вниз от горизонта "
-        u"(0 — камера смотрит горизонтально). Пусто — наклон не учитывается, "
-        u"зона строится как плоский сектор.",
+        u"Имя углового параметра наклона оси камеры вниз от горизонта — "
+        u"экземпляра ИЛИ типа (0 — камера смотрит горизонтально). Пусто — "
+        u"наклон не учитывается, зона строится как плоский сектор без "
+        u"мёртвой зоны, даже если высота и вертикальный угол заданы.",
         u"", False
     ),
     (
         "vfov_param_name",
         u"",
         u"Параметр «вертикальный угол обзора»",
-        u"Имя углового параметра вертикального поля зрения. Вместе с высотой "
-        u"и наклоном даёт проекцию конуса на плоскость расчёта: "
-        u"near = h / tg(наклон + вертикальный/2), "
-        u"far = h / tg(наклон − вертикальный/2).",
+        u"Имя углового параметра вертикального поля зрения — экземпляра "
+        u"ИЛИ типа. Вместе с высотой и наклоном даёт проекцию конуса на "
+        u"плоскость расчёта: near = h / tg(наклон + вертикальный/2), "
+        u"far = h / tg(наклон − вертикальный/2). Все три поля (высота, "
+        u"наклон, вертикальный угол) нужны одновременно — если хоть одно "
+        u"не нашлось, мёртвая зона не считается.",
         u"", False
     ),
     (
         "rotation_param_name",
         u"",
         u"Параметр «поворот камеры» (угол внутри семейства)",
-        u"Имя углового параметра экземпляра, которым камера разворачивается "
-        u"НЕ поворотом самого экземпляра, а внутри семейства (тогда "
-        u"FacingOrientation не меняется, и без этого поля все зоны смотрят "
-        u"в одну сторону). Его значение прибавляется к направлению "
-        u"(против часовой стрелки). В исходном Dynamo-скрипте это был "
-        u"«Вращение (поворот)». Пусто — если камера разворачивается "
+        u"Имя углового параметра камеры (экземпляра ИЛИ типа), которым "
+        u"камера разворачивается НЕ поворотом самого экземпляра, а внутри "
+        u"семейства (тогда FacingOrientation не меняется, и без этого поля "
+        u"все зоны смотрят в одну сторону). Его значение прибавляется к "
+        u"направлению (против часовой стрелки). В исходном Dynamo-скрипте "
+        u"это был «Вращение (поворот)». Пусто — если камера разворачивается "
         u"поворотом экземпляра в модели.",
         u"", False
     ),
