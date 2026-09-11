@@ -193,6 +193,7 @@ class CategoryOption(object):
         except Exception:
             base = None
         base = base or u"?"
+        self.raw_name = base
         self.sort_name = base.lower()
         self.name = u"{} ({})".format(base, count)
 
