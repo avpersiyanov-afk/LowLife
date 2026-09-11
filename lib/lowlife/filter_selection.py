@@ -26,7 +26,9 @@ from System.Collections.Generic import List
 
 from pyrevit import forms
 
-from lowlife.selection import list_view_categories, pick_elements_by_categories
+from lowlife.selection import (
+    list_view_categories, pick_elements_by_categories, show_properties_palette
+)
 
 SETTINGS_FILE_NAME = "LowLifeFilterSelection_settings.json"
 
@@ -198,3 +200,8 @@ def run(doc, uidoc, view):
     for el in elements:
         ids.Add(el.Id)
     uidoc.Selection.SetElementIds(ids)
+
+    # Сразу поднимаем вкладку «Свойства» — чтобы после выбора можно было
+    # тут же менять параметры отмеченных элементов, не выцепляя вкладку
+    # вручную (её обычно задвигает вкладка «Диспетчер проекта»).
+    show_properties_palette()

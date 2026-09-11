@@ -219,6 +219,30 @@ def list_view_categories(doc, view):
     return options
 
 
+def show_properties_palette():
+    """
+    Показывает и делает активной вкладку «Свойства» (docked-панель Revit),
+    чтобы после интерактивного выбора можно было сразу редактировать
+    параметры выделенных элементов, не выцепляя вкладку мышью вручную —
+    особенно неудобно, если она свёрнута/задвинута за другие вкладки дока.
+
+    Тихо ничего не делает при любой ошибке (в т.ч. если сама панель
+    недоступна в этой сборке Revit) — это чисто удобство, а не обязательная
+    часть выбора элементов, срывать сценарий из-за неё не нужно.
+    """
+    try:
+        from pyrevit import HOST_APP
+        from Autodesk.Revit.UI import DockablePanes
+
+        pane = HOST_APP.uiapp.GetDockablePane(
+            DockablePanes.BuiltInDockablePanes.PropertiesPalette
+        )
+        if pane is not None:
+            pane.Show()
+    except Exception:
+        pass
+
+
 def pick_elements_by_categories(
     uidoc,
     doc,
