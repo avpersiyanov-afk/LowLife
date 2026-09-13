@@ -59,28 +59,47 @@ from lowlife.scs_settings import list_wire_catalog_items, WireTypeOption, _type_
 
 SETTINGS_FILE_NAME = "LowLifeGeneric_settings.json"
 
-# (ключ, подпись, значение по умолчанию, список ли это через запятую,
-#  обязательное ли поле, многострочное ли поле)
+# (ключ, подпись, пояснение простым языком, значение по умолчанию,
+#  список ли это через запятую, обязательное ли поле, многострочное ли поле)
 TEXT_FIELDS = [
-    ("circuit_system_type", u"Тип электрической цепи (имя ElectricalSystemType Revit — «Выбрать…» справа)",
+    ("circuit_system_type", u"Тип электрической цепи",
+        u"Какой категорией Revit считать создаваемую цепь (Data, Security, "
+        u"Communication…) — выберите из списка кнопкой «Выбрать…» справа или "
+        u"впишите системное имя вручную.",
         u"Data", False, True, False),
-    ("wire_catalog_marker_param", u"Параметр-признак строки справочника кабелей (нужен для выбора кабеля ниже)",
+    ("wire_catalog_marker_param", u"Признак строки справочника кабелей",
+        u"Необязательно. Имя параметра, который есть только у нужных строк "
+        u"вашего справочника кабелей — по нему программа отличает их от "
+        u"остальных элементов проекта, когда предлагает выбрать кабель ниже.",
         u"", False, False, False),
-    ("conductor_param_name", u"Параметр цепи для кабеля (проводник)",
+    ("conductor_param_name", u"Параметр цепи «Проводник»",
+        u"В какой параметр электрической цепи записывать кабель, выбранный "
+        u"в разделе «Кабель для цепей» ниже.",
         u"Проводник", False, True, False),
     ("load_name_param", u"Параметр цепи «Имя нагрузки»",
+        u"В какой параметр электрической цепи записывать имя нагрузки, "
+        u"собранное по правилу из следующих двух полей.",
         u"Имя нагрузки", False, True, False),
-    ("load_name_source_params", u"Параметры устройства для имени нагрузки (через запятую, по порядку; "
-        u"для каждого сначала берётся параметр экземпляра, затем — типа)",
+    ("load_name_source_params", u"Параметры устройства для имени нагрузки",
+        u"Из каких параметров подключаемого устройства собрать имя нагрузки "
+        u"— через запятую, по порядку (один параметр в списке — источник "
+        u"будет только он). Для каждого имени сначала берётся значение "
+        u"экземпляра устройства, а если оно пустое — значение типа.",
         u"", True, False, False),
-    ("load_name_separator", u"Разделитель между значениями параметров имени нагрузки",
+    ("load_name_separator", u"Разделитель имени нагрузки",
+        u"Каким текстом соединять значения параметров при сборке имени "
+        u"нагрузки — например точкой: «Розетка.Каб-1».",
         u".", False, False, False),
 ]
 
-# (ключ, подпись) — строка справочника кабелей (см. list_wire_catalog_items),
-# выбирается пикером; хранится строкой ElementId, как conductor_type_id в СКС.
+# (ключ, подпись, пояснение) — строка справочника кабелей (см.
+# list_wire_catalog_items), выбирается пикером; хранится строкой ElementId,
+# как conductor_type_id в СКС.
 CONDUCTOR_FIELDS = [
-    ("conductor_type_id", u"Кабель (строка справочника) для цепей — необязательно"),
+    ("conductor_type_id", u"Кабель для цепей",
+        u"Необязательно: конкретная строка из справочника кабелей — она "
+        u"будет проставлена всем создаваемым этой кнопкой цепям, без "
+        u"запроса при каждом запуске."),
 ]
 
 MODE_KEY = "circuit_mode"
@@ -91,12 +110,12 @@ MODE_DEFAULT = MODE_PER_DEVICE
 # Не разделять и не стрипить: разделитель имени нагрузки может намеренно
 # содержать пробелы (", "), поэтому load_name_separator в LIST_FIELDS не
 # входит и через _split_list не проходит.
-LIST_FIELDS = set(key for key, _, _, is_list, _req, _ml in TEXT_FIELDS if is_list)
+LIST_FIELDS = set(key for key, _, _, _, is_list, _req, _ml in TEXT_FIELDS if is_list)
 
 PLAIN_LABELS = {}
-for _key, _label, _default, _is_list, _required, _multiline in TEXT_FIELDS:
+for _key, _label, _hint, _default, _is_list, _required, _multiline in TEXT_FIELDS:
     PLAIN_LABELS[_key] = _label
-for _key, _label in CONDUCTOR_FIELDS:
+for _key, _label, _hint in CONDUCTOR_FIELDS:
     PLAIN_LABELS[_key] = _label
 
 
@@ -144,10 +163,10 @@ def load_saved_values():
     saved = _read_all()
     values = {}
 
-    for key, _, default, _, _, _ in TEXT_FIELDS:
+    for key, _, _, default, _, _, _ in TEXT_FIELDS:
         values[key] = saved.get(key, default)
 
-    for key, _ in CONDUCTOR_FIELDS:
+    for key, _, _ in CONDUCTOR_FIELDS:
         values[key] = saved.get(key, "")
 
     values[MODE_KEY] = saved.get(MODE_KEY, MODE_DEFAULT)
@@ -286,12 +305,21 @@ def show_settings_form(doc, values):
 
     boxes = {}
 
-    def add_text_field(key, label_text, default):
+    def add_text_field(key, label_text, hint_text, default, required):
         label = TextBlock()
-        label.Text = label_text
+        label.Text = label_text + (u" *" if required else u"")
         label.TextWrapping = TextWrapping.Wrap
         label.Margin = Thickness(0, 10, 0, 2)
         root.Children.Add(label)
+
+        if hint_text:
+            field_hint = TextBlock()
+            field_hint.Text = hint_text
+            field_hint.FontSize = 11
+            field_hint.Foreground = Brushes.Gray
+            field_hint.TextWrapping = TextWrapping.Wrap
+            field_hint.Margin = Thickness(0, 0, 0, 2)
+            root.Children.Add(field_hint)
 
         row = StackPanel()
         row.Orientation = Orientation.Horizontal
@@ -329,8 +357,8 @@ def show_settings_form(doc, values):
 
         root.Children.Add(row)
 
-    for key, label_text, default, _is_list, _required, _multiline in TEXT_FIELDS:
-        add_text_field(key, label_text, default)
+    for key, label_text, hint_text, default, _is_list, required, _multiline in TEXT_FIELDS:
+        add_text_field(key, label_text, hint_text, default, required)
 
     # --- кабель (строка справочника) ---
 
@@ -340,21 +368,17 @@ def show_settings_form(doc, values):
     conductor_title.Margin = Thickness(0, 16, 0, 4)
     root.Children.Add(conductor_title)
 
+    conductor_key, conductor_label_text, conductor_hint_text = CONDUCTOR_FIELDS[0]
+
     conductor_hint = TextBlock()
-    conductor_hint.Text = (
-        u"Необязательно: если выше задан «Параметр-признак строки справочника "
-        u"кабелей», здесь можно выбрать кабель — он будет проставлен в параметр "
-        u"цепи (по умолчанию «Проводник») всем цепям, создаваемым кнопкой, без "
-        u"запроса при каждом запуске."
-    )
+    conductor_hint.Text = conductor_hint_text
     conductor_hint.FontSize = 11
     conductor_hint.Foreground = Brushes.Gray
     conductor_hint.TextWrapping = TextWrapping.Wrap
     conductor_hint.Margin = Thickness(0, 0, 0, 8)
     root.Children.Add(conductor_hint)
 
-    conductor_values = {key: values.get(key, "") for key, _ in CONDUCTOR_FIELDS}
-    conductor_key, conductor_label_text = CONDUCTOR_FIELDS[0]
+    conductor_values = {key: values.get(key, "") for key, _, _ in CONDUCTOR_FIELDS}
 
     conductor_row = StackPanel()
     conductor_row.Orientation = Orientation.Horizontal
@@ -474,7 +498,7 @@ def show_settings_form(doc, values):
     ok_btn.FontWeight = FontWeights.Bold
 
     def on_reset(sender, args):
-        for key, _, default, _, _, _ in TEXT_FIELDS:
+        for key, _, _, default, _, _, _ in TEXT_FIELDS:
             boxes[key].Text = default
         conductor_values[conductor_key] = ""
         conductor_value_label.Text = _type_display_name(doc, "")
