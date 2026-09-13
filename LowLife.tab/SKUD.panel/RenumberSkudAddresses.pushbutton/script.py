@@ -13,7 +13,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.params import get_string_param
 from lowlife.scs import clear_stray_address_params, is_excluded_device
@@ -23,10 +23,34 @@ from lowlife.route_addressing import (
     renumber_addresses, write_addresses, write_nearest_nodes, MM_IN_FOOT
 )
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import get_settings_interactive, get_settings_silent
 
 doc = revit.doc
 view = doc.ActiveView
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "route_type_id", "riser_type_id", "workset_filter_key", "workset_param_name",
+        "controller_workset_keyword", "controller_type_keyword", "circuit_panel_param",
+        "nearest_segment_param", "addr_param_name", "addr_prev_param_name",
+        "excluded_device_keywords", "cable_param_name", "panel_keywords",
+        "panel_exclude_keywords"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

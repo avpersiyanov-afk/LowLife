@@ -2,4 +2,3 @@ title: Цепи (общее)
 tooltip: Построение произвольных электрических цепей «панель → устройства» с настраиваемой маской имени нагрузки
 layout:
   - BuildGenericCircuits
-  - GenericCircuitsSettings

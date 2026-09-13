@@ -17,7 +17,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 from lowlife.geometry import get_element_level
 from lowlife.params import get_string_param
@@ -35,7 +35,7 @@ from lowlife.skud_schematic_manifest import (
 )
 from lowlife import skud_settings
 from lowlife.skud_settings import (
-    get_settings_silent, get_schematic_category_symbols,
+    get_settings_interactive, get_settings_silent, get_schematic_category_symbols,
     get_schematic_category_device_type_ids,
     load_passage_point_group_ids, load_schematic_category_type_ids,
 )
@@ -45,6 +45,31 @@ output = pyrevit_script.get_output()
 
 M_TO_FT = 1.0 / 0.3048
 MM_TO_FT = M_TO_FT / 1000.0
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
+        "excluded_device_keywords", "circuit_panel_param", "device_address_param",
+        "passage_point_param", "device_marking_param", "schematic_address_param",
+        "schematic_layout_gap_m", "schematic_layout_step_mm",
+        "schematic_device_categories_text", "schematic_view_name", "manifest_param_name",
+        "schematic_source_uid_param", "passage_point_group_ids"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
 
 
 # ------------------------------------------------------------

@@ -663,18 +663,30 @@ def require(settings, keys):
         )
 
 
-def show_settings_form(doc, values):
+def show_settings_form(doc, values, keys=None):
     """
     Модальное окно редактирования настроек СКС: выбор типов для вставки
     (панель/устройство/маршрут) + текстовые параметры.
     Возвращает словарь строковых значений или None, если пользователь отменил.
+
+    keys=None — показываются все поля (как раньше). Если передан набор
+    ключей (Shift+клик по конкретной кнопке — см. require() рядом с ней в
+    коде кнопки), показываются только поля из этого набора: TEXT_FIELDS и
+    TYPE_FIELDS фильтруются по ключу, секция «Проводник для цепей СКС»
+    показывается только если в наборе есть "conductor_type_id". Сохранение
+    (save_values) всё равно мержится в общий JSON-файл, так что поля,
+    скрытые в этом окне, не теряются — они просто не редактируются отсюда.
     """
     result = {"values": None}
+
+    type_fields = TYPE_FIELDS if keys is None else [f for f in TYPE_FIELDS if f[0] in keys]
+    text_fields = TEXT_FIELDS if keys is None else [f for f in TEXT_FIELDS if f[0] in keys]
+    show_conductor = keys is None or "conductor_type_id" in keys
 
     win = Window()
     win.Title = u"Настройки СКС"
     win.Width = 780
-    win.Height = 760
+    win.Height = 760 if keys is None else min(760, 220 + 70 * (len(type_fields) + len(text_fields)))
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     # Topmost намеренно НЕ ставим: иначе окно выбора типа
     # (forms.SelectFromList, отдельное Window) открывается позади этого
@@ -694,15 +706,21 @@ def show_settings_form(doc, values):
     root.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+    hint.Text = (
+        u"Значения сохраняются и подставляются при следующих запусках."
+        if keys is None else
+        u"Показаны только поля, которые использует эта кнопка. Остальные "
+        u"настройки СКС не затрагиваются."
+    )
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
+    hint.TextWrapping = TextWrapping.Wrap
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
 
     # --- типы для вставки ---
 
-    type_values = {key: values.get(key, "") for key, _, _ in TYPE_FIELDS}
+    type_values = {key: values.get(key, "") for key, _, _ in type_fields}
     type_labels = {}
 
     type_current_section = [None]
@@ -762,7 +780,7 @@ def show_settings_form(doc, values):
         row.Children.Add(pick_btn)
         root.Children.Add(row)
 
-    for key, label_text, categories in TYPE_FIELDS:
+    for key, label_text, categories in type_fields:
         make_type_picker(key, label_text, categories)
 
     # --- текстовые параметры (сгруппированы по разделу, если подпись начинается с "[Раздел]") ---
@@ -894,7 +912,7 @@ def show_settings_form(doc, values):
             row2.Children.Add(pick_btn2)
             category_types_panel.Children.Add(row2)
 
-    for key, label_text, _, _, required, multiline in TEXT_FIELDS:
+    for key, label_text, _, _, required, multiline in text_fields:
         section, plain_label = _split_section(label_text)
 
         if section != current_section:
@@ -965,78 +983,84 @@ def show_settings_form(doc, values):
 
     # --- проводник для цепей СКС (кнопка «Цепи СКС») ---
 
-    conductor_section_title = TextBlock()
-    conductor_section_title.Text = u"Проводник для цепей СКС"
-    conductor_section_title.FontWeight = FontWeights.Bold
-    conductor_section_title.Margin = Thickness(0, 16, 0, 4)
-    root.Children.Add(conductor_section_title)
+    conductor_values = {}
 
-    conductor_hint = TextBlock()
-    conductor_hint.Text = (
-        u"Опционально: если задан «Параметр-признак строки справочника кабелей» "
-        u"выше, здесь можно выбрать проводник из справочника — он будет "
-        u"проставлен всем цепям, создаваемым кнопкой «Цепи СКС», без запроса "
-        u"при каждом запуске."
-    )
-    conductor_hint.FontSize = 11
-    conductor_hint.Foreground = Brushes.Gray
-    conductor_hint.TextWrapping = TextWrapping.Wrap
-    conductor_hint.Margin = Thickness(0, 0, 0, 8)
-    root.Children.Add(conductor_hint)
+    if show_conductor:
+        conductor_section_title = TextBlock()
+        conductor_section_title.Text = u"Проводник для цепей СКС"
+        conductor_section_title.FontWeight = FontWeights.Bold
+        conductor_section_title.Margin = Thickness(0, 16, 0, 4)
+        root.Children.Add(conductor_section_title)
 
-    conductor_values = {key: values.get(key, "") for key, _ in CONDUCTOR_FIELDS}
-    conductor_key, conductor_label_text = CONDUCTOR_FIELDS[0]
-
-    conductor_row = StackPanel()
-    conductor_row.Orientation = Orientation.Horizontal
-
-    conductor_value_label = TextBlock()
-    conductor_value_label.Text = _type_display_name(doc, conductor_values[conductor_key])
-    conductor_value_label.VerticalAlignment = VerticalAlignment.Center
-    conductor_value_label.Width = 300
-    conductor_value_label.TextWrapping = TextWrapping.Wrap
-    conductor_row.Children.Add(conductor_value_label)
-
-    conductor_pick_btn = Button()
-    conductor_pick_btn.Content = u"Выбрать..."
-    conductor_pick_btn.Padding = Thickness(8, 2, 8, 2)
-    conductor_pick_btn.Margin = Thickness(8, 0, 0, 0)
-
-    def on_pick_conductor(sender, args):
-        marker_param_name = boxes["wire_catalog_marker_param"].Text.strip()
-        if not marker_param_name:
-            forms.alert(
-                u"Сначала заполните поле «Параметр-признак строки справочника "
-                u"кабелей» в разделе «Цепи»."
-            )
-            return
-
-        wire_items = list_wire_catalog_items(doc, marker_param_name)
-        if not wire_items:
-            forms.alert(
-                u"Не найдено строк справочника кабелей (ни один элемент документа "
-                u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
-                    marker_param_name
-                )
-            )
-            return
-
-        options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
-        selected = forms.SelectFromList.show(
-            options,
-            title=conductor_label_text,
-            button_name=u"Выбрать",
-            multiselect=False
+        conductor_hint = TextBlock()
+        conductor_hint.Text = (
+            u"Опционально: если задан «Параметр-признак строки справочника кабелей» "
+            u"выше, здесь можно выбрать проводник из справочника — он будет "
+            u"проставлен всем цепям, создаваемым кнопкой «Цепи СКС», без запроса "
+            u"при каждом запуске."
         )
+        conductor_hint.FontSize = 11
+        conductor_hint.Foreground = Brushes.Gray
+        conductor_hint.TextWrapping = TextWrapping.Wrap
+        conductor_hint.Margin = Thickness(0, 0, 0, 8)
+        root.Children.Add(conductor_hint)
 
-        if selected:
-            conductor_values[conductor_key] = str(selected.wire_type.Id.IntegerValue)
-            conductor_value_label.Text = selected.name
+        conductor_values = {key: values.get(key, "") for key, _ in CONDUCTOR_FIELDS}
+        conductor_key, conductor_label_text = CONDUCTOR_FIELDS[0]
 
-    conductor_pick_btn.Click += on_pick_conductor
+        conductor_row = StackPanel()
+        conductor_row.Orientation = Orientation.Horizontal
 
-    conductor_row.Children.Add(conductor_pick_btn)
-    root.Children.Add(conductor_row)
+        conductor_value_label = TextBlock()
+        conductor_value_label.Text = _type_display_name(doc, conductor_values[conductor_key])
+        conductor_value_label.VerticalAlignment = VerticalAlignment.Center
+        conductor_value_label.Width = 300
+        conductor_value_label.TextWrapping = TextWrapping.Wrap
+        conductor_row.Children.Add(conductor_value_label)
+
+        conductor_pick_btn = Button()
+        conductor_pick_btn.Content = u"Выбрать..."
+        conductor_pick_btn.Padding = Thickness(8, 2, 8, 2)
+        conductor_pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+        def on_pick_conductor(sender, args):
+            marker_param_name = (
+                boxes["wire_catalog_marker_param"].Text.strip() if "wire_catalog_marker_param" in boxes
+                else (values.get("wire_catalog_marker_param") or u"").strip()
+            )
+            if not marker_param_name:
+                forms.alert(
+                    u"Сначала заполните поле «Параметр-признак строки справочника "
+                    u"кабелей» в разделе «Цепи»."
+                )
+                return
+
+            wire_items = list_wire_catalog_items(doc, marker_param_name)
+            if not wire_items:
+                forms.alert(
+                    u"Не найдено строк справочника кабелей (ни один элемент документа "
+                    u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
+                        marker_param_name
+                    )
+                )
+                return
+
+            options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options,
+                title=conductor_label_text,
+                button_name=u"Выбрать",
+                multiselect=False
+            )
+
+            if selected:
+                conductor_values[conductor_key] = str(selected.wire_type.Id.IntegerValue)
+                conductor_value_label.Text = selected.name
+
+        conductor_pick_btn.Click += on_pick_conductor
+
+        conductor_row.Children.Add(conductor_pick_btn)
+        root.Children.Add(conductor_row)
 
     required_hint = TextBlock()
     required_hint.Text = u"* обязательные поля — без них соответствующая кнопка не сможет найти элементы или записать параметры"
@@ -1070,13 +1094,15 @@ def show_settings_form(doc, values):
     ok_btn.FontWeight = FontWeights.Bold
 
     def on_reset(sender, args):
-        for key, _, default, _, _, _ in TEXT_FIELDS:
+        for key, _, default, _, _, _ in text_fields:
             boxes[key].Text = default
 
     def on_ok(sender, args):
         # Настройки общие на все кнопки SCS.panel — какие поля обязательны,
         # решает каждая кнопка сама через scs_settings.require() после
-        # получения settings. Здесь просто сохраняем то, что введено.
+        # получения settings. Здесь просто сохраняем то, что введено (если
+        # keys сузил форму, сохраняются только показанные поля — остальные
+        # значения в общем JSON-файле остаются как были, см. save_values).
         combined = {key: box.Text for key, box in boxes.items()}
         combined.update(type_values)
         combined.update(conductor_values)
@@ -1117,21 +1143,25 @@ def show_settings_form(doc, values):
     return result["values"]
 
 
-def get_settings_interactive(doc):
+def get_settings_interactive(doc, keys=None):
     """
     Показывает окно настроек, сохраняет введённые значения и возвращает
-    готовый к использованию словарь (списки уже разобраны из строк,
+    полный актуальный словарь настроек (списки уже разобраны из строк,
     id типов остаются строками — их разбирает вызывающий скрипт).
     Возвращает None, если пользователь нажал "Отмена".
 
-    Используется только кнопкой «Параметры СКС» (SetupParameters) — это
-    единственное место, где настройки редактируются. Остальные кнопки
-    СКС берут уже сохранённые значения через get_settings_silent(),
-    без показа окна.
+    keys=None — редактируются все поля (исторически так работала кнопка
+    «Параметры СКС»). Каждая рабочая кнопка СКС вызывает это по
+    Shift+клику со своим набором keys (тем же, что передаёт в require()
+    плюс несколько дополнительных, которые использует не напрямую, а
+    через библиотечные функции) — тогда показываются только её поля.
+    Возвращается всегда ПОЛНЫЙ словарь настроек (после сохранения), а не
+    только отредактированные поля — остальные кнопки СКС могут требовать
+    и другие ключи из того же файла.
     """
     while True:
         saved = load_saved_values()
-        edited = show_settings_form(doc, saved)
+        edited = show_settings_form(doc, saved, keys=keys)
 
         if edited == settings_transfer.RELOAD:
             # пользователь загрузил настройки из файла — они уже записаны,
@@ -1142,7 +1172,7 @@ def get_settings_interactive(doc):
             return None
 
         save_values(edited)
-        return to_runtime_settings(edited)
+        return to_runtime_settings(load_saved_values())
 
 
 def get_settings_silent():

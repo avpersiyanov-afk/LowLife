@@ -488,18 +488,28 @@ def require(settings, keys):
         )
 
 
-def show_settings_form(doc, values):
+def show_settings_form(doc, values, keys=None):
     """
     Модальное окно редактирования настроек СКУД: выбор типов для вставки
     (узел маршрута/стояк) + текстовые параметры.
     Возвращает словарь строковых значений или None, если пользователь отменил.
+
+    keys=None — показываются все поля (как раньше). Иначе — только поля
+    из набора keys (Shift+клик по конкретной кнопке СКУД): TEXT_FIELDS и
+    TYPE_FIELDS фильтруются по ключу, секция «Типовые группы точек
+    прохода» показывается только если в наборе есть виртуальный ключ
+    "passage_point_group_ids".
     """
     result = {"values": None}
+
+    type_fields = TYPE_FIELDS if keys is None else [f for f in TYPE_FIELDS if f[0] in keys]
+    text_fields = TEXT_FIELDS if keys is None else [f for f in TEXT_FIELDS if f[0] in keys]
+    show_passage_groups = keys is None or "passage_point_group_ids" in keys
 
     win = Window()
     win.Title = u"Настройки СКУД"
     win.Width = 800
-    win.Height = 760
+    win.Height = 760 if keys is None else min(760, 220 + 70 * (len(type_fields) + len(text_fields)))
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     # Topmost намеренно НЕ ставим — см. комментарий в scs_settings.py
     # (иначе окно выбора типа/SelectFromList открывается позади).
@@ -518,15 +528,21 @@ def show_settings_form(doc, values):
     root.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+    hint.Text = (
+        u"Значения сохраняются и подставляются при следующих запусках."
+        if keys is None else
+        u"Показаны только поля, которые использует эта кнопка. Остальные "
+        u"настройки СКУД не затрагиваются."
+    )
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
+    hint.TextWrapping = TextWrapping.Wrap
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
 
     # --- типы для вставки ---
 
-    type_values = {key: values.get(key, "") for key, _ in TYPE_FIELDS}
+    type_values = {key: values.get(key, "") for key, _ in type_fields}
     type_labels = {}
 
     type_current_section = [None]
@@ -586,7 +602,7 @@ def show_settings_form(doc, values):
         row.Children.Add(pick_btn)
         root.Children.Add(row)
 
-    for key, label_text in TYPE_FIELDS:
+    for key, label_text in type_fields:
         make_type_picker(key, label_text)
 
     # --- типовые группы точек прохода (группы деталей) ---
@@ -598,50 +614,51 @@ def show_settings_form(doc, values):
         "passage_point_group_ids": list(load_passage_point_group_ids()),
     }
 
-    groups_section = TextBlock()
-    groups_section.Text = u"Типовые группы точек прохода (группы деталей)"
-    groups_section.FontWeight = FontWeights.Bold
-    groups_section.Margin = Thickness(0, 16, 0, 4)
-    root.Children.Add(groups_section)
+    if show_passage_groups:
+        groups_section = TextBlock()
+        groups_section.Text = u"Типовые группы точек прохода (группы деталей)"
+        groups_section.FontWeight = FontWeights.Bold
+        groups_section.Margin = Thickness(0, 16, 0, 4)
+        root.Children.Add(groups_section)
 
-    pp_group_label = TextBlock()
-    pp_group_label.Text = u"Группы точек прохода (несколько — по одной на типовой состав)"
-    pp_group_label.Margin = Thickness(0, 8, 0, 2)
-    root.Children.Add(pp_group_label)
+        pp_group_label = TextBlock()
+        pp_group_label.Text = u"Группы точек прохода (несколько — по одной на типовой состав)"
+        pp_group_label.Margin = Thickness(0, 8, 0, 2)
+        root.Children.Add(pp_group_label)
 
-    pp_group_row = StackPanel()
-    pp_group_row.Orientation = Orientation.Horizontal
+        pp_group_row = StackPanel()
+        pp_group_row.Orientation = Orientation.Horizontal
 
-    pp_group_value = TextBlock()
-    pp_group_value.Text = u"выбрано групп: {}".format(len(group_values["passage_point_group_ids"]))
-    pp_group_value.VerticalAlignment = VerticalAlignment.Center
-    pp_group_value.Width = 300
-    pp_group_value.TextWrapping = TextWrapping.Wrap
+        pp_group_value = TextBlock()
+        pp_group_value.Text = u"выбрано групп: {}".format(len(group_values["passage_point_group_ids"]))
+        pp_group_value.VerticalAlignment = VerticalAlignment.Center
+        pp_group_value.Width = 300
+        pp_group_value.TextWrapping = TextWrapping.Wrap
 
-    pp_group_btn = Button()
-    pp_group_btn.Content = u"Выбрать..."
-    pp_group_btn.Padding = Thickness(8, 2, 8, 2)
-    pp_group_btn.Margin = Thickness(8, 0, 0, 0)
+        pp_group_btn = Button()
+        pp_group_btn.Content = u"Выбрать..."
+        pp_group_btn.Padding = Thickness(8, 2, 8, 2)
+        pp_group_btn.Margin = Thickness(8, 0, 0, 0)
 
-    def on_pick_passage_point_groups(sender, args):
-        group_types = list_detail_group_types(doc)
-        if not group_types:
-            forms.alert(u"В проекте нет групп деталей.")
-            return
-        options = sorted([GroupTypeOption(g) for g in group_types], key=lambda o: o.name)
-        selected = forms.SelectFromList.show(
-            options, title=u"Узлы точек прохода", button_name=u"Выбрать", multiselect=True
-        )
-        if selected is not None:
-            group_values["passage_point_group_ids"] = [
-                str(o.group_type.Id.IntegerValue) for o in selected
-            ]
-            pp_group_value.Text = u"выбрано групп: {}".format(len(selected))
+        def on_pick_passage_point_groups(sender, args):
+            group_types = list_detail_group_types(doc)
+            if not group_types:
+                forms.alert(u"В проекте нет групп деталей.")
+                return
+            options = sorted([GroupTypeOption(g) for g in group_types], key=lambda o: o.name)
+            selected = forms.SelectFromList.show(
+                options, title=u"Узлы точек прохода", button_name=u"Выбрать", multiselect=True
+            )
+            if selected is not None:
+                group_values["passage_point_group_ids"] = [
+                    str(o.group_type.Id.IntegerValue) for o in selected
+                ]
+                pp_group_value.Text = u"выбрано групп: {}".format(len(selected))
 
-    pp_group_btn.Click += on_pick_passage_point_groups
-    pp_group_row.Children.Add(pp_group_value)
-    pp_group_row.Children.Add(pp_group_btn)
-    root.Children.Add(pp_group_row)
+        pp_group_btn.Click += on_pick_passage_point_groups
+        pp_group_row.Children.Add(pp_group_value)
+        pp_group_row.Children.Add(pp_group_btn)
+        root.Children.Add(pp_group_row)
 
     # --- текстовые параметры (сгруппированы по разделу через префикс "[Раздел]") ---
 
@@ -807,7 +824,10 @@ def show_settings_form(doc, values):
             pick_btn4.Margin = Thickness(8, 0, 0, 0)
 
             def on_pick_wire(sender, args, name=name):
-                marker_param_name = boxes["wire_catalog_marker_param"].Text.strip()
+                marker_param_name = (
+                    boxes["wire_catalog_marker_param"].Text.strip() if "wire_catalog_marker_param" in boxes
+                    else (values.get("wire_catalog_marker_param") or u"").strip()
+                )
                 if not marker_param_name:
                     forms.alert(
                         u"Сначала заполните поле «Параметр-признак строки справочника "
@@ -843,7 +863,7 @@ def show_settings_form(doc, values):
             row4.Children.Add(pick_btn4)
             category_types_panel.Children.Add(row4)
 
-    for key, label_text, _, _, required, multiline in TEXT_FIELDS:
+    for key, label_text, _, _, required, multiline in text_fields:
         section, plain_label = _split_section(label_text)
 
         if section != current_section:
@@ -924,7 +944,7 @@ def show_settings_form(doc, values):
     ok_btn.FontWeight = FontWeights.Bold
 
     def on_reset(sender, args):
-        for key, _, default, _, _, _ in TEXT_FIELDS:
+        for key, _, default, _, _, _ in text_fields:
             boxes[key].Text = default
 
     def on_ok(sender, args):
@@ -970,15 +990,20 @@ def show_settings_form(doc, values):
     return result["values"]
 
 
-def get_settings_interactive(doc):
+def get_settings_interactive(doc, keys=None):
     """
     Показывает окно настроек, сохраняет введённые значения и возвращает
-    готовый к использованию словарь. Возвращает None, если пользователь
-    нажал "Отмена". Используется только кнопкой «Параметры СКУД».
+    полный актуальный словарь настроек. Возвращает None, если пользователь
+    нажал "Отмена".
+
+    keys=None — редактируются все поля. Каждая рабочая кнопка СКУД
+    вызывает это по Shift+клику со своим набором ключей — тогда
+    показываются только поля этой кнопки, но возвращается всегда полный
+    словарь настроек (после сохранения), т.к. он общий на всю панель.
     """
     while True:
         saved = load_saved_values()
-        edited = show_settings_form(doc, saved)
+        edited = show_settings_form(doc, saved, keys=keys)
 
         if edited == settings_transfer.RELOAD:
             # настройки загружены из файла и уже записаны — открываем заново
@@ -988,7 +1013,7 @@ def get_settings_interactive(doc):
             return None
 
         save_values(edited)
-        return to_runtime_settings(edited)
+        return to_runtime_settings(load_saved_values())
 
 
 def get_settings_silent():

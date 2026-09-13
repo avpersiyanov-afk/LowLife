@@ -16,11 +16,12 @@ __doc__ = (
     u"проставляется значение, выбранное заранее в настройках («Параметры "
     u"СКС», раздел «Проводник для цепей СКС»), а параметру «Имя нагрузки» — "
     u"«Обозначение» типа устройства + «Адрес устройства» (для устройств с "
-    u"несколькими коннекторами — с суффиксом -1/-2 по номеру цепи)."
+    u"несколькими коннекторами — с суффиксом -1/-2 по номеру цепи).\n\n"
+    u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
 
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 from lowlife.manual_circuits import pick_panel_and_devices
 from lowlife.scs_manual_circuits import get_conductor_id, build_scs_manual_circuits
@@ -29,6 +30,29 @@ from lowlife.scs_settings import get_settings_silent
 
 doc = revit.doc
 uidoc = revit.uidoc
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "conductor_type_id", "type_code_param", "device_address_param",
+        "load_name_param", "wire_catalog_marker_param"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
+
 
 settings = get_settings_silent()
 

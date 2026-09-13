@@ -16,18 +16,41 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 from lowlife.params import set_param_any
 from lowlife.skud import collect_controller_devices
 from lowlife.skud_schematic import passage_points_of
 from lowlife.skud_room_info import assign_rooms_by_passage_point, device_room_value
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import get_settings_interactive, get_settings_silent
 from lowlife import room_info_settings
 
 doc = revit.doc
 output = pyrevit_script.get_output()
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
+        "excluded_device_keywords", "circuit_panel_param", "device_address_param",
+        "passage_point_param"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
+
 
 settings = get_settings_silent()
 

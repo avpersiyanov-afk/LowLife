@@ -551,13 +551,24 @@ def require(settings, keys):
         )
 
 
-def show_settings_form(doc, values):
+def show_settings_form(doc, values, keys=None):
+    """
+    keys=None — показываются все поля (как раньше). Иначе — только поля из
+    набора keys (Shift+клик по конкретной кнопке): TEXT_FIELDS и TYPE_FIELDS
+    фильтруются по ключу, секция «Типы проводника по категории устройства»
+    показывается только если в наборе есть виртуальный ключ
+    "category_wire_type_ids".
+    """
     result = {"values": None}
+
+    type_fields = TYPE_FIELDS if keys is None else [f for f in TYPE_FIELDS if f[0] in keys]
+    text_fields = TEXT_FIELDS if keys is None else [f for f in TEXT_FIELDS if f[0] in keys]
+    show_category_wire = keys is None or "category_wire_type_ids" in keys
 
     win = Window()
     win.Title = u"Настройки {}".format(current_title())
     win.Width = 800
-    win.Height = 720
+    win.Height = 720 if keys is None else min(720, 220 + 70 * (len(type_fields) + len(text_fields)))
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     # Topmost не ставим — см. комментарий в scs_settings.py.
 
@@ -578,6 +589,9 @@ def show_settings_form(doc, values):
     hint.Text = (
         u"Адресация: у панели «Обозначение» = ARK и «Адрес устройства» = 3; "
         u"у устройства «Адрес устройства» = 3.1.2 (панель 3, шлейф 1, номер 2)."
+        if keys is None else
+        u"Показаны только поля, которые использует эта кнопка. Остальные "
+        u"настройки {} не затрагиваются.".format(current_title())
     )
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
@@ -587,17 +601,17 @@ def show_settings_form(doc, values):
 
     # --- тип марки узла структурной схемы (одиночный выбор) ---
 
-    type_values = dict((key, values.get(key, "")) for key, _ in TYPE_FIELDS)
+    type_values = dict((key, values.get(key, "")) for key, _ in type_fields)
     type_labels = {}
 
-    if TYPE_FIELDS:
+    if type_fields:
         type_section_title = TextBlock()
         type_section_title.Text = u"Марка узла и шаблон вида"
         type_section_title.FontWeight = FontWeights.Bold
         type_section_title.Margin = Thickness(0, 0, 0, 4)
         root.Children.Add(type_section_title)
 
-    for key, label_text in TYPE_FIELDS:
+    for key, label_text in type_fields:
         label = TextBlock()
         label.Text = label_text
         label.Margin = Thickness(0, 8, 0, 2)
@@ -791,7 +805,7 @@ def show_settings_form(doc, values):
             row2.Children.Add(pick_btn2)
             schematic_category_types_panel.Children.Add(row2)
 
-    for key, label_text, _, _, required in TEXT_FIELDS:
+    for key, label_text, _, _, required in text_fields:
         section, plain_label = _split_section(label_text)
 
         if section != current_section:
@@ -877,89 +891,93 @@ def show_settings_form(doc, values):
 
     # --- тип проводника по категории устройства (для параметра «Проводник») ---
 
-    category_section_title = TextBlock()
-    category_section_title.Text = u"Типы проводника по категории устройства"
-    category_section_title.FontWeight = FontWeights.Bold
-    category_section_title.Margin = Thickness(0, 16, 0, 4)
-    root.Children.Add(category_section_title)
-
-    category_hint = TextBlock()
-    category_hint.Text = (
-        u"Опционально: если задан параметр цепи «Проводник» выше, для каждой "
-        u"категории устройств можно выбрать тип кабеля из справочника — "
-        u"он будет проставлен цепи шлейфа по категории первого устройства."
-    )
-    category_hint.FontSize = 11
-    category_hint.Foreground = Brushes.Gray
-    category_hint.TextWrapping = TextWrapping.Wrap
-    category_hint.Margin = Thickness(0, 0, 0, 8)
-    root.Children.Add(category_hint)
-
     category_wire_type_ids = load_category_wire_type_ids()
     category_wire_labels = {}
 
-    for cat in DEVICE_CATEGORIES:
-        cat_key = int(cat)
+    if show_category_wire:
+        category_section_title = TextBlock()
+        category_section_title.Text = u"Типы проводника по категории устройства"
+        category_section_title.FontWeight = FontWeights.Bold
+        category_section_title.Margin = Thickness(0, 16, 0, 4)
+        root.Children.Add(category_section_title)
 
-        row = StackPanel()
-        row.Orientation = Orientation.Horizontal
-        row.Margin = Thickness(0, 4, 0, 0)
+        category_hint = TextBlock()
+        category_hint.Text = (
+            u"Опционально: если задан параметр цепи «Проводник» выше, для каждой "
+            u"категории устройств можно выбрать тип кабеля из справочника — "
+            u"он будет проставлен цепи шлейфа по категории первого устройства."
+        )
+        category_hint.FontSize = 11
+        category_hint.Foreground = Brushes.Gray
+        category_hint.TextWrapping = TextWrapping.Wrap
+        category_hint.Margin = Thickness(0, 0, 0, 8)
+        root.Children.Add(category_hint)
 
-        name_label = TextBlock()
-        name_label.Text = category_title(cat)
-        name_label.VerticalAlignment = VerticalAlignment.Center
-        name_label.Width = 220
-        name_label.TextWrapping = TextWrapping.Wrap
-        row.Children.Add(name_label)
+        for cat in DEVICE_CATEGORIES:
+            cat_key = int(cat)
 
-        wire_value_label = TextBlock()
-        wire_value_label.Text = _type_display_name(doc, category_wire_type_ids.get(cat_key, ""))
-        wire_value_label.VerticalAlignment = VerticalAlignment.Center
-        wire_value_label.Width = 220
-        wire_value_label.TextWrapping = TextWrapping.Wrap
-        category_wire_labels[cat_key] = wire_value_label
-        row.Children.Add(wire_value_label)
+            row = StackPanel()
+            row.Orientation = Orientation.Horizontal
+            row.Margin = Thickness(0, 4, 0, 0)
 
-        pick_btn = Button()
-        pick_btn.Content = u"Выбрать..."
-        pick_btn.Padding = Thickness(8, 2, 8, 2)
-        pick_btn.Margin = Thickness(8, 0, 0, 0)
+            name_label = TextBlock()
+            name_label.Text = category_title(cat)
+            name_label.VerticalAlignment = VerticalAlignment.Center
+            name_label.Width = 220
+            name_label.TextWrapping = TextWrapping.Wrap
+            row.Children.Add(name_label)
 
-        def on_pick_wire(sender, args, cat_key=cat_key, cat_title=category_title(cat)):
-            marker_param_name = boxes["wire_catalog_marker_param"].Text.strip()
-            if not marker_param_name:
-                forms.alert(
-                    u"Сначала заполните поле «Параметр-признак строки справочника "
-                    u"кабелей» в разделе «Цепи»."
+            wire_value_label = TextBlock()
+            wire_value_label.Text = _type_display_name(doc, category_wire_type_ids.get(cat_key, ""))
+            wire_value_label.VerticalAlignment = VerticalAlignment.Center
+            wire_value_label.Width = 220
+            wire_value_label.TextWrapping = TextWrapping.Wrap
+            category_wire_labels[cat_key] = wire_value_label
+            row.Children.Add(wire_value_label)
+
+            pick_btn = Button()
+            pick_btn.Content = u"Выбрать..."
+            pick_btn.Padding = Thickness(8, 2, 8, 2)
+            pick_btn.Margin = Thickness(8, 0, 0, 0)
+
+            def on_pick_wire(sender, args, cat_key=cat_key, cat_title=category_title(cat)):
+                marker_param_name = (
+                    boxes["wire_catalog_marker_param"].Text.strip() if "wire_catalog_marker_param" in boxes
+                    else (values.get("wire_catalog_marker_param") or u"").strip()
                 )
-                return
-
-            wire_items = list_wire_catalog_items(doc, marker_param_name)
-            if not wire_items:
-                forms.alert(
-                    u"Не найдено строк справочника кабелей (ни один элемент документа "
-                    u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
-                        marker_param_name
+                if not marker_param_name:
+                    forms.alert(
+                        u"Сначала заполните поле «Параметр-признак строки справочника "
+                        u"кабелей» в разделе «Цепи»."
                     )
+                    return
+
+                wire_items = list_wire_catalog_items(doc, marker_param_name)
+                if not wire_items:
+                    forms.alert(
+                        u"Не найдено строк справочника кабелей (ни один элемент документа "
+                        u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
+                            marker_param_name
+                        )
+                    )
+                    return
+
+                options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
+                selected = forms.SelectFromList.show(
+                    options,
+                    title=u"Тип проводника для категории «{}»".format(cat_title),
+                    button_name=u"Выбрать",
+                    multiselect=False
                 )
-                return
 
-            options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
-                options,
-                title=u"Тип проводника для категории «{}»".format(cat_title),
-                button_name=u"Выбрать",
-                multiselect=False
-            )
+                if selected:
+                    category_wire_type_ids[cat_key] = str(selected.wire_type.Id.IntegerValue)
+                    category_wire_labels[cat_key].Text = selected.name
 
-            if selected:
-                category_wire_type_ids[cat_key] = str(selected.wire_type.Id.IntegerValue)
-                category_wire_labels[cat_key].Text = selected.name
+            pick_btn.Click += on_pick_wire
+            row.Children.Add(pick_btn)
 
-        pick_btn.Click += on_pick_wire
-        row.Children.Add(pick_btn)
-
-        root.Children.Add(row)
+            root.Children.Add(row)
 
     required_hint = TextBlock()
     required_hint.Text = u"* обязательные поля"
@@ -991,7 +1009,7 @@ def show_settings_form(doc, values):
 
     def on_reset(sender, args):
         system_defaults = SYSTEMS[_current_system].get("defaults", {})
-        for key, _, default, _, _ in TEXT_FIELDS:
+        for key, _, default, _, _ in text_fields:
             boxes[key].Text = system_defaults.get(key, default)
 
     def on_ok(sender, args):
@@ -1035,10 +1053,17 @@ def show_settings_form(doc, values):
     return result["values"]
 
 
-def get_settings_interactive(doc):
+def get_settings_interactive(doc, keys=None):
+    """
+    keys=None — редактируются все поля (исторически так работали кнопки
+    «Параметры СПС/СОУЭ/СПА»). Каждая рабочая кнопка вызывает это по
+    Shift+клику со своим набором ключей — тогда показываются только поля
+    этой кнопки, но возвращается всегда полный словарь настроек текущей
+    системы (после сохранения), т.к. он общий на всю панель/систему.
+    """
     while True:
         saved = load_saved_values()
-        edited = show_settings_form(doc, saved)
+        edited = show_settings_form(doc, saved, keys=keys)
 
         if edited == settings_transfer.RELOAD:
             # настройки загружены из файла и уже записаны — открываем заново
@@ -1048,7 +1073,7 @@ def get_settings_interactive(doc):
             return None
 
         save_values(edited)
-        return to_runtime_settings(edited)
+        return to_runtime_settings(load_saved_values())
 
 
 def get_settings_silent():

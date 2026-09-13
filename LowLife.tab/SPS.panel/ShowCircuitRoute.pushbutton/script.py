@@ -23,7 +23,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ViewType
 
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param
@@ -35,6 +35,32 @@ from lowlife.route_preview import pick_circuit, create_route_line_segments, sele
 
 doc = revit.doc
 uidoc = revit.uidoc
+
+fire_alarm_settings.set_system("SPS")
+
+
+def _open_settings():
+    edited = fire_alarm_settings.get_settings_interactive(doc, keys=[
+        "workset_param_name", "workset_filter_key",
+        "device_address_param", "circuit_panel_param", "circuit_route_param",
+        "excluded_device_keywords",
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
+
+
 view = doc.ActiveView
 
 if view.ViewType == ViewType.ThreeD:
@@ -50,7 +76,6 @@ if view.ViewType == ViewType.ThreeD:
 # НАСТРОЙКИ
 # ------------------------------------------------------------
 
-fire_alarm_settings.set_system("SPS")
 settings = fire_alarm_settings.get_settings_silent()
 
 fire_alarm_settings.require(settings, [

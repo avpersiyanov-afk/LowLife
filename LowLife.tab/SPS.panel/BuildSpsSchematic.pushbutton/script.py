@@ -94,7 +94,7 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import (
     ElementId, FilteredElementCollector, BuiltInCategory, ViewFamilyType, ViewFamily, ViewDrafting
 )
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 try:
     from collections import OrderedDict
@@ -136,6 +136,33 @@ def _mark(label):
     now = time.time()
     _timings.append((label, now - _last_mark_time[0]))
     _last_mark_time[0] = now
+
+
+def _open_settings():
+    edited = fire_alarm_settings.get_settings_interactive(doc, keys=[
+        "room_param_name", "room_mask", "device_address_param",
+        "node_label_offset_mm", "schematic_view_name", "layout_param_name",
+        "device_uid_param_name", "schematic_device_categories_text",
+        "level_param_name", "building_param_name", "building_filter_value",
+        "cabinet_category_name", "draw_loop_lines", "draw_tags",
+        "max_row_width_mm", "same_room_branch_offset_mm",
+        "branch_lot_room_param_name", "branch_lot_filter_word",
+        "isolator_keyword", "node_annotation_type_id", "view_template_id",
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
 
 
 # ------------------------------------------------------------

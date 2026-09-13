@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 __title__ = u"Расчёт\nдлины цепи"
-__doc__ = u"Считает длины кабеля по трассе и номера/маршруты цепей для целевых панелей"
+__doc__ = (
+    u"Считает длины кабеля по трассе и номера/маршруты цепей для целевых "
+    u"панелей.\n\n"
+    u"Shift+клик — настройки этой кнопки."
+)
 __author__ = "Pipers"
 
 import clr
@@ -9,7 +13,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, set_param_any
@@ -26,6 +30,36 @@ from lowlife.scs_circuits import (
 )
 
 doc = revit.doc
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "route_type_id", "riser_type_id", "workset_filter_key", "install_tray_key",
+        "install_pipe_key", "install_pipe_open_key", "route_label_pipe_format",
+        "route_label_tray_format", "route_label_pipe_open_format", "circuit_key_fo",
+        "circuit_key_utp", "circuit_key_power", "horiz_tray_coef", "horiz_pipe_coef",
+        "vertical_coef", "addr_param_name", "addr_prev_param_name", "cable_param_name",
+        "workset_param_name", "excluded_device_keywords", "circuit_panel_param",
+        "nearest_segment_param", "device_address_param", "type_code_param",
+        "circuit_name_type_param", "circuit_number_param", "circuit_route_param",
+        "wire_length_param", "tray_length_param", "pipe_length_param",
+        "route_method_param", "load_name_param", "segment_loads_param"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

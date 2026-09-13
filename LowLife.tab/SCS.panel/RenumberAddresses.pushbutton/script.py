@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 __title__ = u"Адреса\nузлов"
-__doc__ = u"Нумерует адреса узлов маршрута по этажу, начиная от панелей/стояков"
+__doc__ = (
+    u"Нумерует адреса узлов маршрута по этажу, начиная от панелей/стояков.\n\n"
+    u"Shift+клик — настройки этой кнопки."
+)
 __author__ = "Pipers"
 
 import clr
@@ -10,7 +13,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
 from System.Collections.Generic import List
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point, get_document_levels
 from lowlife.params import get_string_param, set_string_param, set_param_any
@@ -43,6 +46,30 @@ END_TOL = 50.0 / MM_IN_FOOT
 # обхода — см. select_root_sources в scs_addressing.py.
 ROOT_SEARCH_MARGIN_MM = 20000.0
 ROOT_SEARCH_MARGIN = ROOT_SEARCH_MARGIN_MM / MM_IN_FOOT
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "route_type_id", "riser_type_id", "panel_type_id", "workset_filter_key",
+        "circuit_panel_param", "nearest_segment_param", "addr_param_name",
+        "addr_prev_param_name", "cable_param_name", "panel_keywords",
+        "panel_exclude_keywords", "workset_param_name", "excluded_device_keywords"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

@@ -3,4 +3,3 @@ tooltip: Построение электрических цепей СПА по 
 layout:
   - BuildLoopCircuitsSPA
   - CalcLoopLengthsSPA
-  - SetupParametersSPA

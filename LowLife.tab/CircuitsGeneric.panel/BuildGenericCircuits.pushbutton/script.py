@@ -2,7 +2,7 @@
 __title__ = u"Цепь\n(общее)"
 __doc__ = (
     u"Строит произвольные электрические цепи «панель → устройства» по "
-    u"настройкам «Параметры цепей (общее)» — ничего не зашито в код. Выберите "
+    u"настройкам — ничего не зашито в код. Выберите "
     u"панель и все устройства вместе, одним выбором (рамкой и/или кликами, "
     u"без порядка; панель определяется автоматически по категории "
     u"«Электрооборудование», среди выбранного она должна быть ровно одна). "
@@ -17,19 +17,39 @@ __doc__ = (
     u"имени сначала берётся параметр экземпляра, затем — типа).\n\n"
     u"Режим — в настройках: либо отдельная цепь на каждое устройство (у "
     u"каждой своё имя нагрузки), либо все устройства в одну общую цепь (имя "
-    u"нагрузки при этом не заполняется)."
+    u"нагрузки при этом не заполняется).\n\n"
+    u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
 
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 from lowlife.manual_circuits import pick_panel_and_devices
 from lowlife import generic_circuits_settings
-from lowlife.generic_circuits_settings import get_settings_silent
+from lowlife.generic_circuits_settings import get_settings_silent, get_settings_interactive
 from lowlife.generic_circuits import get_conductor_id, build_generic_circuits
 
 doc = revit.doc
 uidoc = revit.uidoc
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc)
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
+
 
 settings = get_settings_silent()
 

@@ -24,19 +24,41 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ElementId, ViewType
 
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param
 from lowlife.scs import is_excluded_device
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import get_settings_interactive, get_settings_silent
 from lowlife.scs_circuits import norm, clean_text_value, parse_route_path
 from lowlife.route_preview import pick_circuit, create_route_lines, select_elements, schedule_preview_cleanup, zoom_to_fit_points
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "route_type_id", "riser_type_id", "circuit_panel_param", "circuit_route_param",
+        "addr_param_name", "excluded_device_keywords"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
+
 
 if view.ViewType == ViewType.ThreeD:
     forms.alert(

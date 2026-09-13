@@ -7,7 +7,8 @@ __doc__ = (
     u"подрядчику/на ПНР. Читает то, что уже записано в модель кнопкой "
     u"«Адреса узлов» (модель не изменяет).\n\n"
     u"Работает на движке CPython3 pyRevit и требует пакет openpyxl в его "
-    u"окружении: py -3 -m pip install openpyxl"
+    u"окружении: py -3 -m pip install openpyxl\n\n"
+    u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
 
@@ -18,7 +19,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ElementId
 
-from pyrevit import revit, forms, script
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param
@@ -31,6 +32,29 @@ doc = revit.doc
 view = doc.ActiveView
 
 MM_IN_FOOT = 304.8
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "route_type_id", "riser_type_id", "workset_filter_key", "addr_param_name",
+        "addr_prev_param_name", "cable_param_name", "panel_keywords",
+        "panel_exclude_keywords", "workset_param_name"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

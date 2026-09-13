@@ -14,7 +14,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.params import get_string_param, set_param_any, set_element_id_param
 from lowlife.scs import is_excluded_device
@@ -22,11 +22,34 @@ from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.skud import is_controller, category_by_type_id
 from lowlife import skud_settings
 from lowlife.skud_settings import (
-    get_settings_silent, get_schematic_category_device_type_ids,
+    get_settings_interactive, get_settings_silent, get_schematic_category_device_type_ids,
     get_schematic_category_wire_type_elem_ids
 )
 
 doc = revit.doc
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
+        "excluded_device_keywords", "circuit_panel_param", "device_address_param",
+        "type_code_param", "load_name_param", "controller_marking_param",
+        "cable_type_param", "schematic_device_categories_text", "wire_catalog_marker_param"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

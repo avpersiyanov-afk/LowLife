@@ -131,11 +131,7 @@ THEMES = {
     u"Settings": [
         (u"SCS", u"SetupParameters"),
         (u"SKUD", u"SetupParameters"),
-        (u"SOUE", u"SetupParameters"),
-        (u"SPS", u"SetupParameters"),
         (u"SOT", u"SetupParameters"),
-        (u"CircuitsSPA", u"SetupParametersSPA"),
-        (u"CircuitsGeneric", u"GenericCircuitsSettings"),
     ],
     u"General": [
         (u"Tools", u"DimensionGrids"),

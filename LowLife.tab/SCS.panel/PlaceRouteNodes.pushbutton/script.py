@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 __title__ = u"Узлы\nтрассы"
-__doc__ = u"Расставляет панели/узлы маршрута/стояки в точках трассы кабеля"
+__doc__ = (
+    u"Расставляет панели/узлы маршрута/стояки в точках трассы кабеля.\n\n"
+    u"Shift+клик — настройки этой кнопки."
+)
 __author__ = "Pipers"
 
 import clr
@@ -11,7 +14,7 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import (
     get_point, get_curve_data, point_key, points_close,
@@ -30,6 +33,31 @@ view = doc.ActiveView
 tolerance = 0.01
 point_on_curve_tolerance = 0.05
 merge_tolerance = 0.1
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "panel_type_id", "route_type_id", "riser_type_id", "family_filter",
+        "route_param_value", "route_param_value_riser", "device_cable_type_value",
+        "cable_param_name", "route_param_name", "panel_keywords", "panel_exclude_keywords",
+        "riser_keywords", "riser_exclude_keywords", "riser_annotation_keywords",
+        "offset_param_names"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

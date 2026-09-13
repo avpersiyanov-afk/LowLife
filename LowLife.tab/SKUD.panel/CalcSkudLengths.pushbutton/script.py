@@ -15,7 +15,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, set_param_any
@@ -27,12 +27,41 @@ from lowlife.scs_circuits import (
 )
 from lowlife.skud import is_controller, is_near_controller, hypotenuse_length_ft
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent
+from lowlife.skud_settings import get_settings_interactive, get_settings_silent
 
 doc = revit.doc
 
 FT_TO_M = 0.3048
 M_TO_FT = 1.0 / FT_TO_M
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
+        "circuit_panel_param", "route_type_id", "riser_type_id",
+        "near_controller_threshold_m", "hypotenuse_coef", "horiz_tray_coef",
+        "horiz_pipe_coef", "vertical_coef", "install_tray_key", "install_pipe_key",
+        "install_pipe_open_key", "wire_length_param", "tray_length_param",
+        "pipe_length_param", "route_method_param", "circuit_route_param",
+        "route_label_pipe_format", "route_label_tray_format", "device_address_param",
+        "device_marking_param", "segment_loads_param", "workset_filter_key",
+        "excluded_device_keywords", "addr_param_name", "addr_prev_param_name",
+        "nearest_segment_param", "cable_param_name"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

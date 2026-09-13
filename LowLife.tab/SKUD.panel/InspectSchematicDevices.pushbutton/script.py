@@ -15,7 +15,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.UI.Selection import ObjectType
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 from lowlife.params import get_string_param
 from lowlife.scs import is_excluded_device, safe_element_name
@@ -26,11 +26,34 @@ from lowlife.skud_schematic import (
 )
 
 from lowlife import skud_settings
-from lowlife.skud_settings import get_settings_silent, get_schematic_category_device_type_ids
+from lowlife.skud_settings import (
+    get_settings_interactive, get_settings_silent, get_schematic_category_device_type_ids
+)
 
 doc = revit.doc
 uidoc = revit.uidoc
 output = pyrevit_script.get_output()
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc, keys=[
+        "circuit_panel_param", "device_address_param", "excluded_device_keywords",
+        "passage_point_param", "schematic_device_categories_text"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
 
 
 settings = get_settings_silent()

@@ -11,7 +11,8 @@ __doc__ = (
     u"отдельно от линии. Вид сам масштабируется, чтобы весь маршрут "
     u"поместился целиком. Линия временная: удаляется сама через несколько "
     u"секунд, а также при повторном запуске кнопки (в т.ч. кнопки СКУД/СПС "
-    u"с той же функцией) — прошлая линия удаляется в любом случае."
+    u"с той же функцией) — прошлая линия удаляется в любом случае.\n\n"
+    u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
 
@@ -22,7 +23,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ElementId, ViewType
 
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param
@@ -43,6 +44,28 @@ if view.ViewType == ViewType.ThreeD:
         u"кнопку заново.",
         exitscript=True
     )
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "route_type_id", "riser_type_id", "circuit_panel_param",
+        "circuit_route_param", "addr_param_name", "excluded_device_keywords"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
 
 
 # ------------------------------------------------------------

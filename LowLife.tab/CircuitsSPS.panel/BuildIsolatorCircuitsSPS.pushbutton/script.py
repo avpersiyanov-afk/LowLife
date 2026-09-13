@@ -14,7 +14,7 @@ __doc__ = (
 )
 __author__ = "Pipers"
 
-from pyrevit import revit, forms
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife import fire_alarm_settings
 from lowlife.fire_alarm_isolator_circuits import (
@@ -25,6 +25,32 @@ fire_alarm_settings.set_system("SPS")
 
 doc = revit.doc
 uidoc = revit.uidoc
+
+
+def _open_settings():
+    edited = fire_alarm_settings.get_settings_interactive(doc, keys=[
+        "designation_param", "device_address_param",
+        "circuit_panel_param", "load_name_param", "circuit_system_type",
+        "cable_type_param", "wire_length_param", "length_coef",
+        "route_method_param", "route_label_pipe_format",
+        "wire_mark_param", "wire_line_family_filter",
+        "wire_catalog_marker_param", "category_wire_type_ids",
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    script.exit()
+
 
 settings = fire_alarm_settings.get_settings_silent()
 

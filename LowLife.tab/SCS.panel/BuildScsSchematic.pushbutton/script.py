@@ -29,7 +29,8 @@ __doc__ = (
     u"из настроек, раскладка предыдущего запуска хранится в служебном "
     u"параметре этого вида — трогаются (двигаются/перерисовываются) только "
     u"этаж/помещение/устройство, где реально что-то изменилось. Линии шины "
-    u"не редактируются вручную — перерисовываются заново на каждом запуске."
+    u"не редактируются вручную — перерисовываются заново на каждом запуске.\n\n"
+    u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
 
@@ -41,7 +42,7 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import (
     ElementId, FilteredElementCollector, ViewFamilyType, ViewFamily, ViewDrafting
 )
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 try:
     from collections import OrderedDict
@@ -67,6 +68,32 @@ from lowlife.room_info import get_point as get_room_point, find_room_value
 
 doc = revit.doc
 output = pyrevit_script.get_output()
+
+
+def _open_settings():
+    edited = scs_settings.get_settings_interactive(doc, keys=[
+        "workset_param_name", "workset_filter_key", "circuit_panel_param",
+        "excluded_device_keywords", "device_address_param", "room_param_name",
+        "room_mask", "schematic_view_name", "layout_param_name",
+        "device_uid_param_name", "node_label_offset_mm",
+        "schematic_device_categories_text", "max_row_width_mm",
+        "node_annotation_type_id"
+    ])
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+# --- Shift+клик -> настройки ------------------------------------------
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
 
 
 # ------------------------------------------------------------

@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-__title__ = u"Параметры\nСКС"
+__title__ = u"Привязка\nпараметров"
 __doc__ = (
     u"Проверяет, что все параметры СКС привязаны в проекте к нужным "
     u"категориям, и добавляет недостающие привязки из подключённого файла "
     u"общих параметров (ФОП). Если определения параметра нет ни в проекте, "
-    u"ни в файле ФОП — ничего не выдумывает, только сообщает об этом."
+    u"ни в файле ФОП — ничего не выдумывает, только сообщает об этом.\n\n"
+    u"Настройки самих кнопок СКС сюда не входят — у каждой рабочей кнопки "
+    u"свои настройки по Shift+клику."
 )
 __author__ = "Pipers"
 
@@ -17,7 +19,6 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
 
 from lowlife import scs_settings
-from lowlife.scs_settings import get_settings_interactive
 from lowlife.scs_parameters import (
     PARAM_SPECS, ensure_binding, find_existing_binding, get_category,
     binding_has_category, FOP, NATIVE
@@ -31,12 +32,7 @@ app = doc.Application
 # НАСТРОЙКИ
 # ------------------------------------------------------------
 
-settings = get_settings_interactive(doc)
-
-if settings is None:
-    forms.alert(u"Операция отменена.", exitscript=True)
-
-scs_settings.require(settings, [key for key, _, _, _, _, _, source, required in PARAM_SPECS if required])
+settings = scs_settings.get_settings_silent()
 
 
 # ------------------------------------------------------------
