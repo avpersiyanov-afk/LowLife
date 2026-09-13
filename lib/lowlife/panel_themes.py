@@ -60,7 +60,6 @@ THEMES = {
         (u"SCS", u"RenumberAddresses"),
         (u"SCS", u"SyncCircuitsAndLengths"),
         (u"SCS", u"ShowCircuitRoute"),
-        (u"SCS", u"ExportAddressesToExcel"),
         (u"SCS", u"BuildScsSchematic"),
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
     ],

@@ -712,18 +712,6 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 вызывает напрямую из `scs_addressing.py`, не дублируя — это тот код,
 который чинил баг с "отрезанной" веткой второго стояка на этаже.
 
-## route_export.py
-Запись таблицы адресов СКС в xlsx через `openpyxl`. Вынесен из
-`route_addressing.py` в отдельный модуль намеренно: `openpyxl` —
-CPython-only зависимость (импортируется внутри функции, не на уровне
-модуля), а `route_addressing.py` используется и IronPython2-кнопками,
-которым эта зависимость не нужна. Импортируется только из кнопок,
-объявивших `#! python3` в `script.py` (сейчас — `ExportAddressesToExcel`).
-
-| Функция | Сигнатура | Что делает |
-|---|---|---|
-| `export_addressing_to_excel` | `export_addressing_to_excel(rows, file_path)` | Пишет лист `"Адреса СКС"` с жирным заголовком и автошириной колонок; `rows` — список dict с ключами `id/category/x_mm/y_mm/addr/addr_prev/cable_type` (см. `COLUMNS`) |
-
 ## xlsx_io.py
 Мини чтение/запись `.xlsx` **без сторонних пакетов** (openpyxl не нужен, Excel
 запускать не надо). `.xlsx`/`.xlsm` — это zip с XML (различие `.xlsm` — только
