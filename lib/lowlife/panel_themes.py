@@ -130,7 +130,6 @@ THEMES = {
     u"Settings": [
         (u"SCS", u"SetupParameters"),
         (u"SKUD", u"SetupParameters"),
-        (u"SOT", u"SetupParameters"),
     ],
     u"General": [
         (u"Tools", u"DimensionGrids"),

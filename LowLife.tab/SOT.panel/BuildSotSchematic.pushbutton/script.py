@@ -24,7 +24,8 @@ __doc__ = (
     u"вертикальный отвод, коллекторы всех этажей выходят на один общий "
     u"вертикальный стояк слева от рамок этажей. Эти линии не редактируются "
     u"вручную — на каждом запуске перерисовываются заново по актуальным "
-    u"позициям."
+    u"позициям.\n\n"
+    u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
 
@@ -36,7 +37,7 @@ clr.AddReference('RevitAPIUI')
 from Autodesk.Revit.DB import (
     ElementId, FilteredElementCollector, BuiltInCategory, ViewFamilyType, ViewFamily, ViewDrafting
 )
-from pyrevit import revit, forms, script as pyrevit_script
+from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 try:
     from collections import OrderedDict
@@ -47,8 +48,9 @@ from lowlife.params import get_string_param, set_param_any
 from lowlife.skud import category_by_type_id
 from lowlife import sot_settings
 from lowlife.sot_settings import (
-    get_settings_silent, get_schematic_category_symbols, get_schematic_category_device_type_ids,
-    get_node_annotation_symbol, get_view_template, SOURCE_CATEGORIES
+    get_settings_silent, get_settings_interactive, get_schematic_category_symbols,
+    get_schematic_category_device_type_ids, get_node_annotation_symbol, get_view_template,
+    SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
 from lowlife.sot_schematic import sync_levels, sync_cable_connections
@@ -57,6 +59,24 @@ from lowlife.room_info import get_point as get_room_point, find_room_value
 
 doc = revit.doc
 output = pyrevit_script.get_output()
+
+
+def _open_settings():
+    edited = get_settings_interactive(doc)
+    forms.alert(
+        u"Отменено, настройки не изменены." if edited is None
+        else u"Настройки сохранены."
+    )
+
+
+try:
+    config_mode = bool(EXEC_PARAMS.config_mode)
+except Exception:
+    config_mode = False
+
+if config_mode:
+    _open_settings()
+    pyrevit_script.exit()
 
 
 # ------------------------------------------------------------
