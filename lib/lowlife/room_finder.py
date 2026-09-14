@@ -249,6 +249,22 @@ def type_value(record, type_param_name):
     return value.strip() if value else u""
 
 
+def number_value(record, number_param_name):
+    """
+    «Номер помещения» для показа/поиска/сортировки — значение параметра из
+    настроек (например, если проектный номер хранится не во встроенном
+    ROOM_NUMBER, а в своём общем параметре). Падает обратно на встроенный
+    номер (record.number), если имя параметра не задано в настройках или
+    у конкретного помещения этот параметр пуст/отсутствует — так список не
+    остаётся без номера при неполной настройке или разночтениях по части
+    помещений.
+    """
+    if not number_param_name:
+        return record.number
+    value = get_param_any(record.room, number_param_name)
+    return value.strip() if value else record.number
+
+
 def natural_key(text):
     """Ключ сортировки, где числовые куски сравниваются как числа — чтобы
     номер «10» шёл после «9», а не перед ним, как при обычной строковой
@@ -258,12 +274,16 @@ def natural_key(text):
             for part in _NUM_RE.split(text)]
 
 
-def level_mismatch_hint(record, view):
+def level_mismatch_hint(record, view, number_display=None):
     """
     None, если можно спокойно зумить (помещение на уровне активного вида,
     либо уровень одной из сторон определить не удалось — тогда лучше
     попытаться зумить, чем ложно ругаться). Иначе — текст подсказки, на
     какой план переключиться (тот же приём, что ZoomToElement.hint_where_to_look).
+
+    number_display — что показать пользователю как «номер»; если не
+    передан, берётся встроенный record.number (см. number_value —
+    настроенный параметр номера может отличаться от встроенного).
     """
     active_level = getattr(view, "GenLevel", None)
     active_level_name = active_level.Name if active_level is not None else None
@@ -273,11 +293,14 @@ def level_mismatch_hint(record, view):
     if record.level_name == active_level_name:
         return None
 
+    if number_display is None:
+        number_display = record.number
+
     return (
         u"Помещение {} «{}» относится к уровню «{}», а на активном виде — "
         u"уровень «{}». Переключитесь на план уровня «{}» и выберите "
         u"помещение снова.".format(
-            record.number or u"?", record.name or u"",
+            number_display or u"?", record.name or u"",
             record.level_name, active_level_name, record.level_name
         )
     )

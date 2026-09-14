@@ -38,8 +38,19 @@ SETTINGS_FILE_NAME = "LowLifeFindRoom_settings.json"
 #  значение по умолчанию, обязательное ли поле)
 TEXT_FIELDS = [
     (
+        "room_number_param_name",
+        u"① Номер помещения — по какому параметру искать/сортировать",
+        u"Параметр номера (в связи АР)",
+        u"Имя параметра Room, который считается «номером помещения» — по "
+        u"нему строится и сортируется список, по нему же работает поиск в "
+        u"строке фильтра. Пусто — используется встроенный параметр «Номер» "
+        u"(ROOM_NUMBER). Если у конкретного помещения этот параметр пуст, "
+        u"для него тоже подставляется встроенный номер.",
+        u"", False
+    ),
+    (
         "room_type_param_name",
-        u"Группировка списка помещений",
+        u"② Группировка списка помещений",
         u"Параметр помещения (в связи АР)",
         u"Имя параметра Room, по значению которого группируется список для "
         u"выбора — например «Тип помещения», «Назначение» или встроенный "
@@ -136,7 +147,7 @@ def show_settings_form(values):
     win = Window()
     win.Title = u"Настройки: Найти помещение"
     win.Width = 720
-    win.Height = 320
+    win.Height = 480
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
@@ -146,7 +157,7 @@ def show_settings_form(values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Параметр группировки списка помещений"
+    title.Text = u"Параметры номера и группировки списка помещений"
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)

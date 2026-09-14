@@ -4,17 +4,18 @@ __title__ = u"Найти\nпомещение"
 __doc__ = (
     u"Показывает список помещений активного вида (из текущей модели и всех "
     u"подключённых связей — по уровню/границам вида), отсортированный по "
-    u"номеру и сгруппированный по параметру из настроек (например «Тип "
-    u"помещения»). Начните печатать номер или название — список "
-    u"отфильтруется. Пункт вверху списка переключает на все помещения "
-    u"проекта, если нужного нет на этом виде. Выбор + «Подсветить» "
-    u"приближает активный вид к этому помещению; если оно относится к "
-    u"другому уровню, подскажет, на какой план переключиться.\n\n"
+    u"номеру и сгруппированный по параметру из настроек. Номер — это "
+    u"параметр, заданный в настройках (по умолчанию — встроенный «Номер»), "
+    u"группировка — например «Тип помещения». Начните печатать номер или "
+    u"название — список отфильтруется. Пункт вверху списка переключает на "
+    u"все помещения проекта, если нужного нет на этом виде. Выбор + "
+    u"«Подсветить» приближает активный вид к этому помещению; если оно "
+    u"относится к другому уровню, подскажет, на какой план переключиться.\n\n"
     u"После подсветки список открывается снова — не нужно нажимать кнопку "
     u"заново, чтобы найти следующее помещение. Список собирается один раз "
     u"за сеанс Revit и держится в памяти (пункт «Обновить список» наверху — "
     u"если помещения в связи изменились).\n\n"
-    u"Shift+клик — настройки (параметр группировки)."
+    u"Shift+клик — настройки (параметры номера и группировки)."
 )
 __author__ = "Pipers"
 
@@ -44,29 +45,31 @@ class ToggleScopeOption(object):
 
 
 class RoomOption(object):
-    def __init__(self, record, group):
+    def __init__(self, record, group, number_display):
         self.record = record
+        self.number_display = number_display
         if group:
             self.label = u"[{}]  {} — {}".format(
-                group, record.number or u"?", record.name or u"без имени"
+                group, number_display or u"?", record.name or u"без имени"
             )
         else:
             self.label = u"{} — {}".format(
-                record.number or u"?", record.name or u"без имени"
+                number_display or u"?", record.name or u"без имени"
             )
 
     def __str__(self):
         return self.label
 
 
-def build_options(records, type_param_name):
+def build_options(records, number_param_name, type_param_name):
     rows = []
     for record in records:
+        number_display = room_finder.number_value(record, number_param_name)
         group = room_finder.type_value(record, type_param_name)
         rows.append((
             group.lower(),
-            room_finder.natural_key(record.number),
-            RoomOption(record, group)
+            room_finder.natural_key(number_display),
+            RoomOption(record, group, number_display)
         ))
     rows.sort(key=lambda row: (row[0], row[1]))
 
@@ -90,6 +93,7 @@ if config_mode:
 
 
 settings = room_finder_settings.get_settings_silent()
+number_param_name = settings.get("room_number_param_name", u"")
 type_param_name = settings.get("room_type_param_name", u"")
 
 view = doc.ActiveView
@@ -111,7 +115,7 @@ show_all = False
 while True:
     current = records if (show_all or not narrowed) else view_records
 
-    options = build_options(current, type_param_name)
+    options = build_options(current, number_param_name, type_param_name)
     if narrowed:
         options.insert(0, ToggleScopeOption(show_all, len(records), len(view_records)))
 
@@ -145,8 +149,9 @@ while True:
         continue
 
     record = picked.record
+    number_display = picked.number_display
 
-    hint = room_finder.level_mismatch_hint(record, view)
+    hint = room_finder.level_mismatch_hint(record, view, number_display)
     if hint:
         forms.alert(hint, title=u"Найти помещение")
         continue
@@ -155,6 +160,6 @@ while True:
         forms.alert(
             u"Не удалось приблизить вид к помещению {} — возможно, вид "
             u"открыт не в отдельном окне (например, на листе), либо у "
-            u"помещения нет корректного габарита.".format(record.number or u"?"),
+            u"помещения нет корректного габарита.".format(number_display or u"?"),
             title=u"Найти помещение"
         )
