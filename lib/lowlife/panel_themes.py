@@ -35,9 +35,10 @@ under the single "General" theme ("Общее" in the ComboBox), so picking
 "Общее" shows the whole set together.
 
 "Service" theme ("Служебное" in the ComboBox) holds rarely-needed helpers
-that live on their own ToolsExport.panel ("Выгрузка") — RenameExportFiles
-and CaptureExportCommand — kept off the "General" list so they don't
-clutter the everyday toolset (the rename runs itself on export anyway).
+that live on their own ToolsExport.panel ("Выгрузка") — RenameExportFiles,
+RenameByList and CaptureExportCommand — kept off the "General" list so
+they don't clutter the everyday toolset (the rename runs itself on export
+anyway).
 
 Tray*.panel ("Лестничный лоток"/"Неперфорированный лоток"/"Перфорированный
 лоток"/"Проволочный лоток"/"Лотки на кровле") are grouped under their own
@@ -152,6 +153,7 @@ THEMES = {
     ],
     u"Service": [
         (u"ToolsExport", u"RenameExportFiles"),
+        (u"ToolsExport", u"RenameByList"),
         (u"ToolsExport", u"CaptureExportCommand"),
     ],
 }
