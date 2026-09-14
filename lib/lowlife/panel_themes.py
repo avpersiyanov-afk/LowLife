@@ -140,6 +140,7 @@ THEMES = {
         (u"Tools", u"Hello"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
+        (u"ToolsRooms", u"FindRoom"),
         (u"ToolsSchedules", u"SplitScheduleOnSheet"),
         (u"ToolsSchedules", u"ScheduleToExcel"),
         (u"ToolsSchedules", u"ScheduleFromExcel"),

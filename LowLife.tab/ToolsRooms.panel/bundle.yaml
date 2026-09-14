@@ -3,3 +3,4 @@ tooltip: Работа с помещениями из связанной моде
 layout:
   - RoomInfo
   - RoomTags
+  - FindRoom
