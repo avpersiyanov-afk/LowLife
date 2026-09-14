@@ -41,14 +41,19 @@ def _doc_key(doc):
 
 
 class RoomRecord(object):
-    __slots__ = ("room", "number", "name", "level_name", "bbox")
+    __slots__ = ("room", "number", "name", "level_name", "bbox", "is_host", "room_id")
 
-    def __init__(self, room, number, name, level_name, bbox):
+    def __init__(self, room, number, name, level_name, bbox, is_host):
         self.room = room
         self.number = number
         self.name = name
         self.level_name = level_name
         self.bbox = bbox  # (XYZ min, XYZ max) в координатах хоста, либо None
+        self.is_host = is_host  # помещение из самой модели, а не из связи
+        try:
+            self.room_id = room.Id.IntegerValue
+        except Exception:
+            self.room_id = None
 
 
 def _room_number(room):
@@ -120,7 +125,7 @@ def _room_bbox_host(room, transform):
     )
 
 
-def _collect_from(source_doc, transform):
+def _collect_from(source_doc, transform, is_host):
     records = []
     try:
         rooms = FilteredElementCollector(source_doc) \
@@ -139,12 +144,13 @@ def _collect_from(source_doc, transform):
             name=_room_name(room),
             level_name=_room_level_name(room),
             bbox=_room_bbox_host(room, transform),
+            is_host=is_host,
         ))
     return records
 
 
 def _collect_all(doc):
-    records = _collect_from(doc, Transform.Identity)
+    records = _collect_from(doc, Transform.Identity, True)
 
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         try:
@@ -157,7 +163,7 @@ def _collect_all(doc):
             transform = link.GetTotalTransform()
         except Exception:
             continue
-        records.extend(_collect_from(linked_doc, transform))
+        records.extend(_collect_from(linked_doc, transform, False))
 
     return records
 
@@ -172,6 +178,65 @@ def get_records(doc, force_refresh=False):
     records = _collect_all(doc)
     _CACHE[key] = records
     return records
+
+
+def _host_visible_room_ids(doc, view):
+    """
+    IntegerValue всех Room активного документа, которые Revit реально
+    показывает на этом виде — учитывает уровень, View Range, обрезку,
+    фазу и т.д. (тот же приём, что build_visible_ids в ZoomToElement).
+    None, если вид не поддерживает такой сбор (лист, легенда и т.п.) —
+    вызывающий код тогда просто не сужает список по этому признаку.
+    """
+    try:
+        return set(
+            eid.IntegerValue
+            for eid in FilteredElementCollector(doc, view.Id)
+                .OfCategory(BuiltInCategory.OST_Rooms)
+                .WhereElementIsNotElementType()
+                .ToElementIds()
+        )
+    except Exception:
+        return None
+
+
+def filter_for_view(records, doc, view):
+    """
+    Сужает список помещений до тех, что относятся к активному виду.
+
+    Для помещений САМОГО документа — по факту видимости на этом виде
+    (_host_visible_room_ids: уровень/View Range/обрезка/фаза — всё, что
+    знает про это сам Revit). Для помещений из связей такой проверки нет
+    (элементы связи не входят в FilteredElementCollector(doc, view.Id)),
+    поэтому для них — по совпадению имени уровня с уровнем активного вида;
+    грубее, но обычно ровно то, что нужно: «помещения этого этажа».
+
+    Возвращает (filtered, narrowed). narrowed=False и filtered=records
+    (без изменений), если сузить нечем (вид без уровня, например 3D/лист)
+    или итоговый список оказался пустым — чтобы не оставить пользователя
+    с пустым диалогом из-за, например, разного именования уровней в
+    хосте и связи.
+    """
+    view_level = getattr(view, "GenLevel", None)
+    view_level_name = view_level.Name if view_level is not None else None
+    host_ids = _host_visible_room_ids(doc, view)
+
+    if view_level_name is None and host_ids is None:
+        return records, False
+
+    filtered = []
+    for r in records:
+        if r.is_host and host_ids is not None:
+            if r.room_id in host_ids:
+                filtered.append(r)
+            continue
+        if view_level_name is not None and r.level_name == view_level_name:
+            filtered.append(r)
+
+    if not filtered:
+        return records, False
+
+    return filtered, True
 
 
 def type_value(record, type_param_name):

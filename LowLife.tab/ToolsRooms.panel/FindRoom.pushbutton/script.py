@@ -2,10 +2,12 @@
 
 __title__ = u"Найти\nпомещение"
 __doc__ = (
-    u"Показывает список всех помещений (из текущей модели и всех "
-    u"подключённых связей), отсортированный по номеру и сгруппированный "
-    u"по параметру из настроек (например «Тип помещения»). Начните "
-    u"печатать номер или название — список отфильтруется. Выбор + «Подсветить» "
+    u"Показывает список помещений активного вида (из текущей модели и всех "
+    u"подключённых связей — по уровню/границам вида), отсортированный по "
+    u"номеру и сгруппированный по параметру из настроек (например «Тип "
+    u"помещения»). Начните печатать номер или название — список "
+    u"отфильтруется. Пункт вверху списка переключает на все помещения "
+    u"проекта, если нужного нет на этом виде. Выбор + «Подсветить» "
     u"приближает активный вид к этому помещению; если оно относится к "
     u"другому уровню, подскажет, на какой план переключиться.\n\n"
     u"После подсветки список открывается снова — не нужно нажимать кнопку "
@@ -27,6 +29,18 @@ uidoc = revit.uidoc
 class RefreshOption(object):
     def __str__(self):
         return u"↻ Обновить список помещений"
+
+
+class ToggleScopeOption(object):
+    def __init__(self, show_all, all_count, view_count):
+        self.target_show_all = not show_all
+        if show_all:
+            self.label = u"▤ Только помещения активного вида ({})".format(view_count)
+        else:
+            self.label = u"▤ Показать все помещения проекта ({})".format(all_count)
+
+    def __str__(self):
+        return self.label
 
 
 class RoomOption(object):
@@ -91,10 +105,22 @@ if not records:
         exitscript=True
     )
 
+view_records, narrowed = room_finder.filter_for_view(records, doc, view)
+show_all = False
+
 while True:
+    current = records if (show_all or not narrowed) else view_records
+
+    options = build_options(current, type_param_name)
+    if narrowed:
+        options.insert(0, ToggleScopeOption(show_all, len(records), len(view_records)))
+
     picked = forms.SelectFromList.show(
-        build_options(records, type_param_name),
-        title=u"Найти помещение — всего {}".format(len(records)),
+        options,
+        title=u"Найти помещение — {} ({})".format(
+            u"весь проект" if (show_all or not narrowed) else u"активный вид",
+            len(current)
+        ),
         button_name=u"Подсветить",
         multiselect=False
     )
@@ -111,6 +137,11 @@ while True:
                 title=u"Найти помещение"
             )
             break
+        view_records, narrowed = room_finder.filter_for_view(records, doc, view)
+        continue
+
+    if isinstance(picked, ToggleScopeOption):
+        show_all = picked.target_show_all
         continue
 
     record = picked.record
