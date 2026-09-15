@@ -189,12 +189,28 @@ def run(doc, uidoc, view):
             exitscript=True
         )
 
-    elements = pick_elements_by_categories(uidoc, doc, category_ids)
+    try:
+        elements = pick_elements_by_categories(uidoc, doc, category_ids)
 
-    # Явно фиксируем выбор как текущее выделение Revit, чтобы оно осталось
-    # активным (подсветка, панель «Свойства») после завершения инструмента —
-    # сами по себе результаты PickObjects этого не гарантируют.
-    ids = List[ElementId]()
-    for el in elements:
-        ids.Add(el.Id)
-    uidoc.Selection.SetElementIds(ids)
+        # Явно фиксируем выбор как текущее выделение Revit, чтобы оно
+        # осталось активным (подсветка, панель «Свойства») после завершения
+        # инструмента — сами по себе результаты PickObjects этого не
+        # гарантируют.
+        ids = List[ElementId]()
+        for el in elements:
+            ids.Add(el.Id)
+        uidoc.Selection.SetElementIds(ids)
+    except Exception:
+        # ВРЕМЕННО (диагностика 2026-09-15): если тут что-то падает, Revit
+        # молча оставляет «сырое» выделение PickObjects как есть — снаружи
+        # это выглядит как «фильтр не сработал, выделилось всё подряд».
+        # Показываем traceback, чтобы увидеть причину, а не гадать вслепую.
+        import traceback
+        forms.alert(
+            u"Фильтр споткнулся на отборе/фиксации выделения — поэтому, "
+            u"похоже, осталось «сырое» выделение без фильтра. Текст "
+            u"ошибки ниже, перешлите его, пожалуйста:\n\n{}".format(
+                traceback.format_exc()),
+            title=u"Фильтр выбора — диагностика"
+        )
+        raise

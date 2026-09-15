@@ -236,9 +236,36 @@ def pick_elements_by_categories(
         return []
 
     category_ids = set(category_ids)
-    els = [doc.GetElement(r) for r in refs]
-    els = [el for el in els
-           if el is not None and _category_id_of(el) in category_ids]
+    raw_els = [doc.GetElement(r) for r in refs]
+    raw_els = [el for el in raw_els if el is not None]
+    els = [el for el in raw_els if _category_id_of(el) in category_ids]
+
+    # ВРЕМЕННО (диагностика 2026-09-15): пользователь сообщает, что после
+    # фильтра остаётся «всё подряд», хотя категория одна и настроена
+    # верно. Показываем разбивку сырого выбора по категориям и что из неё
+    # прошло фильтр — чтобы увидеть цифрами, что реально происходит,
+    # вместо гадания вслепую (доступа к машине пользователя нет).
+    if len(raw_els) != len(els):
+        pass  # фильтр что-то отсеял — ожидаемый путь, диагностика не нужна
+    else:
+        raw_by_cat = {}
+        for el in raw_els:
+            try:
+                nm = el.Category.Name if el.Category is not None else u"<без категории>"
+            except Exception:
+                nm = u"<ошибка категории>"
+            raw_by_cat[nm] = raw_by_cat.get(nm, 0) + 1
+        breakdown = u"\n".join(
+            u"  {} — {}".format(nm, cnt) for nm, cnt in sorted(raw_by_cat.items())
+        )
+        forms.alert(
+            u"Диагностика: после фильтра осталось столько же элементов, "
+            u"сколько было выбрано рамкой ({}) — фильтр ничего не "
+            u"отсеял. category_ids (числа категорий, которые ищем): "
+            u"{}\n\nКатегории в сыром выборе:\n{}".format(
+                len(raw_els), sorted(category_ids), breakdown),
+            title=u"Фильтр выбора — диагностика"
+        )
 
     if not els:
         forms.alert(empty_message, exitscript=True)
