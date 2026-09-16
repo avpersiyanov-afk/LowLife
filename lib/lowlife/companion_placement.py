@@ -46,12 +46,18 @@ build_companion_circuits.
 нарисованные вручную линии проводки рядом с базовым объектом/компаньоном
 и подписываются собственным именем цепи в Revit (circuit.Name) — тем же
 способом, что и в «Цепи изолятор-устройства»
-(lowlife.fire_alarm_wire_marks.mark_wire_lines).
+(lowlife.fire_alarm_wire_marks.mark_wire_lines). Важно: провод обычно
+рисуют вручную ПОСЛЕ того, как цепь уже построена, поэтому подпись
+пробуется не только сразу после создания компаньона, но и при каждом
+следующем запуске — для уже стоящих компаньонов (дублей по защите от
+повторной расстановки) тоже, по их существующей цепи (см.
+_mark_wires_for_existing_companion) — иначе подпись никогда бы не
+появилась на проводе, нарисованном уже после первого запуска.
 """
 
 import math
 
-from Autodesk.Revit.DB import XYZ, LocationPoint, FilteredElementCollector
+from Autodesk.Revit.DB import XYZ, LocationPoint, FilteredElementCollector, Domain
 from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife.geometry import get_point, get_element_level, find_level_for_elevation
@@ -320,7 +326,11 @@ def _cluster_groups(doc, base_elements, radius_ft):
 def _place_one_group(doc, group_elements, pair, sorted_levels, candidates, radius_ft, offsets_ft):
     """
     Ставит один компаньон на группу базовых объектов (2-4). Возвращает
-    ("created", элемент), ("duplicate", None) или ("failed", None).
+    ("created", элемент), ("duplicate", уже стоящий компаньон) или
+    ("failed", None) — компаньон при "duplicate" отдаётся вызывающему
+    коду не для повторной расстановки, а чтобы можно было дозаписать
+    подпись линий проводки, если провод нарисовали только после первого
+    запуска (см. _mark_wires_for_existing_companion).
 
     Точка установки — центр группы (среднее точек базовых объектов) плюс
     смещение из настроек пары; поворот для группы не определён (у
@@ -342,8 +352,9 @@ def _place_one_group(doc, group_elements, pair, sorted_levels, candidates, radiu
 
     expected = _expected_values_for_group(group_elements, pair["param_map"])
 
-    if _matches_existing(candidates, target_point, radius_ft, expected) is not None:
-        return "duplicate", None
+    existing = _matches_existing(candidates, target_point, radius_ft, expected)
+    if existing is not None:
+        return "duplicate", existing
 
     anchor = group_elements[0]
     host = _resolve_host(anchor)
@@ -357,6 +368,91 @@ def _place_one_group(doc, group_elements, pair, sorted_levels, candidates, radiu
         set_param_any(new_el, target, value)
 
     return "created", new_el
+
+
+def _electrical_systems_of(el):
+    """
+    Все ElectricalSystem, к которым уже подключены электрические
+    коннекторы el (как источник/панель — Connector.MEPSystem заполняется
+    и у панели после ElectricalSystem.SelectPanel, не только у нагрузки
+    — так же, как detect_electrical_system_type в electrical_circuits.py
+    читает Connector.ElectricalSystemType).
+    """
+    try:
+        mep_model = getattr(el, "MEPModel", None)
+        connector_mgr = getattr(mep_model, "ConnectorManager", None) if mep_model else None
+        if connector_mgr is None:
+            return []
+        connectors = list(connector_mgr.Connectors)
+    except:
+        return []
+
+    systems = []
+    seen_ids = set()
+
+    for c in connectors:
+        try:
+            if c.Domain != Domain.DomainElectrical:
+                continue
+            system = c.MEPSystem
+        except:
+            continue
+
+        if system is None:
+            continue
+
+        try:
+            system_id = system.Id.IntegerValue
+        except:
+            system_id = None
+
+        if system_id is not None:
+            if system_id in seen_ids:
+                continue
+            seen_ids.add(system_id)
+
+        systems.append(system)
+
+    return systems
+
+
+def _mark_wires_for_existing_companion(doc, view, companion_el, member_elements, pair):
+    """
+    Дозаписывает подпись линий проводки для УЖЕ существующего компаньона
+    (найденного защитой от повторной расстановки как дубль) — на случай,
+    если провод нарисовали вручную ПОСЛЕ того запуска, которым компаньон
+    и его цепь(и) были созданы. Без этого подпись никогда бы не
+    появилась: build_companion_circuits вызывается только для компаньонов,
+    поставленных в текущем запуске, а при повторном запуске уже стоящий
+    компаньон — дубль, и до цепи/подписи код просто не доходит.
+
+    Ищет цепи, источником/панелью которых уже является companion_el (см.
+    _electrical_systems_of), и для каждой пробует найти и подписать линии
+    проводки рядом с ним/базовым объектом(ами) её именем (circuit.Name) —
+    тем же способом, что и build_companion_circuits. Возвращает число
+    подписанных линий (0, если у компаньона ещё нет цепи или поля подписи
+    не заполнены).
+    """
+    wire_family_filter = pair.get("wire_line_family_filter")
+    wire_mark_param = pair.get("wire_mark_param")
+
+    if not (wire_family_filter and wire_mark_param):
+        return 0
+
+    marked = 0
+    member_points = collect_member_points(member_elements, companion_el)
+
+    for system in _electrical_systems_of(companion_el):
+        try:
+            label = system.Name
+        except:
+            continue
+        try:
+            marked += mark_wire_lines(doc, view, member_points, label, wire_family_filter, wire_mark_param)
+        except:
+            pass
+
+    return marked
 
 
 def _build_one_circuit(doc, view, companion_el, member_elements, circuit_spec,
@@ -470,7 +566,14 @@ def place_companions_for_pair(doc, view, base_elements, pair, sorted_levels):
     одна или две электрические цепи между ним и его базовым объектом(ами)
     (см. build_companion_circuits) — только для компаньонов, поставленных
     в этом запуске (не для уже существующих, обнаруженных защитой от
-    повторной расстановки).
+    повторной расстановки: строить цепь ещё раз для них не нужно, она уже
+    есть). Подпись линий проводки при этом — отдельно: она пробуется и для
+    уже существующих компаньонов тоже (см. _mark_wires_for_existing_companion),
+    потому что провод рядом с ними могли нарисовать вручную уже ПОСЛЕ
+    того запуска, которым были созданы сам компаньон и его цепь(и) — без
+    этого повторный запуск никогда бы не подписал такой провод (компаньон
+    каждый раз распознавался бы как дубль ещё до того, как код дошёл бы до
+    цепи/подписи).
 
     Возвращает {"created": [...], "created_groups": [...], "groups_found": N,
     "skipped_duplicate": N, "skipped_duplicate_groups": N,
@@ -527,6 +630,10 @@ def place_companions_for_pair(doc, view, base_elements, pair, sorted_levels):
                         wire_lines_marked += marked
             elif outcome == "duplicate":
                 skipped_duplicate_groups += 1
+                if circuit_enabled and new_el is not None:
+                    wire_lines_marked += _mark_wires_for_existing_companion(
+                        doc, view, new_el, group_elements, pair
+                    )
             else:
                 failed_groups += 1
 
@@ -550,8 +657,13 @@ def place_companions_for_pair(doc, view, base_elements, pair, sorted_levels):
 
         expected = _expected_values_for_base(base_element, param_map)
 
-        if _matches_existing(candidates, target_point, radius_ft, expected) is not None:
+        existing_companion = _matches_existing(candidates, target_point, radius_ft, expected)
+        if existing_companion is not None:
             skipped_duplicate += 1
+            if circuit_enabled:
+                wire_lines_marked += _mark_wires_for_existing_companion(
+                    doc, view, existing_companion, [base_element], pair
+                )
             continue
 
         host = _resolve_host(base_element)
