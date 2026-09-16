@@ -6,31 +6,27 @@
 
 Что делает :func:`run` за один проход по активному виду:
 
-  1. **Чинит марку, чья голова уехала за границы её собственного
-     помещения (но недалеко).** Известная грабля Revit: такая марка
-     физически показывает «?» до тех пор, пока её не тронуть руками
-     (например, АР подрезал контур помещения, и старая голова осталась
-     снаружи) — сам Revit это не пересчитывает. Не завязано на
-     `RoomTag.HasLeader`: этот флаг бывает `True` даже у визуально
-     «безвыносочных» марок, поэтому решаем по геометрии — голова в
-     пределах `_HEAD_ESCAPE_TOL_MM` от габаритного бокса помещения
-     считается «сбежавшей», дальше — настоящей осознанной выноской (не
-     трогаем). Такую марку не пересоздаём — просто переставляем
-     `TagHeadPosition` обратно в помещение (тип не трогается).
-  2. **Чинит или удаляет «битые» марки.** Марка считается битой, если:
-     `TaggedRoomId` не разрешается (АР удалил/пересоздал помещение);
-     `RoomTag.IsOrphaned`; ссылка ведёт не на Room / на неразмещённый /
-     незамкнутый Room; либо голову из п. 1 не удалось вернуть в
-     помещение. Под головой битой марки ищется
-     помещение связи: нашлось — старая марка заменяется новой (голова и
-     полка сохраняются, если новая голова тоже внутри нового помещения —
-     иначе остаётся в его центре, чтобы не поймать ту же проблему на
-     новой марке), не нашлось — марка удаляется. Марки, чья связь сейчас
-     *выгружена*, не трогаются.
-  3. **Меняет типоразмер** всех живых марок помещений на виде на
-     выбранный пользователем (единый вид марок на листе).
-  4. **Добавляет недостающие марки** для тех помещений связи, что попадают
-     на уровень вида и в его область подрезки, но ещё не помечены.
+  1. **Удаляет марки, которые показывают «?».** Не чинит на месте (было
+     сложнее и не давало заметных преимуществ) — просто убирает, а свежую
+     на освободившееся помещение ставит следующий шаг с гарантированно
+     верной головой. Маркой-«?» считается любая из:
+       - `TaggedRoomId` не разрешается (АР удалил/пересоздал помещение);
+       - `RoomTag.IsOrphaned`;
+       - ссылка ведёт не на Room / на неразмещённый / незамкнутый Room;
+       - голова физически вышла за границы её же помещения, но недалеко
+         (в пределах `_HEAD_ESCAPE_TOL_MM` от габаритного бокса) —
+         известная грабля Revit: такая марка показывает «?», пока её не
+         тронуть руками, сам Revit это не пересчитывает (например, АР
+         подрезал контур). Не завязано на `RoomTag.HasLeader` — этот флаг
+         бывает `True` даже у визуально «безвыносочных» марок; голову,
+         уведённую по-настоящему далеко (осознанная выноска), не трогаем.
+     Марки, чья связь сейчас *выгружена*, не трогаются — не знаем, жива
+     ли привязка.
+  2. **Меняет типоразмер** всех оставшихся (не-«?») марок помещений на
+     виде на выбранный пользователем (единый вид марок на листе).
+  3. **Добавляет недостающие марки** для тех помещений связи, что попадают
+     на уровень вида и в его область подрезки, но ещё не помечены —
+     включая освобождённые шагом 1.
 
 Обход грабли с подложкой: при включённой подложке Revit отказывается
 ставить марку помещения («point is not in a room» / марка садится на
@@ -56,11 +52,6 @@ MM_IN_FOOT = 304.8
 # Меньше типового межэтажного расстояния, чтобы не поймать этаж выше.
 _LEVEL_TOL_MM = 1500.0
 _LEVEL_TOL_FT = _LEVEL_TOL_MM / MM_IN_FOOT
-
-# Допуск для «голова мёртвой марки почти внутри помещения» — помещение
-# чуть сдвинули/перерисовали, точная проверка IsPointInRoom не сработала.
-_NEAR_TOL_MM = 400.0
-_NEAR_TOL_FT = _NEAR_TOL_MM / MM_IN_FOOT
 
 _OST_ROOM_TAGS = int(BuiltInCategory.OST_RoomTags)
 _OST_ROOMS = int(BuiltInCategory.OST_Rooms)
@@ -230,60 +221,6 @@ def _room_center_host(room, transform):
             return transform.OfPoint((bbox.Min + bbox.Max) * 0.5)
     except Exception:
         pass
-    return None
-
-
-def _find_link_room_at(doc, host_point):
-    """
-    Помещение связи под точкой host_point (координаты хоста). Сначала
-    точное IsPointInRoom, иначе ближайшее по центру среди тех, чей
-    габаритный бокс (расширенный на _NEAR_TOL) накрывает точку.
-    Возвращает (link, transform, room) или None.
-    """
-    candidates = []
-    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        try:
-            linked_doc = link.GetLinkDocument()
-        except Exception:
-            continue
-        if linked_doc is None:
-            continue
-        try:
-            transform = link.GetTotalTransform()
-            local = transform.Inverse.OfPoint(host_point)
-            rooms = FilteredElementCollector(linked_doc) \
-                .OfCategory(BuiltInCategory.OST_Rooms) \
-                .WhereElementIsNotElementType() \
-                .ToElements()
-        except Exception:
-            continue
-        for room in rooms:
-            try:
-                if room.Area <= 0:
-                    continue
-            except Exception:
-                continue
-            try:
-                if room.IsPointInRoom(local):
-                    return (link, transform, room)
-            except Exception:
-                pass
-            try:
-                bbox = room.get_BoundingBox(None)
-            except Exception:
-                bbox = None
-            if bbox is None:
-                continue
-            if (bbox.Min.X - _NEAR_TOL_FT <= local.X <= bbox.Max.X + _NEAR_TOL_FT and
-                    bbox.Min.Y - _NEAR_TOL_FT <= local.Y <= bbox.Max.Y + _NEAR_TOL_FT and
-                    bbox.Min.Z - _NEAR_TOL_FT <= local.Z <= bbox.Max.Z + _NEAR_TOL_FT):
-                center = (bbox.Min + bbox.Max) * 0.5
-                candidates.append((center.DistanceTo(local), link, transform, room))
-
-    if candidates:
-        candidates.sort(key=lambda item: item[0])
-        _, link, transform, room = candidates[0]
-        return (link, transform, room)
     return None
 
 
@@ -471,70 +408,6 @@ def _head_near_room_bbox(head, room, transform):
     return (dx * dx + dy * dy) ** 0.5 <= _HEAD_ESCAPE_TOL_FT
 
 
-def _recreate_stale_tag(doc, view, old_tag, tag_type_id):
-    """Поставить новую марку на место мёртвой, привязав к помещению связи
-    под головой старой марки, и удалить старую. Новая создаётся до
-    удаления старой — если помещение не нашлось или создать не удалось,
-    старая марка остаётся на месте. Возвращает новую марку либо None."""
-    try:
-        head = old_tag.TagHeadPosition
-    except Exception:
-        head = None
-    if head is None:
-        return None
-
-    found = _find_link_room_at(doc, head)
-    if found is None:
-        return None
-    link, transform, room = found
-
-    center = _room_center_host(room, transform)
-    if center is None:
-        return None
-
-    try:
-        new_tag = doc.Create.NewRoomTag(
-            LinkElementId(link.Id, room.Id), UV(center.X, center.Y), view.Id)
-    except Exception:
-        new_tag = None
-    if new_tag is None:
-        return None
-
-    try:
-        had_leader = old_tag.HasLeader
-    except Exception:
-        had_leader = False
-
-    try:
-        doc.Delete(old_tag.Id)
-    except Exception:
-        pass
-
-    _apply_type(new_tag, tag_type_id)
-    try:
-        new_tag.HasLeader = had_leader
-    except Exception:
-        pass
-
-    # Старую голову возвращаем, только если она лежит внутри НОВОГО
-    # помещения, либо (не завязано на HasLeader — см. _head_near_room_bbox)
-    # находится по-настоящему далеко от него, т.е. похожа на осознанную
-    # выноску, а не на «сбежавшую» за подрезанный контур. Голову рядом, но
-    # снаружи — не восстанавливаем: на новой марке тут же повторился бы
-    # тот же баг «?» (Revit не пересчитывает подпись сам). Новая марка и
-    # так создана с головой в center (гарантированно внутри помещения),
-    # так что при отказе просто оставляем как есть.
-    restore_head = bool(_tag_head_in_room(head, room, transform))
-    if not restore_head:
-        restore_head = not _head_near_room_bbox(head, room, transform)
-    if restore_head:
-        try:
-            new_tag.TagHeadPosition = head
-        except Exception:
-            pass
-    return new_tag
-
-
 def _apply_type(tag, tag_type_id):
     try:
         if tag.GetTypeId() != tag_type_id:
@@ -565,8 +438,16 @@ def run(doc, view, tag_type_id):
     """
     Обновить и дорасставить марки помещений на ``view``. Транзакцию
     открывает вызывающий. Возвращает словарь-статистику с ключами:
-    added, recreated, deleted, retyped, head_fixed, already, link_unloaded,
-    orphan_unresolved, out_of_view, room_no_point, errors.
+    added, deleted, retyped, already, link_unloaded, orphan_unresolved,
+    out_of_view, room_no_point, errors.
+
+    Простой подход (по опыту — надёжнее, чем чинить «?»-марку на месте):
+    марку, которая показывает «?», не лечим — удаляем, а свежую на
+    освободившееся помещение ставит следующий проход («добавить
+    недостающие») с гарантированно верной головой (см.
+    _room_center_host). Раньше был вариант с пересозданием "на месте" и
+    переносом головы/типа со старой марки — код получался сложнее, а
+    пользы (кроме сохранения точной позиции головы) не давал.
 
     Каждая марка/помещение обрабатывается в своём try/except — падение на
     одной не должно прерывать проход по остальным (и тем более — ронять
@@ -575,10 +456,8 @@ def run(doc, view, tag_type_id):
     """
     stats = {
         "added": 0,
-        "recreated": 0,
         "deleted": 0,
         "retyped": 0,
-        "head_fixed": 0,
         "already": 0,
         "link_unloaded": 0,
         "orphan_unresolved": 0,
@@ -622,24 +501,23 @@ def run(doc, view, tag_type_id):
 
         tagged_keys = set()
 
-        # 1) Существующие марки:
-        #    - связь выгружена              -> не трогаем (не знаем, жива ли
-        #      привязка), считаем отдельно;
-        #    - голова марки физически вышла за границы её же помещения, но
-        #      недалеко (см. _HEAD_ESCAPE_TOL_MM) -> просто переставляем
-        #      голову обратно внутрь (не пересоздаём — привязка к помещению
-        #      не менялась, задвоить марку так нельзя). Не завязано на
-        #      HasLeader — этот флаг бывает True и у визуально
-        #      «безвыносочных» марок (см. _head_near_room_bbox); голову,
-        #      уведённую по-настоящему далеко (осознанная выноска), не
-        #      трогаем;
-        #    - «битая» марка — пробуем пересоздать по месту; не вышло ->
-        #      УДАЛЯЕМ (толку от неё нет). Битой считаем, если:
-        #        * kind == "dead" (ссылка не разрешается);
-        #        * tag.IsOrphaned;
-        #        * привязана не к Room / к неразмещённому / незамкнутому;
-        #        * голову вернуть внутрь не получилось (см. выше).
-        #    - нормальные                   -> только приводим типоразмер.
+        # 1) Существующие марки: показывает «?» — удаляем (шаг 2 поставит
+        #    свежую на освободившееся помещение), иначе — приводим
+        #    типоразмер. Считаем маркой-«?», если выполняется любое из:
+        #      - kind == "dead" (TaggedRoomId не разрешается — связь
+        #        удалена из проекта либо помещение в связи исчезло);
+        #      - tag.IsOrphaned;
+        #      - привязана не к Room / к неразмещённому / незамкнутому
+        #        (_room_ok == False);
+        #      - голова физически вышла за границы её же помещения, но
+        #        недалеко (см. _HEAD_ESCAPE_TOL_MM) — известная грабля
+        #        Revit, когда контур подрезали: марка рисуется как «?» и
+        #        сама не пересчитывается. Не завязано на HasLeader — этот
+        #        флаг бывает True и у визуально «безвыносочных» марок (см.
+        #        _head_near_room_bbox); голову, уведённую по-настоящему
+        #        далеко (осознанная выноска), не трогаем.
+        #    Марки, чья связь сейчас *выгружена* — не трогаем: не знаем,
+        #    жива ли привязка (stats["link_unloaded"]).
         for tag in existing_tags:
             try:
                 kind, room, transform = _resolve_tag_room(doc, tag)
@@ -654,34 +532,9 @@ def run(doc, view, tag_type_id):
                     head = _tag_head(tag)
                     in_room = _tag_head_in_room(head, room, transform)
                     if in_room is False and _head_near_room_bbox(head, room, transform):
-                        # Голова вне границ своего же помещения, но рядом —
-                        # известная грабля Revit: марка рисуется как «?»,
-                        # пока её не тронуть руками. Просто возвращаем
-                        # голову внутрь, без тяжёлого пересоздания (тип не
-                        # трогается; марка остаётся привязана к тому же
-                        # помещению — никакого риска задвоить марку на
-                        # другом).
-                        center = _room_center_host(room, transform)
-                        fixed = False
-                        if center is not None:
-                            try:
-                                tag.TagHeadPosition = center
-                                fixed = True
-                            except Exception:
-                                fixed = False
-                        if fixed:
-                            stats["head_fixed"] += 1
-                        else:
-                            broken = True
+                        broken = True
 
                 if broken:
-                    new_tag = _recreate_stale_tag(doc, view, tag, tag_type_id)
-                    if new_tag is not None:
-                        stats["recreated"] += 1
-                        key = _tagged_room_key(new_tag)
-                        if key is not None:
-                            tagged_keys.add(key)
-                        continue
                     try:
                         doc.Delete(tag.Id)
                         stats["deleted"] += 1
