@@ -29,10 +29,11 @@ SetupParameters buttons across all disciplines are grouped under their own
 The discipline-agnostic tools are split across several small panels for
 readability instead of one jumbled Tools.panel: Tools.panel ("Tools" —
 DimensionGrids/GenericModelLength/ZoomToElement/Hello), ToolsRooms.panel
-("Помещения"), ToolsSchedules.panel ("Спецификации") and
-ToolsFamilies.panel ("Семейства"). Every button on all four is listed
-under the single "General" theme ("Общее" in the ComboBox), so picking
-"Общее" shows the whole set together.
+("Помещения"), ToolsSchedules.panel ("Спецификации"),
+ToolsFamilies.panel ("Семейства") and LOI.panel ("Заполнение LOI" —
+FillLOI). Every button on all five is listed under the single "General"
+theme ("Общее" in the ComboBox), so picking "Общее" shows the whole set
+together.
 
 "Service" theme ("Служебное" in the ComboBox) holds rarely-needed helpers
 that live on their own ToolsExport.panel ("Выгрузка") — RenameExportFiles,
@@ -147,6 +148,7 @@ THEMES = {
         (u"ToolsSchedules", u"ScheduleFromExcel"),
         (u"ToolsFamilies", u"LoadFamiliesFromCatalog"),
         (u"ToolsFamilies", u"UpdateFamiliesFromCatalog"),
+        (u"LOI", u"FillLOI"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),
@@ -181,6 +183,7 @@ PANEL_RIBBON_NAMES = {
     u"ToolsSchedules": u"Спецификации",
     u"ToolsFamilies": u"Семейства",
     u"ToolsExport": u"Выгрузка",
+    u"LOI": u"Заполнение LOI",
     u"TrayLadder": u"Лестничный лоток",
     u"TrayUnperforated": u"Неперфорированный лоток",
     u"TrayPerforated": u"Перфорированный лоток",
