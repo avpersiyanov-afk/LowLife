@@ -378,6 +378,255 @@ def _optical_fov(doc, fi, settings):
 
 
 # ======================================================================
+#  ДИАГНОСТИКА: КАКИЕ ПАРАМЕТРЫ ЕСТЬ И КАКИЕ ПОДХОДЯТ ПОД РОЛИ СОТ
+# ======================================================================
+#
+# Роль -> (ключ в settings, подпись, подходящие «типы данных» параметра,
+# обязательна ли роль, обязан ли параметр быть параметром ЭКЗЕМПЛЯРА).
+# Порядок и роли соответствуют полям ①-настроек (TEXT_FIELDS) и таблице
+# параметров в docs/camera-fov.md — держите их синхронно при изменении.
+_ROLE_SPECS = [
+    ("focal_length_param_name", u"Фокусное расстояние",
+     (u"length", u"number"), True, False),
+    ("sensor_format_param_name", u"Формат матрицы (текст)",
+     (u"text",), False, False),
+    ("distance_param_name", u"Дальность",
+     (u"length",), True, False),
+    ("height_param_name", u"Высота установки",
+     (u"length",), False, False),
+    ("tilt_param_name", u"Наклон оптической оси вниз",
+     (u"angle", u"number"), False, True),
+    ("rotation_param_name", u"Поворот камеры (внутри семейства)",
+     (u"angle", u"number"), False, False),
+]
+
+# Публичная — используется CameraParamsCheck.pushbutton для отображения
+# «kind» из _ROLE_SPECS/diagnose_camera_params человеку.
+PARAM_KIND_RU = {
+    u"length": u"Длина", u"angle": u"Угол", u"text": u"Текст",
+    u"number": u"Число", u"integer": u"Целое число", u"yesno": u"Да/Нет",
+    u"elementid": u"ссылка на элемент", u"other": u"другое",
+}
+
+
+def _param_kind(param):
+    """Грубая классификация типа данных параметра для сопоставления с
+    ролями СОТ (см. _ROLE_SPECS): length / angle / text / number /
+    integer / yesno / elementid / other."""
+    if _is_length_param(param):
+        return u"length"
+    if _is_angle_param(param):
+        return u"angle"
+    st = param.StorageType
+    if st == StorageType.String:
+        return u"text"
+    if st == StorageType.ElementId:
+        return u"elementid"
+    if st == StorageType.Integer:
+        try:
+            if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.YesNo:
+                return u"yesno"
+        except Exception:
+            pass
+        return u"integer"
+    if st == StorageType.Double:
+        return u"number"
+    return u"other"
+
+
+def _param_value_text(param):
+    """Значение параметра как отображаемая строка (с единицами, где Revit
+    их даёт) — для диагностического отчёта, не для расчётов."""
+    try:
+        vs = param.AsValueString()
+        if vs:
+            return vs
+    except Exception:
+        pass
+    try:
+        st = param.StorageType
+        if st == StorageType.String:
+            return param.AsString() or u""
+        if st == StorageType.Double:
+            return unicode(param.AsDouble())
+        if st == StorageType.Integer:
+            return unicode(param.AsInteger())
+        if st == StorageType.ElementId:
+            eid = param.AsElementId()
+            return unicode(eid.IntegerValue) if eid else u""
+    except Exception:
+        pass
+    return u""
+
+
+# getattr, не StorageType.None — "None" не резервированное слово в этом
+# Python 2, но так надёжнее и не смущает беглым чтением.
+_STORAGE_TYPE_NONE = getattr(StorageType, "None")
+
+
+def _list_params(el, level_label):
+    """[(имя, kind, level_label, value_text, has_value), ...] по всем
+    параметрам el. Параметры StorageType.None пропускаются — это
+    служебные пустышки (например, заголовки групп в UI), не настоящие
+    значения."""
+    out = []
+    if el is None:
+        return out
+    try:
+        params = list(el.Parameters)
+    except Exception:
+        params = []
+    for p in params:
+        try:
+            if p.StorageType == _STORAGE_TYPE_NONE:
+                continue
+            name = p.Definition.Name
+        except Exception:
+            continue
+        has_value = bool(p.HasValue)
+        out.append((
+            name, _param_kind(p), level_label,
+            _param_value_text(p) if has_value else u"",
+            has_value,
+        ))
+    return out
+
+
+def diagnose_camera_params(doc, el, settings):
+    """
+    Собирает все параметры элемента el (экземпляра и его типа) и для
+    каждой роли СОТ (_ROLE_SPECS) проверяет: настроено ли имя параметра в
+    settings, есть ли такой параметр на элементе (экземпляр/тип), подходит
+    ли его тип данных под роль, и что ещё на элементе того же типа данных
+    можно было бы использовать вместо него. Только читает — ничего не
+    меняет ни в settings, ни в модели.
+
+    Возвращает dict:
+      family_name, type_name, category_name, category_ok (bool — входит ли
+      категория элемента в settings["camera_categories"]),
+      instance_params, type_params — списки как в _list_params,
+      roles — список dict-ов на каждую роль:
+        key, label, expected_kinds, required, must_be_instance,
+        configured_name, status, found (кортеж как в _list_params или
+        None), candidates (список кортежей-кандидатов того же типа данных).
+
+      status: "not_configured" (имя не задано в настройках),
+        "not_found" (имя задано, такого параметра нет ни на экземпляре, ни
+        на типе), "wrong_kind" (параметр найден, но не тот тип данных),
+        "tilt_not_instance" (роль требует параметр экземпляра, а найден —
+        параметр типа), "empty" (тип данных верный, но значение не
+        заполнено), "ok" (всё в порядке).
+    """
+    type_el = None
+    try:
+        type_id = el.GetTypeId()
+        if type_id is not None and type_id != ElementId.InvalidElementId:
+            type_el = doc.GetElement(type_id)
+    except Exception:
+        type_el = None
+
+    inst_params = _list_params(el, u"экземпляр")
+    type_params = _list_params(type_el, u"тип")
+    all_params = inst_params + type_params
+
+    try:
+        family_name = type_el.FamilyName if type_el is not None else u""
+    except Exception:
+        family_name = u""
+    try:
+        type_name = Element.Name.GetValue(type_el) if type_el is not None else u""
+    except Exception:
+        type_name = u""
+    try:
+        category_name = el.Category.Name if el.Category is not None else u""
+    except Exception:
+        category_name = u""
+
+    cat_ids = resolve_category_ids(
+        doc, settings.get("camera_categories") or u"OST_SecurityDevices"
+    )
+    try:
+        category_ok = el.Category is not None and el.Category.Id.IntegerValue in cat_ids
+    except Exception:
+        category_ok = True
+
+    roles = []
+    for key, label, expected_kinds, required, must_be_instance in _ROLE_SPECS:
+        configured_name = (settings.get(key) or u"").strip() or None
+        found_entry = None
+
+        if not configured_name:
+            status = u"not_configured"
+        else:
+            inst_p = None
+            try:
+                inst_p = el.LookupParameter(configured_name)
+            except Exception:
+                inst_p = None
+            type_p = None
+            if type_el is not None:
+                try:
+                    type_p = type_el.LookupParameter(configured_name)
+                except Exception:
+                    type_p = None
+
+            if inst_p is not None:
+                chosen, level = inst_p, u"экземпляр"
+            elif type_p is not None:
+                chosen, level = type_p, u"тип"
+            else:
+                chosen, level = None, None
+
+            if chosen is None:
+                status = u"not_found"
+            else:
+                kind = _param_kind(chosen)
+                has_value = bool(chosen.HasValue)
+                found_entry = (
+                    configured_name, kind, level,
+                    _param_value_text(chosen) if has_value else u"",
+                    has_value,
+                )
+                if kind not in expected_kinds:
+                    status = u"wrong_kind"
+                elif must_be_instance and level == u"тип":
+                    status = u"tilt_not_instance"
+                elif not has_value:
+                    status = u"empty"
+                else:
+                    status = u"ok"
+
+        seen = set()
+        candidates = []
+        for name, kind, level, value_text, has_value in all_params:
+            if kind not in expected_kinds:
+                continue
+            if configured_name and name == configured_name and level == (
+                found_entry[2] if found_entry else None
+            ):
+                continue
+            dedup_key = (name, level)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            candidates.append((name, kind, level, value_text, has_value))
+
+        roles.append({
+            u"key": key, u"label": label, u"expected_kinds": expected_kinds,
+            u"required": required, u"must_be_instance": must_be_instance,
+            u"configured_name": configured_name, u"status": status,
+            u"found": found_entry, u"candidates": candidates,
+        })
+
+    return {
+        u"family_name": family_name, u"type_name": type_name,
+        u"category_name": category_name, u"category_ok": category_ok,
+        u"instance_params": inst_params, u"type_params": type_params,
+        u"roles": roles,
+    }
+
+
+# ======================================================================
 #  ГЕОМЕТРИЯ КАМЕРЫ
 # ======================================================================
 
