@@ -36,6 +36,16 @@ from lowlife.sot_schematic import (
 
 SCHEMATIC_VIEW_NAME = u"Структурная схема (черновик)"
 
+
+def schematic_view_name(section_label):
+    """Имя чертёжного вида для одной секции — базовое имя без изменений,
+    если секций нет (section_label=None, как раньше), иначе с суффиксом
+    значения секции — по одному виду на секцию (см. room_schematic_picker.
+    show/_split_into_sections)."""
+    if not section_label:
+        return SCHEMATIC_VIEW_NAME
+    return u"{} — {}".format(SCHEMATIC_VIEW_NAME, section_label)
+
 # Максимальная ширина одного ряда боксов на этаже, мм — после этой ширины
 # следующий бокс переносится на новую строку ниже (см. _place_level_boxes),
 # как в sot_schematic.sync_rooms_in_level, но без настройки в v1 — тут нет
@@ -145,13 +155,13 @@ def _find_view_by_name(doc, name):
     return None, False
 
 
-def check_view(doc):
+def check_view(doc, view_name):
     """
     (view, drafting_type_id, error) — вызывать ДО открытия транзакции
     (только читает модель, как и BuildSotSchematic перед своим
-    is_new_view/drafting_type_id):
-      - вид с именем SCHEMATIC_VIEW_NAME уже есть и это ViewDrafting ->
-        (view, None, None);
+    is_new_view/drafting_type_id). view_name — обычно
+    schematic_view_name(section_label), своё имя на каждую секцию:
+      - вид с этим именем уже есть и это ViewDrafting -> (view, None, None);
       - вид с таким именем есть, но не чертёжный -> (None, None, текст
         ошибки) — переименовать/удалить должен пользователь;
       - вида нет -> (None, drafting_type_id, None), либо (None, None,
@@ -159,11 +169,11 @@ def check_view(doc):
         чертёжных видов (не должно случаться в обычном проекте, но
         встречается в шаблонах с урезанным набором типов видов).
     """
-    view, name_conflict = _find_view_by_name(doc, SCHEMATIC_VIEW_NAME)
+    view, name_conflict = _find_view_by_name(doc, view_name)
     if name_conflict:
         return None, None, (
             u"Вид «{}» уже существует, но не является чертёжным. "
-            u"Переименуйте его или удалите.".format(SCHEMATIC_VIEW_NAME)
+            u"Переименуйте его или удалите.".format(view_name)
         )
     if view is not None:
         return view, None, None
@@ -183,10 +193,10 @@ def check_view(doc):
     return None, drafting_type_id, None
 
 
-def create_view(doc, drafting_type_id):
+def create_view(doc, drafting_type_id, view_name):
     """Создаёт и именует новый чертёжный вид схемы. Вызывать внутри транзакции."""
     view = ViewDrafting.Create(doc, drafting_type_id)
-    view.Name = SCHEMATIC_VIEW_NAME
+    view.Name = view_name
     view.Scale = 1
     return view
 
