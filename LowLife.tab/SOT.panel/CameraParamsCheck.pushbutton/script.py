@@ -12,6 +12,12 @@ __doc__ = (
     u"параметры того же типа данных на ней есть — готовые кандидаты, если "
     u"нужный ещё не настроен. Отдельно — категория камеры и правило "
     u"«наклон обязан быть параметром экземпляра».\n\n"
+    u"Плюс два дополнительных раздела: геометрия и ориентация именно этого "
+    u"экземпляра в проекте (откуда берётся направление взгляда, отражение, "
+    u"хост, уровень) и разбор самого семейства — открывает его на "
+    u"редактирование, читает все типоразмеры и формулы параметров, "
+    u"вложенные семейства, тела/вырезы, опорные плоскости, разъёмы — и "
+    u"закрывает без сохранения.\n\n"
     u"Ничего не пишет в модель и не меняет настройки."
 )
 __author__ = "Pipers"
@@ -149,3 +155,99 @@ if diag["type_params"]:
     )
 else:
     print(u"(нет)")
+
+
+def _bool_ru(v):
+    if v is None:
+        return u"—"
+    return u"да" if v else u"нет"
+
+
+def _print_geometry(geo):
+    output.print_md(u"---")
+    output.print_md(u"## Геометрия и ориентация этого экземпляра в проекте")
+    if geo["location_mm"]:
+        x, y, z = geo["location_mm"]
+        print(u"Точка вставки, мм: X={:.0f}  Y={:.0f}  Z={:.0f}".format(x, y, z))
+    else:
+        print(u"Точка вставки: у элемента нет LocationPoint.")
+    print(u"Уровень: {}".format(geo["level_name"]))
+    print(u"Хост: {}".format(geo["host_label"]))
+    print(u"Тип размещения семейства: {}".format(geo["placement_type"]))
+    print(u"Mirrored: {}   FacingFlipped: {}   HandFlipped: {}".format(
+        _bool_ru(geo["mirrored"]), _bool_ru(geo["facing_flipped"]), _bool_ru(geo["hand_flipped"])
+    ))
+    az = geo["facing_azimuth_deg"]
+    print(u"FacingOrientation: {}{}".format(
+        geo["facing_orientation_text"],
+        u"  (азимут {:.0f}°)".format(az) if az is not None else u""
+    ))
+    print(u"HandOrientation: {}".format(geo["hand_orientation_text"]))
+    print(u"Transform.BasisY / BasisX: {} / {}".format(geo["basis_y_text"], geo["basis_x_text"]))
+    print(u"")
+    print(u"Направление, которое реально берёт «Зоны обзора» (FacingOrientation -> "
+          u"BasisY -> BasisX -> HandOrientation⟂, первое ненулевое, плюс поворот/доворот "
+          u"из настроек): {}".format(geo["used_direction_source"]))
+    if geo["used_azimuth_deg"] is not None:
+        print(u"Итоговый азимут зоны: {:.0f}°".format(geo["used_azimuth_deg"]))
+
+
+def _print_family_def(fdef):
+    output.print_md(u"---")
+    output.print_md(u"## Разбор семейства (структура .rfa)")
+    print(u"Семейство: {}   Категория: {}   Тип размещения: {}".format(
+        fdef["family_name"] or u"—", fdef["category_name"] or u"—", fdef["placement_type"] or u"—"
+    ))
+
+    if fdef["error"]:
+        print(u"⚠ {}".format(fdef["error"]))
+    if not fdef["editable"]:
+        return
+
+    types = fdef["types"]
+    if types:
+        param_order = [(p[0], p[1]) for p in types[0]["params"]]
+        rows = []
+        for i, (pname, formula) in enumerate(param_order):
+            row = [pname, formula or u"—"]
+            for t in types:
+                params = t["params"]
+                tp_val = params[i][2] if i < len(params) else u""
+                row.append(tp_val or u"—")
+            rows.append(row)
+        output.print_md(u"### Типоразмеры и параметры ({})".format(len(types)))
+        print(u"Столбец «Формула» — из чего вычисляется параметр внутри семейства (пусто — вписывается вручную).")
+        output.print_table(
+            table_data=rows,
+            columns=[u"Параметр", u"Формула"] + [t["name"] for t in types]
+        )
+    else:
+        print(u"Типоразмеры не прочитаны (семейство без типов либо ошибка выше).")
+
+    if fdef["nested_families"]:
+        output.print_md(u"### Вложенные семейства")
+        output.print_table(
+            table_data=[[n["name"], n["category"] or u"—", n["count"]] for n in fdef["nested_families"]],
+            columns=[u"Семейство", u"Категория", u"Экземпляров"]
+        )
+
+    if fdef["forms"]:
+        output.print_md(u"### Формы (тела/вырезы)")
+        output.print_table(
+            table_data=[[f["name"], f["kind"]] for f in fdef["forms"]],
+            columns=[u"Имя", u"Тело/вырез"]
+        )
+
+    if fdef["reference_planes"]:
+        print(u"Опорные плоскости: {}".format(u", ".join(fdef["reference_planes"])))
+
+    if fdef["connectors"]:
+        output.print_md(u"### Разъёмы (connectors)")
+        output.print_table(
+            table_data=[[c["domain"], c["id"]] for c in fdef["connectors"]],
+            columns=[u"Домен", u"Id"]
+        )
+
+
+_print_geometry(diag["geometry"])
+_print_family_def(diag["family_def"])

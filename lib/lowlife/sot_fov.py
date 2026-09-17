@@ -78,6 +78,19 @@ try:
 except Exception:
     _ParameterType = None
 
+# Для inspect_family_definition (диагностика CameraParamsCheck) — опять
+# опциональные импорты: не должны ронять весь модуль, если класса нет в
+# установленной версии Revit API, диагностика просто пропустит тот раздел.
+try:
+    from Autodesk.Revit.DB import Family, GenericForm, ReferencePlane, FamilyInstance
+except Exception:
+    Family = GenericForm = ReferencePlane = FamilyInstance = None
+
+try:
+    from Autodesk.Revit.DB import ConnectorElement
+except Exception:
+    ConnectorElement = None
+
 from System.Collections.Generic import List
 
 from lowlife.geometry import get_element_level
@@ -623,6 +636,8 @@ def diagnose_camera_params(doc, el, settings):
         u"category_name": category_name, u"category_ok": category_ok,
         u"instance_params": inst_params, u"type_params": type_params,
         u"roles": roles,
+        u"geometry": describe_camera_geometry(doc, el, settings),
+        u"family_def": inspect_family_definition(doc, el),
     }
 
 
@@ -742,6 +757,295 @@ def _mounting_height_ft(doc, fi, view, height_param_name):
 
     h = pt.Z - base_z
     return h if h > 0 else None
+
+
+def _vec_text(v):
+    if v is None:
+        return u"—"
+    return u"({:.3f}, {:.3f}, {:.3f})".format(v.X, v.Y, v.Z)
+
+
+def _safe_name(el):
+    """Element.Name.GetValue вместо el.Name — на Family/FamilySymbol и
+    некоторых элементах семейства el.Name кидает ошибку неоднозначного
+    связывания в IronPython (тот же приём, что _safe_element_name в
+    scs_settings.py)."""
+    if el is None:
+        return u"—"
+    try:
+        return Element.Name.GetValue(el)
+    except Exception:
+        try:
+            return unicode(el.Name)
+        except Exception:
+            return u"—"
+
+
+def describe_camera_geometry(doc, el, settings):
+    """
+    Геометрия и ориентация КОНКРЕТНОГО экземпляра камеры в проекте — то,
+    что реально использует расчёт «Зон обзора»/«Навести на помещение»
+    (_look_direction + rotation_param_name + direction_offset_deg,
+    _mounting_height_ft), плюс справочная информация для диагностики
+    (уровень/хост, отражение, тип размещения семейства). Про внутреннюю
+    структуру самого файла семейства (типы/формулы/геометрию форм) — см.
+    inspect_family_definition, это другое: там семейство как файл, здесь —
+    как этот экземпляр стоит и развёрнут в ТЕКУЩЕМ проекте.
+
+    Только читает, ничего не пишет. Возвращает dict — все поля лучше
+    выводить через str()/готовые *_text значения, часть может быть None
+    (нет такого свойства у этого элемента / упало исключение).
+    """
+    info = {}
+
+    loc = None
+    try:
+        loc = el.Location
+    except Exception:
+        loc = None
+    if isinstance(loc, LocationPoint):
+        p = loc.Point
+        info[u"location_mm"] = (p.X * 304.8, p.Y * 304.8, p.Z * 304.8)
+    else:
+        info[u"location_mm"] = None
+
+    level = get_element_level(doc, el)
+    info[u"level_name"] = _safe_name(level) if level is not None else u"—"
+
+    host = None
+    try:
+        host = el.Host
+    except Exception:
+        host = None
+    if host is not None:
+        try:
+            host_cat = host.Category.Name if host.Category is not None else u""
+        except Exception:
+            host_cat = u""
+        info[u"host_label"] = u"{} (id {})".format(host_cat or u"?", host.Id.IntegerValue)
+    else:
+        info[u"host_label"] = u"нет (не хостовый экземпляр)"
+
+    try:
+        info[u"placement_type"] = unicode(el.Symbol.Family.FamilyPlacementType)
+    except Exception:
+        info[u"placement_type"] = u"—"
+
+    for attr, key in ((u"Mirrored", u"mirrored"), (u"FacingFlipped", u"facing_flipped"),
+                       (u"HandFlipped", u"hand_flipped")):
+        try:
+            info[key] = bool(getattr(el, attr))
+        except Exception:
+            info[key] = None
+
+    try:
+        f = el.FacingOrientation
+        info[u"facing_orientation_text"] = _vec_text(f)
+        info[u"facing_azimuth_deg"] = math.degrees(math.atan2(f.Y, f.X)) % 360.0
+    except Exception:
+        info[u"facing_orientation_text"] = u"—"
+        info[u"facing_azimuth_deg"] = None
+
+    try:
+        info[u"hand_orientation_text"] = _vec_text(el.HandOrientation)
+    except Exception:
+        info[u"hand_orientation_text"] = u"—"
+
+    try:
+        t = el.GetTransform()
+        info[u"basis_y_text"] = _vec_text(t.BasisY)
+        info[u"basis_x_text"] = _vec_text(t.BasisX)
+    except Exception:
+        info[u"basis_y_text"] = info[u"basis_x_text"] = u"—"
+
+    # то же направление и та же итоговая формула, что реально использует
+    # построение зоны (_one_camera) — чтобы диагностика не разошлась с
+    # тем, что на самом деле рисуется
+    offset_deg = _as_float(settings.get(u"direction_offset_deg"), 0.0)
+    unit_mode = settings.get(u"angle_unit") or u"авто"
+    d, dir_note = _look_direction(el, offset_deg)
+    if d is not None:
+        base = math.atan2(d.Y, d.X)
+        rot = _opt_param_radians(doc, el, settings.get(u"rotation_param_name"), unit_mode)
+        if rot:
+            base += rot
+            dir_note = u"{} + поворот {:.1f}°".format(dir_note, math.degrees(rot))
+        info[u"used_direction_source"] = dir_note
+        info[u"used_azimuth_deg"] = math.degrees(base) % 360.0
+    else:
+        info[u"used_direction_source"] = dir_note
+        info[u"used_azimuth_deg"] = None
+
+    return info
+
+
+# ======================================================================
+#  РАЗБОР СЕМЕЙСТВА (структура .rfa, не экземпляра в проекте)
+# ======================================================================
+
+def inspect_family_definition(doc, el):
+    """
+    Открывает семейство выбранного экземпляра на редактирование
+    (Document.EditFamily) и читает его внутреннюю структуру: все
+    типоразмеры со значениями каждого параметра, формулы параметров,
+    вложенные семейства (имя, категория, сколько экземпляров), формы
+    (выдавливание/тело вращения/сдвиг и т.п. — тело или вырез), опорные
+    плоскости, разъёмы (для устройств с электрическим/сетевым
+    подключением). Семейство закрывается БЕЗ сохранения сразу после
+    чтения — fam_doc не меняется ничем, кроме чтения.
+
+    Это про структуру самого файла семейства — что чем в нём задано; про
+    то, как уже размещённый экземпляр стоит и развёрнут в проекте, см.
+    describe_camera_geometry.
+
+    ВНИМАНИЕ: это открывает реальный документ семейства в Revit (как
+    двойной клик «Редактировать семейство»), просто без показа окна
+    пользователю, и сразу закрывает его. Не вызывайте это внутри
+    транзакции документа проекта. Если семейство уже открыто на
+    редактирование в другом окне — Revit это не даст сделать, см. поле
+    editable/error в результате.
+
+    Возвращает dict: editable (bool), error (строка причины неудачи, или
+    None), family_name, category_name, placement_type, types (список
+    dict: name, params — список кортежей (имя_параметра, формула_или_None,
+    текст_значения)), nested_families (список dict: name, category,
+    count), forms (список dict: name, kind — "тело"/"вырез"/"?"),
+    reference_planes (список имён), connectors (список dict: domain, id).
+    """
+    result = {
+        u"editable": False, u"error": None, u"family_name": u"",
+        u"category_name": u"", u"placement_type": u"",
+        u"types": [], u"nested_families": [], u"forms": [],
+        u"reference_planes": [], u"connectors": [],
+    }
+
+    if Family is None:
+        result[u"error"] = u"класс Family недоступен в этой версии Revit API"
+        return result
+
+    try:
+        family = el.Symbol.Family
+    except Exception as ex:
+        result[u"error"] = u"у элемента нет типа/семейства: {}".format(ex)
+        return result
+
+    result[u"family_name"] = _safe_name(family)
+    try:
+        result[u"category_name"] = family.FamilyCategory.Name if family.FamilyCategory else u""
+    except Exception:
+        pass
+    try:
+        result[u"placement_type"] = unicode(family.FamilyPlacementType)
+    except Exception:
+        pass
+
+    try:
+        editable = bool(family.IsEditable)
+    except Exception:
+        editable = False
+    result[u"editable"] = editable
+    if not editable:
+        result[u"error"] = (
+            u"Revit не даёт открыть это семейство на редактирование в "
+            u"текущей сессии (IsEditable=False) — часто потому, что оно "
+            u"уже открыто на редактирование в другом окне, либо это "
+            u"системное семейство"
+        )
+        return result
+
+    try:
+        fam_doc = doc.EditFamily(family)
+    except Exception as ex:
+        result[u"error"] = u"doc.EditFamily упал: {}".format(ex)
+        return result
+
+    try:
+        fm = fam_doc.FamilyManager
+        fam_params = list(fm.Parameters)
+        for ftype in fm.Types:
+            try:
+                type_name = ftype.Name
+            except Exception:
+                type_name = u"?"
+            row = {u"name": type_name, u"params": []}
+            for fp in fam_params:
+                try:
+                    pname = fp.Definition.Name
+                except Exception:
+                    pname = u"?"
+                try:
+                    formula = fp.Formula
+                except Exception:
+                    formula = None
+                value_text = u""
+                try:
+                    vs = ftype.AsValueString(fp)
+                    if vs:
+                        value_text = vs
+                except Exception:
+                    pass
+                if not value_text:
+                    try:
+                        st = fp.StorageType
+                        if st == StorageType.String:
+                            value_text = ftype.AsString(fp) or u""
+                        elif st == StorageType.Double:
+                            value_text = unicode(ftype.AsDouble(fp))
+                        elif st == StorageType.Integer:
+                            value_text = unicode(ftype.AsInteger(fp))
+                    except Exception:
+                        pass
+                row[u"params"].append((pname, formula, value_text))
+            result[u"types"].append(row)
+
+        if GenericForm is not None:
+            for f in FilteredElementCollector(fam_doc).OfClass(GenericForm).ToElements():
+                try:
+                    is_solid = bool(f.IsSolid)
+                    kind = u"тело" if is_solid else u"вырез"
+                except Exception:
+                    kind = u"?"
+                result[u"forms"].append({u"name": _safe_name(f), u"kind": kind})
+
+        if ReferencePlane is not None:
+            for rp in FilteredElementCollector(fam_doc).OfClass(ReferencePlane).ToElements():
+                result[u"reference_planes"].append(_safe_name(rp))
+
+        if FamilyInstance is not None:
+            nested_counts = {}
+            for ni in FilteredElementCollector(fam_doc).OfClass(FamilyInstance).ToElements():
+                try:
+                    nfam_name = _safe_name(ni.Symbol.Family)
+                    ncat = ni.Category.Name if ni.Category is not None else u""
+                except Exception:
+                    nfam_name, ncat = u"?", u""
+                key = (nfam_name, ncat)
+                nested_counts[key] = nested_counts.get(key, 0) + 1
+            for (nfam_name, ncat), count in nested_counts.items():
+                result[u"nested_families"].append({
+                    u"name": nfam_name, u"category": ncat, u"count": count
+                })
+
+        if ConnectorElement is not None:
+            try:
+                for ce in FilteredElementCollector(fam_doc).OfClass(ConnectorElement).ToElements():
+                    try:
+                        domain = unicode(ce.Domain)
+                    except Exception:
+                        domain = u"?"
+                    result[u"connectors"].append({u"domain": domain, u"id": ce.Id.IntegerValue})
+            except Exception:
+                pass
+
+    except Exception as ex:
+        result[u"error"] = u"ошибка при чтении семейства: {}".format(ex)
+    finally:
+        try:
+            fam_doc.Close(False)
+        except Exception:
+            pass
+
+    return result
 
 
 def _near_far_radius(h_ft, tilt_rad, vfov_rad, max_r):
