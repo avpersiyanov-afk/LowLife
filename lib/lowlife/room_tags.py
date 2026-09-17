@@ -548,3 +548,88 @@ def run(doc, view, tag_type_id):
         _restore_underlay(view, saved_underlay)
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Диагностика одной марки (для DiagnoseRoomTag.pushbutton)
+# ---------------------------------------------------------------------------
+
+def _fmt_pt(pt):
+    if pt is None:
+        return u"None"
+    return u"({:.3f}, {:.3f}, {:.3f}) фт".format(pt.X, pt.Y, pt.Z)
+
+
+def diagnose_tag(doc, tag):
+    """
+    Многострочный отчёт (unicode) о том, что видит логика этого модуля по
+    ``tag`` (ожидается RoomTag) — для разбора конкретной «зависшей» марки,
+    когда по коду и скриншоту причина не очевидна. Не меняет модель.
+    """
+    lines = []
+    lines.append(u"Tag Id: {}".format(tag.Id.IntegerValue))
+
+    try:
+        cat = tag.Category
+        lines.append(u"Категория: {}".format(cat.Name if cat else None))
+    except Exception as e:
+        lines.append(u"Категория: <ошибка> {}".format(e))
+
+    try:
+        lines.append(u"HasLeader: {}".format(tag.HasLeader))
+    except Exception as e:
+        lines.append(u"HasLeader: <ошибка> {}".format(e))
+
+    try:
+        loc = tag.Location
+        loc_pt = loc.Point if isinstance(loc, LocationPoint) else None
+        lines.append(u"Location.Point марки: {}".format(_fmt_pt(loc_pt)))
+    except Exception as e:
+        lines.append(u"Location.Point марки: <ошибка> {}".format(e))
+
+    head = _tag_head(tag)
+    lines.append(u"TagHeadPosition: {}".format(_fmt_pt(head)))
+
+    kind, room, transform = _resolve_tag_room(doc, tag)
+    lines.append(u"_resolve_tag_room -> kind: {}".format(kind))
+
+    if room is not None:
+        lines.append(u"  Room Id: {}".format(room.Id.IntegerValue))
+        try:
+            lines.append(u"  Room Area: {:.2f} м2".format(room.Area * 0.092903))
+        except Exception as e:
+            lines.append(u"  Room Area: <ошибка> {}".format(e))
+        try:
+            rloc = room.Location
+            rpt = rloc.Point if isinstance(rloc, LocationPoint) else None
+            lines.append(u"  Room.Location.Point: {}".format(_fmt_pt(rpt)))
+        except Exception as e:
+            lines.append(u"  Room.Location.Point: <ошибка> {}".format(e))
+        lines.append(u"  _room_ok(room): {}".format(_room_ok(room)))
+    else:
+        lines.append(u"  Room: None")
+
+    lines.append(u"IsOrphaned: {}".format(_is_orphaned(tag)))
+
+    if room is not None and transform is not None and head is not None:
+        try:
+            local = transform.Inverse.OfPoint(head)
+            lines.append(u"  голова в лок. координатах Room: {}".format(_fmt_pt(local)))
+            lines.append(u"  room.IsPointInRoom(голова): {}".format(room.IsPointInRoom(local)))
+        except Exception as e:
+            lines.append(u"  IsPointInRoom(голова): <ошибка> {}".format(e))
+        try:
+            bbox = room.get_BoundingBox(None)
+            lines.append(u"  Room bbox: {} .. {}".format(_fmt_pt(bbox.Min), _fmt_pt(bbox.Max)))
+        except Exception as e:
+            lines.append(u"  Room bbox: <ошибка> {}".format(e))
+    else:
+        lines.append(u"  (пропущена проверка головы — нет room/transform/head)")
+
+    in_room_result = _tag_head_in_room(head, room, transform) if room else None
+    lines.append(u"_tag_head_in_room(): {}".format(in_room_result))
+
+    key = _tagged_room_key(tag)
+    lines.append(u"_tagged_room_key(): {}".format(key))
+
+    return u"\n".join(lines)

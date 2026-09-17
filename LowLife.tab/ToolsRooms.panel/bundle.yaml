@@ -4,3 +4,4 @@ layout:
   - RoomInfo
   - RoomTags
   - FindRoom
+  - DiagnoseRoomTag
