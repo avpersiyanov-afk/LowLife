@@ -280,6 +280,17 @@ def _compute_suggested_boxes(level_records, param_name, reference_xy_keys):
 
 
 def _ask_choice_param(records, title, none_label):
+    """
+    Значение выбранного параметра, либо None — как явным выбором none_label,
+    так и отменой/закрытием диалога (Esc/крестик). Оба шага, где это
+    используется (секции/группировка), помечены в тултипе кнопки как
+    "можно пропустить" — значит закрыть диалог без выбора ДОЛЖНО работать
+    как пропуск, а не как отмена всего сценария целиком (иначе кнопка
+    молча завершалась без единого алерта после первого же Esc — реальный
+    баг, из-за которого пользователь ничего не видел и решил, что вид не
+    создаётся). Прервать сценарий насовсем всё ещё можно позже, на выборе
+    этажа (см. _ask_level/_pick_section_boxes).
+    """
     param_names = list_room_param_names(records)
     choice = forms.SelectFromList.show(
         [none_label] + param_names,
@@ -287,9 +298,9 @@ def _ask_choice_param(records, title, none_label):
         button_name=u"Выбрать",
         multiselect=False,
     )
-    if not choice:
-        return None, False
-    return (None if choice == none_label else choice), True
+    if not choice or choice == none_label:
+        return None
+    return choice
 
 
 def _ask_section_param(records):
@@ -469,20 +480,15 @@ def show(doc, records):
     группировки — один раз, затем по каждой секции — этаж -> боксы на нём,
     см. _pick_section_boxes). Возвращает OrderedDict(section_label ->
     OrderedDict(level_name -> [box, ...])) — section_label=None, если
-    секций не было (единственный элемент словаря). None, если пользователь
-    отменил выбор на любом из первых двух шагов, либо в итоге ничего не
-    выбрано ни в одной секции.
+    секций не было (единственный элемент словаря). None, если в итоге
+    ничего не выбрано ни в одной секции (в т.ч. если пользователь сразу
+    вышел из выбора этажа, не начиная).
     """
     if not records:
         return None
 
-    section_param, section_chosen = _ask_section_param(records)
-    if not section_chosen:
-        return None
-
-    group_param, group_chosen = _ask_group_param(records)
-    if not group_chosen:
-        return None
+    section_param = _ask_section_param(records)
+    group_param = _ask_group_param(records)
 
     records_by_id = dict((r.room_id, r) for r in records if r.room_id is not None)
     sections = _split_into_sections(records, section_param)
