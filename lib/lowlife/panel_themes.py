@@ -128,6 +128,7 @@ THEMES = {
         (u"CircuitsSPA", u"BuildLoopCircuitsSPA"),
         (u"CircuitsGeneric", u"BuildGenericCircuits"),
         (u"CircuitsDelete", u"DeleteViewCircuits"),
+        (u"CircuitsDelete", u"HighlightNoCircuit"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
