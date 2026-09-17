@@ -30,7 +30,13 @@ LINE_WEIGHT = 6
 # цепи (system.SelectPanel), а не её член — GetElectricalSystems() на
 # панели пуст, даже когда от неё заведено много цепей, поэтому панели
 # исключаются из кандидатов, иначе подсвечивались бы всегда.
-_EXCLUDED_CATEGORY_IDS = set([int(BuiltInCategory.OST_ElectricalEquipment)])
+# Обобщённые модели (линии проводки и т.п., см. fire_alarm_wire_marks) —
+# не устройства, подсвечивать их не нужно, даже если у семейства случайно
+# есть электрический коннектор.
+_EXCLUDED_CATEGORY_IDS = set([
+    int(BuiltInCategory.OST_ElectricalEquipment),
+    int(BuiltInCategory.OST_GenericModel),
+])
 
 # {(doc_key, view_id_int): set(element_id_int)} — что подсвечено этой
 # кнопкой и где; doc_key нужен, чтобы Idling-проверка (она видит только
