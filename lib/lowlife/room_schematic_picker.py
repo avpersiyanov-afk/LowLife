@@ -8,18 +8,22 @@
 FindRoom. Уровни (порядок и подписи) — sot_levels.sorted_level_names/
 get_level_label, та же сортировка этажей, что у СОТ/СПС/СКС.
 
-Сценарий (v4):
+Сценарий (v5):
 
-  1. Параметр деления по СЕКЦИЯМ (один раз, опционально) — если у здания
-     несколько секций, каждое значение параметра даёт свою отдельную схему
-     (свой чертёжный вид, см. room_schematic.schematic_view_name). Без
-     секций — один прогон, как раньше.
-  2. Параметр ГРУППИРОВКИ (один раз, общий на все секции) — общее значение
-     объединяет несколько помещений в один бокс схемы (например «МОП»/
-     «Квартира»); "(без группировки)" — доступны только отдельные помещения.
-  3. Для каждой секции — цикл: выбор этажа -> боксы на нём (см.
-     _resolve_level_boxes) -> "Выбрать ещё"/"Завершить и построить"
-     (forms.CommandSwitchWindow).
+  1. Параметр деления по СЕКЦИЯМ (один раз, опционально; закрыть диалог
+     без выбора = пропустить шаг) — если у здания несколько секций, каждое
+     значение параметра даёт свою отдельную схему (свой чертёжный вид, см.
+     room_schematic.schematic_view_name). Без секций — один прогон.
+  2. Параметр ГРУППИРОВКИ (один раз, общий на все секции; тоже можно
+     пропустить закрытием диалога) — общее значение объединяет несколько
+     помещений в один бокс схемы (например «МОП»/«Квартира»).
+  3. Для каждой секции — этажи ПО ПОРЯДКУ, один за другим, БЕЗ вопроса "на
+     каком этаже": боксы обычно нужны на всех этажах подряд, поэтому после
+     каждого этажа (см. _resolve_level_boxes) сразу идёт следующий. После
+     каждого этажа — небольшое меню (forms.CommandSwitchWindow): "Следующий
+     этаж" / "Вернуться к другому этажу" (открывает список всех этажей
+     секции, _ask_jump_to_level — для исправления уже пройденного или
+     чтобы перескочить вперёд) / "Завершить и построить".
 
 Типовые этажи и "вернуться назад" (_resolve_level_boxes): если для этажа
 уже есть базовый набор — либо сохранённый раньше в этом же прогоне (заходим
@@ -58,7 +62,8 @@ from lowlife.sot_levels import sorted_level_names, get_level_label
 
 _NO_GROUPING = u"(без группировки)"
 _NO_SECTIONS = u"(одна схема для всех, без секций)"
-_CONTINUE = u"Выбрать ещё"
+_NEXT = u"Следующий этаж"
+_BACK = u"Вернуться к другому этажу"
 _FINISH = u"Завершить и построить"
 
 _KEEP = u"Оставить как есть"
@@ -315,7 +320,13 @@ def _ask_group_param(records):
     )
 
 
-def _ask_level(level_order, boxes, section_label=None):
+def _ask_jump_to_level(level_order, boxes, section_label=None):
+    """Список ВСЕХ этажей секции (с пометкой, где уже что-то добавлено) —
+    только для явного "вернуться к другому этажу" (см. _pick_section_boxes,
+    кнопка _BACK). Основной проход по этажам идёт по порядку сам, без
+    этого диалога — раньше он показывался на КАЖДОМ шаге и создавал
+    впечатление, будто нужно каждый раз решать, на какой этаж переключиться,
+    хотя боксы в итоге нужны на всех этажах подряд."""
     prefix = u"[{}] ".format(section_label) if section_label else u""
     options = []
     for level_name in level_order:
@@ -327,8 +338,8 @@ def _ask_level(level_order, boxes, section_label=None):
 
     picked = forms.SelectFromList.show(
         options,
-        title=u"{}На каком этаже добавляем боксы?".format(prefix),
-        button_name=u"Далее",
+        title=u"{}К какому этажу вернуться?".format(prefix),
+        button_name=u"Перейти",
         multiselect=False,
     )
     return picked.level_name if picked else None
@@ -415,10 +426,12 @@ def _resolve_level_boxes(level_records, param_name, baseline, level_name, sectio
 
 def _pick_section_boxes(section_records, param_name, records_by_id, section_label=None):
     """
-    Цикл выбора этаж -> боксы для ОДНОЙ секции (или для всего проекта,
-    если секций нет — section_label=None). Возвращает OrderedDict
-    (level_name -> [box, ...]), может быть пустым, если пользователь сразу
-    отменил выбор этажа.
+    Проход по этажам ОДНОЙ секции (или всего проекта, если секций нет —
+    section_label=None) — по порядку, БЕЗ вопроса "на каком этаже": боксы
+    обычно нужны на всех этажах подряд, поэтому после каждого этажа сразу
+    идёт следующий. "Вернуться к другому этажу" (_ask_jump_to_level) и
+    "Завершить" — единственные способы свернуть с этого порядка, доступны
+    после каждого этажа. Возвращает OrderedDict(level_name -> [box, ...]).
     """
     level_groups = _build_level_groups(section_records)
     level_order = sorted_level_names(level_groups)
@@ -426,12 +439,15 @@ def _pick_section_boxes(section_records, param_name, records_by_id, section_labe
     boxes = OrderedDict()
     visited_levels = set()
     last_level_with_boxes = None
+    prefix = u"[{}] ".format(section_label) if section_label else u""
+
+    if not level_order:
+        return boxes
+
+    level_index = 0
 
     while True:
-        level_name = _ask_level(level_order, boxes, section_label)
-        if level_name is None:
-            break
-
+        level_name = level_order[level_index]
         level_records = level_groups[level_name]["elements"]
         existing_boxes = boxes.get(level_name, [])
 
@@ -457,19 +473,32 @@ def _pick_section_boxes(section_records, param_name, records_by_id, section_labe
         if boxes.get(level_name):
             last_level_with_boxes = level_name
 
+        is_last = level_index == len(level_order) - 1
         total_boxes = sum(len(v) for v in boxes.values())
-        if total_boxes == 0:
-            continue
 
+        options = ([_NEXT] if not is_last else []) + [_BACK, _FINISH]
         switch = forms.CommandSwitchWindow.show(
-            [_CONTINUE, _FINISH],
-            message=u"{}Добавлено боксов: {} (этажей: {}).".format(
-                u"[{}] ".format(section_label) if section_label else u"",
+            options,
+            message=u"{}Этаж «{}» готов. Добавлено боксов: {} (этажей: {}).".format(
+                prefix, get_level_label(level_name),
                 total_boxes, len([1 for v in boxes.values() if v])
             ),
         )
-        if switch != _CONTINUE:
-            break
+
+        if switch == _BACK:
+            jump_to = _ask_jump_to_level(level_order, boxes, section_label)
+            if jump_to is not None:
+                level_index = level_order.index(jump_to)
+                continue
+            if is_last:
+                break
+            switch = _NEXT
+
+        if switch == _NEXT:
+            level_index += 1
+            continue
+
+        break
 
     return boxes
 
