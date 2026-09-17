@@ -11,7 +11,7 @@
 """
 
 from lowlife.geometry import get_point, points_close
-from lowlife.params import set_string_param
+from lowlife.params import set_string_param_including_type
 from lowlife.route_nodes import collect_segments
 
 # Допуск «конец линии рядом с устройством», в футах (~300 мм) — провод
@@ -39,6 +39,10 @@ def mark_wire_lines(doc, view, member_points, label, family_filter, mark_param):
 
     Возвращает число помеченных линий. Ничего не делает (0), если
     family_filter/mark_param не заданы в настройках или нет точек цепи.
+
+    Если mark_param в проекте заведён как параметр ТИПА (не экземпляра) —
+    пишет на тип элемента (см. set_string_param_including_type); значит
+    в этом случае марка общая на все линии этого же типа семейства.
     """
     if not family_filter or not mark_param or not member_points or view is None:
         return 0
@@ -52,7 +56,7 @@ def mark_wire_lines(doc, view, member_points, label, family_filter, mark_param):
             points_close(seg["p2"], pt, DEVICE_MATCH_TOLERANCE_FT)
             for pt in member_points
         )
-        if near and set_string_param(seg["element"], mark_param, label):
+        if near and set_string_param_including_type(doc, seg["element"], mark_param, label):
             marked += 1
 
     return marked
