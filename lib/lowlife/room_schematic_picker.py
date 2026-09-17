@@ -1,63 +1,54 @@
 # -*- coding: utf-8 -*-
 """
-Окно выбора помещений для кнопки Schematic.panel/BuildRoomSchematic
+Выбор помещений/групп для кнопки Schematic.panel/BuildRoomSchematic
 («Рыба структурной схемы»).
 
 Список помещений приходит от room_finder.get_records(doc) — та же база
 (хост + все связи, с кэшем на сессию), что уже использует ToolsRooms.panel/
-FindRoom. Пользователь выбирает параметр группировки (ComboBox сверху —
-объединение имён параметров, реально встречающихся хоть на одном
-помещении), после чего окно строит по одному блоку на уровень (порядок —
-sot_levels.sorted_level_names, та же сортировка этажей, что у СОТ/СПС/СКС):
-сначала группы — помещения с непустым значением выбранного параметра,
-собранные по значению, с чекбоксом «как один бокс» на группу и read-only
-списком её помещений под ним; затем — помещения с пустым значением,
-каждое своей строкой с отдельным чекбоксом.
+FindRoom. Уровни (порядок и подписи) — sot_levels.sorted_level_names/
+get_level_label, та же сортировка этажей, что у СОТ/СПС/СКС.
 
-Чекбокс группы и чекбоксы отдельных помещений НЕЗАВИСИМЫ друг от друга —
-можно отметить и группу целиком, и вдобавок одно из её помещений отдельно
-(тогда оно попадёт на схему дважды: в составе группового бокса и своим
-собственным) — это осознанно: комбинированный сценарий из ТЗ («на этаже —
-общее название по группе, и одновременно несколько отдельных помещений»)
-не пытается угадывать, что именно пользователь хочет исключить из группы,
-раскладка всё равно черновая и правится руками.
+Раньше это было одно большое кастомное WPF-окно сразу на все этажи —
+неудобно при большом числе помещений в проекте ("мега большой список").
+Вместо этого — цикл из стандартных pyRevit-диалогов (тот же forms.SelectFromList,
+что и везде в проекте, см. ToolsRooms.panel/FindRoom):
 
-WPF собирается в коде (без XAML) — тот же приём, что и в rename_by_list.py
-(там DataGrid, тут набор CheckBox в StackPanel/ScrollViewer): в репозитории
-не заведено использовать XAML-файлы для кастомных окон.
+  1. Один раз — параметр группировки (общее значение объединяет несколько
+     помещений в один бокс схемы); "(без группировки)" — группы не строятся,
+     доступны только отдельные помещения.
+  2. Цикл: выбор этажа -> на этом этаже ОДИН список с чекбоксами
+     (multiselect), где вперемешку и группы (непустые значения выбранного
+     параметра, целиком), и ВСЕ помещения этажа по отдельности — можно
+     отметить и группу, и вдобавок отдельные помещения из неё же (боксы
+     независимы, специально не исключают друг друга, см. _room_label).
+     После добавления — переключатель "Выбрать ещё"/"Завершить и построить"
+     (forms.CommandSwitchWindow, тот же приём, что и у остальных пошаговых
+     сценариев pyRevit). Esc/отмена на выборе этажа тоже завершает цикл.
+
+Возвращает OrderedDict(level_name -> [box, ...]) с накопленным за все
+проходы цикла набором, либо None, если ничего в итоге не выбрано.
 """
 
 from collections import OrderedDict
 
-import clr
-clr.AddReference('System')
-clr.AddReference('PresentationFramework')
-clr.AddReference('PresentationCore')
-clr.AddReference('WindowsBase')
-
-from System.Windows import (
-    Window, WindowStartupLocation, Thickness, FontWeights,
-    HorizontalAlignment, VerticalAlignment, TextWrapping
-)
-from System.Windows.Controls import (
-    StackPanel, TextBlock, Button, Orientation, DockPanel, Dock,
-    CheckBox, ComboBox, ScrollViewer, ScrollBarVisibility, Separator
-)
-from System.Windows.Media import Brushes
+from pyrevit import forms
 
 from lowlife.params import get_param_any
+from lowlife.room_finder import natural_key
 from lowlife.sot_levels import sorted_level_names, get_level_label
 
 _NO_GROUPING = u"(без группировки)"
+_CONTINUE = u"Выбрать ещё"
+_FINISH = u"Завершить и построить"
 
 
 def list_room_param_names(records):
     """
     Отсортированный список имён параметров, встречающихся хотя бы на одном
-    помещении из records — для ComboBox выбора параметра группировки.
-    Объединение (не пересечение): у части помещений (особенно из разных
-    связей/типов) набор параметров может отличаться, показываем всё, что
-    вообще где-то есть, а не только общее для всех сразу.
+    помещении из records — для выбора параметра группировки. Объединение
+    (не пересечение): у части помещений (особенно из разных связей/типов)
+    набор параметров может отличаться, показываем всё, что вообще где-то
+    есть, а не только общее для всех сразу.
     """
     names = set()
     for record in records:
@@ -104,237 +95,171 @@ def _build_level_groups(records):
 
 
 def _group_records_by_param(records, param_name):
-    """
-    (groups, singles) для одного уровня: groups — OrderedDict(value ->
-    [record, ...]) для непустых значений param_name (в порядке первого
-    появления), singles — записи с пустым/отсутствующим значением.
-    param_name=None -> всё в singles (группировка выключена).
-    """
+    """OrderedDict(value -> [record, ...]) — только непустые значения
+    param_name (в порядке первого появления). param_name=None -> {}
+    (группировка выключена)."""
     groups = OrderedDict()
-    singles = []
+    if not param_name:
+        return groups
     for record in records:
-        value = get_param_any(record.room, param_name) if param_name else None
+        value = get_param_any(record.room, param_name)
         value = value.strip() if value else u""
         if value:
             groups.setdefault(value, []).append(record)
-        else:
-            singles.append(record)
-    return groups, singles
+    return groups
 
 
-class _RoomRow(object):
-    __slots__ = ("record", "checkbox")
+class _LevelOption(object):
+    def __init__(self, level_name, label):
+        self.level_name = level_name
+        self.label = label
 
-    def __init__(self, record, checkbox):
-        self.record = record
-        self.checkbox = checkbox
+    def __str__(self):
+        return self.label
 
 
-class _GroupRow(object):
-    __slots__ = ("value", "records", "checkbox")
+class _GroupEntry(object):
+    """Один пункт списка выбора — целая группа помещений (общее значение
+    параметра группировки) как один будущий бокс схемы."""
 
-    def __init__(self, value, records, checkbox):
+    def __init__(self, value, records):
         self.value = value
         self.records = records
-        self.checkbox = checkbox
+
+    def __str__(self):
+        return u"▦ Группа «{}» ({} пом.) — один бокс".format(self.value, len(self.records))
+
+    def to_box(self):
+        return {
+            "kind": "group",
+            "label": self.value,
+            "room_ids": [r.room_id for r in self.records if r.room_id is not None],
+        }
+
+
+class _RoomEntry(object):
+    """Один пункт списка выбора — отдельное помещение как свой бокс.
+    Показываются ВСЕ помещения этажа, включая те, что уже входят в одну
+    из групп выше, — группа и отдельное помещение выбираются независимо
+    (см. модульный докстринг: комбинированный сценарий)."""
+
+    def __init__(self, record):
+        self.record = record
+
+    def __str__(self):
+        return _room_label(self.record)
+
+    def to_box(self):
+        return {
+            "kind": "room",
+            "label": _room_label(self.record),
+            "room_ids": [self.record.room_id] if self.record.room_id is not None else [],
+        }
+
+
+def _build_entries_for_level(level_records, param_name):
+    groups = _group_records_by_param(level_records, param_name)
+    entries = [_GroupEntry(value, recs) for value, recs in groups.items()]
+    ordered_records = sorted(level_records, key=lambda r: natural_key(r.number))
+    entries.extend(_RoomEntry(r) for r in ordered_records)
+    return entries
+
+
+def _ask_param_name(records):
+    param_names = list_room_param_names(records)
+    choice = forms.SelectFromList.show(
+        [_NO_GROUPING] + param_names,
+        title=u"Параметр группировки помещений в боксы схемы",
+        button_name=u"Выбрать",
+        multiselect=False,
+    )
+    if not choice:
+        return None, False
+    return (None if choice == _NO_GROUPING else choice), True
+
+
+def _ask_level(level_order, boxes):
+    options = []
+    for level_name in level_order:
+        count = len(boxes.get(level_name, []))
+        label = get_level_label(level_name)
+        if count:
+            label = u"{} (уже добавлено: {})".format(label, count)
+        options.append(_LevelOption(level_name, label))
+
+    picked = forms.SelectFromList.show(
+        options,
+        title=u"На каком этаже добавляем боксы?",
+        button_name=u"Далее",
+        multiselect=False,
+    )
+    return picked.level_name if picked else None
+
+
+def _box_signature(box):
+    return box["kind"], box["label"], tuple(sorted(box["room_ids"]))
 
 
 def show(doc, records):
     """
-    Показывает окно выбора. Возвращает OrderedDict(level_name -> [box, ...])
-    (box = {"kind": "group"|"room", "label": unicode, "room_ids": [int, ...]})
-    по нажатию «Построить», либо None по «Отмена»/закрытию окна.
+    Ведёт пользователя через цикл выбора (параметр группировки один раз,
+    затем этаж -> группы/помещения на нём -> "выбрать ещё"/"завершить").
+    Возвращает OrderedDict(level_name -> [box, ...]) с накопленным
+    результатом, либо None, если в итоге ничего не выбрано/отменено.
     """
     if not records:
         return None
 
     level_groups = _build_level_groups(records)
     level_order = sorted_level_names(level_groups)
-    param_names = list_room_param_names(records)
 
-    result = {"boxes": None}
-    # level_name -> list of _GroupRow/_RoomRow, перестраивается при смене
-    # параметра группировки в _rebuild_body.
-    level_rows = {}
+    param_name, param_chosen = _ask_param_name(records)
+    if not param_chosen:
+        return None
 
-    win = Window()
-    win.Title = u"Рыба структурной схемы — выбор помещений"
-    win.Width = 620
-    win.Height = 720
-    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+    boxes = OrderedDict()
 
-    outer = DockPanel()
-    outer.Margin = Thickness(16)
+    while True:
+        level_name = _ask_level(level_order, boxes)
+        if level_name is None:
+            break
 
-    header = StackPanel()
-    header.Margin = Thickness(0, 0, 0, 10)
-    DockPanel.SetDock(header, Dock.Top)
+        level_records = level_groups[level_name]["elements"]
+        entries = _build_entries_for_level(level_records, param_name)
 
-    title = TextBlock()
-    title.Text = u"Выбор помещений и групп по этажам"
-    title.FontSize = 16
-    title.FontWeight = FontWeights.Bold
-    header.Children.Add(title)
+        picked = forms.SelectFromList.show(
+            entries,
+            title=u"{} — отметьте группы и/или отдельные помещения".format(
+                get_level_label(level_name)
+            ),
+            button_name=u"Добавить в список",
+            multiselect=True,
+        )
 
-    info = TextBlock()
-    info.Text = (
-        u"Параметр группировки — общее значение, по которому несколько "
-        u"помещений объединяются в один бокс схемы (например «Название "
-        u"группы»). Отметьте группу целиком чекбоксом рядом с её "
-        u"значением, и/или отдельные помещения — независимо друг от друга: "
-        u"можно добавить группу и вдобавок отдельное помещение из неё же."
-    )
-    info.FontSize = 11
-    info.TextWrapping = TextWrapping.Wrap
-    info.Margin = Thickness(0, 4, 0, 8)
-    header.Children.Add(info)
-
-    param_row = StackPanel()
-    param_row.Orientation = Orientation.Horizontal
-    param_label = TextBlock()
-    param_label.Text = u"Параметр группировки: "
-    param_label.VerticalAlignment = VerticalAlignment.Center
-    param_row.Children.Add(param_label)
-
-    combo = ComboBox()
-    combo.Width = 320
-    combo.Items.Add(_NO_GROUPING)
-    for name in param_names:
-        combo.Items.Add(name)
-    combo.SelectedIndex = 0
-    param_row.Children.Add(combo)
-
-    recalc_btn = Button()
-    recalc_btn.Content = u"Пересчитать группы"
-    recalc_btn.Margin = Thickness(10, 0, 0, 0)
-    recalc_btn.Padding = Thickness(8, 2, 8, 2)
-    param_row.Children.Add(recalc_btn)
-
-    header.Children.Add(param_row)
-
-    body_panel = StackPanel()
-
-    scroll = ScrollViewer()
-    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-    scroll.Content = body_panel
-    scroll.Margin = Thickness(0, 0, 0, 10)
-
-    bottom = StackPanel()
-    bottom.Orientation = Orientation.Horizontal
-    bottom.HorizontalAlignment = HorizontalAlignment.Right
-    bottom.Margin = Thickness(0, 8, 0, 0)
-    DockPanel.SetDock(bottom, Dock.Bottom)
-
-    cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
-    cancel_btn.Padding = Thickness(12, 4, 12, 4)
-    cancel_btn.Margin = Thickness(0, 0, 8, 0)
-
-    ok_btn = Button()
-    ok_btn.Content = u"Построить"
-    ok_btn.Padding = Thickness(12, 4, 12, 4)
-    ok_btn.FontWeight = FontWeights.Bold
-
-    bottom.Children.Add(cancel_btn)
-    bottom.Children.Add(ok_btn)
-
-    def _rebuild_body(sender=None, args=None):
-        body_panel.Children.Clear()
-        level_rows.clear()
-
-        selected = combo.SelectedItem
-        param_name = None if (selected is None or selected == _NO_GROUPING) else unicode(selected)
-
-        for level_name in level_order:
-            level_records = level_groups[level_name]["elements"]
-            groups, singles = _group_records_by_param(level_records, param_name)
-
-            if not groups and not singles:
-                continue
-
-            level_header = TextBlock()
-            level_header.Text = get_level_label(level_name)
-            level_header.FontWeight = FontWeights.Bold
-            level_header.FontSize = 13
-            level_header.Margin = Thickness(0, 12, 0, 4)
-            body_panel.Children.Add(level_header)
-            body_panel.Children.Add(Separator())
-
-            rows = []
-
-            for value, group_records in groups.items():
-                group_cb = CheckBox()
-                group_cb.Content = u"{} ({} пом.) — как один бокс".format(value, len(group_records))
-                group_cb.FontWeight = FontWeights.SemiBold
-                group_cb.Margin = Thickness(4, 6, 0, 2)
-                body_panel.Children.Add(group_cb)
-                rows.append(_GroupRow(value, group_records, group_cb))
-
-                members_text = u", ".join(_room_label(r) for r in group_records)
-                members_block = TextBlock()
-                members_block.Text = members_text
-                members_block.TextWrapping = TextWrapping.Wrap
-                members_block.Foreground = Brushes.Gray
-                members_block.FontSize = 11
-                members_block.Margin = Thickness(24, 0, 0, 4)
-                body_panel.Children.Add(members_block)
-
-            for record in singles:
-                room_cb = CheckBox()
-                room_cb.Content = _room_label(record)
-                room_cb.Margin = Thickness(4, 2, 0, 2)
-                body_panel.Children.Add(room_cb)
-                rows.append(_RoomRow(record, room_cb))
-
-            level_rows[level_name] = rows
-
-    recalc_btn.Click += _rebuild_body
-
-    def on_cancel(sender, args):
-        win.Close()
-
-    def on_ok(sender, args):
-        boxes = OrderedDict()
-        for level_name in level_order:
-            rows = level_rows.get(level_name, [])
-            level_boxes = []
-            for row in rows:
-                if not row.checkbox.IsChecked:
+        if picked:
+            level_boxes = boxes.setdefault(level_name, [])
+            seen = set(_box_signature(b) for b in level_boxes)
+            for entry in picked:
+                box = entry.to_box()
+                sig = _box_signature(box)
+                if sig in seen:
                     continue
-                if isinstance(row, _GroupRow):
-                    level_boxes.append({
-                        "kind": "group",
-                        "label": row.value,
-                        "room_ids": [r.room_id for r in row.records if r.room_id is not None],
-                    })
-                else:
-                    level_boxes.append({
-                        "kind": "room",
-                        "label": _room_label(row.record),
-                        "room_ids": [row.record.room_id] if row.record.room_id is not None else [],
-                    })
-            if level_boxes:
-                boxes[level_name] = level_boxes
+                seen.add(sig)
+                level_boxes.append(box)
 
-        if not boxes:
-            from pyrevit import forms
-            forms.alert(u"Не выбрано ни одного помещения/группы.",
-                        title=u"Рыба структурной схемы")
-            return
+        total_boxes = sum(len(v) for v in boxes.values())
+        if total_boxes == 0:
+            # Ничего не накоплено ни разу — сразу к выбору другого этажа,
+            # без вопроса "ещё?" (нечего завершать).
+            continue
 
-        result["boxes"] = boxes
-        win.Close()
+        switch = forms.CommandSwitchWindow.show(
+            [_CONTINUE, _FINISH],
+            message=u"Добавлено боксов: {} (этажей: {}).".format(
+                total_boxes, len([1 for v in boxes.values() if v])
+            ),
+        )
+        if switch != _CONTINUE:
+            break
 
-    cancel_btn.Click += on_cancel
-    ok_btn.Click += on_ok
-
-    outer.Children.Add(header)
-    outer.Children.Add(bottom)
-    outer.Children.Add(scroll)
-    win.Content = outer
-
-    _rebuild_body()
-
-    win.ShowDialog()
-
-    return result["boxes"]
+    return boxes if any(boxes.values()) else None
