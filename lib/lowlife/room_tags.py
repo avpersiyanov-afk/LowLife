@@ -13,15 +13,16 @@
        - `TaggedRoomId` не разрешается (АР удалил/пересоздал помещение);
        - `RoomTag.IsOrphaned`;
        - ссылка ведёт не на Room / на неразмещённый / незамкнутый Room;
-       - голова физически вышла за границы её же помещения — известная
-         грабля Revit: такая марка показывает «?», пока её не тронуть
-         руками, сам Revit это не пересчитывает (например, АР подрезал
-         контур). Не завязано на `RoomTag.HasLeader` — этот флаг бывает
-         `True` даже у визуально «безвыносочных» марок. Расстояние не
-         имеет значения: голову, ушедшую за границы куда угодно, чиним —
-         эвристика с допуском по расстоянию (не трогать «далеко уведённую,
-         осознанную» выноску) на практике давала ложноотрицательные
-         случаи (марка так и оставалась «?»), убрана 2026-09-17.
+       - точка привязки марки (`Location.Point`) физически вышла за
+         границы её же помещения — известная грабля Revit: такая марка
+         показывает «?», пока её не тронуть руками, сам Revit это не
+         пересчитывает (например, АР подрезал контур). **Не** `TagHeadPosition`
+         — при наличии выноски голова (текстовый пузырь) может визуально
+         лежать внутри помещения, пока настоящая точка привязки (откуда
+         растёт выноска) уже снаружи; проверка по голове эту ситуацию не
+         ловила вообще (найдено диагностикой 2026-09-17, см.
+         `diagnose_tag`/`DiagnoseRoomTag.pushbutton`). Расстояние не имеет
+         значения: точку, ушедшую за границы куда угодно, чиним.
      Марки, чья связь сейчас *выгружена*, не трогаются — не знаем, жива
      ли привязка.
   2. **Меняет типоразмер** всех оставшихся (не-«?») марок помещений на
@@ -262,8 +263,8 @@ def _resolve_tag_room(doc, tag):
                         координаты этого Room в координаты хоста
                         (Transform.Identity для помещения хоста, реальная
                         трансформация связи для помещения в ней) — нужно,
-                        чтобы проверить, лежит ли голова марки в его
-                        границах (см. _tag_head_in_room);
+                        чтобы проверить, лежит ли точка привязки марки в
+                        его границах (см. _tag_anchor_in_room);
       "dead"          — связь удалена из проекта, либо помещение в связи
                         исчезло (осиротевшая марка, показывает «?»);
       "link_unloaded" — связь, на которую смотрит марка, сейчас выгружена;
@@ -344,30 +345,49 @@ def _room_ok(room):
         return True
 
 
-def _tag_head(tag):
+def _tag_anchor(tag):
+    """
+    Настоящая точка привязки марки — ``tag.Location.Point``, а не
+    ``TagHeadPosition``. При наличии выноски эти две точки расходятся:
+    голова (TagHeadPosition) — это где нарисован текстовый пузырь и она
+    может лежать где угодно (в том числе обратно внутри помещения по
+    выноске), а Location.Point — фактическая «нога» марки, которую
+    Revit сверяет с границами помещения, чтобы решить, показывать «?»
+    или нет (см. _tag_anchor_in_room). Раньше здесь ошибочно проверяли
+    TagHeadPosition — из-за этого «?»-марки с выноской (голова
+    визуально лежит внутри помещения, а нога — снаружи) не ловились
+    вообще; найдено диагностикой 2026-09-17 (DiagnoseRoomTag.pushbutton).
+    """
+    try:
+        loc = tag.Location
+        if isinstance(loc, LocationPoint):
+            return loc.Point
+    except Exception:
+        pass
     try:
         return tag.TagHeadPosition
     except Exception:
         return None
 
 
-def _tag_head_in_room(head, room, transform):
+def _tag_anchor_in_room(anchor, room, transform):
     """
-    True/False — лежит ли точка head (координаты хоста) внутри границ
-    room (transform переводит координаты Room в координаты хоста — см.
-    _resolve_tag_room). None, если проверить не удалось (нет головы/
-    трансформа либо исключение) — считаем как «не внутри», чтобы марку на
-    всякий случай поправить (см. вызывающий код).
+    True/False — лежит ли точка anchor (координаты хоста, см. _tag_anchor)
+    внутри границ room (transform переводит координаты Room в координаты
+    хоста — см. _resolve_tag_room). None, если проверить не удалось (нет
+    точки/трансформа либо исключение) — считаем как «не внутри», чтобы
+    марку на всякий случай поправить (см. вызывающий код).
 
-    Известная грабля Revit: если голова марки оказалась за границей
-    помещения (например, АР подрезал контур), марка рисуется как «?» и не
-    пересчитывается сама — помогает только руками подвинуть/тронуть марку
-    либо, как здесь, переставить TagHeadPosition программно.
+    Известная грабля Revit: если точка привязки марки оказалась за
+    границей помещения (например, АР подрезал контур), марка рисуется
+    как «?» и не пересчитывается сама — помогает только руками
+    подвинуть/тронуть марку либо, как здесь, пересоздать её на верном
+    месте программно.
     """
-    if transform is None or head is None:
+    if transform is None or anchor is None:
         return None
     try:
-        local = transform.Inverse.OfPoint(head)
+        local = transform.Inverse.OfPoint(anchor)
         return bool(room.IsPointInRoom(local))
     except Exception:
         return None
@@ -474,11 +494,12 @@ def run(doc, view, tag_type_id):
         #      - tag.IsOrphaned;
         #      - привязана не к Room / к неразмещённому / незамкнутому
         #        (_room_ok == False);
-        #      - голова физически вышла за границы её же помещения (любое
-        #        расстояние) — известная грабля Revit, когда контур
+        #      - точка привязки марки (`Location.Point`, НЕ голова/
+        #        TagHeadPosition — они расходятся при наличии выноски: см.
+        #        _tag_anchor) физически вышла за границы её же помещения
+        #        (любое расстояние) — известная грабля Revit, когда контур
         #        подрезали: марка рисуется как «?» и сама не
-        #        пересчитывается. Не завязано на HasLeader — этот флаг
-        #        бывает True и у визуально «безвыносочных» марок.
+        #        пересчитывается.
         #    Марки, чья связь сейчас *выгружена* — не трогаем: не знаем,
         #    жива ли привязка (stats["link_unloaded"]).
         for tag in existing_tags:
@@ -492,8 +513,8 @@ def run(doc, view, tag_type_id):
                 broken = (kind == "dead") or _is_orphaned(tag) or not _room_ok(room)
 
                 if not broken:
-                    head = _tag_head(tag)
-                    if _tag_head_in_room(head, room, transform) is False:
+                    anchor = _tag_anchor(tag)
+                    if _tag_anchor_in_room(anchor, room, transform) is False:
                         broken = True
 
                 if broken:
@@ -587,8 +608,13 @@ def diagnose_tag(doc, tag):
     except Exception as e:
         lines.append(u"Location.Point марки: <ошибка> {}".format(e))
 
-    head = _tag_head(tag)
-    lines.append(u"TagHeadPosition: {}".format(_fmt_pt(head)))
+    try:
+        lines.append(u"TagHeadPosition: {}".format(_fmt_pt(tag.TagHeadPosition)))
+    except Exception as e:
+        lines.append(u"TagHeadPosition: <ошибка> {}".format(e))
+
+    anchor = _tag_anchor(tag)
+    lines.append(u"_tag_anchor() [Location.Point, с фолбэком на голову]: {}".format(_fmt_pt(anchor)))
 
     kind, room, transform = _resolve_tag_room(doc, tag)
     lines.append(u"_resolve_tag_room -> kind: {}".format(kind))
@@ -611,23 +637,23 @@ def diagnose_tag(doc, tag):
 
     lines.append(u"IsOrphaned: {}".format(_is_orphaned(tag)))
 
-    if room is not None and transform is not None and head is not None:
+    if room is not None and transform is not None and anchor is not None:
         try:
-            local = transform.Inverse.OfPoint(head)
-            lines.append(u"  голова в лок. координатах Room: {}".format(_fmt_pt(local)))
-            lines.append(u"  room.IsPointInRoom(голова): {}".format(room.IsPointInRoom(local)))
+            local = transform.Inverse.OfPoint(anchor)
+            lines.append(u"  anchor в лок. координатах Room: {}".format(_fmt_pt(local)))
+            lines.append(u"  room.IsPointInRoom(anchor): {}".format(room.IsPointInRoom(local)))
         except Exception as e:
-            lines.append(u"  IsPointInRoom(голова): <ошибка> {}".format(e))
+            lines.append(u"  IsPointInRoom(anchor): <ошибка> {}".format(e))
         try:
             bbox = room.get_BoundingBox(None)
             lines.append(u"  Room bbox: {} .. {}".format(_fmt_pt(bbox.Min), _fmt_pt(bbox.Max)))
         except Exception as e:
             lines.append(u"  Room bbox: <ошибка> {}".format(e))
     else:
-        lines.append(u"  (пропущена проверка головы — нет room/transform/head)")
+        lines.append(u"  (пропущена проверка anchor — нет room/transform/anchor)")
 
-    in_room_result = _tag_head_in_room(head, room, transform) if room else None
-    lines.append(u"_tag_head_in_room(): {}".format(in_room_result))
+    in_room_result = _tag_anchor_in_room(anchor, room, transform) if room else None
+    lines.append(u"_tag_anchor_in_room(): {}".format(in_room_result))
 
     key = _tagged_room_key(tag)
     lines.append(u"_tagged_room_key(): {}".format(key))
