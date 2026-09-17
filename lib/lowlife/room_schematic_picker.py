@@ -8,85 +8,80 @@
 FindRoom. Уровни (порядок и подписи) — sot_levels.sorted_level_names/
 get_level_label, та же сортировка этажей, что у СОТ/СПС/СКС.
 
-Сценарий (v6):
+Сценарий (v7):
 
-  1. Параметр деления по СЕКЦИЯМ (один раз, опционально; закрыть диалог
-     без выбора = пропустить шаг) — если у здания несколько секций, каждое
-     значение параметра даёт свою отдельную схему (свой чертёжный вид, см.
-     room_schematic.schematic_view_name). Без секций — один прогон.
-  2. Для каждой секции — этажи ПО ПОРЯДКУ, один за другим, БЕЗ вопроса "на
-     каком этаже": боксы обычно нужны на всех этажах подряд.
+  1. Четыре параметра, один раз, в этом порядке (закрыть диалог без выбора
+     = использовать значение по умолчанию — см. _ask_param):
+       а. параметр для ИМЕНИ помещения в маске (по умолчанию — встроенное
+          "Имя");
+       б. параметр для НОМЕРА помещения в маске (по умолчанию — встроенный
+          "Номер"), маска = "Имя (Номер)" (см. _room_label);
+       в. параметр для СЕКЦИИ — если у здания несколько секций, каждое
+          значение даёт свою отдельную схему/вид (по умолчанию — без
+          деления на секции, один прогон);
+       г. параметр для ОБЩЕЙ ГРУППЫ — общее значение объединяет несколько
+          помещений в один бокс схемы (по умолчанию — группы не строятся,
+          только отдельные помещения).
+  2. Для каждой секции — этажи ПО ПОРЯДКУ, один за другим (см.
+     _pick_section_boxes): на этаже сначала список отдельных помещений
+     (маска "Имя (Номер)"), затем список значений параметра общей группы,
+     найденных на этом этаже (_floor_group_values) — на схеме этажа будут
+     и то, и другое одновременно (независимо друг от друга).
 
-     На каждом этаже — ОДИН список ВСЕХ его помещений с чекбоксами
-     (_manual_pick_boxes): отмечаете, что идёт на схему. Затем, если
-     отмечено больше одного помещения — вопрос "объединить что-то из
-     отмеченного в один бокс?" (forms.alert да/нет); при "да" — ещё один
-     список с чекбоксами (уже только из отмеченного) на состав ОДНОЙ
-     группы + название бокса (forms.ask_for_string), можно повторить для
-     нескольких групп. Остальное, что не вошло ни в одну группу, — каждое
-     помещение своим отдельным боксом.
-
-     Типовые этажи: если этаж совпадает по расположению на плане (см.
-     _xy_key) с предыдущим обработанным этажом настолько, что для его
-     боксов нашлись соответствия среди помещений ЭТОГО этажа
-     (_compute_suggested_boxes) — вместо списка сразу предлагается
-     компактный выбор "Оставить как на предыдущем этаже" / "Выбрать
-     заново" (не полный список с нуля каждый раз, если этаж такой же).
-     То же самое — при возврате на уже пройденный этаж ("вернуться назад").
+     Типовые этажи/"довыбрать": то, что было выбрано (отдельные помещения
+     — по совпадению ИМЕНИ, группы — по совпадению ЗНАЧЕНИЯ) на предыдущем
+     обработанном этаже, переносится на новый этаж АВТОМАТИЧЕСКИ, без
+     отдельного вопроса — списки на новом этаже показывают только то, что
+     ЕЩЁ не перенесено (см. _pick_floor_boxes), чтобы можно было только
+     ДОБАВИТЬ недостающее; отдельным вопросом да/нет предлагается убрать
+     что-то из перенесённого, если этаж всё же отличается. То же самое —
+     при возврате на уже пройденный этаж (см. "Вернуться к другому этажу").
 
      После этажа — "Следующий этаж" (по умолчанию) / "Вернуться к другому
-     этажу" (список всех этажей секции — поправить прошлый или перескочить
-     вперёд) / "Завершить и построить".
+     этажу" / "Завершить и построить".
 
-Возвращает OrderedDict(section_label -> OrderedDict(level_name -> [box, ...])),
-section_label=None, если деления по секциям не было (один-единственный
-элемент словаря). None, если в итоге ничего не выбрано ни в одной секции.
+  3. Когда все секции пройдены — имя чертёжного вида (forms.ask_for_string;
+     для нескольких секций к нему добавляется "— <секция>", см.
+     room_schematic.schematic_view_name).
+
+Возвращает (view_base_name, OrderedDict(section_label ->
+OrderedDict(level_name -> [box, ...]))), section_label=None, если деления
+на секции не было. None, если в итоге ничего не выбрано ни в одной секции.
 
 ИСТОРИЯ (важно при дальнейшей правке — здесь нет живого Revit для проверки,
 см. CLAUDE.md, поэтому ориентируйтесь на неё, а не угадывайте заново):
-  - v3 показывала сразу один список с ПРЕДВАРИТЕЛЬНО отмеченными похожими
-    помещениями через forms.TemplateListItem — в реальном Revit это
-    вызывало пустой белый экран при нажатии "Сохранить". Убрано.
-  - v5 использовала forms.CommandSwitchWindow почти на каждом шаге — после
-    этого пользователь сообщил, что кнопка вообще ничего не строит (до
-    финального алерта дело не доходило). forms.CommandSwitchWindow здесь
-    БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ — подозревается как минимум ненадёжным в этом
-    окружении, вместо неё везде обычный forms.SelectFromList (single-select
-    список из строк вместо кнопок) — тот же самый API, что применяется по
-    всему проекту без нареканий (см. ToolsRooms.panel/FindRoom и т.д.).
-  - v6 (текущая) также заменила автоматическую группировку "по значению
-    параметра" (нужно было сперва угадать/выбрать подходящий параметр) на
-    ручную — пользователь сам отмечает чекбоксами, что объединить, это и
-    проще для восприятия, и не зависит от того, заведён ли вообще в
-    проекте подходящий параметр.
+  - Ранняя версия показывала список с ПРЕДВАРИТЕЛЬНО отмеченными похожими
+    помещениями через forms.TemplateListItem — в реальном Revit это вызвало
+    пустой белый экран при нажатии "Сохранить". Больше не используется.
+  - Другая версия использовала forms.CommandSwitchWindow почти на каждом
+    шаге — после этого пользователь сообщил, что кнопка вообще ничего не
+    строит. forms.CommandSwitchWindow тоже больше не используется.
+  - Единственные formsAPI, которыми пользуется этот файл сейчас —
+    forms.SelectFromList (обычные объекты, без предотметок),
+    forms.alert(yes=True, no=True) и forms.ask_for_string — у каждого есть
+    рабочий прецедент в другом месте этого же проекта (см. ниже по коду).
+    Не добавляйте сюда другие формы pyRevit без крайней необходимости.
 """
 
 from collections import OrderedDict
 
 from pyrevit import forms
 
+from lowlife import room_finder
+from lowlife.params import get_param_any
 from lowlife.room_finder import natural_key
+from lowlife.room_schematic import SCHEMATIC_VIEW_NAME
 from lowlife.sot_levels import sorted_level_names, get_level_label
-
-_NO_SECTIONS = u"(одна схема для всех, без секций)"
 
 _NEXT = u"Следующий этаж"
 _BACK = u"Вернуться к другому этажу"
 _FINISH = u"Завершить и построить"
 
-_KEEP = u"Оставить как на предыдущем этаже"
-_REDO = u"Выбрать заново"
-
-# Округление центра bbox помещения (футы) при сравнении "то же место на
-# плане" между этажами (см. _xy_key) — типовые этажи в реальных моделях
-# стыкуются не пиксель-в-пиксель, небольшой допуск нужен.
-_XY_GRID_FT = 1.0
-
 
 def list_room_param_names(records):
     """
     Отсортированный список имён параметров, встречающихся хотя бы на одном
-    помещении из records — для выбора параметра деления на секции.
+    помещении из records — для всех четырёх диалогов выбора параметра.
     Объединение (не пересечение): у части помещений (особенно из разных
     связей/типов) набор параметров может отличаться, показываем всё, что
     вообще где-то есть, а не только общее для всех сразу.
@@ -103,29 +98,53 @@ def list_room_param_names(records):
     return sorted(names, key=lambda n: n.lower())
 
 
-def _room_label(record):
-    number = (record.number or u"").strip()
-    name = (record.name or u"").strip()
-    if number and name:
-        return u"{} {}".format(number, name)
-    return number or name or u"(без имени)"
+def _ask_param(param_names, title):
+    """Имя выбранного параметра, либо None (использовать значение по
+    умолчанию) — как явным закрытием диалога, так и (защитно) отсутствием
+    выбора. См. модульный докстринг про то, почему это не считается
+    отменой всего сценария."""
+    choice = forms.SelectFromList.show(
+        param_names,
+        title=u"{} (закройте окно без выбора, чтобы использовать значение по умолчанию)".format(title),
+        button_name=u"Выбрать",
+        multiselect=False,
+    )
+    return choice or None
 
 
-def _xy_key(record):
-    """
-    Ключ "то же место на плане" — округлённый XY-центр bbox помещения
-    (record.bbox уже в координатах ХОСТА и для связей — см. room_finder).
-    None, если у помещения нет bbox (не должно случаться для размещённых
-    помещений, но на всякий случай). Используется только для подсказки
-    (подбор похожих боксов на новом этаже), поэтому округление достаточно
-    грубое — не идентификатор, не для сохранения.
-    """
-    if not record.bbox:
-        return None
-    min_pt, max_pt = record.bbox
-    cx = (min_pt.X + max_pt.X) / 2.0
-    cy = (min_pt.Y + max_pt.Y) / 2.0
-    return (round(cx / _XY_GRID_FT), round(cy / _XY_GRID_FT))
+def _name_value(record, name_param):
+    """Имя помещения для маски — параметр из настроек, если задан и
+    заполнен, иначе встроенное имя (record.name)."""
+    if not name_param:
+        return record.name
+    value = get_param_any(record.room, name_param)
+    return value.strip() if value else record.name
+
+
+def _room_label(record, name_param, number_param):
+    name = (_name_value(record, name_param) or u"").strip()
+    number = (room_finder.number_value(record, number_param) or u"").strip()
+    if name and number:
+        return u"{} ({})".format(name, number)
+    return name or number or u"(без имени)"
+
+
+def _floor_group_values(level_records, group_param):
+    """OrderedDict(value -> [record, ...]) — непустые значения group_param
+    среди помещений ЭТОГО этажа, в порядке появления. {} если параметр
+    общей группы не задан."""
+    groups = OrderedDict()
+    if not group_param:
+        return groups
+    for record in level_records:
+        value = room_finder.type_value(record, group_param)
+        if value:
+            groups.setdefault(value, []).append(record)
+    return groups
+
+
+def _box_signature(box):
+    return box["kind"], box["label"], tuple(sorted(box["room_ids"]))
 
 
 def _build_level_groups(records):
@@ -160,8 +179,6 @@ def _split_into_sections(records, section_param):
     if not section_param:
         return OrderedDict([(None, list(records))])
 
-    from lowlife.params import get_param_any
-
     buckets = OrderedDict()
     empty_label = u"Без секции"
     for record in records:
@@ -189,33 +206,54 @@ class _LevelOption(object):
 
 
 class _RoomEntry(object):
-    """Один пункт списка выбора — отдельное помещение."""
+    """Один пункт списка выбора — отдельное помещение как свой бокс."""
 
-    def __init__(self, record):
+    def __init__(self, record, name_param, number_param):
         self.record = record
+        self.name_param = name_param
+        self.number_param = number_param
 
     def __str__(self):
-        return _room_label(self.record)
+        return _room_label(self.record, self.name_param, self.number_param)
 
     def to_box(self):
         return {
             "kind": "room",
-            "label": _room_label(self.record),
+            "label": _room_label(self.record, self.name_param, self.number_param),
             "room_ids": [self.record.room_id] if self.record.room_id is not None else [],
         }
 
 
-def _ask_section_param(records):
-    param_names = list_room_param_names(records)
-    choice = forms.SelectFromList.show(
-        [_NO_SECTIONS] + param_names,
-        title=u"Параметр деления на секции (если у здания несколько секций)",
-        button_name=u"Выбрать",
-        multiselect=False,
-    )
-    if not choice or choice == _NO_SECTIONS:
-        return None
-    return choice
+class _GroupValueEntry(object):
+    """Один пункт списка выбора — значение параметра общей группы, целиком
+    как один будущий бокс схемы."""
+
+    def __init__(self, value, records):
+        self.value = value
+        self.records = records
+
+    def __str__(self):
+        return u"▦ {} ({} пом.) — один бокс".format(self.value, len(self.records))
+
+    def to_box(self):
+        return {
+            "kind": "group",
+            "label": self.value,
+            "room_ids": [r.room_id for r in self.records if r.room_id is not None],
+        }
+
+
+class _CarriedEntry(object):
+    """Один пункт списка "что убрать из перенесённого" — оборачивает уже
+    готовый box-словарь (перенесённый с предыдущего этажа), не запись
+    помещения."""
+
+    def __init__(self, box):
+        self.box = box
+
+    def __str__(self):
+        kind_label = u"группа" if self.box["kind"] == "group" else u"помещение"
+        return u"{}: {}".format(kind_label, self.box["label"])
 
 
 def _ask_jump_to_level(level_order, boxes, section_label=None):
@@ -240,136 +278,132 @@ def _ask_jump_to_level(level_order, boxes, section_label=None):
     return picked.level_name if picked else None
 
 
-def _manual_pick_boxes(level_records, level_label, prefix):
+def _compute_carry_over(reference_boxes, level_records, records_by_id, name_param, number_param, group_param):
     """
-    Список ВСЕХ помещений этажа с чекбоксами -> из отмеченных, по желанию,
-    ручная группировка (несколько раундов "отметьте, что объединить в один
-    бокс" + название бокса) -> всё, что не вошло ни в одну группу, — каждое
-    помещение своим отдельным боксом. Возвращает [box, ...] (может быть
-    пустым, если ничего не отмечено/отменено).
-    """
-    entries = [_RoomEntry(r) for r in sorted(level_records, key=lambda r: natural_key(r.number))]
-
-    picked = forms.SelectFromList.show(
-        entries,
-        title=u"{}{} — отметьте помещения для схемы".format(prefix, level_label),
-        button_name=u"Далее",
-        multiselect=True,
-    )
-    if not picked:
-        return []
-
-    remaining = list(picked)
-    boxes = []
-
-    while len(remaining) >= 2:
-        combine = forms.alert(
-            u"Объединить несколько из отмеченных помещений в один бокс (группу)?\n\n"
-            u"Ещё не сгруппированы: {}".format(u", ".join(str(e) for e in remaining)),
-            title=u"{}{} — группировка".format(prefix, level_label),
-            yes=True, no=True,
-        )
-        if not combine:
-            break
-
-        group_entries = forms.SelectFromList.show(
-            remaining,
-            title=u"Какие помещения объединить в один бокс?",
-            button_name=u"Объединить",
-            multiselect=True,
-        )
-        if not group_entries or len(group_entries) < 2:
-            forms.alert(u"Нужно отметить минимум два помещения для группы.",
-                        title=u"Рыба структурной схемы")
-            continue
-
-        default_label = group_entries[0].record.name or u"Группа"
-        label = forms.ask_for_string(
-            default=default_label,
-            prompt=u"Название бокса для этой группы:",
-            title=u"Рыба структурной схемы",
-        )
-        if not label:
-            continue
-
-        room_ids = [e.record.room_id for e in group_entries if e.record.room_id is not None]
-        boxes.append({"kind": "group", "label": label, "room_ids": room_ids})
-        for e in group_entries:
-            remaining.remove(e)
-
-    for e in remaining:
-        boxes.append(e.to_box())
-
-    return boxes
-
-
-def _compute_suggested_boxes(reference_boxes, level_records, records_by_id):
-    """
-    box-словари, подходящие для ТЕКУЩЕГО этажа (level_records) — перенос
-    боксов reference_boxes (сохранённых на предыдущем обработанном этаже)
-    туда, где на этом этаже нашлись помещения в тех же местах на плане
-    (см. _xy_key). Группа переносится, если так совпадает большинство её
-    помещений; одиночный бокс — только при полном совпадении (у него и
-    так одно помещение). Пустой список, если общего не нашлось.
+    box-словари, автоматически переносимые на этот этаж с предыдущего
+    обработанного (reference_boxes) — отдельные помещения по совпадению
+    ИМЕНИ (не номера — тот обычно на каждом этаже свой), группы по
+    точному совпадению ЗНАЧЕНИЯ параметра общей группы. Пустой список,
+    если сравнивать не с чем или совпадений не нашлось.
     """
     if not reference_boxes:
         return []
 
-    current_by_xy = {}
+    current_by_name = {}
     for record in level_records:
-        key = _xy_key(record)
-        if key is not None and key not in current_by_xy:
-            current_by_xy[key] = record
+        key = _name_value(record, name_param)
+        if key and key not in current_by_name:
+            current_by_name[key] = record
 
-    suggested = []
+    current_group_values = _floor_group_values(level_records, group_param)
+
+    carried = []
     for ref_box in reference_boxes:
-        matched = []
-        for rid in ref_box["room_ids"]:
-            ref_record = records_by_id.get(rid)
-            key = _xy_key(ref_record) if ref_record is not None else None
-            if key is not None and key in current_by_xy:
-                matched.append(current_by_xy[key])
-        if not matched or not ref_box["room_ids"]:
-            continue
-        if (len(matched) / float(len(ref_box["room_ids"]))) < 0.5:
-            continue
-        suggested.append({
-            "kind": ref_box["kind"],
-            "label": ref_box["label"],
-            "room_ids": [r.room_id for r in matched if r.room_id is not None],
-        })
+        if ref_box["kind"] == "group":
+            value = ref_box["label"]
+            recs = current_group_values.get(value)
+            if recs:
+                carried.append({
+                    "kind": "group",
+                    "label": value,
+                    "room_ids": [r.room_id for r in recs if r.room_id is not None],
+                })
+        else:
+            ref_room_id = ref_box["room_ids"][0] if ref_box["room_ids"] else None
+            ref_record = records_by_id.get(ref_room_id) if ref_room_id is not None else None
+            if ref_record is None:
+                continue
+            match = current_by_name.get(_name_value(ref_record, name_param))
+            if match is not None:
+                carried.append({
+                    "kind": "room",
+                    "label": _room_label(match, name_param, number_param),
+                    "room_ids": [match.room_id] if match.room_id is not None else [],
+                })
 
-    return suggested
+    return carried
 
 
-def _resolve_level_boxes(level_records, level_name, section_label, baseline):
+def _pick_floor_boxes(level_records, level_name, section_label, baseline, name_param, number_param, group_param):
     """
-    Итоговый список box-словарей для этажа, либо None, если менять нечего
-    (отмена — вызывающий код должен оставить boxes[level_name] как было).
-    baseline — уже сохранённый для этого этажа набор (повторный заход) либо
-    автоподбор по типовому этажу (см. _compute_suggested_boxes); пустой
-    список/None, если сравнивать не с чем — тогда сразу обычный ручной выбор.
+    Итоговый список box-словарей для этажа. baseline — то, что уже
+    перенесено автоматически (типовой этаж) или сохранено раньше
+    (повторный заход) — списки ниже показывают только то, что ЕЩЁ не в
+    baseline (см. модульный докстринг), плюс отдельный вопрос про удаление
+    чего-то из baseline, если он не пуст.
     """
     prefix = u"[{}] ".format(section_label) if section_label else u""
     level_label = get_level_label(level_name)
 
-    if baseline:
-        labels = u", ".join(b["label"] for b in baseline)
-        choice = forms.SelectFromList.show(
-            [_KEEP, _REDO],
-            title=u"{}{}: похоже на другой этаж — {}".format(prefix, level_label, labels),
-            button_name=u"Выбрать",
-            multiselect=False,
+    baseline_room_ids = set()
+    for b in baseline:
+        baseline_room_ids.update(b["room_ids"])
+    baseline_group_values = set(b["label"] for b in baseline if b["kind"] == "group")
+    carried_labels = u", ".join(b["label"] for b in baseline)
+
+    # --- отдельные помещения: что добавить ---
+    remaining_records = [r for r in level_records if r.room_id not in baseline_room_ids]
+    room_entries = [
+        _RoomEntry(r, name_param, number_param)
+        for r in sorted(remaining_records, key=lambda r: natural_key(room_finder.number_value(r, number_param)))
+    ]
+
+    added_rooms = []
+    if room_entries:
+        title = u"{}{} — отметьте помещения для схемы".format(prefix, level_label)
+        if baseline:
+            title = (
+                u"{}{}: с предыдущего этажа уже перенесено — {}. "
+                u"Отметьте, какие ЕЩЁ отдельные помещения добавить."
+            ).format(prefix, level_label, carried_labels)
+        picked = forms.SelectFromList.show(room_entries, title=title, button_name=u"Добавить", multiselect=True)
+        if picked:
+            added_rooms = [entry.to_box() for entry in picked]
+
+    # --- группы: что добавить ---
+    floor_groups = _floor_group_values(level_records, group_param)
+    remaining_groups = OrderedDict(
+        (value, recs) for value, recs in floor_groups.items() if value not in baseline_group_values
+    )
+
+    added_groups = []
+    if remaining_groups:
+        group_entries = [_GroupValueEntry(value, recs) for value, recs in remaining_groups.items()]
+        picked = forms.SelectFromList.show(
+            group_entries,
+            title=u"{}{} — какие группы объединить в отдельный бокс".format(prefix, level_label),
+            button_name=u"Добавить",
+            multiselect=True,
         )
-        if not choice:
-            return None
-        if choice == _KEEP:
-            return list(baseline)
+        if picked:
+            added_groups = [entry.to_box() for entry in picked]
 
-    return _manual_pick_boxes(level_records, level_label, prefix)
+    # --- что убрать из перенесённого ---
+    kept_baseline = list(baseline)
+    if baseline:
+        remove_something = forms.alert(
+            u"{}{}: перенесено с предыдущего этажа — {}.\n\nУбрать что-то из этого списка?".format(
+                prefix, level_label, carried_labels
+            ),
+            title=u"Рыба структурной схемы",
+            yes=True, no=True,
+        )
+        if remove_something:
+            remove_entries = [_CarriedEntry(b) for b in baseline]
+            picked = forms.SelectFromList.show(
+                remove_entries,
+                title=u"{}{} — отметьте, что убрать".format(prefix, level_label),
+                button_name=u"Убрать отмеченное",
+                multiselect=True,
+            )
+            if picked:
+                remove_signatures = set(_box_signature(entry.box) for entry in picked)
+                kept_baseline = [b for b in baseline if _box_signature(b) not in remove_signatures]
+
+    return kept_baseline + added_rooms + added_groups
 
 
-def _pick_section_boxes(section_records, records_by_id, section_label=None):
+def _pick_section_boxes(section_records, records_by_id, name_param, number_param, group_param, section_label=None):
     """
     Проход по этажам ОДНОЙ секции (или всего проекта, если секций нет —
     section_label=None) — по порядку, без вопроса "на каком этаже": боксы
@@ -396,15 +430,16 @@ def _pick_section_boxes(section_records, records_by_id, section_label=None):
 
         baseline = existing_boxes
         if not baseline and level_name not in visited_levels and last_level_with_boxes is not None:
-            baseline = _compute_suggested_boxes(
-                boxes.get(last_level_with_boxes, []), level_records, records_by_id
+            baseline = _compute_carry_over(
+                boxes.get(last_level_with_boxes, []), level_records, records_by_id,
+                name_param, number_param, group_param
             )
 
         visited_levels.add(level_name)
 
-        resolved = _resolve_level_boxes(level_records, level_name, section_label, baseline)
-        if resolved is not None:
-            boxes[level_name] = resolved
+        boxes[level_name] = _pick_floor_boxes(
+            level_records, level_name, section_label, baseline, name_param, number_param, group_param
+        )
 
         if boxes.get(level_name):
             last_level_with_boxes = level_name
@@ -442,24 +477,45 @@ def _pick_section_boxes(section_records, records_by_id, section_label=None):
 
 def show(doc, records):
     """
-    Ведёт пользователя через весь цикл выбора (секции — один раз, затем по
-    каждой секции — этаж -> боксы на нём, см. _pick_section_boxes).
-    Возвращает OrderedDict(section_label -> OrderedDict(level_name ->
-    [box, ...])) — section_label=None, если секций не было (единственный
-    элемент словаря). None, если в итоге ничего не выбрано ни в одной секции.
+    Ведёт пользователя через весь сценарий (см. модульный докстринг).
+    Возвращает (view_base_name, OrderedDict(section_label ->
+    OrderedDict(level_name -> [box, ...]))), либо None, если в итоге
+    ничего не выбрано ни в одной секции.
     """
     if not records:
         return None
 
-    section_param = _ask_section_param(records)
+    param_names = list_room_param_names(records)
+    name_param = _ask_param(param_names, u"Параметр для имени помещения")
+    number_param = _ask_param(param_names, u"Параметр для номера помещения")
+    section_param = _ask_param(
+        param_names, u"Параметр для номера секции (по нему будет несколько схем)"
+    )
+    group_param = _ask_param(
+        param_names, u"Параметр для объединения нескольких помещений в общую группу"
+    )
 
     records_by_id = dict((r.room_id, r) for r in records if r.room_id is not None)
     sections = _split_into_sections(records, section_param)
 
     result = OrderedDict()
     for section_label, section_records in sections.items():
-        boxes = _pick_section_boxes(section_records, records_by_id, section_label)
+        boxes = _pick_section_boxes(
+            section_records, records_by_id, name_param, number_param, group_param, section_label
+        )
         if any(boxes.values()):
             result[section_label] = boxes
 
-    return result if result else None
+    if not result:
+        return None
+
+    view_name = forms.ask_for_string(
+        default=SCHEMATIC_VIEW_NAME,
+        prompt=u"Имя чертёжного вида схемы"
+               + (u" (для секций к нему добавится «— <секция>»)" if len(result) > 1 else u"") + u":",
+        title=u"Рыба структурной схемы",
+    )
+    if not view_name:
+        view_name = SCHEMATIC_VIEW_NAME
+
+    return view_name, result

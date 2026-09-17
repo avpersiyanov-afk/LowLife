@@ -37,14 +37,16 @@ from lowlife.sot_schematic import (
 SCHEMATIC_VIEW_NAME = u"Структурная схема (черновик)"
 
 
-def schematic_view_name(section_label):
-    """Имя чертёжного вида для одной секции — базовое имя без изменений,
-    если секций нет (section_label=None, как раньше), иначе с суффиксом
-    значения секции — по одному виду на секцию (см. room_schematic_picker.
-    show/_split_into_sections)."""
+def schematic_view_name(base_name, section_label):
+    """Имя чертёжного вида для одной секции — base_name (имя, которое
+    пользователь ввёл в room_schematic_picker.show, по умолчанию
+    SCHEMATIC_VIEW_NAME) без изменений, если секций нет (section_label=
+    None), иначе с суффиксом значения секции — по одному виду на секцию
+    (см. room_schematic_picker._split_into_sections)."""
+    base_name = base_name or SCHEMATIC_VIEW_NAME
     if not section_label:
-        return SCHEMATIC_VIEW_NAME
-    return u"{} — {}".format(SCHEMATIC_VIEW_NAME, section_label)
+        return base_name
+    return u"{} — {}".format(base_name, section_label)
 
 # Максимальная ширина одного ряда боксов на этаже, мм — после этой ширины
 # следующий бокс переносится на новую строку ниже (см. _place_level_boxes),

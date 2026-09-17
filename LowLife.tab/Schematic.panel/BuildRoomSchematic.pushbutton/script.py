@@ -18,17 +18,19 @@ if not records:
         exitscript=True,
     )
 
-sections = room_schematic_picker.show(doc, records)
-if not sections:
+picked = room_schematic_picker.show(doc, records)
+if not picked:
     import sys
     sys.exit()
+
+base_view_name, sections = picked
 
 # Проверка/подбор вида на КАЖДУЮ секцию — до открытия транзакции (только
 # чтение модели), чтобы ошибка конфликта имени вида остановила скрипт
 # раньше, чем что-либо начнёт строиться (см. room_schematic.check_view).
 view_plans = []
 for section_label, boxes in sections.items():
-    view_name = room_schematic.schematic_view_name(section_label)
+    view_name = room_schematic.schematic_view_name(base_view_name, section_label)
     existing_view, drafting_type_id, error = room_schematic.check_view(doc, view_name)
     if error:
         forms.alert(error, title=u"Рыба структурной схемы", exitscript=True)
