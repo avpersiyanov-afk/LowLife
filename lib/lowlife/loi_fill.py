@@ -19,12 +19,21 @@ box): для точечных элементов (LocationPoint) — попад�
 клонировать нечего, он идёт в список конфликтов, где источник выбирает
 пользователь (see loi_conflict_dialog.py). Элемент, попавший ровно в одну
 форму, клонируется автоматически.
+
+«Формы» ищутся и в текущем файле, и во всех загруженных связях (обычно
+это категория из связанной архитектурной модели) — геометрия и bbox
+элементов связи трансформируются в координаты текущего файла через
+RevitLinkInstance.GetTotalTransform(), тем же способом, что и у обычного
+элемента текущего файла, только с дополнительным Transform. Кандидаты
+(элементы, которые заполняются) ищутся только в текущем файле — писать
+параметры в элементы связи API не позволяет (это отдельный открытый
+Document, а не часть текущей транзакции).
 """
 
 from Autodesk.Revit.DB import (
     Element, FilteredElementCollector, Options, Solid, GeometryInstance,
     LocationPoint, LocationCurve, Line, XYZ, SolidCurveIntersectionOptions,
-    CategoryType, ViewDetailLevel
+    CategoryType, ViewDetailLevel, RevitLinkInstance, SolidUtils, BoundingBoxXYZ
 )
 
 from lowlife import params as params_mod
@@ -53,8 +62,12 @@ def _iter_solids(geometry_element):
     return solids
 
 
-def get_element_solids(el):
-    """Все твёрдые тела элемента (Volume > 0) в мировых координатах."""
+def get_element_solids(el, extra_transform=None):
+    """
+    Все твёрдые тела элемента (Volume > 0), в координатах его собственного
+    документа. extra_transform (например RevitLinkInstance.GetTotalTransform())
+    — для элемента из связи, чтобы получить солид в координатах текущего файла.
+    """
     opts = Options()
     opts.ComputeReferences = False
     opts.IncludeNonVisibleObjects = False
@@ -68,7 +81,40 @@ def get_element_solids(el):
     if geom is None:
         return []
 
-    return _iter_solids(geom)
+    solids = _iter_solids(geom)
+
+    if extra_transform is None or extra_transform.IsIdentity:
+        return solids
+
+    transformed = []
+    for solid in solids:
+        try:
+            transformed.append(SolidUtils.CreateTransformed(solid, extra_transform))
+        except:
+            transformed.append(solid)
+    return transformed
+
+
+def _transform_bbox(bbox, transform):
+    """Bbox элемента связи (в координатах связи) -> bbox в координатах текущего файла."""
+    if bbox is None:
+        return None
+    if transform is None or transform.IsIdentity:
+        return bbox
+
+    xs, ys, zs = [], [], []
+    for x in (bbox.Min.X, bbox.Max.X):
+        for y in (bbox.Min.Y, bbox.Max.Y):
+            for z in (bbox.Min.Z, bbox.Max.Z):
+                p = transform.OfPoint(XYZ(x, y, z))
+                xs.append(p.X)
+                ys.append(p.Y)
+                zs.append(p.Z)
+
+    new_bbox = BoundingBoxXYZ()
+    new_bbox.Min = XYZ(min(xs), min(ys), min(zs))
+    new_bbox.Max = XYZ(max(xs), max(ys), max(zs))
+    return new_bbox
 
 
 def point_in_solid(solid, pt, tol=POINT_TOL_FT):
@@ -161,17 +207,15 @@ class FormRecord(object):
         self.label = label
 
 
-def find_forms(doc, view, category_name):
-    """Элементы категории category_name, видимые на view, у которых нашёлся хотя бы один солид."""
+def _collect_form_records(collector, category_name, type_doc, transform, source_label):
     records = []
 
-    collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
     for el in collector:
         cat = el.Category
         if cat is None or cat.Name != category_name:
             continue
 
-        solids = get_element_solids(el)
+        solids = get_element_solids(el, transform)
         if not solids:
             continue
 
@@ -179,9 +223,46 @@ def find_forms(doc, view, category_name):
             bbox = el.get_BoundingBox(None)
         except:
             bbox = None
+        bbox = _transform_bbox(bbox, transform)
 
-        label = u"{} (ID {})".format(element_display_name(doc, el), el.Id.IntegerValue)
+        label = u"{} (ID {})".format(element_display_name(type_doc, el), el.Id.IntegerValue)
+        if source_label:
+            label = u"{} [{}]".format(label, source_label)
+
         records.append(FormRecord(el, solids, bbox, label))
+
+    return records
+
+
+def find_forms(doc, view, category_name):
+    """
+    Элементы категории category_name — в текущем файле (видимые на view) и
+    во всех загруженных связях (без привязки к виду — у связи нет вида
+    текущего файла; геометрия/bbox трансформируются в координаты текущего
+    файла через RevitLinkInstance.GetTotalTransform()).
+    """
+    records = []
+
+    host_collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
+    records.extend(_collect_form_records(host_collector, category_name, doc, None, u""))
+
+    link_collector = FilteredElementCollector(doc).OfClass(RevitLinkInstance)
+    for link_inst in link_collector:
+        try:
+            link_doc = link_inst.GetLinkDocument()
+        except:
+            link_doc = None
+        if link_doc is None:
+            continue
+
+        try:
+            transform = link_inst.GetTotalTransform()
+        except:
+            transform = None
+
+        link_name = _safe_name(link_inst)
+        link_elems = FilteredElementCollector(link_doc).WhereElementIsNotElementType()
+        records.extend(_collect_form_records(link_elems, category_name, link_doc, transform, link_name))
 
     return records
 
