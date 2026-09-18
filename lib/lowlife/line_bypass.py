@@ -3,50 +3,67 @@ u"""
 Дуга обхода на пересечении линий детализации — не привязано к дисциплине,
 любой чертёжный/иной вид с линиями детализации.
 
-Сценарий (см. lib/README.md): диаметр дуги запрашивается ОДИН раз в начале
-запуска. Дальше выбирается одна ИЛИ несколько «базовых» линий (остаются
-целыми, без разрыва), затем — одна ИЛИ несколько «вторых» линий за один
-PickObjects. Каждая вторая линия разрывается ОДИН раз — в месте, где она
-пересекает базовые линии, — и разрыв соединяется дугой; повторного запроса
-диаметра нет.
+Сценарий (см. lib/README.md): диаметр дуги и режим обхода запрашиваются
+ОДИН раз в начале запуска. Дальше выбирается одна ИЛИ несколько «базовых»
+линий (остаются целыми, без разрыва), затем — одна ИЛИ несколько «вторых»
+линий за один PickObjects. Каждая вторая линия разрывается там, где она
+пересекает базовые линии, и разрыв соединяется дугой; повторного запроса
+диаметра/режима нет.
 
-Если вторая линия пересекает несколько базовых линий сразу (типовой случай
-— одна линия обходит целый пучок соседних линий), вместо N мелких дуг по
-одной на каждое пересечение строится ОДНА большая дуга, накрывающая сразу
-все пересечения этой второй линии: вырезаемый прямой участок растягивается
-от первого до последнего пересечения (по расстоянию вдоль второй линии) с
-запасом radius_ft по каждому краю — тем же diameter, что был бы диаметром
-дуги при одиночном пересечении. При ровно одном пересечении формула
-вырождается в старый случай (единственная точка — сама себе и минимум, и
-максимум), поэтому это одна и та же функция без раздельных веток "малая
-дуга" / "большая дуга".
+Режим обхода (ask_bypass_mode) — явный выбор пользователя, а не
+автоматическое определение по числу пересечений:
+  - «Одиночный» (bundle_mode=False) — если вторая линия пересекает
+    несколько базовых, на КАЖДОМ пересечении отдельно строится своя
+    маленькая дуга ровно введённого диаметра (несколько дуг подряд на
+    одной линии, если пересечений несколько).
+  - «Множественный» (bundle_mode=True) — все пересечения этой второй
+    линии с базовыми объединяются в ОДНУ большую дугу, накрывающую сразу
+    весь пучок: вырезаемый прямой участок растягивается от первого до
+    последнего пересечения (по расстоянию вдоль второй линии) с запасом
+    radius_ft по каждому краю — тем же diameter, что был бы диаметром
+    дуги при одиночном пересечении.
 
-Диаметр — это диаметр дуги в буквальном смысле для случая одного
-пересечения: вырезается прямой участок длиной ровно diameter, а дуга —
-ровно полуокружность этого диаметра (обе точки разрыва и выбранная
-"верхняя" точка обхода равноудалены от точки пересечения на radius_ft —
-точка пересечения оказывается центром окружности, а c1-c2 — её диаметром,
-поэтому Arc.Create(c1, c2, bulge_point) всегда даёт полуокружность). При
-нескольких пересечениях центр окружности — уже не сама точка пересечения
-(пересечений несколько), а середина между c1 и c2 — принцип тот же, просто
-хорда длиннее.
+Оба режима считаются ОДНОЙ и той же функцией (_plan_span): группировка
+пересечений в один "пролёт" (множественный) или в отдельные "пролёты" по
+одному на пересечение (одиночный) происходит только в group_crossing_positions,
+дальше код общий. При ровно одном пересечении оба режима дают одинаковый
+результат (единственная точка — сама себе и минимум, и максимум).
+
+Диаметр — это диаметр дуги в буквальном смысле для одиночного пролёта
+(одно пересечение): вырезается прямой участок длиной ровно diameter, а
+дуга — ровно полуокружность этого диаметра (обе точки разрыва и выбранная
+"верхняя" точка обхода равноудалены от центра пролёта на radius_ft — этот
+центр оказывается центром окружности, а c1-c2 — её диаметром, поэтому
+Arc.Create(c1, c2, bulge_point) даёт РОВНО полуокружность — открытую дугу,
+никогда не замкнутую окружность, т.к. c1 и c2 — две РАЗНЫЕ точки на этой
+окружности, а не одна и та же). При нескольких пересечениях (множественный
+режим) центр — уже середина между c1 и c2, не сама точка пересечения (их
+несколько) — принцип и гарантия "дуга, не окружность" те же, хорда просто
+длиннее.
+
+При «Одиночном» режиме с несколькими пересечениями на одной линии пролёты
+(по одному на пересечение) не должны накладываться друг на друга — если
+для заданного диаметра два соседних пересечения расположены слишком
+близко, вся вторая линия пропускается с понятной ошибкой (предлагающей
+уменьшить диаметр или переключиться на «Множественный»), а не тихо
+сливается в одну дугу за спиной пользователя.
 
 Сторона обхода (в какую сторону от второй линии выгибается дуга) не
 выводится по какому-то жёсткому правилу — пользователь указывает её сам
-кликом (PickPoint) для каждой второй линии отдельно, т.к. заранее
+кликом (PickPoint) для каждого пролёта отдельно, т.к. заранее
 детерминированное правило может "наехать" на соседние элементы чертежа.
 Перед каждым таким кликом соответствующая вторая линия подсвечивается
-(выделяется) в модели — иначе при обходе нескольких линий подряд легко
-потерять, к какой из них относится текущий запрос стороны.
+(выделяется) в модели — иначе при обходе нескольких линий/пролётов подряд
+легко потерять, к какой из них относится текущий запрос стороны.
 
 Оригинальная вторая линия не переиспользуется (не меняется её
 GeometryCurve на месте) — вместо этого удаляется и на её месте создаются
-три новых DetailCurve (прямой-дуга-прямой), как и в других местах проекта
-предпочитается delete+recreate вместо рискованной правки существующего
-элемента "на месте" (см. sot_schematic.sync_rooms_in_level в lib/README.md
-про марки узлов) — так меньше риск наткнуться на неожиданное поведение
-GeometryCurve-сеттера, которое здесь негде проверить вживую (нет Revit
-под рукой, см. CLAUDE.md).
+новые DetailCurve (прямая-дуга-прямая-дуга-...-прямая, по числу пролётов),
+как и в других местах проекта предпочитается delete+recreate вместо
+рискованной правки существующего элемента "на месте" (см.
+sot_schematic.sync_rooms_in_level в lib/README.md про марки узлов) — так
+меньше риск наткнуться на неожиданное поведение GeometryCurve-сеттера,
+которое здесь негде проверить вживую (нет Revit под рукой, см. CLAUDE.md).
 """
 
 import math
@@ -61,6 +78,8 @@ from pyrevit import revit, forms
 MM_TO_FEET = 1.0 / 304.8
 
 DEFAULT_DIAMETER_MM = 20.0
+
+EPS_FT = 1e-6
 
 
 class _DetailLineSelectionFilter(ISelectionFilter):
@@ -87,17 +106,16 @@ class _DetailLineSelectionFilter(ISelectionFilter):
 def ask_diameter_mm():
     u"""
     Запрашивает диаметр дуги обхода, мм — для одиночного пересечения это
-    диаметр дуги целиком, а при обходе нескольких линий сразу — запас по
-    каждому краю групповой дуги (см. docstring модуля). None, если
-    отменено.
+    диаметр дуги целиком, а при «Множественном» обходе — запас по каждому
+    краю общей дуги (см. docstring модуля). None, если отменено.
     """
     default_text = u"{:g}".format(DEFAULT_DIAMETER_MM)
 
     while True:
         raw = forms.ask_for_string(
             default=default_text,
-            prompt=u"Диаметр дуги обхода, мм (при обходе сразу нескольких "
-                   u"линий — это запас по краям общей дуги):",
+            prompt=u"Диаметр дуги обхода, мм (при «Множественном» обходе — "
+                   u"это запас по краям общей дуги):",
             title=u"Обход линий"
         )
         if raw is None:
@@ -119,6 +137,28 @@ def ask_diameter_mm():
             continue
 
         return value
+
+
+def ask_bypass_mode():
+    u"""
+    Спрашивает режим обхода (см. docstring модуля). Возвращает True —
+    «Множественный» (одна большая дуга на весь пучок пересечений второй
+    линии с базовыми), False — «Одиночный» (своя маленькая дуга ровно
+    заданного диаметра на каждое пересечение отдельно, даже если их
+    несколько на одной линии). При закрытии окна без ответа — False
+    (безопаснее не сливать пересечения в одну дугу без явного согласия).
+    """
+    return bool(forms.alert(
+        u"Как обходить пересечения второй линии с базовыми?\n\n"
+        u"Да — «Множественный обход»: если вторая линия пересекает сразу "
+        u"несколько базовых линий (пучок), строится ОДНА большая дуга через "
+        u"весь пучок.\n\n"
+        u"Нет — «Одиночный обход»: на каждом отдельном пересечении со своей "
+        u"базовой линией строится своя маленькая дуга ровно введённого "
+        u"диаметра — даже если пересечений на одной линии несколько.",
+        title=u"Обход линий",
+        yes=True, no=True
+    ))
 
 
 def segment_intersection_xy(p1, p2, p3, p4, tol=1e-9):
@@ -153,19 +193,43 @@ def highlight_element(uidoc, el):
         pass
 
 
-def plan_bypass(uidoc, base_lines, second_el, radius_ft):
+def collect_crossing_positions(a1, a2, dir_x, dir_y, base_lines):
+    u"""Расстояния (от a1, вдоль (dir_x, dir_y)) всех точек пересечения (a1-a2) с любой из base_lines."""
+    positions = []
+    for base_p1, base_p2 in base_lines:
+        ip = segment_intersection_xy(a1, a2, base_p1, base_p2)
+        if ip is not None:
+            positions.append((ip.X - a1.X) * dir_x + (ip.Y - a1.Y) * dir_y)
+    return positions
+
+
+def group_crossing_positions(positions, bundle_mode):
+    u"""
+    Группирует позиции пересечений в список "пролётов" под дуги, по
+    возрастанию: bundle_mode=True — один пролёт на все позиции сразу
+    («Множественный» — одна большая дуга); bundle_mode=False — свой
+    пролёт на каждую позицию отдельно («Одиночный» — по маленькой дуге на
+    каждое пересечение).
+    """
+    if not positions:
+        return []
+    if bundle_mode:
+        return [sorted(positions)]
+    return [[p] for p in sorted(positions)]
+
+
+def plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode):
     u"""
     Считает геометрию обхода для одной "второй" линии против списка
-    base_lines ([(p1, p2), ...] — концы каждой базовой линии) и спрашивает
-    (PickPoint) сторону обхода. Возвращает (plan, error) — plan это dict
-    для apply_bypass_plan, либо None с текстом причины пропуска (нет
-    пересечений, диаметр/запас не помещается на линии, отмена выбора
+    base_lines ([(p1, p2), ...] — концы каждой базовой линии), в
+    указанном режиме (см. ask_bypass_mode), и спрашивает (PickPoint)
+    сторону обхода отдельно для каждого пролёта. Возвращает (plan, error):
+    plan — dict {"element": second_el, "curves": [Line/Arc, ...]}
+    (готовая последовательность прямая-дуга-...-прямая) для
+    apply_bypass_plan, либо None с текстом причины пропуска (нет
+    пересечений, диаметр/запас не помещается на линии, пересечения
+    слишком близки друг к другу в «Одиночном» режиме, отмена выбора
     стороны).
-
-    Если second_el пересекает несколько base_lines, вырезаемый участок
-    растягивается от первого до последнего пересечения (плюс radius_ft
-    запаса с каждого края) — одна общая дуга на все эти пересечения, а не
-    по дуге на каждое.
     """
     curve = second_el.GeometryCurve
     a1 = curve.GetEndPoint(0)
@@ -174,72 +238,92 @@ def plan_bypass(uidoc, base_lines, second_el, radius_ft):
     dx = a2.X - a1.X
     dy = a2.Y - a1.Y
     length = math.sqrt(dx * dx + dy * dy)
-    if length < 1e-9:
+    if length < EPS_FT:
         return None, u"вторая линия вырождена (нулевой длины) — пропущено"
     dir_x = dx / length
     dir_y = dy / length
 
-    positions = []
-    for base_p1, base_p2 in base_lines:
-        ip = segment_intersection_xy(a1, a2, base_p1, base_p2)
-        if ip is not None:
-            pos = (ip.X - a1.X) * dir_x + (ip.Y - a1.Y) * dir_y
-            positions.append(pos)
-
+    positions = collect_crossing_positions(a1, a2, dir_x, dir_y, base_lines)
     if not positions:
         return None, u"нет пересечений с базовыми линиями — пропущено"
 
-    min_pos = min(positions)
-    max_pos = max(positions)
+    groups = group_crossing_positions(positions, bundle_mode)
 
-    c1_pos = min_pos - radius_ft
-    c2_pos = max_pos + radius_ft
+    spans = []
+    prev_c2_pos = None
+    for group in groups:
+        c1_pos = min(group) - radius_ft
+        c2_pos = max(group) + radius_ft
 
-    eps = 1e-6
-    if c1_pos <= eps or c2_pos >= length - eps:
-        return None, u"диаметр/запас обхода больше доступной длины линии у пересечения — пропущено"
+        if c1_pos <= EPS_FT or c2_pos >= length - EPS_FT:
+            return None, u"диаметр/запас обхода больше доступной длины линии у пересечения — пропущено"
 
-    c1 = XYZ(a1.X + dir_x * c1_pos, a1.Y + dir_y * c1_pos, a1.Z)
-    c2 = XYZ(a1.X + dir_x * c2_pos, a1.Y + dir_y * c2_pos, a1.Z)
+        if prev_c2_pos is not None and c1_pos <= prev_c2_pos + EPS_FT:
+            return None, (
+                u"два пересечения слишком близко друг к другу для отдельных "
+                u"дуг такого диаметра — уменьшите диаметр или выберите "
+                u"«Множественный обход»"
+            )
 
-    center_pos = (c1_pos + c2_pos) / 2.0
-    big_radius = (c2_pos - c1_pos) / 2.0
-    center_point = XYZ(a1.X + dir_x * center_pos, a1.Y + dir_y * center_pos, a1.Z)
+        spans.append((c1_pos, c2_pos))
+        prev_c2_pos = c2_pos
 
-    highlight_element(uidoc, second_el)
-
-    try:
-        side_pt = uidoc.Selection.PickPoint(
-            u"Укажите сторону обхода для линии ID {}".format(second_el.Id.IntegerValue)
-        )
-    except OperationCanceledException:
-        return None, u"выбор стороны обхода отменён — пропущено"
+    def point_at(pos):
+        if pos <= EPS_FT:
+            return a1
+        if pos >= length - EPS_FT:
+            return a2
+        return XYZ(a1.X + dir_x * pos, a1.Y + dir_y * pos, a1.Z)
 
     perp_x = -dir_y
     perp_y = dir_x
-    dot = (side_pt.X - center_point.X) * perp_x + (side_pt.Y - center_point.Y) * perp_y
-    side = 1.0 if dot >= 0 else -1.0
-    bulge_point = XYZ(
-        center_point.X + perp_x * side * big_radius,
-        center_point.Y + perp_y * side * big_radius,
-        center_point.Z
-    )
 
-    return {
-        "element": second_el,
-        "a1": a1,
-        "a2": a2,
-        "c1": c1,
-        "c2": c2,
-        "bulge_point": bulge_point,
-    }, None
+    curves = []
+    prev_pos = 0.0
+
+    for c1_pos, c2_pos in spans:
+        if c1_pos > prev_pos + EPS_FT:
+            curves.append(Line.CreateBound(point_at(prev_pos), point_at(c1_pos)))
+
+        c1 = point_at(c1_pos)
+        c2 = point_at(c2_pos)
+        center_pos = (c1_pos + c2_pos) / 2.0
+        span_radius = (c2_pos - c1_pos) / 2.0
+        center_point = point_at(center_pos)
+
+        highlight_element(uidoc, second_el)
+
+        try:
+            side_pt = uidoc.Selection.PickPoint(
+                u"Укажите сторону обхода для линии ID {}".format(second_el.Id.IntegerValue)
+            )
+        except OperationCanceledException:
+            return None, u"выбор стороны обхода отменён — пропущено"
+
+        dot = (side_pt.X - center_point.X) * perp_x + (side_pt.Y - center_point.Y) * perp_y
+        side = 1.0 if dot >= 0 else -1.0
+        bulge_point = XYZ(
+            center_point.X + perp_x * side * span_radius,
+            center_point.Y + perp_y * side * span_radius,
+            center_point.Z
+        )
+
+        # Arc.Create(p1, p2, p3) с тремя РАЗНЫМИ точками всегда даёт открытую
+        # дугу между p1 и p2 через p3, никогда замкнутую окружность.
+        curves.append(Arc.Create(c1, c2, bulge_point))
+        prev_pos = c2_pos
+
+    if prev_pos < length - EPS_FT:
+        curves.append(Line.CreateBound(point_at(prev_pos), a2))
+
+    return {"element": second_el, "curves": curves}, None
 
 
 def apply_bypass_plan(doc, view, plan):
     u"""
-    Строит обход по уже посчитанному plan (см. plan_bypass): удаляет
-    исходную вторую линию, создаёт на её месте три новых DetailCurve
-    (прямая-дуга-прямая) со стилем линии оригинала.
+    Строит обход по уже посчитанному plan (см. plan_bypass_for_line):
+    удаляет исходную вторую линию, создаёт на её месте новые DetailCurve
+    (по plan["curves"]) со стилем линии оригинала.
     """
     el = plan["element"]
 
@@ -249,14 +333,10 @@ def apply_bypass_plan(doc, view, plan):
     except:
         pass
 
-    head_line = Line.CreateBound(plan["a1"], plan["c1"])
-    tail_line = Line.CreateBound(plan["c2"], plan["a2"])
-    arc = Arc.Create(plan["c1"], plan["c2"], plan["bulge_point"])
-
     doc.Delete(el.Id)
 
     created = []
-    for new_curve in (head_line, arc, tail_line):
+    for new_curve in plan["curves"]:
         detail_curve = doc.Create.NewDetailCurve(view, new_curve)
         if line_style is not None:
             try:
@@ -269,10 +349,12 @@ def apply_bypass_plan(doc, view, plan):
 
 
 def run_line_bypass_tool(doc, uidoc, view):
-    u"""Полный сценарий кнопки: диаметр -> базовая(-ые) линия(-и) -> вторая(-ые) линия(-и) -> обходы."""
+    u"""Полный сценарий кнопки: диаметр -> режим -> базовая(-ые) линия(-и) -> вторая(-ые) линия(-и) -> обходы."""
     diameter_mm = ask_diameter_mm()
     if diameter_mm is None:
         return
+
+    bundle_mode = ask_bypass_mode()
 
     radius_ft = (diameter_mm * MM_TO_FEET) / 2.0
 
@@ -320,7 +402,7 @@ def run_line_bypass_tool(doc, uidoc, view):
     skipped = []
 
     for second_el in second_els:
-        plan, error = plan_bypass(uidoc, base_lines, second_el, radius_ft)
+        plan, error = plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode)
         if plan is None:
             skipped.append(u"ID {}: {}".format(second_el.Id.IntegerValue, error))
         else:
