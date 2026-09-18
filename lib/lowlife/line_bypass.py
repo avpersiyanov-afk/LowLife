@@ -4,11 +4,41 @@ u"""
 любой чертёжный/иной вид с линиями детализации.
 
 Сценарий (см. lib/README.md): диаметр дуги и режим обхода запрашиваются
-ОДИН раз в начале запуска. Дальше выбирается одна ИЛИ несколько «базовых»
-линий (остаются целыми, без разрыва), затем — одна ИЛИ несколько «вторых»
-линий за один PickObjects. Каждая вторая линия разрывается там, где она
-пересекает базовые линии, и разрыв соединяется дугой; повторного запроса
-диаметра/режима нет.
+ОДИН раз в начале запуска (см. ask_diameter_mm/ask_bypass_mode). Базовые и
+вторые линии выбираются построчным кликом БЕЗ отдельного подтверждения
+«Готово» (pick_lines_loop — цикл одиночных PickObject, Esc заканчивает
+выбор) — это ближе к «просто выбираем подряд», чем PickObjects с
+Enter/«Готово» в конце.
+
+Сторона обхода ОДНА на весь запуск, а не своя у каждой линии/пролёта:
+пользователь указывает её одним PickPoint (ask_side_reference) после
+выбора всех линий — и та же точка используется, чтобы определить сторону
+у КАЖДОГО пролёта на КАЖДОЙ второй линии (см. build_curves_for_side —
+знак скалярного произведения перпендикуляра пролёта на вектор к этой
+точке). Для группы примерно параллельных линий это и даёт "все обходят в
+одну сторону", как и просили — без явного глобального направления или
+специального признака параллельности.
+
+Перед тем как строить окончательный результат, обход сначала СТРОИТСЯ КАК
+ПРЕВЬЮ прямо в модели (внутри одной открытой, ещё не закоммиченной
+Transaction — тот же приём ручного Start/Commit/RollBack, что уже
+используется в этом проекте, см. circuit_highlight.py/family_catalog.py):
+пользователю показывается результат, и он может либо принять его (тогда
+транзакция коммитится), либо ткнуть в другую точку для новой стороны —
+тогда предпросмотр удаляется и перестраивается заново той же ещё открытой
+транзакцией, без повторного удаления оригиналов. Явная отмена на этом шаге
+откатывает транзакцию целиком — оригинальные вторые линии, однажды
+удалённые при первом построении превью, восстанавливаются штатным
+RollBack, как будто ничего не запускалось.
+
+ВАЖНО (см. CLAUDE.md — здесь нет живого Revit, чтобы проверить): держать
+транзакцию открытой поперёк нескольких PickPoint/forms.alert — приём,
+которым пользуются реальные плагины Revit для живого предпросмотра, но
+именно эта связка (открытая транзакция + повторные диалоги/пикинг +
+Regenerate/RefreshActiveView между ними) в этом проекте раньше не
+проверялась на практике. Если превью поведёт себя не так, как ожидается
+(не покажется, Revit пожалуется на состояние транзакции и т.п.) — это
+первое, на что стоит посмотреть.
 
 Режим обхода (ask_bypass_mode) — явный выбор пользователя, а не
 автоматическое определение по числу пересечений:
@@ -23,11 +53,11 @@ u"""
     radius_ft по каждому краю — тем же diameter, что был бы диаметром
     дуги при одиночном пересечении.
 
-Оба режима считаются ОДНОЙ и той же функцией (_plan_span): группировка
-пересечений в один "пролёт" (множественный) или в отдельные "пролёты" по
-одному на пересечение (одиночный) происходит только в group_crossing_positions,
-дальше код общий. При ровно одном пересечении оба режима дают одинаковый
-результат (единственная точка — сама себе и минимум, и максимум).
+Оба режима считаются ОДНОЙ и той же геометрией (compute_line_plan +
+build_curves_for_side): группировка пересечений в один "пролёт"
+(множественный) или в отдельные "пролёты" по одному на пересечение
+(одиночный) происходит только в group_crossing_positions, дальше код
+общий. При ровно одном пересечении оба режима дают одинаковый результат.
 
 Диаметр — это диаметр дуги в буквальном смысле для одиночного пролёта
 (одно пересечение): вырезается прямой участок длиной ровно diameter, а
@@ -36,10 +66,9 @@ u"""
 центр оказывается центром окружности, а c1-c2 — её диаметром, поэтому
 Arc.Create(c1, c2, bulge_point) даёт РОВНО полуокружность — открытую дугу,
 никогда не замкнутую окружность, т.к. c1 и c2 — две РАЗНЫЕ точки на этой
-окружности, а не одна и та же). При нескольких пересечениях (множественный
-режим) центр — уже середина между c1 и c2, не сама точка пересечения (их
-несколько) — принцип и гарантия "дуга, не окружность" те же, хорда просто
-длиннее.
+окружности). При нескольких пересечениях (множественный режим) центр —
+уже середина между c1 и c2, не сама точка пересечения (их несколько) —
+принцип и гарантия "дуга, не окружность" те же, хорда просто длиннее.
 
 При «Одиночном» режиме с несколькими пересечениями на одной линии пролёты
 (по одному на пересечение) не должны накладываться друг на друга — если
@@ -48,14 +77,6 @@ Arc.Create(c1, c2, bulge_point) даёт РОВНО полуокружность
 уменьшить диаметр или переключиться на «Множественный»), а не тихо
 сливается в одну дугу за спиной пользователя.
 
-Сторона обхода (в какую сторону от второй линии выгибается дуга) не
-выводится по какому-то жёсткому правилу — пользователь указывает её сам
-кликом (PickPoint) для каждого пролёта отдельно, т.к. заранее
-детерминированное правило может "наехать" на соседние элементы чертежа.
-Перед каждым таким кликом соответствующая вторая линия подсвечивается
-(выделяется) в модели — иначе при обходе нескольких линий/пролётов подряд
-легко потерять, к какой из них относится текущий запрос стороны.
-
 Оригинальная вторая линия не переиспользуется (не меняется её
 GeometryCurve на месте) — вместо этого удаляется и на её месте создаются
 новые DetailCurve (прямая-дуга-прямая-дуга-...-прямая, по числу пролётов),
@@ -63,17 +84,17 @@ GeometryCurve на месте) — вместо этого удаляется и
 рискованной правки существующего элемента "на месте" (см.
 sot_schematic.sync_rooms_in_level в lib/README.md про марки узлов) — так
 меньше риск наткнуться на неожиданное поведение GeometryCurve-сеттера,
-которое здесь негде проверить вживую (нет Revit под рукой, см. CLAUDE.md).
+которое здесь негде проверить вживую.
 """
 
 import math
 
-from Autodesk.Revit.DB import Arc, DetailLine, ElementId, Line, XYZ
+from Autodesk.Revit.DB import Arc, DetailLine, ElementId, Line, Transaction, XYZ
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from System.Collections.Generic import List
 
-from pyrevit import revit, forms
+from pyrevit import forms
 
 MM_TO_FEET = 1.0 / 304.8
 
@@ -183,14 +204,52 @@ def segment_intersection_xy(p1, p2, p3, p4, tol=1e-9):
     return XYZ(x, y, p1.Z)
 
 
-def highlight_element(uidoc, el):
-    u"""Выделяет (подсвечивает) один элемент в модели — чтобы перед PickPoint было видно, о какой линии идёт речь."""
+def highlight_elements(uidoc, elements):
+    u"""Выделяет (подсвечивает) элементы в модели — чтобы было видно, о каких линиях идёт речь перед запросом стороны."""
     try:
         ids = List[ElementId]()
-        ids.Add(el.Id)
+        for el in elements:
+            ids.Add(el.Id)
         uidoc.Selection.SetElementIds(ids)
     except:
         pass
+
+
+def pick_lines_loop(uidoc, doc, selection_filter, prompt, exclude_ids=None):
+    u"""
+    Выбор линий одна за другой БЕЗ отдельного подтверждения «Готово» —
+    каждый клик сразу засчитывается, Esc заканчивает выбор (вместо
+    PickObjects, где нужно ещё нажать Enter/«Готово» в конце). Пропускает
+    уже выбранные ранее и элементы из exclude_ids (например, уже
+    выбранные базовые линии — на шаге выбора вторых). Возвращает список
+    выбранных элементов, в порядке выбора.
+    """
+    exclude_ids = exclude_ids or set()
+    picked = []
+    picked_ids = set()
+
+    while True:
+        try:
+            ref = uidoc.Selection.PickObject(ObjectType.Element, selection_filter, prompt)
+        except OperationCanceledException:
+            break
+
+        el = doc.GetElement(ref)
+        if el.Id in exclude_ids or el.Id in picked_ids:
+            continue
+
+        picked_ids.add(el.Id)
+        picked.append(el)
+
+    return picked
+
+
+def ask_side_reference(uidoc, prompt):
+    u"""Просит указать точку кликом — определяет сторону обхода (см. docstring модуля). None, если отменено (Esc)."""
+    try:
+        return uidoc.Selection.PickPoint(prompt)
+    except OperationCanceledException:
+        return None
 
 
 def collect_crossing_positions(a1, a2, dir_x, dir_y, base_lines):
@@ -218,18 +277,18 @@ def group_crossing_positions(positions, bundle_mode):
     return [[p] for p in sorted(positions)]
 
 
-def plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode):
+def compute_line_plan(base_lines, second_el, radius_ft, bundle_mode):
     u"""
     Считает геометрию обхода для одной "второй" линии против списка
     base_lines ([(p1, p2), ...] — концы каждой базовой линии), в
-    указанном режиме (см. ask_bypass_mode), и спрашивает (PickPoint)
-    сторону обхода отдельно для каждого пролёта. Возвращает (plan, error):
-    plan — dict {"element": second_el, "curves": [Line/Arc, ...]}
-    (готовая последовательность прямая-дуга-...-прямая) для
-    apply_bypass_plan, либо None с текстом причины пропуска (нет
-    пересечений, диаметр/запас не помещается на линии, пересечения
-    слишком близки друг к другу в «Одиночном» режиме, отмена выбора
-    стороны).
+    указанном режиме (см. ask_bypass_mode) — БЕЗ выбора стороны (она
+    теперь общая на весь запуск, см. ask_side_reference/
+    build_curves_for_side). Возвращает (line_plan, error): line_plan —
+    dict с геометрией пролётов, достаточной, чтобы построить кривые под
+    ЛЮБУЮ выбранную сторону без повторного пересчёта пересечений; либо
+    None с текстом причины пропуска (нет пересечений, диаметр/запас не
+    помещается на линии, пересечения слишком близки друг к другу в
+    «Одиночном» режиме).
     """
     curve = second_el.GeometryCurve
     a1 = curve.GetEndPoint(0)
@@ -268,6 +327,38 @@ def plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode):
         spans.append((c1_pos, c2_pos))
         prev_c2_pos = c2_pos
 
+    line_style = None
+    try:
+        line_style = second_el.LineStyle
+    except:
+        pass
+
+    return {
+        "element": second_el,
+        "a1": a1,
+        "a2": a2,
+        "dir_x": dir_x,
+        "dir_y": dir_y,
+        "length": length,
+        "spans": spans,
+        "line_style": line_style,
+    }, None
+
+
+def build_curves_for_side(line_plan, side_pt):
+    u"""
+    Строит последовательность Line/Arc (прямая-дуга-...-прямая) для
+    line_plan (см. compute_line_plan) с заданной точкой стороны обхода
+    side_pt — общей на все линии и пролёты за этот запуск. Каждый пролёт
+    выгибается в сторону side_pt (знак скалярного произведения
+    перпендикуляра пролёта на вектор к этой точке от его центра).
+    """
+    a1 = line_plan["a1"]
+    a2 = line_plan["a2"]
+    dir_x = line_plan["dir_x"]
+    dir_y = line_plan["dir_y"]
+    length = line_plan["length"]
+
     def point_at(pos):
         if pos <= EPS_FT:
             return a1
@@ -281,7 +372,7 @@ def plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode):
     curves = []
     prev_pos = 0.0
 
-    for c1_pos, c2_pos in spans:
+    for c1_pos, c2_pos in line_plan["spans"]:
         if c1_pos > prev_pos + EPS_FT:
             curves.append(Line.CreateBound(point_at(prev_pos), point_at(c1_pos)))
 
@@ -290,15 +381,6 @@ def plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode):
         center_pos = (c1_pos + c2_pos) / 2.0
         span_radius = (c2_pos - c1_pos) / 2.0
         center_point = point_at(center_pos)
-
-        highlight_element(uidoc, second_el)
-
-        try:
-            side_pt = uidoc.Selection.PickPoint(
-                u"Укажите сторону обхода для линии ID {}".format(second_el.Id.IntegerValue)
-            )
-        except OperationCanceledException:
-            return None, u"выбор стороны обхода отменён — пропущено"
 
         dot = (side_pt.X - center_point.X) * perp_x + (side_pt.Y - center_point.Y) * perp_y
         side = 1.0 if dot >= 0 else -1.0
@@ -316,40 +398,30 @@ def plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode):
     if prev_pos < length - EPS_FT:
         curves.append(Line.CreateBound(point_at(prev_pos), a2))
 
-    return {"element": second_el, "curves": curves}, None
+    return curves
 
 
-def apply_bypass_plan(doc, view, plan):
-    u"""
-    Строит обход по уже посчитанному plan (см. plan_bypass_for_line):
-    удаляет исходную вторую линию, создаёт на её месте новые DetailCurve
-    (по plan["curves"]) со стилем линии оригинала.
-    """
-    el = plan["element"]
-
-    line_style = None
-    try:
-        line_style = el.LineStyle
-    except:
-        pass
-
-    doc.Delete(el.Id)
-
-    created = []
-    for new_curve in plan["curves"]:
-        detail_curve = doc.Create.NewDetailCurve(view, new_curve)
-        if line_style is not None:
-            try:
-                detail_curve.LineStyle = line_style
-            except:
-                pass
-        created.append(detail_curve)
-
-    return created
+def _draw_curves(doc, view, line_plans, side_pt):
+    u"""Создаёт DetailCurve для всех line_plans под side_pt; возвращает список созданных ElementId."""
+    created_ids = []
+    for line_plan in line_plans:
+        for new_curve in build_curves_for_side(line_plan, side_pt):
+            detail_curve = doc.Create.NewDetailCurve(view, new_curve)
+            if line_plan["line_style"] is not None:
+                try:
+                    detail_curve.LineStyle = line_plan["line_style"]
+                except:
+                    pass
+            created_ids.append(detail_curve.Id)
+    return created_ids
 
 
 def run_line_bypass_tool(doc, uidoc, view):
-    u"""Полный сценарий кнопки: диаметр -> режим -> базовая(-ые) линия(-и) -> вторая(-ые) линия(-и) -> обходы."""
+    u"""
+    Полный сценарий кнопки: диаметр -> режим -> базовая(-ые) линия(-и) ->
+    вторая(-ые) линия(-и) -> одна общая сторона обхода -> предпросмотр в
+    модели с возможностью перевыбрать сторону -> подтверждение.
+    """
     diameter_mm = ask_diameter_mm()
     if diameter_mm is None:
         return
@@ -360,16 +432,10 @@ def run_line_bypass_tool(doc, uidoc, view):
 
     selection_filter = _DetailLineSelectionFilter()
 
-    try:
-        base_refs = uidoc.Selection.PickObjects(
-            ObjectType.Element, selection_filter,
-            u"Выберите одну или несколько базовых линий — останутся целыми "
-            u"(Enter/«Готово» — подтвердить)"
-        )
-    except OperationCanceledException:
-        return
-
-    base_els = [doc.GetElement(r) for r in base_refs]
+    base_els = pick_lines_loop(
+        uidoc, doc, selection_filter,
+        u"Выберите базовую линию — останется целой (Esc — закончить выбор базовых)"
+    )
     if not base_els:
         forms.alert(u"Не выбрано ни одной базовой линии.", exitscript=True)
         return
@@ -380,46 +446,105 @@ def run_line_bypass_tool(doc, uidoc, view):
         base_curve = base_el.GeometryCurve
         base_lines.append((base_curve.GetEndPoint(0), base_curve.GetEndPoint(1)))
 
-    try:
-        second_refs = uidoc.Selection.PickObjects(
-            ObjectType.Element, selection_filter,
-            u"Выберите одну или несколько линий, которые обойдут базовые "
-            u"(Enter/«Готово» — подтвердить)"
-        )
-    except OperationCanceledException:
-        return
-
-    second_els = [
-        doc.GetElement(r) for r in second_refs
-        if r.ElementId not in base_ids
-    ]
-
+    second_els = pick_lines_loop(
+        uidoc, doc, selection_filter,
+        u"Выберите линию, которая обойдёт базовые (Esc — закончить выбор)",
+        exclude_ids=base_ids
+    )
     if not second_els:
         forms.alert(u"Не выбрано ни одной второй линии.", exitscript=True)
         return
 
-    plans = []
+    line_plans = []
     skipped = []
 
     for second_el in second_els:
-        plan, error = plan_bypass_for_line(uidoc, base_lines, second_el, radius_ft, bundle_mode)
-        if plan is None:
+        line_plan, error = compute_line_plan(base_lines, second_el, radius_ft, bundle_mode)
+        if line_plan is None:
             skipped.append(u"ID {}: {}".format(second_el.Id.IntegerValue, error))
         else:
-            plans.append(plan)
+            line_plans.append(line_plan)
 
-    if not plans:
+    if not line_plans:
         forms.alert(
             u"Не удалось построить ни одного обхода.\n\n" + u"\n".join(skipped),
             exitscript=True
         )
         return
 
-    with revit.Transaction(u"Обход линий"):
-        for plan in plans:
-            apply_bypass_plan(doc, view, plan)
+    highlight_elements(uidoc, [lp["element"] for lp in line_plans])
 
-    message = u"Готово. Построено обходов: {}".format(len(plans))
+    side_pt = ask_side_reference(
+        uidoc,
+        u"Укажите сторону обхода — применится сразу ко всем выбранным линиям"
+    )
+    if side_pt is None:
+        forms.alert(u"Операция отменена.", exitscript=True)
+        return
+
+    tx = Transaction(doc, u"Обход линий")
+    tx.Start()
+    try:
+        for line_plan in line_plans:
+            doc.Delete(line_plan["element"].Id)
+        preview_ids = _draw_curves(doc, view, line_plans, side_pt)
+        doc.Regenerate()
+    except Exception as ex:
+        try:
+            tx.RollBack()
+        except:
+            pass
+        forms.alert(u"Не удалось построить предпросмотр обхода: {}".format(ex), exitscript=True)
+        return
+
+    try:
+        uidoc.RefreshActiveView()
+    except:
+        pass
+
+    while True:
+        confirmed = forms.alert(
+            u"Обход построен (предпросмотр). Оставить как есть?\n\n"
+            u"Да — принять и завершить.\n"
+            u"Нет — указать сторону обхода заново (кликнуть в другую точку).",
+            title=u"Обход линий — предпросмотр",
+            yes=True, no=True
+        )
+
+        if confirmed:
+            tx.Commit()
+            break
+
+        new_side_pt = ask_side_reference(uidoc, u"Укажите новую сторону обхода")
+        if new_side_pt is None:
+            try:
+                tx.RollBack()
+            except:
+                pass
+            forms.alert(u"Операция отменена, обход не построен.", exitscript=True)
+            return
+
+        side_pt = new_side_pt
+
+        try:
+            for eid in preview_ids:
+                doc.Delete(eid)
+            preview_ids = _draw_curves(doc, view, line_plans, side_pt)
+            doc.Regenerate()
+        except Exception as ex:
+            try:
+                tx.RollBack()
+            except:
+                pass
+            forms.alert(u"Не удалось перестроить предпросмотр: {}".format(ex), exitscript=True)
+            return
+
+        try:
+            uidoc.RefreshActiveView()
+        except:
+            pass
+
+    message = u"Готово. Построено обходов: {}".format(len(line_plans))
     if skipped:
         message += u"\n\nПропущено:\n" + u"\n".join(skipped)
     forms.alert(message)
