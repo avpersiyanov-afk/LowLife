@@ -48,39 +48,12 @@ def set_double_param(el, names, value):
 
 
 def set_string_param(el, name, value):
-    """Возвращает True, если запись удалась (параметр найден, текстовый и не read-only)."""
     try:
         p = el.LookupParameter(name)
         if p and not p.IsReadOnly and p.StorageType == StorageType.String:
             p.Set(u"{}".format(value if value is not None else ""))
-            return True
     except:
         pass
-    return False
-
-
-def set_string_param_including_type(doc, el, name, value):
-    """
-    Как set_string_param, но если у экземпляра такого параметра нет или он
-    недоступен для записи — пробует записать на ТИП элемента (GetTypeId()).
-    Нужно для параметров, заведённых в проекте как «Тип» (Type), а не
-    «Экземпляр» — в диалоге свойств экземпляра такой параметр виден, но
-    показан серым/неактивным; el.LookupParameter на самом экземпляре его
-    не находит (или находит как read-only), в отличие от get_type_string_param
-    при чтении.
-    """
-    if set_string_param(el, name, value):
-        return True
-
-    try:
-        type_el = doc.GetElement(el.GetTypeId())
-    except:
-        type_el = None
-
-    if type_el is None:
-        return False
-
-    return set_string_param(type_el, name, value)
 
 
 def get_string_param(el, name):
