@@ -228,18 +228,47 @@ namespace FamilyCatalog
         }
 
         // Type catalog .txt: first data column of each non-header line.
+        //
+        // ВАЖНО: Encoding.Unicode (UTF-16) пробуем только когда в файле
+        // реально есть BOM (Revit всегда пишет BOM для настоящих
+        // UTF-16-каталогов). File.ReadAllText(path, Encoding.Unicode) без
+        // BOM в файле просто декодирует байты как UTF-16 LE без BOM — для
+        // cp1251/ANSI-текста это почти всегда «успешно» превращается в
+        // мусорные, но валидные Unicode-символы (без единого '�', потому
+        // что суррогатные пары редко ломаются на случайных байтах), и
+        // раньше это подсовывало нечитаемые имена типоразмеров, которые
+        // Revit не находил при LoadFamilySymbol.
         public static List<string> ReadTypeCatalogNames(string txtPath)
         {
+            byte[] raw;
+            try { raw = File.ReadAllBytes(txtPath); }
+            catch { return new List<string>(); }
+
+            // (encoding, bytes to skip — the BOM itself, GetString does not strip it)
+            Tuple<Encoding, int>[] candidates;
+            if (raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xFE)
+                candidates = new[] { Tuple.Create(Encoding.Unicode, 2) };
+            else if (raw.Length >= 2 && raw[0] == 0xFE && raw[1] == 0xFF)
+                candidates = new[] { Tuple.Create(Encoding.BigEndianUnicode, 2) };
+            else if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
+                candidates = new[] { Tuple.Create((Encoding)new UTF8Encoding(false), 3) };
+            else
+                candidates = new[]
+                {
+                    Tuple.Create((Encoding)new UTF8Encoding(false), 0),
+                    Tuple.Create(Encoding.GetEncoding(1251), 0),
+                    Tuple.Create(Encoding.UTF8, 0),
+                    Tuple.Create(Encoding.GetEncoding(28591), 0)
+                };
+
             string[] lines = null;
-            foreach (var enc in new[]
+            foreach (var cand in candidates)
             {
-                Encoding.Unicode, new UTF8Encoding(true), Encoding.GetEncoding(1251),
-                Encoding.UTF8, Encoding.GetEncoding(28591)
-            })
-            {
+                var enc = cand.Item1;
+                var skip = cand.Item2;
                 try
                 {
-                    var text = File.ReadAllText(txtPath, enc);
+                    var text = enc.GetString(raw, skip, raw.Length - skip);
                     if (text.IndexOf('�') >= 0 && enc != Encoding.GetEncoding(28591))
                         continue;
                     lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');

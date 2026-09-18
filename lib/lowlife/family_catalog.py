@@ -1874,12 +1874,34 @@ def _read_type_catalog_names(txt_path):
     Имена типоразмеров из каталога типоразмеров .txt (первый столбец каждой
     строки после заголовка; разделитель — первый символ первой строки).
     [] при сбое. Кодировка каталога — UTF-16 / UTF-8 / ANSI (cp1251).
+
+    ВАЖНО: "utf-16" пробуем только когда в файле есть BOM (Revit всегда
+    пишет BOM для настоящих UTF-16-каталогов). Без BOM это не UTF-16 —
+    слепая попытка декодировать ANSI/cp1251-байты как "utf-16" почти
+    всегда молча УДАЁТСЯ (чётное число байт редко даёт невалидные суррогатные
+    пары) и превращает кириллицу в мусор без единого исключения — раньше
+    из-за этого typoразмеры из cp1251-каталога грузились под нечитаемыми
+    именами, и Revit не мог найти такой типоразмер («невозможно загрузить
+    тип»). Проверка на "�" тут не спасает: io.open(..., errors='strict')
+    вставляет "�" не при подмене символов, а только выбрасывает исключение.
     """
+    try:
+        with open(txt_path, "rb") as f:
+            raw = f.read()
+    except:
+        return []
+
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        candidates = (u"utf-16",)
+    elif raw[:3] == b"\xef\xbb\xbf":
+        candidates = (u"utf-8-sig",)
+    else:
+        candidates = (u"utf-8-sig", u"cp1251", u"utf-8", u"latin-1")
+
     lines = None
-    for enc in (u"utf-16", u"utf-8-sig", u"cp1251", u"utf-8", u"latin-1"):
+    for enc in candidates:
         try:
-            with io.open(txt_path, "r", encoding=enc) as f:
-                text = f.read()
+            text = raw.decode(enc)
         except:
             continue
         if u"�" in text and enc != u"latin-1":
