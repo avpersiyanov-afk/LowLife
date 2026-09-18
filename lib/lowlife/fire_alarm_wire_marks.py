@@ -10,8 +10,6 @@
 параметр «Марка» номером/именем цепи.
 """
 
-from Autodesk.Revit.DB import StorageType
-
 from lowlife.geometry import get_point, points_close
 from lowlife.params import set_string_param
 from lowlife.route_nodes import collect_segments
@@ -32,33 +30,7 @@ def collect_member_points(devices, extra_el=None):
     return points
 
 
-def _diagnose_write_failure(el, mark_param):
-    """Строка-причина, почему set_string_param не смог записать mark_param на el (для диагностики)."""
-    try:
-        eid = el.Id.IntegerValue
-    except:
-        eid = "?"
-
-    try:
-        p = el.LookupParameter(mark_param)
-    except:
-        p = None
-
-    if p is None:
-        reason = u"параметр «{}» не найден на экземпляре линии (LookupParameter вернул None)".format(mark_param)
-    elif p.IsReadOnly:
-        reason = u"параметр «{}» найден, но IsReadOnly=True (недоступен для записи через API)".format(mark_param)
-    elif p.StorageType != StorageType.String:
-        reason = u"параметр «{}» найден, но хранилище не текстовое (StorageType={})".format(
-            mark_param, p.StorageType
-        )
-    else:
-        reason = u"запись не удалась по неустановленной причине"
-
-    return u"линия ID {}: {}".format(eid, reason)
-
-
-def mark_wire_lines(doc, view, member_points, label, family_filter, mark_param, diagnostics=None):
+def mark_wire_lines(doc, view, member_points, label, family_filter, mark_param):
     """
     Находит на view линии проводки (Generic Model, имя семейства содержит
     family_filter), у которых хотя бы один конец лежит рядом (в пределах
@@ -66,14 +38,7 @@ def mark_wire_lines(doc, view, member_points, label, family_filter, mark_param, 
     mark_param значение label.
 
     Возвращает число помеченных линий. Ничего не делает (0), если
-    family_filter/mark_param не заданы в настройках или нет точек цепи —
-    в этом случае это тоже нормальная ситуация (нечего искать), а не сбой.
-
-    diagnostics, если передан списком, получает по одной строке для
-    каждого геометрически подходящего («near») сегмента, для которого
-    запись НЕ удалась — с точной причиной (см. _diagnose_write_failure).
-    Используется вызывающим кодом только для отладочного вывода, на
-    результат самой функции не влияет.
+    family_filter/mark_param не заданы в настройках или нет точек цепи.
     """
     if not family_filter or not mark_param or not member_points or view is None:
         return 0
@@ -87,12 +52,7 @@ def mark_wire_lines(doc, view, member_points, label, family_filter, mark_param, 
             points_close(seg["p2"], pt, DEVICE_MATCH_TOLERANCE_FT)
             for pt in member_points
         )
-        if not near:
-            continue
-
-        if set_string_param(seg["element"], mark_param, label):
+        if near and set_string_param(seg["element"], mark_param, label):
             marked += 1
-        elif diagnostics is not None:
-            diagnostics.append(_diagnose_write_failure(seg["element"], mark_param))
 
     return marked

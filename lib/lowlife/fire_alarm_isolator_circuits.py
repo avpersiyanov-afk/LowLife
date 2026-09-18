@@ -292,28 +292,10 @@ def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
             if config.get("wire_mark_param") and config.get("wire_line_family_filter"):
                 try:
                     member_points = collect_member_points(group, isolator_el)
-                    wire_diagnostics = []
-                    wire_marked = mark_wire_lines(
+                    mark_wire_lines(
                         doc, doc.ActiveView, member_points, circuit.Name,
-                        config["wire_line_family_filter"], config["wire_mark_param"],
-                        diagnostics=wire_diagnostics
+                        config["wire_line_family_filter"], config["wire_mark_param"]
                     )
-                    # Временная диагностика (см. историю багов «не записывает имя
-                    # цепи в линию»): всегда печатаем итог по подписи линий, чтобы
-                    # на реальном запуске в Revit было видно, нашлась ли рядом с
-                    # устройствами/изолятором вообще хоть одна линия провода
-                    # (0 — скорее всего провод ещё не нарисован на момент запуска
-                    # кнопки, это не ошибка — см. docs/fire-alarm-panels.md) и, если
-                    # нашлась, но не записалась — точную причину.
-                    near_count = wire_marked + len(wire_diagnostics)
-                    pyrevit_script.get_output().print_md(
-                        u"Цепь «{}» (ID {}): линий проводки рядом с устройствами/"
-                        u"изолятором — {}, подписано — {}.".format(
-                            circuit.Name, circuit.Id.IntegerValue, near_count, wire_marked
-                        )
-                    )
-                    for line in wire_diagnostics:
-                        pyrevit_script.get_output().print_md(u"- {}".format(line))
                 except Exception as ex:
                     try:
                         pyrevit_script.get_output().print_md(
