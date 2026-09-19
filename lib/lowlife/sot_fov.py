@@ -126,10 +126,26 @@ def _as_int(value, default=0):
         return default
 
 
+def _split_alias_names(configured):
+    """
+    Настройка вида «Вращение (поворот)» либо «Вращение (поворот);УГО_Поворот»
+    — список имён-кандидатов на одну роль через «;». Нужно потому, что
+    разные семейства камер в одном проекте называют один и тот же по смыслу
+    параметр по-разному (например, цилиндрическая — «Вращение (поворот)»,
+    купольная — «УГО_Поворот»); настройка на весь проект одна, поэтому ей
+    нужно уметь перечислить все варианты, а не только один.
+    """
+    if not configured:
+        return []
+    return [n.strip() for n in configured.split(u";") if n.strip()]
+
+
 def _find_param(doc, el, name):
     """
-    Параметр el по имени: сначала параметр ЭКЗЕМПЛЯРА; если его нет или он
-    пуст — тот же параметр у ТИПА (family symbol) этого экземпляра.
+    Параметр el по имени (или по «;»-списку имён-кандидатов, см.
+    _split_alias_names — перебираются по порядку, первое совпадение
+    побеждает): сначала параметр ЭКЗЕМПЛЯРА; если его нет или он пуст — тот
+    же параметр у ТИПА (family symbol) этого экземпляра.
 
     Нужно потому, что у камер одни и те же характеристики на практике
     бывают то экземплярными, то параметрами типа: высота установки, угол
@@ -146,37 +162,43 @@ def _find_param(doc, el, name):
     именно параметр экземпляра (без значения), чтобы вызывающий код мог
     отличить «нет такого параметра» от «параметр есть, но пуст».
     """
-    if not name or not name.strip():
+    names = _split_alias_names(name)
+    if not names:
         return None
-    name = name.strip()
-
-    inst_p = None
-    try:
-        inst_p = el.LookupParameter(name)
-    except Exception:
-        inst_p = None
-    if inst_p is not None and inst_p.HasValue:
-        return inst_p
 
     try:
         type_id = el.GetTypeId()
     except Exception:
         type_id = None
+    type_el = None
     if type_id is not None and type_id != ElementId.InvalidElementId:
-        type_el = None
         try:
             type_el = doc.GetElement(type_id)
         except Exception:
             type_el = None
+
+    fallback = None
+    for candidate in names:
+        inst_p = None
+        try:
+            inst_p = el.LookupParameter(candidate)
+        except Exception:
+            inst_p = None
+        if inst_p is not None and inst_p.HasValue:
+            return inst_p
+
         if type_el is not None:
             try:
-                type_p = type_el.LookupParameter(name)
+                type_p = type_el.LookupParameter(candidate)
             except Exception:
                 type_p = None
             if type_p is not None and type_p.HasValue:
                 return type_p
 
-    return inst_p
+        if fallback is None and inst_p is not None:
+            fallback = inst_p
+
+    return fallback
 
 
 def _param_radians(param, unit_mode):
@@ -566,29 +588,33 @@ def diagnose_camera_params(doc, el, settings):
     roles = []
     for key, label, expected_kinds, required, must_be_instance in _ROLE_SPECS:
         configured_name = (settings.get(key) or u"").strip() or None
+        candidate_names = _split_alias_names(configured_name)
         found_entry = None
+        matched_name = None
 
-        if not configured_name:
+        if not candidate_names:
             status = u"not_configured"
         else:
-            inst_p = None
-            try:
-                inst_p = el.LookupParameter(configured_name)
-            except Exception:
+            chosen, level = None, None
+            for cname in candidate_names:
                 inst_p = None
-            type_p = None
-            if type_el is not None:
                 try:
-                    type_p = type_el.LookupParameter(configured_name)
+                    inst_p = el.LookupParameter(cname)
                 except Exception:
-                    type_p = None
+                    inst_p = None
+                type_p = None
+                if type_el is not None:
+                    try:
+                        type_p = type_el.LookupParameter(cname)
+                    except Exception:
+                        type_p = None
 
-            if inst_p is not None:
-                chosen, level = inst_p, u"экземпляр"
-            elif type_p is not None:
-                chosen, level = type_p, u"тип"
-            else:
-                chosen, level = None, None
+                if inst_p is not None:
+                    chosen, level, matched_name = inst_p, u"экземпляр", cname
+                    break
+                elif type_p is not None:
+                    chosen, level, matched_name = type_p, u"тип", cname
+                    break
 
             if chosen is None:
                 status = u"not_found"
@@ -596,7 +622,7 @@ def diagnose_camera_params(doc, el, settings):
                 kind = _param_kind(chosen)
                 has_value = bool(chosen.HasValue)
                 found_entry = (
-                    configured_name, kind, level,
+                    matched_name, kind, level,
                     _param_value_text(chosen) if has_value else u"",
                     has_value,
                 )
@@ -614,7 +640,7 @@ def diagnose_camera_params(doc, el, settings):
         for name, kind, level, value_text, has_value in all_params:
             if kind not in expected_kinds:
                 continue
-            if configured_name and name == configured_name and level == (
+            if matched_name and name == matched_name and level == (
                 found_entry[2] if found_entry else None
             ):
                 continue
@@ -2077,7 +2103,10 @@ TEXT_FIELDS = [
         u"где угол меняется вместе с фокусным расстоянием. Тип «Длина» → "
         u"пересчёт из футов; «Число» → как есть, в мм. Для вариофокального "
         u"объектива обычно это параметр ЭКЗЕМПЛЯРА (сфокусировано по месту, "
-        u"отличается у одинаковых по типу камер) — берётся текущее значение.",
+        u"отличается у одинаковых по типу камер) — берётся текущее значение. "
+        u"Если разные семейства камер в проекте называют этот параметр "
+        u"по-разному — перечислите все имена через «;» (проверяются по "
+        u"порядку, первое найденное на камере побеждает).",
         u"", True
     ),
     (
@@ -2089,7 +2118,8 @@ TEXT_FIELDS = [
         u"матрицы» ниже («1/2.8», «5.37x4.04» и т.п.). Нужен, только если "
         u"разные типы/модели камер в проекте отличаются матрицей и она уже "
         u"внесена в семейство. Пусто — берётся общее значение из поля "
-        u"«Формат матрицы» для всех камер сразу.",
+        u"«Формат матрицы» для всех камер сразу. Несколько имён (у разных "
+        u"семейств камер) — через «;».",
         u"", False
     ),
     (
@@ -2111,7 +2141,8 @@ TEXT_FIELDS = [
         u"Имя параметра камеры с максимальной дальностью обзора —  "
         u"экземпляра ИЛИ типа. Должен быть параметром типа «Длина» (иначе "
         u"значение уедет по единицам). Задаёт дальнюю границу зоны, если "
-        u"она не ограничена расчётом по наклону/вертикальному углу.",
+        u"она не ограничена расчётом по наклону/вертикальному углу. "
+        u"Несколько имён (у разных семейств камер) — через «;».",
         u"УГО_ПВ_Дистанция до объекта", True
     ),
     (
@@ -2133,7 +2164,8 @@ TEXT_FIELDS = [
         u"пусто — высота берётся как отметка точки вставки минус отметка "
         u"уровня камеры. Нужна для расчёта ближней мёртвой зоны и дальней "
         u"границы — без неё (и без наклона ниже) зона всегда плоский "
-        u"сектор от самой точки камеры, без мёртвой зоны.",
+        u"сектор от самой точки камеры, без мёртвой зоны. Несколько имён "
+        u"(у разных семейств камер) — через «;».",
         u"", False
     ),
     (
@@ -2144,7 +2176,9 @@ TEXT_FIELDS = [
         u"экземпляра ИЛИ типа (0 — камера смотрит горизонтально). Пусто — "
         u"наклон не учитывается, зона строится как плоский сектор без "
         u"мёртвой зоны, даже если высота задана. Подобрать автоматически "
-        u"под помещение можно кнопкой «Навести на помещение».",
+        u"под помещение можно кнопкой «Навести на помещение». Несколько "
+        u"имён (у разных семейств камер, если наклон называется по-разному) "
+        u"— через «;».",
         u"", False
     ),
     (
@@ -2157,7 +2191,10 @@ TEXT_FIELDS = [
         u"все зоны смотрят в одну сторону). Его значение прибавляется к "
         u"направлению (против часовой стрелки). В исходном Dynamo-скрипте "
         u"это был «Вращение (поворот)». Пусто — если камера разворачивается "
-        u"поворотом экземпляра в модели.",
+        u"поворотом экземпляра в модели. Если у разных семейств камер этот "
+        u"параметр называется по-разному (например, «Вращение (поворот)» у "
+        u"одних, «УГО_Поворот» у других) — перечислите все варианты через "
+        u"«;»: «Вращение (поворот);УГО_Поворот».",
         u"", False
     ),
     (

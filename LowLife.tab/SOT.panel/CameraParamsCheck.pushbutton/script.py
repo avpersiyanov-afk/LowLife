@@ -108,9 +108,10 @@ for role in diag["roles"]:
     label = role["label"] + (u" *" if role["required"] else u"")
     if role["must_be_instance"]:
         label += u" (только экземпляр)"
+    configured_label = (role["configured_name"] or u"—").replace(u";", u" / ")
     roles_table.append([
         label,
-        role["configured_name"] or u"—",
+        configured_label,
         _STATUS_RU.get(role["status"], role["status"]),
         _entry_label(role["found"]),
         _kinds_label(role["expected_kinds"]),
