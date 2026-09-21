@@ -16,9 +16,17 @@ box): для точечных элементов (LocationPoint) — попад�
 
 Линейный элемент может попасть сразу в несколько «Форм» (например лоток,
 проходящий через границу двух форм) — для такого элемента однозначно
-клонировать нечего, он идёт в список конфликтов, где источник выбирает
-пользователь (see loi_conflict_dialog.py). Элемент, попавший ровно в одну
-форму, клонируется автоматически.
+клонировать нечего. Если элемент прямой (LocationCurve.Curve — Line),
+loi_split.py сначала пробует физически разрезать его по границам форм и
+записать каждому куску значения его формы; то, что разрезать не удалось
+(кривые участки, точечные элементы, наложенные формы), по-прежнему идёт в
+список конфликтов, где источник выбирает пользователь (see
+loi_conflict_dialog.py). Элемент, попавший ровно в одну форму, клонируется
+автоматически.
+
+Какие именно элементы вообще проверяются на попадание в форму — определяет
+SELECTION_MODE_* (см. collect_candidates): весь документ, только активный
+вид, либо только выбранные в настройках типы семейств.
 
 «Формы» ищутся и в текущем файле, и во всех загруженных связях (обычно
 это категория из связанной архитектурной модели) — геометрия и bbox
@@ -31,7 +39,7 @@ Document, а не часть текущей транзакции).
 """
 
 from Autodesk.Revit.DB import (
-    Element, FilteredElementCollector, Options, Solid, GeometryInstance,
+    Element, ElementId, FilteredElementCollector, Options, Solid, GeometryInstance,
     LocationPoint, LocationCurve, Line, XYZ, SolidCurveIntersectionOptions,
     CategoryType, ViewDetailLevel, RevitLinkInstance, SolidUtils, BoundingBoxXYZ
 )
@@ -42,6 +50,16 @@ MIN_SOLID_VOLUME = 1e-9
 RAY_LENGTH_FT = 10000.0
 POINT_TOL_FT = 0.01
 BBOX_TOL_FT = 0.01
+
+# Режимы отбора кандидатов (loi_settings.MODE_KEY) — какие элементы вообще
+# проверяются на попадание в «Формы»:
+#   view  — модельные элементы активного вида (исходное поведение);
+#   all   — все модельные элементы документа, без привязки к виду;
+#   types — только экземпляры заранее отмеченных типов семейств
+#           (selected_type_ids), по всему документу.
+SELECTION_MODE_VIEW = u"view"
+SELECTION_MODE_ALL = u"all"
+SELECTION_MODE_TYPES = u"types"
 
 
 # --- геометрия -----------------------------------------------------------
@@ -267,11 +285,31 @@ def find_forms(doc, view, category_name):
     return records
 
 
-def collect_candidates(doc, view, exclude_category_name):
-    """Все элементы модели активного вида, кроме самих «Форм» и не-модельных категорий."""
-    result = []
+def collect_candidates(doc, view, exclude_category_name,
+                        mode=SELECTION_MODE_VIEW, type_ids=None):
+    """
+    Элементы модели — кандидаты на попадание в «Формы», кроме самих
+    «Форм» и не-модельных категорий. mode (см. SELECTION_MODE_*):
+      view  — только элементы активного вида (исходное поведение, view.Id);
+      all   — все элементы документа, вид не учитывается;
+      types — все элементы документа, чей GetTypeId() входит в type_ids
+              (набор int — ElementId.IntegerValue типов, см.
+              list_candidate_types); пустой/None type_ids -> пустой
+              результат (нечего искать).
+    """
+    if mode == SELECTION_MODE_TYPES:
+        wanted_type_ids = set(type_ids or [])
+        if not wanted_type_ids:
+            return []
+        collector = FilteredElementCollector(doc).WhereElementIsNotElementType()
+    elif mode == SELECTION_MODE_ALL:
+        wanted_type_ids = None
+        collector = FilteredElementCollector(doc).WhereElementIsNotElementType()
+    else:
+        wanted_type_ids = None
+        collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
 
-    collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
+    result = []
     for el in collector:
         cat = el.Category
         if cat is None:
@@ -283,6 +321,14 @@ def collect_candidates(doc, view, exclude_category_name):
                 continue
         except:
             continue
+
+        if wanted_type_ids is not None:
+            try:
+                tid = el.GetTypeId()
+            except:
+                tid = None
+            if tid is None or tid.IntegerValue not in wanted_type_ids:
+                continue
 
         result.append(el)
 
@@ -376,6 +422,58 @@ def element_display_name(doc, el):
     except:
         cat_name = u"?"
     return u"{}: {}".format(cat_name, element_type_name(doc, el))
+
+
+class TypeOption(object):
+    """Тип элемента (FamilySymbol/системный ElementType) — для чек-листа
+    «Выбранные типы семейств» в настройках (forms.SelectFromList)."""
+
+    def __init__(self, type_id, label):
+        self.type_id = type_id
+        self.name = label
+
+    def __str__(self):
+        return self.name
+
+
+def list_candidate_types(doc, exclude_category_name):
+    """
+    Типы, у которых в документе есть хотя бы один экземпляр модельной
+    категории (кроме категории «Форма») — источник списка для режима
+    отбора «Выбранные типы семейств» (SELECTION_MODE_TYPES). Подпись —
+    «Категория — Имя типа (N экз.)», отсортировано по ней же.
+    """
+    counts = {}
+    labels = {}
+
+    for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
+        cat = el.Category
+        if cat is None or cat.Name == exclude_category_name:
+            continue
+        try:
+            if cat.CategoryType != CategoryType.Model:
+                continue
+        except:
+            continue
+
+        try:
+            tid = el.GetTypeId()
+        except:
+            tid = None
+        if tid is None or tid == ElementId.InvalidElementId:
+            continue
+
+        key = tid.IntegerValue
+        counts[key] = counts.get(key, 0) + 1
+        if key not in labels:
+            labels[key] = u"{} — {}".format(cat.Name, element_type_name(doc, el))
+
+    options = [
+        TypeOption(ElementId(key), u"{} ({} экз.)".format(labels[key], counts[key]))
+        for key in counts
+    ]
+    options.sort(key=lambda o: o.name.lower())
+    return options
 
 
 def collect_form_values(form_el, param_names):
