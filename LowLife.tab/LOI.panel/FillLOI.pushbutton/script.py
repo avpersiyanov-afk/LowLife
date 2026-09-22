@@ -42,7 +42,7 @@ def main():
     if view is None:
         forms.alert(u"Нет активного вида.", exitscript=True)
 
-    form_records = loi_fill.find_forms(doc, view, category_name, locations=search_locations)
+    form_records = loi_fill.find_forms(doc, category_name, locations=search_locations)
     if not form_records:
         forms.alert(
             u"Не найдено элементов категории «{}» с геометрией (солидом) — "
