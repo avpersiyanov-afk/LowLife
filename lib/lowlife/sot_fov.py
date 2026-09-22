@@ -57,6 +57,7 @@ from Autodesk.Revit.DB import (
     FilledRegion, FilledRegionType, CurveElement,
     SpatialElementBoundaryOptions, SpatialElementBoundaryLocation,
     Color, GraphicsStyleType, Options, Solid, PlanarFace,
+    View3D, ViewFamilyType, ViewFamily, ViewOrientation3D,
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter
 
@@ -1461,6 +1462,36 @@ def _clip_distance(ox, oy, ux, uy, max_d, rings):
     return best
 
 
+_ROOM_WIDTH_PROBE_INSET_FT = 0.1   # отступ от дальней стены при замере ширины,
+                                    # чтобы точка не оказалась ровно на границе
+                                    # (перпендикулярные лучи из точки НА стене
+                                    # могут пойти вдоль неё и не пересечься)
+
+
+def _room_width_at_point(center, base, far_ft, rings, search_r):
+    """
+    Ширина помещения (фт) перпендикулярно направлению взгляда `base`, у
+    дальней точки на расстоянии `far_ft` от `center` вдоль этого
+    направления — сумма расстояний влево и вправо (`base ± 90°`) от точки
+    чуть БЛИЖЕ дальней стены (см. _ROOM_WIDTH_PROBE_INSET_FT) до контуров
+    `rings`. None, если один из лучей не встретил границу (тогда
+    автоподбор фокусного по ширине помещения невозможен — вызывающий код
+    должен откатиться на прежнее поведение).
+    """
+    probe = max(0.0, far_ft - _ROOM_WIDTH_PROBE_INSET_FT)
+    px = center.X + math.cos(base) * probe
+    py = center.Y + math.sin(base) * probe
+
+    left = _clip_distance(px, py, math.cos(base + math.pi / 2.0),
+                           math.sin(base + math.pi / 2.0), search_r, rings)
+    right = _clip_distance(px, py, math.cos(base - math.pi / 2.0),
+                            math.sin(base - math.pi / 2.0), search_r, rings)
+
+    if left >= search_r - 1e-6 or right >= search_r - 1e-6:
+        return None
+    return left + right
+
+
 # Минимальная длина отрезка контура зоны, футы (~3 мм) — с запасом выше
 # минимальной длины кривой, которую примет Revit (около 0.79 мм,
 # Application.ShortCurveTolerance). Раньше здесь стояло 1e-4 фт
@@ -1936,7 +1967,8 @@ def build_fov_zones(doc, cameras, view, settings):
 # значение по умолчанию из настроек автонаведения (тоже параметром
 # ЭКЗЕМПЛЯРА).
 
-def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad):
+def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
+                   focal_min_mm, focal_max_mm, max_tilt_rad, max_near_ft):
     if not isinstance(cam.Location, LocationPoint):
         return (cam, u"no_location", u"")
 
@@ -1997,10 +2029,53 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad):
                 hp.Set(_mm_to_param_value(hp, default_h_ft * 304.8))
                 h_written = True
 
+    # --- фокусное расстояние: автоподбор по ширине помещения в дальней
+    # точке (чтобы вся ширина помещения там влезла в кадр), только если
+    # параметр фокусного найден как параметр ЭКЗЕМПЛЯРА этой камеры —
+    # иначе (нет имени, параметр только типа, или объектив не
+    # вариофокальный) фокусное не трогается, дальше используется то, что
+    # уже стоит на камере (прежнее поведение).
+    focal_note = u""
+    focal_p = None
+    for cname in _split_alias_names((s.get("focal_length_param_name") or u"").strip()):
+        fp = cam.LookupParameter(cname)
+        if fp is not None:
+            focal_p = fp
+            break
+
+    width_ft = None
+    if (focal_p is not None and not focal_p.IsReadOnly
+            and focal_p.StorageType == StorageType.Double):
+        width_ft = _room_width_at_point(center, base, wall_ft, rings, search_r)
+
+    if width_ft is not None:
+        sensor = None
+        sensor_pname = (s.get("sensor_format_param_name") or u"").strip()
+        if sensor_pname:
+            sp = _find_param(doc, cam, sensor_pname)
+            if sp is not None and sp.HasValue:
+                text = sp.AsString() if sp.StorageType == StorageType.String else sp.AsValueString()
+                sensor = _parse_sensor(text)
+        if sensor is None:
+            sensor = _parse_sensor(s.get("sensor_format"))
+
+        if sensor is not None:
+            w_mm, _h_mm = sensor
+            needed_hfov = 2.0 * math.atan2(width_ft / 2.0, wall_ft)
+            tan_half = math.tan(min(needed_hfov, math.radians(178.0)) / 2.0)
+            needed_f = (w_mm / (2.0 * tan_half)) if tan_half > 1e-6 else focal_max_mm
+            chosen_f = max(focal_min_mm, min(needed_f, focal_max_mm))
+            focal_p.Set(_mm_to_param_value(focal_p, chosen_f))
+            focal_note = u"; ширина помещения {:.2f} м -> фокусное {:.2f} мм{}".format(
+                width_ft * _M_PER_FT, chosen_f,
+                u" (ограничено диапазоном автоподбора)"
+                if abs(chosen_f - needed_f) > 0.005 else u"")
+
     # вертикальный угол — расчётный (фокусное + матрица, см. _optical_fov);
-    # если оптика не настроена/не нашлась на этой камере — значение по
-    # умолчанию из настроек автонаведения (писать его некуда, это не
-    # параметр камеры, а чистый расчётный вход)
+    # фокусное — то, что только что выбрано выше, либо прежнее значение на
+    # камере, если автоподбор не сработал. Если оптика в итоге всё равно не
+    # нашлась — значение по умолчанию из настроек автонаведения (писать
+    # его некуда, это не параметр камеры, а чистый расчётный вход)
     _, vfov, _optic_reason = _optical_fov(doc, cam, s)
     vfov_default_used = False
     if vfov is None:
@@ -2016,37 +2091,254 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad):
     tilt = max(0.0, min(tilt, math.radians(89.0)))
     tilt_p.Set(_radians_to_param_value(tilt_p, tilt, unit_mode))
 
+    # предупреждение «поднимите камеру» — мёртвая зона больше допустимой,
+    # или наклон больше допустимого (оба порога — настройки автонаведения);
+    # near — той же формулой, что и _near_far_radius (bottom = tilt+vfov/2)
+    bottom = tilt + vfov / 2.0
+    near_ft = 0.0
+    if 1e-3 < bottom < (math.pi / 2.0 - 1e-3):
+        near_ft = max(0.0, h_ft / math.tan(bottom))
+
+    warn_reasons = []
+    if near_ft > max_near_ft:
+        warn_reasons.append(u"мёртвая зона {:.2f} м больше допустимой {:.2f} м".format(
+            near_ft * _M_PER_FT, max_near_ft * _M_PER_FT))
+    if tilt > max_tilt_rad:
+        warn_reasons.append(u"наклон {:.0f}° больше допустимого {:.0f}°".format(
+            math.degrees(tilt), math.degrees(max_tilt_rad)))
+
     extra = u"".join([
         u"; высота по умолчанию (записана)" if h_written else u"",
         u"; верт.угол по умолчанию (не найдена оптика)" if vfov_default_used else u"",
+        focal_note,
     ])
-    return (cam, u"ok",
-            u"до стены {:.2f} м, h={:.2f} м, верт.угол={:.0f}° -> наклон "
-            u"{:.1f}°{}".format(wall_ft * _M_PER_FT, h_ft * _M_PER_FT,
-                                math.degrees(vfov), math.degrees(tilt), extra))
+    detail = (u"до стены {:.2f} м, h={:.2f} м, верт.угол={:.0f}° -> наклон "
+              u"{:.1f}°{}".format(wall_ft * _M_PER_FT, h_ft * _M_PER_FT,
+                                  math.degrees(vfov), math.degrees(tilt), extra))
+
+    if warn_reasons:
+        detail += u"; поднимите камеру выше — {}".format(u", ".join(warn_reasons))
+        return (cam, u"ok_warn", detail)
+    return (cam, u"ok", detail)
 
 
 def auto_aim_cameras(doc, cameras, view, settings):
     """
-    Подобрать и ЗАПИСАТЬ наклон (tilt_param_name, параметр экземпляра)
-    каждой камеры так, чтобы дальний край конуса приходился на границу её
-    помещения по направлению взгляда. Возвращает [(camera, status, detail)]
-    со status: "ok"/"no_location"/"no_tilt_param"/"tilt_not_instance"/
-    "tilt_readonly"/"bad_geometry"/"no_room"/"no_wall_hit"/"missing_inputs".
+    Подобрать и ЗАПИСАТЬ наклон (tilt_param_name, параметр экземпляра) и,
+    если фокусное — параметр экземпляра, фокусное расстояние (по ширине
+    помещения в дальней точке, см. _room_width_at_point) каждой камеры так,
+    чтобы дальний край конуса приходился на границу её помещения по
+    направлению взгляда. Возвращает [(camera, status, detail)] со status:
+    "ok"/"ok_warn" (наклон и/или фокусное записаны, но мёртвая зона или
+    наклон вышли за настроенный допустимый порог — стоит поднять камеру)/
+    "no_location"/"no_tilt_param"/"tilt_not_instance"/"tilt_readonly"/
+    "bad_geometry"/"no_room"/"no_wall_hit"/"missing_inputs".
     Транзакция — на вызывающей стороне (пишет параметры).
     """
     s = settings
     unit_mode = s.get("angle_unit") or u"авто"
     default_h_ft = _as_float(s.get("auto_default_height_mm"), 3000.0) * _FT_PER_MM
     default_vfov_rad = math.radians(_as_float(s.get("auto_default_vfov_deg"), 30.0))
+    focal_min_mm = _as_float(s.get("auto_focal_min_mm"), 2.8)
+    focal_max_mm = _as_float(s.get("auto_focal_max_mm"), 12.0)
+    max_tilt_rad = math.radians(_as_float(s.get("auto_max_tilt_deg"), 60.0))
+    max_near_ft = _as_float(s.get("auto_max_near_zone_mm"), 1500.0) * _FT_PER_MM
 
     results = []
     for cam in cameras:
         try:
-            results.append(_auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad))
+            results.append(_auto_aim_one(
+                doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
+                focal_min_mm, focal_max_mm, max_tilt_rad, max_near_ft))
         except Exception as ex:
             results.append((cam, u"error", u"{}".format(ex)))
     return results
+
+
+# ======================================================================
+#  ВИД «КАК С КАМЕРЫ»  (3D-перспектива, кнопка CameraPreviewView)
+# ======================================================================
+#
+# Создаёт/обновляет 3D-перспективный вид Revit в точке камеры, смотрящий
+# туда же (тот же азимут+наклон, что «Зоны обзора»/«Навести на
+# помещение»), с полем зрения, подогнанным под расчётный hfov/vfov этой
+# камеры (фокусное + матрица, _optical_fov) через crop box перспективы —
+# прямого API «угол обзора камеры» у Revit нет, но т.к. crop box
+# перспективы — это сечение пирамиды с вершиной в точке глаза, отношение
+# половины ширины/высоты crop box к глубине сечения одинаково на любой
+# глубине; поэтому подгонка не трогает Z (ближнюю/дальнюю плоскость,
+# выставленную Revit по умолчанию), только X/Y на уже имеющейся глубине —
+# это устраняет саму необходимость знать знак/точку отсчёта Z. Идемпотентно
+# по имени вида: повторный запуск на той же камере обновляет уже созданный
+# вид на месте, а не плодит дубли.
+
+def _camera_view_name(cam):
+    label = u""
+    try:
+        label = _safe_name(cam.Symbol) if cam.Symbol is not None else u""
+    except Exception:
+        label = u""
+    mark = None
+    try:
+        mp = cam.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
+        mark = mp.AsString() if mp is not None else None
+    except Exception:
+        mark = None
+    parts = [p for p in (label, mark) if p and p.strip()]
+    tail = u" ".join(parts) if parts else u"камера"
+    return u"СОТ · {} · id{}".format(tail, cam.Id.IntegerValue)
+
+
+def _find_existing_preview_view(doc, name):
+    for v in FilteredElementCollector(doc).OfClass(View3D):
+        try:
+            if v.IsTemplate or not v.IsPerspective:
+                continue
+            if Element.Name.GetValue(v) == name:
+                return v
+        except Exception:
+            continue
+    return None
+
+
+def _pick_3d_view_family_type(doc, name):
+    types = [t for t in FilteredElementCollector(doc).OfClass(ViewFamilyType)
+             if t.ViewFamily == ViewFamily.ThreeDimensional]
+    if not types:
+        return None
+    if name and name.strip():
+        want = name.strip()
+        for t in types:
+            try:
+                if Element.Name.GetValue(t) == want:
+                    return t
+            except Exception:
+                continue
+    return types[0]
+
+
+def _camera_level_elevation(doc, cam, view):
+    lvl = get_element_level(doc, cam)
+    if lvl is not None:
+        try:
+            return lvl.Elevation
+        except Exception:
+            pass
+    gen = getattr(view, "GenLevel", None)
+    if gen is not None:
+        try:
+            return gen.Elevation
+        except Exception:
+            pass
+    return None
+
+
+def build_camera_preview_view(doc, cam, view, settings):
+    """
+    Создать либо обновить 3D-перспективный вид, поставленный в точку камеры
+    cam и смотрящий туда же, что и она — тот же источник направления/
+    наклона, что «Зоны обзора»/«Навести на помещение» (_look_direction +
+    rotation_param_name + direction_offset_deg, tilt_param_name), с полем
+    зрения, подогнанным под расчётный hfov/vfov (_optical_fov). view —
+    активный вид, нужен только чтобы определить уровень камеры, если у неё
+    самой уровня нет (как в _mounting_height_ft).
+
+    Возвращает (view3d_или_None, status, detail):
+      "ok" — вид создан/обновлён, поле зрения подогнано под оптику камеры;
+      "ok_no_optics" — вид создан/обновлён, но без подгонки FOV (нет
+        фокусного расстояния/формата матрицы на этой камере — остаётся
+        штатное поле зрения Revit для нового вида, либо прежнее для
+        обновляемого);
+      "no_location" / "bad_geometry" / "no_view_family_type" /
+      "create_failed".
+    Транзакция — на вызывающей стороне (создаёт/меняет элемент вида).
+    """
+    s = settings
+    if not isinstance(cam.Location, LocationPoint):
+        return (None, u"no_location", u"")
+
+    offset_deg = _as_float(s.get("direction_offset_deg"), 0.0)
+    unit_mode = s.get("angle_unit") or u"авто"
+    d, dir_note = _look_direction(cam, offset_deg)
+    if d is None:
+        return (None, u"bad_geometry",
+                u"не удалось определить направление камеры [{}]".format(dir_note))
+    base = math.atan2(d.Y, d.X)
+    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
+    if rot:
+        base += rot
+
+    tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode) or 0.0
+
+    p = cam.Location.Point
+    h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
+    if h_ft is None:
+        h_ft = _as_float(s.get("auto_default_height_mm"), 3000.0) * _FT_PER_MM
+    level_elev = _camera_level_elevation(doc, cam, view)
+    eye_z = (level_elev + h_ft) if level_elev is not None else p.Z
+    eye = XYZ(p.X, p.Y, eye_z)
+
+    forward = XYZ(math.cos(base) * math.cos(tilt),
+                  math.sin(base) * math.cos(tilt),
+                  -math.sin(tilt))
+    right = XYZ(-math.sin(base), math.cos(base), 0.0)
+    up = forward.CrossProduct(right)
+    if up.GetLength() < 1e-6:
+        return (None, u"bad_geometry", u"вырожденный базис вида (up почти нулевой)")
+    up = up.Normalize()
+    forward = forward.Normalize()
+
+    vft = _pick_3d_view_family_type(doc, s.get("view3d_type_name"))
+    if vft is None:
+        return (None, u"no_view_family_type",
+                u"в проекте нет типа 3D-вида (ViewFamilyType, ViewFamily.ThreeDimensional)")
+
+    name = _camera_view_name(cam)
+    v3d = _find_existing_preview_view(doc, name)
+    created = v3d is None
+    if v3d is None:
+        try:
+            v3d = View3D.CreatePerspective(doc, vft.Id)
+        except Exception as ex:
+            return (None, u"create_failed", u"{}".format(ex))
+        try:
+            v3d.Name = name
+        except Exception:
+            pass
+
+    try:
+        v3d.SetOrientation(ViewOrientation3D(eye, up, forward))
+    except Exception as ex:
+        return (v3d, u"create_failed", u"SetOrientation: {}".format(ex))
+
+    hfov, vfov, optic_reason = _optical_fov(doc, cam, s)
+    status = u"ok"
+    detail = u"азимут {:.0f}°, наклон {:.0f}°".format(
+        math.degrees(base) % 360.0, math.degrees(tilt))
+
+    if hfov is not None and vfov is not None:
+        try:
+            v3d.CropBoxActive = True
+            box = v3d.CropBox
+            depth = abs(box.Max.Z)
+            if depth < 0.1:
+                depth = 10.0
+            half_w = depth * math.tan(min(hfov, math.radians(178.0)) / 2.0)
+            half_h = depth * math.tan(min(vfov, math.radians(178.0)) / 2.0)
+            box.Min = XYZ(-half_w, -half_h, box.Min.Z)
+            box.Max = XYZ(half_w, half_h, box.Max.Z)
+            v3d.CropBox = box
+            detail += u", угол {:.0f}°×{:.0f}°".format(
+                math.degrees(hfov), math.degrees(vfov))
+        except Exception as ex:
+            status = u"ok_no_optics"
+            detail += u"; не удалось подогнать crop box: {}".format(ex)
+    else:
+        status = u"ok_no_optics"
+        detail += u"; поле зрения не подогнано под объектив ({})".format(optic_reason)
+
+    detail += u"; {}".format(u"создан" if created else u"обновлён")
+    return (v3d, status, detail)
 
 
 # ======================================================================
@@ -2320,6 +2612,53 @@ TEXT_FIELDS = [
         u"записывается в параметр вертикального угла (если он есть на "
         u"экземпляре). Возьмите из паспорта объектива/камеры.",
         u"30", False
+    ),
+    (
+        "auto_focal_min_mm",
+        u"",
+        u"Автоподбор фокусного — минимум, мм",
+        u"«Навести на помещение» подбирает фокусное (если оно параметр "
+        u"ЭКЗЕМПЛЯРА этой камеры) так, чтобы в кадр на дальней точке "
+        u"поместилась вся ширина помещения там, и записывает его — "
+        u"результат клампится в этот диапазон (непрерывный вариофокал). "
+        u"Если фокусное — параметр типа, или ширину помещения не измерить "
+        u"— фокусное не трогается, используется то, что уже на камере.",
+        u"2.8", False
+    ),
+    (
+        "auto_focal_max_mm",
+        u"",
+        u"Автоподбор фокусного — максимум, мм",
+        u"Верхняя граница того же диапазона.",
+        u"12", False
+    ),
+    (
+        "auto_max_tilt_deg",
+        u"",
+        u"Предупреждать, если наклон больше, °",
+        u"После подбора наклона под помещение — если получившийся наклон "
+        u"больше этого значения, статус камеры в отчёте станет "
+        u"«с предупреждением»: слишком крутой наклон обычно значит, что "
+        u"камеру стоит установить выше.",
+        u"60", False
+    ),
+    (
+        "auto_max_near_zone_mm",
+        u"",
+        u"Предупреждать, если мёртвая зона больше, мм",
+        u"Так же — если получившаяся ближняя мёртвая зона (не видно под "
+        u"камерой) больше этого значения, отчёт предупредит: поднимите "
+        u"камеру выше — это уменьшает мёртвую зону при том же дальнем "
+        u"крае обзора.",
+        u"1500", False
+    ),
+    (
+        "view3d_type_name",
+        u"⑦ Вид как с камеры",
+        u"Тип 3D-вида (необязательно)",
+        u"Имя ViewFamilyType для создаваемого перспективного вида. Пусто — "
+        u"берётся первый доступный 3D-тип в проекте.",
+        u"", False
     ),
 ]
 
