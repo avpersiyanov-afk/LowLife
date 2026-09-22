@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Логика кнопки «Заполнение LOI» (LOI.panel): клонирование значений
-параметров из элементов категории «Форма» (см. loi_settings.py) во все
-элементы активного вида, физически находящиеся внутри солида конкретной
-«Формы».
+параметров из элементов категории «Форма» (FORM_CATEGORY_NAME — она всегда
+одна и та же, не настраивается) во все элементы активного вида, физически
+находящиеся внутри солида конкретной «Формы».
 
 Проверка «элемент внутри формы» — точно по солиду формы (не по bounding
 box): для точечных элементов (LocationPoint) — попадание точки в солид
@@ -28,9 +28,12 @@ loi_conflict_dialog.py). Элемент, попавший ровно в одну
 SELECTION_MODE_* (см. collect_candidates): весь документ, только активный
 вид, либо только выбранные в настройках типы семейств.
 
-«Формы» ищутся и в текущем файле, и во всех загруженных связях (обычно
-это категория из связанной архитектурной модели) — геометрия и bbox
-элементов связи трансформируются в координаты текущего файла через
+«Формы» обычно лежат в отдельной связанной архитектурной модели — какие
+именно модели просматривать (текущий файл-хост и/или конкретные загруженные
+связи по имени), выбирает пользователь в настройках (loi_settings.py,
+SEARCH_LOCATIONS_KEY) вместо того, чтобы искать их во всех связях подряд;
+см. find_forms/list_search_locations. Геометрия и bbox элементов связи
+трансформируются в координаты текущего файла через
 RevitLinkInstance.GetTotalTransform(), тем же способом, что и у обычного
 элемента текущего файла, только с дополнительным Transform. Кандидаты
 (элементы, которые заполняются) ищутся только в текущем файле — писать
@@ -50,6 +53,17 @@ MIN_SOLID_VOLUME = 1e-9
 RAY_LENGTH_FT = 10000.0
 POINT_TOL_FT = 0.01
 BBOX_TOL_FT = 0.01
+
+# Категория элементов «Форма» — зона, по которой всегда строится LOI, одна
+# и та же во всех проектах (в отличие от имён клонируемых параметров, это
+# не соглашение конкретного ФОП), поэтому она фиксирована, а не читается
+# из настроек.
+FORM_CATEGORY_NAME = u"Форма"
+
+# Ключ HOST_LOCATION_KEY в списке «где искать формы» (settings.search_locations)
+# означает «искать в текущем файле-хосте» — остальные элементы списка это
+# имена загруженных связей (RevitLinkInstance), см. list_search_locations.
+HOST_LOCATION_KEY = u"HOST"
 
 # Режимы отбора кандидатов (loi_settings.MODE_KEY) — какие элементы вообще
 # проверяются на попадание в «Формы»:
@@ -252,20 +266,32 @@ def _collect_form_records(collector, category_name, type_doc, transform, source_
     return records
 
 
-def find_forms(doc, view, category_name):
+def find_forms(doc, view, category_name, locations=None):
     """
     Элементы категории category_name — в текущем файле (видимые на view) и
-    во всех загруженных связях (без привязки к виду — у связи нет вида
-    текущего файла; геометрия/bbox трансформируются в координаты текущего
-    файла через RevitLinkInstance.GetTotalTransform()).
+    в загруженных связях (без привязки к виду — у связи нет вида текущего
+    файла; геометрия/bbox трансформируются в координаты текущего файла
+    через RevitLinkInstance.GetTotalTransform()).
+
+    locations — какие модели просматривать (значения settings.search_locations,
+    см. loi_settings.py): список строк, HOST_LOCATION_KEY — текущий файл,
+    остальное — точные имена RevitLinkInstance (как их возвращает
+    list_search_locations/_safe_name). None (настройка ещё не тронута) —
+    прежнее поведение: искать везде (хост + все загруженные связи).
     """
     records = []
 
-    host_collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
-    records.extend(_collect_form_records(host_collector, category_name, doc, None, u""))
+    search_host = locations is None or HOST_LOCATION_KEY in locations
+    if search_host:
+        host_collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
+        records.extend(_collect_form_records(host_collector, category_name, doc, None, u""))
 
     link_collector = FilteredElementCollector(doc).OfClass(RevitLinkInstance)
     for link_inst in link_collector:
+        link_name = _safe_name(link_inst)
+        if locations is not None and link_name not in locations:
+            continue
+
         try:
             link_doc = link_inst.GetLinkDocument()
         except:
@@ -278,11 +304,38 @@ def find_forms(doc, view, category_name):
         except:
             transform = None
 
-        link_name = _safe_name(link_inst)
         link_elems = FilteredElementCollector(link_doc).WhereElementIsNotElementType()
         records.extend(_collect_form_records(link_elems, category_name, link_doc, transform, link_name))
 
     return records
+
+
+class LocationOption(object):
+    """Модель — кандидат для поиска «Форм»: текущий файл (HOST_LOCATION_KEY)
+    или загруженная связь по имени — для чек-листа в настройках."""
+
+    def __init__(self, key, label):
+        self.key = key
+        self.name = label
+
+    def __str__(self):
+        return self.name
+
+
+def list_search_locations(doc):
+    """
+    Текущий файл + все загруженные связи документа (по имени, даже
+    выгруженные — RevitLinkInstance остаётся в документе) — источник
+    списка для настройки «В каких моделях искать формы».
+    """
+    options = [LocationOption(HOST_LOCATION_KEY, u"Текущий файл (хост)")]
+
+    for link_inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        name = _safe_name(link_inst)
+        if name:
+            options.append(LocationOption(name, u"Связь: {}".format(name)))
+
+    return options
 
 
 def collect_candidates(doc, view, exclude_category_name,

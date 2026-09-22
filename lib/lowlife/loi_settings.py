@@ -8,9 +8,18 @@
 (простой файл вместо pyrevit.script.get_config(), см. их докстринги про
 причину).
 
-Имя категории «Формы» и список клонируемых параметров — соглашение
-конкретного проекта/ФОП, поэтому не зашиты константами в коде, только через
-это окно (Shift+клик по кнопке). Туда же вынесены:
+Категория «Формы» одна и та же во всех проектах (loi_fill.FORM_CATEGORY_NAME,
+не настраивается) — а вот список клонируемых параметров и то, в каких
+именно моделях искать «Формы», соглашение конкретного проекта, поэтому
+задаётся только через это окно (Shift+клик по кнопке). Настройки:
+  - param_names_text — параметры, которые клонируются из «Формы» в
+    содержащиеся в ней элементы (по имени, см. get_param_names);
+  - search_locations/search_locations_configured — в каких моделях искать
+    «Формы»: текущий файл-хост и/или конкретные загруженные связи по имени
+    (см. loi_fill.list_search_locations/find_forms). Формы физически часто
+    лежат в отдельной связанной архитектурной модели, а не в текущем файле —
+    пока эта настройка не тронута (search_locations_configured=False),
+    ищем везде (хост + все связи), как было раньше;
   - selection_mode/selected_type_ids — какие элементы вообще проверяются на
     попадание в форму (см. loi_fill.SELECTION_MODE_*): весь документ, только
     активный вид (по умолчанию, как было раньше) или только отмеченные типы
@@ -48,18 +57,8 @@ SETTINGS_FILE_NAME = "LowLifeLOI_settings.json"
 #  значение по умолчанию, многострочное поле, обязательное поле)
 TEXT_FIELDS = [
     (
-        "form_category_name",
-        u"① Категория элементов «Форма»",
-        u"Имя категории семейства",
-        u"Категория, к которой должны принадлежать элементы «Форма» — их "
-        u"параметры клонируются в элементы, физически находящиеся внутри их "
-        u"солида. Обычно это отдельная категория семейства, заведённая под "
-        u"эту задачу.",
-        u"Форма", False, True
-    ),
-    (
         "param_names_text",
-        u"② Параметры для клонирования",
+        u"② Параметры для клонирования из «Форм»",
         u"Имена параметров (по одному на строке)",
         u"Значения этих параметров переносятся из «Формы» в содержащиеся в "
         u"ней элементы — по имени параметра, оно должно совпадать у «Формы» "
@@ -69,6 +68,9 @@ TEXT_FIELDS = [
 ]
 
 PLAIN_LABELS = {key: label for key, _section, label, _hint, _default, _multiline, _required in TEXT_FIELDS}
+
+SEARCH_LOCATIONS_KEY = "search_locations"
+SEARCH_LOCATIONS_CONFIGURED_KEY = "search_locations_configured"
 
 MODE_KEY = "selection_mode"
 MODE_VIEW = "view"     # lowlife.loi_fill.SELECTION_MODE_VIEW
@@ -131,6 +133,12 @@ def load_saved_values():
     values = {key: saved.get(key, default)
               for key, _section, _label, _hint, default, _multiline, _required in TEXT_FIELDS}
 
+    raw_locations = saved.get(SEARCH_LOCATIONS_KEY, [])
+    values[SEARCH_LOCATIONS_KEY] = (
+        [unicode(x) for x in raw_locations] if isinstance(raw_locations, list) else []
+    )
+    values[SEARCH_LOCATIONS_CONFIGURED_KEY] = bool(saved.get(SEARCH_LOCATIONS_CONFIGURED_KEY, False))
+
     values[MODE_KEY] = saved.get(MODE_KEY, MODE_DEFAULT)
 
     raw_ids = saved.get(TYPE_IDS_KEY, [])
@@ -167,6 +175,18 @@ def get_param_names(settings):
             seen.add(name)
             names.append(name)
     return names
+
+
+def get_search_locations(settings):
+    """
+    Список моделей для поиска «Форм» (см. loi_fill.find_forms/HOST_LOCATION_KEY),
+    либо None, если настройка ещё не тронута — вызывающий код должен
+    трактовать None как «искать везде» (хост + все загруженные связи, как
+    было до появления этой настройки).
+    """
+    if not bool(settings.get(SEARCH_LOCATIONS_CONFIGURED_KEY, False)):
+        return None
+    return list(settings.get(SEARCH_LOCATIONS_KEY) or [])
 
 
 def get_selection_mode(settings):
@@ -240,19 +260,36 @@ def _types_label_text(ids, options):
     return u"Выбрано типов: {}. {}".format(len(ids), preview)
 
 
+def _locations_label_text(configured, keys, options):
+    if not configured:
+        return u"Не настроено — ищутся все: текущий файл и все загруженные связи."
+    if not keys:
+        return u"Не выбрано ни одной модели — формы не будут найдены."
+    by_key = {o.key: o.name for o in options} if options else {}
+    names = [by_key.get(k, k) for k in keys]
+    preview = u"; ".join(names[:5])
+    if len(names) > 5:
+        preview += u"; …"
+    return u"Выбрано: {}. {}".format(len(keys), preview)
+
+
 def show_settings_form(doc, values):
-    """Модальное окно редактирования настроек. Возвращает словарь
-    значений (строки TEXT_FIELDS + MODE_KEY/TYPE_IDS_KEY/SPLIT_KEY) или
-    None, если пользователь отменил."""
+    """Модальное окно редактирования настроек. Возвращает словарь значений
+    (строки TEXT_FIELDS + SEARCH_LOCATIONS_KEY/_CONFIGURED_KEY/MODE_KEY/
+    TYPE_IDS_KEY/SPLIT_KEY) или None, если пользователь отменил."""
     from lowlife import loi_fill
 
     result = {"values": None}
-    state = {"type_ids": list(values.get(TYPE_IDS_KEY) or [])}
+    state = {
+        "type_ids": list(values.get(TYPE_IDS_KEY) or []),
+        "locations": list(values.get(SEARCH_LOCATIONS_KEY) or []),
+        "locations_configured": bool(values.get(SEARCH_LOCATIONS_CONFIGURED_KEY, False)),
+    }
 
     win = Window()
     win.Title = u"Настройки: Заполнение LOI"
     win.Width = 760
-    win.Height = 700
+    win.Height = 760
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
@@ -262,7 +299,7 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Категория «Формы» и параметры для клонирования"
+    title.Text = u"В каких моделях искать «Формы» и что из них клонировать"
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)
@@ -274,6 +311,69 @@ def show_settings_form(doc, values):
     hint.Foreground = Brushes.Gray
     hint.Margin = Thickness(0, 0, 0, 10)
     root.Children.Add(hint)
+
+    # --- ① в каких моделях искать формы ---------------------------------
+
+    locations_section = TextBlock()
+    locations_section.Text = u"① В каких моделях искать элементы «Форма»"
+    locations_section.FontWeight = FontWeights.Bold
+    locations_section.Margin = Thickness(0, 2, 0, 2)
+    root.Children.Add(locations_section)
+
+    locations_row = StackPanel()
+    locations_row.Orientation = Orientation.Horizontal
+    locations_row.Margin = Thickness(0, 4, 0, 0)
+
+    locations_pick_btn = Button()
+    locations_pick_btn.Content = u"Выбрать модели…"
+    locations_pick_btn.Padding = Thickness(8, 2, 8, 2)
+    locations_row.Children.Add(locations_pick_btn)
+
+    locations_label = TextBlock()
+    locations_label.Text = _locations_label_text(
+        state["locations_configured"], state["locations"], None
+    )
+    locations_label.VerticalAlignment = VerticalAlignment.Center
+    locations_label.Margin = Thickness(8, 0, 0, 0)
+    locations_label.TextWrapping = TextWrapping.Wrap
+    locations_row.Children.Add(locations_label)
+
+    root.Children.Add(locations_row)
+
+    def on_pick_locations(sender, args):
+        options = loi_fill.list_search_locations(doc)
+        checked_keys = (
+            set(state["locations"]) if state["locations_configured"]
+            else set(o.key for o in options)
+        )
+        items = [forms.TemplateListItem(o, checked=(o.key in checked_keys)) for o in options]
+
+        chosen = forms.SelectFromList.show(
+            items,
+            title=u"Модели, в которых искать элементы «Форма»",
+            button_name=u"Сохранить",
+            multiselect=True
+        )
+        if chosen is None:
+            return
+
+        state["locations"] = [o.key for o in chosen]
+        state["locations_configured"] = True
+        locations_label.Text = _locations_label_text(True, state["locations"], options)
+
+    locations_pick_btn.Click += on_pick_locations
+
+    locations_hint = TextBlock()
+    locations_hint.Text = (
+        u"«Формы» обычно лежат в отдельной связанной архитектурной модели — "
+        u"отметьте текущий файл и/или конкретные загруженные связи. Пока не "
+        u"настроено — ищутся все (текущий файл и все связи), как раньше."
+    )
+    locations_hint.FontSize = 11
+    locations_hint.Foreground = Brushes.Gray
+    locations_hint.TextWrapping = TextWrapping.Wrap
+    locations_hint.Margin = Thickness(0, 4, 0, 0)
+    root.Children.Add(locations_hint)
 
     boxes = {}
 
@@ -361,12 +461,11 @@ def show_settings_form(doc, values):
     root.Children.Add(types_row)
 
     def on_pick_types(sender, args):
-        exclude_name = boxes["form_category_name"].Text.strip() or u"Форма"
-        options = loi_fill.list_candidate_types(doc, exclude_name)
+        options = loi_fill.list_candidate_types(doc, loi_fill.FORM_CATEGORY_NAME)
         if not options:
             forms.alert(
                 u"В документе не найдено модельных элементов с типами (кроме "
-                u"категории «{}»).".format(exclude_name)
+                u"категории «{}»).".format(loi_fill.FORM_CATEGORY_NAME)
             )
             return
 
@@ -459,6 +558,8 @@ def show_settings_form(doc, values):
             combined[MODE_KEY] = MODE_VIEW
         combined[TYPE_IDS_KEY] = list(state["type_ids"])
         combined[SPLIT_KEY] = bool(split_cb.IsChecked)
+        combined[SEARCH_LOCATIONS_KEY] = list(state["locations"])
+        combined[SEARCH_LOCATIONS_CONFIGURED_KEY] = bool(state["locations_configured"])
         result["values"] = combined
         win.Close()
 
