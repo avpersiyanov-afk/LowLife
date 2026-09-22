@@ -319,6 +319,84 @@ def find_forms(doc, category_name, locations=None):
     return records
 
 
+def diagnose_form_search(doc, category_name, locations):
+    """
+    Диагностика для сообщения «форм не найдено» — вместо гадания, что не
+    так, сразу показывает по каждой просматриваемой модели: сколько
+    элементов категории category_name там вообще есть (без требования
+    солида) и сколько из них реально с солидом (проходят через find_forms);
+    плюс похожие по написанию категории (вдруг реальное имя отличается —
+    «Формы» вместо «Форма», лишний пробел и т.п.) и связи из настроек,
+    которые сейчас не найдены среди загруженных (переименовали/выгрузили
+    после того, как их отметили в «Выбрать модели…»). Возвращает список
+    строк для показа пользователю.
+    """
+    lines = []
+    wanted_lower = category_name.lower()
+
+    def _scan(scan_doc, label):
+        total = 0
+        with_solid = 0
+        similar = set()
+        for el in FilteredElementCollector(scan_doc).WhereElementIsNotElementType():
+            cat = el.Category
+            if cat is None:
+                continue
+            if cat.Name == category_name:
+                total += 1
+                if get_element_solids(el):
+                    with_solid += 1
+            elif wanted_lower in cat.Name.lower() or cat.Name.lower() in wanted_lower:
+                similar.add(cat.Name)
+
+        line = u"«{}»: элементов категории «{}» — {} (с солидом — {})".format(
+            label, category_name, total, with_solid
+        )
+        if similar:
+            line += u"; похожие по названию категории есть в этой модели: {}".format(
+                u", ".join(sorted(similar))
+            )
+        lines.append(line)
+
+    search_host = locations is None or HOST_LOCATION_KEY in locations
+    if search_host:
+        _scan(doc, u"Текущий файл")
+
+    loaded_link_names = set()
+    for link_inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        link_name = _safe_name(link_inst)
+        loaded_link_names.add(link_name)
+        if locations is not None and link_name not in locations:
+            continue
+
+        try:
+            link_doc = link_inst.GetLinkDocument()
+        except:
+            link_doc = None
+        if link_doc is None:
+            lines.append(
+                u"«{}»: связь сейчас не загружена (Unload/не найден путь) — "
+                u"просканировать нельзя.".format(link_name)
+            )
+            continue
+
+        _scan(link_doc, link_name)
+
+    if locations:
+        missing = [
+            loc for loc in locations
+            if loc != HOST_LOCATION_KEY and loc not in loaded_link_names
+        ]
+        for m in missing:
+            lines.append(
+                u"«{}»: такая связь сейчас не найдена среди загруженных в "
+                u"документе — переименована, удалена или не загружена; "
+                u"откройте настройки и выберите модели заново.".format(m)
+            )
+
+    return lines
+
+
 class LocationOption(object):
     """Модель — кандидат для поиска «Форм»: текущий файл (HOST_LOCATION_KEY)
     или загруженная связь по имени — для чек-листа в настройках."""

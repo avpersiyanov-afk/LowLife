@@ -44,11 +44,14 @@ def main():
 
     form_records = loi_fill.find_forms(doc, category_name, locations=search_locations)
     if not form_records:
+        diag_lines = loi_fill.diagnose_form_search(doc, category_name, search_locations)
+        diag_text = u"\n".join(diag_lines) if diag_lines else u"(нечего сканировать — список моделей пуст)"
         forms.alert(
             u"Не найдено элементов категории «{}» с геометрией (солидом) — "
             u"ни в одной из настроенных моделей.\n\n"
+            u"{}\n\n"
             u"В каких моделях искать — настраивается: Shift+клик по кнопке "
-            u"«Заполнение LOI».".format(category_name),
+            u"«Заполнение LOI».".format(category_name, diag_text),
             exitscript=True
         )
 
