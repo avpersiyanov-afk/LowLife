@@ -32,8 +32,11 @@ SELECTION_MODE_* (см. collect_candidates): весь документ, толь
 именно модели просматривать (текущий файл-хост и/или конкретные загруженные
 связи по имени), выбирает пользователь в настройках (loi_settings.py,
 SEARCH_LOCATIONS_KEY) вместо того, чтобы искать их во всех связях подряд;
-см. find_forms/list_search_locations. Геометрия и bbox элементов связи
-трансформируются в координаты текущего файла через
+см. find_forms/list_search_locations. Ищутся по ВСЕМУ документу каждой
+модели, а не по активному виду — у «Форм» часто намеренно выключена
+видимость (категория скрыта в настройках графики), поэтому поиск не должен
+зависеть от того, что видно на текущем виде хоста. Геометрия и bbox
+элементов связи трансформируются в координаты текущего файла через
 RevitLinkInstance.GetTotalTransform(), тем же способом, что и у обычного
 элемента текущего файла, только с дополнительным Transform. Кандидаты
 (элементы, которые заполняются) ищутся только в текущем файле — писать
@@ -266,12 +269,18 @@ def _collect_form_records(collector, category_name, type_doc, transform, source_
     return records
 
 
-def find_forms(doc, view, category_name, locations=None):
+def find_forms(doc, category_name, locations=None):
     """
-    Элементы категории category_name — в текущем файле (видимые на view) и
-    в загруженных связях (без привязки к виду — у связи нет вида текущего
-    файла; геометрия/bbox трансформируются в координаты текущего файла
-    через RevitLinkInstance.GetTotalTransform()).
+    Элементы категории category_name — по всему текущему файлу и по всем
+    загруженным связям (весь документ, БЕЗ привязки к виду в обоих
+    случаях — геометрия/bbox элементов связи трансформируются в координаты
+    текущего файла через RevitLinkInstance.GetTotalTransform()).
+
+    Специально не FilteredElementCollector(doc, view.Id) для хоста: «Формы»
+    — это зоны для переноса параметров, а не то, что обязано быть видимым
+    на текущем виде; у них часто намеренно выключена видимость (категория
+    скрыта в настройках графики вида) — collector, ограниченный видом,
+    такие элементы молча не находит, хотя физически они в документе есть.
 
     locations — какие модели просматривать (значения settings.search_locations,
     см. loi_settings.py): список строк, HOST_LOCATION_KEY — текущий файл,
@@ -283,7 +292,7 @@ def find_forms(doc, view, category_name, locations=None):
 
     search_host = locations is None or HOST_LOCATION_KEY in locations
     if search_host:
-        host_collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
+        host_collector = FilteredElementCollector(doc).WhereElementIsNotElementType()
         records.extend(_collect_form_records(host_collector, category_name, doc, None, u""))
 
     link_collector = FilteredElementCollector(doc).OfClass(RevitLinkInstance)
