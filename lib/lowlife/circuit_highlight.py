@@ -197,6 +197,25 @@ def _recheck_and_clear(doc):
         _highlighted_by_view.pop(view_key, None)
 
 
+def clear_highlight(doc, view):
+    """
+    Снимает подсветку, поставленную highlight_elements_without_circuit на
+    этом виде (Shift+клик по кнопке «Подсветить без цепи»). Возвращает
+    число элементов, с которых снята подсветка. Вызывать внутри
+    revit.Transaction.
+    """
+    view_key = (_doc_key(doc), view.Id.IntegerValue)
+
+    ids = _highlighted_by_view.pop(view_key, set())
+    for eid in ids:
+        try:
+            view.SetElementOverrides(ElementId(eid), OverrideGraphicSettings())
+        except:
+            pass
+
+    return len(ids)
+
+
 def install_idling_watch(uiapp):
     """
     Подписывается на UIApplication.Idling один раз за сеанс (идемпотентно
