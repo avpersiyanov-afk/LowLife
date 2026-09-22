@@ -28,11 +28,12 @@ def main():
         return
 
     settings = loi_settings.get_settings_silent()
-    loi_settings.require(settings, ["form_category_name", "param_names_text"])
+    loi_settings.require(settings, ["param_names_text"])
     loi_settings.require_selection_mode(settings)
 
-    category_name = settings["form_category_name"].strip()
+    category_name = loi_fill.FORM_CATEGORY_NAME
     param_names = loi_settings.get_param_names(settings)
+    search_locations = loi_settings.get_search_locations(settings)
     selection_mode = loi_settings.get_selection_mode(settings)
     selected_type_ids = loi_settings.get_selected_type_ids(settings)
     split_enabled = loi_settings.get_split_enabled(settings)
@@ -41,12 +42,13 @@ def main():
     if view is None:
         forms.alert(u"Нет активного вида.", exitscript=True)
 
-    form_records = loi_fill.find_forms(doc, view, category_name)
+    form_records = loi_fill.find_forms(doc, view, category_name, locations=search_locations)
     if not form_records:
         forms.alert(
             u"Не найдено элементов категории «{}» с геометрией (солидом) — "
-            u"ни в текущем файле, ни в загруженных связях.\n\n"
-            u"Имя категории задаётся в настройках: Shift+клик по кнопке.".format(category_name),
+            u"ни в одной из настроенных моделей.\n\n"
+            u"В каких моделях искать — настраивается: Shift+клик по кнопке "
+            u"«Заполнение LOI».".format(category_name),
             exitscript=True
         )
 
