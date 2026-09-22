@@ -319,25 +319,59 @@ def find_forms(doc, category_name, locations=None):
     return records
 
 
+def _bigrams(s):
+    if len(s) < 2:
+        return set([s]) if s else set()
+    return set(s[i:i + 2] for i in range(len(s) - 1))
+
+
+def _name_similarity(a, b):
+    """
+    Похожесть двух имён 0..1 — коэффициент Сёренсена—Дайса по буквенным
+    биграммам, регистронезависимо (тот же метод, что
+    family_catalog.similarity, здесь — самостоятельная копия, чтобы не
+    тянуть в LOI чужой модуль ради одной функции). Нужна вместо простой
+    проверки «одно имя — подстрока другого»: «форма» не является подстрокой
+    «формы» (расходятся в последней букве), а спутать их легко.
+    """
+    na, nb = (a or u"").lower(), (b or u"").lower()
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    ba, bb = _bigrams(na), _bigrams(nb)
+    denom = len(ba) + len(bb)
+    return (2.0 * len(ba & bb) / denom) if denom else 0.0
+
+
+SIMILAR_CATEGORY_THRESHOLD = 0.4
+
+
 def diagnose_form_search(doc, category_name, locations):
     """
     Диагностика для сообщения «форм не найдено» — вместо гадания, что не
-    так, сразу показывает по каждой просматриваемой модели: сколько
-    элементов категории category_name там вообще есть (без требования
-    солида) и сколько из них реально с солидом (проходят через find_forms);
-    плюс похожие по написанию категории (вдруг реальное имя отличается —
-    «Формы» вместо «Форма», лишний пробел и т.п.) и связи из настроек,
-    которые сейчас не найдены среди загруженных (переименовали/выгрузили
-    после того, как их отметили в «Выбрать модели…»). Возвращает список
-    строк для показа пользователю.
+    так, показывает по КАЖДОЙ модели документа (текущий файл + все
+    загруженные связи, НЕЗАВИСИМО от того, что отмечено в locations —
+    иначе, если «Формы» физически лежат в модели, которую забыли отметить
+    в «Выбрать модели…», об этом никогда не узнать) — сколько элементов
+    категории category_name там вообще есть (без требования солида) и
+    сколько из них реально с солидом (столько же, сколько найдёт
+    find_forms); отмечает, входила ли эта модель в фактический поиск.
+    Похожие по написанию категории (вдруг реальное имя отличается —
+    «Формы» вместо «Форма», опечатка) ищутся по буквенным биграммам
+    (_name_similarity), а не подстрокой. Плюс — связи из настроек, которые
+    сейчас не найдены среди загруженных (переименовали/выгрузили после
+    того, как их отметили). Возвращает список строк для показа пользователю.
     """
     lines = []
-    wanted_lower = category_name.lower()
+    search_host = locations is None or HOST_LOCATION_KEY in locations
 
-    def _scan(scan_doc, label):
+    def _scan(scan_doc, label, included):
         total = 0
         with_solid = 0
-        similar = set()
+        seen_names = set()
+        similar = []  # (similarity, name)
+
         for el in FilteredElementCollector(scan_doc).WhereElementIsNotElementType():
             cat = el.Category
             if cat is None:
@@ -346,28 +380,30 @@ def diagnose_form_search(doc, category_name, locations):
                 total += 1
                 if get_element_solids(el):
                     with_solid += 1
-            elif wanted_lower in cat.Name.lower() or cat.Name.lower() in wanted_lower:
-                similar.add(cat.Name)
+            elif cat.Name not in seen_names:
+                seen_names.add(cat.Name)
+                sim = _name_similarity(category_name, cat.Name)
+                if sim >= SIMILAR_CATEGORY_THRESHOLD:
+                    similar.append((sim, cat.Name))
 
-        line = u"«{}»: элементов категории «{}» — {} (с солидом — {})".format(
-            label, category_name, total, with_solid
+        mark = u"" if included else u" [не входит в текущий поиск]"
+        line = u"«{}»{}: элементов категории «{}» — {} (с солидом — {})".format(
+            label, mark, category_name, total, with_solid
         )
         if similar:
+            similar.sort(key=lambda x: -x[0])
             line += u"; похожие по названию категории есть в этой модели: {}".format(
-                u", ".join(sorted(similar))
+                u", ".join(u"«{}»".format(name) for _sim, name in similar[:5])
             )
         lines.append(line)
 
-    search_host = locations is None or HOST_LOCATION_KEY in locations
-    if search_host:
-        _scan(doc, u"Текущий файл")
+    _scan(doc, u"Текущий файл", search_host)
 
     loaded_link_names = set()
     for link_inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         link_name = _safe_name(link_inst)
         loaded_link_names.add(link_name)
-        if locations is not None and link_name not in locations:
-            continue
+        included = locations is None or link_name in locations
 
         try:
             link_doc = link_inst.GetLinkDocument()
@@ -375,12 +411,14 @@ def diagnose_form_search(doc, category_name, locations):
             link_doc = None
         if link_doc is None:
             lines.append(
-                u"«{}»: связь сейчас не загружена (Unload/не найден путь) — "
-                u"просканировать нельзя.".format(link_name)
+                u"«{}»{}: связь сейчас не загружена (Unload/не найден путь) — "
+                u"просканировать нельзя.".format(
+                    link_name, u"" if included else u" [не входит в текущий поиск]"
+                )
             )
             continue
 
-        _scan(link_doc, link_name)
+        _scan(link_doc, link_name, included)
 
     if locations:
         missing = [
