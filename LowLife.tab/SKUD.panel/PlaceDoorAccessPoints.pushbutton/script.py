@@ -2,9 +2,9 @@
 __title__ = u"Точки доступа\nна двери"
 __doc__ = (
     u"Расставляет элементы точки доступа СКУД на двери выбранных помещений "
-    u"активного вида: для каждого помещения выбирается группа (из неё — "
-    u"только типы семейств), расстановка — по мнемосхеме двери. "
-    u"Shift+клик — мнемосхема двери."
+    u"активного вида: для каждого помещения выбирается тип точки доступа, "
+    u"его состав ставится по мнемосхеме двери. Shift+клик — мнемосхема "
+    u"двери и типы точек доступа."
 )
 __author__ = "Pipers"
 
@@ -16,6 +16,7 @@ clr.AddReference('RevitAPIUI')
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.geometry import get_document_levels
+from lowlife import skud_door_layout as layout
 from lowlife import skud_door_placement as sdp
 from lowlife import skud_door_placement_settings as sdps
 from lowlife.skud_door_rooms_form import show_rooms_table
@@ -30,7 +31,8 @@ output = pyrevit_script.get_output()
 # ------------------------------------------------------------
 
 settings = sdps.get_settings_silent()
-slots = sdps.require_active_slots(settings)
+access_types = sdps.require_access_types(settings)
+slots = settings["slots"]
 
 rooms = sdp.collect_rooms_with_doors(doc, view)
 if not rooms:
@@ -40,32 +42,24 @@ if not rooms:
         exitscript=True
     )
 
-group_types = sdp.list_model_group_types(doc)
-if not group_types:
-    forms.alert(
-        u"В проекте нет модельных групп. Соберите группу с составом точки "
-        u"доступа (считыватель, замок, ...) и запустите кнопку снова.",
-        exitscript=True
-    )
-
-choice = show_rooms_table(rooms, sorted(group_types.keys()), settings["room_groups"])
+type_names = [t["name"] for t in access_types]
+choice = show_rooms_table(rooms, type_names, settings["room_types"])
 if choice is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 
-sdps.save_room_groups(dict((room.key, choice.get(room.key, u"")) for room in rooms))
+sdps.save_room_types(dict((room.key, choice.get(room.key, u"")) for room in rooms))
 
 selected_rooms = [room for room in rooms if choice.get(room.key)]
 if not selected_rooms:
-    forms.alert(u"Ни одному помещению не выбрана группа — расставлять нечего.", exitscript=True)
+    forms.alert(u"Ни одному помещению не выбран тип точки доступа — расставлять нечего.",
+                exitscript=True)
 
-
-# ------------------------------------------------------------
-# СОСТАВ ГРУПП (вне основной транзакции — может временно вставлять группу)
-# ------------------------------------------------------------
-
-members_by_group = {}
-for group_name in set(choice[room.key] for room in selected_rooms):
-    members_by_group[group_name] = sdp.read_group_members(doc, group_types[group_name])
+items_by_type = {}
+stale_by_type = {}
+for access_type in access_types:
+    items, stale = layout.composition_items(access_type, slots)
+    items_by_type[access_type["name"]] = items
+    stale_by_type[access_type["name"]] = stale
 
 
 # ------------------------------------------------------------
@@ -73,6 +67,7 @@ for group_name in set(choice[room.key] for room in selected_rooms):
 # ------------------------------------------------------------
 
 sorted_levels = get_document_levels(doc)
+symbols = sdp.SymbolIndex(doc)
 existing = sdp.ExistingIndex(doc)
 processed_doors = set()
 report = []
@@ -80,25 +75,22 @@ totals = {"created": 0, "duplicate": 0, "failed": 0, "doors": 0, "shared": 0}
 
 with revit.Transaction(u"Точки доступа на двери"):
     for room in selected_rooms:
-        group_name = choice[room.key]
-        members = members_by_group.get(group_name) or []
-        row = {"room": room, "group": group_name, "doors": 0, "created": 0, "duplicate": 0,
-               "failed": 0, "shared": 0, "unmatched": set(), "failed_names": set(),
-               "empty_group": not members}
+        type_name = choice[room.key]
+        items = items_by_type.get(type_name) or []
+        row = {"room": room, "type": type_name, "doors": 0, "created": 0, "duplicate": 0,
+               "failed": 0, "shared": 0, "missing_types": set(), "failed_names": set()}
 
         for entry in room.doors:
             if entry.unique_key in processed_doors:
                 row["shared"] += 1
                 continue
             processed_doors.add(entry.unique_key)
-            if not members:
-                continue
             row["doors"] += 1
-            result = sdp.place_access_point(doc, entry, members, slots, sorted_levels, existing)
+            result = sdp.place_access_point(doc, entry, items, symbols, sorted_levels, existing)
             row["created"] += result["created"]
             row["duplicate"] += result["duplicate"]
             row["failed"] += result["failed"]
-            row["unmatched"].update(result["unmatched"])
+            row["missing_types"].update(result["missing_types"])
             row["failed_names"].update(result["failed_names"])
 
         for key in ("created", "duplicate", "failed", "doors", "shared"):
@@ -114,18 +106,26 @@ output.print_md(u"### Точки доступа на двери")
 for row in report:
     room = row["room"]
     title = u"{} {}".format(room.number, room.name).strip() or u"(без номера)"
-    line = u"- **{}** — группа «{}»: дверей обработано {}, поставлено {}, уже стояло {}, не удалось {}".format(
-        title, row["group"], row["doors"], row["created"], row["duplicate"], row["failed"]
+    line = u"- **{}** — тип «{}»: дверей обработано {}, поставлено {}, уже стояло {}, не удалось {}".format(
+        title, row["type"], row["doors"], row["created"], row["duplicate"], row["failed"]
     )
-    if row["empty_group"]:
-        line += u"; **в группе нет семейств (не удалось прочитать состав)**"
     if row["shared"]:
         line += u"; дверей пропущено (уже обработаны с другим помещением): {}".format(row["shared"])
-    if row["unmatched"]:
-        line += u"; нет места на мнемосхеме для: {}".format(u", ".join(sorted(row["unmatched"])))
+    if row["missing_types"]:
+        line += u"; **нет в проекте типоразмеров**: {}".format(u", ".join(sorted(row["missing_types"])))
     if row["failed_names"]:
         line += u"; не удалось вставить: {}".format(u", ".join(sorted(row["failed_names"])))
     output.print_md(line)
+
+used_types = set(row["type"] for row in report)
+for type_name in sorted(used_types):
+    stale = stale_by_type.get(type_name) or []
+    if stale:
+        output.print_md(
+            u"- Тип «{}»: пропущены места, чьё семейство убрано с места на мнемосхеме: {}".format(
+                type_name, u", ".join(u"{} : {}".format(f, t) for _k, f, t in stale)
+            )
+        )
 
 forms.alert(
     u"Готово.\n\n"

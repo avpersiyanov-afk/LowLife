@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Тесты для lowlife.skud_door_layout — места мнемосхемы двери, пересчёт
-места в точку и раскладка состава группы по местам (кнопка «Точки
+места в точку и состав типа точки доступа по местам, количество у замка/геркона (кнопка «Точки
 доступа на двери», SKUD.panel/PlaceDoorAccessPoints)."""
 
 import pytest
@@ -56,32 +56,52 @@ def test_active_slots_skips_empty_and_keeps_order():
     assert [key for key, _s in layout.active_slots(slots)] == ["outer_reader", "inner_lock"]
 
 
-# --- match_members_to_slots ----------------------------------------------------
+# --- slot_count / slot_local_positions ---------------------------------------
 
-def _active(**families_by_key):
+def test_count_only_for_lock_and_reed_and_clamped():
+    assert layout.slot_count("inner_lock", {"count": u"2"}) == 2
+    assert layout.slot_count("outer_reed", {"count": u"5"}) == layout.MAX_COUNT
+    assert layout.slot_count("inner_lock", {"count": u""}) == 1
+    assert layout.slot_count("outer_reader", {"count": u"2"}) == 1
+
+
+def test_second_lock_is_mirrored_about_door_axis():
+    slot = _slot("top", 300, 0, 10)
+    slot["count"] = u"2"
+    assert layout.slot_local_positions("inner_lock", slot, 1800, 2100) == [(300, 2100, 10), (-300, 2100, 10)]
+    slot["count"] = u"1"
+    assert layout.slot_local_positions("inner_lock", slot, 1800, 2100) == [(300, 2100, 10)]
+
+
+# --- composition_items ----------------------------------------------------------
+
+def _slots(**families_by_key):
     slots = {key: _slot("right", 0, 0) for key in layout.all_slot_keys()}
     for key, families in families_by_key.items():
         slots[key]["families"] = families
-    return layout.active_slots(slots)
+    return slots
 
 
-def test_two_readers_go_outside_then_inside():
-    slots = _active(outer_reader=[u"Считыватель"], inner_reader=[u"Считыватель"])
-    assigned, unmatched = layout.match_members_to_slots(
-        [(u"Считыватель", 1), (u"Считыватель", 2)], slots)
-    assert [(key, payload) for key, _s, payload in assigned] == [("outer_reader", 1), ("inner_reader", 2)]
-    assert unmatched == []
+def test_composition_items_in_mnemonic_order_and_stale_detected():
+    slots = _slots(outer_reader=[u"Считыватель"], inner_lock=[u"Замок ЭМ"])
+    access_type = {"name": u"ТД-1", "composition": {
+        "inner_lock": {"family": u"замок эм", "type": u"ML-300"},
+        "outer_reader": {"family": u"Считыватель", "type": u"EM"},
+        "inner_exit": {"family": u"Кнопка", "type": u"К1"},
+        "outer_closer": {"family": u"", "type": u""},
+    }}
+    items, stale = layout.composition_items(access_type, slots)
+    assert [(k, f, t) for k, _s, f, t in items] == [
+        ("outer_reader", u"Считыватель", u"EM"), ("inner_lock", u"замок эм", u"ML-300")]
+    assert stale == [("inner_exit", u"Кнопка", u"К1")]
 
 
-def test_single_reader_only_outside_and_extra_is_unmatched():
-    slots = _active(outer_reader=[u"Считыватель"], inner_lock=[u"Замок ЭМ"])
-    assigned, unmatched = layout.match_members_to_slots(
-        [(u"считыватель ", 1), (u"Замок ЭМ", 2), (u"Замок ЭМ", 3), (u"Геркон", 4)], slots)
-    assert [(key, payload) for key, _s, payload in assigned] == [("outer_reader", 1), ("inner_lock", 2)]
-    assert unmatched == [(u"Замок ЭМ", 3), (u"Геркон", 4)]
+def test_composition_items_empty_type():
+    assert layout.composition_items(None, _slots()) == ([], [])
+    assert layout.composition_items({"name": u"x"}, _slots()) == ([], [])
 
 
-def test_family_allowed_in_several_places_takes_first_free():
-    slots = _active(outer_intercom=[u"Панель"], inner_exit=[u"Кнопка", u"Панель"])
-    assigned, _unmatched = layout.match_members_to_slots([(u"Панель", 1), (u"Панель", 2)], slots)
-    assert [key for key, _s, _p in assigned] == ["outer_intercom", "inner_exit"]
+def test_find_access_type():
+    types = [{"name": u"A", "composition": {}}, {"name": u"B", "composition": {}}]
+    assert layout.find_access_type(types, u"B") is types[1]
+    assert layout.find_access_type(types, u"C") is None

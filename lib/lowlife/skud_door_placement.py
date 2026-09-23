@@ -14,15 +14,14 @@
      помещение (Document.GetRoomAtPoint, последняя стадия документа).
      Сторона двери, смотрящая в помещение, — «внутри», противоположная —
      «снаружи».
-  2. read_group_members — состав выбранной группы (модельной): имя
-     семейства + тип каждого элемента. Берётся с любого уже вставленного
-     экземпляра группы; если экземпляров нет — группа временно
-     вставляется во вспомогательной транзакции, которая затем
-     откатывается.
-  3. place_access_point — для одной двери: элементы группы раскладываются
-     по местам мнемосхемы (skud_door_layout.match_members_to_slots),
-     каждое место пересчитывается в точку модели по реальной ширине/высоте
-     двери и толщине стены, и там создаётся экземпляр типа из группы.
+  2. SymbolIndex — типоразмеры проекта по (семейство, тип): состав типа
+     точки доступа хранится в настройках по именам.
+  3. place_access_point — для одной двери: состав выбранного для
+     помещения типа точки доступа (skud_door_layout.composition_items) —
+     каждое место пересчитывается в точку(и) модели по реальной
+     ширине/высоте двери и толщине стены (у замка/геркона с кол-вом 2 —
+     вторая точка зеркально относительно оси двери), и там создаётся
+     экземпляр заданного типоразмера.
 
 Как создаётся экземпляр (по FamilyPlacementType семейства):
   - на основе стены (OneLevelBasedHosted) — на стену двери, если дверь в
@@ -47,8 +46,7 @@ import math
 from Autodesk.Revit.DB import (
     XYZ, Line, Transform, FilteredElementCollector, BuiltInCategory, BuiltInParameter,
     RevitLinkInstance, FamilyInstance, LocationPoint, ElementTransformUtils, Wall,
-    HostObjectUtils, ShellLayerType, FamilyPlacementType, GroupType, Group,
-    Transaction, ViewPlan, StorageType
+    HostObjectUtils, ShellLayerType, FamilyPlacementType, Family, ViewPlan, StorageType
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 
@@ -288,66 +286,25 @@ def _natural(text):
 
 
 # ------------------------------------------------------------
-# Группы
+# Типоразмеры
 # ------------------------------------------------------------
 
-def list_model_group_types(doc):
-    """{имя: GroupType} модельных групп документа."""
-    result = {}
-    collector = FilteredElementCollector(doc).OfClass(GroupType)
-    for group_type in collector:
-        try:
-            category = group_type.Category
-            if category is None or category.Id.IntegerValue != int(BuiltInCategory.OST_IOSModelGroups):
-                continue
-        except:
-            continue
-        name = safe_element_name(group_type)
-        if name:
-            result[name] = group_type
-    return result
+class SymbolIndex(object):
+    """Типоразмеры проекта по (семейство, тип) — имена без учёта регистра."""
 
+    def __init__(self, doc):
+        self._symbols = {}
+        for family in FilteredElementCollector(doc).OfClass(Family):
+            family_name = layout.normalize_family_name(safe_element_name(family))
+            for symbol_id in family.GetFamilySymbolIds():
+                symbol = doc.GetElement(symbol_id)
+                type_name = safe_element_name(symbol) if symbol is not None else None
+                if type_name:
+                    self._symbols[(family_name, layout.normalize_family_name(type_name))] = symbol
 
-def _members_of_group(doc, group):
-    members = []
-    for member_id in group.GetMemberIds():
-        el = doc.GetElement(member_id)
-        if not isinstance(el, FamilyInstance):
-            continue
-        symbol = el.Symbol
-        family_name = safe_element_name(symbol.Family) if symbol is not None else None
-        if family_name:
-            members.append((family_name, symbol.Id))
-    return members
-
-
-def read_group_members(doc, group_type):
-    """
-    [(имя семейства, ElementId типа)] элементов группы. Если группа ещё ни
-    разу не вставлена — временно вставляется и откатывается (транзакцию
-    открывает сама, поэтому вызывать ВНЕ открытой транзакции).
-    """
-    for group in FilteredElementCollector(doc).OfClass(Group):
-        try:
-            if group.GroupType.Id == group_type.Id:
-                return _members_of_group(doc, group)
-        except:
-            continue
-
-    members = []
-    t = Transaction(doc, u"Чтение состава группы")
-    try:
-        t.Start()
-        group = doc.Create.PlaceGroup(XYZ.Zero, group_type)
-        members = _members_of_group(doc, group)
-    except:
-        members = []
-    finally:
-        try:
-            t.RollBack()
-        except:
-            pass
-    return members
+    def get(self, family_name, type_name):
+        return self._symbols.get((layout.normalize_family_name(family_name),
+                                  layout.normalize_family_name(type_name)))
 
 
 # ------------------------------------------------------------
@@ -449,8 +406,12 @@ class DoorFrame(object):
             host = None
         self.host_wall = host if (isinstance(host, Wall) and not entry.source.is_link) else None
 
-    def target_point(self, side, slot):
-        local = layout.slot_local_position(slot, self.width_mm, self.height_mm)
+    def target_points(self, key, slot):
+        side, _role = layout.split_slot_key(key)
+        return [self._to_model(side, local) for local in
+                layout.slot_local_positions(key, slot, self.width_mm, self.height_mm)]
+
+    def _to_model(self, side, local):
         normal = self.normals[side]
         x, y, z = layout.world_point(
             (self.origin.X, self.origin.Y, self.origin.Z),
@@ -592,47 +553,44 @@ class ExistingIndex(object):
         self._by_family.setdefault(layout.normalize_family_name(family_name), []).append(point)
 
 
-def place_access_point(doc, entry, members, slots, sorted_levels, existing):
+def place_access_point(doc, entry, items, symbols, sorted_levels, existing):
     """
-    Ставит состав группы members ([(family_name, symbol_id)]) на дверь
-    entry по местам slots ([(key, slot)] — активные места мнемосхемы).
-    Транзакцию открывает вызывающий. Возвращает dict со счётчиками и
-    списком элементов, которым не нашлось места.
+    Ставит состав типа точки доступа на дверь entry. items — результат
+    skud_door_layout.composition_items: [(key, slot, family, type_name)].
+    symbols — SymbolIndex. Транзакцию открывает вызывающий. Возвращает
+    dict со счётчиками и списками имён для отчёта.
     """
-    result = {"created": 0, "duplicate": 0, "failed": 0, "unmatched": [], "failed_names": []}
+    result = {"created": 0, "duplicate": 0, "failed": 0, "missing_types": [], "failed_names": []}
 
     frame = DoorFrame(entry)
     if not frame.ok:
-        result["failed"] = len(members)
-        result["failed_names"] = [name for name, _sid in members]
+        result["failed"] = len(items)
+        result["failed_names"] = [family for _k, _s, family, _t in items]
         return result
 
-    assigned, unmatched = layout.match_members_to_slots(members, slots)
-    result["unmatched"] = [name for name, _sid in unmatched]
     radius_ft = DEDUPE_RADIUS_MM * MM_TO_FT
+    level = find_level_for_elevation(frame.origin.Z + 1e-3, sorted_levels)
 
-    for key, slot, symbol_id in assigned:
+    for key, slot, family_name, type_name in items:
+        symbol = symbols.get(family_name, type_name)
+        if symbol is None:
+            result["missing_types"].append(u"{} : {}".format(family_name, type_name))
+            continue
+
         side, _role = layout.split_slot_key(key)
-        symbol = doc.GetElement(symbol_id)
-        family_name = safe_element_name(symbol.Family) if symbol is not None else None
-        if symbol is None or not family_name:
-            result["failed"] += 1
-            continue
+        for point in frame.target_points(key, slot):
+            if existing.has_near(family_name, point, radius_ft):
+                result["duplicate"] += 1
+                continue
 
-        point = frame.target_point(side, slot)
-        if existing.has_near(family_name, point, radius_ft):
-            result["duplicate"] += 1
-            continue
+            inst = create_slot_instance(doc, symbol, frame, side, point, level)
+            if inst is None:
+                result["failed"] += 1
+                result["failed_names"].append(family_name)
+                continue
 
-        level = find_level_for_elevation(frame.origin.Z + 1e-3, sorted_levels)
-        inst = create_slot_instance(doc, symbol, frame, side, point, level)
-        if inst is None:
-            result["failed"] += 1
-            result["failed_names"].append(family_name)
-            continue
-
-        existing.add(family_name, _door_point(inst) or point)
-        result["created"] += 1
+            existing.add(family_name, _door_point(inst) or point)
+            result["created"] += 1
 
     return result
 
