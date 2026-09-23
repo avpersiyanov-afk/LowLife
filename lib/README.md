@@ -1574,6 +1574,21 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 типа вида (`ViewPlan`/`ViewDrafting`) — в `script.py` каждой кнопки, не
 здесь.
 
+## room_lots.py / room_lots_settings.py
+Анализ помещений связанной модели по лотам — кнопка `ToolsRooms.panel/RoomLots`
+(«Двухуровневые лоты»). Берутся только помещения связей (без самой модели),
+повторные экземпляры одной связи схлопываются. Имена параметров лота/секции —
+проектные, хранятся в `%APPDATA%\pyRevit\LowLifeRoomLots_settings.json`
+(окно — Shift+клик по кнопке, по образцу `room_finder_settings`), в коде не зашиты.
+
+| Функция | Что делает |
+|---|---|
+| `get_link_sources(doc)` | Загруженные связи с помещениями (`LinkSource`: `doc`, `name`), без повторов |
+| `collect_rooms(sources, lot_param_name, section_param_name)` | `(rooms, skipped)` — `LotRoom` для размещённых помещений; неразмещённые только считаются |
+| `room_sort_key(r)` | Имя лота → секция → номер помещения (натуральная сортировка, без лота — в конце) |
+| `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
+| `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
