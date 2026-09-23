@@ -3,8 +3,9 @@
 Таблица «помещение -> тип точки доступа» для кнопки «Точки доступа на
 двери» (SKUD.panel/PlaceDoorAccessPoints).
 
-Строка на каждое помещение активного вида: номер, имя, уровень, источник
-(текущая модель или имя связи), число дверей и выпадающий список типов
+Строка на каждое помещение активного вида: «Имя(номер)» (номер — из
+параметра, заданного в настройках кнопки), уровень, число дверей и
+выпадающий список типов
 точек доступа (из настроек кнопки, Shift+клик). Сверху — поиск по
 номеру/имени и «Назначить тип всем показанным»
 (удобно отфильтровать, например, «серверная», и назначить разом).
@@ -30,8 +31,7 @@ from System.Windows.Media import Brushes
 
 NO_TYPE = u"— не расставлять —"
 
-_COLUMNS = [(u"Номер", 80), (u"Имя", None), (u"Уровень", 120), (u"Источник", 170),
-            (u"Дверей", 60), (u"Тип точки доступа", 260)]
+_COLUMNS = [(u"Имя", None), (u"Уровень", 140), (u"Дверей", 60), (u"Тип точки доступа", 260)]
 
 
 def _make_grid():
@@ -50,11 +50,11 @@ def _place(grid, element, column):
     grid.Children.Add(element)
 
 
-def show_rooms_table(rooms, type_names, saved_choice):
+def show_rooms_table(rooms, type_names, saved_choice, room_number_param=u""):
     """
     rooms — список RoomEntry (skud_door_placement), type_names — имена
     типов точек доступа, saved_choice — {room.key: type_name} с прошлого
-    раза. Возвращает {room.key: type_name} (только помещения с выбранным
+    раза, room_number_param — параметр номера для «Имя(номер)». Возвращает {room.key: type_name} (только помещения с выбранным
     типом) либо None, если окно закрыли без «Расставить».
     """
     result = {"choice": None}
@@ -143,8 +143,8 @@ def show_rooms_table(rooms, type_names, saved_choice):
     for room in rooms:
         row = _make_grid()
         door_count = len(room.doors)
-        values = [room.number, room.name, room.level_name,
-                  room.source.label or u"текущая модель", u"{}".format(door_count)]
+        display = room.display_name(room_number_param)
+        values = [display, room.level_name, u"{}".format(door_count)]
         for index, text in enumerate(values):
             cell = TextBlock()
             cell.Text = text or u""
@@ -159,10 +159,10 @@ def show_rooms_table(rooms, type_names, saved_choice):
         saved = saved_choice.get(room.key)
         combo.SelectedIndex = choices.index(saved) if saved in choices else 0
         combo.IsEnabled = door_count > 0
-        _place(row, combo, 5)
+        _place(row, combo, 3)
 
         body.Children.Add(row)
-        rows.append((room, row, combo, u"{} {}".format(room.number, room.name).lower()))
+        rows.append((room, row, combo, display.lower()))
 
     if not rooms:
         empty = TextBlock()

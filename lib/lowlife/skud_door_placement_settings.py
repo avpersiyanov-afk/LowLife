@@ -29,7 +29,10 @@ pyrevit.script.get_config(), см. докстринг scs_settings.py).
 настройки переносятся между проектами без переназначения.
 
 Там же (ключ room_types) запоминается, какой тип точки доступа был
-выбран для какого помещения в прошлый раз.
+выбран для какого помещения в прошлый раз, и (room_number_param) —
+параметр помещения с номером для таблицы помещений: там помещение
+показывается как «Имя(номер)». Имя параметра — соглашение проекта, поэтому
+вводится в окне, а не зашито; пусто — штатный «Номер» помещения.
 """
 
 import os
@@ -128,7 +131,8 @@ def _clean_access_types(raw):
 
 
 def load_saved_values():
-    """{"slots": {key: slot}, "access_types": [...], "room_types": {room_key: name}}."""
+    """{"slots": {key: slot}, "access_types": [...], "room_types": {room_key: name},
+    "room_number_param": имя параметра номера помещения}."""
     saved = _read_all()
     raw_slots = saved.get("slots") or {}
     slots = {}
@@ -144,11 +148,13 @@ def load_saved_values():
         "slots": slots,
         "access_types": _clean_access_types(saved.get("access_types")),
         "room_types": dict(saved.get("room_types") or {}),
+        "room_number_param": saved.get("room_number_param") or u"",
     }
 
 
-def save_layout(slots, access_types):
+def save_layout(slots, access_types, room_number_param):
     data = _read_all()
+    data["room_number_param"] = room_number_param
     data["slots"] = slots
     data["access_types"] = access_types
     data.pop("room_groups", None)  # от первой версии кнопки (выбор модельных групп)
@@ -459,6 +465,22 @@ def show_settings_form(doc, values):
     rename_btn = make_small_button(u"Переименовать…")
     delete_btn = make_small_button(u"Удалить")
     header.Children.Add(types_row)
+
+    number_row = StackPanel()
+    number_row.Orientation = Orientation.Horizontal
+    number_row.Margin = Thickness(0, 0, 0, 8)
+    number_label = TextBlock()
+    number_label.Text = u"Параметр номера помещения (для таблицы помещений, «Имя(номер)»):"
+    number_label.VerticalAlignment = VerticalAlignment.Center
+    number_label.Margin = Thickness(0, 0, 8, 0)
+    number_row.Children.Add(number_label)
+    number_box = TextBox()
+    number_box.Width = 280
+    number_box.Padding = Thickness(4, 2, 4, 2)
+    number_box.Text = values.get("room_number_param") or u""
+    number_box.ToolTip = u"Пусто — штатный параметр «Номер» помещения."
+    number_row.Children.Add(number_box)
+    header.Children.Add(number_row)
 
     views_row = StackPanel()
     views_row.Orientation = Orientation.Horizontal
@@ -821,7 +843,8 @@ def show_settings_form(doc, values):
     ok_btn.FontWeight = FontWeights.Bold
 
     def on_ok(sender, args):
-        result["values"] = {"slots": slots, "access_types": access_types}
+        result["values"] = {"slots": slots, "access_types": access_types,
+                            "room_number_param": (number_box.Text or u"").strip()}
         win.Close()
 
     def on_cancel(sender, args):
@@ -869,7 +892,7 @@ def get_settings_interactive(doc):
         if edited is None:
             return None
 
-        save_layout(edited["slots"], edited["access_types"])
+        save_layout(edited["slots"], edited["access_types"], edited["room_number_param"])
         return edited
 
 

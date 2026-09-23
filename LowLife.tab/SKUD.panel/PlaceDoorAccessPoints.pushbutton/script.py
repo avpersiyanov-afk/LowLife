@@ -43,7 +43,7 @@ if not rooms:
     )
 
 type_names = [t["name"] for t in access_types]
-choice = show_rooms_table(rooms, type_names, settings["room_types"])
+choice = show_rooms_table(rooms, type_names, settings["room_types"], settings["room_number_param"])
 if choice is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 
@@ -105,7 +105,7 @@ with revit.Transaction(u"Точки доступа на двери"):
 output.print_md(u"### Точки доступа на двери")
 for row in report:
     room = row["room"]
-    title = u"{} {}".format(room.number, room.name).strip() or u"(без номера)"
+    title = room.display_name(settings["room_number_param"]) or u"(без имени)"
     line = u"- **{}** — тип «{}»: дверей обработано {}, поставлено {}, уже стояло {}, не удалось {}".format(
         title, row["type"], row["doors"], row["created"], row["duplicate"], row["failed"]
     )

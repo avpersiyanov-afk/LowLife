@@ -53,6 +53,7 @@ from Autodesk.Revit.DB.Structure import StructuralType
 from lowlife import skud_door_layout as layout
 from lowlife.geometry import find_level_for_elevation
 from lowlife.scs import safe_element_name
+from lowlife.room_info import _room_param_value
 
 MM_TO_FT = 1.0 / 304.8
 FT_TO_MM = 304.8
@@ -119,9 +120,19 @@ class RoomEntry(object):
             pass
         self.doors = []
 
+    def display_name(self, number_param):
+        """«Имя(номер)»: номер — из параметра number_param помещения (пусто —
+        штатный «Номер»); без номера — просто имя."""
+        number = self.number
+        if number_param:
+            number = _room_param_value(self.room, number_param)
+        if not number:
+            return self.name
+        return u"{}({})".format(self.name, number)
+
     @property
     def key(self):
-        """Ключ для запоминания выбранной группы между запусками."""
+        """Ключ для запоминания выбранного типа точки доступа между запусками."""
         return u"{}|{}|{}".format(self.source.label, self.number, self.name)
 
 
