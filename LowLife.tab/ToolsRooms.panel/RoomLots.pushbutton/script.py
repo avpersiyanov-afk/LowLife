@@ -2,12 +2,12 @@
 
 __title__ = u"Двухуровневые\nлоты"
 __doc__ = (
-    u"Анализирует помещения связанной модели (АР): раскладывает их по "
-    u"уровням, сортирует по имени лота и номеру секции и находит "
-    u"двухуровневые лоты — те, у которых помещения с одинаковым именем "
-    u"лота стоят на двух и более уровнях. Отчёт — в окне вывода pyRevit "
-    u"(сначала список двухуровневых лотов, затем помещения по уровням), "
-    u"по желанию — выгрузка в Excel. Модель не меняет.\n\n"
+    u"Анализирует помещения связанной модели (АР), группирует их по имени "
+    u"лота и показывает только двухуровневые лоты — те, у которых "
+    u"помещения с одинаковым именем лота стоят на двух и более уровнях: "
+    u"имя лота, секция, уровни. Список отсортирован по имени лота и "
+    u"номеру секции, выводится в окно pyRevit, по желанию — выгрузка в "
+    u"Excel. Модель не меняет.\n\n"
     u"Shift+клик — настройки (параметры имени лота и номера секции)."
 )
 __author__ = "Pipers"
@@ -68,95 +68,51 @@ if not with_lot:
         u"параметра в настройках (Shift+клик по кнопке).".format(lot_param),
         exitscript=True
     )
-
 multi_link = len(sources) > 1
-levels = room_lots.group_by_level(rooms)
 lots = room_lots.group_by_lot(rooms)
 multi = [lot for lot in lots if lot.is_multilevel()]
-multi_keys = set((lot.link_name, lot.lot) for lot in multi)
 
 
-def _is_multi(r):
-    return (r.link_name, r.lot) in multi_keys
+def _lot_row(lot):
+    row = [
+        lot.lot,
+        u", ".join(lot.sections()) or u"—",
+        u" + ".join(name for name, _e in lot.levels()),
+    ]
+    if multi_link:
+        row.append(lot.link_name)
+    return row
 
 
-def _rooms_by_level(lot):
-    parts = []
-    for level_name, _elev in lot.levels():
-        numbers = [r.number or u"?" for r in lot.rooms if r.level_name == level_name]
-        parts.append(u"{}: {}".format(level_name, u", ".join(numbers)))
-    return u"; ".join(parts)
-
+columns = [u"Имя лота", u"Секция", u"Уровни"]
+if multi_link:
+    columns.append(u"Связь")
 
 output = script.get_output()
-output.print_md(u"## Лоты помещений связи")
+output.print_md(u"## Двухуровневые лоты ({})".format(len(multi)))
 output.print_md(
-    u"Параметр лота: **{}**, секции: **{}**. Связи: {}. Помещений: {} "
-    u"(без имени лота: {}), лотов: {}, из них на нескольких уровнях: **{}**.".format(
+    u"Параметр лота: **{}**, секции: **{}**. Связи: {}. Лотов всего: {}, "
+    u"из них на нескольких уровнях: **{}**.".format(
         lot_param, section_param or u"—",
-        u", ".join(s.name for s in sources),
-        len(rooms), len(rooms) - len(with_lot), len(lots), len(multi)
+        u", ".join(s.name for s in sources), len(lots), len(multi)
     )
 )
-
-output.print_md(u"### Двухуровневые лоты ({})".format(len(multi)))
 if multi:
-    columns = [u"Имя лота", u"Секция", u"Уровни", u"Помещ.", u"Номера помещений по уровням"]
-    if multi_link:
-        columns.append(u"Связь")
-    table = []
-    for lot in multi:
-        row = [
-            lot.lot,
-            u", ".join(lot.sections()) or u"—",
-            u" + ".join(name for name, _e in lot.levels()),
-            len(lot.rooms),
-            _rooms_by_level(lot),
-        ]
-        if multi_link:
-            row.append(lot.link_name)
-        table.append(row)
-    output.print_table(table_data=table, columns=columns)
+    output.print_table(table_data=[_lot_row(lot) for lot in multi], columns=columns)
 else:
     output.print_md(u"Лотов с помещениями на нескольких уровнях не найдено.")
 
-level_columns = [u"Имя лота", u"Секция", u"Номер", u"Имя помещения", u"2 ур.", u"ID"]
-if multi_link:
-    level_columns.append(u"Связь")
 
-for level_name, _elev, level_rooms in levels:
-    output.print_md(u"### {} ({})".format(level_name, len(level_rooms)))
-    table = []
-    for r in level_rooms:
-        row = [
-            r.lot or u"—", r.section or u"—", r.number or u"?", r.name or u"",
-            u"✔" if _is_multi(r) else u"", r.room_id,
-        ]
-        if multi_link:
-            row.append(r.link_name)
-        table.append(row)
-    output.print_table(table_data=table, columns=level_columns)
-
-
-summary = (
-    u"Помещений: {}\nЛотов: {}\nДвухуровневых лотов: {}\n"
-    u"Уровней: {}{}\n\nПодробности — в окне вывода pyRevit.".format(
-        len(rooms), len(lots), len(multi), len(levels),
-        u"\nПропущено неразмещённых помещений: {}".format(skipped) if skipped else u""
-    )
+summary = u"Лотов всего: {}\nДвухуровневых лотов: {}{}\n\nСписок — в окне вывода pyRevit.".format(
+    len(lots), len(multi),
+    u"\nПропущено неразмещённых помещений: {}".format(skipped) if skipped else u""
 )
 
-if forms.alert(summary + u"\n\nСохранить отчёт в Excel?", yes=True, no=True):
-    path = forms.save_file(file_ext='xlsx', default_name=u"Лоты")
+if not multi:
+    forms.alert(summary)
+elif forms.alert(summary + u"\n\nСохранить список в Excel?", yes=True, no=True):
+    path = forms.save_file(file_ext='xlsx', default_name=u"Двухуровневые лоты")
     if path:
-        rows = [[u"Уровень", u"Имя лота", u"Секция", u"Номер", u"Имя помещения",
-                 u"Двухуровневый", u"ID", u"Связь"]]
-        for level_name, _elev, level_rooms in levels:
-            for r in level_rooms:
-                rows.append([
-                    level_name, r.lot, r.section, r.number, r.name,
-                    u"да" if _is_multi(r) else u"", r.room_id, r.link_name,
-                ])
-        write_xlsx(path, rows, sheet_name=u"Лоты",
-                   col_widths=[16, 20, 10, 10, 30, 14, 10, 30])
+        rows = [columns] + [_lot_row(lot) for lot in multi]
+        write_xlsx(path, rows, sheet_name=u"Лоты", col_widths=[24, 14, 40, 30])
         forms.alert(u"Сохранено:\n{}".format(path))
