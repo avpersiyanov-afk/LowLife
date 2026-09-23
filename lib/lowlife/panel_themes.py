@@ -74,6 +74,7 @@ THEMES = {
         (u"SKUD", u"AssignSkudRooms"),
         (u"SKUD", u"BuildSkudSchematic"),
         (u"SKUD", u"InspectSchematicDevices"),
+        (u"SKUD", u"PlaceDoorAccessPoints"),
         (u"CircuitsSKUD", u"BuildCircuitsSKUD"),
     ],
     u"SOT": [

@@ -37,6 +37,11 @@
   затем, чтобы этот модуль оставался импортируемым для теста
   `panel_riser_x` — сама `sync_panel_buses` не тестируется вне Revit.
 
+- `skud_door_layout.py` — места мнемосхемы двери (кнопка «Точки доступа на
+  двери»): пересчёт места в точку относительно двери и в координаты
+  модели, раскладка состава группы по местам. Модуль без `unicode()`, поэтому
+  идёт и под Python 3.
+
 Не покрыто и не может быть протестировано вне Revit: `route_nodes.py`,
 `route_addressing.py`, `skud.py`, `fire_alarm.py`,
 `fire_alarm_circuits.py`, `geometry.py`, `params.py`, `selection.py`,

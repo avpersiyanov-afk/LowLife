@@ -1111,6 +1111,25 @@ JSON-состояние (v2) структурной схемы СКУД в те�
 элемента; `assign_rooms_by_passage_point(doc, passage_points, target_param,
 room_number_param)` — запись по точкам прохода, возвращает строки отчёта.
 
+## skud_door_layout.py / skud_door_placement.py / skud_door_placement_settings.py / skud_door_rooms_form.py
+Кнопка **PlaceDoorAccessPoints** («Точки доступа на двери», `SKUD.panel`) —
+расстановка элементов точки доступа на все двери выбранных помещений.
+- `skud_door_layout.py` — чистая часть (тесты: `tests/test_skud_door_layout.py`):
+  `ROLES`/`SIDES`/`ANCHORS` мнемосхемы, `slot_local_position` (место -> мм
+  относительно двери), `viewer_right`/`world_point` (-> координаты модели),
+  `active_slots`, `match_members_to_slots` (элемент группы -> первое свободное
+  место, где указано его семейство; наружные места раньше внутренних).
+- `skud_door_placement_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeSkudDoorPlacement_settings.json`
+  (места по ключу `side_role`, семейства — по ИМЕНИ; `room_groups` — последняя
+  выбранная группа по помещению) и окно мнемосхемы (Shift+клик).
+- `skud_door_rooms_form.py` — таблица «помещение -> группа» (поиск, «всем показанным»).
+- `skud_door_placement.py` — помещения активного вида (текущая модель + связи на
+  уровне плана) и их двери (`GetRoomAtPoint` по обе стороны от двери; сторона в
+  помещение — «внутри»), состав группы (`read_group_members`, при отсутствии
+  экземпляров — временная вставка с откатом), `place_access_point` — создание
+  экземпляров по `FamilyPlacementType` (на стену / на грань стены, в т.ч. связи /
+  по уровню + поворот), защита от дублей `ExistingIndex`.
+
 ## fire_alarm.py
 Константы и разбор адресов для **СПС и СОУЭ** (`SPS.panel`/`SOUE.panel`).
 Отличие от СКС/СКУД: отдельных маркеров узлов нет — узлом шлейфа служит
