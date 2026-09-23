@@ -1120,7 +1120,7 @@ room_number_param)` — запись по точкам прохода, возв�
   относительно оси), `viewer_right`/`world_point` (-> координаты модели),
   `composition_items` (состав типа точки доступа по местам + записи, чьё
   семейство с места убрано), `find_access_type`.
-- `skud_door_placement_settings.py` — JSON `%APPDATA%\\pyRevit\\LowLifeSkudDoorPlacement_settings.json`
+- `skud_door_placement_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeSkudDoorPlacement_settings.json`
   (`slots` по ключу `side_role`, семейства — по ИМЕНИ; `access_types` — типы
   точек доступа `{name, composition: {slot_key: {family, type}}}`;
   `room_types` — последний выбранный тип по помещению) и окно мнемосхемы
