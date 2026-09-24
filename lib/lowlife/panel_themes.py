@@ -28,7 +28,7 @@ SetupParameters buttons across all disciplines are grouped under their own
 
 The discipline-agnostic tools are split across several small panels for
 readability instead of one jumbled Tools.panel: Tools.panel ("Tools" —
-DimensionGrids/GenericModelLength/ZoomToElement/Hello), ToolsRooms.panel
+DimensionGrids/GenericModelLength/ZoomToElement/FamilySection/Hello), ToolsRooms.panel
 ("Помещения"), ToolsSchedules.panel ("Спецификации"),
 ToolsFamilies.panel ("Семейства") and LOI.panel ("Заполнение LOI" —
 FillLOI). Every button on all five is listed under the single "General"
@@ -140,6 +140,7 @@ THEMES = {
         (u"Tools", u"GenericModelLength"),
         (u"Tools", u"ZoomToElement"),
         (u"Tools", u"CopyElementId"),
+        (u"Tools", u"FamilySection"),
         (u"Tools", u"Hello"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
