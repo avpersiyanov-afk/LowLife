@@ -4,8 +4,11 @@
 (Tools.panel/FamilySection).
 
 Разрез смотрит на «лицо» семейства (FamilyInstance.FacingOrientation —
-для настенных устройств это сторона, обращённая в помещение) и сразу
-обрезан:
+для настенных устройств это сторона, обращённая в помещение). Линейные
+элементы и системные семейства (кабельные лотки, короба, трубы,
+воздуховоды, стены — не FamilyInstance) тоже поддерживаются: для них
+разрез идёт вдоль оси элемента и смотрит на его бок (см.
+facing_direction). Разрез сразу обрезан:
   - по высоте — от базового уровня семейства до следующего уровня выше;
   - по ширине — габарит геометрии семейства + side_mm слева и справа;
   - по глубине — плоскость сечения на front_mm перед передней гранью
@@ -25,7 +28,8 @@ Min.Z — дальняя граница подрезки.
 import re
 
 from Autodesk.Revit.DB import (
-    BoundingBoxXYZ, BuiltInParameter, ElementId, FamilyInstance,
+    BoundingBoxXYZ, BuiltInCategory, BuiltInParameter, CategoryType,
+    ElementId, FamilyInstance, LocationCurve,
     FilteredElementCollector, GeometryInstance, Level, Mesh, Options, Point,
     Solid, Curve, Transform, View, ViewDetailLevel, ViewFamily,
     ViewFamilyType, ViewSection, ViewType, XYZ, Element, ElementTypeGroup
@@ -69,6 +73,66 @@ def safe_name(el):
             return el.Name or u""
         except Exception:
             return u""
+
+
+# --- что можно выбрать --------------------------------------------------------
+
+def _bic_ids(*names):
+    ids = set()
+    for name in names:
+        try:
+            ids.add(int(getattr(BuiltInCategory, name)))
+        except Exception:
+            pass
+    return ids
+
+
+# Модельные категории, по которым разрез «по элементу» смысла не имеет.
+# Обобщённые модели здесь НЕ исключаются (в отличие от
+# selection.is_pickable_model_element) — по ним разрез как раз нужен.
+_NOT_SECTIONABLE_CATEGORY_IDS = _bic_ids(
+    "OST_Grids", "OST_Levels", "OST_CLines", "OST_SketchLines",
+    "OST_RvtLinks", "OST_Rooms", "OST_MEPSpaces", "OST_Areas",
+    "OST_SectionBox", "OST_Cameras", "OST_Viewers", "OST_ScopeBoxes",
+    "OST_Lines",
+)
+
+
+def is_sectionable(el):
+    """
+    True для модельного элемента текущего документа с геометрией: любые
+    семейства (FamilyInstance) и системные элементы — кабельные лотки,
+    короба, трубы, воздуховоды, стены и т.п.
+    """
+    if el is None:
+        return False
+    try:
+        if el.Document.IsLinked:
+            return False
+    except Exception:
+        pass
+    try:
+        cat = el.Category
+    except Exception:
+        cat = None
+    if cat is None:
+        return False
+    try:
+        if cat.CategoryType != CategoryType.Model:
+            return False
+        if cat.Id.IntegerValue in _NOT_SECTIONABLE_CATEGORY_IDS:
+            return False
+    except Exception:
+        return False
+    try:
+        if el.ViewSpecific:
+            return False
+    except Exception:
+        pass
+    try:
+        return el.get_BoundingBox(None) is not None
+    except Exception:
+        return False
 
 
 # --- справочники для окна настроек ------------------------------------------
@@ -180,13 +244,51 @@ def _horizontal(v):
     return h.Normalize()
 
 
+def _curve_direction(el):
+    """Горизонтальное направление оси линейного элемента (хорда начало→конец)."""
+    try:
+        loc = el.Location
+    except Exception:
+        return None
+    if not isinstance(loc, LocationCurve):
+        return None
+    try:
+        curve = loc.Curve
+        return _horizontal(curve.GetEndPoint(1) - curve.GetEndPoint(0))
+    except Exception:
+        return None
+
+
+def _side_facing(direction):
+    """
+    Горизонтальная нормаль к оси, с какой стороны стоит наблюдатель. Из двух
+    нормалей берётся та, что смотрит на -Y модели (наблюдатель «с юга»,
+    смотрит «на север»); для осей вдоль Y — та, что смотрит на -X. Так
+    разрезы по параллельным лоткам получаются одинаково ориентированными,
+    а не зависят от того, в какую сторону лоток был начерчен.
+    """
+    n = XYZ.BasisZ.CrossProduct(direction).Normalize()
+    if abs(n.Y) > 1e-6:
+        return n if n.Y < 0 else n.Negate()
+    return n if n.X < 0 else n.Negate()
+
+
 def facing_direction(el):
     """
-    Горизонтальное направление «лица» семейства — туда, где стоит
-    наблюдатель разреза. FacingOrientation; если оно вертикальное (семейство
-    на грани потолка/пола) — перпендикуляр к HandOrientation (в семействе
-    Facing = Z × Hand); иначе — -Y модели (разрез смотрит «на север»).
+    Горизонтальное направление «лица» элемента — туда, где стоит
+    наблюдатель разреза:
+      - линейный элемент (LocationCurve: лоток, короб, труба, стена,
+        балка) — перпендикуляр к оси (см. _side_facing), разрез идёт
+        вдоль элемента;
+      - FamilyInstance — FacingOrientation; если оно вертикальное
+        (семейство на грани потолка/пола) — перпендикуляр к
+        HandOrientation (в семействе Facing = Z × Hand);
+      - иначе / для вертикального стояка — -Y модели («на север»).
     """
+    direction = _curve_direction(el)
+    if direction is not None:
+        return _side_facing(direction)
+
     if isinstance(el, FamilyInstance):
         try:
             f = _horizontal(el.FacingOrientation)
@@ -206,6 +308,8 @@ def facing_direction(el):
 # --- уровни ------------------------------------------------------------------
 
 _LEVEL_PARAMS = [
+    "RBS_START_LEVEL_PARAM",
+    "WALL_BASE_CONSTRAINT",
     "FAMILY_LEVEL_PARAM",
     "INSTANCE_SCHEDULE_ONLY_LEVEL_PARAM",
     "SCHEDULE_LEVEL_PARAM",
@@ -232,11 +336,18 @@ def _level_from_param(doc, el):
 
 def base_level(doc, el, fallback_z=None):
     """
-    Базовый уровень семейства: Element.LevelId, затем уровневые параметры
-    экземпляра, затем уровень основы (для семейств на основе), и в самом
+    Базовый уровень элемента: Element.LevelId, MEPCurve.ReferenceLevel,
+    затем уровневые параметры экземпляра, затем уровень основы (для семейств на основе), и в самом
     крайнем случае — ближайший уровень снизу от низа геометрии.
     """
     lv = geometry.get_element_level(doc, el)
+    if isinstance(lv, Level):
+        return lv
+
+    try:
+        lv = el.ReferenceLevel  # MEPCurve: лотки, короба, трубы, воздуховоды
+    except Exception:
+        lv = None
     if isinstance(lv, Level):
         return lv
 

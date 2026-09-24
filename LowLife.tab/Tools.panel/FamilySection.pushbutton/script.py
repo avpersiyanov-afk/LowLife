@@ -7,7 +7,6 @@ import traceback
 
 from pyrevit import revit, forms, EXEC_PARAMS
 
-from Autodesk.Revit.DB import FamilyInstance
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
@@ -17,24 +16,29 @@ uidoc = revit.uidoc
 TITLE = u"Разрез по семейству"
 
 
-class _FamilyInstanceFilter(ISelectionFilter):
+class _SectionableFilter(ISelectionFilter):
+    """Семейства и системные элементы (лотки, короба, трубы, стены...)."""
+
     def AllowElement(self, elem):
-        return isinstance(elem, FamilyInstance)
+        from lowlife import family_section
+        return family_section.is_sectionable(elem)
 
     def AllowReference(self, reference, position):
         return False
 
 
 def _collect_instances():
+    from lowlife import family_section
+
     selected = [doc.GetElement(i) for i in uidoc.Selection.GetElementIds()]
-    instances = [el for el in selected if isinstance(el, FamilyInstance)]
+    instances = [el for el in selected if family_section.is_sectionable(el)]
     if instances:
         return instances
 
     try:
         refs = uidoc.Selection.PickObjects(
-            ObjectType.Element, _FamilyInstanceFilter(),
-            u"Выберите семейства для разреза и нажмите «Готово»"
+            ObjectType.Element, _SectionableFilter(),
+            u"Выберите элементы для разреза и нажмите «Готово»"
         )
     except OperationCanceledException:
         return []

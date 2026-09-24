@@ -1605,7 +1605,8 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | Функция | Что делает |
 |---|---|
 | `element_points(el)` | Точки тела элемента в координатах модели (рёбра солидов, кривые, сетки); запасной вариант — углы BoundingBox |
-| `facing_direction(el)` | Горизонтальное «лицо» семейства: `FacingOrientation` → `Z × HandOrientation` → `-Y` |
+| `is_sectionable(el)` | Модельный элемент текущего документа с геометрией — семейства и системные элементы (лотки, короба, трубы, стены) |
+| `facing_direction(el)` | Сторона наблюдателя: линейный элемент — нормаль к оси (с юга / с запада); семейство — `FacingOrientation` → `Z × HandOrientation`; иначе `-Y` |
 | `base_level(doc, el, fallback_z)` / `level_above(doc, level)` | Базовый уровень (LevelId → уровневые параметры → основа → по отметке) / ближайший уровень выше |
 | `compute_section_box(doc, el, side_mm, front_mm, back_mm)` | `BoundingBoxXYZ` для `ViewSection.CreateSection` + уровни + предупреждения |
 | `build_view_name(doc, el, level, mask)` / `unique_name(name, taken)` | Имя по маске (`{Семейство}`, `{Тип}`, `{Марка}`, `{Уровень}`, `{Id}`) / без коллизий « (2)» |
