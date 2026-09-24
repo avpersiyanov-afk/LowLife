@@ -1119,7 +1119,8 @@ room_number_param)` — запись по точкам прохода, возв�
   относительно двери; у замка/геркона `slot_count` до 2, второй — зеркально
   относительно оси), `viewer_right`/`world_point` (-> координаты модели),
   `composition_items` (состав типа точки доступа по местам + записи, чьё
-  семейство с места убрано), `find_access_type`.
+  семейство с места убрано), `find_access_type`, фильтр дверей
+  `parse_keywords`/`door_passes_filter` (по имени помещения за дверью).
 - `skud_door_placement_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeSkudDoorPlacement_settings.json`
   (`slots` по ключу `side_role`, семейства — по ИМЕНИ; `access_types` — типы
   точек доступа `{name, composition: {slot_key: {family, type}}}`;
@@ -1130,7 +1131,9 @@ room_number_param)` — запись по точкам прохода, возв�
   уровне плана) и их двери (`GetRoomAtPoint` по обе стороны от двери; сторона в
   помещение — «внутри»), `SymbolIndex` (типоразмер по именам семейства/типа),
   `place_access_point` — создание экземпляров по `FamilyPlacementType` (на стену /
-  на грань стены, в т.ч. связи / по уровню + поворот), защита от дублей `ExistingIndex`.
+  на грань стены, в т.ч. связи / по уровню + поворот), защита от дублей `ExistingIndex`;
+  `DoorEntry.other_room` — помещение за дверью, `door_included` (фильтр + ручная
+  правка), `draw_door_markers`/`remove_door_markers` — подсветка «Показать на плане».
 
 ## fire_alarm.py
 Константы и разбор адресов для **СПС и СОУЭ** (`SPS.panel`/`SOUE.panel`).

@@ -33,6 +33,14 @@ pyrevit.script.get_config(), см. докстринг scs_settings.py).
 параметр помещения с номером для таблицы помещений: там помещение
 показывается как «Имя(номер)». Имя параметра — соглашение проекта, поэтому
 вводится в окне, а не зашито; пусто — штатный «Номер» помещения.
+
+Фильтр дверей: door_keywords_text — слова для имени помещения ЗА дверью
+(оснащаются только двери, ведущие в коридор/МОП/паркинг/...; пусто — все
+двери), include_outside — оснащать ли двери наружу (за дверью нет
+помещения). door_overrides — ручная правка из таблицы помещений
+({door_key: true/false}), имеет приоритет над фильтром. preview_markers —
+id линий подсветки «Показать на плане» по документу, удаляются при
+следующем запуске кнопки.
 """
 
 import os
@@ -53,7 +61,7 @@ from System.Windows import (
     HorizontalAlignment, VerticalAlignment, TextWrapping, GridLength, GridUnitType
 )
 from System.Windows.Controls import (
-    StackPanel, TextBlock, TextBox, Button, ComboBox, Orientation, DockPanel, Dock,
+    StackPanel, TextBlock, TextBox, Button, ComboBox, CheckBox, Orientation, DockPanel, Dock,
     ScrollViewer, ScrollBarVisibility, Canvas, Grid, ColumnDefinition, Border
 )
 from System.Windows.Media import Brushes, SolidColorBrush, ColorConverter, DoubleCollection
@@ -149,15 +157,46 @@ def load_saved_values():
         "access_types": _clean_access_types(saved.get("access_types")),
         "room_types": dict(saved.get("room_types") or {}),
         "room_number_param": saved.get("room_number_param") or u"",
+        "door_keywords_text": (saved["door_keywords_text"] if "door_keywords_text" in saved
+                               else layout.DEFAULT_DOOR_KEYWORDS),
+        "include_outside": bool(saved.get("include_outside", True)),
+        "door_overrides": dict(saved.get("door_overrides") or {}),
+        "preview_markers": dict(saved.get("preview_markers") or {}),
     }
 
 
-def save_layout(slots, access_types, room_number_param):
+def save_layout(slots, access_types, room_number_param, door_keywords_text, include_outside):
     data = _read_all()
     data["room_number_param"] = room_number_param
+    data["door_keywords_text"] = door_keywords_text
+    data["include_outside"] = bool(include_outside)
     data["slots"] = slots
     data["access_types"] = access_types
     data.pop("room_groups", None)  # от первой версии кнопки (выбор модельных групп)
+    _write_all(data)
+
+
+def save_door_overrides(overrides):
+    """overrides — {door_key: true/false/None}; None — убрать ручную правку."""
+    data = _read_all()
+    merged = dict(data.get("door_overrides") or {})
+    for key, value in overrides.items():
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = bool(value)
+    data["door_overrides"] = merged
+    _write_all(data)
+
+
+def save_preview_markers(doc_key, marker_ids):
+    data = _read_all()
+    markers = dict(data.get("preview_markers") or {})
+    if marker_ids:
+        markers[doc_key] = list(marker_ids)
+    else:
+        markers.pop(doc_key, None)
+    data["preview_markers"] = markers
     _write_all(data)
 
 
@@ -481,6 +520,33 @@ def show_settings_form(doc, values):
     number_box.ToolTip = u"Пусто — штатный параметр «Номер» помещения."
     number_row.Children.Add(number_box)
     header.Children.Add(number_row)
+
+    filter_row = StackPanel()
+    filter_row.Orientation = Orientation.Horizontal
+    filter_row.Margin = Thickness(0, 0, 0, 8)
+    filter_label = TextBlock()
+    filter_label.Text = u"Оснащать двери, ведущие в помещения с именем, содержащим:"
+    filter_label.VerticalAlignment = VerticalAlignment.Center
+    filter_label.Margin = Thickness(0, 0, 8, 0)
+    filter_row.Children.Add(filter_label)
+    filter_box = TextBox()
+    filter_box.Width = 420
+    filter_box.Padding = Thickness(4, 2, 4, 2)
+    filter_box.Text = values.get("door_keywords_text") or u""
+    filter_box.ToolTip = (
+        u"Через запятую, без учёта регистра, достаточно основы слова. Проверяется "
+        u"имя помещения ЗА дверью (с другой стороны от выбранного помещения). "
+        u"Пусто — оснащаются все двери помещения. Отдельные двери можно "
+        u"включить/исключить вручную в таблице помещений."
+    )
+    filter_row.Children.Add(filter_box)
+    outside_box = CheckBox()
+    outside_box.Content = u"и двери наружу (за дверью нет помещения)"
+    outside_box.IsChecked = bool(values.get("include_outside", True))
+    outside_box.VerticalAlignment = VerticalAlignment.Center
+    outside_box.Margin = Thickness(12, 0, 0, 0)
+    filter_row.Children.Add(outside_box)
+    header.Children.Add(filter_row)
 
     views_row = StackPanel()
     views_row.Orientation = Orientation.Horizontal
@@ -844,7 +910,9 @@ def show_settings_form(doc, values):
 
     def on_ok(sender, args):
         result["values"] = {"slots": slots, "access_types": access_types,
-                            "room_number_param": (number_box.Text or u"").strip()}
+                            "room_number_param": (number_box.Text or u"").strip(),
+                            "door_keywords_text": filter_box.Text or u"",
+                            "include_outside": bool(outside_box.IsChecked)}
         win.Close()
 
     def on_cancel(sender, args):
@@ -892,7 +960,8 @@ def get_settings_interactive(doc):
         if edited is None:
             return None
 
-        save_layout(edited["slots"], edited["access_types"], edited["room_number_param"])
+        save_layout(edited["slots"], edited["access_types"], edited["room_number_param"],
+                    edited["door_keywords_text"], edited["include_outside"])
         return edited
 
 

@@ -31,6 +31,15 @@ output = pyrevit_script.get_output()
 # ------------------------------------------------------------
 
 settings = sdps.get_settings_silent()
+
+# Подсветка прошлого «Показать на плане» живёт до следующего запуска кнопки.
+doc_key = doc.PathName or doc.Title
+old_markers = settings["preview_markers"].get(doc_key)
+if old_markers:
+    with revit.Transaction(u"Точки доступа: убрать подсветку дверей"):
+        sdp.remove_door_markers(doc, old_markers)
+    sdps.save_preview_markers(doc_key, [])
+
 access_types = sdps.require_access_types(settings)
 slots = settings["slots"]
 
@@ -42,17 +51,66 @@ if not rooms:
         exitscript=True
     )
 
+keywords = layout.parse_keywords(settings["door_keywords_text"])
+include_outside = settings["include_outside"]
+
+
+def auto_of(entry):
+    return sdp.door_auto_included(entry, keywords, include_outside)
+
+
 type_names = [t["name"] for t in access_types]
-choice = show_rooms_table(rooms, type_names, settings["room_types"], settings["room_number_param"])
-if choice is None:
+answer = show_rooms_table(rooms, type_names, settings["room_types"], settings["room_number_param"],
+                          auto_of, settings["door_overrides"])
+if answer is None:
     forms.alert(u"Операция отменена.", exitscript=True)
 
+choice = answer["choice"]
+overrides = answer["overrides"]
 sdps.save_room_types(dict((room.key, choice.get(room.key, u"")) for room in rooms))
+sdps.save_door_overrides(overrides)
+active_overrides = dict((k, v) for k, v in overrides.items() if v is not None)
+
+
+def door_included(entry):
+    return sdp.door_included(entry, keywords, include_outside, active_overrides)
+
 
 selected_rooms = [room for room in rooms if choice.get(room.key)]
 if not selected_rooms:
-    forms.alert(u"Ни одному помещению не выбран тип точки доступа — расставлять нечего.",
-                exitscript=True)
+    forms.alert(u"Ни одному помещению не выбран тип точки доступа — нечего расставлять "
+                u"и показывать.", exitscript=True)
+
+
+# ------------------------------------------------------------
+# ПОКАЗАТЬ НА ПЛАНЕ (без расстановки)
+# ------------------------------------------------------------
+
+if answer["action"] == "preview":
+    if not sdp.is_plan_view(view):
+        forms.alert(u"Подсветка дверей рисуется только на плане этажа — откройте план "
+                    u"и запустите кнопку снова. Выбор типов и дверей сохранён.", exitscript=True)
+    marked = []
+    seen = set()
+    for room in selected_rooms:
+        for entry in room.doors:
+            if entry.unique_key in seen:
+                continue
+            seen.add(entry.unique_key)
+            marked.append((entry, door_included(entry)))
+    with revit.Transaction(u"Точки доступа: подсветить двери"):
+        marker_ids = sdp.draw_door_markers(doc, view, marked)
+    sdps.save_preview_markers(doc_key, marker_ids)
+    included_count = sum(1 for _e, inc in marked if inc)
+    forms.alert(
+        u"На активном виде обведены двери помещений с выбранным типом:\n\n"
+        u"зелёный — будет оснащена: {}\n"
+        u"красный — исключена (фильтром или вручную): {}\n\n"
+        u"Выбор типов и дверей сохранён. Подсветка уберётся при следующем "
+        u"запуске кнопки — запустите её снова, чтобы поправить выбор или "
+        u"расставить.".format(included_count, len(marked) - included_count),
+        exitscript=True
+    )
 
 items_by_type = {}
 stale_by_type = {}
@@ -78,9 +136,12 @@ with revit.Transaction(u"Точки доступа на двери"):
         type_name = choice[room.key]
         items = items_by_type.get(type_name) or []
         row = {"room": room, "type": type_name, "doors": 0, "created": 0, "duplicate": 0,
-               "failed": 0, "shared": 0, "missing_types": set(), "failed_names": set()}
+               "failed": 0, "shared": 0, "excluded": 0, "missing_types": set(), "failed_names": set()}
 
         for entry in room.doors:
+            if not door_included(entry):
+                row["excluded"] += 1
+                continue
             if entry.unique_key in processed_doors:
                 row["shared"] += 1
                 continue
@@ -109,6 +170,8 @@ for row in report:
     line = u"- **{}** — тип «{}»: дверей обработано {}, поставлено {}, уже стояло {}, не удалось {}".format(
         title, row["type"], row["doors"], row["created"], row["duplicate"], row["failed"]
     )
+    if row["excluded"]:
+        line += u"; дверей не оснащается (фильтр/вручную): {}".format(row["excluded"])
     if row["shared"]:
         line += u"; дверей пропущено (уже обработаны с другим помещением): {}".format(row["shared"])
     if row["missing_types"]:

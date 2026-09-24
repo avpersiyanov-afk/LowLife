@@ -105,3 +105,25 @@ def test_find_access_type():
     types = [{"name": u"A", "composition": {}}, {"name": u"B", "composition": {}}]
     assert layout.find_access_type(types, u"B") is types[1]
     assert layout.find_access_type(types, u"C") is None
+
+
+# --- фильтр дверей ----------------------------------------------------------------
+
+def test_parse_keywords():
+    assert layout.parse_keywords(u" Коридор, МОП;; коридор ,") == [u"коридор", u"моп"]
+    assert layout.parse_keywords(u"") == []
+
+
+def test_door_filter_by_room_behind_door():
+    keywords = layout.parse_keywords(layout.DEFAULT_DOOR_KEYWORDS)
+    assert layout.door_passes_filter(u"Коридор", keywords, True)
+    assert layout.door_passes_filter(u"Лифтовой холл", keywords, True)
+    assert not layout.door_passes_filter(u"Форкамера", keywords, True)
+    assert not layout.door_passes_filter(u"Санузел", keywords, True)
+
+
+def test_door_filter_outside_and_empty_keywords():
+    assert layout.door_passes_filter(None, [u"коридор"], True)
+    assert not layout.door_passes_filter(None, [u"коридор"], False)
+    assert layout.door_passes_filter(u"Санузел", [], True)
+    assert not layout.door_passes_filter(None, [], False)

@@ -233,3 +233,38 @@ def find_access_type(access_types, name):
         if access_type.get("name") == name:
             return access_type
     return None
+
+
+# ------------------------------------------------------------
+# Фильтр дверей по помещению за дверью
+# ------------------------------------------------------------
+
+# Общая лексика (не имена параметров проекта) — куда обычно ведёт дверь,
+# которой нужен СКУД. Сравнение — «имя помещения за дверью содержит слово»,
+# без учёта регистра, поэтому достаточно основ слов.
+DEFAULT_DOOR_KEYWORDS = u"коридор, МОП, холл, лифтов, паркинг, тамбур, лестнич, вестибюл"
+
+
+def parse_keywords(text):
+    """«коридор, МОП» -> [u"коридор", u"моп"] (без пустых и повторов)."""
+    result = []
+    for chunk in (text or u"").replace(u";", u",").split(u","):
+        word = chunk.strip().lower()
+        if word and word not in result:
+            result.append(word)
+    return result
+
+
+def door_passes_filter(other_room_name, keywords, include_outside):
+    """
+    Оснащается ли дверь по фильтру. other_room_name — имя помещения за
+    дверью (None — за дверью помещения нет, дверь наружу); keywords —
+    parse_keywords(...); пустой список — фильтра нет, оснащаются все
+    двери помещения (кроме наружных, если include_outside=False).
+    """
+    if other_room_name is None:
+        return bool(include_outside)
+    if not keywords:
+        return True
+    name = (other_room_name or u"").lower()
+    return any(word in name for word in keywords)

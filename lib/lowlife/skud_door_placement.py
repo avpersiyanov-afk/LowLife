@@ -92,17 +92,65 @@ class DoorSource(object):
 
 
 class DoorEntry(object):
-    """Дверь помещения: сама дверь, её источник и знак стороны «внутри»
-    (+1 — внутрь смотрит FacingOrientation двери, -1 — наоборот)."""
+    """Дверь помещения: сама дверь, её источник, знак стороны «внутри»
+    (+1 — внутрь смотрит FacingOrientation двери, -1 — наоборот) и
+    помещение с другой стороны (other_room; None — за дверью помещения
+    нет, т.е. дверь наружу)."""
 
-    def __init__(self, door, source, inner_sign):
+    def __init__(self, door, source, inner_sign, other_room=None):
         self.door = door
         self.source = source
         self.inner_sign = inner_sign
+        self.other_room = other_room
 
     @property
     def unique_key(self):
         return u"{}|{}".format(self.source.label, self.door.UniqueId)
+
+    @property
+    def other_room_name(self):
+        """Имя помещения за дверью (ROOM_NAME), None — за дверью помещения нет."""
+        if self.other_room is None:
+            return None
+        return _room_text(self.other_room, BuiltInParameter.ROOM_NAME)
+
+    def other_room_display(self, number_param):
+        if self.other_room is None:
+            return u"наружу (за дверью нет помещения)"
+        return room_display_name(self.other_room, number_param)
+
+    def label(self, number_param):
+        """«Марка · Семейство : Тип → Коридор(1.01)» — для списка дверей помещения."""
+        parts = []
+        mark = u""
+        try:
+            p = self.door.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
+            if p is not None and p.HasValue:
+                mark = (p.AsString() or u"").strip()
+        except:
+            pass
+        if mark:
+            parts.append(mark)
+        try:
+            symbol = self.door.Symbol
+            parts.append(u"{} : {}".format(safe_element_name(symbol.Family) or u"?",
+                                           safe_element_name(symbol) or u"?"))
+        except:
+            pass
+        return u"{}  →  {}".format(u" · ".join(parts) or u"Дверь", self.other_room_display(number_param))
+
+
+def room_display_name(room, number_param):
+    """«Имя(номер)»: номер — из параметра number_param помещения (пусто —
+    штатный «Номер»); без номера — просто имя."""
+    name = _room_text(room, BuiltInParameter.ROOM_NAME)
+    if number_param:
+        number = _room_param_value(room, number_param)
+    else:
+        number = _room_text(room, BuiltInParameter.ROOM_NUMBER)
+    if not number:
+        return name
+    return u"{}({})".format(name, number)
 
 
 class RoomEntry(object):
@@ -121,14 +169,7 @@ class RoomEntry(object):
         self.doors = []
 
     def display_name(self, number_param):
-        """«Имя(номер)»: номер — из параметра number_param помещения (пусто —
-        штатный «Номер»); без номера — просто имя."""
-        number = self.number
-        if number_param:
-            number = _room_param_value(self.room, number_param)
-        if not number:
-            return self.name
-        return u"{}({})".format(self.name, number)
+        return room_display_name(self.room, number_param)
 
     @property
     def key(self):
@@ -269,20 +310,24 @@ def collect_rooms_with_doors(doc, view):
                 continue
             reach = _wall_half_width(door) + ROOM_PROBE_MM * MM_TO_FT
             lift = XYZ(0, 0, ROOM_PROBE_HEIGHT_MM * MM_TO_FT)
+            side_rooms = {}
             for sign in (1, -1):
                 probe = origin + facing * (reach * sign) + lift
                 try:
-                    room = source.doc.GetRoomAtPoint(probe)
+                    side_rooms[sign] = source.doc.GetRoomAtPoint(probe)
                 except:
-                    room = None
+                    side_rooms[sign] = None
+            for sign in (1, -1):
+                room = side_rooms[sign]
                 if room is None:
                     continue
                 entry = by_id.get(room.Id.IntegerValue)
                 if entry is None:
                     continue
-                if any(d.door.Id == door.Id for d in entry.doors):
-                    continue
-                entry.doors.append(DoorEntry(door, source, sign))
+                other = side_rooms[-sign]
+                if other is not None and other.Id == room.Id:
+                    continue  # обе стороны в одном помещении — дверь внутри помещения
+                entry.doors.append(DoorEntry(door, source, sign, other))
 
     def sort_key(entry):
         return (entry.source.label, _natural(entry.number), entry.name)
@@ -604,6 +649,108 @@ def place_access_point(doc, entry, items, symbols, sorted_levels, existing):
             result["created"] += 1
 
     return result
+
+
+# ------------------------------------------------------------
+# Какие двери оснащаются
+# ------------------------------------------------------------
+
+def door_auto_included(entry, keywords, include_outside):
+    """Решение фильтра по помещению за дверью (без учёта ручной правки)."""
+    return layout.door_passes_filter(entry.other_room_name, keywords, include_outside)
+
+
+def door_included(entry, keywords, include_outside, overrides):
+    """С учётом ручной правки overrides ({door.unique_key: bool})."""
+    manual = overrides.get(entry.unique_key)
+    if manual is not None:
+        return bool(manual)
+    return door_auto_included(entry, keywords, include_outside)
+
+
+# ------------------------------------------------------------
+# Подсветка оснащаемых дверей на плане («Показать на плане»)
+# ------------------------------------------------------------
+
+PREVIEW_INCLUDED_COLOR = (0, 160, 60)
+PREVIEW_EXCLUDED_COLOR = (220, 40, 40)
+PREVIEW_MARGIN_MM = 250.0
+
+
+def _circle_curves(center, radius):
+    from Autodesk.Revit.DB import Arc
+    return [
+        Arc.Create(center, radius, 0.0, math.pi, XYZ.BasisX, XYZ.BasisY),
+        Arc.Create(center, radius, math.pi, 2.0 * math.pi, XYZ.BasisX, XYZ.BasisY),
+    ]
+
+
+def _view_plane_z(view):
+    level = getattr(view, "GenLevel", None)
+    if level is not None:
+        return level.Elevation
+    try:
+        return view.Origin.Z
+    except:
+        return 0.0
+
+
+def draw_door_markers(doc, view, marked):
+    """
+    Рисует на view круги вокруг дверей: marked — [(DoorEntry, included)].
+    Зелёный толстый круг — дверь будет оснащена, красный — дверь
+    помещения исключена фильтром/вручную. Транзакцию открывает
+    вызывающий. Возвращает список id созданных линий (int) — чтобы
+    удалить их при следующем запуске (remove_door_markers).
+    """
+    from Autodesk.Revit.DB import OverrideGraphicSettings, Color
+
+    styles = {}
+    for included, rgb in ((True, PREVIEW_INCLUDED_COLOR), (False, PREVIEW_EXCLUDED_COLOR)):
+        ogs = OverrideGraphicSettings()
+        ogs.SetProjectionLineColor(Color(rgb[0], rgb[1], rgb[2]))
+        ogs.SetProjectionLineWeight(10 if included else 6)
+        styles[included] = ogs
+
+    z = _view_plane_z(view)
+    created = []
+    for entry, included in marked:
+        frame = DoorFrame(entry)
+        if not frame.ok:
+            continue
+        radius = (frame.width_mm / 2.0 + PREVIEW_MARGIN_MM) * MM_TO_FT
+        center = XYZ(frame.origin.X, frame.origin.Y, z)
+        for curve in _circle_curves(center, radius):
+            try:
+                detail = doc.Create.NewDetailCurve(view, curve)
+            except:
+                continue
+            try:
+                view.SetElementOverrides(detail.Id, styles[included])
+            except:
+                pass
+            created.append(detail.Id.IntegerValue)
+    return created
+
+
+def remove_door_markers(doc, marker_ids):
+    """Удаляет линии подсветки прошлого «Показать на плане» (только линии
+    детализации — чужие элементы с теми же id не трогаются)."""
+    from Autodesk.Revit.DB import ElementId, DetailCurve
+    removed = 0
+    for value in marker_ids or []:
+        try:
+            el = doc.GetElement(ElementId(int(value)))
+        except:
+            el = None
+        if el is None or not isinstance(el, DetailCurve):
+            continue
+        try:
+            doc.Delete(el.Id)
+            removed += 1
+        except:
+            pass
+    return removed
 
 
 def is_plan_view(view):
