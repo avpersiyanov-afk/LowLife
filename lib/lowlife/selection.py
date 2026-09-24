@@ -117,6 +117,22 @@ def collect_model_elements(doc, view):
     return [el for el in raw if is_pickable_model_element(el)]
 
 
+def collect_model_elements_in_document(doc):
+    """
+    Как collect_model_elements(doc, view), но по всему документу, без
+    привязки к виду — для кнопок, которым нужны все элементы модели
+    проекта целиком (например заполнение по уровню — элемент может быть
+    скрыт на текущем виде, но всё равно должен получить значение).
+    """
+    try:
+        raw = (FilteredElementCollector(doc)
+               .WhereElementIsNotElementType()
+               .ToElements())
+    except Exception:
+        return []
+    return [el for el in raw if is_pickable_model_element(el)]
+
+
 def parse_name_prefixes(text):
     """«1, 2, 20, 30, 60» -> ('1', '2', '20', '30', '60'). Разделители —
     запятая, точка с запятой, перевод строки. Пустые куски отброшены."""

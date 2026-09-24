@@ -101,6 +101,17 @@ def get_document_levels(doc):
     return sorted(levels, key=lambda lv: lv.Elevation)
 
 
+def level_name(level):
+    """Имя уровня (Level.Name) — обёрнуто в try/except на случай
+    неожиданной ошибки API, level.Name у Level (в отличие от Family/
+    FamilySymbol) под IronPython проблем с неоднозначным связыванием не
+    вызывает."""
+    try:
+        return level.Name
+    except:
+        return u""
+
+
 def find_level_for_elevation(z, sorted_levels):
     """
     Уровень, на котором физически находится точка с высотой z: ближайший
