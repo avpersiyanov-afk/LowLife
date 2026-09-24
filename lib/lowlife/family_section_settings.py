@@ -43,6 +43,7 @@ SIDE_KEY = "side_offset_mm"
 FRONT_KEY = "front_offset_mm"
 BACK_KEY = "back_offset_mm"
 OPEN_VIEW_KEY = "open_view"
+FLIP_KEY = "flip_side"
 
 DEFAULTS = {
     TEMPLATE_KEY: u"",
@@ -52,6 +53,7 @@ DEFAULTS = {
     FRONT_KEY: 100.0,
     BACK_KEY: 1000.0,
     OPEN_VIEW_KEY: True,
+    FLIP_KEY: False,
 }
 
 NO_TEMPLATE = u"<Без шаблона>"
@@ -116,6 +118,7 @@ def load_saved_values():
         except (TypeError, ValueError):
             values[key] = DEFAULTS[key]
     values[OPEN_VIEW_KEY] = bool(values[OPEN_VIEW_KEY])
+    values[FLIP_KEY] = bool(values[FLIP_KEY])
     return values
 
 
@@ -232,6 +235,15 @@ def show_settings_form(doc, values):
     _label(root, u"За геометрией семейства (дальняя граница)")
     back_box = _textbox(root, _fmt_mm(values[BACK_KEY]))
 
+    flip_cb = CheckBox()
+    flip_cb.Content = u"Смотреть с обратной стороны"
+    flip_cb.IsChecked = bool(values.get(FLIP_KEY))
+    flip_cb.Margin = Thickness(0, 14, 0, 0)
+    root.Children.Add(flip_cb)
+    _hint(root, u"Обычно не нужно: разрез смотрит на лицевую сторону семейства "
+                u"(для устройств на стене — со стороны помещения). Включите, "
+                u"если у ваших семейств лицевая сторона задана наоборот.")
+
     open_cb = CheckBox()
     open_cb.Content = u"Открыть разрез после создания"
     open_cb.IsChecked = bool(values.get(OPEN_VIEW_KEY))
@@ -272,6 +284,7 @@ def show_settings_form(doc, values):
             FRONT_KEY: front,
             BACK_KEY: back,
             OPEN_VIEW_KEY: bool(open_cb.IsChecked),
+            FLIP_KEY: bool(flip_cb.IsChecked),
         }
         win.Close()
 

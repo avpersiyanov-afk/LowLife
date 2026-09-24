@@ -98,7 +98,7 @@ def main():
             results.append(family_section.create_family_section(
                 doc, el, section_type, template, settings[fss.NAME_MASK_KEY],
                 settings[fss.SIDE_KEY], settings[fss.FRONT_KEY], settings[fss.BACK_KEY],
-                taken_names
+                taken_names, flip=settings[fss.FLIP_KEY]
             ))
 
     created = [r for r in results if r.view is not None]
