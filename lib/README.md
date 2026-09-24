@@ -1611,6 +1611,20 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | `build_view_name(doc, el, level, mask)` / `unique_name(name, taken)` | Имя по маске (`{Семейство}`, `{Тип}`, `{Марка}`, `{Уровень}`, `{Id}`) / без коллизий « (2)» |
 | `create_family_section(...)` | Создаёт разрез, назначает шаблон и имя (внутри транзакции), ошибки — в `SectionResult.error` |
 
+## link_trays.py
+Кабельные лотки из связанных моделей, видимые на активном виде, — кнопка
+`Tools.panel/LinkTraysToExcel` («Лотки связи в Эксель»). В Revit 2024+ видимость
+берётся через `FilteredElementCollector(doc, view.Id, link.Id)`; в более старых —
+запасной отбор `BoundingBoxIntersectsFilter` по подрезке/диапазону вида,
+переведённым в координаты связи.
+
+| Функция | Что делает |
+|---|---|
+| `visible_links(doc, view)` | Загруженные `RevitLinkInstance`, не скрытые на виде |
+| `collect_trays(doc, view, link)` | `(лотки, used_fallback)` — лотки связи, видимые на виде |
+| `tray_row(link_doc, tray, link_name)` | Строка: ID, имя типа, модель (`ALL_MODEL_MODEL`), отметка середины в мм (`RBS_OFFSET_PARAM`), базовый уровень, связь |
+| `build_rows(doc, view, links)` | `(rows с заголовком HEADER, [(связь, число)], used_fallback)` для `xlsx_io.write_xlsx` |
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
