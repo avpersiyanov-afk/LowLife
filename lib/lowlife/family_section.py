@@ -31,7 +31,7 @@ from Autodesk.Revit.DB import (
     BoundingBoxXYZ, BuiltInCategory, BuiltInParameter, CategoryType,
     ElementId, FamilyInstance, LocationCurve,
     FilteredElementCollector, GeometryInstance, Level, Mesh, Options, Point,
-    Solid, Curve, Transform, View, ViewDetailLevel, ViewFamily,
+    Solid, Curve, Transform, View, Wall, ViewDetailLevel, ViewFamily,
     ViewFamilyType, ViewSection, ViewType, XYZ, Element, ElementTypeGroup
 )
 
@@ -273,36 +273,107 @@ def _side_facing(direction):
     return n if n.X < 0 else n.Negate()
 
 
-def facing_direction(el):
+def _instance_point(el):
+    try:
+        loc = el.Location
+        if loc is not None and hasattr(loc, "Point"):
+            return loc.Point
+    except Exception:
+        pass
+    try:
+        return el.GetTransform().Origin
+    except Exception:
+        return None
+
+
+def _orient_away_from_wall_host(el, f):
     """
-    Горизонтальное направление «лица» элемента — туда, где стоит
-    наблюдатель разреза:
+    Для экземпляра на стене (Host — Wall текущей модели) разворачивает f,
+    если оно смотрит в стену: устройство стоит на поверхности стены, т.е.
+    смещено от её оси в сторону помещения, и f должно смотреть туда же.
+    Для основы-связи (RevitLinkInstance) и точки на самой оси — f как есть.
+    """
+    try:
+        host = el.Host
+    except Exception:
+        host = None
+    if host is None or not isinstance(host, Wall):
+        return f
+    pt = _instance_point(el)
+    if pt is None:
+        return f
+    try:
+        curve = host.Location.Curve
+        proj = curve.Project(pt)
+        if proj is None:
+            return f
+        off = XYZ(pt.X - proj.XYZPoint.X, pt.Y - proj.XYZPoint.Y, 0.0)
+    except Exception:
+        return f
+    if off.GetLength() < _LEVEL_TOL_FT:
+        return f
+    return f if off.DotProduct(f) >= 0 else f.Negate()
+
+
+def _family_facing(el):
+    """
+    Наружная сторона семейства:
+      - семейство на вертикальной грани (face-based / по рабочей плоскости
+        стены): ось Z экземпляра (GetTransform().BasisZ) — нормаль грани
+        основы наружу. FacingOrientation у таких семейств лежит в
+        плоскости стены (смотрит вверх) и для разреза не годится;
+      - иначе — FacingOrientation;
+      - если и оно вертикальное — ось Z экземпляра / HandOrientation.
+    """
+    try:
+        bz = _horizontal(el.GetTransform().BasisZ)
+    except Exception:
+        bz = None
+    if bz is not None:
+        return bz
+
+    try:
+        f = _horizontal(el.FacingOrientation)
+        if f is not None:
+            return f
+    except Exception:
+        pass
+
+    try:
+        hand = _horizontal(el.HandOrientation)
+        if hand is not None:
+            # в семействе Facing (ось Y) = Z × Hand (ось X)
+            return XYZ.BasisZ.CrossProduct(hand).Normalize()
+    except Exception:
+        pass
+    return None
+
+
+def facing_direction(el, flip=False):
+    """
+    Горизонтальное направление к наблюдателю разреза (разрез смотрит на
+    элемент с этой стороны):
       - линейный элемент (LocationCurve: лоток, короб, труба, стена,
         балка) — перпендикуляр к оси (см. _side_facing), разрез идёт
         вдоль элемента;
-      - FamilyInstance — FacingOrientation; если оно вертикальное
-        (семейство на грани потолка/пола) — перпендикуляр к
-        HandOrientation (в семействе Facing = Z × Hand);
+      - FamilyInstance — лицевая сторона (_family_facing), для экземпляров
+        на стене дополнительно проверенная по положению относительно оси
+        стены (_orient_away_from_wall_host);
       - иначе / для вертикального стояка — -Y модели («на север»).
+    flip=True — смотреть с противоположной стороны (настройка кнопки, на
+    случай семейств с «перевёрнутой» лицевой стороной).
     """
+    f = None
     direction = _curve_direction(el)
     if direction is not None:
-        return _side_facing(direction)
-
-    if isinstance(el, FamilyInstance):
-        try:
-            f = _horizontal(el.FacingOrientation)
-            if f is not None:
-                return f
-        except Exception:
-            pass
-        try:
-            hand = _horizontal(el.HandOrientation)
-            if hand is not None:
-                return XYZ.BasisZ.CrossProduct(hand).Normalize()
-        except Exception:
-            pass
-    return XYZ(0.0, -1.0, 0.0)
+        f = _side_facing(direction)
+    elif isinstance(el, FamilyInstance):
+        f = _family_facing(el)
+        if f is not None:
+            f = _orient_away_from_wall_host(el, f)
+    if f is None:
+        f = XYZ(0.0, -1.0, 0.0)
+    return f.Negate() if flip else f
 
 
 # --- уровни ------------------------------------------------------------------
@@ -458,7 +529,7 @@ class SectionResult(object):
         self.error = None
 
 
-def compute_section_box(doc, el, side_mm, front_mm, back_mm):
+def compute_section_box(doc, el, side_mm, front_mm, back_mm, flip=False):
     """
     (BoundingBoxXYZ, base_level, top_level_or_None, warnings) для разреза по
     элементу, либо поднимает ValueError, если у элемента нет геометрии/уровня.
@@ -488,7 +559,7 @@ def compute_section_box(doc, el, side_mm, front_mm, back_mm):
             u"выше базового уровня".format(
                 geometry.level_name(level), (top_z - bottom_z) * MM_IN_FOOT))
 
-    toward_viewer = facing_direction(el)          # BasisZ: к наблюдателю
+    toward_viewer = facing_direction(el, flip)    # BasisZ: к наблюдателю
     up = XYZ.BasisZ                               # BasisY
     right = up.CrossProduct(toward_viewer)        # BasisX = Y × Z
 
@@ -519,7 +590,7 @@ def compute_section_box(doc, el, side_mm, front_mm, back_mm):
 
 
 def create_family_section(doc, el, section_type, template, name_mask,
-                          side_mm, front_mm, back_mm, taken_names):
+                          side_mm, front_mm, back_mm, taken_names, flip=False):
     """
     Создаёт разрез по элементу (внутри уже открытой транзакции). Возвращает
     SectionResult; ошибки по конкретному элементу не пробрасываются, а
@@ -528,7 +599,7 @@ def create_family_section(doc, el, section_type, template, name_mask,
     """
     result = SectionResult(el)
     try:
-        box, level, _top, warnings = compute_section_box(doc, el, side_mm, front_mm, back_mm)
+        box, level, _top, warnings = compute_section_box(doc, el, side_mm, front_mm, back_mm, flip)
         result.warnings.extend(warnings)
 
         view = ViewSection.CreateSection(doc, section_type.Id, box)
