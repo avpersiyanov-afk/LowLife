@@ -1592,6 +1592,25 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
 | `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
 
+## family_section.py / family_section_settings.py
+Разрез по экземпляру семейства — кнопка `Tools.panel/FamilySection`
+(«Разрез по семейству»). Разрез смотрит на лицевую сторону семейства
+(`FacingOrientation`) и сразу обрезан: по высоте — от базового уровня
+семейства до ближайшего уровня выше, по ширине — габарит геометрии ± 2000 мм,
+по глубине — сечение в 100 мм перед геометрией, дальняя граница в 1000 мм за
+ней (отступы — настройки). Шаблон вида, типоразмер разреза (по имени) и маска
+имени хранятся в `%APPDATA%\pyRevit\LowLifeFamilySection_settings.json`
+(Shift+клик; при первом запуске окно открывается само).
+
+| Функция | Что делает |
+|---|---|
+| `element_points(el)` | Точки тела элемента в координатах модели (рёбра солидов, кривые, сетки); запасной вариант — углы BoundingBox |
+| `facing_direction(el)` | Горизонтальное «лицо» семейства: `FacingOrientation` → `Z × HandOrientation` → `-Y` |
+| `base_level(doc, el, fallback_z)` / `level_above(doc, level)` | Базовый уровень (LevelId → уровневые параметры → основа → по отметке) / ближайший уровень выше |
+| `compute_section_box(doc, el, side_mm, front_mm, back_mm)` | `BoundingBoxXYZ` для `ViewSection.CreateSection` + уровни + предупреждения |
+| `build_view_name(doc, el, level, mask)` / `unique_name(name, taken)` | Имя по маске (`{Семейство}`, `{Тип}`, `{Марка}`, `{Уровень}`, `{Id}`) / без коллизий « (2)» |
+| `create_family_section(...)` | Создаёт разрез, назначает шаблон и имя (внутри транзакции), ошибки — в `SectionResult.error` |
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
