@@ -619,48 +619,92 @@ def unique_name(name, taken):
 
 # --- построение ---------------------------------------------------------------
 
+# Если у элементов общего разреза «лицо» отличается больше чем на этот угол
+# от лица первого элемента — предупреждение (разрез всё равно строится по
+# направлению первого).
+_FACING_MISMATCH_COS = 0.966  # cos 15°
+
+
 class SectionResult(object):
-    def __init__(self, element):
-        self.element = element
+    def __init__(self, elements):
+        self.elements = list(elements)
+        self.element = self.elements[0]
         self.view = None
         self.name = u""
         self.warnings = []
         self.error = None
 
+    def ids_label(self):
+        ids = [unicode(e.Id.IntegerValue) for e in self.elements]
+        if len(ids) > 5:
+            ids = ids[:5] + [u"… всего {}".format(len(self.elements))]
+        return u"Id " + u", ".join(ids)
 
-def compute_section_box(doc, el, side_mm, front_mm, back_mm, flip=False):
+
+def compute_section_box(doc, elements, side_mm, front_mm, back_mm, flip=False,
+                        bottom_mm=0.0):
     """
     (BoundingBoxXYZ, base_level, top_level_or_None, warnings) для разреза по
-    элементу, либо поднимает ValueError, если у элемента нет геометрии/уровня.
+    одному или нескольким элементам, либо ValueError, если нет геометрии/уровня.
+
+    Несколько элементов — один общий разрез: направление взгляда — по
+    первому элементу; ширина и глубина — по крайним точкам всех элементов
+    (+ отступы из настроек); низ — самый нижний из базовых уровней
+    элементов, верх — следующий этаж над самым верхним базовым уровнем.
+    bottom_mm — насколько опустить низ разреза ниже базового уровня.
     """
     warnings = []
+    if not isinstance(elements, (list, tuple)):
+        elements = [elements]
 
-    points = element_points(el)
+    points = []
+    base_levels = []
+    for el in elements:
+        el_points = element_points(el)
+        if not el_points:
+            if len(elements) == 1:
+                raise ValueError(u"не удалось получить геометрию элемента")
+            warnings.append(u"Id {}: нет геометрии — не учтён в границах".format(
+                el.Id.IntegerValue))
+            continue
+        points.extend(el_points)
+        lv = base_level(doc, el, fallback_z=min(p.Z for p in el_points))
+        if lv is not None:
+            base_levels.append(lv)
+
     if not points:
-        raise ValueError(u"не удалось получить геометрию элемента")
-
-    min_geom_z = min(p.Z for p in points)
-    max_geom_z = max(p.Z for p in points)
-
-    level = base_level(doc, el, fallback_z=min_geom_z)
-    if level is None:
+        raise ValueError(u"не удалось получить геометрию элементов")
+    if not base_levels:
         raise ValueError(u"в проекте нет уровней")
 
-    bottom_z = level.ProjectElevation
-    top, note = level_above(doc, level)
+    max_geom_z = max(p.Z for p in points)
+
+    level = min(base_levels, key=lambda l: l.ProjectElevation)
+    upper_base = max(base_levels, key=lambda l: l.ProjectElevation)
+
+    level_z = level.ProjectElevation
+    bottom_z = level_z - mm_to_ft(bottom_mm)
+    top, note = level_above(doc, upper_base)
     if note:
         warnings.append(note)
     if top is not None:
         top_z = top.ProjectElevation
     else:
-        top_z = max(bottom_z + mm_to_ft(FALLBACK_HEIGHT_MM),
+        top_z = max(upper_base.ProjectElevation + mm_to_ft(FALLBACK_HEIGHT_MM),
                     max_geom_z + mm_to_ft(FALLBACK_TOP_GAP_MM))
         warnings.append(
             u"над уровнем «{}» нет следующего этажа этого корпуса — верх "
-            u"подрезки взят на {:.0f} мм выше базового уровня".format(
-                geometry.level_name(level), (top_z - bottom_z) * MM_IN_FOOT))
+            u"подрезки взят на {:.0f} мм выше него".format(
+                geometry.level_name(upper_base),
+                (top_z - upper_base.ProjectElevation) * MM_IN_FOOT))
 
-    toward_viewer = facing_direction(el, flip)    # BasisZ: к наблюдателю
+    toward_viewer = facing_direction(elements[0], flip)   # BasisZ: к наблюдателю
+    for el in elements[1:]:
+        if facing_direction(el, flip).DotProduct(toward_viewer) < _FACING_MISMATCH_COS:
+            warnings.append(
+                u"элементы смотрят в разные стороны — общий разрез построен "
+                u"по направлению первого (Id {})".format(elements[0].Id.IntegerValue))
+            break
     up = XYZ.BasisZ                               # BasisY
     right = up.CrossProduct(toward_viewer)        # BasisX = Y × Z
 
@@ -690,18 +734,22 @@ def compute_section_box(doc, el, side_mm, front_mm, back_mm, flip=False):
     return box, level, top, warnings
 
 
-def create_family_section(doc, el, section_type, template, name_mask,
+def create_family_section(doc, elements, section_type, template, name_mask,
                           side_mm, front_mm, back_mm, taken_names, flip=False,
-                          hide_other_buildings=True):
+                          hide_other_buildings=True, bottom_mm=0.0):
     """
-    Создаёт разрез по элементу (внутри уже открытой транзакции). Возвращает
-    SectionResult; ошибки по конкретному элементу не пробрасываются, а
-    пишутся в result.error — чтобы при нескольких выбранных семействах
-    одно неудачное не отменяло остальные.
+    Создаёт один разрез по элементу или группе элементов (внутри уже
+    открытой транзакции). Возвращает SectionResult; ошибки не
+    пробрасываются, а пишутся в result.error — чтобы при построении
+    разреза на каждый элемент одно неудачное не отменяло остальные.
+    Имя строится по маске для первого элемента.
     """
-    result = SectionResult(el)
+    if not isinstance(elements, (list, tuple)):
+        elements = [elements]
+    result = SectionResult(elements)
     try:
-        box, level, _top, warnings = compute_section_box(doc, el, side_mm, front_mm, back_mm, flip)
+        box, level, _top, warnings = compute_section_box(
+            doc, elements, side_mm, front_mm, back_mm, flip, bottom_mm)
         result.warnings.extend(warnings)
 
         view = ViewSection.CreateSection(doc, section_type.Id, box)
@@ -726,7 +774,7 @@ def create_family_section(doc, el, section_type, template, name_mask,
                     result.warnings.append(
                         u"не удалось скрыть уровни других корпусов: {}".format(ex))
 
-        name = unique_name(build_view_name(doc, el, level, name_mask), taken_names)
+        name = unique_name(build_view_name(doc, elements[0], level, name_mask), taken_names)
         try:
             view.Name = name
         except Exception as ex:

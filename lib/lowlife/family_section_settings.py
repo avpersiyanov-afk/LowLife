@@ -27,10 +27,11 @@ from lowlife import family_section
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
-    HorizontalAlignment, TextWrapping, SizeToContent
+    HorizontalAlignment, TextWrapping, SizeToContent, ResizeMode
 )
 from System.Windows.Controls import (
-    StackPanel, TextBlock, TextBox, Button, Orientation, ComboBox, CheckBox
+    StackPanel, TextBlock, TextBox, Button, Orientation, ComboBox, CheckBox,
+    RadioButton
 )
 from System.Windows.Media import Brushes
 
@@ -45,6 +46,10 @@ BACK_KEY = "back_offset_mm"
 OPEN_VIEW_KEY = "open_view"
 FLIP_KEY = "flip_side"
 HIDE_OTHER_BUILDINGS_KEY = "hide_other_building_levels"
+# Ответы окна-вопроса перед построением (ask_run_options) — запоминаются как
+# значения по умолчанию для следующего запуска.
+COMBINE_KEY = "combine_multiple"
+BOTTOM_KEY = "bottom_offset_mm"
 
 DEFAULTS = {
     TEMPLATE_KEY: u"",
@@ -56,6 +61,8 @@ DEFAULTS = {
     OPEN_VIEW_KEY: True,
     FLIP_KEY: False,
     HIDE_OTHER_BUILDINGS_KEY: True,
+    COMBINE_KEY: False,
+    BOTTOM_KEY: 0.0,
 }
 
 NO_TEMPLATE = u"<Без шаблона>"
@@ -114,7 +121,7 @@ def load_saved_values():
     for key in DEFAULTS:
         if key in saved:
             values[key] = saved[key]
-    for key in (SIDE_KEY, FRONT_KEY, BACK_KEY):
+    for key in (SIDE_KEY, FRONT_KEY, BACK_KEY, BOTTOM_KEY):
         try:
             values[key] = float(values[key])
         except (TypeError, ValueError):
@@ -122,6 +129,7 @@ def load_saved_values():
     values[OPEN_VIEW_KEY] = bool(values[OPEN_VIEW_KEY])
     values[FLIP_KEY] = bool(values[FLIP_KEY])
     values[HIDE_OTHER_BUILDINGS_KEY] = bool(values[HIDE_OTHER_BUILDINGS_KEY])
+    values[COMBINE_KEY] = bool(values[COMBINE_KEY])
     return values
 
 
@@ -344,3 +352,105 @@ def get_settings_interactive(doc):
 
 def get_settings_silent():
     return load_saved_values()
+
+
+def ask_run_options(count):
+    """
+    Окно-вопрос перед построением. count — сколько элементов выбрано.
+    Спрашивает:
+      - при count > 1: один общий разрез на все элементы или свой на каждый;
+      - насколько опустить низ разреза ниже базового уровня, мм.
+    Возвращает {COMBINE_KEY: bool, BOTTOM_KEY: float} (и запоминает ответы
+    как значения по умолчанию для следующего раза) или None при отмене.
+    """
+    saved = load_saved_values()
+    result = {"values": None}
+
+    win = Window()
+    win.Title = u"Разрез по семейству"
+    win.Width = 420
+    win.SizeToContent = SizeToContent.Height
+    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+    win.ResizeMode = ResizeMode.NoResize
+
+    root = StackPanel()
+    root.Margin = Thickness(16, 12, 16, 12)
+
+    title = TextBlock()
+    title.Text = u"Выбрано элементов: {}".format(count)
+    title.FontSize = 14
+    title.FontWeight = FontWeights.Bold
+    root.Children.Add(title)
+
+    separate_rb = None
+    combined_rb = None
+    if count > 1:
+        _label(root, u"Как строить разрез", bold=True, top=12)
+        separate_rb = RadioButton()
+        separate_rb.Content = u"Отдельный разрез для каждого элемента"
+        separate_rb.GroupName = u"mode"
+        separate_rb.Margin = Thickness(0, 4, 0, 0)
+        root.Children.Add(separate_rb)
+
+        combined_rb = RadioButton()
+        combined_rb.Content = u"Один разрез для всех элементов"
+        combined_rb.GroupName = u"mode"
+        combined_rb.Margin = Thickness(0, 4, 0, 0)
+        root.Children.Add(combined_rb)
+        _hint(root, u"Общий разрез: ширина и глубина — по крайним элементам "
+                    u"(+ отступы из настроек), направление взгляда — по "
+                    u"первому выбранному, низ — самый нижний базовый уровень, "
+                    u"верх — следующий этаж над самым верхним.")
+
+        if saved[COMBINE_KEY]:
+            combined_rb.IsChecked = True
+        else:
+            separate_rb.IsChecked = True
+
+    _label(root, u"Низ разреза ниже базового уровня, мм", bold=True, top=12)
+    bottom_box = _textbox(root, _fmt_mm(saved[BOTTOM_KEY]))
+    _hint(root, u"0 — низ ровно по базовому уровню. Например, 500 — разрез "
+                u"захватит 500 мм под уровнем (перекрытие, приямки).")
+
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    buttons.HorizontalAlignment = HorizontalAlignment.Right
+    buttons.Margin = Thickness(0, 16, 0, 0)
+
+    cancel_btn = Button()
+    cancel_btn.Content = u"Отмена"
+    cancel_btn.Padding = Thickness(10, 4, 10, 4)
+    cancel_btn.Margin = Thickness(0, 0, 8, 0)
+    cancel_btn.IsCancel = True
+
+    ok_btn = Button()
+    ok_btn.Content = u"Построить"
+    ok_btn.Padding = Thickness(10, 4, 10, 4)
+    ok_btn.FontWeight = FontWeights.Bold
+    ok_btn.IsDefault = True
+
+    def on_ok(sender, args):
+        errors = []
+        bottom = _parse_mm(bottom_box.Text, u"Низ разреза ниже уровня", errors)
+        if errors:
+            forms.alert(u"\n".join(errors), title=u"Разрез по семейству")
+            return
+        combined = bool(combined_rb.IsChecked) if combined_rb is not None else saved[COMBINE_KEY]
+        result["values"] = {COMBINE_KEY: combined, BOTTOM_KEY: bottom}
+        win.Close()
+
+    def on_cancel(sender, args):
+        win.Close()
+
+    ok_btn.Click += on_ok
+    cancel_btn.Click += on_cancel
+    buttons.Children.Add(cancel_btn)
+    buttons.Children.Add(ok_btn)
+    root.Children.Add(buttons)
+
+    win.Content = root
+    win.ShowDialog()
+
+    if result["values"] is not None:
+        save_values(result["values"])
+    return result["values"]

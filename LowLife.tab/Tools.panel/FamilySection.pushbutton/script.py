@@ -90,16 +90,26 @@ def main():
     if not instances:
         return
 
+    options = fss.ask_run_options(len(instances))
+    if options is None:
+        return
+
+    if options[fss.COMBINE_KEY] and len(instances) > 1:
+        groups = [instances]
+    else:
+        groups = [[el] for el in instances]
+
     taken_names = family_section.existing_view_names(doc)
     results = []
 
     with revit.Transaction(TITLE):
-        for el in instances:
+        for group in groups:
             results.append(family_section.create_family_section(
-                doc, el, section_type, template, settings[fss.NAME_MASK_KEY],
+                doc, group, section_type, template, settings[fss.NAME_MASK_KEY],
                 settings[fss.SIDE_KEY], settings[fss.FRONT_KEY], settings[fss.BACK_KEY],
                 taken_names, flip=settings[fss.FLIP_KEY],
-                hide_other_buildings=settings[fss.HIDE_OTHER_BUILDINGS_KEY]
+                hide_other_buildings=settings[fss.HIDE_OTHER_BUILDINGS_KEY],
+                bottom_mm=options[fss.BOTTOM_KEY]
             ))
 
     created = [r for r in results if r.view is not None]
@@ -113,7 +123,7 @@ def main():
 
     for r in results:
         for w in r.warnings:
-            warnings.append(u"Id {}: {}".format(r.element.Id.IntegerValue, w))
+            warnings.append(u"{}: {}".format(r.ids_label(), w))
 
     if failed or warnings or len(created) > 1:
         lines = [u"Создано разрезов: {}".format(len(created))]
@@ -121,7 +131,7 @@ def main():
         if failed:
             lines.append(u"")
             lines.append(u"Не удалось построить:")
-            lines.extend(u"  • Id {}: {}".format(r.element.Id.IntegerValue, r.error) for r in failed)
+            lines.extend(u"  • {}: {}".format(r.ids_label(), r.error) for r in failed)
         if warnings:
             lines.append(u"")
             lines.append(u"Предупреждения:")
