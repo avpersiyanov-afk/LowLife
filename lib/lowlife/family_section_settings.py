@@ -44,6 +44,7 @@ FRONT_KEY = "front_offset_mm"
 BACK_KEY = "back_offset_mm"
 OPEN_VIEW_KEY = "open_view"
 FLIP_KEY = "flip_side"
+HIDE_OTHER_BUILDINGS_KEY = "hide_other_building_levels"
 
 DEFAULTS = {
     TEMPLATE_KEY: u"",
@@ -54,6 +55,7 @@ DEFAULTS = {
     BACK_KEY: 1000.0,
     OPEN_VIEW_KEY: True,
     FLIP_KEY: False,
+    HIDE_OTHER_BUILDINGS_KEY: True,
 }
 
 NO_TEMPLATE = u"<Без шаблона>"
@@ -119,6 +121,7 @@ def load_saved_values():
             values[key] = DEFAULTS[key]
     values[OPEN_VIEW_KEY] = bool(values[OPEN_VIEW_KEY])
     values[FLIP_KEY] = bool(values[FLIP_KEY])
+    values[HIDE_OTHER_BUILDINGS_KEY] = bool(values[HIDE_OTHER_BUILDINGS_KEY])
     return values
 
 
@@ -226,7 +229,10 @@ def show_settings_form(doc, values):
     ) + u". Если имя уже занято, добавляется « (2)», « (3)», ...")
 
     _label(root, u"Подрезка, мм", bold=True, top=14)
-    _hint(root, u"По высоте — от базового уровня семейства до уровня выше.")
+    _hint(root, u"По высоте — от базового уровня семейства до следующего этажа "
+                u"того же корпуса. Имя уровня разбирается по шаблону "
+                u"Дисциплина_Корпус_Отметка_Этаж_Комментарий: берётся ближайший "
+                u"по отметке уровень выше с тем же корпусом и другим этажом.")
 
     _label(root, u"Слева и справа от семейства")
     side_box = _textbox(root, _fmt_mm(values[SIDE_KEY]))
@@ -243,6 +249,12 @@ def show_settings_form(doc, values):
     _hint(root, u"Обычно не нужно: разрез смотрит на лицевую сторону семейства "
                 u"(для устройств на стене — со стороны помещения). Включите, "
                 u"если у ваших семейств лицевая сторона задана наоборот.")
+
+    hide_cb = CheckBox()
+    hide_cb.Content = u"Скрывать на разрезе уровни других корпусов"
+    hide_cb.IsChecked = bool(values.get(HIDE_OTHER_BUILDINGS_KEY))
+    hide_cb.Margin = Thickness(0, 14, 0, 0)
+    root.Children.Add(hide_cb)
 
     open_cb = CheckBox()
     open_cb.Content = u"Открыть разрез после создания"
@@ -285,6 +297,7 @@ def show_settings_form(doc, values):
             BACK_KEY: back,
             OPEN_VIEW_KEY: bool(open_cb.IsChecked),
             FLIP_KEY: bool(flip_cb.IsChecked),
+            HIDE_OTHER_BUILDINGS_KEY: bool(hide_cb.IsChecked),
         }
         win.Close()
 

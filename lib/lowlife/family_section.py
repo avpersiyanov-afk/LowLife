@@ -9,7 +9,9 @@
 воздуховоды, стены — не FamilyInstance) тоже поддерживаются: для них
 разрез идёт вдоль оси элемента и смотрит на его бок (см.
 facing_direction). Разрез сразу обрезан:
-  - по высоте — от базового уровня семейства до следующего уровня выше;
+  - по высоте — от базового уровня семейства до следующего этажа того же
+    корпуса (по имени уровня, см. level_above); уровни других корпусов
+    на разрезе скрываются;
   - по ширине — габарит геометрии семейства + side_mm слева и справа;
   - по глубине — плоскость сечения на front_mm перед передней гранью
     геометрии, дальняя граница — на back_mm за задней гранью.
@@ -26,6 +28,8 @@ Min.Z — дальняя граница подрезки.
 """
 
 import re
+
+from System.Collections.Generic import List
 
 from Autodesk.Revit.DB import (
     BoundingBoxXYZ, BuiltInCategory, BuiltInParameter, CategoryType,
@@ -445,14 +449,109 @@ def base_level(doc, el, fallback_z=None):
     return None
 
 
-def level_above(doc, level):
-    """Ближайший уровень строго выше level (по ProjectElevation), иначе None."""
-    base_z = level.ProjectElevation
-    above = [l for l in FilteredElementCollector(doc).OfClass(Level)
-             if l.ProjectElevation > base_z + _LEVEL_TOL_FT]
-    if not above:
+# Имя уровня по стандарту проекта:
+#   <Дисциплина>_<Корпус>_<Отметка>_<Этаж>_<Комментарий (необязательно)>
+# Корпус (поле 2) и этаж (поле 4) — то, по чему ищется «следующий уровень».
+LEVEL_NAME_SEPARATOR = u"_"
+_LEVEL_FIELD_BUILDING = 1
+_LEVEL_FIELD_FLOOR = 3
+
+
+def _level_name_parts(level):
+    # Комментарий (поле 5) может сам содержать «_» — поэтому split с ограничением.
+    return geometry.level_name(level).split(LEVEL_NAME_SEPARATOR, 4)
+
+
+def parse_level_name(level):
+    """
+    (корпус, этаж) из имени уровня — поля 2 и 4, без пробелов по краям и
+    без учёта регистра. None, если в имени меньше 4 полей (уровень назван
+    не по стандарту).
+    """
+    parts = _level_name_parts(level)
+    if len(parts) < 4:
         return None
-    return min(above, key=lambda l: l.ProjectElevation)
+    building = parts[_LEVEL_FIELD_BUILDING].strip().lower()
+    floor = parts[_LEVEL_FIELD_FLOOR].strip().lower()
+    if not building or not floor:
+        return None
+    return building, floor
+
+
+def _has_comment(level):
+    parts = _level_name_parts(level)
+    return len(parts) > 4 and bool(parts[4].strip())
+
+
+def level_above(doc, level):
+    """
+    (верхний уровень или None, пояснение или None).
+
+    Если имя базового уровня разбирается по стандарту (parse_level_name):
+    ближайший по отметке (ProjectElevation) уровень выше базового,
+    у которого ТОТ ЖЕ корпус (поле 2) и ДРУГОЙ этаж (поле 4) — это
+    следующий этаж; из его уровней берётся основной, без комментария
+    (поле 5). Уровни других
+    корпусов не рассматриваются вовсе (у них свои отметки этажей), а
+    вспомогательные уровни того же этажа (тот же этаж, другой комментарий —
+    например, отметка низа перекрытия) пропускаются. Подземные этажи
+    ничем не отличаются: сравнение идёт по отметке, отрицательные отметки
+    сортируются так же.
+
+    Если имя базового уровня не по стандарту — ближайший выше из всех
+    уровней проекта (как раньше), с пояснением.
+    """
+    base_z = level.ProjectElevation
+    candidates = [l for l in FilteredElementCollector(doc).OfClass(Level)
+                  if l.ProjectElevation > base_z + _LEVEL_TOL_FT]
+
+    base_key = parse_level_name(level)
+    note = None
+    if base_key is None:
+        note = (u"имя уровня «{}» не по шаблону "
+                u"Дисциплина_Корпус_Отметка_Этаж — верхний уровень взят "
+                u"из всех уровней проекта, без учёта корпуса".format(
+                    geometry.level_name(level)))
+    else:
+        building, floor = base_key
+        same_building = []
+        for l in candidates:
+            key = parse_level_name(l)
+            if key is not None and key[0] == building and key[1] != floor:
+                same_building.append(l)
+        if not same_building:
+            return None, note
+
+        # Следующий этаж — этаж ближайшего сверху уровня. Если у этого этажа
+        # несколько уровней (например, «Этаж 01» и «Этаж 01_низ перекрытия»),
+        # берётся основной — без комментария (поле 5); если таких нет или
+        # их несколько — самый нижний из них.
+        nearest = min(same_building, key=lambda l: l.ProjectElevation)
+        next_floor = parse_level_name(nearest)[1]
+        floor_levels = [l for l in same_building if parse_level_name(l)[1] == next_floor]
+        main_levels = [l for l in floor_levels if not _has_comment(l)] or floor_levels
+        return min(main_levels, key=lambda l: l.ProjectElevation), note
+
+    if not candidates:
+        return None, note
+    return min(candidates, key=lambda l: l.ProjectElevation), note
+
+
+def other_building_level_ids(doc, level):
+    """
+    Id уровней других корпусов (поле 2 в имени отличается от базового) —
+    чтобы скрыть их на созданном разрезе. Пусто, если имя базового уровня
+    не по стандарту; уровни с именем не по стандарту не трогаются.
+    """
+    base_key = parse_level_name(level)
+    if base_key is None:
+        return []
+    ids = []
+    for l in FilteredElementCollector(doc).OfClass(Level):
+        key = parse_level_name(l)
+        if key is not None and key[0] != base_key[0]:
+            ids.append(l.Id)
+    return ids
 
 
 # --- имя вида ----------------------------------------------------------------
@@ -548,15 +647,17 @@ def compute_section_box(doc, el, side_mm, front_mm, back_mm, flip=False):
         raise ValueError(u"в проекте нет уровней")
 
     bottom_z = level.ProjectElevation
-    top = level_above(doc, level)
+    top, note = level_above(doc, level)
+    if note:
+        warnings.append(note)
     if top is not None:
         top_z = top.ProjectElevation
     else:
         top_z = max(bottom_z + mm_to_ft(FALLBACK_HEIGHT_MM),
                     max_geom_z + mm_to_ft(FALLBACK_TOP_GAP_MM))
         warnings.append(
-            u"над уровнем «{}» нет уровней — верх подрезки взят на {:.0f} мм "
-            u"выше базового уровня".format(
+            u"над уровнем «{}» нет следующего этажа этого корпуса — верх "
+            u"подрезки взят на {:.0f} мм выше базового уровня".format(
                 geometry.level_name(level), (top_z - bottom_z) * MM_IN_FOOT))
 
     toward_viewer = facing_direction(el, flip)    # BasisZ: к наблюдателю
@@ -590,7 +691,8 @@ def compute_section_box(doc, el, side_mm, front_mm, back_mm, flip=False):
 
 
 def create_family_section(doc, el, section_type, template, name_mask,
-                          side_mm, front_mm, back_mm, taken_names, flip=False):
+                          side_mm, front_mm, back_mm, taken_names, flip=False,
+                          hide_other_buildings=True):
     """
     Создаёт разрез по элементу (внутри уже открытой транзакции). Возвращает
     SectionResult; ошибки по конкретному элементу не пробрасываются, а
@@ -614,6 +716,15 @@ def create_family_section(doc, el, section_type, template, name_mask,
             view.CropBoxActive = True
         except Exception:
             pass
+
+        if hide_other_buildings:
+            hide_ids = other_building_level_ids(doc, level)
+            if hide_ids:
+                try:
+                    view.HideElements(List[ElementId](hide_ids))
+                except Exception as ex:
+                    result.warnings.append(
+                        u"не удалось скрыть уровни других корпусов: {}".format(ex))
 
         name = unique_name(build_view_name(doc, el, level, name_mask), taken_names)
         try:
