@@ -1600,7 +1600,7 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 по глубине — сечение в 100 мм перед геометрией, дальняя граница в 1000 мм за
 ней (отступы — настройки). Шаблон вида, типоразмер разреза (по имени) и маска
 имени хранятся в `%APPDATA%\pyRevit\LowLifeFamilySection_settings.json`
-(Shift+клик; при первом запуске окно открывается само).
+(Shift+клик; при первом запуске окно открывается само). Перед каждым построением `family_section_settings.ask_run_options` спрашивает режим (общий разрез / по одному на элемент — только при нескольких элементах) и опускание низа ниже уровня; ответы запоминаются.
 
 | Функция | Что делает |
 |---|---|
@@ -1611,9 +1611,9 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | `parse_level_name(level)` | `(корпус, этаж)` — поля 2 и 4 имени `Дисциплина_Корпус_Отметка_Этаж_Комментарий`, иначе `None` |
 | `level_above(doc, level)` | `(уровень, пояснение)` — ближайший выше того же корпуса с другим этажом; имя не по шаблону — из всех уровней |
 | `other_building_level_ids(doc, level)` | Уровни других корпусов — скрываются на созданном разрезе |
-| `compute_section_box(doc, el, side_mm, front_mm, back_mm)` | `BoundingBoxXYZ` для `ViewSection.CreateSection` + уровни + предупреждения |
+| `compute_section_box(doc, elements, side_mm, front_mm, back_mm, flip, bottom_mm)` | `BoundingBoxXYZ` для `ViewSection.CreateSection` + уровни + предупреждения; несколько элементов — общий разрез по крайним точкам, направление по первому; `bottom_mm` — низ ниже базового уровня |
 | `build_view_name(doc, el, level, mask)` / `unique_name(name, taken)` | Имя по маске (`{Семейство}`, `{Тип}`, `{Марка}`, `{Уровень}`, `{Id}`) / без коллизий « (2)» |
-| `create_family_section(...)` | Создаёт разрез, назначает шаблон и имя (внутри транзакции), ошибки — в `SectionResult.error` |
+| `create_family_section(doc, elements, ...)` | Создаёт один разрез по элементу или группе, назначает шаблон и имя (внутри транзакции), ошибки — в `SectionResult.error` |
 
 ## link_trays.py
 Кабельные лотки из связанных моделей, видимые на активном виде, — кнопка
