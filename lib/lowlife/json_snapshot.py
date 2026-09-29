@@ -24,6 +24,9 @@
   - "room"/"space"— помещение/пространство, где стоит элемент, и раздел
                     "rooms" с контурами/площадями (json_snapshot_rooms) —
                     только для анализа;
+  - "new"         — (раздел верхнего уровня) элементы, которые загрузка
+                    СОЗДАЁТ (json_snapshot_create); "catalog" — загруженные
+                    типоразмеры, из которых их выбирать;
   - "uid"/"id"    — ключ связи с элементом (сначала UniqueId, запасной — Id);
   - "h"           — отпечатки значений "params" на момент выгрузки, по
                     параметру. На загрузке по ним видно, что именно правили
@@ -54,11 +57,12 @@ from Autodesk.Revit.DB.Electrical import ElectricalSystem
 from lowlife.geometry import get_element_level
 from lowlife.params import param_to_text, set_param_text
 from lowlife.json_snapshot_common import (
-    Change, category_name as _category_name, find_element as _find_element,
+    Change, Partial, category_name as _category_name, find_element as _find_element,
     fingerprint as _fingerprint, safe_name as _safe_name, short as _short,
 )
 from lowlife import json_snapshot_geometry as geometry
 from lowlife import json_snapshot_rooms as rooms
+from lowlife import json_snapshot_create as create
 
 FORMAT = u"lowlife-snapshot"
 VERSION = 1
@@ -94,8 +98,18 @@ README_LINES = [
     u"на запись в \"rooms\" по \"uid\".",
     u"Не менять \"uid\", \"id\" и \"h\" — по ним загрузка находит элемент и "
     u"отличает правки в файле от изменений модели после выгрузки.",
-    u"Новые элементы в \"elements\" не создаются, удалённые из файла — не "
-    u"удаляются из модели.",
+    u"Записи, добавленные в \"elements\", игнорируются; удалённые из файла "
+    u"элементы из модели не удаляются.",
+    u"Создать новые элементы — добавить объекты в раздел \"new\": "
+    u"{\"family\", \"type\" (из \"catalog\"), \"point_mm\": [x, y, z], "
+    u"необязательно \"level\" (имя уровня, иначе ближайший снизу), "
+    u"\"rotation_deg\", \"params\": {…}}. Для семейств на основе грани/"
+    u"рабочей плоскости вместо family/type — \"copy_of\": uid существующего "
+    u"экземпляра (например \"example_uid\" из каталога), можно вместе с "
+    u"\"type\" для замены типоразмера; для семейств на основе стены — "
+    u"\"host\": uid стены текущей модели. Если в 10 мм от точки уже стоит "
+    u"такой же типоразмер — запись пропускается (повторная загрузка не "
+    u"плодит дубли).",
 ]
 
 
@@ -391,6 +405,7 @@ def build_snapshot(doc, elements, options):
         ("include_location", bool(options.get("include_location"))),
         ("include_tags", bool(options.get("include_tags"))),
         ("include_rooms", bool(options.get("include_rooms"))),
+        ("include_catalog", bool(options.get("include_catalog"))),
         ("room_params", list(options.get("room_param_names") or [])),
     ])
 
@@ -415,6 +430,12 @@ def build_snapshot(doc, elements, options):
         snapshot["rooms"] = rooms.rooms_section(
             room_index, used_rooms, _level_elevations(doc, elements, options),
             options.get("room_param_names") or [])
+    if options.get("include_catalog"):
+        cats = options.get("categories") or sorted(set(
+            _category_name(el) for el in elements
+            if not isinstance(el, (ElectricalSystem, IndependentTag))))
+        snapshot["catalog"] = create.catalog_section(doc, cats)
+    snapshot["new"] = []
     return snapshot
 
 
@@ -583,10 +604,13 @@ def plan_changes(doc, data):
       no_element     — [id/uid] элементов, которых нет в модели;
       no_param       — [(id, имя)] параметров, которых нет у элемента;
       read_only      — [(id, имя)] параметров только для чтения;
-      bad_value      — [(id, имя, причина)] значений, которые не записать.
+      bad_value      — [(id, имя, причина)] значений, которые не записать
+                       (у записей "new" id = "new[i]");
+      exists         — ["new[i]"] записей "new", на месте которых уже стоит
+                       такой же типоразмер (не создаются).
     """
     res = {"changes": [], "unchanged": 0, "not_edited": 0, "no_element": [],
-           "no_param": [], "read_only": [], "bad_value": []}
+           "no_param": [], "read_only": [], "bad_value": [], "exists": []}
     conflicts = []
     plain = []
 
@@ -616,12 +640,15 @@ def plan_changes(doc, data):
             if ch is not None:
                 (conflicts if ch.conflict else plain).append(ch)
 
+    plain.extend(create.plan_new(doc, data.get("new"), res))
+
     res["changes"] = conflicts + plain
     return res
 
 
 def apply_changes(changes):
-    u"""Записать правки. Вызывать внутри транзакции. (сколько записано, [ошибки])."""
+    u"""Записать правки. Вызывать внутри транзакции. (сколько записано,
+    [ошибки и замечания]) — правка с замечанием (Partial) считается записанной."""
     done = 0
     errors = []
     for ch in changes:
@@ -631,6 +658,6 @@ def apply_changes(changes):
             err = unicode(exc) or exc.__class__.__name__
         if err:
             errors.append(u"{}: {}".format(ch.label, err))
-        else:
+        if not err or isinstance(err, Partial):
             done += 1
     return done, errors

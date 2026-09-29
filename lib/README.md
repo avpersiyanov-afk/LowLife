@@ -875,11 +875,21 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 param_names)` — раздел `"rooms"` (площадь/объём/высота/контуры в мм);
 `list_room_param_names(doc)` — для окна настроек.
 
+`json_snapshot_create.py` — создание элементов из раздела `"new"`:
+`catalog_section(doc, category_names)` — раздел `"catalog"` (семейство, тип,
+`FamilyPlacementType`, число экземпляров, `example_uid`; типоразмеры — через
+`Family.GetFamilySymbolIds`); `plan_new(doc, items, res)` → `Change` на
+каждую запись: `family`+`type` через `companion_placement.create_companion_instance`
+или `copy_of` через `ElementTransformUtils.CopyElement`, затем
+`json_snapshot_geometry.apply_location` (точно в `point_mm` + поворот) и
+параметры. Дубли (тот же типоразмер в `DEDUPE_RADIUS_MM`) — в `res["exists"]`.
+Частичный успех (создан, но не все параметры) — `json_snapshot_common.Partial`.
+
 `json_snapshot_settings.py` — окно Shift+клика и файл
 `%APPDATA%\pyRevit\LowLifeJsonSnapshot_settings.json`: `scope`,
 `categories_text`, `param_names_text` (по строке на имя, пусто — все) и флаги
 `include_readonly`/`include_type_params`/`include_empty`/`include_circuits`/
-`include_location`/`include_tags`/`include_rooms`, `room_param_names_text`. `to_options(settings)` превращает их в `options` для
+`include_location`/`include_tags`/`include_rooms`/`include_catalog`, `room_param_names_text`. `to_options(settings)` превращает их в `options` для
 `json_snapshot`. Обязательных полей нет — без настройки выгружается активный
 вид целиком.
 
