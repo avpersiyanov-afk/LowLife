@@ -114,7 +114,7 @@ def _describe(loc):
     return u"{} — {}".format(_pt(loc["start_mm"]), _pt(loc["end_mm"]))
 
 
-def _apply_location(doc, el, target):
+def apply_location(doc, el, target):
     u"""Переместить/повернуть элемент в положение target. None или текст ошибки."""
     try:
         if el.Pinned:
@@ -200,7 +200,7 @@ def plan_location(doc, el, rec, hashes, res):
     conflict = orig is None or fingerprint(cur_text) != orig
     label = u"{} · ID {} · положение: {} → {}".format(
         category_name(el), eid, _describe(cur), _describe(target))
-    return Change(label, lambda: _apply_location(doc, el, target), conflict)
+    return Change(label, lambda: apply_location(doc, el, target), conflict)
 
 
 # --- марки ------------------------------------------------------------------
