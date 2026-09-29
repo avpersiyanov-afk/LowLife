@@ -995,10 +995,11 @@ Shift+клик меняет папку. Обе кнопки принимают *
 свои параметры вроде `SMNX_Марка`/`SMNX_Наименование`). Ключевое имя
 строки читается через `BuiltInParameter.REF_TABLE_ELEM_NAME` — общий для
 ВСЕХ ключевых спецификаций документа, поэтому `list_wire_catalog_items`
-(в `scs_settings.py`) дополнительно фильтрует по наличию параметра
-`wire_catalog_marker_param` (настраивается в окне СКУД, например
-`SMNX_Марка`) — единственный надёжный способ отличить нужный справочник
-от прочих ключевых спецификаций в проекте. Запись — `params.set_element_id_param`
+(в `scs_settings.py`, реализация — `wire_catalog.py`) ищет не перебором
+всех элементов, а от самих ключевых спецификаций категории «Электрические
+цепи» (строки — элементы, принадлежащие виду спецификации).
+`wire_catalog_marker_param` (например `SMNX_Марка`) теперь необязателен —
+лишь сужает выбор, если таких спецификаций несколько. Запись — `params.set_element_id_param`
 (`p.Set(ElementId)`), не `set_param_any`/`SetValueString` — тот путь
 для ElementId-параметров молча не срабатывал.
 
@@ -1628,6 +1629,29 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | `collect_trays(doc, view, link)` | `(лотки, used_fallback)` — лотки связи, видимые на виде |
 | `tray_row(link_doc, tray, link_name)` | Строка: ID, имя типа, модель (`ALL_MODEL_MODEL`), отметка середины в мм (`RBS_OFFSET_PARAM`), базовый уровень, связь |
 | `build_rows(doc, view, links)` | `(rows с заголовком HEADER, [(связь, число)], used_fallback)` для `xlsx_io.write_xlsx` |
+
+## wire_catalog.py
+Поиск справочника кабелей — ключевой спецификации, на строки которой
+ссылается параметр цепи «Проводник». Используется `scs_settings.list_wire_catalog_items`
+(все окна выбора проводника СКС/СКУД/СПС/СОУЭ/СПА/общих цепей/сопутствующих
+элементов) и кнопкой `Tools.panel/WireCatalog` («Справочник кабелей» — отчёт
+по всем ключевым спецификациям и строкам найденного справочника).
+
+Раньше строки искались перебором всех элементов документа с
+`REF_TABLE_ELEM_NAME` + параметром-признаком — в список попадали строки
+чужих ключевых спецификаций. Теперь: ключевые спецификации категории
+`OST_ElectricalCircuit` → из них с ключевым параметром «Проводник» (если
+есть) → из них с параметром-признаком (если задан и сужение что-то
+оставляет); строки — через `ElementOwnerViewFilter(schedule.Id)` (запасной
+путь — `FilteredElementCollector(doc, schedule.Id)`).
+
+| Функция | Что делает |
+|---|---|
+| `list_key_schedules(doc)` | Все ключевые спецификации (`KeySchedule`: `schedule`, `rows`, `name`, `key_param_name`, `is_circuit`, `field_names()`) |
+| `pick_wire_catalogs(key_schedules, marker_param_name=None, key_param_name=u"Проводник")` | Отбор справочников кабелей по правилам выше |
+| `find_wire_catalogs(doc, ...)` / `list_wire_catalog_rows(doc, ...)` | То же от документа / плоский список строк без дублей |
+| `key_name(row)`, `param_text(el, name)` | «Ключевое имя» строки / значение параметра строкой |
+| `count_circuit_usage(doc, key_param_name)` | `{id строки: число цепей}`, где строка проставлена в параметре цепи |
 
 ## Куда добавлять новое
 

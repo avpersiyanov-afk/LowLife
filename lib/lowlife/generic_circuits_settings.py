@@ -397,15 +397,13 @@ def show_settings_form(doc, values):
 
     def on_pick_conductor(sender, args):
         marker_param_name = boxes["wire_catalog_marker_param"].Text.strip()
-        if not marker_param_name:
-            forms.alert(u"Сначала заполните поле «Параметр-признак строки справочника кабелей».")
-            return
 
         wire_items = list_wire_catalog_items(doc, marker_param_name)
         if not wire_items:
             forms.alert(
-                u"Не найдено строк справочника кабелей (ни один элемент документа "
-                u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(marker_param_name)
+                u"Не найдено строк справочника кабелей: в модели нет ключевой "
+                u"спецификации категории «Электрические цепи» со строками. "
+                u"Проверьте кнопкой «Справочник кабелей» (панель Tools)."
             )
             return
 
