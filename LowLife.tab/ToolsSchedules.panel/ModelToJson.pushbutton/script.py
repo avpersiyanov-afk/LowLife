@@ -39,11 +39,9 @@ try:
     settings = json_snapshot_settings.get_settings_silent()
     options = json_snapshot_settings.to_options(settings)
 
-    elements, error = json_snapshot.collect_elements(doc, uidoc, options)
+    elements, error = json_snapshot.collect_all(doc, uidoc, options)
     if error:
         forms.alert(error, exitscript=True)
-    if options.get("include_circuits"):
-        elements = json_snapshot.add_circuits(doc, elements)
     if not elements:
         forms.alert(
             u"Нечего выгружать: под настройки не попал ни один элемент.\n\n"

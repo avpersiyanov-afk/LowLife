@@ -853,13 +853,24 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 | `list_model_category_names` / `list_param_names` | `(doc)` / `(doc, category_names, per_category=200)` | Подсказки для окна настроек: категории с элементами; `[(имя параметра, записываемый ли)]` |
 | `read_snapshot` | `read_snapshot(path)` | `(data, ошибка или None)` — с проверкой `"format"`/версии |
 | `plan_changes` | `plan_changes(doc, data)` | Сравнение с моделью без записи: `changes` (`Change`: элемент, параметр, было/станет, `conflict`; конфликтные — первыми), `unchanged`, `not_edited`, `no_element`, `no_param`, `read_only`, `bad_value` |
-| `apply_changes` | `apply_changes(changes)` | Пишет правки; `(записано, [ошибки])`. **Вызывать в транзакции** |
+| `apply_changes` | `apply_changes(changes)` | Вызывает `Change.apply()` у каждой правки; `(записано, [ошибки])`. **Вызывать в транзакции** |
+
+`json_snapshot_common.py` — общие кирпичики (класс правки `Change` с
+подписью/конфликтом/`apply()`, `fingerprint`, `xyz_mm`/`mm_xyz`,
+`find_element`), чтобы модули-расширения не импортировали `json_snapshot`
+(цикл). `json_snapshot_geometry.py` — положение: `location_record(el)`
+(`point_mm`+`rotation_deg` / `start_mm`+`end_mm` / `tag_head_mm` у марок),
+`plan_location(doc, el, rec, hashes, res)` → `Change` с перемещением
+(`ElementTransformUtils.MoveElement`/`RotateElement`, `LocationCurve.Curve`,
+`TagHeadPosition`), `collect_tags(doc, elements, view=None)` — марки
+выгружаемых элементов. `json_snapshot.collect_all(doc, uidoc, options)` —
+элементы + цепи + марки по настройкам.
 
 `json_snapshot_settings.py` — окно Shift+клика и файл
 `%APPDATA%\pyRevit\LowLifeJsonSnapshot_settings.json`: `scope`,
 `categories_text`, `param_names_text` (по строке на имя, пусто — все) и флаги
 `include_readonly`/`include_type_params`/`include_empty`/`include_circuits`/
-`include_location`. `to_options(settings)` превращает их в `options` для
+`include_location`/`include_tags`. `to_options(settings)` превращает их в `options` для
 `json_snapshot`. Обязательных полей нет — без настройки выгружается активный
 вид целиком.
 

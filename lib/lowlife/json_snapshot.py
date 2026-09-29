@@ -10,14 +10,17 @@
 
 Формат (version 1) — см. README_LINES ниже, они же пишутся в сам файл,
 чтобы тот, кто его правит, знал правила без этой документации:
-  - "params"      — записываемые параметры экземпляра, ЕДИНСТВЕННОЕ, что
-                    загрузка переносит обратно в модель;
+  - "params"      — записываемые параметры экземпляра — загрузка переносит
+                    их обратно в модель;
+  - "location"    — координаты и поворот (json_snapshot_geometry) — загрузка
+                    перемещает/поворачивает элемент, у марок — голову марки;
   - "readonly"    — только чтение (вычисляемые, ссылки на элементы) — для
                     анализа, на загрузке игнорируется;
   - "type_params" — параметры типа, тоже только для анализа (изменение
                     параметра типа меняет все экземпляры — через этот
                     сценарий намеренно не делается);
   - "circuit"     — у электрических цепей: панель и элементы цепи (UniqueId);
+  - "tag"         — у марок: вид и маркируемые элементы (UniqueId);
   - "uid"/"id"    — ключ связи с элементом (сначала UniqueId, запасной — Id);
   - "h"           — отпечатки значений "params" на момент выгрузки, по
                     параметру. На загрузке по ним видно, что именно правили
@@ -26,7 +29,8 @@
                     значения не пишутся вовсе — иначе они откатили бы
                     чужие изменения модели; правка поверх изменения модели
                     — конфликт (по умолчанию не отмечен), чтобы не затереть
-                    чужую работу молча.
+                    чужую работу молча. Отпечаток положения — под ключом
+                    json_snapshot_geometry.LOCATION_KEY.
 
 Значения — текст «как видно в Revit» (params.param_to_text / set_param_text,
 та же пара, что у обмена спецификаций с Excel): числа — в единицах проекта,
@@ -34,19 +38,23 @@
 """
 
 import datetime
-import hashlib
 import io
 import json
 from collections import OrderedDict
 
 from Autodesk.Revit.DB import (
-    BuiltInCategory, CategoryType, Element, ElementId, FilteredElementCollector,
-    LocationCurve, LocationPoint, StorageType,
+    BuiltInCategory, CategoryType, FilteredElementCollector, IndependentTag,
+    StorageType,
 )
 from Autodesk.Revit.DB.Electrical import ElectricalSystem
 
 from lowlife.geometry import get_element_level
 from lowlife.params import param_to_text, set_param_text
+from lowlife.json_snapshot_common import (
+    Change, category_name as _category_name, find_element as _find_element,
+    fingerprint as _fingerprint, safe_name as _safe_name, short as _short,
+)
+from lowlife import json_snapshot_geometry as geometry
 
 FORMAT = u"lowlife-snapshot"
 VERSION = 1
@@ -55,20 +63,24 @@ SCOPE_VIEW = "view"
 SCOPE_SELECTION = "selection"
 SCOPE_ALL = "all"
 
-_MM_IN_FOOT = 304.8
 # StorageType.None — «None» в Python 2 ключевое слово, через точку не достать
 _STORAGE_NONE = getattr(StorageType, "None")
 
 README_LINES = [
     u"Снимок модели Revit, выгружен кнопкой LowLife «Модель → JSON».",
-    u"Обратно в модель загружается ТОЛЬКО содержимое \"params\" у элементов "
+    u"Обратно в модель загружаются \"params\" и \"location\" элементов "
     u"(кнопка «JSON → модель», с предпросмотром перед записью).",
     u"Можно менять значения в \"params\" и добавлять туда ключи — имена "
     u"существующих параметров экземпляра этого элемента.",
     u"Значения — текст, как в Revit: числа в единицах проекта (\"1500\"), "
     u"«Да/Нет» — \"Да\"/\"Нет\". Пустая строка очищает текстовый параметр.",
     u"Удаление ключа из \"params\" ничего не меняет в модели.",
-    u"\"readonly\", \"type_params\", \"circuit\", \"level\", \"location\" и "
+    u"\"location\": координаты в мм в системе координат проекта. Изменённый "
+    u"\"point_mm\" перемещает элемент, \"rotation_deg\" поворачивает его "
+    u"вокруг вертикали (градусы, абсолютное значение), \"start_mm\"/"
+    u"\"end_mm\" задают концы линейного элемента (кроме дуг, \"shape\": "
+    u"\"arc\"), \"tag_head_mm\" переносит голову марки.",
+    u"\"readonly\", \"type_params\", \"circuit\", \"tag\", \"level\" и "
     u"прочие поля — только для анализа, их правки игнорируются.",
     u"Не менять \"uid\", \"id\" и \"h\" — по ним загрузка находит элемент и "
     u"отличает правки в файле от изменений модели после выгрузки.",
@@ -99,26 +111,6 @@ _JUNK_CATEGORY_IDS = _bic_ids(
     "OST_WeakDims", "OST_Constraints",
 )
 _CIRCUIT_CATEGORY_IDS = _bic_ids("OST_ElectricalCircuit")
-
-
-def _safe_name(el):
-    if el is None:
-        return u""
-    try:
-        return Element.Name.GetValue(el) or u""
-    except Exception:
-        try:
-            return el.Name or u""
-        except Exception:
-            return u""
-
-
-def _category_name(el):
-    try:
-        cat = el.Category
-        return cat.Name if cat is not None else u""
-    except Exception:
-        return u""
 
 
 def _is_exportable(el, allow_annotation=False):
@@ -170,13 +162,6 @@ def _instance_params(el):
     except Exception:
         pass
     return sorted(seen.items(), key=lambda kv: kv[0].lower())
-
-
-def _fingerprint(text):
-    u"""Короткий отпечаток значения параметра (текстом, без краевых пробелов).
-    Одинаково считается при выгрузке и при загрузке."""
-    data = (text or u"").strip().encode("utf-8")
-    return hashlib.md5(data).hexdigest()[:8]
 
 
 # --- отбор элементов -------------------------------------------------------
@@ -257,30 +242,23 @@ def add_circuits(doc, elements):
     return list(elements) + extra
 
 
+def collect_all(doc, uidoc, options):
+    u"""
+    Всё, что попадёт в "elements": элементы по области/категориям плюс, по
+    настройкам, их электрические цепи и марки. (список, ошибка или None).
+    """
+    elements, error = collect_elements(doc, uidoc, options)
+    if error:
+        return [], error
+    if options.get("include_circuits"):
+        elements = add_circuits(doc, elements)
+    if options.get("include_tags"):
+        view = doc.ActiveView if (options.get("scope") or SCOPE_VIEW) == SCOPE_VIEW else None
+        elements = list(elements) + geometry.collect_tags(doc, elements, view)
+    return elements, None
+
+
 # --- выгрузка --------------------------------------------------------------
-
-def _location(el):
-    try:
-        loc = el.Location
-    except Exception:
-        return None
-
-    def mm(xyz):
-        return [round(xyz.X * _MM_IN_FOOT, 1),
-                round(xyz.Y * _MM_IN_FOOT, 1),
-                round(xyz.Z * _MM_IN_FOOT, 1)]
-
-    try:
-        if isinstance(loc, LocationPoint):
-            return OrderedDict([("point_mm", mm(loc.Point))])
-        if isinstance(loc, LocationCurve):
-            c = loc.Curve
-            return OrderedDict([("start_mm", mm(c.GetEndPoint(0))),
-                                ("end_mm", mm(c.GetEndPoint(1)))])
-    except Exception:
-        pass
-    return None
-
 
 def _circuit_info(system):
     try:
@@ -321,8 +299,10 @@ def element_record(doc, el, options):
     if level is not None:
         rec["level"] = _safe_name(level)
 
-    if options.get("include_location"):
-        loc = _location(el)
+    is_tag = isinstance(el, IndependentTag)
+    loc = None
+    if options.get("include_location") or is_tag:
+        loc = geometry.location_record(el)
         if loc is not None:
             rec["location"] = loc
 
@@ -355,8 +335,13 @@ def element_record(doc, el, options):
 
     if isinstance(el, ElectricalSystem):
         rec["circuit"] = _circuit_info(el)
+    if is_tag:
+        rec["tag"] = geometry.tag_info(doc, el)
 
-    rec["h"] = OrderedDict((name, _fingerprint(text)) for name, text in params.items())
+    hashes = OrderedDict((name, _fingerprint(text)) for name, text in params.items())
+    if loc is not None:
+        hashes[geometry.LOCATION_KEY] = _fingerprint(geometry.location_text(loc))
+    rec["h"] = hashes
     return rec
 
 
@@ -375,6 +360,7 @@ def build_snapshot(doc, elements, options):
         ("include_empty", bool(options.get("include_empty"))),
         ("include_circuits", bool(options.get("include_circuits"))),
         ("include_location", bool(options.get("include_location"))),
+        ("include_tags", bool(options.get("include_tags"))),
     ])
     return OrderedDict([
         ("format", FORMAT),
@@ -458,33 +444,6 @@ def read_snapshot(path):
     return data, None
 
 
-class Change(object):
-    u"""Одна правка «параметр элемента: было → станет»."""
-
-    def __init__(self, el, param, name, old, new, conflict):
-        self.el = el
-        self.param = param
-        self.param_name = name
-        self.old = old
-        self.new = new
-        self.conflict = conflict
-        self.name = self._label()
-
-    def _label(self):
-        def short(s):
-            s = (s or u"").replace(u"\n", u" ")
-            return s if len(s) <= 60 else s[:57] + u"…"
-
-        prefix = u"⚠ в модели изменён после выгрузки · " if self.conflict else u""
-        return u"{}{} · ID {} · «{}»: «{}» → «{}»".format(
-            prefix, _category_name(self.el), self.el.Id.IntegerValue,
-            self.param_name, short(self.old), short(self.new),
-        )
-
-    def __str__(self):
-        return self.name
-
-
 def _value_text(value):
     u"""Значение из JSON -> текст для записи; None, если значение не годится."""
     if value is None:
@@ -498,19 +457,50 @@ def _value_text(value):
     return None
 
 
-def _find_element(doc, rec):
-    uid = rec.get("uid")
-    if uid:
-        try:
-            el = doc.GetElement(unicode(uid))
-            if el is not None:
-                return el
-        except Exception:
-            pass
-    try:
-        return doc.GetElement(ElementId(int(rec.get("id"))))
-    except Exception:
-        return None
+def _write_param(p, text):
+    return None if set_param_text(p, text) else u"Revit не принял значение"
+
+
+def _plan_params(el, params, hashes, res):
+    u"""Правки параметров одного элемента (список Change), счётчики — в res."""
+    eid = el.Id.IntegerValue
+    pmap = dict(_instance_params(el))
+    out = []
+    for name, raw in params.items():
+        p = pmap.get(name)
+        if p is None:
+            res["no_param"].append((eid, name))
+            continue
+        if not _is_writable(p):
+            res["read_only"].append((eid, name))
+            continue
+        new = _value_text(raw)
+        if new is None:
+            res["bad_value"].append((eid, name, u"не текст/число"))
+            continue
+        old = param_to_text(p)
+        if old.strip() == new.strip():
+            res["unchanged"] += 1
+            continue
+        orig = hashes.get(name)
+        if orig is not None and _fingerprint(new) == orig:
+            # в файле не правили, а модель с выгрузки изменилась —
+            # не откатываем чужое изменение
+            res["not_edited"] += 1
+            continue
+        # параметра не было в выгрузке (пустой или не в фильтре) —
+        # считался пустым; модель ≠ исходному -> правка поверх чужой
+        conflict = _fingerprint(old) != (orig if orig is not None
+                                         else _fingerprint(u""))
+        if not new.strip() and p.StorageType != StorageType.String:
+            res["bad_value"].append(
+                (eid, name, u"пустое значение у числового параметра"))
+            continue
+        label = u"{} · ID {} · «{}»: «{}» → «{}»".format(
+            _category_name(el), eid, name, _short(old), _short(new))
+        out.append(Change(
+            label, lambda p=p, new=new: _write_param(p, new), conflict))
+    return out
 
 
 def plan_changes(doc, data):
@@ -534,52 +524,27 @@ def plan_changes(doc, data):
         if not isinstance(rec, dict):
             continue
         params = rec.get("params")
-        if not isinstance(params, dict) or not params:
+        if not isinstance(params, dict):
+            params = {}
+        has_location = isinstance(rec.get("location"), dict)
+        if not params and not has_location:
             continue
 
         el = _find_element(doc, rec)
         if el is None:
             res["no_element"].append(rec.get("id") or rec.get("uid"))
             continue
-        eid = el.Id.IntegerValue
 
-        pmap = dict(_instance_params(el))
         hashes = rec.get("h")
         if not isinstance(hashes, dict):
             hashes = {}
 
-        for name, raw in params.items():
-            p = pmap.get(name)
-            if p is None:
-                res["no_param"].append((eid, name))
-                continue
-            if not _is_writable(p):
-                res["read_only"].append((eid, name))
-                continue
-            new = _value_text(raw)
-            if new is None:
-                res["bad_value"].append((eid, name, u"не текст/число"))
-                continue
-            old = param_to_text(p)
-            if old.strip() == new.strip():
-                res["unchanged"] += 1
-                continue
-            orig = hashes.get(name)
-            if orig is not None and _fingerprint(new) == orig:
-                # в файле не правили, а модель с выгрузки изменилась —
-                # не откатываем чужое изменение
-                res["not_edited"] += 1
-                continue
-            # параметра не было в выгрузке (пустой или не в фильтре) —
-            # считался пустым; модель ≠ исходному -> правка поверх чужой
-            conflict = _fingerprint(old) != (orig if orig is not None
-                                             else _fingerprint(u""))
-            if not new.strip() and p.StorageType != StorageType.String:
-                res["bad_value"].append(
-                    (eid, name, u"пустое значение у числового параметра"))
-                continue
-            ch = Change(el, p, name, old, new, conflict)
-            (conflicts if conflict else plain).append(ch)
+        for ch in _plan_params(el, params, hashes, res):
+            (conflicts if ch.conflict else plain).append(ch)
+        if has_location:
+            ch = geometry.plan_location(doc, el, rec, hashes, res)
+            if ch is not None:
+                (conflicts if ch.conflict else plain).append(ch)
 
     res["changes"] = conflicts + plain
     return res
@@ -590,9 +555,12 @@ def apply_changes(changes):
     done = 0
     errors = []
     for ch in changes:
-        if set_param_text(ch.param, ch.new):
-            done += 1
+        try:
+            err = ch.apply()
+        except Exception as exc:
+            err = unicode(exc) or exc.__class__.__name__
+        if err:
+            errors.append(u"{}: {}".format(ch.label, err))
         else:
-            errors.append(u"ID {} / «{}»: не удалось записать «{}»".format(
-                ch.el.Id.IntegerValue, ch.param_name, ch.new))
+            done += 1
     return done, errors
