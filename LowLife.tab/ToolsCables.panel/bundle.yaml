@@ -1,0 +1,7 @@
+title: Кабели
+tooltip: Справочник кабелей (ключевая спецификация для параметра цепи «Проводник») — просмотр, правка, обмен с Excel
+layout:
+  - WireCatalog
+  - WireCatalogEdit
+  - WireCatalogExport
+  - WireCatalogImport

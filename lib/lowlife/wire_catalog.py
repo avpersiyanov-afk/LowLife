@@ -27,8 +27,13 @@ BuiltInParameter.REF_TABLE_ELEM_NAME + наличию параметра-при�
 
 from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, ElementId, ElementOwnerViewFilter,
-    FilteredElementCollector, StorageType, ViewSchedule,
+    FilteredElementCollector, SectionType, StorageType, ViewSchedule,
 )
+
+from lowlife.schedule_excel import _param_to_text, _set_param_text
+
+# Заголовок столбца ключевого имени в выгрузке/окне правки.
+KEY_COLUMN = u"Ключевое имя"
 
 # Имя параметра цепи, ссылающегося на строку справочника (то же, что
 # scs_manual_circuits.CONDUCTOR_PARAM_NAME; в СКУД/СПС — настройка
@@ -223,3 +228,210 @@ def count_circuit_usage(doc, key_param_name=DEFAULT_KEY_PARAM_NAME):
         except Exception:
             pass
     return usage
+
+
+# --- правка справочника: добавление строк, запись значений, Excel ------------
+
+def refresh(doc, ks):
+    """Перечитывает строки спецификации (после добавления строк)."""
+    ks.rows = _schedule_rows(doc, ks.schedule)
+    return ks
+
+
+def writable_fields(ks):
+    """
+    {имя поля: True/False} — можно ли писать значение этого столбца.
+    Смотрим на первую строку: вычисляемые поля (параметра у строки нет),
+    read-only и ссылочные (ElementId) — только для чтения. Пустой
+    справочник — все поля считаем записываемыми.
+    """
+    result = {}
+    sample = ks.rows[0] if ks.rows else None
+    for name in ks.field_names():
+        if sample is None:
+            result[name] = True
+            continue
+        try:
+            p = sample.LookupParameter(name)
+            result[name] = bool(p is not None and not p.IsReadOnly
+                                and p.StorageType != StorageType.ElementId)
+        except Exception:
+            result[name] = False
+    return result
+
+
+def row_values(row, field_names):
+    """[ключевое имя, значения полей...] строкой, как в спецификации."""
+    return [key_name(row) or u""] + [_param_to_text(row.LookupParameter(n)) for n in field_names]
+
+
+def catalog_to_table(ks):
+    """(rows, col_widths) для xlsx_io.write_xlsx: заголовок + строки справочника."""
+    fields = ks.field_names()
+    rows = [[KEY_COLUMN] + fields]
+    for row in ks.rows:
+        rows.append(row_values(row, fields))
+    widths = [max(12, min(60, max(len(unicode(r[i] or u"")) for r in rows) + 2))
+              for i in range(len(rows[0]))]
+    return rows, widths
+
+
+def add_row(doc, ks):
+    """
+    Новая строка ключевой спецификации (вызывать в транзакции). Revit API
+    не даёт «создать строку-элемент» напрямую — вставляем строку в тело
+    таблицы спецификации (TableSectionData.InsertRow), Revit сам создаёт
+    элемент. Какой индекс допустим, зависит от наличия заголовков/
+    группировки в теле, поэтому перебираем несколько. Новый элемент
+    находим по разнице строк до/после. Возвращает элемент или None.
+    """
+    before = set(r.Id.IntegerValue for r in _schedule_rows(doc, ks.schedule))
+    section = ks.schedule.GetTableData().GetSectionData(SectionType.Body)
+    first, last = section.FirstRowNumber, section.LastRowNumber
+    inserted = False
+    for idx in (first + 1, first, last + 1, last):
+        try:
+            if not section.CanInsertRow(idx):
+                continue
+            section.InsertRow(idx)
+            inserted = True
+            break
+        except Exception:
+            continue
+    if not inserted:
+        return None
+    doc.Regenerate()
+    for row in _schedule_rows(doc, ks.schedule):
+        if row.Id.IntegerValue not in before:
+            return row
+    return None
+
+
+def _set_key_name(row, text):
+    try:
+        p = row.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME)
+        return bool(p is not None and not p.IsReadOnly and p.Set(text))
+    except Exception:
+        return False
+
+
+def write_row(row, values, writable):
+    """
+    values — {имя столбца: текст}. Пишет только записываемые столбцы и
+    только если значение отличается от текущего. Возвращает
+    (число изменённых значений, [ошибки]).
+    """
+    changed = 0
+    errors = []
+    for name, text in values.items():
+        text = u"" if text is None else unicode(text).strip()
+        if name == KEY_COLUMN:
+            if text and text != (key_name(row) or u""):
+                if _set_key_name(row, text):
+                    changed += 1
+                else:
+                    errors.append(u"«{}»: не удалось задать ключевое имя".format(text))
+            continue
+        if not writable.get(name):
+            continue
+        p = row.LookupParameter(name)
+        if p is None:
+            continue
+        if _param_to_text(p) == text:
+            continue
+        if not text and p.StorageType != StorageType.String:
+            continue
+        if _set_param_text(p, text):
+            changed += 1
+        else:
+            errors.append(u"«{}», {}: не записалось значение «{}»".format(
+                key_name(row) or row.Id.IntegerValue, name, text))
+    return changed, errors
+
+
+def apply_entries(doc, ks, entries):
+    """
+    entries — список (строка-элемент или None, {столбец: текст}); None —
+    новая строка. Проверяет уникальность ключевых имён, создаёт новые
+    строки и пишет значения (вызывать в транзакции). Возвращает dict
+    added/updated/changed/unchanged/errors.
+    """
+    stats = {"added": 0, "updated": 0, "changed": 0, "unchanged": 0, "errors": []}
+    writable = writable_fields(ks)
+
+    # ключевые имена строк, которые правка не трогает, + имена из записей
+    touched = set(el.Id.IntegerValue for el, _ in entries if el is not None)
+    names = set()
+    for row in ks.rows:
+        if row.Id.IntegerValue not in touched:
+            names.add((key_name(row) or u"").strip().lower())
+    ok_entries = []
+    for el, values in entries:
+        name = (values.get(KEY_COLUMN) or u"").strip()
+        if not name and el is not None:
+            name = key_name(el) or u""
+        if not name:
+            stats["errors"].append(u"Строка без ключевого имени пропущена")
+            continue
+        if name.lower() in names:
+            stats["errors"].append(u"Ключевое имя «{}» повторяется — строка пропущена".format(name))
+            continue
+        names.add(name.lower())
+        ok_entries.append((el, values))
+
+    for el, values in ok_entries:
+        if el is None:
+            el = add_row(doc, ks)
+            if el is None:
+                stats["errors"].append(
+                    u"«{}»: Revit не дал добавить строку в спецификацию «{}»".format(
+                        values.get(KEY_COLUMN), ks.name))
+                continue
+            stats["added"] += 1
+            ks.rows.append(el)
+            n, errs = write_row(el, values, writable)
+            stats["changed"] += n
+            stats["errors"].extend(errs)
+            continue
+        n, errs = write_row(el, values, writable)
+        stats["errors"].extend(errs)
+        if n:
+            stats["updated"] += 1
+            stats["changed"] += n
+        else:
+            stats["unchanged"] += 1
+    return stats
+
+
+def table_to_entries(ks, table):
+    """
+    Строки прочитанного .xlsx (первая — заголовок) -> (entries для
+    apply_entries, [неизвестные столбцы]). Сопоставление со справочником —
+    по ключевому имени (ID элементов в другом проекте другие). Столбцы,
+    которых нет в спецификации, пропускаются.
+    """
+    if not table:
+        raise ValueError(u"Файл пустой или не прочитался.")
+    header = [(c or u"").strip() for c in table[0]]
+    if KEY_COLUMN not in header:
+        raise ValueError(u"В первой строке файла нет столбца «{}».".format(KEY_COLUMN))
+    fields = set(ks.field_names())
+    unknown = [h for h in header if h and h != KEY_COLUMN and h not in fields]
+
+    by_name = {}
+    for row in ks.rows:
+        by_name[(key_name(row) or u"").strip().lower()] = row
+
+    entries = []
+    key_idx = header.index(KEY_COLUMN)
+    for cells in table[1:]:
+        cells = list(cells) + [None] * (len(header) - len(cells))
+        if not any((c or u"").strip() for c in cells):
+            continue  # пустая строка
+        name = (cells[key_idx] or u"").strip()
+        values = {}
+        for i, h in enumerate(header):
+            if h == KEY_COLUMN or h in fields:
+                values[h] = cells[i]
+        entries.append((by_name.get(name.lower()), values))
+    return entries, unknown
