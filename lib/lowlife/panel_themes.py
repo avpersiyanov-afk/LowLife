@@ -150,6 +150,8 @@ THEMES = {
         (u"ToolsSchedules", u"SplitScheduleOnSheet"),
         (u"ToolsSchedules", u"ScheduleToExcel"),
         (u"ToolsSchedules", u"ScheduleFromExcel"),
+        (u"ToolsSchedules", u"ModelToJson"),
+        (u"ToolsSchedules", u"JsonToModel"),
         (u"ToolsFamilies", u"LoadFamiliesFromCatalog"),
         (u"ToolsFamilies", u"UpdateFamiliesFromCatalog"),
         (u"LOI", u"FillLOI"),

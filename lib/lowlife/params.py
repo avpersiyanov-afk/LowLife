@@ -209,3 +209,61 @@ def set_param_any(el, name, value):
                     return False
     except:
         return False
+
+
+def param_to_text(p):
+    u"""
+    Значение параметра текстом «как видно в Revit»: строка как есть, числа —
+    AsValueString (в единицах проекта), ссылка на элемент — её имя. Пустое
+    значение / None -> u"". Пара к set_param_text (обмен с Excel/JSON).
+    """
+    if p is None or not p.HasValue:
+        return u""
+    st = p.StorageType
+    try:
+        if st == StorageType.String:
+            return p.AsString() or u""
+        if st == StorageType.Integer:
+            vs = p.AsValueString()
+            return vs if vs is not None else unicode(p.AsInteger())
+        if st == StorageType.Double:
+            vs = p.AsValueString()
+            return vs if vs is not None else unicode(p.AsDouble())
+        if st == StorageType.ElementId:
+            vs = p.AsValueString()
+            if vs:
+                return vs
+            eid = p.AsElementId()
+            return unicode(eid.IntegerValue) if eid is not None else u""
+    except Exception:
+        return u""
+    return u""
+
+
+def set_param_text(p, text):
+    u"""
+    Записать текст в параметр, подобрав способ под тип хранения: строка —
+    Set, число с единицами — SetValueString (пробуя и точку, и запятую),
+    целое / «Да-Нет» — да/нет/1/0. ElementId не пишется. True, если записалось.
+    """
+    st = p.StorageType
+    try:
+        if st == StorageType.String:
+            return bool(p.Set(text))
+        if st == StorageType.Double:
+            if p.SetValueString(text):
+                return True
+            alt = text.replace(u".", u",") if u"." in text else text.replace(u",", u".")
+            if alt != text and p.SetValueString(alt):
+                return True
+            return bool(p.Set(float(text.replace(u",", u"."))))
+        if st == StorageType.Integer:
+            t = text.strip().lower()
+            if t in (u"да", u"yes", u"true", u"истина", u"1", u"x", u"✓"):
+                return bool(p.Set(1))
+            if t in (u"нет", u"no", u"false", u"ложь", u"0", u"-", u""):
+                return bool(p.Set(0))
+            return bool(p.Set(int(round(float(text.replace(u",", u"."))))))
+    except Exception:
+        return False
+    return False

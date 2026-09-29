@@ -27,6 +27,9 @@ from Autodesk.Revit.DB import (
     ViewSchedule,
 )
 
+from lowlife.params import param_to_text as _param_to_text
+from lowlife.params import set_param_text as _set_param_text
+
 ID_HEADER = u"Revit ID"
 _ID_ALIASES = (u"revit id", u"id", u"ид", u"элемент id", u"elementid")
 
@@ -92,54 +95,6 @@ def _visible_fields(sched):
             pass
         fields.append(f)
     return fields
-
-
-def _param_to_text(p):
-    if p is None or not p.HasValue:
-        return u""
-    st = p.StorageType
-    try:
-        if st == StorageType.String:
-            return p.AsString() or u""
-        if st == StorageType.Integer:
-            vs = p.AsValueString()
-            return vs if vs is not None else unicode(p.AsInteger())
-        if st == StorageType.Double:
-            vs = p.AsValueString()
-            return vs if vs is not None else unicode(p.AsDouble())
-        if st == StorageType.ElementId:
-            vs = p.AsValueString()
-            if vs:
-                return vs
-            eid = p.AsElementId()
-            return unicode(eid.IntegerValue) if eid is not None else u""
-    except Exception:
-        return u""
-    return u""
-
-
-def _set_param_text(p, text):
-    st = p.StorageType
-    try:
-        if st == StorageType.String:
-            return bool(p.Set(text))
-        if st == StorageType.Double:
-            if p.SetValueString(text):
-                return True
-            alt = text.replace(u".", u",") if u"." in text else text.replace(u",", u".")
-            if alt != text and p.SetValueString(alt):
-                return True
-            return bool(p.Set(float(text.replace(u",", u"."))))
-        if st == StorageType.Integer:
-            t = text.strip().lower()
-            if t in (u"да", u"yes", u"true", u"истина", u"1", u"x", u"✓"):
-                return bool(p.Set(1))
-            if t in (u"нет", u"no", u"false", u"ложь", u"0", u"-", u""):
-                return bool(p.Set(0))
-            return bool(p.Set(int(round(float(text.replace(u",", u"."))))))
-    except Exception:
-        return False
-    return False
 
 
 def _natural_key(s):
