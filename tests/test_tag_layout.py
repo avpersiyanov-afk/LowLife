@@ -1,0 +1,46 @@
+# -*- coding: utf-8 -*-
+"""Тесты для lowlife.tag_layout — раскладка марок оборудования без
+пересечений (кнопка «Марки оборудования», Tools.panel/TagEquipment)."""
+
+from lowlife.tag_layout import TagItem, layout, count_conflicts, rect_overlap_area
+
+
+def _box(key, x, y, s=1.0, tw=4.0, th=1.2):
+    return TagItem(key, (x, y), (x - s / 2.0, y - s / 2.0, x + s / 2.0, y + s / 2.0), (tw, th))
+
+
+PARAMS = dict(offset=1.2, gap=0.25, shelf=0.8, cluster_dist=1.5)
+
+
+def _clean(items, obstacles=None):
+    pl = layout(items, obstacles, **PARAMS)
+    assert len(pl) == len(items)
+    assert count_conflicts(pl, items) == (0, 0)
+    return pl
+
+
+def test_pair_side_by_side_is_stacked_above_with_square_leaders():
+    a, b = _clean([_box(1, 0, 0), _box(2, 1.6, 0)])
+    assert abs(a.tag_rect[0] - b.tag_rect[0]) < 1e-9
+    assert min(a.tag_rect[1], b.tag_rect[1]) > 0.5
+    for p in (a, b):
+        assert abs(p.end[0] - p.elbow[0]) < 1e-9     # вертикаль от элемента
+        assert abs(p.elbow[1] - p.attach[1]) < 1e-9  # горизонтальная полка
+
+
+def test_vertical_column_gets_tags_at_one_offset():
+    pl = _clean([_box(i, 0, i * 1.3) for i in range(6)])
+    assert len(set(round(p.tag_rect[0], 9) for p in pl)) == 1
+
+
+def test_mixed_scene_and_grid_have_no_conflicts():
+    _clean([_box('a', 0, 0), _box('b', 1.5, 0.2), _box('c', 3.0, -0.1),
+            _box('d', 10, 0), _box('e', 10, 1.5), _box('f', 10.3, 3),
+            _box('g', 10, 4.5), _box('h', 5, 6), _box('i', 20, 0)])
+    _clean([_box((i, j), i * 2.2, j * 2.2) for i in range(4) for j in range(3)])
+
+
+def test_tag_avoids_obstacle():
+    obstacle = (0.0, 0.5, 10.0, 5.0)  # над-справа всё занято
+    p, = _clean([_box(1, 0, 0)], [obstacle])
+    assert rect_overlap_area(p.tag_rect, obstacle) == 0
