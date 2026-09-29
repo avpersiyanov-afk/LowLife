@@ -1701,6 +1701,31 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 привязки; возвращает только изменённые/новые строки как `entries`),
 `report_stats(stats, title)`.
 
+## tag_layout.py / equipment_tags.py / equipment_tags_settings.py
+Марки оборудования без пересечений (`Tools.panel/TagEquipment`, подробно —
+`docs/equipment-tags.md`).
+
+- `tag_layout.py` — чистая 2D-раскладка, **без Revit API** (покрыта
+  `tests/test_tag_layout.py`). `layout(items, obstacles, offset, gap, shelf,
+  cluster_dist)` принимает `TagItem(key, anchor, elem_rect, size)` в
+  координатах вида и возвращает `Placement` (габарит марки, излом и конец
+  выноски, точка подхода к марке). Кучки оборудования ближе `cluster_dist`
+  раскладываются блоком: «столбик» — колонкой сбоку на одном отступе,
+  «рядом по горизонтали»/одиночное — стопкой сверху/снизу с прямоугольной
+  выноской-полкой; «сетка» режется на ряды. Сторона/отступ выбираются
+  перебором по штрафу (наложения марок, пересечения выносок).
+  `count_conflicts` — для отчёта.
+- `equipment_tags.py` — Revit-часть: `ViewFrame` (XYZ ↔ 2D вида),
+  `resolve_elements` (выбор → оборудование, марки → их элементы),
+  `existing_tags_by_element`, `tag_types_for_category`/`default_tag_type_id`
+  (типы марок категории + мультикатегорийные), `run(doc, view, elements,
+  settings, type_by_category)` — создать недостающие марки, измерить,
+  разложить, записать голову/конец/излом выноски (API выносок 2022+ и
+  старый, через AttributeError).
+- `equipment_tags_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeEquipmentTags_settings.json`:
+  `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm` (мм на листе);
+  `load_settings()`, `get_settings_interactive()` (Shift+клик).
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
