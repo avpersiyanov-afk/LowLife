@@ -866,11 +866,20 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 выгружаемых элементов. `json_snapshot.collect_all(doc, uidoc, options)` —
 элементы + цепи + марки по настройкам.
 
+`json_snapshot_rooms.py` — помещения и пространства текущей модели и всех
+связей (`RoomIndex(doc)`: координаты связи через `GetTotalTransform`,
+отсев по bbox в Python до вызовов `IsPointInRoom`/`IsPointInSpace`).
+`RoomIndex.find(host_point, "room"|"space")` — как `room_info._find_room`
+(внутри, проба +300 мм, иначе контур ≤ `ROOM_TOLERANCE_MM`), но с учётом
+смещения связей. `rooms_section(index, used_uids, level_elevations_ft,
+param_names)` — раздел `"rooms"` (площадь/объём/высота/контуры в мм);
+`list_room_param_names(doc)` — для окна настроек.
+
 `json_snapshot_settings.py` — окно Shift+клика и файл
 `%APPDATA%\pyRevit\LowLifeJsonSnapshot_settings.json`: `scope`,
 `categories_text`, `param_names_text` (по строке на имя, пусто — все) и флаги
 `include_readonly`/`include_type_params`/`include_empty`/`include_circuits`/
-`include_location`/`include_tags`. `to_options(settings)` превращает их в `options` для
+`include_location`/`include_tags`/`include_rooms`, `room_param_names_text`. `to_options(settings)` превращает их в `options` для
 `json_snapshot`. Обязательных полей нет — без настройки выгружается активный
 вид целиком.
 

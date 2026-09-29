@@ -26,7 +26,11 @@
   - include_location    — координаты и поворот элементов (мм, градусы) —
                           при загрузке по ним элементы перемещаются;
   - include_tags        — марки выгружаемых элементов (положение головы
-                          марки тоже загружается обратно).
+                          марки тоже загружается обратно);
+  - include_rooms       — помещения и пространства (текущая модель + связи)
+                          с контурами и привязкой элементов к ним;
+  - room_param_names_text — какие параметры помещений/пространств добавить
+                          в "rooms" (по одному на строке).
 Без настройки кнопка работает со значениями по умолчанию (активный вид,
 все категории, все параметры) — обязательных полей нет.
 """
@@ -43,6 +47,7 @@ from pyrevit import forms
 
 from lowlife import settings_transfer
 from lowlife import json_snapshot
+from lowlife import json_snapshot_rooms
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -59,6 +64,7 @@ SETTINGS_FILE_NAME = "LowLifeJsonSnapshot_settings.json"
 SCOPE_KEY = "scope"
 CATEGORIES_KEY = "categories_text"
 PARAMS_KEY = "param_names_text"
+ROOM_PARAMS_KEY = "room_param_names_text"
 
 # (ключ, подпись, пояснение, по умолчанию)
 FLAGS = [
@@ -85,6 +91,12 @@ FLAGS = [
      u"Марки этих элементов — на активном виде (если выгружается активный "
      u"вид) или на всех видах. Изменённое \"tag_head_mm\" при загрузке "
      u"переносит голову марки.", False),
+    ("include_rooms", u"Помещения и пространства (в т.ч. из связей)",
+     u"Раздел \"rooms\": номер, имя, уровень, площадь, объём, высота и "
+     u"контур каждого помещения/пространства на уровнях выгружаемых "
+     u"элементов, плюс у каждого элемента — в каком помещении и "
+     u"пространстве он стоит. Только для анализа. Параметры помещений — "
+     u"список ниже.", False),
 ]
 
 SCOPE_LABELS = [
@@ -145,6 +157,7 @@ def load_saved_values():
         SCOPE_KEY: scope,
         CATEGORIES_KEY: saved.get(CATEGORIES_KEY, u"") or u"",
         PARAMS_KEY: saved.get(PARAMS_KEY, u"") or u"",
+        ROOM_PARAMS_KEY: saved.get(ROOM_PARAMS_KEY, u"") or u"",
     }
     for key, _label, _hint, default in FLAGS:
         values[key] = bool(saved.get(key, default))
@@ -174,6 +187,7 @@ def to_options(settings):
         "scope": settings.get(SCOPE_KEY) or json_snapshot.SCOPE_VIEW,
         "categories": _lines(settings.get(CATEGORIES_KEY)),
         "param_names": _lines(settings.get(PARAMS_KEY)),
+        "room_param_names": _lines(settings.get(ROOM_PARAMS_KEY)),
     }
     for key, _label, _hint, default in FLAGS:
         options[key] = bool(settings.get(key, default))
@@ -354,6 +368,40 @@ def show_settings_form(doc, values):
         flag_boxes[key] = cb
         _hint(root, hint_text)
 
+    # --- ⑤ параметры помещений ---------------------------------------------
+    _section(root, u"⑤ Параметры помещений и пространств (по одному на строке)")
+    room_box = _multiline_box(root, values.get(ROOM_PARAMS_KEY, u""))
+    room_btn = _pick_button(root, u"Выбрать из модели…")
+    _hint(root, u"Добавляются в раздел \"rooms\", если включён флажок "
+                u"«Помещения и пространства». Номер, имя, уровень, площадь, "
+                u"объём, высота и контур выгружаются всегда. Для воздушного "
+                u"баланса — параметры расходов пространств.")
+
+    def on_pick_room_params(sender, args):
+        pairs = json_snapshot_rooms.list_room_param_names(doc)
+        if not pairs:
+            forms.alert(u"Не найдено ни одного размещённого помещения или "
+                        u"пространства ни в модели, ни в связях.")
+            return
+        checked = set(_lines(room_box.Text))
+        items = [
+            forms.TemplateListItem(
+                _NameOption(n, u"{}  [{}]".format(n, kinds)),
+                checked=(n in checked))
+            for n, kinds in pairs
+        ]
+        chosen = forms.SelectFromList.show(
+            items,
+            title=u"Параметры помещений/пространств",
+            button_name=u"Выбрать",
+            multiselect=True
+        )
+        if chosen is None:
+            return
+        room_box.Text = u"\r\n".join(o.key for o in chosen)
+
+    room_btn.Click += on_pick_room_params
+
     # --- нижний ряд кнопок -------------------------------------------------
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -375,6 +423,7 @@ def show_settings_form(doc, values):
         combined = {
             CATEGORIES_KEY: cat_box.Text,
             PARAMS_KEY: param_box.Text,
+            ROOM_PARAMS_KEY: room_box.Text,
             SCOPE_KEY: json_snapshot.SCOPE_VIEW,
         }
         for key, rb in scope_buttons.items():

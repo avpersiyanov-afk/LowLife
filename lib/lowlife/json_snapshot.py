@@ -21,6 +21,9 @@
                     сценарий намеренно не делается);
   - "circuit"     — у электрических цепей: панель и элементы цепи (UniqueId);
   - "tag"         — у марок: вид и маркируемые элементы (UniqueId);
+  - "room"/"space"— помещение/пространство, где стоит элемент, и раздел
+                    "rooms" с контурами/площадями (json_snapshot_rooms) —
+                    только для анализа;
   - "uid"/"id"    — ключ связи с элементом (сначала UniqueId, запасной — Id);
   - "h"           — отпечатки значений "params" на момент выгрузки, по
                     параметру. На загрузке по ним видно, что именно правили
@@ -55,6 +58,7 @@ from lowlife.json_snapshot_common import (
     fingerprint as _fingerprint, safe_name as _safe_name, short as _short,
 )
 from lowlife import json_snapshot_geometry as geometry
+from lowlife import json_snapshot_rooms as rooms
 
 FORMAT = u"lowlife-snapshot"
 VERSION = 1
@@ -80,8 +84,14 @@ README_LINES = [
     u"вокруг вертикали (градусы, абсолютное значение), \"start_mm\"/"
     u"\"end_mm\" задают концы линейного элемента (кроме дуг, \"shape\": "
     u"\"arc\"), \"tag_head_mm\" переносит голову марки.",
-    u"\"readonly\", \"type_params\", \"circuit\", \"tag\", \"level\" и "
-    u"прочие поля — только для анализа, их правки игнорируются.",
+    u"\"readonly\", \"type_params\", \"circuit\", \"tag\", \"level\", "
+    u"\"room\", \"space\", раздел \"rooms\" и прочие поля — только для "
+    u"анализа, их правки игнорируются.",
+    u"\"rooms\": помещения и пространства (текущая модель и связи) — номер, "
+    u"имя, уровень, площадь (м²), объём (м³), высота, контуры \"boundary_mm\" "
+    u"(список контуров из точек [x, y] в мм, первый — внешний) в той же системе "
+    u"координат, что \"location\". \"room\"/\"space\" у элемента — ссылка "
+    u"на запись в \"rooms\" по \"uid\".",
     u"Не менять \"uid\", \"id\" и \"h\" — по ним загрузка находит элемент и "
     u"отличает правки в файле от изменений модели после выгрузки.",
     u"Новые элементы в \"elements\" не создаются, удалённые из файла — не "
@@ -111,6 +121,14 @@ _JUNK_CATEGORY_IDS = _bic_ids(
     "OST_WeakDims", "OST_Constraints",
 )
 _CIRCUIT_CATEGORY_IDS = _bic_ids("OST_ElectricalCircuit")
+_SPATIAL_CATEGORY_IDS = _bic_ids("OST_Rooms", "OST_MEPSpaces", "OST_Areas")
+
+
+def _category_id(el):
+    try:
+        return el.Category.Id.IntegerValue
+    except Exception:
+        return None
 
 
 def _is_exportable(el, allow_annotation=False):
@@ -271,8 +289,10 @@ def _circuit_info(system):
     ])
 
 
-def element_record(doc, el, options):
-    u"""Запись одного элемента снимка (OrderedDict — читаемый порядок ключей)."""
+def element_record(doc, el, options, room_index=None, used_rooms=None):
+    u"""Запись одного элемента снимка (OrderedDict — читаемый порядок ключей).
+    room_index — rooms.RoomIndex, если выгружаются помещения; UniqueId
+    найденных помещений добавляются в used_rooms."""
     param_filter = options.get("param_names") or None
     names = set(param_filter) if param_filter else None
     include_empty = bool(options.get("include_empty"))
@@ -337,6 +357,15 @@ def element_record(doc, el, options):
         rec["circuit"] = _circuit_info(el)
     if is_tag:
         rec["tag"] = geometry.tag_info(doc, el)
+    elif room_index is not None and not isinstance(el, ElectricalSystem) \
+            and _category_id(el) not in _SPATIAL_CATEGORY_IDS:
+        point = rooms.element_point(el)
+        for kind in (u"room", u"space"):
+            entry = room_index.find(point, kind)
+            if entry is not None:
+                rec[kind] = rooms.link_info(entry)
+                if used_rooms is not None:
+                    used_rooms.add(entry.el.UniqueId)
 
     hashes = OrderedDict((name, _fingerprint(text)) for name, text in params.items())
     if loc is not None:
@@ -361,8 +390,16 @@ def build_snapshot(doc, elements, options):
         ("include_circuits", bool(options.get("include_circuits"))),
         ("include_location", bool(options.get("include_location"))),
         ("include_tags", bool(options.get("include_tags"))),
+        ("include_rooms", bool(options.get("include_rooms"))),
+        ("room_params", list(options.get("room_param_names") or [])),
     ])
-    return OrderedDict([
+
+    room_index = rooms.RoomIndex(doc) if options.get("include_rooms") else None
+    used_rooms = set()
+    records = [element_record(doc, el, options, room_index, used_rooms)
+               for el in elements]
+
+    snapshot = OrderedDict([
         ("format", FORMAT),
         ("version", VERSION),
         ("readme", README_LINES),
@@ -372,8 +409,41 @@ def build_snapshot(doc, elements, options):
         ])),
         ("exported_at", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
         ("settings", settings_info),
-        ("elements", [element_record(doc, el, options) for el in elements]),
+        ("elements", records),
     ])
+    if room_index is not None:
+        snapshot["rooms"] = rooms.rooms_section(
+            room_index, used_rooms, _level_elevations(doc, elements, options),
+            options.get("room_param_names") or [])
+    return snapshot
+
+
+def _level_elevations(doc, elements, options):
+    u"""Отметки (футы, координаты проекта) уровней выгружаемых элементов и
+    уровня активного плана — по ним отбираются помещения для "rooms".
+    Для выгрузки всего документа — пусто (= все помещения)."""
+    if (options.get("scope") or SCOPE_VIEW) == SCOPE_ALL:
+        return []
+    levels = {}
+    for el in elements:
+        try:
+            level = get_element_level(doc, el)
+        except Exception:
+            level = None
+        if level is not None:
+            levels[level.Id.IntegerValue] = level
+    if (options.get("scope") or SCOPE_VIEW) == SCOPE_VIEW:
+        try:
+            gen = doc.ActiveView.GenLevel
+            if gen is not None:
+                levels[gen.Id.IntegerValue] = gen
+        except Exception:
+            pass
+    out = []
+    for level in levels.values():
+        z = getattr(level, "ProjectElevation", None)
+        out.append(z if z is not None else level.Elevation)
+    return out
 
 
 def write_snapshot(path, snapshot):
