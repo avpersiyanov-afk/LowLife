@@ -38,6 +38,8 @@ from lowlife.geometry import get_point
 | `get_string_param` | `get_string_param(el, name)` | Строковое значение параметра: `AsString` для текстовых, иначе `AsValueString` |
 | `get_param_any` | `get_param_any(el, name)` | Строковое представление значения параметра **любого** типа хранения (String/Integer/Double/ElementId) |
 | `set_param_any` | `set_param_any(el, name, value)` | Записывает `value`, сама подбирая способ (`Set`/`SetValueString`) под тип хранения параметра |
+| `param_to_text` | `param_to_text(p)` | Значение `Parameter` текстом «как видно в Revit» (`AsValueString` для чисел, имя для ссылки на элемент); пусто — `u""`. Пара к `set_param_text`, общая для обмена с Excel (`schedule_excel`) и JSON (`json_snapshot`) |
+| `set_param_text` | `set_param_text(p, text)` | Пишет текст в `Parameter`: строка — `Set`, число с единицами — `SetValueString` (точка/запятая), целое/«Да-Нет» — да/нет/1/0; `ElementId` не пишет. `True`, если записалось |
 
 ## selection.py
 Работа с выделением элементов в Revit UI.
@@ -830,6 +832,36 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 | `schedule_to_rows` | `schedule_to_rows(doc, sched)` | `(rows, число_элементов, число_столбцов, ширины_столбцов)`; `rows[0]` — заголовок `["Revit ID", <поля>…]`; порядок строк повторяет сортировку/группировку спеки; ширины — из `ScheduleField.GridColumnWidth`, в единицах Excel |
 | `merge_export` | `merge_export(new_rows, new_widths, existing_rows, existing_widths=None)` | Совмещает свежую выгрузку с уже существующим файлом: значения полей спеки обновляются, добавленные пользователем столбцы/их ширины и ручные строки (без Revit ID) сохраняются. `(rows, widths, stats)`; если файл не наш (нет столбца Revit ID) — вернёт выгрузку без изменений (`stats["merged"]=False`) |
 | `rows_to_model` | `rows_to_model(doc, rows)` | Применяет правки; возвращает dict `changed/unchanged/no_element/no_param/read_only/errors`. **Вызывать в транзакции** |
+
+## json_snapshot.py / json_snapshot_settings.py
+Снимок модели в JSON и обратная загрузка правок (кнопки
+`ToolsSchedules.panel/ModelToJson` и `JsonToModel`, подробно — `docs/json-snapshot.md`).
+Ключ связи с элементом — `UniqueId` (запасной — `Id`). Обратно пишется только
+`"params"` (записываемые параметры экземпляра); `"readonly"`, `"type_params"`,
+`"circuit"`, `"location"` — только для анализа. Поле `"h"` — отпечатки
+значений `"params"` на момент выгрузки, по параметру: значение, которое в
+файле не правили, не пишется (не откатывает изменения модели после
+выгрузки), а правка поверх изменившегося в модели значения — конфликт.
+Значения — через `params.param_to_text`/`set_param_text`.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `collect_elements` | `collect_elements(doc, uidoc, options)` | Элементы по области (`SCOPE_VIEW`/`SCOPE_SELECTION`/`SCOPE_ALL`) и фильтру категорий по имени; `(elements, ошибка или None)`. Обобщённые модели и помещения не отсекаются (в отличие от `selection.is_pickable_model_element`) |
+| `add_circuits` | `add_circuits(doc, elements)` | Добавляет электрические цепи, где элементы — устройство или панель (коллектор по виду цепей не видит) |
+| `element_record` | `element_record(doc, el, options)` | Запись одного элемента: id/uid/категория/семейство/тип/уровень, `params`, опционально `readonly`/`type_params`/`location`, `circuit` у цепей, `h` (`{параметр: отпечаток}`) |
+| `build_snapshot` / `write_snapshot` | `build_snapshot(doc, elements, options)` / `write_snapshot(path, snapshot)` | Весь снимок (шапка с документом, настройками выгрузки и правилами формата `readme`) / запись UTF-8 JSON |
+| `list_model_category_names` / `list_param_names` | `(doc)` / `(doc, category_names, per_category=200)` | Подсказки для окна настроек: категории с элементами; `[(имя параметра, записываемый ли)]` |
+| `read_snapshot` | `read_snapshot(path)` | `(data, ошибка или None)` — с проверкой `"format"`/версии |
+| `plan_changes` | `plan_changes(doc, data)` | Сравнение с моделью без записи: `changes` (`Change`: элемент, параметр, было/станет, `conflict`; конфликтные — первыми), `unchanged`, `not_edited`, `no_element`, `no_param`, `read_only`, `bad_value` |
+| `apply_changes` | `apply_changes(changes)` | Пишет правки; `(записано, [ошибки])`. **Вызывать в транзакции** |
+
+`json_snapshot_settings.py` — окно Shift+клика и файл
+`%APPDATA%\pyRevit\LowLifeJsonSnapshot_settings.json`: `scope`,
+`categories_text`, `param_names_text` (по строке на имя, пусто — все) и флаги
+`include_readonly`/`include_type_params`/`include_empty`/`include_circuits`/
+`include_location`. `to_options(settings)` превращает их в `options` для
+`json_snapshot`. Обязательных полей нет — без настройки выгружается активный
+вид целиком.
 
 ## tray_section.py
 Тело кнопки `ToolsTraySection.panel/TraySection` — сечение кабельного
