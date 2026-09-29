@@ -15,11 +15,21 @@ v — ``UpDirection``, начало — ``view.Origin``), там же раскл
 ``ViewDirection``) самой марки — поэтому работает и на планах, и на
 разрезах/фасадах.
 
-Выноска ставится со свободным концом (``LeaderEndCondition.Free``) в
-точке вставки элемента (или центре габарита, если точки нет) — только
-так излом выноски ложится ровно по вертикали/горизонтали. Минус: если
-потом подвинуть оборудование, конец выноски за ним не поедет —
-перезапустите кнопку на этих элементах.
+Выноска начинается от УГО, а не от семейства. УГО — это то, что
+элемент реально рисует на ЭТОМ виде: геометрия ``get_Geometry`` с
+``Options.View = view`` (вложенные аннотации, символьные линии —
+отдельные кривые, не рёбра тела). Её габарит — «прямоугольник элемента»
+для раскладки (на него не кладутся марки), центр — точка, куда смотрит
+выноска, а конец выноски ставится на край этого габарита. Точка
+вставки/габарит семейства целиком не годятся: УГО часто смещено от
+точки вставки (к стене, к потолку) и меньше/больше 3D-тела. Если на виде
+у элемента нет отдельных кривых — берётся вся его видимая геометрия, а
+если и её нет — ``get_BoundingBox(view)``.
+
+Конец выноски свободный (``LeaderEndCondition.Free``) — только так он
+встаёт точно на край УГО, а излом — ровно по вертикали/горизонтали.
+Минус: если потом подвинуть оборудование, конец выноски за ним не
+поедет — перезапустите кнопку на этих элементах.
 
 Совместимость с версиями Revit: API выносок марок поменялся в 2022
 (много ссылок на одну марку — ``GetTaggedReferences``/``SetLeaderEnd``/
@@ -32,7 +42,7 @@ from Autodesk.Revit.DB import (
     BuiltInCategory, CategoryType, Element, ElementId, Family,
     FamilyInstance, FamilySymbol, FilteredElementCollector, IndependentTag,
     LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewType,
-    XYZ
+    XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter
 
@@ -262,13 +272,58 @@ class ViewFrame(object):
                     vs.append(v)
         return (min(us), min(vs), max(us), max(vs))
 
+    def rect_of_points(self, points):
+        if not points:
+            return None
+        us, vs = [], []
+        for p in points:
+            u, v = self.uv(p)
+            us.append(u)
+            vs.append(v)
+        return (min(us), min(vs), max(us), max(vs))
 
-def _anchor_uv(el, frame, rect):
-    loc = el.Location
+
+# ------------------------------------------------------------
+# УГО НА ВИДЕ
+# ------------------------------------------------------------
+
+def _walk_geometry(geom, curve_pts, body_pts):
+    """Точки видимой на виде геометрии: отдельные кривые (УГО, символьные
+    линии) — в curve_pts, тела/точки — в body_pts."""
+    if geom is None:
+        return
+    for g in geom:
+        try:
+            if isinstance(g, GeometryInstance):
+                _walk_geometry(g.GetInstanceGeometry(), curve_pts, body_pts)
+            elif isinstance(g, Curve):
+                curve_pts.extend(g.Tessellate())
+            elif isinstance(g, PolyLine):
+                curve_pts.extend(g.GetCoordinates())
+            elif isinstance(g, Solid):
+                for edge in g.Edges:
+                    body_pts.extend(edge.Tessellate())
+            elif isinstance(g, Point):
+                body_pts.append(g.Coord)
+        except Exception:
+            continue
+
+
+def symbol_rect(el, view, frame):
+    """Габарит УГО элемента на виде (u0, v0, u1, v1) или None."""
+    curve_pts, body_pts = [], []
     try:
-        return frame.uv(loc.Point)
+        opts = Options()
+        opts.View = view
+        opts.ComputeReferences = False
+        opts.IncludeNonVisibleObjects = False
+        _walk_geometry(el.get_Geometry(opts), curve_pts, body_pts)
     except Exception:
-        return tag_layout.rect_center(rect)
+        pass
+    rect = frame.rect_of_points(curve_pts) or frame.rect_of_points(body_pts)
+    if rect is None:
+        rect = frame.rect(el.get_BoundingBox(view))
+    return rect
 
 
 # ------------------------------------------------------------
@@ -327,7 +382,7 @@ def _obstacle_rects(doc, view, frame, own_ids, category_ids):
             continue
         if id_int(el.Category.Id) not in category_ids:
             continue
-        r = frame.rect(el.get_BoundingBox(view))
+        r = symbol_rect(el, view, frame)
         if r is not None:
             rects.append(r)
     for cls in (IndependentTag, TextNote):
@@ -367,15 +422,16 @@ def run(doc, view, elements, settings, type_by_category):
     # 1. элементы с габаритом на виде; недостающие марки
     entries = []  # (el, tag, elem_rect, anchor)
     for el in elements:
-        rect = frame.rect(el.get_BoundingBox(view))
+        rect = symbol_rect(el, view, frame)
         if rect is None:
             stats["no_bbox"] += 1
             continue
-        anchor = _anchor_uv(el, frame, rect)
+        anchor = tag_layout.rect_center(rect)
         tag = existing.get(id_int(el.Id))
         if tag is None:
             try:
-                depth = frame.depth(el.get_BoundingBox(view).Min)
+                bb = el.get_BoundingBox(view)
+                depth = frame.depth(bb.Min) if bb is not None else 0.0
                 tag = _create_tag(doc, view, el,
                                   type_by_category.get(id_int(el.Category.Id)),
                                   frame.xyz(anchor, depth))

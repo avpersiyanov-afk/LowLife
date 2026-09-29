@@ -2,7 +2,7 @@
 """Тесты для lowlife.tag_layout — раскладка марок оборудования без
 пересечений (кнопка «Марки оборудования», Tools.panel/TagEquipment)."""
 
-from lowlife.tag_layout import TagItem, layout, count_conflicts, rect_overlap_area
+from lowlife.tag_layout import TagItem, layout, count_conflicts, rect_overlap_area, exit_point
 
 
 def _box(key, x, y, s=1.0, tw=4.0, th=1.2):
@@ -25,6 +25,7 @@ def test_pair_side_by_side_is_stacked_above_with_square_leaders():
     assert min(a.tag_rect[1], b.tag_rect[1]) > 0.5
     for p in (a, b):
         assert abs(p.end[0] - p.elbow[0]) < 1e-9     # вертикаль от элемента
+        assert abs(p.end[1] - 0.5) < 1e-9            # ...от верхнего края УГО
         assert abs(p.elbow[1] - p.attach[1]) < 1e-9  # горизонтальная полка
 
 
@@ -44,3 +45,20 @@ def test_tag_avoids_obstacle():
     obstacle = (0.0, 0.5, 10.0, 5.0)  # над-справа всё занято
     p, = _clean([_box(1, 0, 0)], [obstacle])
     assert rect_overlap_area(p.tag_rect, obstacle) == 0
+
+
+def test_leader_starts_at_symbol_edge():
+    r = (-1.0, -1.0, 1.0, 1.0)
+    assert exit_point((0.0, 0.0), (0.0, 5.0), r) == (0.0, 1.0)
+    assert exit_point((0.0, 0.0), (4.0, 2.0), r) == (1.0, 0.5)
+    assert exit_point((0.0, 0.0), (0.5, 0.5), r) == (0.0, 0.0)   # излом внутри — не трогаем
+    assert exit_point((3.0, 3.0), (5.0, 5.0), r) == (3.0, 3.0)   # старт снаружи
+
+
+def test_side_column_leaders_start_on_symbol_edge():
+    items = [_box(i, 0, i * 1.3) for i in range(4)]
+    for it, p in zip(items, layout(items, **PARAMS)):
+        r = it.elem_rect
+        on_edge = (abs(p.end[0] - r[0]) < 1e-9 or abs(p.end[0] - r[2]) < 1e-9 or
+                   abs(p.end[1] - r[1]) < 1e-9 or abs(p.end[1] - r[3]) < 1e-9)
+        assert on_edge

@@ -101,6 +101,29 @@ def segment_hits_rect(p, q, r):
     return t1 - t0 > 1e-9
 
 
+def exit_point(p, q, r):
+    """
+    Точка, где отрезок p→q (p внутри прямоугольника r) выходит за его
+    границу. Если p снаружи или q тоже внутри — возвращает p как есть.
+    Нужна, чтобы выноска начиналась от края УГО, а не из его середины.
+    """
+    if not (r[0] <= p[0] <= r[2] and r[1] <= p[1] <= r[3]):
+        return p
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    t = 1.0
+    if dx > 1e-12:
+        t = min(t, float(r[2] - p[0]) / dx)
+    elif dx < -1e-12:
+        t = min(t, float(r[0] - p[0]) / dx)
+    if dy > 1e-12:
+        t = min(t, float(r[3] - p[1]) / dy)
+    elif dy < -1e-12:
+        t = min(t, float(r[1] - p[1]) / dy)
+    if t >= 1.0:
+        return p
+    return (p[0] + dx * t, p[1] + dy * t)
+
+
 def _cross(o, a, b):
     return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
@@ -416,19 +439,23 @@ def _score(placements, elem_rects, obstacles, placed, placed_leaders, unit):
     return s
 
 
-def layout(items, obstacles=None, offset=1.0, gap=0.2, shelf=0.5, cluster_dist=1.0):
+def layout(items, obstacles=None, offset=1.0, gap=0.2, shelf=0.5, cluster_dist=1.0,
+           start_at_edge=True):
     """
     Раскладывает марки. items — список :class:`TagItem`; obstacles —
     прямоугольники, на которые марки лучше не ставить (прочее
     оборудование на виде, чужие марки, тексты). Все размеры — в тех же
-    единицах, что и координаты. Возвращает список :class:`Placement` в
-    том же порядке, что items.
+    единицах, что и координаты. start_at_edge — конец выноски не в
+    anchor, а там, где первый участок выноски выходит из elem_rect (от
+    края УГО, а не из его центра). Возвращает список :class:`Placement`
+    в том же порядке, что items.
     """
     obstacles = list(obstacles or [])
     if not items:
         return []
 
     elem_rects = [(it.key, it.elem_rect) for it in items]
+    item_by_key = dict((it.key, it) for it in items)
     unit = max(sum(it.size[1] for it in items) / float(len(items)), 1e-6)
 
     clusters = find_clusters(items, cluster_dist)
@@ -459,6 +486,9 @@ def layout(items, obstacles=None, offset=1.0, gap=0.2, shelf=0.5, cluster_dist=1
             if best is None or sc < best[0]:
                 best = (sc, cand)
         for p in best[1]:
+            if start_at_edge:
+                it = item_by_key[p.key]
+                p.end = exit_point(p.end, p.elbow, it.elem_rect)
             by_key[p.key] = p
             placed_rects.append(rect_inflate(p.tag_rect, gap * 0.5))
             placed_leaders.extend(p.leader_segments())
