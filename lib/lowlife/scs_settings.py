@@ -501,37 +501,22 @@ class WireTypeOption(object):
         return self.name
 
 
-def list_wire_catalog_items(doc, marker_param_name):
+def list_wire_catalog_items(doc, marker_param_name=None):
     """
-    Строки ключевой спецификации кабелей, используемой параметром цепи
-    «Проводник» (StorageType.ElementId — Revit хранит там ссылку на
-    строку ключевой спецификации, а не на Autodesk.Revit.DB.Electrical.WireType).
+    Строки справочника кабелей — ключевой спецификации, на которую
+    ссылается параметр цепи «Проводник» (StorageType.ElementId — Revit
+    хранит там ссылку на строку ключевой спецификации, а не на
+    Autodesk.Revit.DB.Electrical.WireType).
 
-    Ключевое имя строки хранится в BuiltInParameter.REF_TABLE_ELEM_NAME,
-    общем для ВСЕХ ключевых спецификаций документа — поэтому дополнительно
-    фильтруем по наличию marker_param_name (произвольный параметр,
-    присутствующий только у строк нужного справочника кабелей, например
-    "SMNX_Марка" — задаётся пользователем в настройках, т.к. это
-    соглашение конкретного проекта).
+    Поиск — wire_catalog.list_wire_catalog_rows: только строки ключевых
+    спецификаций категории «Электрические цепи» (а не перебор всех
+    элементов документа, из-за которого в список попадали строки чужих
+    ключевых спецификаций). marker_param_name (например "SMNX_Марка")
+    теперь необязателен — лишь сужает выбор, если таких спецификаций
+    несколько.
     """
-    from Autodesk.Revit.DB import BuiltInParameter
-
-    if not marker_param_name:
-        return []
-
-    items = []
-    for el in FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements():
-        try:
-            key_param = el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME)
-            if not key_param or not key_param.HasValue:
-                continue
-            if el.LookupParameter(marker_param_name) is None:
-                continue
-        except:
-            continue
-        items.append(el)
-
-    return items
+    from lowlife.wire_catalog import list_wire_catalog_rows
+    return list_wire_catalog_rows(doc, marker_param_name)
 
 
 def list_symbols_by_categories(doc, builtin_categories):
@@ -1221,20 +1206,13 @@ def show_settings_form(doc, values, keys=None):
                 boxes["wire_catalog_marker_param"].Text.strip() if "wire_catalog_marker_param" in boxes
                 else (values.get("wire_catalog_marker_param") or u"").strip()
             )
-            if not marker_param_name:
-                forms.alert(
-                    u"Сначала заполните поле «Параметр-признак строки справочника "
-                    u"кабелей» в разделе «Цепи»."
-                )
-                return
 
             wire_items = list_wire_catalog_items(doc, marker_param_name)
             if not wire_items:
                 forms.alert(
-                    u"Не найдено строк справочника кабелей (ни один элемент документа "
-                    u"не содержит одновременно «Ключевое имя» и параметр «{}»).".format(
-                        marker_param_name
-                    )
+                    u"Не найдено строк справочника кабелей: в модели нет ключевой "
+                    u"спецификации категории «Электрические цепи» со строками. "
+                    u"Проверьте кнопкой «Справочник кабелей» (панель Tools)."
                 )
                 return
 
