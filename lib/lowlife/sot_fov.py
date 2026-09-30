@@ -2780,6 +2780,12 @@ def _camera_level_elevation(doc, cam, view):
     return None
 
 
+# Глубина плоскости, на которой задаются X/Y рамки перспективного вида
+# (CropBox.Max.Z = −это значение), футы (~3 см). Сама по себе на угол
+# обзора не влияет — важно только отношение X/Y к ней.
+_PREVIEW_CROP_DEPTH_FT = 0.1
+
+
 def build_camera_preview_view(doc, cam, view, settings):
     """
     Создать либо обновить 3D-перспективный вид, поставленный в точку камеры
@@ -2885,18 +2891,23 @@ def build_camera_preview_view(doc, cam, view, settings):
         try:
             v3d.CropBoxActive = True
             box = v3d.CropBox
-            depth = abs(box.Max.Z)
-            if depth < 0.1:
-                depth = 10.0
-            half_w = depth * math.tan(min(hfov, math.radians(178.0)) / 2.0)
-            half_h = depth * math.tan(min(vfov, math.radians(178.0)) / 2.0)
-            box.Min = XYZ(-half_w, -half_h, box.Min.Z)
-            box.Max = XYZ(half_w, half_h, box.Max.Z)
+            # X/Y рамки перспективы Revit откладывает на плоскости Max.Z
+            # (ближняя, отрицательная — вид смотрит в −Z): Xmax = −Zmax·tg(h/2).
+            # Глубину задаём сами, а не берём штатную: раньше при штатном
+            # |Max.Z| < 0.1 фт подставлялось 10 фт, а Max.Z оставался
+            # прежним — рамка выходила в десятки раз шире, и вид показывал
+            # чуть ли не пол-здания вместо кадра камеры.
+            z_max = -_PREVIEW_CROP_DEPTH_FT
+            z_min = box.Min.Z if box.Min.Z < z_max - 1.0 else z_max - 1000.0
+            half_w = _PREVIEW_CROP_DEPTH_FT * math.tan(min(hfov, math.radians(178.0)) / 2.0)
+            half_h = _PREVIEW_CROP_DEPTH_FT * math.tan(min(vfov, math.radians(178.0)) / 2.0)
+            box.Min = XYZ(-half_w, -half_h, z_min)
+            box.Max = XYZ(half_w, half_h, z_max)
             v3d.CropBox = box
             detail += u", угол {:.0f}°×{:.0f}°".format(
                 math.degrees(hfov), math.degrees(vfov))
-            # диагностика: что Revit в итоге хранит в crop box (подгонка
-            # предполагает, что X/Y рамки отложены на глубине |Max.Z|)
+            # диагностика: что Revit в итоге хранит в crop box (если Revit
+            # что-то пересчитал — углы в скобках разойдутся с расчётными)
             try:
                 rb = v3d.CropBox
                 rd = abs(rb.Max.Z)
