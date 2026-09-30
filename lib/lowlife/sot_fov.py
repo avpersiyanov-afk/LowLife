@@ -2036,18 +2036,23 @@ def build_fov_zones(doc, cameras, view, settings):
 #
 #   1. Из камеры по кругу пускается веер лучей до границы её помещения;
 #      каждый луч обрезается дальностью камеры R (distance_param_name —
-#      обычно параметр типа, паспортная дальность). Вес луча — r², т.е.
-#      площадь узкого сектора помещения в пределах дальности.
-#   2. Поворот (auto_rotate): азимут, при котором сектор самого широкого
-#      угла объектива (минимальное фокусное) накрывает наибольшую площадь;
-#      если таких азимутов «плато» — середина плато (биссектриса: у камеры
-#      в углу — диагональ, у камеры на стене — перпендикуляр к стене).
-#      Записывается в параметр поворота камеры (если он задан и это
-#      параметр экземпляра), иначе поворачивается сам экземпляр.
-#   3. Фокусное (если это параметр экземпляра): самый узкий угол вокруг
-#      выбранного азимута, который накрывает auto_coverage_pct % площади
-#      помещения в пределах дальности, -> f, в диапазоне автоподбора.
-#   4. Рабочее расстояние L = min(до стены по оси взгляда, R).
+#      обычно параметр типа, паспортная дальность). Вес луча — площадь
+#      узкого сектора помещения в пределах дальности (≈ r²); если включён
+#      учёт других камер (auto_consider_others), уже покрытая ими площадь
+#      идёт с весом _AIM_COVERED_WEIGHT.
+#   2. Поворот — только если включён (auto_rotate; по умолчанию камеру
+#      ориентирует пользователь): азимут, при котором сектор самого
+#      широкого угла объектива накрывает наибольший вес; при «плато» —
+#      середина (биссектриса). Пишется в параметр поворота экземпляра по
+#      его шкале (_rotation_spec), иначе поворачивается экземпляр.
+#   3. Рабочее расстояние L = min(до стены по оси взгляда, R).
+#   4. Фокусное (если это параметр экземпляра) по auto_focal_mode:
+#        «площадь» — самый узкий угол вокруг оси, накрывающий
+#                    auto_coverage_pct % веса;
+#        «DORI»    — кадр шириной разрешение / пикс_на_м на расстоянии L
+#                    (auto_dori_level, camera_h_res_px);
+#        «авто»    — DORI, если стена дальше дальности (большое помещение:
+#                    паркинг, склад), иначе «площадь».
 #   5. Наклон по auto_tilt_mode, h_эфф = высота установки − высота
 #      плоскости расчёта (target_level_offset_mm, как у «Зон обзора»):
 #        «ось»  — ось кадра в точку цели на расстоянии L:  arctg(h_эфф / L)
@@ -2205,9 +2210,138 @@ def _rotate_camera(doc, cam, s, unit_mode, target, forward, delta):
     return True, u"повёрнут экземпляр"
 
 
-def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
-                   focal_min_mm, focal_max_mm, max_tilt_rad, max_near_ft,
-                   rotate_on, coverage, tilt_mode, target_off_ft):
+# --- учёт других камер ------------------------------------------------
+#
+# Площадь, которую уже видят другие камеры, при выборе поворота и
+# фокусного новой камеры учитывается с весом _AIM_COVERED_WEIGHT (не
+# нулём — чтобы направление всё равно оставалось осмысленным, если всё
+# вокруг уже покрыто). «Покрытие» камеры — сектор её зоны обзора
+# (азимут ± гор.угол/2, от мёртвой зоны до дальней границы), обрезанный
+# её помещением по лучам — та же модель, что у «Зон обзора».
+
+_AIM_COVERED_WEIGHT = 0.1
+_AIM_RADIAL_SAMPLES = 32        # точек вдоль луча при учёте чужого покрытия
+
+
+def _ray_table(center, rings, max_r):
+    """Расстояния от center до границы помещения по _AIM_RAY_COUNT лучам,
+    обрезанные max_r."""
+    n = _AIM_RAY_COUNT
+    step = 2.0 * math.pi / n
+    out = []
+    for k in range(n):
+        a = k * step
+        r = _clip_distance(center.X, center.Y, math.cos(a), math.sin(a), _AIM_SEARCH_FT, rings)
+        out.append(min(r, max_r))
+    return out
+
+
+def _coverage_record(doc, cam, view, s, unit_mode, target_off_ft):
+    """Сектор, который камера видит сейчас (по параметрам на ней), для
+    учёта при наведении других камер; None, если не посчитать."""
+    if not isinstance(cam.Location, LocationPoint):
+        return None
+    base, _note, _fwd = _camera_azimuth(doc, cam, s, unit_mode)
+    if base is None:
+        return None
+    hfov, vfov, _r = _optical_fov(doc, cam, s)
+    if not hfov:
+        return None
+    dist_p = _find_param(doc, cam, (s.get("distance_param_name") or u"").strip())
+    if dist_p is None or not dist_p.HasValue or dist_p.StorageType != StorageType.Double:
+        return None
+    max_r = dist_p.AsDouble()
+    if max_r <= 0.02:
+        return None
+    p = cam.Location.Point
+    rings, _rn = room_rings_for_point(doc, p, s.get("room_boundary") or u"отделка")
+    if rings is None:
+        return None
+    tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode)
+    h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
+    if h_ft is not None:
+        h_ft -= target_off_ft
+    near_r, far_r = _near_far_radius(h_ft, tilt, vfov, max_r)
+    center = XYZ(p.X, p.Y, 0.0)
+    return {
+        "id": cam.Id.IntegerValue,
+        "x": center.X, "y": center.Y,
+        "az": base, "half": min(hfov, 2.0 * math.pi) / 2.0,
+        "near": near_r, "far": far_r,
+        "rays": _ray_table(center, rings, far_r),
+    }
+
+
+def _is_covered(x, y, records):
+    n = _AIM_RAY_COUNT
+    step = 2.0 * math.pi / n
+    for rec in records:
+        dx = x - rec["x"]
+        dy = y - rec["y"]
+        d = math.sqrt(dx * dx + dy * dy)
+        if d < rec["near"] or d > rec["far"]:
+            continue
+        a = math.atan2(dy, dx)
+        if abs(_norm_angle(a - rec["az"])) > rec["half"]:
+            continue
+        if d <= rec["rays"][int(round(a / step)) % n] + 1e-6:
+            return True
+    return False
+
+
+def _ray_weights(center, rays, range_ft, records):
+    """Вес каждого луча веера — площадь сектора помещения в пределах
+    дальности (≈ r²), где уже покрытое другими камерами (records) идёт с
+    весом _AIM_COVERED_WEIGHT."""
+    if not records:
+        return [r * r for r in rays]
+    near_recs = [rec for rec in records
+                 if math.hypot(rec["x"] - center.X, rec["y"] - center.Y)
+                 <= range_ft + rec["far"] + 1e-6]
+    if not near_recs:
+        return [r * r for r in rays]
+    n = len(rays)
+    step = 2.0 * math.pi / n
+    dr = max(range_ft / _AIM_RADIAL_SAMPLES, 0.1)
+    out = []
+    for k, r_max in enumerate(rays):
+        a = k * step
+        ca, sa = math.cos(a), math.sin(a)
+        w = 0.0
+        r0 = 0.0
+        while r0 < r_max - 1e-9:
+            r1 = min(r0 + dr, r_max)
+            elem = r1 * r1 - r0 * r0            # кольцевой отрезок сектора
+            rm = (r0 + r1) / 2.0
+            if _is_covered(center.X + ca * rm, center.Y + sa * rm, near_recs):
+                elem *= _AIM_COVERED_WEIGHT
+            w += elem
+            r0 = r1
+        out.append(w)
+    return out
+
+
+def _dori_ppm(text):
+    """Уровень DORI для подбора фокусного: название (обнаружение/
+    наблюдение/распознавание/идентификация) или число пикс/м."""
+    t = (text or u"").strip().lower()
+    if not t:
+        return 125.0
+    for name, ppm in _DORI_LEVELS:
+        if name.lower().startswith(t[:5]):
+            return ppm
+    try:
+        v = float(t.replace(u",", u"."))
+        return v if v > 0 else 125.0
+    except Exception:
+        return 125.0
+
+
+def _auto_aim_one(doc, cam, view, s, o, covered):
+    """Навести одну камеру (см. заголовок раздела); o — разобранные
+    настройки из auto_aim_cameras, covered — покрытие других камер
+    (список _coverage_record) или None, если учёт выключен."""
+    unit_mode = o["unit_mode"]
     if not isinstance(cam.Location, LocationPoint):
         return (cam, u"no_location", u"")
 
@@ -2248,25 +2382,22 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
 
-    boundary_mode = s.get("room_boundary") or u"отделка"
-    rings, room_note = room_rings_for_point(doc, p, boundary_mode)
+    rings, room_note = room_rings_for_point(doc, p, s.get("room_boundary") or u"отделка")
     if rings is None:
         return (cam, u"no_room", room_note)
 
-    # --- веер лучей: расстояние до границы и вес (площадь в пределах R)
     n = _AIM_RAY_COUNT
     step = 2.0 * math.pi / n
-    weights = []
-    for k in range(n):
-        a = k * step
-        r = _clip_distance(center.X, center.Y, math.cos(a), math.sin(a), _AIM_SEARCH_FT, rings)
-        r = min(r, range_ft)
-        weights.append(r * r)
+    others = [rec for rec in (covered or []) if rec["id"] != cam.Id.IntegerValue]
+    weights = None
+    if o["rotate_on"] or o["focal_mode"] != u"dori":
+        weights = _ray_weights(center, _ray_table(center, rings, range_ft), range_ft, others)
 
     # --- оптика: вариофокал (фокусное — параметр экземпляра) или нет
     sensor = _camera_sensor(doc, cam, s)
     focal_p = _instance_param(cam, s.get("focal_length_param_name"))
     varifocal = _writable_double(focal_p) and sensor is not None
+    focal_min_mm, focal_max_mm = o["focal_min_mm"], o["focal_max_mm"]
 
     if varifocal:
         hfov_wide = 2.0 * math.atan(sensor[0] / (2.0 * focal_min_mm))
@@ -2277,9 +2408,8 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
     notes = []
     warn_reasons = []
 
-    # --- поворот по биссектрисе
-    cur_idx = int(round(_norm_angle(base) / step)) % n
-    if rotate_on:
+    # --- поворот (по выбору: auto_rotate)
+    if o["rotate_on"]:
         # поворот параметром внутри семейства с ограниченным диапазоном
         # (поворотная камера на настенном основании: 0–180°) — искать
         # только среди достижимых азимутов
@@ -2288,6 +2418,7 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
                 and _rotation_spec(s)[2] is not None):
             allowed = [_rotation_value_for_azimuth(k * step, forward, s)[1]
                        for k in range(n)]
+        cur_idx = int(round(_norm_angle(base) / step)) % n
         half_steps = max(0, int(round(hfov_wide / 2.0 / step)))
         best_idx = _best_azimuth(weights, half_steps, cur_idx, allowed)
         if best_idx is not None:
@@ -2304,29 +2435,6 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
                 notes.append(u"поворот не нужен")
         else:
             notes.append(u"поворот: помещение симметрично вокруг камеры, направление не менялось")
-    center_idx = int(round(_norm_angle(base) / step)) % n
-
-    # --- фокусное: самый узкий угол, накрывающий coverage площади
-    cov_half = _coverage_half_steps(weights, center_idx, coverage) * step
-    needed_hfov = min(2.0 * cov_half, math.radians(178.0))
-    if varifocal:
-        tan_half = math.tan(needed_hfov / 2.0)
-        needed_f = (sensor[0] / (2.0 * tan_half)) if tan_half > 1e-6 else focal_max_mm
-        chosen_f = max(focal_min_mm, min(needed_f, focal_max_mm))
-        focal_p.Set(_mm_to_param_value(focal_p, chosen_f))
-        notes.append(u"фокусное {:.2f} мм{}".format(
-            chosen_f, u" (ограничено диапазоном)" if abs(chosen_f - needed_f) > 0.005 else u""))
-
-    hfov, vfov, _optic_reason = _optical_fov(doc, cam, s)
-    vfov_default_used = False
-    if vfov is None:
-        vfov = default_vfov_rad
-        vfov_default_used = True
-    if hfov is not None and needed_hfov > hfov + math.radians(1.0):
-        warn_reasons.append(
-            u"для {:.0f}% площади помещения нужен угол {:.0f}°, объектив даёт "
-            u"{:.0f}° — часть помещения вне кадра".format(
-                coverage * 100.0, math.degrees(needed_hfov), math.degrees(hfov)))
 
     # --- рабочее расстояние по оси взгляда
     wall_ft = _clip_distance(center.X, center.Y, math.cos(base), math.sin(base),
@@ -2337,39 +2445,90 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
                 u"встретилась — контур помещения незамкнут?".format(
                     math.degrees(base) % 360.0))
     work_ft = min(wall_ft, range_ft)
-    if wall_ft > range_ft + 1e-6:
+    large_room = wall_ft > range_ft + 1e-6
+
+    # --- фокусное: по площади помещения или по детализации DORI на L
+    mode = o["focal_mode"]
+    h_res = o["h_res_px"]
+    if mode == u"auto":
+        mode = u"dori" if large_room else u"area"
+    if mode == u"dori" and h_res <= 0:
+        notes.append(u"DORI: не задано разрешение матрицы (раздел ⑤) — фокусное по площади")
+        mode = u"area"
+        if weights is None:
+            weights = _ray_weights(center, _ray_table(center, rings, range_ft), range_ft, others)
+
+    needed_hfov = None
+    if mode == u"dori":
+        # кадр шириной res/ppm метров на расстоянии L
+        frame_w_ft = (h_res / o["dori_ppm"]) / _M_PER_FT
+        needed_hfov = 2.0 * math.atan2(frame_w_ft / 2.0, work_ft)
+        focal_how = u"DORI {:.0f} пикс/м на {:.1f} м".format(o["dori_ppm"], work_ft * _M_PER_FT)
+    else:
+        center_idx = int(round(_norm_angle(base) / step)) % n
+        cov_half = _coverage_half_steps(weights, center_idx, o["coverage"]) * step
+        needed_hfov = min(2.0 * cov_half, math.radians(178.0))
+        focal_how = u"{:.0f}% площади".format(o["coverage"] * 100.0)
+    if varifocal:
+        tan_half = math.tan(needed_hfov / 2.0)
+        needed_f = (sensor[0] / (2.0 * tan_half)) if tan_half > 1e-6 else focal_max_mm
+        chosen_f = max(focal_min_mm, min(needed_f, focal_max_mm))
+        focal_p.Set(_mm_to_param_value(focal_p, chosen_f))
+        notes.append(u"фокусное {:.2f} мм ({}){}".format(
+            chosen_f, focal_how,
+            u", ограничено диапазоном" if abs(chosen_f - needed_f) > 0.005 else u""))
+
+    hfov, vfov, _optic_reason = _optical_fov(doc, cam, s)
+    vfov_default_used = False
+    if vfov is None:
+        vfov = o["default_vfov_rad"]
+        vfov_default_used = True
+    if mode == u"area":
+        if hfov is not None and needed_hfov > hfov + math.radians(1.0):
+            warn_reasons.append(
+                u"для {:.0f}% площади помещения нужен угол {:.0f}°, объектив даёт "
+                u"{:.0f}° — часть помещения вне кадра".format(
+                    o["coverage"] * 100.0, math.degrees(needed_hfov), math.degrees(hfov)))
+        if large_room:
+            warn_reasons.append(
+                u"до стены {:.1f} м, а дальность камеры {:.1f} м — дальняя часть "
+                u"помещения не просматривается".format(
+                    wall_ft * _M_PER_FT, range_ft * _M_PER_FT))
+    elif hfov is not None and needed_hfov < hfov - math.radians(1.0):
         warn_reasons.append(
-            u"до стены {:.1f} м, а дальность камеры {:.1f} м — дальняя часть "
-            u"помещения не просматривается".format(
-                wall_ft * _M_PER_FT, range_ft * _M_PER_FT))
+            u"детализация {:.0f} пикс/м на {:.1f} м недостижима — объектив даёт "
+            u"угол не уже {:.0f}° (нужно {:.0f}°)".format(
+                o["dori_ppm"], work_ft * _M_PER_FT, math.degrees(hfov),
+                math.degrees(needed_hfov)))
 
     # --- высота
     h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
     h_written = False
     if h_ft is None:
-        h_ft = default_h_ft
+        h_ft = o["default_h_ft"]
         hp = _instance_param(cam, s.get("height_param_name"))
         if _writable_double(hp):
-            hp.Set(_mm_to_param_value(hp, default_h_ft * 304.8))
+            hp.Set(_mm_to_param_value(hp, o["default_h_ft"] * 304.8))
             h_written = True
     if h_ft is None or h_ft <= 0.1:
         return (cam, u"missing_inputs",
                 u"нет высоты установки и не задано значение по умолчанию")
-    h_eff = h_ft - target_off_ft
+    h_eff = h_ft - o["target_off_ft"]
     if h_eff <= 0.1:
         return (cam, u"missing_inputs",
                 u"камера ({:.2f} м) не выше плоскости расчёта ({:.2f} м)".format(
-                    h_ft * _M_PER_FT, target_off_ft * _M_PER_FT))
+                    h_ft * _M_PER_FT, o["target_off_ft"] * _M_PER_FT))
     if vfov is None or vfov <= 1e-4:
         return (cam, u"missing_inputs",
                 u"нет вертикального угла обзора и значения по умолчанию")
 
     # --- наклон
-    mode = (tilt_mode or u"ось").strip().lower()
-    if mode.startswith(u"верх"):
+    max_near_ft = o["max_near_ft"]
+    tmode = o["tilt_mode"]
+    if tmode.startswith(u"верх"):
         tilt = math.atan2(h_eff, work_ft) + vfov / 2.0
         mode_note = u"верх кадра в цель"
-    elif mode.startswith(u"низ"):
+    elif tmode.startswith(u"низ"):
         tilt = math.atan2(h_eff, max(max_near_ft, 0.01)) - vfov / 2.0
         mode_note = u"низ кадра по мёртвой зоне"
     else:
@@ -2386,10 +2545,12 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
     if near_ft > max_near_ft + 1e-6:
         warn_reasons.append(u"мёртвая зона {:.2f} м больше допустимой {:.2f} м".format(
             near_ft * _M_PER_FT, max_near_ft * _M_PER_FT))
-    if tilt > max_tilt_rad:
+    if tilt > o["max_tilt_rad"]:
         warn_reasons.append(u"наклон {:.0f}° больше допустимого {:.0f}°".format(
-            math.degrees(tilt), math.degrees(max_tilt_rad)))
+            math.degrees(tilt), math.degrees(o["max_tilt_rad"])))
 
+    if others:
+        notes.append(u"учтено камер рядом: {}".format(len(others)))
     if h_written:
         notes.append(u"высота по умолчанию (записана)")
     if vfov_default_used:
@@ -2411,41 +2572,98 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
     return (cam, u"ok", detail)
 
 
+def _focal_mode(text):
+    t = (text or u"").strip().lower()
+    if t.startswith(u"пл"):
+        return u"area"
+    if t.startswith(u"dori") or t.startswith(u"дори") or t.startswith(u"дет"):
+        return u"dori"
+    return u"auto"
+
+
+def _other_cameras_in_view(doc, view, s, exclude_ids):
+    """Камеры тех же категорий (camera_categories) на виде view, кроме
+    exclude_ids — их наведение не меняется, но их покрытие учитывается."""
+    cat_ids = resolve_category_ids(doc, s.get("camera_categories") or u"OST_SecurityDevices")
+    out = []
+    try:
+        els = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
+    except Exception:
+        return out
+    for el in els:
+        try:
+            cat = el.Category
+            if cat is None or cat.Id.IntegerValue not in cat_ids:
+                continue
+            if el.Id.IntegerValue in exclude_ids:
+                continue
+            if isinstance(el.Location, LocationPoint):
+                out.append(el)
+        except Exception:
+            continue
+    return out
+
+
 def auto_aim_cameras(doc, cameras, view, settings):
     """
     Навести каждую камеру на её помещение (см. заголовок раздела выше):
-    ПОВЕРНУТЬ по биссектрисе помещения (auto_rotate), подобрать и
-    ЗАПИСАТЬ фокусное (если это параметр экземпляра) и наклон
-    (tilt_param_name, параметр экземпляра). Возвращает
-    [(camera, status, detail)] со status: "ok"/"ok_warn" (записано, но
-    есть предупреждения — часть помещения вне кадра/дальности, крутой
-    наклон, большая мёртвая зона)/"no_location"/"no_tilt_param"/
-    "tilt_not_instance"/"tilt_readonly"/"no_distance_param"/
-    "bad_geometry"/"no_room"/"no_wall_hit"/"missing_inputs".
+    по выбору (auto_rotate) ПОВЕРНУТЬ, подобрать и ЗАПИСАТЬ фокусное
+    (если это параметр экземпляра) и наклон (tilt_param_name, параметр
+    экземпляра). При auto_consider_others камеры наводятся по очереди, и
+    площадь, уже покрытая другими камерами на виде (невыбранными — как
+    есть, выбранными — после их наведения), при выборе поворота и
+    фокусного почти не учитывается. Возвращает [(camera, status, detail)]
+    со status: "ok"/"ok_warn" (записано, но есть предупреждения)/
+    "no_location"/"no_tilt_param"/"tilt_not_instance"/"tilt_readonly"/
+    "no_distance_param"/"bad_geometry"/"no_room"/"no_wall_hit"/
+    "missing_inputs"/"error".
     Транзакция — на вызывающей стороне (пишет параметры и поворачивает).
     """
     s = settings
-    unit_mode = s.get("angle_unit") or u"авто"
-    default_h_ft = _as_float(s.get("auto_default_height_mm"), 3000.0) * _FT_PER_MM
-    default_vfov_rad = math.radians(_as_float(s.get("auto_default_vfov_deg"), 30.0))
-    focal_min_mm = _as_float(s.get("auto_focal_min_mm"), 2.8)
-    focal_max_mm = _as_float(s.get("auto_focal_max_mm"), 12.0)
-    max_tilt_rad = math.radians(_as_float(s.get("auto_max_tilt_deg"), 60.0))
-    max_near_ft = _as_float(s.get("auto_max_near_zone_mm"), 1500.0) * _FT_PER_MM
-    rotate_on = _as_bool(s.get("auto_rotate"), True)
-    coverage = max(0.1, min(_as_float(s.get("auto_coverage_pct"), 90.0), 100.0)) / 100.0
-    tilt_mode = s.get("auto_tilt_mode") or u"ось"
-    target_off_ft = _as_float(s.get("target_level_offset_mm"), 0.0) * _FT_PER_MM
+    o = {
+        "unit_mode": s.get("angle_unit") or u"авто",
+        "default_h_ft": _as_float(s.get("auto_default_height_mm"), 3000.0) * _FT_PER_MM,
+        "default_vfov_rad": math.radians(_as_float(s.get("auto_default_vfov_deg"), 30.0)),
+        "focal_min_mm": _as_float(s.get("auto_focal_min_mm"), 2.8),
+        "focal_max_mm": _as_float(s.get("auto_focal_max_mm"), 12.0),
+        "max_tilt_rad": math.radians(_as_float(s.get("auto_max_tilt_deg"), 60.0)),
+        "max_near_ft": _as_float(s.get("auto_max_near_zone_mm"), 1500.0) * _FT_PER_MM,
+        "rotate_on": _as_bool(s.get("auto_rotate"), False),
+        "coverage": max(0.1, min(_as_float(s.get("auto_coverage_pct"), 90.0), 100.0)) / 100.0,
+        "tilt_mode": (s.get("auto_tilt_mode") or u"ось").strip().lower(),
+        "target_off_ft": _as_float(s.get("target_level_offset_mm"), 0.0) * _FT_PER_MM,
+        "focal_mode": _focal_mode(s.get("auto_focal_mode")),
+        "dori_ppm": _dori_ppm(s.get("auto_dori_level")),
+        "h_res_px": _as_int(s.get("camera_h_res_px"), 0),
+    }
+
+    covered = None
+    if _as_bool(s.get("auto_consider_others"), False):
+        covered = []
+        sel_ids = set(c.Id.IntegerValue for c in cameras)
+        for other in _other_cameras_in_view(doc, view, s, sel_ids):
+            try:
+                rec = _coverage_record(doc, other, view, s, o["unit_mode"], o["target_off_ft"])
+            except Exception:
+                rec = None
+            if rec is not None:
+                covered.append(rec)
 
     results = []
     for cam in cameras:
         try:
-            results.append(_auto_aim_one(
-                doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
-                focal_min_mm, focal_max_mm, max_tilt_rad, max_near_ft,
-                rotate_on, coverage, tilt_mode, target_off_ft))
+            res = _auto_aim_one(doc, cam, view, s, o, covered)
         except Exception as ex:
-            results.append((cam, u"error", u"{}".format(ex)))
+            res = (cam, u"error", u"{}".format(ex))
+        results.append(res)
+        if covered is not None and res[1] in (u"ok", u"ok_warn"):
+            try:
+                doc.Regenerate()
+                rec = _coverage_record(doc, cam, view, s, o["unit_mode"], o["target_off_ft"])
+            except Exception:
+                rec = None
+            if rec is not None:
+                covered.append(rec)
     return results
 
 
@@ -2918,22 +3136,57 @@ TEXT_FIELDS = [
         "camera_h_res_px",
         u"",
         u"Горизонтальное разрешение матрицы, пикс",
-        u"Нужно только для дуг DORI. Например 1920 (Full HD), 2560, 3840. "
+        u"Нужно для дуг DORI и для подбора фокусного по DORI (раздел ⑥). "
+        u"Например 1920 (Full HD), 2560, 3840. "
         u"Расстояние: d = H / (2 · пикс/м · tg(гор.угол / 2)).",
         u"", False
     ),
     (
         "auto_rotate",
         u"⑥ Автонаведение (кнопка «Навести на помещение»)",
-        u"Поворачивать камеру по помещению (да/нет)",
-        u"«да» — кнопка сама разворачивает камеру туда, где кадр самого "
+        u"Поворачивать камеру автоматически (да/нет)",
+        u"«нет» (обычный режим) — камеру ориентируете вы, кнопка подбирает "
+        u"только фокусное и наклон. «да» — кнопка сама разворачивает камеру "
+        u"туда, где кадр самого "
         u"широкого угла (минимальное фокусное) накрывает наибольшую площадь "
         u"помещения в пределах дальности: у камеры в углу — по диагонали, "
         u"у камеры на стене — перпендикулярно стене. Поворот пишется в "
         u"параметр поворота камеры (если он задан и это параметр "
-        u"экземпляра), иначе поворачивается сам экземпляр семейства. "
-        u"«нет» — направление не меняется.",
-        u"да", False
+        u"экземпляра), иначе поворачивается сам экземпляр семейства.",
+        u"нет", False
+    ),
+    (
+        "auto_consider_others",
+        u"",
+        u"Учитывать другие камеры (да/нет)",
+        u"«да» — камеры наводятся по очереди, и площадь, которую уже видят "
+        u"другие камеры на этом виде (невыбранные — как они стоят сейчас, "
+        u"выбранные — после наведения), при выборе поворота и фокусного "
+        u"почти не учитывается: соседние камеры расходятся по разным "
+        u"направлениям, а не смотрят в одну точку. Работает медленнее.",
+        u"нет", False
+    ),
+    (
+        "auto_focal_mode",
+        u"",
+        u"Фокусное: авто / площадь / DORI",
+        u"«площадь» — самый узкий угол, при котором в кадре заданная ниже "
+        u"доля площади помещения. «DORI» — чтобы на рабочем расстоянии "
+        u"(до стены, но не дальше дальности камеры) была заданная ниже "
+        u"детализация; нужно разрешение матрицы (раздел ⑤). «авто» — DORI, "
+        u"если стена дальше дальности камеры (паркинг, склад), иначе "
+        u"площадь.",
+        u"авто", False
+    ),
+    (
+        "auto_dori_level",
+        u"",
+        u"Детализация для фокусного по DORI",
+        u"обнаружение (25 пикс/м) / наблюдение (63) / распознавание (125) "
+        u"/ идентификация (250) или число пикс/м. Фокусное подбирается "
+        u"так, чтобы кадр на рабочем расстоянии был шириной "
+        u"разрешение / пикс_на_м.",
+        u"распознавание", False
     ),
     (
         "auto_coverage_pct",
