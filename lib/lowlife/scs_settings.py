@@ -822,7 +822,7 @@ def require(settings, keys):
     if missing:
         forms.alert(
             u"В настройках СКС не заполнены обязательные для этой кнопки поля:\n\n{}\n\n"
-            u"Запустите кнопку «Параметры СКС» и заполните их там.".format(u"\n".join(missing)),
+            u"Откройте настройки: Shift+клик по этой же кнопке — и заполните их там.".format(u"\n".join(missing)),
             exitscript=True
         )
 

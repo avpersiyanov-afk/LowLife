@@ -225,10 +225,15 @@ def show_settings_form(doc, values):
     template_cb = _combo(root, template_items, values.get(TEMPLATE_KEY) or NO_TEMPLATE)
     if not templates:
         _hint(root, u"В проекте нет шаблонов видов для разрезов.")
+    else:
+        _hint(root, u"Назначается каждому новому разрезу: задаёт видимость категорий, "
+                    u"масштаб, детализацию. «<Без шаблона>» — вид останется как есть.")
 
     _label(root, u"Типоразмер разреза", bold=True)
     type_items = [DEFAULT_TYPE] + types
     type_cb = _combo(root, type_items, values.get(TYPE_KEY) or DEFAULT_TYPE)
+    _hint(root, u"Каким типом разреза Revit создавать вид — от типа зависит, в какой "
+                u"папке браузера проекта он окажется и как выглядит его обозначение на плане.")
 
     _label(root, u"Имя разреза", bold=True)
     mask_box = _textbox(root, values.get(NAME_MASK_KEY) or u"")
@@ -237,7 +242,8 @@ def show_settings_form(doc, values):
     ) + u". Если имя уже занято, добавляется « (2)», « (3)», ...")
 
     _label(root, u"Подрезка, мм", bold=True, top=14)
-    _hint(root, u"По высоте — от базового уровня семейства до следующего этажа "
+    _hint(root, u"Насколько область разреза выходит за габарит самого семейства. "
+                u"По высоте — от базового уровня семейства до следующего этажа "
                 u"того же корпуса. Имя уровня разбирается по шаблону "
                 u"Дисциплина_Корпус_Отметка_Этаж_Комментарий: берётся ближайший "
                 u"по отметке уровень выше с тем же корпусом и другим этажом.")
@@ -263,6 +269,8 @@ def show_settings_form(doc, values):
     hide_cb.IsChecked = bool(values.get(HIDE_OTHER_BUILDINGS_KEY))
     hide_cb.Margin = Thickness(0, 14, 0, 0)
     root.Children.Add(hide_cb)
+    _hint(root, u"Прячет на новом разрезе линии уровней соседних корпусов, чтобы "
+                u"остались только уровни корпуса, где стоит семейство.")
 
     open_cb = CheckBox()
     open_cb.Content = u"Открыть разрез после создания"

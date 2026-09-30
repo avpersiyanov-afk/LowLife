@@ -509,7 +509,7 @@ def show_settings_form(doc, values):
     number_row.Orientation = Orientation.Horizontal
     number_row.Margin = Thickness(0, 0, 0, 8)
     number_label = TextBlock()
-    number_label.Text = u"Параметр номера помещения (для таблицы помещений, «Имя(номер)»):"
+    number_label.Text = u"Параметр номера помещения (номер показывается в таблице помещений как «Имя (номер)»):"
     number_label.VerticalAlignment = VerticalAlignment.Center
     number_label.Margin = Thickness(0, 0, 8, 0)
     number_row.Children.Add(number_label)
