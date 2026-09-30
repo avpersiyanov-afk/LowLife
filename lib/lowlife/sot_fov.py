@@ -2810,7 +2810,11 @@ def build_camera_preview_view(doc, cam, view, settings):
         return (None, u"bad_geometry",
                 u"не удалось определить направление камеры [{}]".format(dir_note))
 
-    tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode) or 0.0
+    notes = []
+    tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode)
+    if tilt is None:
+        tilt = 0.0
+        notes.append(u"наклон не найден на камере — вид горизонтальный")
 
     p = cam.Location.Point
     h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
@@ -2845,13 +2849,32 @@ def build_camera_preview_view(doc, cam, view, settings):
             return (None, u"create_failed", u"{}".format(ex))
         try:
             v3d.Name = name
-        except Exception:
-            pass
+        except Exception as ex:
+            # имя занято (например, обычным видом) — без имени повторный
+            # запуск не найдёт этот вид и создаст ещё один
+            notes.append(u"не удалось назвать вид «{}» ({}) — повторный запуск "
+                         u"создаст новый вид".format(name, ex))
 
     try:
         v3d.SetOrientation(ViewOrientation3D(eye, up, forward))
     except Exception as ex:
         return (v3d, u"create_failed", u"SetOrientation: {}".format(ex))
+
+    # глаз стоит в точке вставки камеры — внутри её корпуса: скрыть саму
+    # камеру и её вложенные семейства (основание/корпус), иначе они
+    # загораживают кадр
+    hide_ids = [cam.Id]
+    try:
+        hide_ids.extend(list(cam.GetSubComponentIds()))
+    except Exception:
+        pass
+    try:
+        can = [i for i in hide_ids if doc.GetElement(i) is not None
+               and doc.GetElement(i).CanBeHidden(v3d)]
+        if can:
+            v3d.HideElements(List[ElementId](can))
+    except Exception as ex:
+        notes.append(u"не удалось скрыть саму камеру в виде ({})".format(ex))
 
     hfov, vfov, optic_reason = _optical_fov(doc, cam, s)
     status = u"ok"
@@ -2872,6 +2895,21 @@ def build_camera_preview_view(doc, cam, view, settings):
             v3d.CropBox = box
             detail += u", угол {:.0f}°×{:.0f}°".format(
                 math.degrees(hfov), math.degrees(vfov))
+            # диагностика: что Revit в итоге хранит в crop box (подгонка
+            # предполагает, что X/Y рамки отложены на глубине |Max.Z|)
+            try:
+                rb = v3d.CropBox
+                rd = abs(rb.Max.Z)
+                if rd > 1e-6:
+                    detail += (u" [crop: X {:.2f}…{:.2f}, Y {:.2f}…{:.2f}, "
+                               u"Z {:.2f}…{:.2f} фт -> по глубине |Max.Z| "
+                               u"{:.0f}°×{:.0f}°]".format(
+                                   rb.Min.X, rb.Max.X, rb.Min.Y, rb.Max.Y,
+                                   rb.Min.Z, rb.Max.Z,
+                                   math.degrees(2.0 * math.atan((rb.Max.X - rb.Min.X) / 2.0 / rd)),
+                                   math.degrees(2.0 * math.atan((rb.Max.Y - rb.Min.Y) / 2.0 / rd))))
+            except Exception:
+                pass
         except Exception as ex:
             status = u"ok_no_optics"
             detail += u"; не удалось подогнать crop box: {}".format(ex)
@@ -2879,6 +2917,9 @@ def build_camera_preview_view(doc, cam, view, settings):
         status = u"ok_no_optics"
         detail += u"; поле зрения не подогнано под объектив ({})".format(optic_reason)
 
+    detail += u", глаз h={:.2f} м".format(h_ft * _M_PER_FT)
+    if notes:
+        detail += u"; " + u"; ".join(notes)
     detail += u"; {}".format(u"создан" if created else u"обновлён")
     return (v3d, status, detail)
 
