@@ -217,9 +217,9 @@ def show_settings_form(doc, values):
     levels_hint = TextBlock()
     levels_hint.Text = (
         u"Для каждого уровня впишите, что записывать в параметр «Этаж» "
-        u"элементам, физически расположенным на этом уровне (см. "
-        u"lowlife.geometry.get_element_level — по Element.LevelId). Пустое "
-        u"значение — уровень пропускается при заполнении."
+        u"элементам, привязанным к этому уровню (тот уровень, что указан в "
+        u"свойствах самого элемента), — например «1» или «Этаж 1». Пустое "
+        u"значение — элементы этого уровня не заполняются."
     )
     levels_hint.FontSize = 11
     levels_hint.Foreground = Brushes.Gray

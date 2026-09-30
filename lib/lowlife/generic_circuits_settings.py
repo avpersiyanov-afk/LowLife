@@ -214,7 +214,7 @@ def require(settings, keys):
     if missing:
         forms.alert(
             u"В настройках «Параметры цепей (общее)» не заполнены обязательные поля:\n\n{}\n\n"
-            u"Запустите кнопку «Параметры цепей (общее)» и заполните их там.".format(u"\n".join(missing)),
+            u"Откройте настройки: Shift+клик по этой же кнопке — и заполните их там.".format(u"\n".join(missing)),
             exitscript=True
         )
 
