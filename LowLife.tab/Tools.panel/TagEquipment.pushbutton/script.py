@@ -123,6 +123,9 @@ lines = [
 if stats["failed"]:
     lines.append(u"Не удалось поставить/сдвинуть: {} (нет подходящей марки "
                  u"для категории?)".format(stats["failed"]))
+if stats["upper_floor"]:
+    lines.append(u"Только верхний этаж (тип без «/» в двухэтажном "
+                 u"семействе): {}".format(stats["upper_floor"]))
 if stats["no_bbox"]:
     lines.append(u"Не видно на виде (пропущено): {}".format(stats["no_bbox"]))
 if stats["overlaps"] or stats["crossings"]:

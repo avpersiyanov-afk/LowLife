@@ -26,6 +26,16 @@ v — ``UpDirection``, начало — ``view.Origin``), там же раскл
 у элемента нет отдельных кривых — берётся вся его видимая геометрия, а
 если и её нет — ``get_BoundingBox(view)``.
 
+Двухэтажные марки. Семейство марки считается двухэтажным, если хотя
+бы у одного его типа в имени есть «/» (например «Марка/Длина»). Типы
+такого семейства С «/» используют оба этажа, БЕЗ «/» — только верхний:
+нижний этаж у них пустой, но Revit всё равно включает его в габарит
+марки, и стопка получалась разреженной. Для таких марок в раскладку
+уходит только верхняя половина габарита (:func:`upper_floor_only`) —
+на пустой нижний этаж может заходить соседняя марка/выноска. Семейства
+без «/» в именах типов не трогаются: настоящую одноэтажную марку резать
+пополам нельзя.
+
 Конец выноски свободный (``LeaderEndCondition.Free``) — только так он
 встаёт точно на край УГО, а излом — ровно по вертикали/горизонтали.
 Минус: если потом подвинуть оборудование, конец выноски за ним не
@@ -327,6 +337,37 @@ def symbol_rect(el, view, frame):
 
 
 # ------------------------------------------------------------
+# ДВУХЭТАЖНЫЕ МАРКИ
+# ------------------------------------------------------------
+
+TWO_FLOOR_MARK = u"/"
+
+
+def upper_floor_only(doc, tag, cache):
+    """
+    True, если у марки заполнен только верхний этаж: её тип без «/» в
+    имени, но в том же семействе есть тип с «/» (значит, семейство
+    двухэтажное). cache — {id семейства: есть ли в нём тип с «/»}.
+    """
+    sym = doc.GetElement(tag.GetTypeId())
+    if sym is None or TWO_FLOOR_MARK in _safe_name(sym):
+        return False
+    try:
+        fam = sym.Family
+    except Exception:
+        return False
+    if fam is None:
+        return False
+    key = id_int(fam.Id)
+    if key not in cache:
+        cache[key] = any(
+            TWO_FLOOR_MARK in _safe_name(doc.GetElement(i))
+            for i in fam.GetFamilySymbolIds()
+        )
+    return cache[key]
+
+
+# ------------------------------------------------------------
 # ВЫНОСКИ
 # ------------------------------------------------------------
 
@@ -407,7 +448,7 @@ def run(doc, view, elements, settings, type_by_category):
     транзакции. Возвращает словарь статистики.
     """
     stats = {"created": 0, "moved": 0, "no_bbox": 0, "failed": 0,
-             "overlaps": 0, "crossings": 0}
+             "overlaps": 0, "crossings": 0, "upper_floor": 0}
 
     scale = float(view.Scale or 1)
     k = MM_TO_FT * scale
@@ -454,11 +495,17 @@ def run(doc, view, elements, settings, type_by_category):
 
     items = []
     info = {}
+    two_floor_cache = {}
     for el, tag, rect, anchor in entries:
         trect = frame.rect(tag.get_BoundingBox(view))
         if trect is None:
             stats["failed"] += 1
             continue
+        if upper_floor_only(doc, tag, two_floor_cache):
+            # раскладываем только верхний этаж; смещение головы ниже
+            # считается от его центра, так что запись позиции не меняется
+            trect = (trect[0], (trect[1] + trect[3]) * 0.5, trect[2], trect[3])
+            stats["upper_floor"] += 1
         head = tag.TagHeadPosition
         hu, hv = frame.uv(head)
         cu, cv = tag_layout.rect_center(trect)
@@ -478,7 +525,7 @@ def run(doc, view, elements, settings, type_by_category):
 
     placements = tag_layout.layout(items, obstacles, offset=offset, gap=gap,
                                    shelf=shelf, cluster_dist=cluster_dist)
-    stats["overlaps"], stats["crossings"] = tag_layout.count_conflicts(placements, items, gap)
+    stats["overlaps"], stats["crossings"] = tag_layout.count_conflicts(placements, items)
 
     # 4. запись
     for p in placements:

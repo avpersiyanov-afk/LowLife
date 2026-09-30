@@ -454,12 +454,6 @@ def layout(items, obstacles=None, offset=1.0, gap=0.2, shelf=0.5, cluster_dist=1
     if not items:
         return []
 
-    # Отрицательный зазор — марки в стопке/колонке заходят друг на друга
-    # (двухэтажная марка, у которой заполнен только верхний этаж: пустой
-    # нижний этаж следующей марки ложится на соседнюю). Но шаг между
-    # марками должен оставаться положительным, иначе порядок ломается.
-    gap = max(gap, -0.9 * min(it.size[1] for it in items))
-
     elem_rects = [(it.key, it.elem_rect) for it in items]
     item_by_key = dict((it.key, it) for it in items)
     unit = max(sum(it.size[1] for it in items) / float(len(items)), 1e-6)
@@ -502,18 +496,15 @@ def layout(items, obstacles=None, offset=1.0, gap=0.2, shelf=0.5, cluster_dist=1
     return [by_key[it.key] for it in items]
 
 
-def count_conflicts(placements, items, gap=0.0):
+def count_conflicts(placements, items):
     """Для отчёта: сколько пар марок перекрываются и сколько пар выносок
-    пересекается после раскладки (в идеале 0 и 0). При отрицательном
-    gap нахлёст марок на |gap| задуман и наложением не считается."""
-    shrink = max(0.0, -gap) * 0.5
+    пересекается после раскладки (в идеале 0 и 0)."""
     overlaps = 0
     crossings = 0
     for i in range(len(placements)):
         for j in range(i + 1, len(placements)):
             a, b = placements[i], placements[j]
-            if rect_overlap_area(rect_inflate(a.tag_rect, -shrink),
-                                 rect_inflate(b.tag_rect, -shrink)) > 1e-9:
+            if rect_overlap_area(a.tag_rect, b.tag_rect) > 1e-9:
                 overlaps += 1
             hit = False
             for s1 in a.leader_segments():
