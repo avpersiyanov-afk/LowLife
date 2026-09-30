@@ -45,7 +45,11 @@ FIELDS = [
     (
         "gap_mm",
         u"Зазор между марками, мм",
-        u"Минимальный промежуток между соседними марками в колонке/стопке.",
+        u"Минимальный промежуток между соседними марками в колонке/стопке. "
+        u"Можно отрицательный — марки зайдут друг на друга на это "
+        u"расстояние: так двухэтажные марки, где заполнен только верхний "
+        u"этаж, встают плотнее (пустой нижний этаж ложится на соседнюю "
+        u"марку). Например, −2,5 при высоте этажа 2,5 мм.",
         1.0
     ),
     (
@@ -64,6 +68,9 @@ FIELDS = [
         8.0
     ),
 ]
+
+# ключи, которым разрешено отрицательное значение
+NEGATIVE_OK = ("gap_mm",)
 
 LABELS = dict((key, label) for key, label, _hint, _default in FIELDS)
 
@@ -116,7 +123,7 @@ def load_settings():
     result = {}
     for key, _label, _hint, default in FIELDS:
         v = _to_float(saved.get(key, default))
-        result[key] = v if v is not None and v >= 0 else default
+        result[key] = v if v is not None and (v >= 0 or key in NEGATIVE_OK) else default
     return result
 
 
@@ -193,9 +200,10 @@ def show_settings_form(values):
 
     def on_ok(sender, args):
         bad = [LABELS[k] for k, b in boxes.items()
-               if _to_float(b.Text) is None or _to_float(b.Text) < 0]
+               if _to_float(b.Text) is None or
+               (_to_float(b.Text) < 0 and k not in NEGATIVE_OK)]
         if bad:
-            forms.alert(u"Нужно неотрицательное число:\n\n" + u"\n".join(bad))
+            forms.alert(u"Нужно число (отрицательное — только для зазора):\n\n" + u"\n".join(bad))
             return
         result["values"] = dict((k, _to_float(b.Text)) for k, b in boxes.items())
         win.Close()

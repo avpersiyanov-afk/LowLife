@@ -478,7 +478,7 @@ def run(doc, view, elements, settings, type_by_category):
 
     placements = tag_layout.layout(items, obstacles, offset=offset, gap=gap,
                                    shelf=shelf, cluster_dist=cluster_dist)
-    stats["overlaps"], stats["crossings"] = tag_layout.count_conflicts(placements, items)
+    stats["overlaps"], stats["crossings"] = tag_layout.count_conflicts(placements, items, gap)
 
     # 4. запись
     for p in placements:

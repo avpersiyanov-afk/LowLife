@@ -62,3 +62,18 @@ def test_side_column_leaders_start_on_symbol_edge():
         on_edge = (abs(p.end[0] - r[0]) < 1e-9 or abs(p.end[0] - r[2]) < 1e-9 or
                    abs(p.end[1] - r[1]) < 1e-9 or abs(p.end[1] - r[3]) < 1e-9)
         assert on_edge
+
+
+def test_negative_gap_stacks_tags_overlapping_by_gap():
+    items = [_box(1, 0, 0), _box(2, 1.6, 0), _box(3, 3.2, 0)]
+    params = dict(PARAMS, gap=-0.6)
+    pl = sorted(layout(items, **params), key=lambda p: p.tag_rect[1])
+    for lo, hi in zip(pl, pl[1:]):
+        assert abs((lo.tag_rect[3] - hi.tag_rect[1]) - 0.6) < 1e-9  # нахлёст ровно |gap|
+    assert count_conflicts(pl, items, -0.6) == (0, 0)
+
+
+def test_negative_gap_is_clamped_to_keep_order():
+    items = [_box(1, 0, 0), _box(2, 1.6, 0)]
+    pl = sorted(layout(items, **dict(PARAMS, gap=-100.0)), key=lambda p: p.tag_rect[1])
+    assert pl[1].tag_rect[1] > pl[0].tag_rect[1]
