@@ -1617,24 +1617,23 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 - `auto_aim_cameras(doc, cameras, view, settings)` / `_auto_aim_one` —
   тело кнопки «Навести на помещение», внутри транзакции ПИШЕТ параметры
   и поворачивает экземпляры (единственное место в модуле, которое это
-  делает). Порядок: помещение (`room_rings_for_point`) и дальность `R`
-  (`distance_param_name`, обязательна) → веер из `_AIM_RAY_COUNT` лучей
-  (`_clip_distance`, обрезка по `R`, вес `r²`) → поворот
-  (`auto_rotate`): `_best_azimuth` — середина «плато» максимума
-  кольцевой суммы весов в окне самого широкого угла (`_window_sums`),
-  запись через `_rotate_camera` (параметр поворота экземпляра, иначе
-  `ElementTransformUtils.RotateElement`) → фокусное (только если
-  параметр экземпляра): `_coverage_half_steps` — самый узкий угол,
-  набирающий `auto_coverage_pct` веса → `L = min(до стены, R)` →
-  `h = высота − target_level_offset_mm` → наклон по `auto_tilt_mode`
-  (`ось`: `arctg(h/L)`, `верх`: `+ верт/2`, `низ`: из
-  `auto_max_near_zone_mm`). Высота — `_mounting_height_ft` или
-  `auto_default_height_mm` (тогда ЗАПИСЫВАЕТСЯ в `height_param_name`);
-  вертикальный угол — `_optical_fov` или `auto_default_vfov_deg` (не
-  записывается). Наклон/фокусное/поворот ищутся через
-  `_instance_param` (голый `LookupParameter`, НЕ `_find_param`) —
-  намеренно: пишутся per-instance, параметр типа не трогается
-  (`tilt_not_instance` для наклона).
+  делает). Настройки разбираются один раз в словарь `o`. Порядок:
+  помещение (`room_rings_for_point`) и дальность `R`
+  (`distance_param_name`, обязательна) → веер лучей (`_ray_table`) и веса
+  (`_ray_weights`: площадь сектора в пределах `R`, покрытое другими
+  камерами — с весом `_AIM_COVERED_WEIGHT`) → поворот, только при
+  `auto_rotate` (`_best_azimuth` — середина «плато» максимума в окне
+  самого широкого угла, запись через `_rotate_camera`) → `L = min(до
+  стены, R)` → фокусное по `auto_focal_mode` (`_focal_mode`: площадь —
+  `_coverage_half_steps`; DORI — кадр `camera_h_res_px / _dori_ppm(...)`
+  на `L`; авто — DORI, если стена дальше `R`) → `h = высота −
+  target_level_offset_mm` → наклон по `auto_tilt_mode`. Учёт других
+  камер (`auto_consider_others`): `_other_cameras_in_view` +
+  `_coverage_record` (сектор камеры по её текущим параметрам, лучи
+  обрезаны помещением), выбранные камеры добавляются после наведения
+  (`doc.Regenerate()` перед чтением). Наклон/фокусное/поворот ищутся
+  через `_instance_param` (голый `LookupParameter`, НЕ `_find_param`) —
+  намеренно: пишутся per-instance, параметр типа не трогается.
   `_mm_to_param_value`/`_radians_to_param_value` — обратные к
   `_length_param_mm`/`_param_radians`: значение в единицах, которые
   примет конкретный параметр (футы/радианы для «Длины»/«Угла», иначе
