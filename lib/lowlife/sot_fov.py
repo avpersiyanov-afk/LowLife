@@ -777,6 +777,94 @@ def _look_direction(fi, offset_deg):
     return d, note
 
 
+_RANGE_RE = re.compile(
+    u"^\\s*(-?\\d+(?:[.,]\\d+)?)\\s*(?:\\.\\.|\u2026|-|\u2013|\u2014|;|/|\\s)\\s*(-?\\d+(?:[.,]\\d+)?)\\s*\u00b0?\\s*$")
+
+
+def _parse_range_deg(text):
+    """«0-180», «0..180», «-90;90» -> (мин_рад, макс_рад); пусто/не
+    распознано -> None (поворот без ограничений)."""
+    if not text:
+        return None
+    # дефис между числами — разделитель, а не минус второго числа
+    m = _RANGE_RE.match(unicode(text))
+    if not m:
+        return None
+    try:
+        lo = float(m.group(1).replace(u",", u"."))
+        hi = float(m.group(2).replace(u",", u"."))
+    except Exception:
+        return None
+    if hi < lo:
+        lo, hi = hi, lo
+    if hi - lo >= 360.0 - 1e-6:
+        return None
+    return math.radians(lo), math.radians(hi)
+
+
+def _rotation_spec(s):
+    """
+    Шкала параметра поворота камеры (rotation_param_name):
+    (ноль_рад, знак, диапазон_или_None). Направление взгляда
+        азимут = «вперёд» семейства + ноль + знак · значение_параметра
+    где «вперёд» — FacingOrientation (+ direction_offset_deg), ноль —
+    rotation_zero_deg (куда смотрит камера при значении 0, против часовой
+    от «вперёд»), знак = −1, если параметр растёт по часовой
+    (rotation_clockwise). Пример — поворотная камера на настенном
+    основании: 0 — смотрит влево вдоль стены, 90 — от стены, 180 — вправо:
+    ноль = 90°, по часовой, диапазон 0–180.
+    """
+    zero = math.radians(_as_float(s.get("rotation_zero_deg"), 0.0))
+    sign = -1.0 if _as_bool(s.get("rotation_clockwise"), False) else 1.0
+    return zero, sign, _parse_range_deg(s.get("rotation_range_deg"))
+
+
+def _camera_azimuth(doc, cam, s, unit_mode):
+    """
+    (азимут_рад, пояснение, «вперёд»_рад) — куда смотрит камера в плане:
+    направление семейства (_look_direction + direction_offset_deg) плюс
+    поворот параметром rotation_param_name по шкале _rotation_spec.
+    Азимут None, если направление определить не удалось (в пояснении —
+    что перебрали). Общая для «Зон обзора», автонаведения, вида с камеры
+    и диагностики — чтобы все они смотрели в одну сторону.
+    """
+    offset_deg = _as_float(s.get("direction_offset_deg"), 0.0)
+    d, note = _look_direction(cam, offset_deg)
+    if d is None:
+        return None, note, None
+    forward = math.atan2(d.Y, d.X)
+    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
+    if rot is None:
+        return forward, note, forward
+    zero, sign, _rng = _rotation_spec(s)
+    az = forward + zero + sign * rot
+    return az, u"{} + поворот {:.1f}°".format(note, math.degrees(rot)), forward
+
+
+def _rotation_value_for_azimuth(az, forward, s):
+    """Обратное к _camera_azimuth: значение параметра поворота (рад),
+    при котором камера смотрит в азимут az, приведённое в диапазон
+    rotation_range_deg (если задан; иначе в (−180°, 180°]). Второй
+    элемент — False, если az в этот диапазон не попадает."""
+    zero, sign, rng = _rotation_spec(s)
+    rot = sign * (az - forward - zero)
+    if rng is None:
+        return _norm_angle(rot), True
+    lo, hi = rng
+    rot = lo + math.fmod(math.fmod(rot - lo, 2.0 * math.pi) + 2.0 * math.pi, 2.0 * math.pi)
+    return rot, rot <= hi + 1e-9
+
+
+def _norm_angle(a):
+    """Угол в диапазон (−π, π]."""
+    a = math.fmod(a, 2.0 * math.pi)
+    if a <= -math.pi:
+        a += 2.0 * math.pi
+    elif a > math.pi:
+        a -= 2.0 * math.pi
+    return a
+
+
 def _mounting_height_ft(doc, fi, view, height_param_name):
     """
     Высота установки камеры над её уровнем, футы. Сначала — из параметра
@@ -920,15 +1008,9 @@ def describe_camera_geometry(doc, el, settings):
     # то же направление и та же итоговая формула, что реально использует
     # построение зоны (_one_camera) — чтобы диагностика не разошлась с
     # тем, что на самом деле рисуется
-    offset_deg = _as_float(settings.get(u"direction_offset_deg"), 0.0)
     unit_mode = settings.get(u"angle_unit") or u"авто"
-    d, dir_note = _look_direction(el, offset_deg)
-    if d is not None:
-        base = math.atan2(d.Y, d.X)
-        rot = _opt_param_radians(doc, el, settings.get(u"rotation_param_name"), unit_mode)
-        if rot:
-            base += rot
-            dir_note = u"{} + поворот {:.1f}°".format(dir_note, math.degrees(rot))
+    base, dir_note, _fwd = _camera_azimuth(doc, el, settings, unit_mode)
+    if base is not None:
         info[u"used_direction_source"] = dir_note
         info[u"used_azimuth_deg"] = math.degrees(base) % 360.0
     else:
@@ -1742,17 +1824,12 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     hfov = min(hfov, 2.0 * math.pi - 1e-3)
     half = hfov / 2.0
 
-    d, dir_note = _look_direction(cam, offset_deg)
-    if d is None:
+    # направление семейства + индивидуальный разворот параметром внутри
+    # семейства (по шкале rotation_zero_deg/rotation_clockwise)
+    base, dir_note, _fwd = _camera_azimuth(doc, cam, s, unit_mode)
+    if base is None:
         return (cam, u"bad_geometry",
                 u"не удалось определить направление камеры [{}]".format(dir_note))
-    base = math.atan2(d.Y, d.X)
-
-    # индивидуальный разворот камеры параметром внутри семейства
-    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
-    if rot:
-        base += rot
-        dir_note = u"{} + поворот {:.1f}°".format(dir_note, math.degrees(rot))
 
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
@@ -1984,16 +2061,6 @@ _AIM_PLATEAU = 0.99             # доля от максимума площад�
 _AIM_MIN_ROTATE_RAD = math.radians(0.1)
 
 
-def _norm_angle(a):
-    """Угол в диапазон (−π, π]."""
-    a = math.fmod(a, 2.0 * math.pi)
-    if a <= -math.pi:
-        a += 2.0 * math.pi
-    elif a > math.pi:
-        a -= 2.0 * math.pi
-    return a
-
-
 def _window_sums(weights, half_steps):
     """Кольцевые суммы weights в окне [c−half_steps, c+half_steps] для
     каждого c. half_steps >= n/2 — окно на весь круг."""
@@ -2013,16 +2080,22 @@ def _window_sums(weights, half_steps):
     return out
 
 
-def _best_azimuth(weights, half_steps, current_idx):
+def _best_azimuth(weights, half_steps, current_idx, allowed=None):
     """
     Индекс азимута, при котором окно ±half_steps накрывает наибольший вес,
     либо None (вес всюду одинаков — поворачивать не к чему). При плато
     (несколько азимутов в пределах _AIM_PLATEAU от максимума подряд) —
     середина того плато, которое содержит максимум (ближайший к текущему
-    направлению, если максимумов несколько).
+    направлению, если максимумов несколько). allowed — список bool по
+    индексам: только эти азимуты достижимы (диапазон поворота камеры);
+    None — все.
     """
     n = len(weights)
     sums = _window_sums(weights, half_steps)
+    if allowed is not None:
+        if not any(allowed):
+            return None
+        sums = [sm if ok else -1.0 for sm, ok in zip(sums, allowed)]
     best = max(sums)
     if best <= 0.0:
         return None
@@ -2108,15 +2181,18 @@ def _camera_sensor(doc, cam, s):
     return sensor
 
 
-def _rotate_camera(doc, cam, s, unit_mode, delta):
-    """Повернуть камеру на delta (рад, против часовой). Сначала — через
-    параметр поворота экземпляра (rotation_param_name), иначе — поворотом
-    самого экземпляра вокруг вертикали через точку вставки. Возвращает
-    (успех, пояснение)."""
+def _rotate_camera(doc, cam, s, unit_mode, target, forward, delta):
+    """Развернуть камеру в азимут target (рад). Сначала — через параметр
+    поворота экземпляра (rotation_param_name, по его шкале —
+    _rotation_value_for_azimuth; forward — «вперёд» семейства), иначе —
+    поворотом самого экземпляра на delta вокруг вертикали через точку
+    вставки. Возвращает (успех, пояснение)."""
     rot_p = _instance_param(cam, s.get("rotation_param_name"))
     if _writable_double(rot_p):
-        old = _param_radians(rot_p, unit_mode) if rot_p.HasValue else 0.0
-        new = _norm_angle((old or 0.0) + delta)
+        new, in_range = _rotation_value_for_azimuth(target, forward, s)
+        if not in_range:
+            return False, u"азимут вне диапазона поворота «{}»".format(
+                s.get("rotation_range_deg"))
         rot_p.Set(_radians_to_param_value(rot_p, new, unit_mode))
         return True, u"параметр «{}» = {:.1f}°".format(
             rot_p.Definition.Name, math.degrees(new))
@@ -2165,14 +2241,9 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
         return (cam, u"no_distance_param",
                 u"дальность = 0 (параметр «{}»)".format(dist_name))
 
-    offset_deg = _as_float(s.get("direction_offset_deg"), 0.0)
-    d, dir_note = _look_direction(cam, offset_deg)
-    if d is None:
+    base, dir_note, forward = _camera_azimuth(doc, cam, s, unit_mode)
+    if base is None:
         return (cam, u"bad_geometry", u"нет направления камеры [{}]".format(dir_note))
-    base = math.atan2(d.Y, d.X)
-    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
-    if rot:
-        base += rot
 
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
@@ -2209,13 +2280,21 @@ def _auto_aim_one(doc, cam, view, s, unit_mode, default_h_ft, default_vfov_rad,
     # --- поворот по биссектрисе
     cur_idx = int(round(_norm_angle(base) / step)) % n
     if rotate_on:
+        # поворот параметром внутри семейства с ограниченным диапазоном
+        # (поворотная камера на настенном основании: 0–180°) — искать
+        # только среди достижимых азимутов
+        allowed = None
+        if (_writable_double(_instance_param(cam, s.get("rotation_param_name")))
+                and _rotation_spec(s)[2] is not None):
+            allowed = [_rotation_value_for_azimuth(k * step, forward, s)[1]
+                       for k in range(n)]
         half_steps = max(0, int(round(hfov_wide / 2.0 / step)))
-        best_idx = _best_azimuth(weights, half_steps, cur_idx)
+        best_idx = _best_azimuth(weights, half_steps, cur_idx, allowed)
         if best_idx is not None:
             target = best_idx * step
             delta = _norm_angle(target - base)
             if abs(delta) > _AIM_MIN_ROTATE_RAD:
-                ok, how = _rotate_camera(doc, cam, s, unit_mode, delta)
+                ok, how = _rotate_camera(doc, cam, s, unit_mode, target, forward, delta)
                 if ok:
                     base = target
                     notes.append(u"повёрнута на {:+.0f}° ({})".format(math.degrees(delta), how))
@@ -2472,16 +2551,11 @@ def build_camera_preview_view(doc, cam, view, settings):
     if not isinstance(cam.Location, LocationPoint):
         return (None, u"no_location", u"")
 
-    offset_deg = _as_float(s.get("direction_offset_deg"), 0.0)
     unit_mode = s.get("angle_unit") or u"авто"
-    d, dir_note = _look_direction(cam, offset_deg)
-    if d is None:
+    base, dir_note, _fwd = _camera_azimuth(doc, cam, s, unit_mode)
+    if base is None:
         return (None, u"bad_geometry",
                 u"не удалось определить направление камеры [{}]".format(dir_note))
-    base = math.atan2(d.Y, d.X)
-    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
-    if rot:
-        base += rot
 
     tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode) or 0.0
 
@@ -2707,7 +2781,41 @@ TEXT_FIELDS = [
         u"поворотом экземпляра в модели. Если у разных семейств камер этот "
         u"параметр называется по-разному (например, «Вращение (поворот)» у "
         u"одних, «УГО_Поворот» у других) — перечислите все варианты через "
-        u"«;»: «Вращение (поворот);УГО_Поворот».",
+        u"«;»: «Вращение (поворот);УГО_Поворот». Как значение переводится "
+        u"в направление — три поля ниже.",
+        u"", False
+    ),
+    (
+        "rotation_zero_deg",
+        u"",
+        u"Поворот 0 — куда смотрит камера, ° от «вперёд»",
+        u"Куда смотрит камера, когда параметр поворота = 0: угол от "
+        u"направления «вперёд» семейства (от основания, от стены), против "
+        u"часовой стрелки. Обычно 0 (при 0 камера смотрит вперёд). Для "
+        u"поворотной камеры на настенном основании, у которой (на плане, "
+        u"стена снизу) 0 — влево вдоль стены, 90 — вверх от стены, 180 — "
+        u"вправо, впишите 90.",
+        u"0", False
+    ),
+    (
+        "rotation_clockwise",
+        u"",
+        u"Поворот растёт по часовой стрелке (да/нет)",
+        u"«нет» — большее значение параметра поворачивает камеру против "
+        u"часовой стрелки (в плане), «да» — по часовой. Для камеры «0 — "
+        u"влево, 90 — от стены, 180 — вправо» — «да». Если после «Зон "
+        u"обзора» зоны смотрят зеркально (влево вместо вправо) — "
+        u"переключите это поле.",
+        u"нет", False
+    ),
+    (
+        "rotation_range_deg",
+        u"",
+        u"Диапазон поворота, ° (мин-макс, необязательно)",
+        u"Пределы, в которых поворачивается камера внутри семейства, "
+        u"например «0-180» — тогда «Навести на помещение» выбирает "
+        u"направление только из них (камера не отвернётся в стену) и "
+        u"записывает значение в этом диапазоне. Пусто — без ограничений.",
         u"", False
     ),
     (

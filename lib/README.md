@@ -1538,8 +1538,11 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   — `_look_direction` (FacingOrientation → Transform.BasisY → BasisX →
   HandOrientation⟂, возвращает вектор + текстовое пояснение источника)
   плюс `rotation_param_name` (индивидуальный разворот параметром ВНУТРИ
-  семейства — прибавляется к азимуту, если сам экземпляр не крутится)
-  плюс общий `direction_offset_deg`.
+  семейства, по шкале `rotation_zero_deg`/`rotation_clockwise` —
+  `_rotation_spec`) плюс общий `direction_offset_deg`. Всё это собрано в
+  `_camera_azimuth` — общей для зон, автонаведения, вида с камеры и
+  диагностики; обратное преобразование (азимут -> значение параметра в
+  пределах `rotation_range_deg`) — `_rotation_value_for_azimuth`.
   Возвращает `[(camera, status, detail)]` со `status`
   `ok`/`ok_no_room`/`ok_clip_failed`/`no_location`/`no_optics`/
   `no_distance_param`/`bad_geometry`/`create_failed`/`no_fill_type`; для
