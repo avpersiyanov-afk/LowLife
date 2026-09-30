@@ -1625,7 +1625,8 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   `auto_rotate` (`_best_azimuth` — середина «плато» максимума в окне
   самого широкого угла, запись через `_rotate_camera`) → `L = min(до
   стены, R)` → фокусное по `auto_focal_mode` (`_focal_mode`: площадь —
-  `_coverage_half_steps`; DORI — кадр `camera_h_res_px / _dori_ppm(...)`
+  `_coverage_half_steps`; DORI — кадр `_camera_h_res(...) / _dori_ppm(...)` (параметр
+  `camera_h_res_param_name`, иначе общий `camera_h_res_px`)
   на `L`; авто — DORI, если стена дальше `R`) → `h = высота −
   target_level_offset_mm` → наклон по `auto_tilt_mode`. Учёт других
   камер (`auto_consider_others`): `_other_cameras_in_view` +
