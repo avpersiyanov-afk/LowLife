@@ -458,6 +458,8 @@ _ROLE_SPECS = [
      (u"length", u"number"), True, False),
     ("sensor_format_param_name", u"Формат матрицы (текст)",
      (u"text",), False, False),
+    ("camera_h_res_param_name", u"Горизонтальное разрешение, пикс",
+     (u"integer", u"number", u"text"), False, False),
     ("distance_param_name", u"Дальность",
      (u"length",), True, False),
     ("height_param_name", u"Высота установки",
@@ -1763,6 +1765,35 @@ _DORI_LEVELS = (
 )
 
 
+def _camera_h_res(doc, cam, s, default_px):
+    """
+    Горизонтальное разрешение матрицы этой камеры, пикс: из параметра
+    camera_h_res_param_name (обычно параметр ТИПА — характеристика модели;
+    ищется на экземпляре, потом на типе; «Целое», «Число» или текст
+    вида «1920» / «1920x1080»), а если параметр не задан, не найден или
+    пуст — общее значение default_px (camera_h_res_px из настроек).
+    """
+    name = (s.get("camera_h_res_param_name") or u"").strip()
+    if name:
+        p = _find_param(doc, cam, name)
+        if p is not None and p.HasValue:
+            v = None
+            try:
+                if p.StorageType == StorageType.Integer:
+                    v = float(p.AsInteger())
+                elif p.StorageType == StorageType.Double:
+                    v = p.AsDouble()
+                elif p.StorageType == StorageType.String:
+                    m = re.search(u"\\d+", p.AsString() or u"")
+                    v = float(m.group(0)) if m else None
+            except Exception:
+                v = None
+            # меньше 100 — явно не пиксели (мегапиксели, пусто и т.п.)
+            if v is not None and v >= 100:
+                return v
+    return default_px
+
+
 def _draw_dori(doc, view, center, base, half, h_res_px, hfov_rad, max_r, z, gstyle):
     if h_res_px <= 0 or hfov_rad <= 1e-4:
         return
@@ -1896,8 +1927,10 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
 
     _apply_boundary_style(fr, line_style)
 
-    if dori_style is not None and h_res > 0:
-        _draw_dori(doc, view, center, base, half, h_res, hfov, max_r, z, dori_style)
+    if dori_style is not None:
+        cam_res = _camera_h_res(doc, cam, s, h_res)
+        if cam_res > 0:
+            _draw_dori(doc, view, center, base, half, cam_res, hfov, max_r, z, dori_style)
 
     if not clip:
         clip_note = u"без обрезки по помещению (выключена)"
@@ -2449,11 +2482,12 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
 
     # --- фокусное: по площади помещения или по детализации DORI на L
     mode = o["focal_mode"]
-    h_res = o["h_res_px"]
+    h_res = _camera_h_res(doc, cam, s, o["h_res_px"])
     if mode == u"auto":
         mode = u"dori" if large_room else u"area"
     if mode == u"dori" and h_res <= 0:
-        notes.append(u"DORI: не задано разрешение матрицы (раздел ⑤) — фокусное по площади")
+        notes.append(u"DORI: не задано разрешение матрицы (ни параметром камеры, ни в "
+                     u"разделе ⑤) — фокусное по площади")
         mode = u"area"
         if weights is None:
             weights = _ray_weights(center, _ray_table(center, rings, range_ft), range_ft, others)
@@ -2463,7 +2497,8 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
         # кадр шириной res/ppm метров на расстоянии L
         frame_w_ft = (h_res / o["dori_ppm"]) / _M_PER_FT
         needed_hfov = 2.0 * math.atan2(frame_w_ft / 2.0, work_ft)
-        focal_how = u"DORI {:.0f} пикс/м на {:.1f} м".format(o["dori_ppm"], work_ft * _M_PER_FT)
+        focal_how = u"DORI {:.0f} пикс/м на {:.1f} м, {:.0f} пикс".format(
+            o["dori_ppm"], work_ft * _M_PER_FT, h_res)
     else:
         center_idx = int(round(_norm_angle(base) / step)) % n
         cov_half = _coverage_half_steps(weights, center_idx, o["coverage"]) * step
@@ -3133,10 +3168,23 @@ TEXT_FIELDS = [
         u"нет", False
     ),
     (
+        "camera_h_res_param_name",
+        u"",
+        u"Параметр «горизонтальное разрешение» (необязательно)",
+        u"Имя параметра камеры с горизонтальным разрешением матрицы в "
+        u"пикселях — обычно параметр ТИПА (характеристика модели; ищется и "
+        u"на экземпляре, и на типе). «Целое», «Число» или текст вида «1920» "
+        u"/ «1920x1080». Если параметр не задан, не найден или пуст — "
+        u"берётся общее значение из поля ниже. Несколько имён (у разных "
+        u"семейств камер) — через «;».",
+        u"", False
+    ),
+    (
         "camera_h_res_px",
         u"",
-        u"Горизонтальное разрешение матрицы, пикс",
-        u"Нужно для дуг DORI и для подбора фокусного по DORI (раздел ⑥). "
+        u"Горизонтальное разрешение матрицы, пикс (общее)",
+        u"Нужно для дуг DORI и для подбора фокусного по DORI (раздел ⑥), "
+        u"если у камеры нет параметра разрешения (поле выше). "
         u"Например 1920 (Full HD), 2560, 3840. "
         u"Расстояние: d = H / (2 · пикс/м · tg(гор.угол / 2)).",
         u"", False
