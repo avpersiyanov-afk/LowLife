@@ -1527,7 +1527,7 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   обзора: они **всегда** расчётные (не параметр камеры, а результат
   `θ = 2·arctg(размер_матрицы / 2f)`) из `focal_length_param_name` +
   формат матрицы (`sensor_format_param_name` на камере, иначе общий
-  `sensor_format` из настроек; форматы в `_SENSOR_FORMATS` /
+  `sensor_format` из настроек; диагонали форматов в `_SENSOR_DIAGONALS`, кадр 16:9 по умолчанию /
   `_parse_sensor`, длины через `_length_param_mm`). Возвращает
   `(hfov, vfov, reason)` — `reason` не None, только если расчёт не
   получился (какой из двух входов не нашёлся/не распознан) — уходит в
