@@ -270,16 +270,8 @@ def _param_radians(param, unit_mode):
         return v
 
     # авто: значение уже в радианах, если параметр углового типа
-    try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Angle:
-            return v
-    except Exception:
-        pass
-    try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Angle:
-            return v
-    except Exception:
-        pass
+    if _is_angle_param(param):
+        return v
     return math.radians(v)
 
 
@@ -289,7 +281,14 @@ def _opt_param_radians(doc, el, name, unit_mode):
     значения ни на экземпляре, ни на типе (см. _find_param).
     """
     p = _find_param(doc, el, name)
-    if p is None or not p.HasValue or p.StorageType != StorageType.Double:
+    if p is None or not p.HasValue:
+        return None
+    if p.StorageType == StorageType.Integer:
+        # «Целое» — число градусов (или радиан, если так задано в настройках)
+        v = float(p.AsInteger())
+        mode = (unit_mode or u"авто").strip().lower()
+        return v if mode.startswith(u"рад") else math.radians(v)
+    if p.StorageType != StorageType.Double:
         return None
     return _param_radians(p, unit_mode)
 
@@ -384,45 +383,49 @@ def _length_param_mm(param):
     """Значение параметра длины в миллиметрах. Тип «Длина» -> из футов в мм;
     иначе значение берётся как есть (считаем, что уже в мм)."""
     v = param.AsDouble()
+    return v * 304.8 if _is_length_param(param) else v
+
+
+def _spec_is(param, spec_attr, spec_key):
+    """
+    Тип данных параметра — spec_attr (SpecTypeId.Angle/Length)? Сравнение
+    ForgeTypeId через «==» в IronPython ненадёжно (может сравнить ссылки,
+    а не значения) — поэтому основной способ — по строке TypeId
+    («autodesk.spec.aec:angle-2.0.0»), затем Equals, затем устаревший
+    ParameterType (Revit до 2022).
+    """
     try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Length:
-            return v * 304.8
+        dt = param.Definition.GetDataType()
+        tid = (dt.TypeId or u"").lower()
+        if tid.startswith(u"autodesk.spec.aec:" + spec_key + u"-") \
+                or tid == u"autodesk.spec.aec:" + spec_key:
+            return True
+        if _SpecTypeId is not None and dt.Equals(getattr(_SpecTypeId, spec_attr)):
+            return True
     except Exception:
         pass
     try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Length:
-            return v * 304.8
+        if _ParameterType is not None and \
+                param.Definition.ParameterType == getattr(_ParameterType, spec_attr):
+            return True
     except Exception:
         pass
-    return v
+    return False
 
 
 def _is_length_param(param):
-    try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Length:
-            return True
-    except Exception:
-        pass
-    try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Length:
-            return True
-    except Exception:
-        pass
-    return False
+    return _spec_is(param, "Length", u"length")
 
 
 def _is_angle_param(param):
+    if _spec_is(param, "Angle", u"angle"):
+        return True
+    # последний шанс: Revit сам показывает значение в градусах
     try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Angle:
-            return True
+        vs = param.AsValueString() or u""
+        return u"\u00b0" in vs
     except Exception:
-        pass
-    try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Angle:
-            return True
-    except Exception:
-        pass
-    return False
+        return False
 
 
 def _mm_to_param_value(param, mm_value):
@@ -519,7 +522,7 @@ _ROLE_SPECS = [
     ("tilt_param_name", u"Наклон оптической оси вниз",
      (u"angle", u"number"), False, True),
     ("rotation_param_name", u"Поворот камеры (внутри семейства)",
-     (u"angle", u"number"), False, False),
+     (u"angle", u"number", u"integer"), False, False),
 ]
 
 # Публичная — используется CameraParamsCheck.pushbutton для отображения
@@ -2312,6 +2315,13 @@ def _writable_double(p):
     return p is not None and not p.IsReadOnly and p.StorageType == StorageType.Double
 
 
+def _writable_angle(p):
+    """Угловой параметр, в который можно писать: «Угол»/«Число» (Double)
+    или «Целое» (градусы)."""
+    return p is not None and not p.IsReadOnly and \
+        p.StorageType in (StorageType.Double, StorageType.Integer)
+
+
 def _camera_sensor(doc, cam, s):
     sensor = None
     sensor_pname = (s.get("sensor_format_param_name") or u"").strip()
@@ -2332,12 +2342,16 @@ def _rotate_camera(doc, cam, s, unit_mode, target, forward, delta):
     поворотом самого экземпляра на delta вокруг вертикали через точку
     вставки. Возвращает (успех, пояснение)."""
     rot_p = _instance_param(cam, s.get("rotation_param_name"))
-    if _writable_double(rot_p):
+    if _writable_angle(rot_p):
         new, in_range = _rotation_value_for_azimuth(target, forward, s)
         if not in_range:
             return False, u"азимут вне диапазона поворота «{}»".format(
                 s.get("rotation_range_deg"))
-        rot_p.Set(_radians_to_param_value(rot_p, new, unit_mode))
+        if rot_p.StorageType == StorageType.Integer:
+            mode = (unit_mode or u"авто").strip().lower()
+            rot_p.Set(int(round(new if mode.startswith(u"рад") else math.degrees(new))))
+        else:
+            rot_p.Set(_radians_to_param_value(rot_p, new, unit_mode))
         return True, u"параметр «{}» = {:.1f}°".format(
             rot_p.Definition.Name, math.degrees(new))
     p = cam.Location.Point
@@ -2553,7 +2567,7 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
         # (поворотная камера на настенном основании: 0–180°) — искать
         # только среди достижимых азимутов
         allowed = None
-        if (_writable_double(_instance_param(cam, s.get("rotation_param_name")))
+        if (_writable_angle(_instance_param(cam, s.get("rotation_param_name")))
                 and _rotation_spec(s)[2] is not None):
             allowed = [_rotation_value_for_azimuth(k * step, forward, s)[1]
                        for k in range(n)]
