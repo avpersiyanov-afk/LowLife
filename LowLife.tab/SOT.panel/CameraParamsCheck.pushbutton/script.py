@@ -157,6 +157,17 @@ if diag["type_params"]:
 else:
     print(u"(нет)")
 
+nested_params = diag.get("nested_params") or []
+output.print_md(u"## Параметры вложенных общих семейств ({})".format(len(nested_params)))
+if nested_params:
+    output.print_table(
+        table_data=_param_rows(nested_params),
+        columns=[u"Имя", u"Тип данных", u"Уровень", u"Значение"]
+    )
+else:
+    print(u"(нет вложенных общих семейств — параметры необщих вложенных видны "
+          u"только через параметры самой камеры)")
+
 
 def _bool_ru(v):
     if v is None:

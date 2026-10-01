@@ -142,6 +142,28 @@ def _split_alias_names(configured):
     return [n.strip() for n in configured.split(u";") if n.strip()]
 
 
+def _subcomponents(doc, el, depth=3):
+    """Вложенные общие (shared) семейства экземпляра — рекурсивно, до depth
+    уровней. У составной камеры «основание + поворотная камера» параметры
+    поворота/наклона/оптики нередко принадлежат вложенной камере, а не
+    основанию. Необщие вложенные семейства в проекте отдельными элементами
+    не существуют — их параметры видны только через параметры основания."""
+    out = []
+    if depth <= 0 or el is None:
+        return out
+    try:
+        ids = list(el.GetSubComponentIds())
+    except Exception:
+        return out
+    for i in ids:
+        sub = doc.GetElement(i)
+        if sub is None:
+            continue
+        out.append(sub)
+        out.extend(_subcomponents(doc, sub, depth - 1))
+    return out
+
+
 def _find_param(doc, el, name):
     """
     Параметр el по имени (или по «;»-списку имён-кандидатов, см.
@@ -163,6 +185,9 @@ def _find_param(doc, el, name):
     но не заполнен, а на типе такого параметра нет вовсе — возвращает
     именно параметр экземпляра (без значения), чтобы вызывающий код мог
     отличить «нет такого параметра» от «параметр есть, но пуст».
+    Если параметра нет ни на экземпляре, ни на типе — ищется во вложенных
+    общих семействах (_subcomponents: составная камера «основание +
+    поворотная камера»).
     """
     names = _split_alias_names(name)
     if not names:
@@ -200,7 +225,34 @@ def _find_param(doc, el, name):
         if fallback is None and inst_p is not None:
             fallback = inst_p
 
+    if fallback is None:
+        # у самой камеры (основания) нет — ищем во вложенных семействах
+        for sub in _subcomponents(doc, el):
+            p = _find_param_flat(doc, sub, names)
+            if p is not None:
+                return p
+
     return fallback
+
+
+def _find_param_flat(doc, el, names):
+    """Как _find_param, но без спуска во вложенные: экземпляр, потом тип;
+    только параметр со значением."""
+    try:
+        type_el = doc.GetElement(el.GetTypeId())
+    except Exception:
+        type_el = None
+    for candidate in names:
+        for holder in (el, type_el):
+            if holder is None:
+                continue
+            try:
+                p = holder.LookupParameter(candidate)
+            except Exception:
+                p = None
+            if p is not None and p.HasValue:
+                return p
+    return None
 
 
 def _param_radians(param, unit_mode):
@@ -218,16 +270,8 @@ def _param_radians(param, unit_mode):
         return v
 
     # авто: значение уже в радианах, если параметр углового типа
-    try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Angle:
-            return v
-    except Exception:
-        pass
-    try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Angle:
-            return v
-    except Exception:
-        pass
+    if _is_angle_param(param):
+        return v
     return math.radians(v)
 
 
@@ -237,7 +281,14 @@ def _opt_param_radians(doc, el, name, unit_mode):
     значения ни на экземпляре, ни на типе (см. _find_param).
     """
     p = _find_param(doc, el, name)
-    if p is None or not p.HasValue or p.StorageType != StorageType.Double:
+    if p is None or not p.HasValue:
+        return None
+    if p.StorageType == StorageType.Integer:
+        # «Целое» — число градусов (или радиан, если так задано в настройках)
+        v = float(p.AsInteger())
+        mode = (unit_mode or u"авто").strip().lower()
+        return v if mode.startswith(u"рад") else math.radians(v)
+    if p.StorageType != StorageType.Double:
         return None
     return _param_radians(p, unit_mode)
 
@@ -332,45 +383,49 @@ def _length_param_mm(param):
     """Значение параметра длины в миллиметрах. Тип «Длина» -> из футов в мм;
     иначе значение берётся как есть (считаем, что уже в мм)."""
     v = param.AsDouble()
+    return v * 304.8 if _is_length_param(param) else v
+
+
+def _spec_is(param, spec_attr, spec_key):
+    """
+    Тип данных параметра — spec_attr (SpecTypeId.Angle/Length)? Сравнение
+    ForgeTypeId через «==» в IronPython ненадёжно (может сравнить ссылки,
+    а не значения) — поэтому основной способ — по строке TypeId
+    («autodesk.spec.aec:angle-2.0.0»), затем Equals, затем устаревший
+    ParameterType (Revit до 2022).
+    """
     try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Length:
-            return v * 304.8
+        dt = param.Definition.GetDataType()
+        tid = (dt.TypeId or u"").lower()
+        if tid.startswith(u"autodesk.spec.aec:" + spec_key + u"-") \
+                or tid == u"autodesk.spec.aec:" + spec_key:
+            return True
+        if _SpecTypeId is not None and dt.Equals(getattr(_SpecTypeId, spec_attr)):
+            return True
     except Exception:
         pass
     try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Length:
-            return v * 304.8
+        if _ParameterType is not None and \
+                param.Definition.ParameterType == getattr(_ParameterType, spec_attr):
+            return True
     except Exception:
         pass
-    return v
+    return False
 
 
 def _is_length_param(param):
-    try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Length:
-            return True
-    except Exception:
-        pass
-    try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Length:
-            return True
-    except Exception:
-        pass
-    return False
+    return _spec_is(param, "Length", u"length")
 
 
 def _is_angle_param(param):
+    if _spec_is(param, "Angle", u"angle"):
+        return True
+    # последний шанс: Revit сам показывает значение в градусах
     try:
-        if _SpecTypeId is not None and param.Definition.GetDataType() == _SpecTypeId.Angle:
-            return True
+        vs = param.AsValueString() or u""
+        return u"\u00b0" in vs
     except Exception:
-        pass
-    try:
-        if _ParameterType is not None and param.Definition.ParameterType == _ParameterType.Angle:
-            return True
-    except Exception:
-        pass
-    return False
+        return False
 
 
 def _mm_to_param_value(param, mm_value):
@@ -467,7 +522,7 @@ _ROLE_SPECS = [
     ("tilt_param_name", u"Наклон оптической оси вниз",
      (u"angle", u"number"), False, True),
     ("rotation_param_name", u"Поворот камеры (внутри семейства)",
-     (u"angle", u"number"), False, False),
+     (u"angle", u"number", u"integer"), False, False),
 ]
 
 # Публичная — используется CameraParamsCheck.pushbutton для отображения
@@ -597,7 +652,23 @@ def diagnose_camera_params(doc, el, settings):
 
     inst_params = _list_params(el, u"экземпляр")
     type_params = _list_params(type_el, u"тип")
-    all_params = inst_params + type_params
+
+    # вложенные общие семейства (составная камера «основание + камера»)
+    nested = []   # [(sub, sub_type, family_label)]
+    nested_params = []
+    for sub in _subcomponents(doc, el):
+        try:
+            sub_type = doc.GetElement(sub.GetTypeId())
+        except Exception:
+            sub_type = None
+        try:
+            fam = sub_type.FamilyName if sub_type is not None else _safe_name(sub)
+        except Exception:
+            fam = u"?"
+        nested.append((sub, sub_type, fam))
+        nested_params.extend(_list_params(sub, u"вложенное «{}»".format(fam)))
+        nested_params.extend(_list_params(sub_type, u"тип вложенного «{}»".format(fam)))
+    all_params = inst_params + type_params + nested_params
 
     try:
         family_name = type_el.FamilyName if type_el is not None else u""
@@ -652,6 +723,25 @@ def diagnose_camera_params(doc, el, settings):
                     break
 
             if chosen is None:
+                for sub, sub_type, fam in nested:
+                    for cname in candidate_names:
+                        for holder, lvl in ((sub, u"вложенное «{}»".format(fam)),
+                                            (sub_type, u"тип вложенного «{}»".format(fam))):
+                            if holder is None:
+                                continue
+                            try:
+                                p = holder.LookupParameter(cname)
+                            except Exception:
+                                p = None
+                            if p is not None:
+                                chosen, level, matched_name = p, lvl, cname
+                                break
+                        if chosen is not None:
+                            break
+                    if chosen is not None:
+                        break
+
+            if chosen is None:
                 status = u"not_found"
             else:
                 kind = _param_kind(chosen)
@@ -663,7 +753,7 @@ def diagnose_camera_params(doc, el, settings):
                 )
                 if kind not in expected_kinds:
                     status = u"wrong_kind"
-                elif must_be_instance and level == u"тип":
+                elif must_be_instance and level.startswith(u"тип"):
                     status = u"tilt_not_instance"
                 elif not has_value:
                     status = u"empty"
@@ -696,6 +786,7 @@ def diagnose_camera_params(doc, el, settings):
         u"family_name": family_name, u"type_name": type_name,
         u"category_name": category_name, u"category_ok": category_ok,
         u"instance_params": inst_params, u"type_params": type_params,
+        u"nested_params": nested_params,
         u"roles": roles,
         u"geometry": describe_camera_geometry(doc, el, settings),
         u"family_def": inspect_family_definition(doc, el),
@@ -835,8 +926,13 @@ def _camera_azimuth(doc, cam, s, unit_mode):
     if d is None:
         return None, note, None
     forward = math.atan2(d.Y, d.X)
-    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
+    rot_name = (s.get("rotation_param_name") or u"").strip()
+    rot = _opt_param_radians(doc, cam, rot_name, unit_mode)
     if rot is None:
+        if rot_name:
+            note = u"{}; параметр поворота «{}» не найден ни на камере, ни на её " \
+                   u"типе, ни во вложенных семействах — поворот не учтён".format(
+                       note, rot_name)
         return forward, note, forward
     zero, sign, _rng = _rotation_spec(s)
     az = forward + zero + sign * rot
@@ -2196,16 +2292,34 @@ def _coverage_half_steps(weights, center_idx, fraction):
 
 def _instance_param(cam, configured):
     """Первый из перечисленных через «;» параметров, найденный на ЭКЗЕМПЛЯРЕ
-    (LookupParameter), либо None."""
-    for name in _split_alias_names((configured or u"").strip()):
+    (LookupParameter), либо None. Если у самой камеры нет — на экземплярах
+    вложенных общих семейств (составная камера «основание + поворотная
+    камера»)."""
+    names = _split_alias_names((configured or u"").strip())
+    for name in names:
         p = cam.LookupParameter(name)
         if p is not None:
             return p
+    for sub in _subcomponents(cam.Document, cam):
+        for name in names:
+            try:
+                p = sub.LookupParameter(name)
+            except Exception:
+                p = None
+            if p is not None:
+                return p
     return None
 
 
 def _writable_double(p):
     return p is not None and not p.IsReadOnly and p.StorageType == StorageType.Double
+
+
+def _writable_angle(p):
+    """Угловой параметр, в который можно писать: «Угол»/«Число» (Double)
+    или «Целое» (градусы)."""
+    return p is not None and not p.IsReadOnly and \
+        p.StorageType in (StorageType.Double, StorageType.Integer)
 
 
 def _camera_sensor(doc, cam, s):
@@ -2228,12 +2342,16 @@ def _rotate_camera(doc, cam, s, unit_mode, target, forward, delta):
     поворотом самого экземпляра на delta вокруг вертикали через точку
     вставки. Возвращает (успех, пояснение)."""
     rot_p = _instance_param(cam, s.get("rotation_param_name"))
-    if _writable_double(rot_p):
+    if _writable_angle(rot_p):
         new, in_range = _rotation_value_for_azimuth(target, forward, s)
         if not in_range:
             return False, u"азимут вне диапазона поворота «{}»".format(
                 s.get("rotation_range_deg"))
-        rot_p.Set(_radians_to_param_value(rot_p, new, unit_mode))
+        if rot_p.StorageType == StorageType.Integer:
+            mode = (unit_mode or u"авто").strip().lower()
+            rot_p.Set(int(round(new if mode.startswith(u"рад") else math.degrees(new))))
+        else:
+            rot_p.Set(_radians_to_param_value(rot_p, new, unit_mode))
         return True, u"параметр «{}» = {:.1f}°".format(
             rot_p.Definition.Name, math.degrees(new))
     p = cam.Location.Point
@@ -2449,7 +2567,7 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
         # (поворотная камера на настенном основании: 0–180°) — искать
         # только среди достижимых азимутов
         allowed = None
-        if (_writable_double(_instance_param(cam, s.get("rotation_param_name")))
+        if (_writable_angle(_instance_param(cam, s.get("rotation_param_name")))
                 and _rotation_spec(s)[2] is not None):
             allowed = [_rotation_value_for_azimuth(k * step, forward, s)[1]
                        for k in range(n)]
