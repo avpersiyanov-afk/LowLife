@@ -954,13 +954,10 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
     if cat_types:
         # моделируемое семейство с .txt: LoadFamily целиком берёт только
         # прототип, поэтому грузим типы из каталога через LoadFamilySymbol
-        errs = []
-        for tn in cat_types:
-            try:
-                doc.LoadFamilySymbol(dst, tn, options)
-            except Exception as ex:
-                errs.append(u"«{}»: {}".format(tn, ex))
-        fam = find_family_by_name(doc, target_family_name)
+        n_ok, errs = load_catalog_symbols(
+            doc, dst, target_family_name, cat_types, options
+        )
+        fam = find_family_by_name(doc, target_family_name) if n_ok else None
         diag.append(u"каталог типов: {} шт{}".format(
             len(cat_types), u" (ошибки: " + u"; ".join(errs) + u")" if errs else u""
         ))
@@ -1869,23 +1866,72 @@ def show_type_picker(type_map):
     return result["map"]
 
 
+def _decode_type_catalog(raw):
+    """
+    Текст каталога типоразмеров из байтов. Кодировку определяем по BOM;
+    без BOM — UTF-8 (строго), иначе ANSI (cp1251). UTF-16 без BOM узнаём
+    по нулевым байтам: «utf-16» без BOM молча декодирует любые чётные
+    байты UTF-8/ANSI в мусор из CJK-иероглифов, поэтому вслепую его
+    пробовать нельзя. None при сбое.
+    """
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        encs = (u"utf-16",)
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        encs = (u"utf-8-sig",)
+    elif b"\x00" in raw[:200]:
+        # UTF-16 без BOM: ASCII-символы дают нули в нечётных (LE) / чётных (BE) байтах
+        head = raw[:200]
+        encs = (u"utf-16-le",) if head[1:2] == b"\x00" else (u"utf-16-be",)
+    else:
+        encs = (u"utf-8", u"cp1251")
+    for enc in encs:
+        try:
+            return raw.decode(enc)
+        except:
+            continue
+    return None
+
+
+def _first_csv_field(line, delim):
+    """
+    Первое поле строки каталога с учётом кавычек: имя типоразмера может
+    быть в кавычках и содержать разделитель («"2Мп, 2.8 мм",…»), удвоенная
+    кавычка внутри — литеральная кавычка.
+    """
+    line = line.lstrip()
+    if not line.startswith(u'"'):
+        return line.split(delim, 1)[0].strip()
+    out = []
+    i = 1
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == u'"':
+            if i + 1 < n and line[i + 1] == u'"':
+                out.append(u'"')
+                i += 2
+                continue
+            break
+        out.append(ch)
+        i += 1
+    return u"".join(out).strip()
+
+
 def _read_type_catalog_names(txt_path):
     """
     Имена типоразмеров из каталога типоразмеров .txt (первый столбец каждой
     строки после заголовка; разделитель — первый символ первой строки).
     [] при сбое. Кодировка каталога — UTF-16 / UTF-8 / ANSI (cp1251).
     """
-    lines = None
-    for enc in (u"utf-16", u"utf-8-sig", u"cp1251", u"utf-8", u"latin-1"):
-        try:
-            with io.open(txt_path, "r", encoding=enc) as f:
-                text = f.read()
-        except:
-            continue
-        if u"�" in text and enc != u"latin-1":
-            continue
-        lines = text.splitlines()
-        break
+    try:
+        with io.open(txt_path, "rb") as f:
+            raw = f.read()
+    except:
+        return []
+    text = _decode_type_catalog(raw)
+    if not text:
+        return []
+    lines = text.splitlines()
     if not lines:
         return []
 
@@ -1894,13 +1940,111 @@ def _read_type_catalog_names(txt_path):
 
     names = []
     for ln in lines[1:]:
-        ln = ln.strip()
-        if not ln:
+        if not ln.strip():
             continue
-        name = ln.split(delim, 1)[0].strip().strip(u'"')
+        name = _first_csv_field(ln, delim)
         if name:
             names.append(name)
     return names
+
+
+def _write_utf16_catalog(src_txt, dst_txt):
+    """
+    Копия каталога типоразмеров в UTF-16 LE с BOM — кодировке, которую
+    Revit гарантированно читает. Каталог в UTF-8 без BOM Revit читает как
+    ANSI, кириллица в именах типов портится, и LoadFamilySymbol молча
+    возвращает False на каждое имя. True при успехе.
+    """
+    try:
+        with io.open(src_txt, "rb") as f:
+            text = _decode_type_catalog(f.read())
+        if text is None:
+            return False
+        with io.open(dst_txt, "wb") as f:
+            f.write(b"\xff\xfe" + text.encode("utf-16-le"))
+        return True
+    except:
+        return False
+
+
+def _load_symbol(doc, rfa_path, type_name, options):
+    """
+    Document.LoadFamilySymbol с проверкой результата. В IronPython перегрузка
+    с out FamilySymbol возвращает кортеж (bool, symbol) — кортеж всегда
+    истинен, поэтому разбираем его явно. → (ok, текст ошибки или None).
+    """
+    try:
+        res = doc.LoadFamilySymbol(rfa_path, type_name, options)
+    except Exception as ex:
+        return (False, u"{}".format(ex))
+    if isinstance(res, tuple):
+        ok = bool(res[0]) if res else False
+    else:
+        ok = bool(res)
+    return (ok, None if ok else u"LoadFamilySymbol вернул False")
+
+
+def _family_has_symbol(doc, family_name, type_name):
+    fam = find_family_by_name(doc, family_name)
+    if fam is None:
+        return False
+    for sid in fam.GetFamilySymbolIds():
+        sym = doc.GetElement(sid)
+        if sym is not None and _safe_element_name(sym) == type_name:
+            return True
+    return False
+
+
+def load_catalog_symbols(doc, rfa_path, family_name, type_names, options):
+    """
+    Грузит типоразмеры type_names моделируемого семейства из rfa_path (рядом
+    лежит каталог .txt) через LoadFamilySymbol. Тип считается загруженным,
+    если вызов вернул True либо тип уже есть в модели (False возвращается и
+    когда тип не изменился).
+
+    Если ни один тип не загрузился — повтор из временной копии .rfa +
+    каталога, перекодированного в UTF-16 LE (см. _write_utf16_catalog);
+    имя файла сохраняется, чтобы не изменилось имя семейства.
+
+    → (n_ok, [ошибки по типам]).
+    """
+    def _try(path):
+        ok_n = 0
+        errs = []
+        for tn in type_names:
+            ok, err = _load_symbol(doc, path, tn, options)
+            if ok or _family_has_symbol(doc, family_name, tn):
+                ok_n += 1
+            else:
+                errs.append(u"«{}»: {}".format(tn, err or u"тип не появился в модели"))
+        return ok_n, errs
+
+    n_ok, errs = _try(rfa_path)
+    if n_ok or not type_names:
+        return n_ok, errs
+
+    src_txt = os.path.splitext(rfa_path)[0] + u".txt"
+    if not os.path.isfile(src_txt):
+        return n_ok, errs
+    tmp = None
+    try:
+        tmp = tempfile.mkdtemp(prefix="lowlife_famcat_")
+        dst = os.path.join(tmp, os.path.basename(rfa_path))
+        shutil.copyfile(rfa_path, dst)
+        if not _write_utf16_catalog(src_txt, os.path.splitext(dst)[0] + u".txt"):
+            return n_ok, errs + [u"не удалось перекодировать каталог в UTF-16"]
+        n2, errs2 = _try(dst)
+        if n2:
+            return n2, errs2
+        return n_ok, errs + [u"повтор с каталогом в UTF-16 тоже не помог"]
+    except Exception as ex:
+        return n_ok, errs + [u"повтор через временную копию: {}".format(ex)]
+    finally:
+        if tmp:
+            try:
+                shutil.rmtree(tmp, ignore_errors=True)
+            except:
+                pass
 
 
 def read_family_type_names(app, path):
@@ -2016,15 +2160,12 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
         n_types = None
         try:
             if want_types:
-                errs = []
-                for tn in want_types:
-                    try:
-                        doc.LoadFamilySymbol(e.path, tn, options)
-                    except Exception as ex:
-                        errs.append(u"«{}»: {}".format(tn, ex))
+                n_ok, errs = load_catalog_symbols(
+                    doc, e.path, e.name, want_types, options
+                )
                 fam = find_family_by_name(doc, e.name)
-                n_types = len(want_types)
-                if fam is None and not was_present:
+                n_types = n_ok
+                if not n_ok:
                     result["failed"].append((
                         e.name, e.rel,
                         u"типы из каталога не загрузились: {}".format(
@@ -2032,6 +2173,13 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
                         )
                     ))
                     continue
+                if errs:
+                    result["failed"].append((
+                        e.name, e.rel,
+                        u"загружено {} из {} типоразмеров; не загрузились: {}".format(
+                            n_ok, len(want_types), u"; ".join(errs)
+                        )
+                    ))
             else:
                 fam, _note = _load_rfa_into_project(doc, e.path, options)
                 try:
