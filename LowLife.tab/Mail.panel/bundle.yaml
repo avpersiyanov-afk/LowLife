@@ -1,0 +1,4 @@
+title: Почта
+tooltip: Разбор рабочей почты Outlook
+layout:
+  - EmailTasks

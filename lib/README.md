@@ -1373,6 +1373,28 @@ room_number_param)` — запись по точкам прохода, возв�
 |---|---|---|
 | `press_key` | `press_key(key)` | Имитирует нажатие и отпускание виртуальной клавиши `key` через `ctypes`/`user32` |
 
+## email_tasks_core.py / email_outlook.py / email_claude.py / email_tasks_excel.py / email_tasks_settings.py
+Кнопка «Задачи из почты» (`Mail.panel/EmailTasks`), подробности — `docs/email-tasks.md`.
+
+- `email_tasks_core.py` — чистая логика без .NET/COM (покрыта тестами):
+  `trim_body` (обрезка истории переписки, ≤4000 символов), `format_email`,
+  `make_batches` (пачки ≈30k символов), `build_request` (промпт + дата +
+  письма), `parse_tasks_json` (устойчивый разбор ответа модели, `ParseError`),
+  `normalize_task`, `sort_rows` (приоритет → срок → дата письма),
+  `load_test_emails`.
+- `email_outlook.py` — `read_inbox(days, unread_only, subfolder, tick)`:
+  чтение «Входящих» классического Outlook через COM (только чтение),
+  SMTP Exchange-отправителя через `GetExchangeUser()`; `OutlookError`.
+- `email_claude.py` — `find_claude(path)` (настройка → PATH →
+  `~\.local\bin` → `%APPDATA%\npm`), `run_claude(path, model, text, tick)`:
+  `claude -p --output-format json ...`, запрос через stdin в UTF-8,
+  таймаут 3 мин; `ClaudeError` (`fatal` — не залогинен/лимит/нет модели).
+- `email_tasks_excel.py` — `save_tasks(rows, path)`: книга Excel через COM
+  (выпадающий статус, условное форматирование, закреплённая шапка,
+  автофильтр), `default_output_path()`.
+- `email_tasks_settings.py` — `load()`/`save()`/`edit_interactive()`:
+  `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` и WPF-окно Shift+клика.
+
 ## export_rename.py
 Тело кнопки `Tools.panel/RenameExportFiles` («Переименование выгрузки»).
 После экспорта листов из Revit/ModPlus переименовывает выгруженные файлы,

@@ -1,0 +1,233 @@
+# -*- coding: utf-8 -*-
+"""
+Настройки кнопки «Задачи из почты» (Mail.panel) + окно их редактирования
+(Shift+клик по кнопке).
+
+Хранятся в папке конфигурации pyRevit — JSON-файл
+%APPDATA%\\pyRevit\\LowLifeEmailTasks_settings.json, тот же подход, что
+у остальных кнопок расширения (простой файл вместо
+pyrevit.script.get_config(), см. докстринг scs_settings.py про причину).
+"""
+
+import os
+import io
+import json
+
+import clr
+clr.AddReference('PresentationFramework')
+clr.AddReference('PresentationCore')
+
+from pyrevit import forms
+
+from System.Windows import (
+    Window, WindowStartupLocation, Thickness, FontWeights,
+    HorizontalAlignment, TextWrapping, SizeToContent
+)
+from System.Windows.Controls import (
+    StackPanel, TextBlock, TextBox, Button, CheckBox, Orientation
+)
+from System.Windows.Media import Brushes
+
+from lowlife import email_claude
+
+SETTINGS_FILE_NAME = "LowLifeEmailTasks_settings.json"
+
+DEFAULTS = {
+    "days": 3,
+    "unread_only": False,
+    "subfolder": u"",
+    "claude_path": u"",
+    "model": email_claude.DEFAULT_MODEL,
+    "test_mode": False,
+}
+
+
+def _settings_file_path():
+    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+    folder = os.path.join(appdata, "pyRevit")
+    if not os.path.isdir(folder):
+        try:
+            os.makedirs(folder)
+        except Exception:
+            pass
+    return os.path.join(folder, SETTINGS_FILE_NAME)
+
+
+def load():
+    values = dict(DEFAULTS)
+    path = _settings_file_path()
+    if os.path.isfile(path):
+        try:
+            with io.open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+            if text.strip():
+                values.update(json.loads(text))
+        except Exception:
+            pass
+    try:
+        values["days"] = max(1, int(values.get("days") or DEFAULTS["days"]))
+    except Exception:
+        values["days"] = DEFAULTS["days"]
+    values["unread_only"] = bool(values.get("unread_only"))
+    values["test_mode"] = bool(values.get("test_mode"))
+    values["model"] = (values.get("model") or u"").strip() or DEFAULTS["model"]
+    return values
+
+
+def save(values):
+    path = _settings_file_path()
+    try:
+        with io.open(path, "w", encoding="utf-8") as f:
+            f.write(unicode(json.dumps(values, ensure_ascii=False, indent=2, sort_keys=True)))
+    except Exception:
+        forms.alert(u"Не удалось сохранить настройки в файл:\n{}".format(path))
+        return False
+    return True
+
+
+def _label(parent, text, bold=False, top=10):
+    block = TextBlock()
+    block.Text = text
+    block.TextWrapping = TextWrapping.Wrap
+    block.Margin = Thickness(0, top, 0, 2)
+    if bold:
+        block.FontWeight = FontWeights.Bold
+    parent.Children.Add(block)
+    return block
+
+
+def _hint(parent, text):
+    block = TextBlock()
+    block.Text = text
+    block.FontSize = 11
+    block.Foreground = Brushes.Gray
+    block.TextWrapping = TextWrapping.Wrap
+    block.Margin = Thickness(0, 2, 0, 0)
+    parent.Children.Add(block)
+    return block
+
+
+def _textbox(parent, value):
+    box = TextBox()
+    box.Text = unicode(value)
+    box.Padding = Thickness(4)
+    parent.Children.Add(box)
+    return box
+
+
+def _checkbox(parent, text, value):
+    box = CheckBox()
+    box.Content = text
+    box.IsChecked = bool(value)
+    box.Margin = Thickness(0, 12, 0, 0)
+    parent.Children.Add(box)
+    return box
+
+
+def show_settings_form(values):
+    """Модальное окно. Возвращает словарь новых значений или None (Отмена)."""
+    result = {"values": None}
+
+    win = Window()
+    win.Title = u"Настройки: Задачи из почты"
+    win.Width = 640
+    win.SizeToContent = SizeToContent.Height
+    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+
+    root = StackPanel()
+    root.Margin = Thickness(16)
+
+    title = TextBlock()
+    title.Text = u"Задачи из почты"
+    title.FontSize = 16
+    title.FontWeight = FontWeights.Bold
+    root.Children.Add(title)
+    _hint(root, u"Кнопка только читает почту: ничего не отправляет, не помечает "
+                u"прочитанным и не перемещает.")
+
+    _label(root, u"Период, дней", bold=True, top=14)
+    days_box = _textbox(root, values.get("days"))
+    _hint(root, u"Сколько последних дней «Входящих» разбирать (по дате получения).")
+
+    unread_box = _checkbox(root, u"Только непрочитанные", values.get("unread_only"))
+
+    _label(root, u"Подпапка «Входящих»", bold=True, top=14)
+    subfolder_box = _textbox(root, values.get("subfolder"))
+    _hint(root, u"Пусто — сами «Входящие». Вложенные папки — через «/», например "
+                u"«Проекты/Объект 1».")
+
+    _label(root, u"Путь к claude.exe", bold=True, top=14)
+    claude_box = _textbox(root, values.get("claude_path"))
+    detected = email_claude.find_claude(u"")
+    _hint(root, u"Пусто — искать автоматически (PATH, %USERPROFILE%\\.local\\bin, "
+                u"%APPDATA%\\npm). Сейчас найден: {}".format(detected or u"— не найден —"))
+
+    _label(root, u"Модель", bold=True, top=14)
+    model_box = _textbox(root, values.get("model"))
+    _hint(root, u"Псевдоним (sonnet, opus, haiku) или полное имя модели — как для "
+                u"`claude --model`. По умолчанию sonnet.")
+
+    test_box = _checkbox(root, u"Тестовый режим — вместо Outlook брать письма из "
+                               u"test_emails.json (рядом со скриптом кнопки)",
+                         values.get("test_mode"))
+
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    buttons.HorizontalAlignment = HorizontalAlignment.Right
+    buttons.Margin = Thickness(0, 18, 0, 0)
+
+    cancel_btn = Button()
+    cancel_btn.Content = u"Отмена"
+    cancel_btn.Padding = Thickness(10, 4, 10, 4)
+    cancel_btn.Margin = Thickness(0, 0, 8, 0)
+
+    ok_btn = Button()
+    ok_btn.Content = u"Сохранить"
+    ok_btn.Padding = Thickness(10, 4, 10, 4)
+    ok_btn.FontWeight = FontWeights.Bold
+    ok_btn.IsDefault = True
+
+    def on_ok(sender, args):
+        try:
+            days = int(days_box.Text.strip())
+            if days < 1:
+                raise ValueError()
+        except Exception:
+            forms.alert(u"Период — целое число дней, не меньше 1.")
+            return
+        claude_path = claude_box.Text.strip().strip('"')
+        if claude_path and email_claude.find_claude(claude_path) is None:
+            forms.alert(u"По указанному пути claude не найден:\n{}\n\n"
+                        u"Укажите полный путь к claude.exe или оставьте поле "
+                        u"пустым для автопоиска.".format(claude_path))
+            return
+        result["values"] = {
+            "days": days,
+            "unread_only": bool(unread_box.IsChecked),
+            "subfolder": subfolder_box.Text.strip(),
+            "claude_path": claude_path,
+            "model": model_box.Text.strip() or DEFAULTS["model"],
+            "test_mode": bool(test_box.IsChecked),
+        }
+        win.Close()
+
+    def on_cancel(sender, args):
+        win.Close()
+
+    ok_btn.Click += on_ok
+    cancel_btn.Click += on_cancel
+    buttons.Children.Add(cancel_btn)
+    buttons.Children.Add(ok_btn)
+    root.Children.Add(buttons)
+
+    win.Content = root
+    win.ShowDialog()
+    return result["values"]
+
+
+def edit_interactive():
+    """Shift+клик: окно настроек. True — сохранено, False — отменено."""
+    edited = show_settings_form(load())
+    if edited is None:
+        return False
+    return save(edited)
