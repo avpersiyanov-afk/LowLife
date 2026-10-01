@@ -1791,7 +1791,9 @@ def _camera_h_res(doc, cam, s, default_px):
             # меньше 100 — явно не пиксели (мегапиксели, пусто и т.п.)
             if v is not None and v >= 100:
                 return v
-    return default_px
+    # float: значение уходит в «{:.0f}» отчёта, а IronPython не форматирует
+    # целое с точностью («Precision not allowed in integer format specifier»)
+    return float(default_px or 0)
 
 
 def _draw_dori(doc, view, center, base, half, h_res_px, hfov_rad, max_r, z, gstyle):
@@ -2669,7 +2671,7 @@ def auto_aim_cameras(doc, cameras, view, settings):
         "target_off_ft": _as_float(s.get("target_level_offset_mm"), 0.0) * _FT_PER_MM,
         "focal_mode": _focal_mode(s.get("auto_focal_mode")),
         "dori_ppm": _dori_ppm(s.get("auto_dori_level")),
-        "h_res_px": _as_int(s.get("camera_h_res_px"), 0),
+        "h_res_px": float(_as_int(s.get("camera_h_res_px"), 0)),
     }
 
     covered = None

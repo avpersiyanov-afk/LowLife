@@ -43,6 +43,7 @@ Key architectural points that aren't obvious from any single file:
 - Listing all loaded family types of a category (including unplaced ones) must go through `FilteredElementCollector(doc).OfClass(Family)` → `family.GetFamilySymbolIds()`, not `FilteredElementCollector(doc).OfCategory(...).OfClass(FamilySymbol)`, which can miss unplaced types.
 - WPF settings windows: never set `Topmost` on a window that will itself open another WPF window (e.g. `forms.SelectFromList`) — the child window gets stuck behind it with no way to bring it forward.
 - This is Python 2 (IronPython): `unicode(...)` and `u"..."` literals are used deliberately throughout; don't "modernize" to Python 3 string handling.
+- IronPython's `str.format` rejects a precision spec on an `int` (`u"{:.0f}".format(1920)` raises "Precision not allowed in integer format specifier", while CPython accepts it). Convert to `float(...)` before formatting with `{:.Nf}` — e.g. values from `_as_int` or `Parameter.AsInteger()`.
 
 ## Icons
 
@@ -95,6 +96,7 @@ pyRevit устанавливает расширения, добавленные 
 - Перечисление всех загруженных типоразмеров семейства категории (включая ещё не вставленные) должно идти через `FilteredElementCollector(doc).OfClass(Family)` → `family.GetFamilySymbolIds()`, а не через `FilteredElementCollector(doc).OfCategory(...).OfClass(FamilySymbol)`, который может пропустить невставленные типы.
 - Окна настроек на WPF: никогда не ставьте `Topmost` на окно, которое само открывает другое WPF-окно (например, `forms.SelectFromList`) — дочернее окно застревает позади него, и его невозможно вывести на передний план.
 - Это Python 2 (IronPython): `unicode(...)` и литералы `u"..."` используются по всему коду намеренно; не «модернизируйте» их под обработку строк Python 3.
+- `str.format` в IronPython не принимает точность для `int` (`u"{:.0f}".format(1920)` падает с «Precision not allowed in integer format specifier», хотя CPython это пропускает). Перед форматированием через `{:.Nf}` приводите значение к `float(...)` — например, результаты `_as_int` или `Parameter.AsInteger()`.
 
 ## Иконки
 
