@@ -142,6 +142,28 @@ def _split_alias_names(configured):
     return [n.strip() for n in configured.split(u";") if n.strip()]
 
 
+def _subcomponents(doc, el, depth=3):
+    """Вложенные общие (shared) семейства экземпляра — рекурсивно, до depth
+    уровней. У составной камеры «основание + поворотная камера» параметры
+    поворота/наклона/оптики нередко принадлежат вложенной камере, а не
+    основанию. Необщие вложенные семейства в проекте отдельными элементами
+    не существуют — их параметры видны только через параметры основания."""
+    out = []
+    if depth <= 0 or el is None:
+        return out
+    try:
+        ids = list(el.GetSubComponentIds())
+    except Exception:
+        return out
+    for i in ids:
+        sub = doc.GetElement(i)
+        if sub is None:
+            continue
+        out.append(sub)
+        out.extend(_subcomponents(doc, sub, depth - 1))
+    return out
+
+
 def _find_param(doc, el, name):
     """
     Параметр el по имени (или по «;»-списку имён-кандидатов, см.
@@ -163,6 +185,9 @@ def _find_param(doc, el, name):
     но не заполнен, а на типе такого параметра нет вовсе — возвращает
     именно параметр экземпляра (без значения), чтобы вызывающий код мог
     отличить «нет такого параметра» от «параметр есть, но пуст».
+    Если параметра нет ни на экземпляре, ни на типе — ищется во вложенных
+    общих семействах (_subcomponents: составная камера «основание +
+    поворотная камера»).
     """
     names = _split_alias_names(name)
     if not names:
@@ -200,7 +225,34 @@ def _find_param(doc, el, name):
         if fallback is None and inst_p is not None:
             fallback = inst_p
 
+    if fallback is None:
+        # у самой камеры (основания) нет — ищем во вложенных семействах
+        for sub in _subcomponents(doc, el):
+            p = _find_param_flat(doc, sub, names)
+            if p is not None:
+                return p
+
     return fallback
+
+
+def _find_param_flat(doc, el, names):
+    """Как _find_param, но без спуска во вложенные: экземпляр, потом тип;
+    только параметр со значением."""
+    try:
+        type_el = doc.GetElement(el.GetTypeId())
+    except Exception:
+        type_el = None
+    for candidate in names:
+        for holder in (el, type_el):
+            if holder is None:
+                continue
+            try:
+                p = holder.LookupParameter(candidate)
+            except Exception:
+                p = None
+            if p is not None and p.HasValue:
+                return p
+    return None
 
 
 def _param_radians(param, unit_mode):
@@ -597,7 +649,23 @@ def diagnose_camera_params(doc, el, settings):
 
     inst_params = _list_params(el, u"экземпляр")
     type_params = _list_params(type_el, u"тип")
-    all_params = inst_params + type_params
+
+    # вложенные общие семейства (составная камера «основание + камера»)
+    nested = []   # [(sub, sub_type, family_label)]
+    nested_params = []
+    for sub in _subcomponents(doc, el):
+        try:
+            sub_type = doc.GetElement(sub.GetTypeId())
+        except Exception:
+            sub_type = None
+        try:
+            fam = sub_type.FamilyName if sub_type is not None else _safe_name(sub)
+        except Exception:
+            fam = u"?"
+        nested.append((sub, sub_type, fam))
+        nested_params.extend(_list_params(sub, u"вложенное «{}»".format(fam)))
+        nested_params.extend(_list_params(sub_type, u"тип вложенного «{}»".format(fam)))
+    all_params = inst_params + type_params + nested_params
 
     try:
         family_name = type_el.FamilyName if type_el is not None else u""
@@ -652,6 +720,25 @@ def diagnose_camera_params(doc, el, settings):
                     break
 
             if chosen is None:
+                for sub, sub_type, fam in nested:
+                    for cname in candidate_names:
+                        for holder, lvl in ((sub, u"вложенное «{}»".format(fam)),
+                                            (sub_type, u"тип вложенного «{}»".format(fam))):
+                            if holder is None:
+                                continue
+                            try:
+                                p = holder.LookupParameter(cname)
+                            except Exception:
+                                p = None
+                            if p is not None:
+                                chosen, level, matched_name = p, lvl, cname
+                                break
+                        if chosen is not None:
+                            break
+                    if chosen is not None:
+                        break
+
+            if chosen is None:
                 status = u"not_found"
             else:
                 kind = _param_kind(chosen)
@@ -663,7 +750,7 @@ def diagnose_camera_params(doc, el, settings):
                 )
                 if kind not in expected_kinds:
                     status = u"wrong_kind"
-                elif must_be_instance and level == u"тип":
+                elif must_be_instance and level.startswith(u"тип"):
                     status = u"tilt_not_instance"
                 elif not has_value:
                     status = u"empty"
@@ -696,6 +783,7 @@ def diagnose_camera_params(doc, el, settings):
         u"family_name": family_name, u"type_name": type_name,
         u"category_name": category_name, u"category_ok": category_ok,
         u"instance_params": inst_params, u"type_params": type_params,
+        u"nested_params": nested_params,
         u"roles": roles,
         u"geometry": describe_camera_geometry(doc, el, settings),
         u"family_def": inspect_family_definition(doc, el),
@@ -835,8 +923,13 @@ def _camera_azimuth(doc, cam, s, unit_mode):
     if d is None:
         return None, note, None
     forward = math.atan2(d.Y, d.X)
-    rot = _opt_param_radians(doc, cam, s.get("rotation_param_name"), unit_mode)
+    rot_name = (s.get("rotation_param_name") or u"").strip()
+    rot = _opt_param_radians(doc, cam, rot_name, unit_mode)
     if rot is None:
+        if rot_name:
+            note = u"{}; параметр поворота «{}» не найден ни на камере, ни на её " \
+                   u"типе, ни во вложенных семействах — поворот не учтён".format(
+                       note, rot_name)
         return forward, note, forward
     zero, sign, _rng = _rotation_spec(s)
     az = forward + zero + sign * rot
@@ -2196,11 +2289,22 @@ def _coverage_half_steps(weights, center_idx, fraction):
 
 def _instance_param(cam, configured):
     """Первый из перечисленных через «;» параметров, найденный на ЭКЗЕМПЛЯРЕ
-    (LookupParameter), либо None."""
-    for name in _split_alias_names((configured or u"").strip()):
+    (LookupParameter), либо None. Если у самой камеры нет — на экземплярах
+    вложенных общих семейств (составная камера «основание + поворотная
+    камера»)."""
+    names = _split_alias_names((configured or u"").strip())
+    for name in names:
         p = cam.LookupParameter(name)
         if p is not None:
             return p
+    for sub in _subcomponents(cam.Document, cam):
+        for name in names:
+            try:
+                p = sub.LookupParameter(name)
+            except Exception:
+                p = None
+            if p is not None:
+                return p
     return None
 
 
