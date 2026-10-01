@@ -1995,6 +1995,34 @@ def _family_has_symbol(doc, family_name, type_name):
     return False
 
 
+def _invalid_name_chars(name):
+    """Символы, запрещённые Revit в именах (типов, семейств, параметров)."""
+    return u"".join(sorted(set(ch for ch in name if ch in u"\\:{}[]|;<>?`~")))
+
+
+def _compact_symbol_errors(failed):
+    """
+    [(имя типа, причина)] → короткий список строк для отчёта: одинаковая
+    причина у всех — одной строкой с числом типов, плюс подсказка про
+    запрещённые Revit символы в именах (напр. «|»).
+    """
+    if not failed:
+        return []
+    reasons = set(r for _n, r in failed)
+    if len(reasons) == 1:
+        out = [u"{} (типов: {}, напр. «{}»)".format(
+            failed[0][1], len(failed), failed[0][0]
+        )]
+    else:
+        out = [u"«{}»: {}".format(n, r) for n, r in failed]
+    bad = _invalid_name_chars(u"".join(n for n, _r in failed))
+    if bad:
+        out.append(u"в именах типов есть символы, запрещённые Revit: {}".format(
+            u" ".join(bad)
+        ))
+    return out
+
+
 def load_catalog_symbols(doc, rfa_path, family_name, type_names, options):
     """
     Грузит типоразмеры type_names моделируемого семейства из rfa_path (рядом
@@ -2009,15 +2037,30 @@ def load_catalog_symbols(doc, rfa_path, family_name, type_names, options):
     → (n_ok, [ошибки по типам]).
     """
     def _try(path):
+        # Путевые Document.LoadFamily/LoadFamilySymbol меняют модель и должны
+        # идти внутри транзакции: без неё LoadFamilySymbol может молча вернуть
+        # False. (FamilyDoc.LoadFamily, наоборот, требует, чтобы транзакции
+        # НЕ было — поэтому транзакция только здесь, вокруг путевых вызовов.)
         ok_n = 0
-        errs = []
-        for tn in type_names:
-            ok, err = _load_symbol(doc, path, tn, options)
-            if ok or _family_has_symbol(doc, family_name, tn):
-                ok_n += 1
+        failed = []  # (имя, причина)
+        t = Transaction(doc, u"Загрузка типоразмеров: {}".format(family_name))
+        t.Start()
+        try:
+            for tn in type_names:
+                ok, err = _load_symbol(doc, path, tn, options)
+                if ok or _family_has_symbol(doc, family_name, tn):
+                    ok_n += 1
+                else:
+                    failed.append((tn, err or u"тип не появился в модели"))
+            if ok_n:
+                t.Commit()
             else:
-                errs.append(u"«{}»: {}".format(tn, err or u"тип не появился в модели"))
-        return ok_n, errs
+                t.RollBack()
+        except:
+            if t.HasStarted() and not t.HasEnded():
+                t.RollBack()
+            raise
+        return ok_n, _compact_symbol_errors(failed)
 
     n_ok, errs = _try(rfa_path)
     if n_ok or not type_names:
