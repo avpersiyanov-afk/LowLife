@@ -1800,10 +1800,11 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   `file_key` — имя файла центральной модели), `get_context` (код/название
   проекта, вид, выбор, автор), заметки (`new_note`, `add_note` — сначала в
   локальную очередь `queue.json`, потом отправка; `flush_queue`, `load_notes`
-  с кэшем на случай отсутствия связи, `set_status`), фильтры сроков
-  (`is_overdue`, `is_mine`, `reminders`).
+  с кэшем на случай отсутствия связи, `set_status`, `set_answer` — столбец
+  «Решение»), фильтры (`is_overdue`, `is_mine`, `reminders`, `is_question`/
+  `needs_answer` — вопрос без ответа нельзя закрыть, то же правило в `Code.gs`).
 - `pnotes/ui.py` — WPF-окна `NoteWindow`, `SummaryWindow` (также режим
-  напоминаний), `SetupWindow` (разметка в `pnotes/xaml/*.xaml`) и точки входа
+  напоминаний), `AnswerWindow` (ответ / решение), `SetupWindow` (разметка в `pnotes/xaml/*.xaml`) и точки входа
   кнопок/хука: `run_new_note(uidoc)`, `run_summary(uidoc)`, `run_setup(doc)`,
   `run_open_reminders(doc)` (раз за сеанс Revit на проект, без сети — молча выходит).
 

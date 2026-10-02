@@ -128,8 +128,8 @@ class NoteWindow(forms.WPFWindow):
 
 # ================================================================ сводка
 
-COLUMNS = ('id', 'due', 'type', 'section', 'text', 'assignee', 'author', 'created',
-           'status', 'view', 'model', 'overdue', 'closed')
+COLUMNS = ('id', 'due', 'type', 'section', 'text', 'answer', 'assignee', 'author', 'created',
+           'status', 'view', 'model', 'overdue', 'closed', 'need_answer')
 
 FILTER_STATUS = (u'Открытые', u'Все', u'Закрытые')
 ALL_TYPES = u'Все типы'
@@ -177,6 +177,7 @@ class SummaryWindow(forms.WPFWindow):
         self.btnWork.Click += lambda s, e: self.change_status(core.STATUS_WORK)
         self.btnCancelNote.Click += lambda s, e: self.change_status(core.STATUS_CANCEL)
         self.btnReopen.Click += lambda s, e: self.change_status(core.STATUS_OPEN)
+        self.btnAnswer.Click += self.on_answer
         self.btnShow.Click += self.on_show
         self.btnRefresh.Click += self.on_reload
         self.btnSheet.Click += self.on_sheet
@@ -216,7 +217,7 @@ class SummaryWindow(forms.WPFWindow):
             if mine and not core.is_mine(n, self.ctx['user']):
                 continue
             if query and query not in u' '.join(
-                    [n.get(k) or u'' for k in ('text', 'author', 'assignee', 'view')]).lower():
+                    [n.get(k) or u'' for k in ('text', 'answer', 'author', 'assignee', 'view')]).lower():
                 continue
             result.append(n)
         return _sorted(result)
@@ -236,6 +237,8 @@ class SummaryWindow(forms.WPFWindow):
             row['type'] = n.get('type') or u''
             row['section'] = n.get('section') or u''
             row['text'] = n.get('text') or u''
+            row['answer'] = n.get('answer') or u''
+            row['need_answer'] = u'1' if core.needs_answer(n) else u'0'
             row['assignee'] = n.get('assignee') or u''
             row['author'] = n.get('author') or u''
             row['created'] = fmt_date(n.get('created'))
@@ -249,8 +252,9 @@ class SummaryWindow(forms.WPFWindow):
 
         open_count = len([n for n in self.notes if not core.is_closed(n)])
         overdue = len([n for n in self.notes if core.is_overdue(n, today)])
-        self.txtInfo.Text = u'Показано {} из {}   ·   открытых {}   ·   просрочено {}'.format(
-            len(visible), len(self.notes), open_count, overdue)
+        unanswered = len([n for n in self.notes if core.needs_answer(n)])
+        self.txtInfo.Text = u'Показано {} из {}   ·   открытых {}   ·   просрочено {}   ·   вопросов без ответа {}'.format(
+            len(visible), len(self.notes), open_count, overdue, unanswered)
 
     def _selected(self):
         ids = [drv.Row['id'] for drv in self.dg.SelectedItems]
@@ -261,6 +265,16 @@ class SummaryWindow(forms.WPFWindow):
         if not selected:
             self.txtInfo.Text = u'Выделите одну или несколько заметок (Ctrl/Shift — несколько).'
             return
+        if status == core.STATUS_DONE:
+            unanswered = [n for n in selected if core.needs_answer(n)]
+            if len(selected) == 1 and unanswered:
+                self._answer(selected[0], close=True)
+                return
+            if unanswered:
+                forms.alert(u'Среди выбранных {} вопрос(ов) без ответа. Вопрос закрывается только с ответом — '
+                            u'выделите его и нажмите «Ответ / решение».'.format(len(unanswered)),
+                            title=u'Нужен ответ')
+                return
         self.Cursor = Cursors.Wait
         try:
             core.set_status([n['id'] for n in selected], status, self.ctx['user'])
@@ -271,6 +285,33 @@ class SummaryWindow(forms.WPFWindow):
         self.Cursor = None
         for n in selected:
             n['status'] = status
+        self.refresh()
+
+    def on_answer(self, sender, e):
+        selected = [n for n in self._selected() if n.get('status') != core.STATUS_PENDING]
+        if len(selected) != 1:
+            self.txtInfo.Text = u'Выделите одну заметку, чтобы записать ответ / решение.'
+            return
+        self._answer(selected[0], close=not core.is_closed(selected[0]))
+
+    def _answer(self, note, close):
+        dlg = AnswerWindow(note, close)
+        dlg.Owner = self
+        dlg.ShowDialog()
+        if dlg.answer is None:
+            return
+        status = core.STATUS_DONE if dlg.mark_done else None
+        self.Cursor = Cursors.Wait
+        try:
+            core.set_answer(note['id'], dlg.answer, status, self.ctx['user'])
+        except core.ApiError as ex:
+            self.Cursor = None
+            forms.alert(core.err_text(ex), title=u'Не удалось записать решение')
+            return
+        self.Cursor = None
+        note['answer'] = dlg.answer
+        if status:
+            note['status'] = status
         self.refresh()
 
     def on_show(self, sender, e):
@@ -325,6 +366,46 @@ class SummaryWindow(forms.WPFWindow):
         url = self.settings.get('sheet_url')
         if url:
             Process.Start(url)
+
+
+# ================================================================ ответ / решение
+
+class AnswerWindow(forms.WPFWindow):
+    def __init__(self, note, close):
+        forms.WPFWindow.__init__(self, _xaml('answer.xaml'))
+        self.answer = None  # None — отменено
+        self.mark_done = False
+        self.is_question = core.is_question(note)
+        head = [x for x in (note.get('type'), note.get('section'), note.get('author')) if x]
+        self.txtHead.Text = u'   ·   '.join(head)
+        self.txtQuestion.Text = note.get('text') or u''
+        self.txtAnswer.Text = note.get('answer') or u''
+        self.chkClose.IsChecked = close
+        if core.is_closed(note):
+            self.chkClose.IsChecked = False
+            self.chkClose.Visibility = Visibility.Collapsed
+        if self.is_question:
+            self.txtHint.Text = u'Это вопрос — закрыть его можно только с ответом.'
+        self.btnSave.Click += self.on_save
+        self.btnCancel.Click += lambda s, e: self.Close()
+        self.PreviewKeyDown += self.on_key
+        self.Loaded += lambda s, e: self.txtAnswer.Focus()
+
+    def on_key(self, sender, e):
+        if e.Key == Key.Enter and Keyboard.Modifiers == ModifierKeys.Control:
+            e.Handled = True
+            self.on_save(None, None)
+
+    def on_save(self, sender, e):
+        text = (self.txtAnswer.Text or u'').strip()
+        close = bool(self.chkClose.IsChecked)
+        if not text and (close or self.is_question):
+            self.txtHint.Text = u'Напишите ответ / решение.'
+            self.txtAnswer.Focus()
+            return
+        self.answer = text
+        self.mark_done = close
+        self.Close()
 
 
 # ================================================================ настройка
