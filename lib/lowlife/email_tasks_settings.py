@@ -40,6 +40,7 @@ SETTINGS_FILE_NAME = "LowLifeEmailTasks_settings.json"
 DEFAULTS = {
     "days": 3,
     "unread_only": False,
+    "include_subfolders": True,
     "subfolder": u"",
     "claude_path": u"",
     "model": email_claude.DEFAULT_MODEL,
@@ -75,6 +76,7 @@ def load():
     except Exception:
         values["days"] = DEFAULTS["days"]
     values["unread_only"] = bool(values.get("unread_only"))
+    values["include_subfolders"] = bool(values.get("include_subfolders"))
     values["test_mode"] = bool(values.get("test_mode"))
     values["model"] = (values.get("model") or u"").strip() or DEFAULTS["model"]
     values["prompt"] = values.get("prompt") or u""
@@ -171,6 +173,10 @@ def show_settings_form(values, default_prompt):
     _hint(root, u"Пусто — сами «Входящие». Вложенные папки — через «/», например "
                 u"«Проекты/Объект 1».")
 
+    subfolders_box = _checkbox(root, u"Включая подпапки — читать и все вложенные папки "
+                                     u"(«Входящих» или папки, указанной выше)",
+                               values.get("include_subfolders"))
+
     _label(root, u"Путь к claude.exe", bold=True, top=14)
     claude_box = _textbox(root, values.get("claude_path"))
     detected = email_claude.find_claude(u"")
@@ -247,6 +253,7 @@ def show_settings_form(values, default_prompt):
         result["values"] = {
             "days": days,
             "unread_only": bool(unread_box.IsChecked),
+            "include_subfolders": bool(subfolders_box.IsChecked),
             "subfolder": subfolder_box.Text.strip(),
             "claude_path": claude_path,
             "model": model_box.Text.strip() or DEFAULTS["model"],

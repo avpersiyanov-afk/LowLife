@@ -107,6 +107,8 @@ def format_email(email):
         u"От: {}".format(_u(email.get("sender"))),
         u"Кому: {}".format(_u(email.get("to"))),
     ]
+    if email.get("folder"):
+        parts.insert(2, u"Папка: {}".format(_u(email.get("folder"))))
     if email.get("cc"):
         parts.append(u"Копия: {}".format(_u(email.get("cc"))))
     parts.append(u"Тема: {}".format(_u(email.get("subject"))))

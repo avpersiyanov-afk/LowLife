@@ -134,7 +134,8 @@ with forms.ProgressBar(title=u"Чтение почты…", cancellable=True) as
             return pb.cancelled
         try:
             emails, folder_name, read_warning = email_outlook.read_inbox(
-                settings["days"], settings["unread_only"], settings["subfolder"], tick=read_tick)
+                settings["days"], settings["unread_only"], settings["subfolder"],
+                include_subfolders=settings["include_subfolders"], tick=read_tick)
         except email_outlook.Cancelled:
             cancelled = True
         except email_outlook.OutlookError as ex:
