@@ -21,6 +21,7 @@
                 <ComboBox x:Name="cmbStatus" Width="120"/>
                 <ComboBox x:Name="cmbType" Width="150"/>
                 <ComboBox x:Name="cmbSection" Width="130"/>
+                <ComboBox x:Name="cmbAuthor" Width="150"/>
                 <TextBlock Text="Поиск:" VerticalAlignment="Center" Margin="6,0,6,0" Foreground="#555555"/>
                 <TextBox x:Name="txtSearch" Width="220" Padding="4,3" Margin="0,0,12,0"/>
                 <CheckBox x:Name="chkMine" Content="Только мои" VerticalAlignment="Center"/>
