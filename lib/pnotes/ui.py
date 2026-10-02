@@ -198,6 +198,7 @@ class SummaryWindow(forms.WPFWindow):
             self.Title = u'Напоминания по проекту'
             self.txtProject.Text = u'{}: сроки подходят или задачи назначены вам'.format(title)
             self.btnShow.Visibility = Visibility.Collapsed
+            self.btnView.Visibility = Visibility.Collapsed
         else:
             self.txtProject.Text = title
         self._notice(error)
@@ -222,6 +223,7 @@ class SummaryWindow(forms.WPFWindow):
         self.btnAnswer.Click += self.on_answer
         self.btnEdit.Click += self.on_edit
         self.btnShow.Click += self.on_show
+        self.btnView.Click += self.on_view
         self.btnRefresh.Click += self.on_reload
         self.btnSheet.Click += self.on_sheet
         self.btnClose.Click += lambda s, e: self.Close()
@@ -423,6 +425,33 @@ class SummaryWindow(forms.WPFWindow):
             self.uidoc.ShowElements(found)
         except Exception:
             pass
+
+    def on_view(self, sender, e):
+        """Открыть вид или лист, на котором была создана заметка."""
+        if self.uidoc is None or self.reminders_mode:
+            return
+        selected = self._selected()
+        if len(selected) != 1:
+            self.txtInfo.Text = u'Выделите одну заметку, чтобы открыть её вид или лист.'
+            return
+        note = selected[0]
+        label = note.get('view') or u''
+        if not label:
+            self.txtInfo.Text = u'У заметки не записан вид.'
+            return
+        if core.short_file(note.get('file')) != core.short_file(self.ctx['file']):
+            self.txtInfo.Text = u'Заметка создана в другой модели проекта: {} (вид «{}»).'.format(
+                core.short_file(note.get('file')), label)
+            return
+        view = core.find_view(self.uidoc.Document, label)
+        if view is None:
+            self.txtInfo.Text = u'Вид «{}» не найден в модели — возможно, его переименовали или удалили.'.format(label)
+            return
+        self.Close()
+        try:
+            self.uidoc.ActiveView = view
+        except Exception:
+            self.uidoc.RequestViewChange(view)
 
     def on_reload(self, sender, e):
         self.Cursor = Cursors.Wait

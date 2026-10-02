@@ -1797,7 +1797,8 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   (`ApiError` с понятным текстом), настройки команды с листа «Настройки»
   (`get_settings` с локальным кэшем, `save_mapping`), «Сведения о проекте»
   (`list_project_params`, `read_param` по ссылке «Имя [BUILTIN]» или имени,
-  `file_key` — имя файла центральной модели), `get_context` (код/название
+  `file_key` — имя файла центральной модели), `view_label`/`find_view` (подпись
+  вида или листа в заметке и обратный поиск), `get_context` (код/название
   проекта, вид, выбор, автор), заметки (`new_note`, `add_note` — сначала в
   локальную очередь `queue.json`, потом отправка; `flush_queue`, `load_notes`
   с кэшем на случай отсутствия связи, `set_status`, `update_note` — правка полей, `set_answer` — столбец
