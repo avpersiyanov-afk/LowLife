@@ -123,6 +123,7 @@ function doPost(e) {
       case 'list': return json_(listNotes_(req.project_key));
       case 'setStatus': return json_(setStatus_(req.ids || [], req.status, req.by));
       case 'answer': return json_(setAnswer_(req.id, req.answer, req.status, req.by));
+      case 'update': return json_(updateNote_(req.id, req.fields || {}, req.by));
       default: return json_({ ok: false, error: 'Неизвестное действие: ' + req.action });
     }
   } catch (err) {
@@ -209,6 +210,30 @@ function setStatus_(ids, status, by) {
       sh.getRange(row, COL.status, 1, 3).setValues([[status, new Date(), safeText_(by)]]);
     });
     return { ok: true, updated: rows.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Правка заметки из Revit: только эти поля, остальное (автор, проект, модель…) не меняется.
+const EDITABLE = ['type', 'section', 'text', 'due', 'assignee'];
+
+function updateNote_(id, fields, by) {
+  const keys = Object.keys(fields).filter(k => EDITABLE.indexOf(k) >= 0);
+  if ('text' in fields && !String(fields.text || '').trim()) return { ok: false, error: 'Пустой текст заметки' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = notesSheet_();
+    const row = findRow_(sh, id);
+    if (!row) return { ok: false, error: 'Заметка не найдена в таблице — обновите сводку.' };
+    const tz = tz_();
+    keys.forEach(k => {
+      const value = k === 'due' ? parseDate_(fields[k], false, tz) : safeText_(fields[k]);
+      sh.getRange(row, COL[k]).setValue(value);
+    });
+    sh.getRange(row, COL.changed, 1, 2).setValues([[new Date(), safeText_(by)]]);
+    return { ok: true, updated: keys.length };
   } finally {
     lock.releaseLock();
   }

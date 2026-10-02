@@ -460,6 +460,18 @@ def set_status(ids, status, user):
     return call('setStatus', {'ids': ids, 'status': status, 'by': user})
 
 
+def update_note(note, changes, user):
+    """Правка полей заметки (тип, раздел, текст, срок, кому). Неотправленная — правится в очереди."""
+    if note.get('status') == STATUS_PENDING:
+        queue = _load_queue()
+        for queued in queue:
+            if queued.get('id') == note.get('id'):
+                queued.update(changes)
+        _write_json(QUEUE_FILE, queue)
+        return {'ok': True}
+    return call('update', {'id': note['id'], 'fields': changes, 'by': user})
+
+
 def set_answer(note_id, answer, status, user):
     """Записывает «Решение»; status — None (не менять) или новый статус."""
     return call('answer', {'id': note_id, 'answer': answer, 'status': status, 'by': user})

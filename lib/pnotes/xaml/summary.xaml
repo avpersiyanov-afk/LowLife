@@ -32,7 +32,8 @@
             <Button x:Name="btnWork" DockPanel.Dock="Left" Content="В работе"/>
             <Button x:Name="btnCancelNote" DockPanel.Dock="Left" Content="Неактуально"/>
             <Button x:Name="btnReopen" DockPanel.Dock="Left" Content="Открыть снова"/>
-            <Button x:Name="btnAnswer" DockPanel.Dock="Left" Content="Ответ / решение" Margin="12,0,6,0"/>
+            <Button x:Name="btnEdit" DockPanel.Dock="Left" Content="✎ Изменить" Margin="12,0,6,0"/>
+            <Button x:Name="btnAnswer" DockPanel.Dock="Left" Content="Ответ / решение"/>
             <Button x:Name="btnShow" DockPanel.Dock="Left" Content="Показать элементы" Margin="12,0,6,0"/>
             <Button x:Name="btnClose" DockPanel.Dock="Right" Content="Закрыть" Margin="0"/>
             <Button x:Name="btnRefresh" DockPanel.Dock="Right" Content="Обновить"/>

@@ -57,11 +57,18 @@ def _balloon(text):
 
 # ================================================================ новая заметка
 
+EDIT_FIELDS = ('type', 'section', 'text', 'due', 'assignee')
+
+
 class NoteWindow(forms.WPFWindow):
-    def __init__(self, ctx, settings, online):
+    """Новая заметка; с note=... — редактирование существующей (результат в self.changes)."""
+
+    def __init__(self, ctx, settings, online, note=None):
         forms.WPFWindow.__init__(self, _xaml('note.xaml'))
         self.ctx = ctx
+        self.note = note
         self.result = None  # None — отменено, True — в таблице, False — в локальной очереди
+        self.changes = None  # редактирование: {поле: новое значение} или None — отменено
 
         if ctx['name'] and ctx['name'] != ctx['key']:
             self.txtProject.Text = u'{} — {}'.format(ctx['key'], ctx['name'])
@@ -76,10 +83,14 @@ class NoteWindow(forms.WPFWindow):
         self.txtContext.Text = u'   ·   '.join(details)
 
         state = core.load_state()
-        _fill(self.cmbType, settings['types'], state.get('type'))
-        _fill(self.cmbSection, settings['sections'], state.get('section'))
+        if note is not None:
+            state = {'type': note.get('type'), 'section': note.get('section')}
+        _fill(self.cmbType, self._with(settings['types'], state.get('type')), state.get('type'))
+        _fill(self.cmbSection, self._with(settings['sections'], state.get('section')), state.get('section'))
         for person in settings.get('people') or []:
             self.cmbAssignee.Items.Add(person)
+        if note is not None:
+            self._init_edit(note)
 
         count = len(ctx['selection'])
         if count:
@@ -89,13 +100,36 @@ class NoteWindow(forms.WPFWindow):
             self.chkElements.Content = u'Привязать выбранные элементы (сейчас ничего не выбрано)'
             self.chkElements.IsEnabled = False
 
-        if not online:
+        if not online and note is None:
             self.txtStatus.Text = u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.'
 
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
         self.PreviewKeyDown += self.on_key
         self.Loaded += lambda s, e: self.cmbType.Focus()
+
+    @staticmethod
+    def _with(items, value):
+        """Список из настроек + текущее значение заметки, если его там уже нет."""
+        items = list(items)
+        if value and value not in items:
+            items.append(value)
+        return items
+
+    def _init_edit(self, note):
+        self.Title = u'Редактирование заметки'
+        self.btnSave.Content = u'Сохранить изменения'
+        details = [u'Автор: ' + (note.get('author') or u'—'), u'Создано: ' + fmt_date(note.get('created'))]
+        if note.get('view'):
+            details.insert(0, u'Вид: ' + note['view'])
+        self.txtContext.Text = u'   ·   '.join(details)
+        self.txtText.Text = note.get('text') or u''
+        self.cmbAssignee.Text = note.get('assignee') or u''
+        due = core.due_date(note)
+        if due is not None:
+            self.dpDue.SelectedDate = System.DateTime(due.year, due.month, due.day)
+        # привязка элементов при редактировании не меняется
+        self.chkElements.Visibility = Visibility.Collapsed
 
     def on_key(self, sender, e):
         if e.Key == Key.Enter and Keyboard.Modifiers == ModifierKeys.Control:
@@ -113,9 +147,15 @@ class NoteWindow(forms.WPFWindow):
             due = self.dpDue.SelectedDate.ToString('yyyy-MM-dd')
         ntype = self.cmbType.SelectedItem or u''
         section = self.cmbSection.SelectedItem or u''
+        assignee = (self.cmbAssignee.Text or u'').strip()
+        if self.note is not None:
+            values = {'type': ntype, 'section': section, 'text': text, 'due': due, 'assignee': assignee}
+            self.changes = dict((k, v) for k, v in values.items()
+                                if v != (self.note.get(k) or u'')[:10 if k == 'due' else None])
+            self.Close()
+            return
         elements = self.ctx['selection'] if self.chkElements.IsChecked else []
-        note = core.new_note(self.ctx, ntype, section, text, due,
-                             (self.cmbAssignee.Text or u'').strip(), elements)
+        note = core.new_note(self.ctx, ntype, section, text, due, assignee, elements)
         core.save_state(type=ntype, section=section)
 
         self.Cursor = Cursors.Wait
@@ -178,6 +218,7 @@ class SummaryWindow(forms.WPFWindow):
         self.btnCancelNote.Click += lambda s, e: self.change_status(core.STATUS_CANCEL)
         self.btnReopen.Click += lambda s, e: self.change_status(core.STATUS_OPEN)
         self.btnAnswer.Click += self.on_answer
+        self.btnEdit.Click += self.on_edit
         self.btnShow.Click += self.on_show
         self.btnRefresh.Click += self.on_reload
         self.btnSheet.Click += self.on_sheet
@@ -285,6 +326,28 @@ class SummaryWindow(forms.WPFWindow):
         self.Cursor = None
         for n in selected:
             n['status'] = status
+        self.refresh()
+
+    def on_edit(self, sender, e):
+        selected = self._selected()
+        if len(selected) != 1:
+            self.txtInfo.Text = u'Выделите одну заметку, чтобы изменить её.'
+            return
+        note = selected[0]
+        dlg = NoteWindow(self.ctx, self.settings, True, note=note)
+        dlg.Owner = self
+        dlg.ShowDialog()
+        if not dlg.changes:
+            return
+        self.Cursor = Cursors.Wait
+        try:
+            core.update_note(note, dlg.changes, self.ctx['user'])
+        except core.ApiError as ex:
+            self.Cursor = None
+            forms.alert(core.err_text(ex), title=u'Не удалось сохранить изменения')
+            return
+        self.Cursor = None
+        note.update(dlg.changes)
         self.refresh()
 
     def on_answer(self, sender, e):
