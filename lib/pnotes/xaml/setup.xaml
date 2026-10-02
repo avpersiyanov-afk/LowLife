@@ -1,0 +1,99 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройка заметок по проекту" Width="880" Height="720" MinWidth="700" MinHeight="560"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13" Background="White">
+    <Window.Resources>
+        <Style x:Key="Header" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#666666"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="14,5"/>
+        </Style>
+    </Window.Resources>
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Style="{StaticResource Header}" Text="1. Подключение к Google Таблице"/>
+            <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,8"
+                       Text="Адрес веб-приложения (заканчивается на /exec) и токен — у того, кто настраивал таблицу (меню таблицы «Заметки Revit → Показать токен»). Сохраняются только на этом компьютере, в %APPDATA%\pyRevit\ProjectNotes\config.json."/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Адрес:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox x:Name="txtUrl" Grid.Column="1" Padding="4,3"/>
+                <TextBlock Grid.Row="1" Text="Токен:" VerticalAlignment="Center" Margin="0,6,10,0"/>
+                <TextBox x:Name="txtToken" Grid.Row="1" Grid.Column="1" Padding="4,3" Margin="0,6,0,0"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button x:Name="btnTest" Content="Проверить связь"/>
+                <TextBlock x:Name="txtConn" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" MaxWidth="650"/>
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource Header}" Text="2. Что заполнено в «Сведениях о проекте»" Margin="0,20,0,0"/>
+            <TextBlock x:Name="txtAnalysis" Style="{StaticResource Hint}" Margin="0,2,0,8"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Код проекта:" VerticalAlignment="Center" Margin="0,0,10,0" FontWeight="SemiBold"/>
+                <ComboBox x:Name="cmbKey" Grid.Column="1" Padding="6,3"/>
+                <TextBlock Grid.Row="1" Text="Название проекта:" VerticalAlignment="Center" Margin="0,6,10,0" FontWeight="SemiBold"/>
+                <ComboBox x:Name="cmbName" Grid.Row="1" Grid.Column="1" Padding="6,3" Margin="0,6,0,0"/>
+            </Grid>
+            <TextBlock x:Name="txtPreview" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,0"
+                       Text="Галочка «В заметку» — значение параметра будет сохраняться с каждой заметкой (например, заказчик или стадия). Выбор действует для всей команды. Типы заметок, разделы и список сотрудников правятся на листе «Настройки» в Google Таблице."/>
+            <TextBlock x:Name="txtStatus" Foreground="#B04A00" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            <DockPanel Margin="0,12,0,0" LastChildFill="False">
+                <Button x:Name="btnCancel" DockPanel.Dock="Right" Content="Отмена" Margin="8,0,0,0"/>
+                <Button x:Name="btnSave" DockPanel.Dock="Right" Content="Сохранить для всей команды" FontWeight="SemiBold"/>
+            </DockPanel>
+        </StackPanel>
+
+        <DataGrid x:Name="dg" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E6E6E6"
+                  SelectionMode="Single" Background="White" BorderBrush="#DDDDDD" RowHeaderWidth="0">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding filled}" Value="0">
+                            <Setter Property="Foreground" Value="#9E9E9E"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="В заметку" Width="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding extra, UpdateSourceTrigger=PropertyChanged}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Параметр" Binding="{Binding name}" Width="240" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Значение в этой модели" Binding="{Binding value}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Вид параметра" Binding="{Binding kind}" Width="140" IsReadOnly="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

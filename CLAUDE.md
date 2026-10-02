@@ -45,6 +45,10 @@ Key architectural points that aren't obvious from any single file:
 - This is Python 2 (IronPython): `unicode(...)` and `u"..."` literals are used deliberately throughout; don't "modernize" to Python 3 string handling.
 - IronPython's `str.format` rejects a precision spec on an `int` (`u"{:.0f}".format(1920)` raises "Precision not allowed in integer format specifier", while CPython accepts it). Convert to `float(...)` before formatting with `{:.Nf}` — e.g. values from `_as_int` or `Parameter.AsInteger()`.
 
+## Notes.panel («Заметки по проекту»)
+
+Library is a separate package `lib/pnotes/` (not `lib/lowlife/`); notes live in a shared Google Sheet via an Apps Script web app (`docs/notes/Code.gs`, setup in `docs/notes-panel.md`). The connection URL/token is per-user (`%APPDATA%\pyRevit\ProjectNotes\config.json`, entered in the «Настройка» window) — never commit a root `config.json` (gitignored; `config.example.json` is the empty template). Open-model reminders are appended to `hooks/doc-opened.py` in their own `try/except` so they can never break the existing hook logic or model opening.
+
 ## Icons
 
 Pushbutton icons are 96×96 PNGs generated programmatically with Pillow (flat style: soft rounded-square background, blue line-art glyph, occasional orange accent) rather than hand-drawn or fetched — see any prior icon-generation script for the palette/pattern if adding a new button.
@@ -97,6 +101,10 @@ pyRevit устанавливает расширения, добавленные 
 - Окна настроек на WPF: никогда не ставьте `Topmost` на окно, которое само открывает другое WPF-окно (например, `forms.SelectFromList`) — дочернее окно застревает позади него, и его невозможно вывести на передний план.
 - Это Python 2 (IronPython): `unicode(...)` и литералы `u"..."` используются по всему коду намеренно; не «модернизируйте» их под обработку строк Python 3.
 - `str.format` в IronPython не принимает точность для `int` (`u"{:.0f}".format(1920)` падает с «Precision not allowed in integer format specifier», хотя CPython это пропускает). Перед форматированием через `{:.Nf}` приводите значение к `float(...)` — например, результаты `_as_int` или `Parameter.AsInteger()`.
+
+## Notes.panel («Заметки по проекту»)
+
+Библиотека — отдельный пакет `lib/pnotes/` (не `lib/lowlife/`); заметки хранятся в общей Google Таблице через веб-приложение Apps Script (`docs/notes/Code.gs`, установка — `docs/notes-panel.md`). Адрес и токен — у каждого пользователя свои (`%APPDATA%\pyRevit\ProjectNotes\config.json`, вводятся в окне «Настройка»); `config.json` в корне репозитория не коммитить (он в `.gitignore`, пустой образец — `config.example.json`). Напоминания при открытии модели дописаны в конец `hooks/doc-opened.py` в отдельном `try/except`, чтобы не ломать существующую логику хука и открытие модели.
 
 ## Иконки
 
