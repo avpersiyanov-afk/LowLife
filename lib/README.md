@@ -1392,7 +1392,7 @@ room_number_param)` — запись по точкам прохода, возв�
 - `email_tasks_excel.py` — `save_tasks(rows, path)`: книга Excel через COM
   (выпадающий статус, условное форматирование, закреплённая шапка,
   автофильтр), `default_output_path()`.
-- `email_tasks_settings.py` — `load()`/`save()`/`edit_interactive()`:
+- `email_tasks_settings.py` — `load()`/`save()`/`edit_interactive(default_prompt)`/`effective_prompt(values, default_prompt)`:
   `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` и WPF-окно Shift+клика.
 
 ## export_rename.py

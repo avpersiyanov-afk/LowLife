@@ -34,19 +34,29 @@ try:
 except Exception:
     config_mode = False
 
+def _read_default_prompt():
+    try:
+        with io.open(PROMPT_FILE, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return u""
+
+
+default_prompt = _read_default_prompt()
+
 if config_mode:
-    saved = email_tasks_settings.edit_interactive()
+    saved = email_tasks_settings.edit_interactive(default_prompt)
     forms.alert(u"Настройки сохранены." if saved else u"Отменено, настройки не изменены.")
     script.exit()
 
 
 settings = email_tasks_settings.load()
 
-try:
-    with io.open(PROMPT_FILE, "r", encoding="utf-8") as f:
-        prompt_text = f.read()
-except Exception as ex:
-    forms.alert(u"Не удалось прочитать файл промпта:\n{}\n\n{}".format(PROMPT_FILE, ex),
+prompt_text = email_tasks_settings.effective_prompt(settings, default_prompt)
+if not prompt_text.strip():
+    forms.alert(u"Промпт пуст: в настройках нет своего текста, а стандартный "
+                u"файл не прочитался:\n{}\n\nВпишите промпт в настройках "
+                u"(Shift+клик по кнопке).".format(PROMPT_FILE),
                 exitscript=True)
 
 claude_path = email_claude.find_claude(settings["claude_path"])
