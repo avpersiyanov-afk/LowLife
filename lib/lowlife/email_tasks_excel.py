@@ -14,6 +14,7 @@
 """
 
 import os
+import re
 import datetime
 
 import clr
@@ -66,7 +67,7 @@ def _col(idx):
 
 def _excel_date(value):
     """Дата → число Excel (OLE Automation date). Число кладётся в общий
-    массив данных, а формат даты задаётся колонке через NumberFormat:
+    массив данных, а формат даты задаётся колонке (см. _date_formats):
     так дата пишется надёжно. Присваивание DateTime через Range.Value из
     IronPython (у Value в Excel есть параметр) молча не срабатывало —
     ячейки «Срок» и «Дата письма» оставались пустыми."""
@@ -172,8 +173,9 @@ def save_tasks(rows, path):
         full.VerticalAlignment = XL_TOP
         full.WrapText = True
         ws.Range(u"A2:A{}".format(max(last_row, 2))).HorizontalAlignment = XL_CENTER
-        ws.Range(u"D:D").NumberFormat = u"dd.mm.yyyy"
-        ws.Range(u"J:J").NumberFormat = u"dd.mm.yyyy hh:mm"
+        date_fmt, datetime_fmt = _date_formats(xl, lists.Range(u"C1"))
+        _set_format(ws.Range(u"D:D"), date_fmt)
+        _set_format(ws.Range(u"J:J"), datetime_fmt)
 
         borders = full.Borders
         borders.LineStyle = 1
@@ -219,6 +221,69 @@ def save_tasks(rows, path):
     except Exception:
         warnings.append(u"Не удалось закрепить шапку таблицы (файл сохранён).")
     return warnings
+
+
+_DATE_TEXT_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$")
+_TEST_DATE = 46290.5  # 25.09.2026 12:00
+
+
+def _set_format(rng, fmt):
+    """fmt — (код формата, свойство: NumberFormat или NumberFormatLocal)."""
+    code, prop = fmt
+    setattr(rng, prop, code)
+
+
+def _international_codes(xl):
+    """Буквы дня/месяца/года/часа/минуты в языке этого Excel
+    (Application.International: xlDayCode=21, xlMonthCode=20, xlYearCode=19,
+    xlHourCode=22, xlMinuteCode=23)."""
+    def get(index):
+        try:
+            return unicode(xl.International[index])
+        except Exception:
+            return unicode(xl.International(index))
+    return get(21), get(20), get(19), get(22), get(23)
+
+
+def _date_formats(xl, probe):
+    """
+    Форматы «дата» и «дата и время» для колонок. Через COM из IronPython
+    русский Excel может разбирать NumberFormat в своём языке («ДД.ММ.ГГГГ»),
+    а не в английском («dd.mm.yyyy»), — тогда формат пишется буквально и
+    вместо даты в ячейке виден текст «dd.mm.yyyy». Поэтому пробуем варианты
+    на служебной ячейке probe (скрытый лист) и берём первый, при котором
+    дата реально отображается как «ДД.ММ.ГГГГ ЧЧ:ММ».
+    """
+    candidates = []
+    try:
+        d, m, y, h, n = _international_codes(xl)
+        candidates.append((u"{0}{0}.{1}{1}.{2}{2}{2}{2}".format(d, m, y),
+                           u"{0}{0}:{1}{1}".format(h, n), u"NumberFormatLocal"))
+    except Exception:
+        pass
+    candidates.append((u"dd.mm.yyyy", u"hh:mm", u"NumberFormat"))
+    candidates.append((u"ДД.ММ.ГГГГ", u"чч:мм", u"NumberFormatLocal"))
+    candidates.append((u"dd.mm.yyyy", u"hh:mm", u"NumberFormatLocal"))
+
+    # Узкая колонка показала бы «#####» вместо даты — расширяем
+    probe.ColumnWidth = 30
+    probe.Value2 = _TEST_DATE
+    try:
+        for date_code, time_code, prop in candidates:
+            try:
+                setattr(probe, prop, u"{} {}".format(date_code, time_code))
+                text = unicode(probe.Text).strip()
+            except Exception:
+                continue
+            if _DATE_TEXT_RE.match(text):
+                return (date_code, prop), (u"{} {}".format(date_code, time_code), prop)
+    finally:
+        try:
+            probe.Clear()
+        except Exception:
+            pass
+    # Ничего не подошло — английские коды как есть (лучше, чем ничего)
+    return (u"m/d/yyyy", u"NumberFormat"), (u"m/d/yyyy h:mm", u"NumberFormat")
 
 
 def _add_conditional_formats(ws, last_col, last_row):
