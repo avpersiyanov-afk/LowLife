@@ -174,6 +174,7 @@ COLUMNS = ('id', 'due', 'type', 'section', 'text', 'answer', 'assignee', 'author
 FILTER_STATUS = (u'Открытые', u'Все', u'Закрытые')
 ALL_TYPES = u'Все типы'
 ALL_SECTIONS = u'Все разделы'
+ALL_AUTHORS = u'Все авторы'
 
 
 def _sorted(notes):
@@ -206,8 +207,9 @@ class SummaryWindow(forms.WPFWindow):
         _fill(self.cmbStatus, FILTER_STATUS)
         _fill(self.cmbType, [ALL_TYPES] + self._merge(settings['types'], present_types))
         _fill(self.cmbSection, [ALL_SECTIONS] + self._merge(settings['sections'], present_sections))
+        self._fill_authors()
 
-        for combo in (self.cmbStatus, self.cmbType, self.cmbSection):
+        for combo in (self.cmbStatus, self.cmbType, self.cmbSection, self.cmbAuthor):
             combo.SelectionChanged += self.refresh
         self.txtSearch.TextChanged += self.refresh
         self.chkMine.Checked += self.refresh
@@ -236,6 +238,12 @@ class SummaryWindow(forms.WPFWindow):
                 result.append(item)
         return result
 
+    def _fill_authors(self):
+        """Авторы, у которых есть заметки по проекту; выбранный сохраняется при обновлении."""
+        current = self.cmbAuthor.SelectedItem
+        authors = sorted(set(n.get('author') for n in self.notes if n.get('author')), key=lambda a: a.lower())
+        _fill(self.cmbAuthor, [ALL_AUTHORS] + authors, current)
+
     def _notice(self, text):
         self.txtNotice.Text = text or u''
         self.txtNotice.Visibility = Visibility.Visible if text else Visibility.Collapsed
@@ -244,6 +252,7 @@ class SummaryWindow(forms.WPFWindow):
         status = self.cmbStatus.SelectedIndex
         ntype = self.cmbType.SelectedItem
         section = self.cmbSection.SelectedItem
+        author = self.cmbAuthor.SelectedItem
         query = (self.txtSearch.Text or u'').strip().lower()
         mine = bool(self.chkMine.IsChecked)
         result = []
@@ -254,6 +263,8 @@ class SummaryWindow(forms.WPFWindow):
             if ntype and ntype != ALL_TYPES and n.get('type') != ntype:
                 continue
             if section and section != ALL_SECTIONS and n.get('section') != section:
+                continue
+            if author and author != ALL_AUTHORS and n.get('author') != author:
                 continue
             if mine and not core.is_mine(n, self.ctx['user']):
                 continue
@@ -423,6 +434,9 @@ class SummaryWindow(forms.WPFWindow):
             notes = core.reminders(notes, self.ctx['user'], self.settings.get('remind_days'))
         self.notes = notes
         self._notice(error)
+        self._ready = False
+        self._fill_authors()
+        self._ready = True
         self.refresh()
 
     def on_sheet(self, sender, e):
