@@ -361,11 +361,14 @@ function ensureSummarySheets_(ss) {
 
   let sh = ss.getSheetByName(SHEET_SUMMARY) || ss.insertSheet(SHEET_SUMMARY);
   sh.clear();
+  // setFormula разбирает формулу в локали таблицы: в русской аргументы идут через «;»,
+  // столбцы массива {…} — через «\». Поэтому разделители подбираются под таблицу.
+  const [S, C] = formulaSeparators_(sh);
   sh.getRange('A1').setValue('Открытые заметки: проекты × разделы (обновляется автоматически)').setFontWeight('bold');
-  sh.getRange('A3').setFormula('=IFERROR(QUERY(' + src + 'A1:' + colLetter_(FIELDS.length) + ', "select ' +
+  sh.getRange('A3').setFormula('=IFERROR(QUERY(' + src + 'A1:' + colLetter_(FIELDS.length) + S + ' "select ' +
     L('project_key') + ', ' + L('project_name') + ', count(' + L('id') + ') where ' + L('id') + ' is not null and ' +
     notClosed + ' group by ' + L('project_key') + ', ' + L('project_name') + ' pivot ' + L('section') +
-    '", 1), "Открытых заметок нет")');
+    '"' + S + ' 1)' + S + ' "Открытых заметок нет")');
   sh.setFrozenRows(3);
 
   const col = k => src + L(k) + '2:' + L(k);
@@ -375,12 +378,25 @@ function ensureSummarySheets_(ss) {
   sh.getRange('A3:I3').setValues([['Срок', 'Код проекта', 'Проект', 'Тип', 'Раздел', 'Текст', 'Кому', 'Автор', 'Статус']])
     .setFontWeight('bold').setBackground('#e8eef7');
   sh.getRange('A4').setFormula('=IFERROR(SORT(FILTER({' +
-    [col('due'), src + L('project_key') + '2:' + L('text'), col('assignee'), col('author'), col('status')].join(', ') +
-    '}, ' + col('due') + '<>"", ' + col('due') + '<=TODAY()+3, ' +
-    col('status') + '<>"Выполнено", ' + col('status') + '<>"Отменено"), 1, TRUE), "Ничего срочного")');
+    [col('due'), src + L('project_key') + '2:' + L('text'), col('assignee'), col('author'), col('status')].join(C + ' ') +
+    '}' + S + ' ' + col('due') + '<>""' + S + ' ' + col('due') + '<=TODAY()+3' + S + ' ' +
+    col('status') + '<>"Выполнено"' + S + ' ' + col('status') + '<>"Отменено")' + S + ' 1' + S + ' TRUE)' + S +
+    ' "Ничего срочного")');
   sh.getRange('A4:A').setNumberFormat('dd.MM.yyyy');
   sh.setColumnWidth(6, 380);
   sh.setFrozenRows(3);
+}
+
+// [разделитель аргументов, разделитель столбцов массива] для локали таблицы.
+// Пробная формула =SUM(1,2): там, где запятая — разделитель аргументов, получится 3,
+// а там, где запятая десятичная (ru_RU и др.), — 1,2.
+function formulaSeparators_(sh) {
+  const probe = sh.getRange('A1');
+  probe.setFormula('=SUM(1,2)');
+  SpreadsheetApp.flush();
+  const comma = probe.getValue() === 3;
+  probe.clear();
+  return comma ? [',', ','] : [';', '\\'];
 }
 
 
