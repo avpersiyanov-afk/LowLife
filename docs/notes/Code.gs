@@ -9,6 +9,7 @@
 const SHEET_NOTES = 'Заметки';
 const SHEET_SETTINGS = 'Настройки';
 const SHEET_SUMMARY = 'Сводка';
+const SHEET_PROJECTS = 'Все проекты';
 const SHEET_DUE = 'Сроки';
 
 // [ключ в запросе, заголовок столбца, формат ячейки]
@@ -357,34 +358,113 @@ function ensureSettingsSheet_(ss) {
 function ensureSummarySheets_(ss) {
   const src = "'" + SHEET_NOTES + "'!";
   const L = k => colLetter_(COL[k]);
+  const col = k => src + L(k) + '2:' + L(k);
   const notClosed = L('status') + " <> 'Выполнено' and " + L('status') + " <> 'Отменено'";
 
   let sh = ss.getSheetByName(SHEET_SUMMARY) || ss.insertSheet(SHEET_SUMMARY);
   sh.clear();
+  sh.getDataRange().clearDataValidations();
   // setFormula разбирает формулу в локали таблицы: в русской аргументы идут через «;»,
   // столбцы массива {…} — через «\». Поэтому разделители подбираются под таблицу.
   const [S, C] = formulaSeparators_(sh);
+  const fn = (name, ...args) => name + '(' + args.join(S + ' ') + ')';
+  const arr = (...cols) => '{' + cols.join(C + ' ') + '}';
+  const isOpen = '(' + col('status') + '<>"Выполнено")*(' + col('status') + '<>"Отменено")';
+
+  // ---- «Сводка»: все заметки выбранного проекта
+  sh.getRange('A1').setValue('Сводка по проекту').setFontWeight('bold').setFontSize(13);
+
+  // скрытый столбец Z — список кодов проектов для выпадающего списка
+  sh.getRange('Z1').setValue('Коды проектов');
+  sh.getRange('Z2').setFormula('=' + fn('IFERROR', fn('SORT', fn('UNIQUE',
+    fn('FILTER', col('project_key'), col('project_key') + '<>""'))), '""'));
+  sh.hideColumns(26);
+
+  sh.getRange('A2:A3').setValues([['Код проекта'], ['Показывать']]).setFontWeight('bold');
+  sh.getRange('B2').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInRange(sh.getRange('Z2:Z'), true).setAllowInvalid(false).build())
+    .setBackground('#fff8e1').setNumberFormat('@');
+  const first = firstProjectKey_(ss);
+  if (first) sh.getRange('B2').setValue(first);
+  sh.getRange('C2').setFormula('=' + fn('IFERROR', fn('INDEX',
+    fn('FILTER', col('project_name'), col('project_key') + '=$B$2'), '1'), '""'));
+  sh.getRange('B3').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Открытые', 'Все'], true).setAllowInvalid(false).build())
+    .setValue('Открытые').setBackground('#fff8e1');
+  sh.getRange('C3').setValue('← выберите код проекта и что показывать').setFontColor('#888888');
+
+  // счётчики по статусам
+  const counters = [
+    ['Всего', fn('COUNTIF', col('project_key'), '$B$2')],
+    ['Открыто', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"Открыто"')],
+    ['В работе', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"В работе"')],
+    ['Выполнено', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"Выполнено"')],
+    ['Отменено', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"Отменено"')],
+    ['Просрочено', fn('COUNTIFS', col('project_key'), '$B$2', col('due'), '"<"&TODAY()',
+      col('status'), '"<>Выполнено"', col('status'), '"<>Отменено"')],
+  ];
+  sh.getRange(5, 1, 1, counters.length).setValues([counters.map(c => c[0])])
+    .setFontWeight('bold').setBackground('#e8eef7').setHorizontalAlignment('center');
+  sh.getRange(6, 1, 1, counters.length).setFormulas([counters.map(c => '=' + c[1])])
+    .setFontSize(14).setHorizontalAlignment('center');
+  sh.getRange(6, counters.length).setFontColor('#c62828');
+
+  // таблица заметок проекта
+  const cols = [['Статус', 'status'], ['Срок', 'due'], ['Тип', 'type'], ['Раздел', 'section'], ['Текст', 'text'],
+    ['Кому', 'assignee'], ['Автор', 'author'], ['Создано', 'created'], ['Модель', 'file'], ['Вид', 'view'], ['ID', 'id']];
+  sh.getRange(8, 1, 1, cols.length).setValues([cols.map(c => c[0])])
+    .setFontWeight('bold').setBackground('#e8eef7');
+  sh.getRange('A9').setFormula('=' + fn('IFERROR', fn('SORT',
+    fn('FILTER', arr(...cols.map(c => col(c[1]))), col('project_key') + '=$B$2',
+      '(' + isOpen + '+($B$3="Все"))>0'),
+    '2', 'TRUE'), '"Заметок нет"'));
+  sh.getRange('B9:B').setNumberFormat('dd.MM.yyyy');
+  sh.getRange('H9:H').setNumberFormat('dd.MM.yyyy HH:mm');
+  sh.getRange('E9:E').setWrap(true);
+  [110, 90, 110, 80, 420, 110, 110, 120, 160, 140, 90].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  sh.setFrozenRows(8);
+  const rules = [
+    ['Выполнено', '#e8f5e9'], ['Отменено', '#eeeeee'], ['В работе', '#e3f2fd'],
+  ].map(([v, color]) => SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$A9="' + v + '"').setBackground(color).setRanges([sh.getRange('A9:K')]).build());
+  rules.push(SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND($B9<>"", $B9<TODAY(), $A9<>"Выполнено", $A9<>"Отменено")'.replace(/, /g, S + ' '))
+    .setFontColor('#c62828').setRanges([sh.getRange('B9:B')]).build());
+  sh.setConditionalFormatRules(rules);
+
+  // ---- «Все проекты»: открытые заметки, проекты × разделы
+  sh = ss.getSheetByName(SHEET_PROJECTS) || ss.insertSheet(SHEET_PROJECTS);
+  sh.clear();
   sh.getRange('A1').setValue('Открытые заметки: проекты × разделы (обновляется автоматически)').setFontWeight('bold');
-  sh.getRange('A3').setFormula('=IFERROR(QUERY(' + src + 'A1:' + colLetter_(FIELDS.length) + S + ' "select ' +
-    L('project_key') + ', ' + L('project_name') + ', count(' + L('id') + ') where ' + L('id') + ' is not null and ' +
-    notClosed + ' group by ' + L('project_key') + ', ' + L('project_name') + ' pivot ' + L('section') +
-    '"' + S + ' 1)' + S + ' "Открытых заметок нет")');
+  sh.getRange('A3').setFormula('=' + fn('IFERROR', fn('QUERY', src + 'A1:' + colLetter_(FIELDS.length),
+    '"select ' + L('project_key') + ', ' + L('project_name') + ', count(' + L('id') + ') where ' + L('id') +
+    ' is not null and ' + notClosed + ' group by ' + L('project_key') + ', ' + L('project_name') +
+    ' pivot ' + L('section') + '"', '1'), '"Открытых заметок нет"'));
   sh.setFrozenRows(3);
 
-  const col = k => src + L(k) + '2:' + L(k);
+  // ---- «Сроки»: просроченные и ближайшие 3 дня по всем проектам
   sh = ss.getSheetByName(SHEET_DUE) || ss.insertSheet(SHEET_DUE);
   sh.clear();
   sh.getRange('A1').setValue('Просроченные и ближайшие (3 дня) открытые заметки').setFontWeight('bold');
   sh.getRange('A3:I3').setValues([['Срок', 'Код проекта', 'Проект', 'Тип', 'Раздел', 'Текст', 'Кому', 'Автор', 'Статус']])
     .setFontWeight('bold').setBackground('#e8eef7');
-  sh.getRange('A4').setFormula('=IFERROR(SORT(FILTER({' +
-    [col('due'), src + L('project_key') + '2:' + L('text'), col('assignee'), col('author'), col('status')].join(C + ' ') +
-    '}' + S + ' ' + col('due') + '<>""' + S + ' ' + col('due') + '<=TODAY()+3' + S + ' ' +
-    col('status') + '<>"Выполнено"' + S + ' ' + col('status') + '<>"Отменено")' + S + ' 1' + S + ' TRUE)' + S +
-    ' "Ничего срочного")');
+  sh.getRange('A4').setFormula('=' + fn('IFERROR', fn('SORT',
+    fn('FILTER', arr(col('due'), src + L('project_key') + '2:' + L('text'), col('assignee'), col('author'), col('status')),
+      col('due') + '<>""', col('due') + '<=TODAY()+3',
+      col('status') + '<>"Выполнено"', col('status') + '<>"Отменено"'),
+    '1', 'TRUE'), '"Ничего срочного"'));
   sh.getRange('A4:A').setNumberFormat('dd.MM.yyyy');
   sh.setColumnWidth(6, 380);
   sh.setFrozenRows(3);
+}
+
+// Код проекта для начального выбора на «Сводке» — первый по алфавиту из листа «Заметки».
+function firstProjectKey_(ss) {
+  const notes = ss.getSheetByName(SHEET_NOTES);
+  if (!notes || notes.getLastRow() < 2) return '';
+  const keys = notes.getRange(2, COL.project_key, notes.getLastRow() - 1, 1).getValues()
+    .map(r => String(r[0]).trim()).filter(Boolean).sort();
+  return keys[0] || '';
 }
 
 // [разделитель аргументов, разделитель столбцов массива] для локали таблицы.
