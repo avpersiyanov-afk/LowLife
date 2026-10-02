@@ -1,0 +1,6 @@
+title: Заметки
+tooltip: Заметки по проекту в общей Google Таблице
+layout:
+  - NewNote
+  - Summary
+  - Setup

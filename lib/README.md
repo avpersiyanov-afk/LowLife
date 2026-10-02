@@ -1784,6 +1784,29 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm` (мм на листе);
   `load_settings()`, `get_settings_interactive()` (Shift+клик).
 
+## pnotes/ (отдельный пакет рядом с `lowlife/`) — «Заметки по проекту»
+Панель `Notes.panel` (кнопки «Заметка», «Сводка», «Настройка») и напоминания
+в конце `hooks/doc-opened.py`. Заметки хранятся в общей Google Таблице через
+веб-приложение Apps Script (`docs/notes/Code.gs`), подробности и установка —
+`docs/notes-panel.md`. Импорт: `from pnotes import ui` / `from pnotes import core`.
+
+- `pnotes/core.py` — без окон: подключение (`load_config`/`save_user_config`/
+  `is_configured`; адрес и токен — `%APPDATA%\pyRevit\ProjectNotes\config.json`,
+  необязательный общий `config.json` в корне расширения, не коммитится),
+  `call(action, payload)` — POST JSON в Apps Script через `HttpWebRequest`
+  (`ApiError` с понятным текстом), настройки команды с листа «Настройки»
+  (`get_settings` с локальным кэшем, `save_mapping`), «Сведения о проекте»
+  (`list_project_params`, `read_param` по ссылке «Имя [BUILTIN]» или имени,
+  `file_key` — имя файла центральной модели), `get_context` (код/название
+  проекта, вид, выбор, автор), заметки (`new_note`, `add_note` — сначала в
+  локальную очередь `queue.json`, потом отправка; `flush_queue`, `load_notes`
+  с кэшем на случай отсутствия связи, `set_status`), фильтры сроков
+  (`is_overdue`, `is_mine`, `reminders`).
+- `pnotes/ui.py` — WPF-окна `NoteWindow`, `SummaryWindow` (также режим
+  напоминаний), `SetupWindow` (разметка в `pnotes/xaml/*.xaml`) и точки входа
+  кнопок/хука: `run_new_note(uidoc)`, `run_summary(uidoc)`, `run_setup(doc)`,
+  `run_open_reminders(doc)` (раз за сеанс Revit на проект, без сети — молча выходит).
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
