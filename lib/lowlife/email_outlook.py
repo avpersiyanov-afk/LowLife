@@ -142,33 +142,26 @@ def _sender_smtp(item):
     return unicode(_safe(lambda: item.SenderEmailAddress))
 
 
-def read_inbox(days, unread_only=False, subfolder=u"", tick=None):
-    """
-    Письма из «Входящих» (или их подпапки) за последние `days` дней,
-    новые первыми. Возвращает (список писем, путь папки, предупреждение или None).
-    tick(n) вызывается после каждого прочитанного письма; если вернул
-    True — бросается Cancelled.
-    """
-    app = connect()
-    try:
-        namespace = app.GetNamespace("MAPI")
-        inbox = namespace.GetDefaultFolder(OL_FOLDER_INBOX)
-    except Exception as ex:
-        raise OutlookError(
-            u"Outlook запущен, но папка «Входящие» недоступна:\n{}\n\n"
-            u"Проверьте, что Outlook открыт и профиль загружен.".format(ex))
+def _walk_folders(folder):
+    """Папка и все её подпапки (в глубину)."""
+    result = [folder]
+    children = _safe(lambda: folder.Folders, None)
+    if children is not None:
+        for i in range(1, _safe(lambda: children.Count, 0) + 1):
+            child = _safe(lambda: children.Item(i), None)
+            if child is not None:
+                result.extend(_walk_folders(child))
+    return result
 
-    folder = _find_subfolder(inbox, subfolder) if (subfolder or u"").strip() else inbox
-    folder_name = unicode(_safe(lambda: folder.FolderPath, u"Входящие"))
 
+def _read_folder(folder, cutoff, unread_only, emails, tick):
+    """Письма одной папки новее cutoff — дописываются в emails. Возвращает
+    False, если набрали MAX_EMAILS (дальше читать нет смысла)."""
+    folder_path = unicode(_safe(lambda: folder.FolderPath))
     items = folder.Items
     if unread_only:
         items = items.Restrict("[UnRead] = True")
     items.Sort("[ReceivedTime]", True)
-
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
-    emails = []
-    warning = None
 
     item = items.GetFirst()
     while item is not None:
@@ -184,8 +177,9 @@ def read_inbox(days, unread_only=False, subfolder=u"", tick=None):
             else:
                 sender = sender_name or smtp
             emails.append({
-                "id": len(emails) + 1,
+                "id": 0,  # сквозные номера — после сборки всех папок
                 "received": received,
+                "folder": folder_path,
                 "sender": sender,
                 "sender_name": sender_name,
                 "to": unicode(_safe(lambda: item.To)),
@@ -196,9 +190,57 @@ def read_inbox(days, unread_only=False, subfolder=u"", tick=None):
             if tick is not None and tick(len(emails)):
                 raise Cancelled()
             if len(emails) >= MAX_EMAILS:
-                warning = (u"Писем за период больше {0} — разобраны только {0} "
-                           u"самых новых. Уменьшите период в настройках.".format(MAX_EMAILS))
-                break
+                return False
         item = items.GetNext()
+    return True
 
+
+def read_inbox(days, unread_only=False, subfolder=u"", include_subfolders=True, tick=None):
+    """
+    Письма из «Входящих» (или их подпапки из настроек) за последние `days`
+    дней, новые первыми. include_subfolders — заодно все вложенные папки.
+    Возвращает (список писем, описание папок, предупреждение или None).
+    tick(n) вызывается после каждого прочитанного письма; если вернул
+    True — бросается Cancelled.
+    """
+    app = connect()
+    try:
+        namespace = app.GetNamespace("MAPI")
+        inbox = namespace.GetDefaultFolder(OL_FOLDER_INBOX)
+    except Exception as ex:
+        raise OutlookError(
+            u"Outlook запущен, но папка «Входящие» недоступна:\n{}\n\n"
+            u"Проверьте, что Outlook открыт и профиль загружен.".format(ex))
+
+    root = _find_subfolder(inbox, subfolder) if (subfolder or u"").strip() else inbox
+    root_name = unicode(_safe(lambda: root.FolderPath, u"Входящие"))
+    folders = _walk_folders(root) if include_subfolders else [root]
+
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
+    emails = []
+    warning = None
+    skipped = []
+    for folder in folders:
+        try:
+            if not _read_folder(folder, cutoff, unread_only, emails, tick):
+                warning = (u"Писем за период больше {0} — разобраны только {0} "
+                           u"первых найденных. Уменьшите период в настройках.".format(MAX_EMAILS))
+                break
+        except Cancelled:
+            raise
+        except Exception:
+            skipped.append(unicode(_safe(lambda: folder.Name, u"?")))
+
+    if skipped:
+        note = u"Не удалось прочитать папки: " + u", ".join(skipped)
+        warning = note if not warning else warning + u" " + note
+
+    emails.sort(key=lambda e: e["received"] or datetime.datetime(1900, 1, 1), reverse=True)
+    for i, email in enumerate(emails, start=1):
+        email["id"] = i
+
+    if include_subfolders and len(folders) > 1:
+        folder_name = u"{} и подпапки ({})".format(root_name, len(folders) - 1)
+    else:
+        folder_name = root_name
     return emails, folder_name, warning

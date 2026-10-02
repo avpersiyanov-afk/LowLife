@@ -64,12 +64,19 @@ def _col(idx):
     return u"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[idx]
 
 
-def _dotnet_date(value):
+def _excel_date(value):
+    """Дата → число Excel (OLE Automation date). Число кладётся в общий
+    массив данных, а формат даты задаётся колонке через NumberFormat:
+    так дата пишется надёжно. Присваивание DateTime через Range.Value из
+    IronPython (у Value в Excel есть параметр) молча не срабатывало —
+    ячейки «Срок» и «Дата письма» оставались пустыми."""
     if isinstance(value, datetime.datetime):
-        return DateTime(value.year, value.month, value.day, value.hour, value.minute, 0)
-    if isinstance(value, datetime.date):
-        return DateTime(value.year, value.month, value.day)
-    return None
+        dt = DateTime(value.year, value.month, value.day, value.hour, value.minute, 0)
+    elif isinstance(value, datetime.date):
+        dt = DateTime(value.year, value.month, value.day)
+    else:
+        return None
+    return dt.ToOADate()
 
 
 def _cell_text(value):
@@ -134,13 +141,13 @@ def save_tasks(rows, path):
                 r,
                 _cell_text(row.get("task")),
                 _cell_text(row.get("requester")),
-                None,  # срок — ниже, через Value
+                _excel_date(row.get("deadline")),
                 _cell_text(row.get("priority")),
                 STATUSES[0],
                 _cell_text(row.get("comment")),
                 _cell_text(row.get("subject")),
                 _cell_text(row.get("sender")),
-                None,  # дата письма — ниже, через Value
+                _excel_date(row.get("received")),
             ]
             for c, value in enumerate(values):
                 data[r, c] = value
@@ -149,13 +156,6 @@ def save_tasks(rows, path):
         last_row = n_rows
         full = ws.Range(u"A1:{}{}".format(last_col, last_row))
         full.Value2 = data
-        # Даты пишем по ячейке через Value: в Value2 (и в массиве) DateTime
-        # не превращается в дату Excel
-        for r, row in enumerate(rows, start=2):
-            for col_letter, key in ((u"D", "deadline"), (u"J", "received")):
-                value = _dotnet_date(row.get(key))
-                if value is not None:
-                    ws.Range(u"{}{}".format(col_letter, r)).Value = value
 
         # --- оформление
         ws.Cells.Font.Name = u"Arial"
