@@ -3,6 +3,10 @@
 Настройки кнопки «Задачи из почты» (Mail.panel) + окно их редактирования
 (Shift+клик по кнопке).
 
+Текст промпта тоже редактируется здесь (ключ "prompt"). Пустое значение
+значит «стандартный промпт» — prompt.txt из папки кнопки; свой текст
+хранится в файле настроек и не теряется при обновлении расширения.
+
 Хранятся в папке конфигурации pyRevit — JSON-файл
 %APPDATA%\\pyRevit\\LowLifeEmailTasks_settings.json, тот же подход, что
 у остальных кнопок расширения (простой файл вместо
@@ -21,10 +25,11 @@ from pyrevit import forms
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
-    HorizontalAlignment, TextWrapping, SizeToContent
+    HorizontalAlignment, TextWrapping, SizeToContent, SystemParameters
 )
 from System.Windows.Controls import (
-    StackPanel, TextBlock, TextBox, Button, CheckBox, Orientation
+    StackPanel, TextBlock, TextBox, Button, CheckBox, Orientation,
+    ScrollViewer, ScrollBarVisibility
 )
 from System.Windows.Media import Brushes
 
@@ -39,6 +44,7 @@ DEFAULTS = {
     "claude_path": u"",
     "model": email_claude.DEFAULT_MODEL,
     "test_mode": False,
+    "prompt": u"",
 }
 
 
@@ -71,7 +77,14 @@ def load():
     values["unread_only"] = bool(values.get("unread_only"))
     values["test_mode"] = bool(values.get("test_mode"))
     values["model"] = (values.get("model") or u"").strip() or DEFAULTS["model"]
+    values["prompt"] = values.get("prompt") or u""
     return values
+
+
+def effective_prompt(values, default_prompt):
+    """Промпт для запроса: свой из настроек, иначе стандартный (prompt.txt)."""
+    custom = values.get("prompt") or u""
+    return custom if custom.strip() else default_prompt
 
 
 def save(values):
@@ -124,14 +137,16 @@ def _checkbox(parent, text, value):
     return box
 
 
-def show_settings_form(values):
-    """Модальное окно. Возвращает словарь новых значений или None (Отмена)."""
+def show_settings_form(values, default_prompt):
+    """Модальное окно. Возвращает словарь новых значений или None (Отмена).
+    default_prompt — текст prompt.txt (для кнопки «Вернуть стандартный»)."""
     result = {"values": None}
 
     win = Window()
     win.Title = u"Настройки: Задачи из почты"
-    win.Width = 640
+    win.Width = 720
     win.SizeToContent = SizeToContent.Height
+    win.MaxHeight = SystemParameters.WorkArea.Height - 40
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     root = StackPanel()
@@ -171,6 +186,34 @@ def show_settings_form(values):
                                u"test_emails.json (рядом со скриптом кнопки)",
                          values.get("test_mode"))
 
+    _label(root, u"Промпт для Claude", bold=True, top=18)
+    prompt_box = TextBox()
+    prompt_box.Text = effective_prompt(values, default_prompt)
+    prompt_box.AcceptsReturn = True
+    prompt_box.AcceptsTab = True
+    prompt_box.TextWrapping = TextWrapping.Wrap
+    prompt_box.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    prompt_box.Height = 260
+    prompt_box.Padding = Thickness(4)
+    root.Children.Add(prompt_box)
+    _hint(root, u"Сегодняшняя дата и сами письма добавляются к промпту автоматически. "
+                u"Сохраните в тексте формат ответа {\"tasks\":[{\"email_id\":…,\"task\":…,"
+                u"\"requester\":…,\"deadline\":…,\"priority\":…,\"comment\":…}]} — по нему "
+                u"разбирается ответ. Свой текст хранится в настройках и не теряется при "
+                u"обновлении расширения.")
+
+    reset_btn = Button()
+    reset_btn.Content = u"Вернуть стандартный промпт"
+    reset_btn.Padding = Thickness(10, 3, 10, 3)
+    reset_btn.Margin = Thickness(0, 6, 0, 0)
+    reset_btn.HorizontalAlignment = HorizontalAlignment.Left
+
+    def on_reset(sender, args):
+        prompt_box.Text = default_prompt
+
+    reset_btn.Click += on_reset
+    root.Children.Add(reset_btn)
+
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
     buttons.HorizontalAlignment = HorizontalAlignment.Right
@@ -208,6 +251,9 @@ def show_settings_form(values):
             "claude_path": claude_path,
             "model": model_box.Text.strip() or DEFAULTS["model"],
             "test_mode": bool(test_box.IsChecked),
+            # Совпадает со стандартным — храним пусто, чтобы правки prompt.txt
+            # в новых версиях расширения подхватывались сами
+            "prompt": u"" if _same_text(prompt_box.Text, default_prompt) else prompt_box.Text,
         }
         win.Close()
 
@@ -220,14 +266,22 @@ def show_settings_form(values):
     buttons.Children.Add(ok_btn)
     root.Children.Add(buttons)
 
-    win.Content = root
+    scroller = ScrollViewer()
+    scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    scroller.Content = root
+    win.Content = scroller
     win.ShowDialog()
     return result["values"]
 
 
-def edit_interactive():
+def _same_text(a, b):
+    norm = lambda t: (t or u"").replace(u"\r\n", u"\n").strip()
+    return norm(a) == norm(b)
+
+
+def edit_interactive(default_prompt):
     """Shift+клик: окно настроек. True — сохранено, False — отменено."""
-    edited = show_settings_form(load())
+    edited = show_settings_form(load(), default_prompt)
     if edited is None:
         return False
     return save(edited)
