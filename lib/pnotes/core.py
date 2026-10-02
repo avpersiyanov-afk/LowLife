@@ -35,6 +35,8 @@ STATUS_DONE = u'Выполнено'
 STATUS_CANCEL = u'Отменено'
 STATUS_PENDING = u'Не отправлено'
 CLOSED = (STATUS_DONE, STATUS_CANCEL)
+# Тип «Вопрос» нельзя закрыть как «Выполнено» без «Решения» (то же правило в Code.gs)
+QUESTION_TYPE = u'Вопрос'
 
 # Значение параметра «код проекта», означающее «брать имя файла модели»
 FILE_KEY = u'(имя файла модели)'
@@ -456,6 +458,21 @@ def load_notes(key, timeout_ms=15000):
 
 def set_status(ids, status, user):
     return call('setStatus', {'ids': ids, 'status': status, 'by': user})
+
+
+def set_answer(note_id, answer, status, user):
+    """Записывает «Решение»; status — None (не менять) или новый статус."""
+    return call('answer', {'id': note_id, 'answer': answer, 'status': status, 'by': user})
+
+
+def is_question(note):
+    return (note.get('type') or u'').strip().lower().startswith(QUESTION_TYPE.lower())
+
+
+def needs_answer(note):
+    """Вопрос без ответа, который ещё не отменён."""
+    return (is_question(note) and not (note.get('answer') or u'').strip()
+            and note.get('status') != STATUS_CANCEL)
 
 
 def is_closed(note):

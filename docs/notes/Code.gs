@@ -9,6 +9,7 @@
 const SHEET_NOTES = 'Заметки';
 const SHEET_SETTINGS = 'Настройки';
 const SHEET_SUMMARY = 'Сводка';
+const SHEET_PROJECTS = 'Все проекты';
 const SHEET_DUE = 'Сроки';
 
 // [ключ в запросе, заголовок столбца, формат ячейки]
@@ -30,12 +31,17 @@ const FIELDS = [
   ['view', 'Вид', '@'],
   ['elements', 'Элементы', '@'],
   ['info', 'Сведения о проекте', '@'],
+  // новые столбцы — только в конец: в уже созданных таблицах положение прежних не меняется
+  ['answer', 'Решение', '@'],
 ];
 const COL = {};
 FIELDS.forEach((f, i) => { COL[f[0]] = i + 1; });
 const FORMATS = FIELDS.map(f => f[2]);
 
 const STATUSES = ['Открыто', 'В работе', 'Выполнено', 'Отменено'];
+const STATUS_DONE = 'Выполнено';
+// Тип «Вопрос» нельзя закрыть как «Выполнено» без заполненного «Решения»
+const QUESTION_TYPE = 'Вопрос';
 
 const DEFAULT_LISTS = [
   ['Типы', ['Замечание', 'Задача', 'Вопрос', 'Напоминание', 'Решение', 'Идея']],
@@ -116,6 +122,7 @@ function doPost(e) {
       case 'add': return json_(addNote_(req.note || {}));
       case 'list': return json_(listNotes_(req.project_key));
       case 'setStatus': return json_(setStatus_(req.ids || [], req.status, req.by));
+      case 'answer': return json_(setAnswer_(req.id, req.answer, req.status, req.by));
       default: return json_({ ok: false, error: 'Неизвестное действие: ' + req.action });
     }
   } catch (err) {
@@ -178,32 +185,64 @@ function listNotes_(projectKey) {
   return { ok: true, notes: notes };
 }
 
+function isQuestion_(type) {
+  return String(type || '').trim().toLowerCase().indexOf(QUESTION_TYPE.toLowerCase()) === 0;
+}
+
 function setStatus_(ids, status, by) {
   if (STATUSES.indexOf(status) < 0) return { ok: false, error: 'Неизвестный статус: ' + status };
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const sh = notesSheet_();
-    let updated = 0;
-    ids.forEach(id => {
-      const row = findRow_(sh, id);
-      if (!row) return;
+    const rows = ids.map(id => findRow_(sh, id)).filter(Boolean);
+    if (status === STATUS_DONE) {
+      const unanswered = rows.filter(row => isQuestion_(sh.getRange(row, COL.type).getValue()) &&
+        !String(sh.getRange(row, COL.answer).getValue()).trim());
+      if (unanswered.length) {
+        return { ok: false, error: 'Вопрос нельзя закрыть без ответа: заполните «Решение» (без ответа — ' +
+          unanswered.length + ' шт.).' };
+      }
+    }
+    rows.forEach(row => {
       // Статус, Изменено, Кто изменил — соседние столбцы
       sh.getRange(row, COL.status, 1, 3).setValues([[status, new Date(), safeText_(by)]]);
-      updated++;
     });
-    return { ok: true, updated: updated };
+    return { ok: true, updated: rows.length };
   } finally {
     lock.releaseLock();
   }
 }
 
-// Ручная смена статуса прямо в таблице тоже отмечает, кто и когда.
+// Записывает «Решение» (ответ на вопрос); status — необязательно, например «Выполнено».
+function setAnswer_(id, answer, status, by) {
+  if (status && STATUSES.indexOf(status) < 0) return { ok: false, error: 'Неизвестный статус: ' + status };
+  answer = String(answer || '').trim();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = notesSheet_();
+    const row = findRow_(sh, id);
+    if (!row) return { ok: false, error: 'Заметка не найдена в таблице — обновите сводку.' };
+    if (status === STATUS_DONE && !answer && isQuestion_(sh.getRange(row, COL.type).getValue())) {
+      return { ok: false, error: 'Вопрос нельзя закрыть без ответа.' };
+    }
+    sh.getRange(row, COL.answer).setNumberFormat('@').setValue(safeText_(answer));
+    const current = sh.getRange(row, COL.status).getValue();
+    sh.getRange(row, COL.status, 1, 3).setValues([[status || current, new Date(), safeText_(by)]]);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Ручная смена статуса или решения прямо в таблице тоже отмечает, кто и когда.
 function onEdit(e) {
   try {
     const sh = e.range.getSheet();
     if (sh.getName() !== SHEET_NOTES || e.range.getRow() < 2) return;
-    if (e.range.getNumColumns() !== 1 || e.range.getColumn() !== COL.status) return;
+    const c = e.range.getColumn();
+    if (e.range.getNumColumns() !== 1 || (c !== COL.status && c !== COL.answer)) return;
     const who = (e.user && e.user.getEmail && e.user.getEmail()) || '';
     for (let r = e.range.getRow(); r <= e.range.getLastRow(); r++) {
       sh.getRange(r, COL.changed, 1, 2).setValues([[new Date(), who]]);
@@ -282,7 +321,29 @@ function settingsRow_(sh, key) {
 // ---------------------------------------------------------------- листы
 
 function notesSheet_() {
-  return SpreadsheetApp.getActive().getSheetByName(SHEET_NOTES) || ensureNotesSheet_(SpreadsheetApp.getActive());
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_NOTES);
+  if (!sh) return ensureNotesSheet_(SpreadsheetApp.getActive());
+  if (sh.getLastColumn() < FIELDS.length) addMissingColumns_(sh);
+  return sh;
+}
+
+const COLUMN_WIDTHS = { id: 90, created: 120, author: 110, project_key: 100, project_name: 180, type: 110, section: 70,
+  text: 380, due: 90, assignee: 110, status: 100, changed: 120, changed_by: 140, file: 200, view: 160,
+  elements: 100, info: 220, answer: 320 };
+
+// Таблица, созданная прежней версией скрипта, — дописать заголовки новых столбцов (например «Решение»).
+function addMissingColumns_(sh) {
+  const have = Math.max(sh.getLastColumn(), 1);
+  if (have >= FIELDS.length) return;
+  if (sh.getMaxColumns() < FIELDS.length) sh.insertColumnsAfter(sh.getMaxColumns(), FIELDS.length - sh.getMaxColumns());
+  const header = sh.getRange(1, 1, 1, have).getValues()[0].map(h => String(h).trim());
+  FIELDS.forEach(([key, title, format], i) => {
+    if (i < have || header.indexOf(title) >= 0) return;
+    sh.getRange(1, i + 1).setValue(title).setFontWeight('bold').setBackground('#e8eef7').setVerticalAlignment('middle');
+    sh.setColumnWidth(i + 1, COLUMN_WIDTHS[key] || 100);
+    const body = sh.getRange(2, i + 1, sh.getMaxRows() - 1, 1).setNumberFormat(format);
+    if (key === 'answer') body.setWrap(true);
+  });
 }
 
 function settingsSheet_() {
@@ -291,17 +352,19 @@ function settingsSheet_() {
 
 function ensureNotesSheet_(ss) {
   let sh = ss.getSheetByName(SHEET_NOTES);
-  if (sh && sh.getLastRow() > 0) return sh;
+  if (sh && sh.getLastRow() > 0) {
+    addMissingColumns_(sh);
+    return sh;
+  }
   if (!sh) sh = ss.insertSheet(SHEET_NOTES, 0);
   const n = FIELDS.length;
   sh.getRange(1, 1, 1, n).setValues([FIELDS.map(f => f[1])])
     .setFontWeight('bold').setBackground('#e8eef7').setVerticalAlignment('middle');
   sh.setFrozenRows(1);
-  const widths = { id: 90, created: 120, author: 110, project_key: 100, project_name: 180, type: 110, section: 70,
-    text: 380, due: 90, assignee: 110, status: 100, changed: 120, changed_by: 140, file: 200, view: 160,
-    elements: 100, info: 220 };
-  FIELDS.forEach(([k], i) => sh.setColumnWidth(i + 1, widths[k] || 100));
+  if (sh.getMaxColumns() < n) sh.insertColumnsAfter(sh.getMaxColumns(), n - sh.getMaxColumns());
+  FIELDS.forEach(([k], i) => sh.setColumnWidth(i + 1, COLUMN_WIDTHS[k] || 100));
   sh.getRange(2, COL.text, sh.getMaxRows() - 1, 1).setWrap(true);
+  sh.getRange(2, COL.answer, sh.getMaxRows() - 1, 1).setWrap(true);
   sh.hideColumns(COL.id);
   sh.getRange(2, 1, sh.getMaxRows() - 1, n).setNumberFormats(
     Array.from({ length: sh.getMaxRows() - 1 }, () => FORMATS));
@@ -357,34 +420,120 @@ function ensureSettingsSheet_(ss) {
 function ensureSummarySheets_(ss) {
   const src = "'" + SHEET_NOTES + "'!";
   const L = k => colLetter_(COL[k]);
+  const col = k => src + L(k) + '2:' + L(k);
   const notClosed = L('status') + " <> 'Выполнено' and " + L('status') + " <> 'Отменено'";
 
   let sh = ss.getSheetByName(SHEET_SUMMARY) || ss.insertSheet(SHEET_SUMMARY);
   sh.clear();
+  sh.getDataRange().clearDataValidations();
   // setFormula разбирает формулу в локали таблицы: в русской аргументы идут через «;»,
   // столбцы массива {…} — через «\». Поэтому разделители подбираются под таблицу.
   const [S, C] = formulaSeparators_(sh);
+  const fn = (name, ...args) => name + '(' + args.join(S + ' ') + ')';
+  const arr = (...cols) => '{' + cols.join(C + ' ') + '}';
+  const isOpen = '(' + col('status') + '<>"Выполнено")*(' + col('status') + '<>"Отменено")';
+
+  // ---- «Сводка»: все заметки выбранного проекта
+  sh.getRange('A1').setValue('Сводка по проекту').setFontWeight('bold').setFontSize(13);
+
+  // скрытый столбец Z — список кодов проектов для выпадающего списка
+  sh.getRange('Z1').setValue('Коды проектов');
+  sh.getRange('Z2').setFormula('=' + fn('IFERROR', fn('SORT', fn('UNIQUE',
+    fn('FILTER', col('project_key'), col('project_key') + '<>""'))), '""'));
+  sh.hideColumns(26);
+
+  sh.getRange('A2:A3').setValues([['Код проекта'], ['Показывать']]).setFontWeight('bold');
+  sh.getRange('B2').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInRange(sh.getRange('Z2:Z'), true).setAllowInvalid(false).build())
+    .setBackground('#fff8e1').setNumberFormat('@');
+  const first = firstProjectKey_(ss);
+  if (first) sh.getRange('B2').setValue(first);
+  sh.getRange('C2').setFormula('=' + fn('IFERROR', fn('INDEX',
+    fn('FILTER', col('project_name'), col('project_key') + '=$B$2'), '1'), '""'));
+  sh.getRange('B3').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Открытые', 'Все'], true).setAllowInvalid(false).build())
+    .setValue('Открытые').setBackground('#fff8e1');
+  sh.getRange('C3').setValue('← выберите код проекта и что показывать').setFontColor('#888888');
+
+  // счётчики по статусам
+  const counters = [
+    ['Всего', fn('COUNTIF', col('project_key'), '$B$2')],
+    ['Открыто', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"Открыто"')],
+    ['В работе', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"В работе"')],
+    ['Выполнено', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"Выполнено"')],
+    ['Отменено', fn('COUNTIFS', col('project_key'), '$B$2', col('status'), '"Отменено"')],
+    ['Просрочено', fn('COUNTIFS', col('project_key'), '$B$2', col('due'), '"<"&TODAY()',
+      col('status'), '"<>Выполнено"', col('status'), '"<>Отменено"')],
+    ['Вопросов без ответа', fn('COUNTIFS', col('project_key'), '$B$2', col('type'), '"' + QUESTION_TYPE + '"',
+      col('answer'), '""', col('status'), '"<>Отменено"')],
+  ];
+  sh.getRange(5, 1, 1, counters.length).setValues([counters.map(c => c[0])])
+    .setFontWeight('bold').setBackground('#e8eef7').setHorizontalAlignment('center');
+  sh.getRange(6, 1, 1, counters.length).setFormulas([counters.map(c => '=' + c[1])])
+    .setFontSize(14).setHorizontalAlignment('center');
+  sh.getRange(6, counters.length - 1, 1, 2).setFontColor('#c62828');
+
+  // таблица заметок проекта
+  const cols = [['Статус', 'status'], ['Срок', 'due'], ['Тип', 'type'], ['Раздел', 'section'], ['Текст', 'text'],
+    ['Решение', 'answer'], ['Кому', 'assignee'], ['Автор', 'author'], ['Создано', 'created'], ['Модель', 'file'],
+    ['Вид', 'view'], ['ID', 'id']];
+  sh.getRange(8, 1, 1, cols.length).setValues([cols.map(c => c[0])])
+    .setFontWeight('bold').setBackground('#e8eef7');
+  sh.getRange('A9').setFormula('=' + fn('IFERROR', fn('SORT',
+    fn('FILTER', arr(...cols.map(c => col(c[1]))), col('project_key') + '=$B$2',
+      '(' + isOpen + '+($B$3="Все"))>0'),
+    '2', 'TRUE'), '"Заметок нет"'));
+  sh.getRange('B9:B').setNumberFormat('dd.MM.yyyy');
+  sh.getRange('I9:I').setNumberFormat('dd.MM.yyyy HH:mm');
+  sh.getRange('E9:F').setWrap(true);
+  [110, 90, 110, 80, 380, 320, 110, 110, 120, 160, 140, 90].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  sh.setFrozenRows(8);
+  const rules = [
+    ['Выполнено', '#e8f5e9'], ['Отменено', '#eeeeee'], ['В работе', '#e3f2fd'],
+  ].map(([v, color]) => SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$A9="' + v + '"').setBackground(color).setRanges([sh.getRange('A9:L')]).build());
+  rules.push(SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND($B9<>"", $B9<TODAY(), $A9<>"Выполнено", $A9<>"Отменено")'.replace(/, /g, S + ' '))
+    .setFontColor('#c62828').setRanges([sh.getRange('B9:B')]).build());
+  // вопрос без ответа — ячейка «Решение» оранжевая
+  rules.unshift(SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(('=AND($C9="' + QUESTION_TYPE + '", $F9="", $A9<>"Отменено")').replace(/, /g, S + ' '))
+    .setBackground('#ffe0b2').setRanges([sh.getRange('F9:F')]).build());
+  sh.setConditionalFormatRules(rules);
+
+  // ---- «Все проекты»: открытые заметки, проекты × разделы
+  sh = ss.getSheetByName(SHEET_PROJECTS) || ss.insertSheet(SHEET_PROJECTS);
+  sh.clear();
   sh.getRange('A1').setValue('Открытые заметки: проекты × разделы (обновляется автоматически)').setFontWeight('bold');
-  sh.getRange('A3').setFormula('=IFERROR(QUERY(' + src + 'A1:' + colLetter_(FIELDS.length) + S + ' "select ' +
-    L('project_key') + ', ' + L('project_name') + ', count(' + L('id') + ') where ' + L('id') + ' is not null and ' +
-    notClosed + ' group by ' + L('project_key') + ', ' + L('project_name') + ' pivot ' + L('section') +
-    '"' + S + ' 1)' + S + ' "Открытых заметок нет")');
+  sh.getRange('A3').setFormula('=' + fn('IFERROR', fn('QUERY', src + 'A1:' + colLetter_(FIELDS.length),
+    '"select ' + L('project_key') + ', ' + L('project_name') + ', count(' + L('id') + ') where ' + L('id') +
+    ' is not null and ' + notClosed + ' group by ' + L('project_key') + ', ' + L('project_name') +
+    ' pivot ' + L('section') + '"', '1'), '"Открытых заметок нет"'));
   sh.setFrozenRows(3);
 
-  const col = k => src + L(k) + '2:' + L(k);
+  // ---- «Сроки»: просроченные и ближайшие 3 дня по всем проектам
   sh = ss.getSheetByName(SHEET_DUE) || ss.insertSheet(SHEET_DUE);
   sh.clear();
   sh.getRange('A1').setValue('Просроченные и ближайшие (3 дня) открытые заметки').setFontWeight('bold');
   sh.getRange('A3:I3').setValues([['Срок', 'Код проекта', 'Проект', 'Тип', 'Раздел', 'Текст', 'Кому', 'Автор', 'Статус']])
     .setFontWeight('bold').setBackground('#e8eef7');
-  sh.getRange('A4').setFormula('=IFERROR(SORT(FILTER({' +
-    [col('due'), src + L('project_key') + '2:' + L('text'), col('assignee'), col('author'), col('status')].join(C + ' ') +
-    '}' + S + ' ' + col('due') + '<>""' + S + ' ' + col('due') + '<=TODAY()+3' + S + ' ' +
-    col('status') + '<>"Выполнено"' + S + ' ' + col('status') + '<>"Отменено")' + S + ' 1' + S + ' TRUE)' + S +
-    ' "Ничего срочного")');
+  sh.getRange('A4').setFormula('=' + fn('IFERROR', fn('SORT',
+    fn('FILTER', arr(col('due'), src + L('project_key') + '2:' + L('text'), col('assignee'), col('author'), col('status')),
+      col('due') + '<>""', col('due') + '<=TODAY()+3',
+      col('status') + '<>"Выполнено"', col('status') + '<>"Отменено"'),
+    '1', 'TRUE'), '"Ничего срочного"'));
   sh.getRange('A4:A').setNumberFormat('dd.MM.yyyy');
   sh.setColumnWidth(6, 380);
   sh.setFrozenRows(3);
+}
+
+// Код проекта для начального выбора на «Сводке» — первый по алфавиту из листа «Заметки».
+function firstProjectKey_(ss) {
+  const notes = ss.getSheetByName(SHEET_NOTES);
+  if (!notes || notes.getLastRow() < 2) return '';
+  const keys = notes.getRange(2, COL.project_key, notes.getLastRow() - 1, 1).getValues()
+    .map(r => String(r[0]).trim()).filter(Boolean).sort();
+  return keys[0] || '';
 }
 
 // [разделитель аргументов, разделитель столбцов массива] для локали таблицы.
