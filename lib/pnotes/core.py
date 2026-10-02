@@ -13,7 +13,8 @@ from System.Net import HttpWebRequest, ServicePointManager, SecurityProtocolType
 from System.IO import StreamReader
 from System.Text import Encoding
 
-from Autodesk.Revit.DB import BuiltInParameter, StorageType, ModelPathUtils, ElementId, ViewSheet
+from Autodesk.Revit.DB import (BuiltInParameter, StorageType, ModelPathUtils, ElementId, ViewSheet, View,
+                               FilteredElementCollector)
 
 
 # lib/pnotes/core.py → три уровня вверх = корень расширения (корень репозитория LowLife)
@@ -334,6 +335,21 @@ def view_label(view):
     if isinstance(view, ViewSheet):
         return u'Лист {} - {}'.format(view.SheetNumber, view.Name)
     return view.Name
+
+
+def find_view(doc, label):
+    """Вид или лист по подписи из заметки (обратное к view_label); None — не найден."""
+    label = (label or u'').strip()
+    if not label:
+        return None
+    views = [v for v in FilteredElementCollector(doc).OfClass(View) if not v.IsTemplate]
+    for v in views:
+        try:
+            if view_label(v) == label:
+                return v
+        except Exception:
+            continue
+    return None
 
 
 def get_context(doc, uidoc, settings):
