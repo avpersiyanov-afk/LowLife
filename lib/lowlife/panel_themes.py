@@ -160,6 +160,7 @@ THEMES = {
         (u"Music", u"Next"),
         (u"Music", u"VolumeDown"),
         (u"Music", u"VolumeUp"),
+        (u"Mail", u"EmailTasks"),
     ],
     u"Service": [
         (u"ToolsExport", u"RenameExportFiles"),
@@ -189,6 +190,7 @@ PANEL_RIBBON_NAMES = {
     u"ToolsSchedules": u"Спецификации",
     u"ToolsFamilies": u"Семейства",
     u"ToolsExport": u"Выгрузка",
+    u"Mail": u"Почта",
     u"LOI": u"Заполнение LOI",
     u"TrayLadder": u"Лестничный лоток",
     u"TrayUnperforated": u"Неперфорированный лоток",

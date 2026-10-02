@@ -178,6 +178,12 @@ pyRevit-расширение для проектирования слабото�
 - **Громче**, **Тише** — шаг системной громкости Windows.
 </details>
 
+<details>
+<summary><b>Mail</b> — почта</summary>
+
+- **Задачи из почты** — разбирает «Входящие» классического Outlook за N дней через Claude Code CLI (`claude -p`, под подпиской) и сохраняет список задач в Excel; почта только читается. Работает без открытого проекта. Shift+клик — настройки (период, подпапка, путь к claude.exe, модель, тестовый режим). Подробнее — [docs/email-tasks.md](docs/email-tasks.md).
+</details>
+
 Подробности по отдельным инструментам — в [docs/](docs/) и в `README.md` внутри `lib/`, `tests/`, `csharp/FamilyCatalog`, `addins/FamilyVersionStamp`.
 
 ## Разработка
