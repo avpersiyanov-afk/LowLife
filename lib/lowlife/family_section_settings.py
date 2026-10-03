@@ -12,17 +12,13 @@ pyrevit.script.get_config()).
 проектами (из общего шаблона проекта), а Id — нет.
 """
 
-import os
-import io
-import json
-
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
-from lowlife import settings_transfer
+from lowlife import settings_core, settings_transfer
 from lowlife import family_section
 
 from System.Windows import (
@@ -69,45 +65,10 @@ NO_TEMPLATE = u"<Без шаблона>"
 DEFAULT_TYPE = u"<Тип по умолчанию в проекте>"
 
 
-def _settings_file_path():
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-
-    if not os.path.isdir(folder):
-        try:
-            os.makedirs(folder)
-        except:
-            pass
-
-    return os.path.join(folder, SETTINGS_FILE_NAME)
-
-
-def _read_all():
-    path = _settings_file_path()
-
-    if not os.path.isfile(path):
-        return {}
-
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if not text.strip():
-            return {}
-        return json.loads(text)
-    except:
-        return {}
-
-
-def _write_all(data):
-    path = _settings_file_path()
-
-    try:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(unicode(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
-    except:
-        forms.alert(
-            u"Не удалось сохранить настройки в файл:\n{}".format(path)
-        )
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
+_settings_file_path = _STORE.path
+_read_all = _STORE.read
+_write_all = _STORE.write
 
 
 def is_configured():

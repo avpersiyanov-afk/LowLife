@@ -319,12 +319,65 @@ PANEL_TYPE_ID = ElementId(int(settings["panel_type_id"]))
 panel_symbol = doc.GetElement(PANEL_TYPE_ID)
 ```
 
+## settings_core.py
+Общая обвязка настроек кнопок. Не импортирует при загрузке ни pyrevit, ни
+WPF (только внутри функций окна), поэтому покрыт тестами вне Revit —
+`tests/test_settings_core.py`.
+
+**Хранилище — `JsonStore`.** Раньше каждый `*_settings.py` (и
+`export_rename`, `filter_selection`, `family_catalog`, `sot_fov`,
+`email_tasks_settings`) держал свою копию `_settings_file_path` /
+`_read_all` / `_write_all`; теперь это три алиаса на один объект:
+
+```python
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКС")
+_settings_file_path = _STORE.path
+_read_all = _STORE.read
+_write_all = _STORE.write
+```
+
+Формат файла прежний (`%APPDATA%\pyRevit\<file_name>`, UTF-8, кириллица
+как есть, `indent=2`, `sort_keys`) — сохранённые у пользователей
+настройки читаются без миграции.
+
+| Имя | Сигнатура | Что делает |
+|---|---|---|
+| `settings_folder` | `settings_folder()` | `%APPDATA%\pyRevit`, создаётся при необходимости |
+| `JsonStore` | `JsonStore(file_name, label=None)` | `file_name` и `label` — строка или функция без аргументов (вычисляется при каждом обращении: у `fire_alarm_settings` файл зависит от текущей системы). `label` вставляется в сообщение об ошибке записи |
+| `JsonStore.path` | `path()` | Полный путь к файлу |
+| `JsonStore.read` | `read()` | Весь словарь; `{}` — файла нет, он пуст, битый или не JSON-объект |
+| `JsonStore.write` | `write(data)` | Перезаписывает файл; `True`, иначе `forms.alert` (если pyrevit доступен) и `False` |
+| `JsonStore.update` | `update(values)` | `read()` + `dict.update` + `write()` |
+
+**Типовое окно — `TextSettings`.** Для кнопок, у которых настройки —
+только текстовые поля: описание полей (`TextField`) вместо ~250 строк
+ручной WPF-вёрстки. Сейчас на нём `room_lots_settings`,
+`room_finder_settings`, `room_info_settings`; их публичные функции
+(`load_saved_values`, `save_values`, `require`, `show_settings_form`,
+`get_settings_interactive`, `get_settings_silent`) — алиасы на методы
+объекта `SETTINGS`, кнопки не менялись.
+
+| Имя | Сигнатура | Что делает |
+|---|---|---|
+| `TextField` | `TextField(key, section, label, hint=u"", default=u"", required=False)` | Поле: жирный заголовок раздела, подпись (у обязательных « *»), поле ввода, серое пояснение |
+| `TextSettings` | `TextSettings(file_name, button_name, heading, transfer_label, fields, migrate=None, width=720, height=440)` | `button_name` — заголовок окна и подсказка «Shift+клик по кнопке …» в `require`; `transfer_label` — для «Выгрузить/Загрузить настройки…»; `migrate(saved, values)` — перенос старых ключей в новые после подстановки умолчаний |
+| `.load_saved_values` / `.get_settings_silent` | `()` | Значения из файла, иначе умолчания полей (+ `migrate`) |
+| `.save_values` | `(values)` | `JsonStore.update` — чужие ключи в файле не теряются |
+| `.missing` | `(settings, keys)` | Подписи незаполненных полей из `keys` |
+| `.require` | `(settings, keys)` | `forms.alert(exitscript=True)` со списком `missing` |
+| `.show_settings_form` | `(values)` | Окно (с прокруткой) + «Выгрузить/Загрузить настройки…»; словарь, `settings_transfer.RELOAD` или `None` |
+| `.get_settings_interactive` | `()` | Цикл окна (перезапуск после загрузки из файла), сохранение; `None` — «Отмена» |
+
+Нестандартные окна (выбор типоразмеров, таблицы категорий, мнемосхемы,
+таблица уровней) пока остаются в своих модулях и берут отсюда только
+`JsonStore`.
+
 ## settings_transfer.py
 Общий для **всех** окон настроек (`scs_settings` / `skud_settings` /
 `fire_alarm_settings` / `sot_settings` / `room_info_settings`) хелпер
 «перенести настройки на другой проект». Каждая дисциплина хранит все свои
 настройки одним JSON-файлом в `%APPDATA%\pyRevit\` (`_read_all` /
-`_write_all` в её `*_settings.py`); этот модуль просто копирует такой файл
+`_write_all` в её `*_settings.py` — алиасы на `settings_core.JsonStore`); этот модуль просто копирует такой файл
 наружу (`forms.save_file`) и обратно (`forms.pick_file`), поэтому
 переносится сразу всё — текстовые поля, выбранные типы, таблицы категорий
 схемы. Не импортирует ничего из `lowlife.*` (нет риска циклического

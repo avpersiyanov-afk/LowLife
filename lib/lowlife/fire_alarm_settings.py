@@ -13,10 +13,6 @@
 Хранится в %APPDATA%\\pyRevit\\LowLifeSPS_settings.json (соотв. SOUE, SPA).
 """
 
-import os
-import io
-import json
-
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -36,7 +32,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
-from lowlife import settings_transfer
+from lowlife import settings_core, settings_transfer
 from lowlife.fire_alarm import ISOLATOR_KEYWORD, RISER_KEYWORD
 from lowlife.fire_alarm_circuits import DEVICE_CATEGORIES, category_title
 from lowlife.skud import parse_category_names
@@ -407,43 +403,12 @@ for _key, _label, _hint, _default, _is_list, _required in TEXT_FIELDS:
     PLAIN_LABELS[_key] = _split_section(_label)[1]
 
 
-def _settings_file_path():
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-
-    if not os.path.isdir(folder):
-        try:
-            os.makedirs(folder)
-        except:
-            pass
-
-    return os.path.join(folder, SYSTEMS[_current_system]["file"])
-
-
-def _read_all():
-    path = _settings_file_path()
-
-    if not os.path.isfile(path):
-        return {}
-
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if not text.strip():
-            return {}
-        return json.loads(text)
-    except:
-        return {}
-
-
-def _write_all(data):
-    path = _settings_file_path()
-
-    try:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(unicode(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
-    except:
-        forms.alert(u"Не удалось сохранить настройки {} в файл:\n{}".format(current_title(), path))
+# Файл зависит от текущей системы (СПС/СОУЭ/СПА, см. set_system) — имя и
+# подпись вычисляются при каждом обращении, а не один раз при импорте.
+_STORE = settings_core.JsonStore(lambda: SYSTEMS[_current_system]["file"], current_title)
+_settings_file_path = _STORE.path
+_read_all = _STORE.read
+_write_all = _STORE.write
 
 
 def load_saved_values():

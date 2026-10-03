@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A pyRevit extension (IronPython/CPython 2 scripts run inside Revit). There is no build step, package manager, linter, or test suite — `tests/` and `examples/` exist but are currently empty. "Running" the code means loading it into Revit through pyRevit.
+A pyRevit extension (IronPython/CPython 2 scripts run inside Revit). There is no build step, package manager, or linter. `tests/` holds pytest unit tests for the Revit-free logic in `lib/lowlife/` (see `tests/README.md`). "Running" the code means loading it into Revit through pyRevit.
 
 ## Extension layout requirement (important, non-obvious)
 
@@ -20,6 +20,7 @@ One exception: `LowLife.tab/SCS.panel/SeedMySettings.pushbutton/` is local-only 
 
 `lib/` sits next to `LowLife.tab` at the extension root, so pyRevit adds it to `sys.path` automatically — any `script.py` can `from lowlife.xxx import yyy` with no path setup. See `lib/README.md` for the full function-by-function reference; the important structural point is the split between:
 - **Discipline-agnostic helpers** (`geometry.py`, `params.py`, `selection.py`, `electrical_circuits.py`, `manual_circuits.py`) — pure Revit-API utilities usable by any future panel. `electrical_circuits.py` is Revit's `ElectricalSystem.Create`/`SelectPanel` wrapper; `manual_circuits.py` is the full "pick panel, pick devices, build one circuit per device" button flow used by the per-discipline CircuitsSCS/CircuitsSKUD panels' buttons. CircuitsSPA.panel used to be one of them but now builds loop circuits by device address instead (same `fire_alarm_settings`/`fire_alarm_buttons.build_loop_circuits` logic as SPS/SOUE, third system `"SPA"`, workset filter keyword defaults to «СПА»).
+- **Settings plumbing** (`settings_core.py`) — every button's JSON settings file goes through `settings_core.JsonStore` (modules keep `_settings_file_path`/`_read_all`/`_write_all` only as aliases onto it; don't re-add hand-written copies). A new button whose settings are just text fields should declare a `settings_core.TextSettings` with `TextField`s (see `room_lots_settings.py`) instead of hand-building a WPF window.
 - **SCS-specific logic** (`scs.py`, `scs_addressing.py`, `scs_circuits.py`, `scs_settings.py`) — everything for the `SCS.panel` toolset (structured cabling). New disciplines (fire alarm, security) should get their own `scs_*`-style module rather than being folded into these.
 
 Button scripts (`script.py`) are meant to stay thin orchestration — collect elements, call library functions, write results in a transaction. Don't grow business logic back into a button script; extract it into `lib/lowlife/` instead, matching the existing pattern.
@@ -61,7 +62,7 @@ Pushbutton icons are 96×96 PNGs generated programmatically with Pillow (flat st
 
 ## Что это
 
-pyRevit-расширение (скрипты IronPython/CPython 2, выполняются внутри Revit). Нет ни шага сборки, ни менеджера пакетов, ни линтера, ни тестов — `tests/` и `examples/` существуют, но пока пустые. «Запуск» кода означает его загрузку в Revit через pyRevit.
+pyRevit-расширение (скрипты IronPython/CPython 2, выполняются внутри Revit). Нет ни шага сборки, ни менеджера пакетов, ни линтера. В `tests/` — pytest-тесты для логики `lib/lowlife/` без Revit API (см. `tests/README.md`). «Запуск» кода означает его загрузку в Revit через pyRevit.
 
 ## Требование к структуре расширения (важно, неочевидно)
 
@@ -77,6 +78,7 @@ pyRevit устанавливает расширения, добавленные 
 
 `lib/` лежит рядом с `LowLife.tab` на уровне расширения, поэтому pyRevit сам добавляет её в `sys.path` — любой `script.py` может писать `from lowlife.xxx import yyy` без настройки путей. Полный список функций по модулям — в `lib/README.md`; важный структурный момент — разделение на:
 - **Хелперы, не привязанные к дисциплине** (`geometry.py`, `params.py`, `selection.py`, `electrical_circuits.py`, `manual_circuits.py`) — чистые утилиты Revit API, пригодные для любой будущей панели. `electrical_circuits.py` — обёртка над `ElectricalSystem.Create`/`SelectPanel`; `manual_circuits.py` — весь сценарий кнопки «выбрать панель, выбрать устройства, построить по цепи на каждое» для кнопок панелей CircuitsSCS/CircuitsSKUD. CircuitsSPA.panel раньше тоже была такой, но теперь строит цепи по адресу устройства — та же логика `fire_alarm_settings`/`fire_alarm_buttons.build_loop_circuits`, что у СПС/СОУЭ, третья система `"SPA"`, ключевое слово рабочего набора по умолчанию «СПА».
+- **Обвязка настроек** (`settings_core.py`) — JSON-файл настроек любой кнопки читается/пишется через `settings_core.JsonStore` (в модулях `_settings_file_path`/`_read_all`/`_write_all` остались только алиасами на него; не возвращайте рукописные копии). Новой кнопке, у которой настройки — только текстовые поля, объявляйте `settings_core.TextSettings` с `TextField` (см. `room_lots_settings.py`), а не собирайте WPF-окно вручную.
 - **Логика, специфичная для СКС** (`scs.py`, `scs_addressing.py`, `scs_circuits.py`, `scs_settings.py`) — всё для набора инструментов `SCS.panel` (структурированная кабельная система). Новые дисциплины (ОПС, СБ) должны получать свой модуль в стиле `scs_*`, а не подмешиваться в существующие.
 
 Скрипты кнопок (`script.py`) должны оставаться тонкой оркестрацией — собрать элементы, вызвать функции библиотеки, записать результат в транзакции. Не давайте бизнес-логике снова разрастаться внутри скрипта кнопки — выносите её в `lib/lowlife/`, по уже устоявшемуся образцу.
