@@ -350,27 +350,33 @@ _write_all = _STORE.write
 | `JsonStore.update` | `update(values)` | `read()` + `dict.update` + `write()` |
 
 **Типовое окно — `TextSettings`.** Для кнопок, у которых настройки —
-только текстовые поля: описание полей (`TextField`) вместо ~250 строк
-ручной WPF-вёрстки. Сейчас на нём `room_lots_settings`,
-`room_finder_settings`, `room_info_settings`; их публичные функции
-(`load_saved_values`, `save_values`, `require`, `show_settings_form`,
-`get_settings_interactive`, `get_settings_silent`) — алиасы на методы
-объекта `SETTINGS`, кнопки не менялись.
+только текстовые и числовые поля: описание полей (`TextField`,
+`NumberField`) вместо ~250 строк ручной WPF-вёрстки. Сейчас на нём
+`room_lots_settings`, `room_finder_settings`, `room_info_settings`,
+`equipment_tags_settings` («Марки оборудования», числа) и раздел настроек
+`sot_fov` («Зоны обзора», 37 полей из `TEXT_FIELDS`, кнопка «Сбросить»);
+их публичные функции (`load_saved_values`/`load_settings`, `save_values`,
+`require`, `show_settings_form`, `get_settings_interactive`,
+`get_settings_silent`) — алиасы на методы объекта `SETTINGS`, кнопки не
+менялись.
 
 | Имя | Сигнатура | Что делает |
 |---|---|---|
-| `TextField` | `TextField(key, section, label, hint=u"", default=u"", required=False)` | Поле: жирный заголовок раздела, подпись (у обязательных « *»), поле ввода, серое пояснение |
-| `TextSettings` | `TextSettings(file_name, button_name, heading, transfer_label, fields, migrate=None, width=720, height=440)` | `button_name` — заголовок окна и подсказка «Shift+клик по кнопке …» в `require`; `transfer_label` — для «Выгрузить/Загрузить настройки…»; `migrate(saved, values)` — перенос старых ключей в новые после подстановки умолчаний |
-| `.load_saved_values` / `.get_settings_silent` | `()` | Значения из файла, иначе умолчания полей (+ `migrate`) |
+| `TextField` | `TextField(key, section, label, hint=u"", default=u"", required=False)` | Поле: жирный заголовок раздела, подпись (у обязательных « *»), поле ввода, серое пояснение. Пустой `section` — поле продолжает предыдущий раздел; пустой `label` — подписью служит `section` |
+| `NumberField` | `NumberField(key, section, label, hint=u"", default=0.0, required=False, minimum=None, integer=False)` | Числовое поле: в окне текст (запятая или точка), в файле и настройках — `float`/`int`. Нечисло или меньше `minimum` — «Сохранить» не закрывает окно; битое сохранённое значение при загрузке → `default` |
+| `TextSettings` | `TextSettings(file_name, button_name, heading, transfer_label, fields, migrate=None, intro=None, reset_button=False, width=720, height=440)` | `button_name` — заголовок окна и подсказка «Shift+клик по кнопке …» в `require`; `transfer_label` — для «Выгрузить/Загрузить настройки…» и текста `require` («настройки <transfer_label>»); `migrate(saved, values)` — перенос старых ключей в новые после подстановки умолчаний; `intro` — серый текст под заголовком; `reset_button` — кнопка «Сбросить» (умолчания в окне, сохраняется по «Сохранить») |
+| `.load_saved_values` / `.get_settings_silent` | `()` | Значения из файла, иначе умолчания полей (числа — числами, + `migrate`) |
+| `.parse_form` | `(texts)` | `{ключ: текст из окна}` → `(значения, ошибки)` — проверка перед закрытием окна |
 | `.save_values` | `(values)` | `JsonStore.update` — чужие ключи в файле не теряются |
 | `.missing` | `(settings, keys)` | Подписи незаполненных полей из `keys` |
 | `.require` | `(settings, keys)` | `forms.alert(exitscript=True)` со списком `missing` |
 | `.show_settings_form` | `(values)` | Окно (с прокруткой) + «Выгрузить/Загрузить настройки…»; словарь, `settings_transfer.RELOAD` или `None` |
-| `.get_settings_interactive` | `()` | Цикл окна (перезапуск после загрузки из файла), сохранение; `None` — «Отмена» |
+| `.get_settings_interactive` | `()` | Цикл окна (перезапуск после загрузки из файла), сохранение; возвращает настройки как `get_settings_silent`, `None` — «Отмена» |
 
-Нестандартные окна (выбор типоразмеров, таблицы категорий, мнемосхемы,
-таблица уровней) пока остаются в своих модулях и берут отсюда только
-`JsonStore`.
+Нестандартные окна (выбор типоразмеров и категорий через
+`SelectFromList`, переключатели, флажки, таблицы, мнемосхемы, окно
+«Задачи из почты» с проверкой пути к claude.exe и стандартным промптом из
+файла) пока остаются в своих модулях и берут отсюда только `JsonStore`.
 
 ## settings_transfer.py
 Общий для **всех** окон настроек (`scs_settings` / `skud_settings` /

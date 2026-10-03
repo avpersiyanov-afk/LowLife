@@ -20,10 +20,11 @@ pyrevit.script.get_config() (тот не гарантированно делил
 
 Типовое окно (TextSettings)
 ---------------------------
-Для кнопок, у которых настройки — просто несколько текстовых полей (имена
-параметров, маски, префиксы), всё остальное — загрузка с умолчаниями,
-require(), окно, «Выгрузить/Загрузить настройки…», Shift+клик/тихий
-режим — делает TextSettings по описанию полей:
+Для кнопок, у которых настройки — просто несколько текстовых/числовых
+полей (имена параметров, маски, префиксы, отступы), всё остальное —
+загрузка с умолчаниями, require(), окно с проверкой чисел, «Выгрузить/
+Загрузить настройки…», Shift+клик/тихий режим — делает TextSettings по
+описанию полей (TextField, NumberField):
 
     SETTINGS = settings_core.TextSettings(
         file_name="LowLifeRoomLots_settings.json",
@@ -149,10 +150,13 @@ class TextField(object):
     Одно текстовое поле окна настроек.
 
     key      — ключ в JSON-файле.
-    section  — жирный заголовок раздела над полем («① Имя лота»).
-    label    — подпись поля; у обязательных к ней добавляется « *».
+    section  — жирный заголовок раздела над полем («① Имя лота»); пусто —
+               поле продолжает предыдущий раздел.
+    label    — подпись поля; у обязательных к ней добавляется « *». Пусто —
+               подписью служит section (одно поле — один заголовок).
     hint     — серое пояснение под полем.
-    default  — значение, пока пользователь ничего не сохранил.
+    default  — значение, пока пользователь ничего не сохранил (и для кнопки
+               «Сбросить»).
     required — показывать « *»; сама проверка — require(settings, keys),
                ключи передаёт кнопка (у одной настройки разные кнопки могут
                требовать разное).
@@ -166,44 +170,106 @@ class TextField(object):
         self.default = default
         self.required = required
 
+    def title(self):
+        """Как поле называется в сообщениях (require, ошибки ввода)."""
+        return self.label or self.section or self.key
+
+    def display(self, value):
+        """Значение → текст в поле ввода."""
+        return u"" if value is None else _text(value)
+
+    def parse(self, text):
+        """Текст из поля ввода → (значение, None) или (None, текст ошибки)."""
+        return text, None
+
+    def coerce(self, value):
+        """Сохранённое значение → значение для кнопки (битое — умолчание)."""
+        return value
+
+
+class NumberField(TextField):
+    """
+    Числовое поле: в окне — текст (запятая или точка), в файле и в
+    настройках кнопки — число. Нечисло или меньше minimum — окно не
+    закроется по «Сохранить», а битое сохранённое значение при загрузке
+    заменяется умолчанием.
+
+    integer — целое (int) вместо дробного (float).
+    """
+
+    def __init__(self, key, section, label, hint=u"", default=0.0, required=False,
+                 minimum=None, integer=False):
+        TextField.__init__(self, key, section, label, hint, default, required)
+        self.minimum = minimum
+        self.integer = integer
+
+    def _number(self, value):
+        try:
+            text = _text(value).strip().replace(u",", u".")
+            number = int(text) if self.integer else float(text)
+        except Exception:
+            return None
+        if self.minimum is not None and number < self.minimum:
+            return None
+        return number
+
+    def parse(self, text):
+        number = self._number(text)
+        if number is None:
+            what = u"целое число" if self.integer else u"число"
+            if self.minimum is not None:
+                what += u" не меньше {}".format(self.minimum)
+            return None, u"{} — нужно {}".format(self.title(), what)
+        return number, None
+
+    def coerce(self, value):
+        number = self._number(value)
+        return self.default if number is None else number
+
 
 class TextSettings(object):
     """
-    Настройки кнопки из нескольких текстовых полей: хранение + окно.
+    Настройки кнопки из простых полей (TextField/NumberField): хранение + окно.
 
     file_name      — имя JSON-файла в %APPDATA%\\pyRevit.
     button_name    — название кнопки на ленте (заголовок окна, подсказка
                      «Shift+клик по кнопке …» в require).
     heading        — крупный заголовок в окне.
-    transfer_label — для «Выгрузить/Загрузить настройки…» (имя файла и
-                     сообщения: «Настройки <transfer_label> выгружены…»).
-    fields         — список TextField, в порядке показа.
+    transfer_label — для «Выгрузить/Загрузить настройки…» и сообщения
+                     require: «настройки <transfer_label>».
+    fields         — список полей, в порядке показа.
     migrate        — необязательная функция (saved, values) → None, правит
                      values на месте после подстановки умолчаний: перенос
                      старых ключей в новые.
+    intro          — серый текст под заголовком; None — стандартный
+                     «Значения сохраняются…».
+    reset_button   — кнопка «Сбросить»: вернуть в окне умолчания всех полей
+                     (сохраняется только по «Сохранить»).
     width, height  — размер окна.
     """
 
     def __init__(self, file_name, button_name, heading, transfer_label, fields,
-                 migrate=None, width=720, height=440):
+                 migrate=None, intro=None, reset_button=False, width=720, height=440):
         self.store = JsonStore(file_name)
         self.button_name = button_name
         self.heading = heading
         self.transfer_label = transfer_label
         self.fields = list(fields)
         self.migrate = migrate
+        self.intro = intro
+        self.reset_button = reset_button
         self.width = width
         self.height = height
 
     # --- данные -----------------------------------------------------------
 
     def labels(self):
-        return dict((f.key, f.label) for f in self.fields)
+        return dict((f.key, f.title()) for f in self.fields)
 
     def load_saved_values(self):
-        """Строковые значения: из файла, иначе — умолчания полей."""
+        """Значения: из файла, иначе — умолчания полей (числа — числами)."""
         saved = self.store.read()
-        values = dict((f.key, saved.get(f.key, f.default)) for f in self.fields)
+        values = dict((f.key, f.coerce(saved.get(f.key, f.default))) for f in self.fields)
         if self.migrate is not None:
             self.migrate(saved, values)
         return values
@@ -211,13 +277,30 @@ class TextSettings(object):
     def save_values(self, values):
         self.store.update(values)
 
+    def parse_form(self, texts):
+        """
+        {ключ: текст из окна} → (значения, ошибки). Ошибки — список строк
+        для сообщения; пока он не пуст, окно не закрывается.
+        """
+        values = {}
+        errors = []
+        for field in self.fields:
+            if field.key not in texts:
+                continue
+            value, error = field.parse(texts[field.key])
+            if error:
+                errors.append(error)
+            else:
+                values[field.key] = value
+        return values, errors
+
     def missing(self, settings, keys):
         """Подписи незаполненных полей из keys (в порядке keys)."""
         labels = self.labels()
         result = []
         for key in keys:
             value = settings.get(key)
-            if not (value and _text(value).strip()):
+            if value is None or not _text(value).strip():
                 result.append(labels.get(key, key))
         return result
 
@@ -229,9 +312,9 @@ class TextSettings(object):
         missing = self.missing(settings, keys)
         if missing:
             _alert(
-                u"Не заполнены обязательные настройки:\n\n{}\n\n"
+                u"Не заполнены обязательные настройки {}:\n\n{}\n\n"
                 u"Откройте настройки: Shift+клик по кнопке «{}».".format(
-                    u"\n".join(missing), self.button_name
+                    self.transfer_label, u"\n".join(missing), self.button_name
                 ),
                 exitscript=True
             )
@@ -240,9 +323,10 @@ class TextSettings(object):
 
     def show_settings_form(self, values):
         """
-        Модальное окно редактирования. Возвращает словарь строковых
-        значений, settings_transfer.RELOAD (настройки загружены из файла —
-        открыть заново) или None, если пользователь отменил.
+        Модальное окно редактирования. Возвращает словарь значений (числа
+        у NumberField уже разобраны), settings_transfer.RELOAD (настройки
+        загружены из файла — открыть заново) или None, если пользователь
+        отменил. «Сохранить» с неверным числом окно не закрывает.
         """
         import clr
         clr.AddReference('PresentationFramework')
@@ -257,6 +341,8 @@ class TextSettings(object):
             ScrollViewer, ScrollBarVisibility
         )
         from System.Windows.Media import Brushes
+
+        from pyrevit import forms
 
         from lowlife import settings_transfer
 
@@ -282,8 +368,10 @@ class TextSettings(object):
         root.Children.Add(title)
 
         hint = TextBlock()
-        hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+        hint.Text = (self.intro if self.intro is not None else
+                     u"Значения сохраняются и подставляются при следующих запусках.")
         hint.FontSize = 11
+        hint.TextWrapping = TextWrapping.Wrap
         hint.Foreground = Brushes.Gray
         hint.Margin = Thickness(0, 0, 0, 10)
         root.Children.Add(hint)
@@ -291,20 +379,26 @@ class TextSettings(object):
         boxes = {}
 
         for field in self.fields:
-            section = TextBlock()
-            section.Text = field.section
-            section.FontWeight = FontWeights.Bold
-            section.Margin = Thickness(0, 16, 0, 2)
-            root.Children.Add(section)
+            star = u" *" if field.required else u""
 
-            label = TextBlock()
-            label.Text = field.label + (u" *" if field.required else u"")
-            label.Margin = Thickness(0, 2, 0, 2)
-            label.TextWrapping = TextWrapping.Wrap
-            root.Children.Add(label)
+            if field.section:
+                section = TextBlock()
+                section.Text = field.section + (u"" if field.label else star)
+                section.FontWeight = FontWeights.Bold
+                section.Margin = Thickness(0, 16, 0, 2)
+                section.TextWrapping = TextWrapping.Wrap
+                root.Children.Add(section)
+
+            if field.label:
+                label = TextBlock()
+                label.Text = field.label + star
+                # без заголовка раздела — отступ от предыдущего поля побольше
+                label.Margin = Thickness(0, 2 if field.section else 8, 0, 2)
+                label.TextWrapping = TextWrapping.Wrap
+                root.Children.Add(label)
 
             box = TextBox()
-            box.Text = values.get(field.key, u"")
+            box.Text = field.display(values.get(field.key))
             box.Padding = Thickness(4)
             root.Children.Add(box)
             boxes[field.key] = box
@@ -343,7 +437,13 @@ class TextSettings(object):
         ok_btn.FontWeight = FontWeights.Bold
 
         def on_ok(sender, args):
-            result["values"] = dict((key, box.Text) for key, box in boxes.items())
+            parsed, errors = self.parse_form(
+                dict((key, box.Text) for key, box in boxes.items())
+            )
+            if errors:
+                forms.alert(u"Проверьте значения:\n\n" + u"\n".join(errors))
+                return
+            result["values"] = parsed
             win.Close()
 
         def on_cancel(sender, args):
@@ -351,6 +451,19 @@ class TextSettings(object):
 
         ok_btn.Click += on_ok
         cancel_btn.Click += on_cancel
+
+        if self.reset_button:
+            reset_btn = Button()
+            reset_btn.Content = u"Сбросить"
+            reset_btn.Padding = Thickness(10, 4, 10, 4)
+            reset_btn.Margin = Thickness(0, 0, 8, 0)
+
+            def on_reset(sender, args):
+                for field in self.fields:
+                    boxes[field.key].Text = field.display(field.default)
+
+            reset_btn.Click += on_reset
+            buttons.Children.Add(reset_btn)
 
         buttons.Children.Add(cancel_btn)
         buttons.Children.Add(ok_btn)
@@ -380,7 +493,8 @@ class TextSettings(object):
     def get_settings_interactive(self):
         """
         Показывает окно настроек, сохраняет введённые значения и возвращает
-        их. None — пользователь нажал «Отмена». Для Shift+клика по кнопке.
+        настройки (как get_settings_silent). None — пользователь нажал
+        «Отмена». Для Shift+клика по кнопке.
         """
         from lowlife import settings_transfer
 
@@ -396,7 +510,7 @@ class TextSettings(object):
                 return None
 
             self.save_values(edited)
-            return edited
+            return self.load_saved_values()
 
     def get_settings_silent(self):
         """Уже сохранённые значения без окна (или умолчания полей)."""
