@@ -9,10 +9,6 @@
 Значения общие для всех кнопок SKUD.panel.
 """
 
-import os
-import io
-import json
-
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -33,7 +29,7 @@ from System.Windows.Controls import (
 from System.Windows.Media import Brushes
 
 from lowlife import skud as skud_defaults
-from lowlife import settings_transfer
+from lowlife import settings_core, settings_transfer
 from lowlife.skud import parse_category_names
 from lowlife.scs_settings import (
     list_generic_model_symbols, list_symbols_by_categories, list_wire_catalog_items,
@@ -376,45 +372,10 @@ def _type_display_name(doc, id_str):
     return type_name or id_str
 
 
-def _settings_file_path():
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-
-    if not os.path.isdir(folder):
-        try:
-            os.makedirs(folder)
-        except:
-            pass
-
-    return os.path.join(folder, SETTINGS_FILE_NAME)
-
-
-def _read_all():
-    path = _settings_file_path()
-
-    if not os.path.isfile(path):
-        return {}
-
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if not text.strip():
-            return {}
-        return json.loads(text)
-    except:
-        return {}
-
-
-def _write_all(data):
-    path = _settings_file_path()
-
-    try:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(unicode(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
-    except:
-        forms.alert(
-            u"Не удалось сохранить настройки СКУД в файл:\n{}".format(path)
-        )
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКУД")
+_settings_file_path = _STORE.path
+_read_all = _STORE.read
+_write_all = _STORE.write
 
 
 def load_saved_values():

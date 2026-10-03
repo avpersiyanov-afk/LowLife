@@ -13,10 +13,6 @@
 pyrevit.script.get_config(), см. докстринг scs_settings.py про причину).
 """
 
-import os
-import io
-import json
-
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -33,7 +29,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
-from lowlife import email_claude
+from lowlife import email_claude, settings_core
 
 SETTINGS_FILE_NAME = "LowLifeEmailTasks_settings.json"
 
@@ -49,28 +45,12 @@ DEFAULTS = {
 }
 
 
-def _settings_file_path():
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-    if not os.path.isdir(folder):
-        try:
-            os.makedirs(folder)
-        except Exception:
-            pass
-    return os.path.join(folder, SETTINGS_FILE_NAME)
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
 
 
 def load():
     values = dict(DEFAULTS)
-    path = _settings_file_path()
-    if os.path.isfile(path):
-        try:
-            with io.open(path, "r", encoding="utf-8") as f:
-                text = f.read()
-            if text.strip():
-                values.update(json.loads(text))
-        except Exception:
-            pass
+    values.update(_STORE.read())
     try:
         values["days"] = max(1, int(values.get("days") or DEFAULTS["days"]))
     except Exception:
@@ -90,14 +70,7 @@ def effective_prompt(values, default_prompt):
 
 
 def save(values):
-    path = _settings_file_path()
-    try:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(unicode(json.dumps(values, ensure_ascii=False, indent=2, sort_keys=True)))
-    except Exception:
-        forms.alert(u"Не удалось сохранить настройки в файл:\n{}".format(path))
-        return False
-    return True
+    return _STORE.write(values)
 
 
 def _label(parent, text, bold=False, top=10):

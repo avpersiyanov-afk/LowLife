@@ -36,8 +36,8 @@ ModPlus/Revit собирает имя файла из «номер листа + 
 """
 
 import os
-import io
-import json
+
+from lowlife import settings_core
 
 try:
     from pyrevit import forms
@@ -88,50 +88,10 @@ DEFAULTS = {
 }
 
 
-def _settings_file_path():
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-
-    if not os.path.isdir(folder):
-        try:
-            os.makedirs(folder)
-        except Exception:
-            pass
-
-    return os.path.join(folder, SETTINGS_FILE_NAME)
-
-
-def _read_all():
-    path = _settings_file_path()
-
-    if not os.path.isfile(path):
-        return {}
-
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if not text.strip():
-            return {}
-        return json.loads(text)
-    except Exception:
-        return {}
-
-
-def _write_all(data):
-    path = _settings_file_path()
-
-    try:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(unicode(json.dumps(data, ensure_ascii=False,
-                                       indent=2, sort_keys=True)))
-        return True
-    except Exception:
-        if forms is not None:
-            forms.alert(
-                u"Не удалось сохранить настройки переименования выгрузки "
-                u"в файл:\n{}".format(path)
-            )
-        return False
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"переименования выгрузки")
+_settings_file_path = _STORE.path
+_read_all = _STORE.read
+_write_all = _STORE.write
 
 
 def load_config():

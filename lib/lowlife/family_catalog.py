@@ -45,7 +45,6 @@ revit.Transaction (см. write_stamp).
 
 import os
 import io
-import json
 import shutil
 import tempfile
 import datetime
@@ -84,6 +83,8 @@ from System.Windows.Controls import (
 from System.Windows.Data import Binding, BindingMode, UpdateSourceTrigger
 from System.Windows.Media import Brushes
 from System.ComponentModel import ListSortDirection
+
+from lowlife import settings_core
 
 
 SETTINGS_FILE_NAME = "LowLifeFamilyCatalog_settings.json"
@@ -129,43 +130,10 @@ BACK = u"__back__"
 # Хранение пути к каталогу
 # --------------------------------------------------------------------------
 
-def _settings_file_path():
-    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "pyRevit")
-
-    if not os.path.isdir(folder):
-        try:
-            os.makedirs(folder)
-        except:
-            pass
-
-    return os.path.join(folder, SETTINGS_FILE_NAME)
-
-
-def _read_all():
-    path = _settings_file_path()
-
-    if not os.path.isfile(path):
-        return {}
-
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if not text.strip():
-            return {}
-        return json.loads(text)
-    except:
-        return {}
-
-
-def _write_all(data):
-    path = _settings_file_path()
-
-    try:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(unicode(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
-    except:
-        forms.alert(u"Не удалось сохранить настройки каталога семейств:\n{}".format(path))
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"каталога семейств")
+_settings_file_path = _STORE.path
+_read_all = _STORE.read
+_write_all = _STORE.write
 
 
 def load_catalog_root():
