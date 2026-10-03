@@ -8,203 +8,64 @@
 
 Все расстояния — в миллиметрах НА ЛИСТЕ: при раскладке умножаются на
 масштаб вида, поэтому на 1:50 и 1:100 марки выглядят одинаково.
+
+Обвязка (хранение, окно, проверка чисел) — общая,
+settings_core.TextSettings; здесь только описание полей. Битые или
+отрицательные значения в файле заменяются значениями по умолчанию.
 """
 
-import clr
-clr.AddReference('PresentationFramework')
-clr.AddReference('PresentationCore')
+from lowlife import settings_core
 
-from pyrevit import forms
 
-from lowlife import settings_core, settings_transfer
+def _mm(key, title, hint, default):
+    return settings_core.NumberField(key, title, u"", hint=hint, default=default,
+                                     min_value=0)
 
-from System.Windows import (
-    Window, WindowStartupLocation, Thickness,
-    FontWeights, HorizontalAlignment, TextWrapping
+
+SETTINGS = settings_core.TextSettings(
+    file_name="LowLifeEquipmentTags_settings.json",
+    button_name=u"Марки оборудования",
+    heading=u"Раскладка марок оборудования",
+    subtitle=(
+        u"Все расстояния — в мм на листе, как на распечатке: при масштабе "
+        u"вида 1:100 отступ 3 мм — это 300 мм в модели. "
+        u"Значения сохраняются между запусками."
+    ),
+    transfer_label=u"марок оборудования",
+    fields=[
+        _mm(
+            "offset_mm",
+            u"Отступ марок от оборудования, мм",
+            u"На каком расстоянии от габарита оборудования встаёт колонка/"
+            u"стопка марок. Если места нет, кнопка сама пробует 2× и 3× отступ.",
+            3.0
+        ),
+        _mm(
+            "gap_mm",
+            u"Зазор между марками, мм",
+            u"Минимальный промежуток между соседними марками в колонке/стопке.",
+            1.0
+        ),
+        _mm(
+            "shelf_mm",
+            u"Длина полки выноски, мм",
+            u"Короткий горизонтальный отрезок линии-выноски у самой марки "
+            u"(«полочка»), от которого наклонная часть идёт к оборудованию.",
+            3.0
+        ),
+        _mm(
+            "cluster_mm",
+            u"«Рядом» — если оборудование ближе, мм",
+            u"Оборудование, стоящее друг от друга ближе этого расстояния, "
+            u"получает марки одним блоком: рядом по горизонтали — стопкой "
+            u"друг над другом, одно над другим — колонкой сбоку на одном "
+            u"отступе.",
+            8.0
+        ),
+    ],
+    width=620, height=520,
 )
-from System.Windows.Controls import (
-    StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock
-)
-from System.Windows.Media import Brushes
 
-SETTINGS_FILE_NAME = "LowLifeEquipmentTags_settings.json"
-
-# (ключ, подпись поля, пояснение, значение по умолчанию, мм на листе)
-FIELDS = [
-    (
-        "offset_mm",
-        u"Отступ марок от оборудования, мм",
-        u"На каком расстоянии от габарита оборудования встаёт колонка/"
-        u"стопка марок. Если места нет, кнопка сама пробует 2× и 3× отступ.",
-        3.0
-    ),
-    (
-        "gap_mm",
-        u"Зазор между марками, мм",
-        u"Минимальный промежуток между соседними марками в колонке/стопке.",
-        1.0
-    ),
-    (
-        "shelf_mm",
-        u"Длина полки выноски, мм",
-        u"Короткий горизонтальный отрезок линии-выноски у самой марки "
-        u"(«полочка»), от которого наклонная часть идёт к оборудованию.",
-        3.0
-    ),
-    (
-        "cluster_mm",
-        u"«Рядом» — если оборудование ближе, мм",
-        u"Оборудование, стоящее друг от друга ближе этого расстояния, "
-        u"получает марки одним блоком: рядом по горизонтали — стопкой "
-        u"друг над другом, одно над другим — колонкой сбоку на одном "
-        u"отступе.",
-        8.0
-    ),
-]
-
-LABELS = dict((key, label) for key, label, _hint, _default in FIELDS)
-
-
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
-_settings_file_path = _STORE.path
-_read_all = _STORE.read
-_write_all = _STORE.write
-
-
-def _to_float(value):
-    try:
-        return float(unicode(value).strip().replace(u",", u"."))
-    except Exception:
-        return None
-
-
-def load_settings():
-    """Числовые настройки: сохранённые, иначе по умолчанию (битые/
-    отрицательные значения тоже заменяются значениями по умолчанию)."""
-    saved = _read_all()
-    result = {}
-    for key, _label, _hint, default in FIELDS:
-        v = _to_float(saved.get(key, default))
-        result[key] = v if v is not None and v >= 0 else default
-    return result
-
-
-def show_settings_form(values):
-    """Модальное окно. Возвращает словарь строк, None (отмена) или
-    settings_transfer.RELOAD."""
-    result = {"values": None}
-
-    win = Window()
-    win.Title = u"Настройки: Марки оборудования"
-    win.Width = 620
-    win.Height = 520
-    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
-
-    outer = DockPanel()
-    outer.LastChildFill = True
-
-    root = StackPanel()
-    root.Margin = Thickness(16)
-
-    title = TextBlock()
-    title.Text = u"Раскладка марок оборудования"
-    title.FontSize = 16
-    title.FontWeight = FontWeights.Bold
-    title.Margin = Thickness(0, 0, 0, 4)
-    root.Children.Add(title)
-
-    hint = TextBlock()
-    hint.Text = (u"Все расстояния — в мм на листе, как на распечатке: при масштабе "
-                 u"вида 1:100 отступ 3 мм — это 300 мм в модели. "
-                 u"Значения сохраняются между запусками.")
-    hint.FontSize = 11
-    hint.Foreground = Brushes.Gray
-    hint.TextWrapping = TextWrapping.Wrap
-    hint.Margin = Thickness(0, 0, 0, 6)
-    root.Children.Add(hint)
-
-    boxes = {}
-    for key, label_text, hint_text, _default in FIELDS:
-        label = TextBlock()
-        label.Text = label_text
-        label.FontWeight = FontWeights.Bold
-        label.Margin = Thickness(0, 12, 0, 2)
-        root.Children.Add(label)
-
-        box = TextBox()
-        box.Text = unicode(values.get(key, u""))
-        box.Padding = Thickness(4)
-        root.Children.Add(box)
-        boxes[key] = box
-
-        h = TextBlock()
-        h.Text = hint_text
-        h.FontSize = 11
-        h.Foreground = Brushes.Gray
-        h.TextWrapping = TextWrapping.Wrap
-        h.Margin = Thickness(0, 2, 0, 0)
-        root.Children.Add(h)
-
-    buttons = StackPanel()
-    buttons.Orientation = Orientation.Horizontal
-    buttons.HorizontalAlignment = HorizontalAlignment.Right
-    buttons.Margin = Thickness(16, 8, 16, 12)
-    DockPanel.SetDock(buttons, Dock.Bottom)
-
-    cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
-    cancel_btn.Padding = Thickness(10, 4, 10, 4)
-    cancel_btn.Margin = Thickness(0, 0, 8, 0)
-
-    ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
-    ok_btn.Padding = Thickness(10, 4, 10, 4)
-    ok_btn.FontWeight = FontWeights.Bold
-
-    def on_ok(sender, args):
-        bad = [LABELS[k] for k, b in boxes.items()
-               if _to_float(b.Text) is None or _to_float(b.Text) < 0]
-        if bad:
-            forms.alert(u"Нужно неотрицательное число:\n\n" + u"\n".join(bad))
-            return
-        result["values"] = dict((k, _to_float(b.Text)) for k, b in boxes.items())
-        win.Close()
-
-    def on_cancel(sender, args):
-        win.Close()
-
-    ok_btn.Click += on_ok
-    cancel_btn.Click += on_cancel
-
-    buttons.Children.Add(cancel_btn)
-    buttons.Children.Add(ok_btn)
-
-    def _on_settings_imported():
-        result["values"] = settings_transfer.RELOAD
-        win.Close()
-
-    settings_transfer.add_transfer_buttons(
-        buttons, _read_all, _write_all, u"марок оборудования", _on_settings_imported
-    )
-
-    outer.Children.Add(buttons)
-    outer.Children.Add(root)
-
-    win.Content = outer
-    win.ShowDialog()
-
-    return result["values"]
-
-
-def get_settings_interactive():
-    """Окно настроек (Shift+клик по кнопке). None — если «Отмена»."""
-    while True:
-        edited = show_settings_form(load_settings())
-        if edited == settings_transfer.RELOAD:
-            continue
-        if edited is None:
-            return None
-        data = _read_all()
-        data.update(edited)
-        _write_all(data)
-        return load_settings()
+load_settings = SETTINGS.load_saved_values
+show_settings_form = SETTINGS.show_settings_form
+get_settings_interactive = SETTINGS.get_settings_interactive

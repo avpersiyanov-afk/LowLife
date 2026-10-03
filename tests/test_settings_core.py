@@ -11,7 +11,7 @@ import os
 import pytest
 
 from lowlife import settings_core
-from lowlife.settings_core import JsonStore, TextField, TextSettings
+from lowlife.settings_core import JsonStore, NumberField, TextField, TextSettings
 
 
 @pytest.fixture
@@ -161,3 +161,84 @@ def test_room_info_migrates_old_room_number_param(appdata):
 
 def test_module_imports_without_revit():
     assert settings_core.JsonStore is JsonStore
+
+
+# --- NumberField ----------------------------------------------------------------
+
+def test_number_field_parses_comma_and_checks_min():
+    field = NumberField("x", u"Отступ, мм", u"", default=3.0, min_value=0)
+    assert field.parse(u" 2,5 ") == 2.5
+    assert field.parse(u"0") == 0.0
+    assert field.parse(u"-1") is None
+    assert field.parse(u"abc") is None
+    assert field.parse(u"") is None
+    assert field.requirement() == u"неотрицательное число"
+
+
+def test_number_field_integer():
+    field = NumberField("days", u"Период", u"", default=3, min_value=1, integer=True)
+    assert field.parse(u"5") == 5 and isinstance(field.parse(u"5"), int)
+    assert field.parse(u"2.5") is None
+    assert field.parse(u"0") is None
+    assert field.requirement() == u"целое число, не меньше 1"
+
+
+def test_number_field_coerce_falls_back_to_default():
+    field = NumberField("x", u"Отступ", u"", default=3.0, min_value=0)
+    assert field.coerce(1.5) == 1.5
+    assert field.coerce(u"4") == 4.0
+    assert field.coerce(-2) == 3.0
+    assert field.coerce(u"мусор") == 3.0
+    assert field.coerce(None) == 3.0
+
+
+def _mixed_settings(**kwargs):
+    return TextSettings(
+        file_name="LowLifeTest_settings.json",
+        button_name=u"Кнопка",
+        heading=u"Заголовок",
+        transfer_label=u"теста",
+        fields=[
+            TextField("param", u"① Параметр", u"Имя параметра", required=True),
+            NumberField("gap", u"Зазор, мм", u"", default=1.0, min_value=0),
+        ],
+        **kwargs
+    )
+
+
+def test_load_coerces_numbers_from_file(appdata):
+    _write_raw(appdata, "LowLifeTest_settings.json", u'{"gap": "2,5"}')
+    assert _mixed_settings().load_saved_values() == {"param": u"", "gap": 2.5}
+    _write_raw(appdata, "LowLifeTest_settings.json", u'{"gap": -1}')
+    assert _mixed_settings().load_saved_values()["gap"] == 1.0
+
+
+def test_parse_form_returns_numbers_or_errors_by_title():
+    settings = _mixed_settings()
+    values, errors = settings.parse_form({"param": u"Этаж", "gap": u"0,5"})
+    assert values == {"param": u"Этаж", "gap": 0.5} and errors == []
+
+    values, errors = settings.parse_form({"param": u"", "gap": u"x"})
+    # Без подписи поле называется заголовком раздела
+    assert errors == [u"Зазор, мм — неотрицательное число"]
+    assert values == {"param": u""}
+
+
+def test_missing_treats_zero_as_filled():
+    settings = _mixed_settings()
+    assert settings.missing({"param": u"P", "gap": 0.0}, ["param", "gap"]) == []
+    assert settings.missing({"param": u"P"}, ["gap"]) == [u"Зазор, мм"]
+
+
+def test_equipment_tags_settings_defaults_and_bad_values(appdata):
+    from lowlife import equipment_tags_settings
+
+    defaults = {"offset_mm": 3.0, "gap_mm": 1.0, "shelf_mm": 3.0, "cluster_mm": 8.0}
+    assert equipment_tags_settings.load_settings() == defaults
+    assert os.path.basename(equipment_tags_settings.SETTINGS.store.path()) == \
+        "LowLifeEquipmentTags_settings.json"
+
+    _write_raw(appdata, "LowLifeEquipmentTags_settings.json",
+               u'{"offset_mm": 5, "gap_mm": -2, "shelf_mm": "плохо", "other": 1}')
+    loaded = equipment_tags_settings.load_settings()
+    assert loaded == dict(defaults, offset_mm=5.0)

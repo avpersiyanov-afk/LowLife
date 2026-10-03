@@ -3058,25 +3058,10 @@ def build_camera_preview_view(doc, cam, view, settings):
 
 
 # ======================================================================
-#  НАСТРОЙКИ  (окно + хранение, по образцу room_info_settings.py)
+#  НАСТРОЙКИ  (окно + хранение — общий settings_core.TextSettings)
 # ======================================================================
 
-import clr
-clr.AddReference('PresentationFramework')
-clr.AddReference('PresentationCore')
-
-from pyrevit import forms
-from lowlife import settings_core, settings_transfer
-
-from System.Windows import (
-    Window, WindowStartupLocation, Thickness,
-    FontWeights, HorizontalAlignment, TextWrapping
-)
-from System.Windows.Controls import (
-    StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock,
-    ScrollViewer, ScrollBarVisibility
-)
-from System.Windows.Media import Brushes
+from lowlife import settings_core
 
 SETTINGS_FILE_NAME = "LowLifeCameraFov_settings.json"
 
@@ -3502,187 +3487,34 @@ TEXT_FIELDS = [
     ),
 ]
 
-PLAIN_LABELS = {key: label for key, _s, label, _h, _d, _r in TEXT_FIELDS}
+SETTINGS = settings_core.TextSettings(
+    file_name=SETTINGS_FILE_NAME,
+    button_name=u"Зоны обзора",
+    window_title=u"Настройки: Зоны обзора видеокамер (СОТ)",
+    heading=u"Параметры расчёта зоны обзора",
+    subtitle=(
+        u"Сначала кнопка, потом выбор камер (фильтр — только «Охранная "
+        u"сигнализация»). Значения сохраняются между запусками."
+    ),
+    transfer_label=u"зон обзора",
+    require_label=u"зон обзора",
+    fields=[
+        settings_core.TextField(key, section, label, hint=hint, default=default,
+                                required=required)
+        for key, section, label, hint, default, required in TEXT_FIELDS
+    ],
+    reset_button=True,
+    width=820, height=720,
+)
 
-
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"зон обзора")
+_STORE = SETTINGS.store
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
 _write_all = _STORE.write
 
-
-def load_saved_values():
-    saved = _read_all()
-    return {key: saved.get(key, default)
-            for key, _s, _label, _hint, default, _req in TEXT_FIELDS}
-
-
-def save_values(values):
-    data = _read_all()
-    data.update(values)
-    _write_all(data)
-
-
-def require(settings, keys):
-    """Останавливает скрипт через forms.alert(exitscript=True), если какие-то
-    из перечисленных ключей не заполнены."""
-    missing = [PLAIN_LABELS.get(k, k) for k in keys
-               if not (settings.get(k) and unicode(settings.get(k)).strip())]
-    if missing:
-        forms.alert(
-            u"Не заполнены обязательные настройки зон обзора:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «Зоны обзора».".format(
-                u"\n".join(missing)
-            ),
-            exitscript=True
-        )
-
-
-def show_settings_form(values):
-    result = {"values": None}
-
-    win = Window()
-    win.Title = u"Настройки: Зоны обзора видеокамер (СОТ)"
-    win.Width = 820
-    win.Height = 720
-    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
-
-    outer = DockPanel()
-    outer.LastChildFill = True
-
-    root = StackPanel()
-    root.Margin = Thickness(16)
-
-    title = TextBlock()
-    title.Text = u"Параметры расчёта зоны обзора"
-    title.FontSize = 16
-    title.FontWeight = FontWeights.Bold
-    title.Margin = Thickness(0, 0, 0, 4)
-    root.Children.Add(title)
-
-    hint = TextBlock()
-    hint.Text = (u"Сначала кнопка, потом выбор камер (фильтр — только «Охранная "
-                 u"сигнализация»). Значения сохраняются между запусками.")
-    hint.FontSize = 11
-    hint.Foreground = Brushes.Gray
-    hint.TextWrapping = TextWrapping.Wrap
-    hint.Margin = Thickness(0, 0, 0, 10)
-    root.Children.Add(hint)
-
-    boxes = {}
-
-    for key, section_title, label_text, hint_text, _default, required in TEXT_FIELDS:
-        if section_title:
-            section = TextBlock()
-            section.Text = section_title
-            section.FontWeight = FontWeights.Bold
-            section.Margin = Thickness(0, 16, 0, 2)
-            root.Children.Add(section)
-
-        label = TextBlock()
-        label.Text = label_text + (u" *" if required else u"")
-        label.Margin = Thickness(0, 8, 0, 2)
-        label.TextWrapping = TextWrapping.Wrap
-        root.Children.Add(label)
-
-        box = TextBox()
-        box.Text = values.get(key, "")
-        box.Padding = Thickness(4)
-        root.Children.Add(box)
-        boxes[key] = box
-
-        h = TextBlock()
-        h.Text = hint_text
-        h.FontSize = 11
-        h.Foreground = Brushes.Gray
-        h.TextWrapping = TextWrapping.Wrap
-        h.Margin = Thickness(0, 2, 0, 0)
-        root.Children.Add(h)
-
-    required_hint = TextBlock()
-    required_hint.Text = u"* обязательные поля"
-    required_hint.FontSize = 11
-    required_hint.Foreground = Brushes.Gray
-    required_hint.Margin = Thickness(0, 12, 0, 0)
-    root.Children.Add(required_hint)
-
-    buttons = StackPanel()
-    buttons.Orientation = Orientation.Horizontal
-    buttons.HorizontalAlignment = HorizontalAlignment.Right
-    buttons.Margin = Thickness(16, 8, 16, 12)
-    DockPanel.SetDock(buttons, Dock.Bottom)
-
-    reset_btn = Button()
-    reset_btn.Content = u"Сбросить"
-    reset_btn.Padding = Thickness(10, 4, 10, 4)
-    reset_btn.Margin = Thickness(0, 0, 8, 0)
-
-    cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
-    cancel_btn.Padding = Thickness(10, 4, 10, 4)
-    cancel_btn.Margin = Thickness(0, 0, 8, 0)
-
-    ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
-    ok_btn.Padding = Thickness(10, 4, 10, 4)
-    ok_btn.FontWeight = FontWeights.Bold
-
-    def on_reset(sender, args):
-        for key, _s, _label, _hint, default, _req in TEXT_FIELDS:
-            boxes[key].Text = default
-
-    def on_ok(sender, args):
-        result["values"] = {key: box.Text for key, box in boxes.items()}
-        win.Close()
-
-    def on_cancel(sender, args):
-        win.Close()
-
-    reset_btn.Click += on_reset
-    ok_btn.Click += on_ok
-    cancel_btn.Click += on_cancel
-
-    buttons.Children.Add(reset_btn)
-    buttons.Children.Add(cancel_btn)
-    buttons.Children.Add(ok_btn)
-
-    def _on_settings_imported():
-        result["values"] = settings_transfer.RELOAD
-        win.Close()
-
-    settings_transfer.add_transfer_buttons(
-        buttons, _read_all, _write_all, u"зон обзора", _on_settings_imported
-    )
-
-    scroll = ScrollViewer()
-    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-    scroll.Content = root
-
-    outer.Children.Add(buttons)
-    outer.Children.Add(scroll)
-
-    win.Content = outer
-    win.ShowDialog()
-
-    return result["values"]
-
-
-def get_settings_interactive():
-    """Окно настроек: сохраняет и возвращает значения; None при отмене.
-    Открывается по Shift+клику на кнопке «Зоны обзора»."""
-    while True:
-        saved = load_saved_values()
-        edited = show_settings_form(saved)
-
-        if edited == settings_transfer.RELOAD:
-            continue
-        if edited is None:
-            return None
-
-        save_values(edited)
-        return edited
-
-
-def get_settings_silent():
-    """Сохранённые значения без показа окна (или значения по умолчанию)."""
-    return load_saved_values()
+load_saved_values = SETTINGS.load_saved_values
+save_values = SETTINGS.save_values
+require = SETTINGS.require
+show_settings_form = SETTINGS.show_settings_form
+get_settings_interactive = SETTINGS.get_settings_interactive
+get_settings_silent = SETTINGS.get_settings_silent
