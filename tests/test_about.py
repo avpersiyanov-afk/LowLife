@@ -50,3 +50,22 @@ def test_missing_ref(tmpdir):
 def test_extension_root_is_repo_root():
     root = about.extension_root()
     assert os.path.isdir(os.path.join(root, "LowLife.tab"))
+
+
+def test_wordmark_letters_spell_lowlife():
+    assert about.wordmark_plain_text() == u"LowLiFe"
+
+
+def test_wordmark_transforms_match_artwork():
+    ops = dict((i, op) for i, (_, op, _) in enumerate(about.WORDMARK_LETTERS))
+    assert ops[0] == "mirror_x"          # ⅃
+    assert ops[3] == "mirror_x_rot180"   # Γ — та же ⅃, повёрнутая на 180°, как в логотипе
+    assert ops[5] == 135                 # повёрнутая F
+    for i in (1, 2, 4, 6):
+        assert ops[i] is None
+
+
+def test_only_life_l_is_accent():
+    accents = [ch for ch, _, accent in about.WORDMARK_LETTERS if accent]
+    assert accents == [u"L"]
+    assert about.WORDMARK_LETTERS[3][2] is True

@@ -6,7 +6,8 @@
 Логотип — монограмма «⅃Γ»: зеркальная L из «Low» (белая) и перевёрнутая L
 из «Life» (оранжевая) на чёрном скруглённом квадрате. Название (wordmark) —
 авторская графика `lowlife-wordmark-source.png`; скрипт её не перерисовывает,
-только обрезает поля и чистит до строго чёрного/белого.
+только обрезает поля, чистит до строго чёрного/белого и красит «Γ» из «Life»
+в оранжевый — как в монограмме.
 
 Пишет:
   docs/brand/lowlife-logo.png       512×512 — README
@@ -14,7 +15,9 @@
   docs/brand/lowlife-wordmark.png   название — README
   LowLife.tab/_Themes.panel/About.pushbutton/icon.png      96×96 — кнопка на ленте
   LowLife.tab/_Themes.panel/About.pushbutton/logo.png      256×256 — окно «О программе»
-  LowLife.tab/_Themes.panel/About.pushbutton/wordmark.png  название — окно «О программе»
+
+В окне «О программе» название не картинкой, а шрифтом: буквы и их
+повороты — lowlife.about.WORDMARK_LETTERS, сборка — lowlife.wordmark_wpf.
 """
 import os
 
@@ -66,7 +69,36 @@ def wordmark(pad_ratio=0.08):
     x0, y0, x1, y1 = src.point(lambda v: 255 if v > 128 else 0).getbbox()
     pad = int((y1 - y0) * pad_ratio * 2)
     box = (max(0, x0 - pad), max(0, y0 - pad), min(src.width, x1 + pad), min(src.height, y1 + pad))
-    return src.crop(box).convert("RGB")
+    return accent_life_l(src.crop(box))
+
+
+def _column_groups(gray):
+    """Отрезки столбцов [x0, x1), в которых есть белое — по ним делятся буквы."""
+    w, h = gray.size
+    px = gray.load()
+    filled = [any(px[x, y] > 128 for y in range(h)) for x in range(w)]
+    groups, start = [], None
+    for x, f in enumerate(filled + [False]):
+        if f and start is None:
+            start = x
+        elif not f and start is not None:
+            groups.append((start, x))
+            start = None
+    return groups
+
+
+def accent_life_l(gray):
+    """Красит «Γ» в оранжевый. По проекции столбцов буквы делятся на
+    ⅃ | ow (o и w перекрываются) | Γ | i | Fe (F касается e) — «Γ» третья."""
+    groups = _column_groups(gray)
+    assert len(groups) == 5, "не удалось найти буквы названия: {}".format(groups)
+    x0, x1 = groups[2]
+    rgb = Image.merge("RGB", (gray, gray, gray))
+    tint = Image.new("RGB", (x1 - x0, gray.height), ORANGE)
+    # Пиксели буквы: белый → оранжевый, сглаженный край → смесь с чёрным.
+    region = gray.crop((x0, 0, x1, gray.height))
+    rgb.paste(Image.composite(tint, Image.new("RGB", tint.size, BLACK), region), (x0, 0))
+    return rgb
 
 
 def main():
@@ -77,8 +109,6 @@ def main():
     wm.save(os.path.join(HERE, "lowlife-wordmark.png"))
     logo(96).save(os.path.join(ABOUT, "icon.png"))
     logo(256).save(os.path.join(ABOUT, "logo.png"))
-    w = 900
-    wm.resize((w, int(wm.height * w / wm.width)), Image.LANCZOS).save(os.path.join(ABOUT, "wordmark.png"))
 
 
 if __name__ == "__main__":

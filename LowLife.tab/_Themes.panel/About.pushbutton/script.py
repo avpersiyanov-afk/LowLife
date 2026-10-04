@@ -10,7 +10,7 @@ from System.Diagnostics import Process
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage
 from pyrevit import forms
 
-from lowlife import about
+from lowlife import about, wordmark_wpf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -28,7 +28,7 @@ class AboutWindow(forms.WPFWindow):
     def __init__(self):
         forms.WPFWindow.__init__(self, os.path.join(HERE, "about.xaml"))
         self.logo_img.Source = _bitmap("logo.png")
-        self.wordmark_img.Source = _bitmap("wordmark.png")
+        self.wordmark_img.Source = wordmark_wpf.build_image()
         self.tagline_tb.Text = about.TAGLINE
         self.disciplines_tb.Text = about.DISCIPLINES
         self.version_tb.Text = about.version_text()
