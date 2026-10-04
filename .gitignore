@@ -9,12 +9,6 @@ __pycache__/
 # Локальная сборка отдельного приложения — не в репозиторий
 /dist/
 
-# C# build output
-/csharp/**/bin/
-/csharp/**/obj/
-/csharp/**/*.zip
-/csharp/*.zip
-
 # Подключение «Заметок по проекту» (адрес Apps Script + токен) — репозиторий
 # публичный; образец без данных — config.example.json
 /config.json
