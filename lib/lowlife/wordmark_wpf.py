@@ -5,18 +5,16 @@
 отражается/поворачивается вокруг центра своего контура (так «Γ» остаётся
 на месте «L», а не съезжает по высоте строки) и ставится вплотную к
 предыдущей с небольшим зазором. Повёрнутая на произвольный угол буква
-центрируется по высоте заглавных. У обеих L «нога» удлинена
-(about.WORDMARK_L_FOOT), чтобы ⅃ не читалась как J. Обычные буквы и акцентные (оранжевая «Γ»,
+центрируется по высоте заглавных. Обычные буквы и акцентные (оранжевая «Γ»,
 как в логотипе) собираются в два контура одного DrawingImage — так они
 масштабируются вместе (Image.Stretch = Uniform) и не разъезжаются.
 Только для IronPython внутри Revit (нужны сборки WPF).
 """
 
 from System.Globalization import CultureInfo
-from System.Windows import FlowDirection, FontStretches, FontStyles, FontWeights, Point, Rect
+from System.Windows import FlowDirection, FontStretches, FontStyles, FontWeights, Point
 from System.Windows.Media import (Brushes, BrushConverter, DrawingGroup, DrawingImage, FillRule,
                                   FontFamily, FormattedText, GeometryDrawing, GeometryGroup,
-                                  RectangleGeometry,
                                   RotateTransform, ScaleTransform, TransformGroup,
                                   TranslateTransform, Typeface)
 
@@ -34,34 +32,6 @@ def _glyph(ch, typeface):
     return ft.BuildGeometry(Point(0, 0))
 
 
-def _long_l(typeface, foot_ratio):
-    """L шрифта с «ногой», удлинённой до foot_ratio × ширины буквы.
-
-    Толщину ноги меряем по самому контуру: идём вверх от низа буквы на
-    3/4 её ширины, пока точка внутри заливки. Удлинение — прямоугольник
-    той же толщины, вплотную к низу ноги (с нахлёстом, без шва)."""
-    glyph = _glyph(u"L", typeface)
-    b = glyph.Bounds
-    if foot_ratio <= 1.0:
-        return glyph
-    x = b.Left + b.Width * 0.75
-    step = EM / 500.0
-    y = b.Bottom - step
-    while y > b.Top and glyph.FillContains(Point(x, y)):
-        y -= step
-    foot = b.Bottom - y
-    if foot <= step or foot >= b.Height:
-        return glyph  # не нашли ногу — оставляем букву как есть
-    overlap = b.Width * 0.1
-    ext = RectangleGeometry(Rect(b.Right - overlap, b.Bottom - foot,
-                                 b.Width * (foot_ratio - 1.0) + overlap, foot))
-    group = GeometryGroup()
-    group.FillRule = FillRule.Nonzero
-    group.Children.Add(glyph)
-    group.Children.Add(ext)
-    return group
-
-
 def _transform_for(op, cx, cy):
     transform = TransformGroup()
     if op in ("mirror_x", "mirror_x_rot180"):
@@ -73,7 +43,7 @@ def _transform_for(op, cx, cy):
     return transform
 
 
-def build_geometries(letters=None, font_family=None, gap_em=0.05, l_foot=None):
+def build_geometries(letters=None, font_family=None, gap_em=0.05):
     """(основной контур, акцентный контур) названия — две GeometryGroup
     в общих координатах."""
     typeface = Typeface(FontFamily(font_family or about.WORDMARK_FONT),
@@ -86,11 +56,7 @@ def build_geometries(letters=None, font_family=None, gap_em=0.05, l_foot=None):
     x = 0.0
     for ch, op, is_accent in (letters or about.WORDMARK_LETTERS):
         letter = GeometryGroup()
-        if ch == u"L":
-            ratio = about.WORDMARK_L_FOOT if l_foot is None else l_foot
-            letter.Children.Add(_long_l(typeface, ratio))
-        else:
-            letter.Children.Add(_glyph(ch, typeface))
+        letter.Children.Add(_glyph(ch, typeface))
         b = letter.Bounds
         transform = _transform_for(op, b.Left + b.Width / 2.0, b.Top + b.Height / 2.0)
         letter.Transform = transform

@@ -65,10 +65,6 @@ def test_wordmark_transforms_match_artwork():
         assert ops[i] is None
 
 
-def test_l_foot_is_longer_than_font():
-    assert about.WORDMARK_L_FOOT > 1.0
-
-
 def test_only_life_l_is_accent():
     accents = [ch for ch, _, accent in about.WORDMARK_LETTERS if accent]
     assert accents == [u"L"]
