@@ -16,8 +16,7 @@ pyRevit сам берёт icon.dark.png, когда в Revit включена т
     светлые заливки — полутон; белые вставки — цвет фона);
   * оранжевый/красный → от фона к акценту по насыщенности.
 Иконки, у которых уже есть icon.dark.png, пропускаются — повторный запуск
-ничего не меняет. Иконки C#-надстройки FamilyCatalog получают только светлую
-версию (у неё нет автоматического выбора по теме).
+ничего не меняет.
 """
 import colorsys
 import glob
@@ -39,10 +38,6 @@ SOURCE_RED = (200, 50, 45)
 
 def pyrevit_icons():
     return sorted(glob.glob(os.path.join(ROOT, "LowLife.tab", "**", "icon.png"), recursive=True))
-
-
-def addin_icons():
-    return sorted(glob.glob(os.path.join(ROOT, "csharp", "FamilyCatalog", "*.png")))
 
 
 def dark_path(path):
@@ -86,11 +81,6 @@ def background(im):
 def is_brand_mark(im):
     """Логотип (и всё, что уже на чёрном фоне) не перекрашиваем."""
     return _lum(background(im)) < 0.15
-
-
-def has_old_blue(im):
-    """Есть ли синие линии прежнего стиля (заметно синие непрозрачные пиксели)."""
-    return any(p[3] > 200 and p[2] - p[0] > 80 for p in _pixels(im))
 
 
 def restyle(im, palette):
@@ -162,13 +152,6 @@ def main(argv):
             skipped += 1
             continue
         restyle(src, DARK).save(dark_path(p))
-        restyle(src, LIGHT).save(p)
-        done += 1
-    for p in addin_icons():
-        src = Image.open(p).convert("RGBA")
-        if not has_old_blue(src):  # синих линий нет — уже перекрашена
-            skipped += 1
-            continue
         restyle(src, LIGHT).save(p)
         done += 1
     print("перекрашено: {}, пропущено: {}".format(done, skipped))

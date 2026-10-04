@@ -6,18 +6,8 @@ SeedAllSettings.pushbutton/
 __pycache__/
 *.pyc
 
-# .NET build output for addins/*
-addins/*/bin/
-addins/*/obj/
-
 # Локальная сборка отдельного приложения — не в репозиторий
 /dist/
-
-# C# build output
-/csharp/**/bin/
-/csharp/**/obj/
-/csharp/**/*.zip
-/csharp/*.zip
 
 # Подключение «Заметок по проекту» (адрес Apps Script + токен) — репозиторий
 # публичный; образец без данных — config.example.json
