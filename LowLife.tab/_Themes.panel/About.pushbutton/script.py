@@ -28,7 +28,7 @@ class AboutWindow(forms.WPFWindow):
     def __init__(self):
         forms.WPFWindow.__init__(self, os.path.join(HERE, "about.xaml"))
         self.logo_img.Source = _bitmap("logo.png")
-        self.wordmark_path.Data = wordmark_wpf.build_geometry()
+        self.wordmark_img.Source = wordmark_wpf.build_image()
         self.tagline_tb.Text = about.TAGLINE
         self.disciplines_tb.Text = about.DISCIPLINES
         self.version_tb.Text = about.version_text()
