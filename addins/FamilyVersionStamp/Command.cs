@@ -7,8 +7,8 @@ using Autodesk.Revit.UI;
 namespace FamilyVersionStamp
 {
     /// <summary>
-    /// Проставляет в открытом семействе параметры "SMNX_Дата семейства"
-    /// (текущая дата) и "SMNX_Версия семейства" (ver.N -> ver.(N+1), пусто ->
+    /// Проставляет в открытом семействе параметры "...Дата семейства"
+    /// (текущая дата) и "...Версия семейства" (ver.N -> ver.(N+1), пусто ->
     /// ver.1), затем сохраняет файл семейства. Работает только с документом
     /// семейства (Family Editor).
     /// </summary>
@@ -16,8 +16,10 @@ namespace FamilyVersionStamp
     [Regeneration(RegenerationOption.Manual)]
     public class Command : IExternalCommand
     {
-        private const string DateParamName = "SMNX_Дата семейства";
-        private const string VersionParamName = "SMNX_Версия семейства";
+        // Параметр ищется по окончанию имени: подходит и "Дата семейства",
+        // и то же имя с любым префиксом проекта перед ним.
+        private const string DateParamName = "Дата семейства";
+        private const string VersionParamName = "Версия семейства";
         private static readonly Regex VersionPattern =
             new Regex(@"^\s*ver\.(\d+)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -131,12 +133,16 @@ namespace FamilyVersionStamp
 
         private static FamilyParameter FindParam(FamilyManager fm, string name)
         {
+            FamilyParameter bySuffix = null;
             foreach (FamilyParameter p in fm.Parameters)
             {
-                if (p.Definition.Name == name)
+                string pName = p.Definition.Name;
+                if (pName == name)
                     return p;
+                if (bySuffix == null && pName.EndsWith(name, StringComparison.Ordinal))
+                    bySuffix = p;
             }
-            return null;
+            return bySuffix;
         }
 
         private static string NextVersion(string current)

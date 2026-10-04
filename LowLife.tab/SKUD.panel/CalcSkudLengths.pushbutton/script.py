@@ -85,7 +85,7 @@ skud_settings.require(settings, [
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 # Рабочий набор узлов трассы СКУД. Типы семейств узлов у СКС и СКУД могут
-# быть одни и те же (общий SMNX_Сегмент), поэтому только по типу их не
+# быть одни и те же (общий параметр сегмента), поэтому только по типу их не
 # различить — разделение идёт по рабочему набору.
 NODE_WORKSET_FILTER_KEY = settings.get("workset_filter_key")
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
@@ -130,7 +130,7 @@ SEGMENT_LOADS_PARAM = settings["segment_loads_param"]
 # ОЧИСТКА "ЧУЖИХ" АДРЕСОВ
 # ------------------------------------------------------------
 # Очистка ограничена рабочим набором СКУД: параметры адреса общие с СКС
-# (SMNX_Сегмент), поэтому без такого ограничения запуск СКУД стирал бы
+# (параметр сегмента), поэтому без такого ограничения запуск СКУД стирал бы
 # адреса узлов СКС, и наоборот.
 
 with revit.Transaction("Clear stray SKUD route addresses"):
