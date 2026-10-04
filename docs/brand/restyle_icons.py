@@ -88,6 +88,11 @@ def is_brand_mark(im):
     return _lum(background(im)) < 0.15
 
 
+def has_old_blue(im):
+    """Есть ли синие линии прежнего стиля (заметно синие непрозрачные пиксели)."""
+    return any(p[3] > 200 and p[2] - p[0] > 80 for p in _pixels(im))
+
+
 def restyle(im, palette):
     im = im.convert("RGBA")
     src_bg = background(im)
@@ -161,7 +166,7 @@ def main(argv):
         done += 1
     for p in addin_icons():
         src = Image.open(p).convert("RGBA")
-        if _lum(background(src)) > 0.93:  # уже перекрашена в светлую палитру
+        if not has_old_blue(src):  # синих линий нет — уже перекрашена
             skipped += 1
             continue
         restyle(src, LIGHT).save(p)
