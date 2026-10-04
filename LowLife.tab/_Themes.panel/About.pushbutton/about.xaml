@@ -8,8 +8,8 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                 <Image x:Name="logo_img" Width="72" Height="72" Margin="0,0,20,0"
                        RenderOptions.BitmapScalingMode="HighQuality"/>
-                <Image x:Name="wordmark_img" Height="72" Stretch="Uniform"
-                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                <Path x:Name="wordmark_path" Height="72" Stretch="Uniform" Fill="White"
+                      VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
         <StackPanel Margin="24,18,24,20">

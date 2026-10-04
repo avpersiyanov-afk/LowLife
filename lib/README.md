@@ -16,8 +16,17 @@ from lowlife.geometry import get_point
 `DISCIPLINES` и версия расширения. `git_revision(root=None)` читает текущий
 коммит прямо из файлов `.git` (HEAD → `refs/heads/…` или `packed-refs`,
 detached HEAD — хеш в самом HEAD) и возвращает `(ветка, хеш)` или `None`;
-`version_text()` — строка «ветка @ 1a2b3c4» либо «неизвестна». Без Revit API,
-покрыт `tests/test_about.py`.
+`version_text()` — строка «ветка @ 1a2b3c4» либо «неизвестна».
+`WORDMARK_LETTERS`/`WORDMARK_FONT` — как набирать название шрифтом: буквы и
+их преобразования (`"mirror_x"`, `"mirror_y"` или угол поворота по часовой).
+Без Revit API, покрыт `tests/test_about.py`.
+
+## wordmark_wpf.py
+`build_geometry(letters=None, font_family=None, gap_em=0.05)` — название
+LowLife как WPF-`Geometry` из контуров букв шрифта (`FormattedText.BuildGeometry`):
+каждая буква отражается/поворачивается вокруг центра своего контура, повёрнутая
+центрируется по высоте заглавных, буквы ставятся вплотную с зазором `gap_em`.
+Используется окном «О программе» (`Path.Data`, `Stretch="Uniform"`). Только IronPython/WPF.
 
 ## geometry.py
 Геометрия элементов Revit, не привязанная к конкретной дисциплине.

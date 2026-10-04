@@ -14,7 +14,9 @@
   docs/brand/lowlife-wordmark.png   название — README
   LowLife.tab/_Themes.panel/About.pushbutton/icon.png      96×96 — кнопка на ленте
   LowLife.tab/_Themes.panel/About.pushbutton/logo.png      256×256 — окно «О программе»
-  LowLife.tab/_Themes.panel/About.pushbutton/wordmark.png  название — окно «О программе»
+
+В окне «О программе» название не картинкой, а шрифтом: буквы и их
+повороты — lowlife.about.WORDMARK_LETTERS, сборка — lowlife.wordmark_wpf.
 """
 import os
 
@@ -77,8 +79,6 @@ def main():
     wm.save(os.path.join(HERE, "lowlife-wordmark.png"))
     logo(96).save(os.path.join(ABOUT, "icon.png"))
     logo(256).save(os.path.join(ABOUT, "logo.png"))
-    w = 900
-    wm.resize((w, int(wm.height * w / wm.width)), Image.LANCZOS).save(os.path.join(ABOUT, "wordmark.png"))
 
 
 if __name__ == "__main__":

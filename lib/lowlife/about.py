@@ -61,3 +61,26 @@ def version_text(root=None):
     branch, sha = rev
     short = sha[:7]
     return u"{} @ {}".format(branch, short) if branch else short
+
+
+# Название в окне «О программе» набирается шрифтом (lowlife.wordmark_wpf),
+# а не картинкой. Буквы — как в авторской графике docs/brand/: отражённая L,
+# o, w, перевёрнутая L (Γ), i, заглавная F, повёрнутая на 135° по часовой, e.
+# Вторая часть пары — преобразование: None, "mirror_x", "mirror_y" или угол
+# поворота в градусах (по часовой, как RotateTransform в WPF).
+WORDMARK_LETTERS = [
+    (u"L", "mirror_x"),
+    (u"o", None),
+    (u"w", None),
+    (u"L", "mirror_y"),
+    (u"i", None),
+    (u"F", 135),
+    (u"e", None),
+]
+# Геометрический гротеск, как в графике; Segoe UI — если Century Gothic нет.
+WORDMARK_FONT = u"Century Gothic, Segoe UI"
+
+
+def wordmark_plain_text(letters=None):
+    """Буквы названия подряд, без отражений/поворотов («LowLiFe»)."""
+    return u"".join(ch for ch, _ in (letters or WORDMARK_LETTERS))
