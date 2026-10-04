@@ -53,8 +53,9 @@
 - `settings_core.py` — общее хранилище настроек `JsonStore` (путь в
   `%APPDATA%\pyRevit`, чтение пустого/битого файла, формат записи,
   `update`, имя файла-функция) и данные `TextSettings` (умолчания,
-  `migrate`, `missing`); плюс что `room_lots/room_finder/room_info_settings`
-  сохранили свои файлы и функции. Окно (WPF) не тестируется. Модуль без
+  `migrate`, `missing`, числовые поля `NumberField` и `parse_form`); плюс
+  что `room_lots/room_finder/room_info_settings` и
+  `equipment_tags_settings` сохранили свои файлы, умолчания и функции. Окно (WPF) не тестируется. Модуль без
   обязательного `unicode()`, поэтому идёт и под Python 3.
 
 Не покрыто и не может быть протестировано вне Revit: `route_nodes.py`,

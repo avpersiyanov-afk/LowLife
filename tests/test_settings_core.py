@@ -11,7 +11,7 @@ import os
 import pytest
 
 from lowlife import settings_core
-from lowlife.settings_core import JsonStore, TextField, TextSettings
+from lowlife.settings_core import JsonStore, NumberField, TextField, TextSettings
 
 
 @pytest.fixture
@@ -157,6 +157,82 @@ def test_room_info_migrates_old_room_number_param(appdata):
     values = room_info_settings.load_saved_values()
     assert values["room_mask"] == u"Имя (Номер_АР)"
     assert values["view_name_prefixes"] == u"1, 2, 20, 30, 60"
+
+
+def _number_settings():
+    return TextSettings(
+        file_name="LowLifeTest_settings.json",
+        button_name=u"Кнопка",
+        heading=u"Заголовок",
+        transfer_label=u"теста",
+        fields=[
+            NumberField("offset_mm", u"Отступ, мм", u"", default=3.0, minimum=0),
+            NumberField("count", u"Количество", u"", default=5, integer=True),
+            TextField("name", u"Имя", u"Имя параметра"),
+        ],
+    )
+
+
+def test_number_field_parse_accepts_comma_and_checks_minimum():
+    field = NumberField("offset_mm", u"Отступ, мм", u"", default=3.0, minimum=0)
+    assert field.parse(u" 2,5 ") == (2.5, None)
+    assert field.parse(u"0") == (0.0, None)
+    value, error = field.parse(u"-1")
+    assert value is None and u"Отступ, мм" in error and u"не меньше 0" in error
+    value, error = field.parse(u"abc")
+    assert value is None and error
+
+
+def test_integer_number_field_rejects_fractions():
+    field = NumberField("count", u"Количество", u"", default=5, integer=True)
+    assert field.parse(u"7") == (7, None)
+    assert field.parse(u"7.5")[0] is None
+
+
+def test_number_values_load_as_numbers_and_bad_saved_values_fall_back(appdata):
+    settings = _number_settings()
+    assert settings.load_saved_values() == {"offset_mm": 3.0, "count": 5, "name": u""}
+
+    _write_raw(appdata, "LowLifeTest_settings.json",
+               u'{"offset_mm": -2, "count": "abc", "name": "X"}')
+    assert settings.load_saved_values() == {"offset_mm": 3.0, "count": 5, "name": u"X"}
+
+    _write_raw(appdata, "LowLifeTest_settings.json", u'{"offset_mm": "1,5", "count": 2}')
+    values = settings.load_saved_values()
+    assert values["offset_mm"] == 1.5 and values["count"] == 2
+
+
+def test_parse_form_collects_errors_and_keeps_text_as_is():
+    settings = _number_settings()
+    values, errors = settings.parse_form(
+        {"offset_mm": u"4", "count": u"x", "name": u" Этаж "})
+    assert values == {"offset_mm": 4.0, "name": u" Этаж "}
+    assert len(errors) == 1 and u"Количество" in errors[0]
+
+
+def test_missing_uses_section_when_label_is_empty_and_zero_is_filled():
+    settings = _number_settings()
+    assert settings.missing({"offset_mm": 0.0, "name": u""}, ["offset_mm", "name"]) == [u"Имя параметра"]
+    assert settings.missing({}, ["count"]) == [u"Количество"]
+
+
+def test_field_display_turns_values_into_text():
+    assert NumberField("a", u"A", u"").display(3.0) == u"3.0"
+    assert TextField("b", u"B", u"").display(None) == u""
+
+
+def test_equipment_tags_settings_keep_file_defaults_and_api(appdata):
+    from lowlife import equipment_tags_settings
+
+    assert os.path.basename(equipment_tags_settings.SETTINGS.store.path()) == \
+        "LowLifeEquipmentTags_settings.json"
+    assert equipment_tags_settings.load_settings() == {
+        "offset_mm": 3.0, "gap_mm": 1.0, "shelf_mm": 3.0, "cluster_mm": 8.0}
+    _write_raw(appdata, "LowLifeEquipmentTags_settings.json",
+               u'{"offset_mm": 5.0, "gap_mm": -1}')
+    loaded = equipment_tags_settings.load_settings()
+    assert loaded["offset_mm"] == 5.0 and loaded["gap_mm"] == 1.0
+    assert callable(equipment_tags_settings.get_settings_interactive)
 
 
 def test_module_imports_without_revit():
