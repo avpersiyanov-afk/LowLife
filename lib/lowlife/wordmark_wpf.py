@@ -11,6 +11,11 @@
 Только для IronPython внутри Revit (нужны сборки WPF).
 """
 
+import clr
+clr.AddReference('PresentationFramework')
+clr.AddReference('PresentationCore')
+clr.AddReference('WindowsBase')
+
 from System.Globalization import CultureInfo
 from System.Windows import FlowDirection, FontStretches, FontStyles, FontWeights, Point
 from System.Windows.Media import (Brushes, BrushConverter, DrawingGroup, DrawingImage, FillRule,
