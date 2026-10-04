@@ -11,6 +11,14 @@ from lowlife.geometry import get_point
 Список общих параметров, которые нужно завести в проекте/ФОП для работы
 конкретных кнопок — в `lib/PARAMETERS.md`.
 
+## about.py
+Данные окна «О программе» (`_Themes.panel/About`): `REPO_URL`, `TAGLINE`,
+`DISCIPLINES` и версия расширения. `git_revision(root=None)` читает текущий
+коммит прямо из файлов `.git` (HEAD → `refs/heads/…` или `packed-refs`,
+detached HEAD — хеш в самом HEAD) и возвращает `(ветка, хеш)` или `None`;
+`version_text()` — строка «ветка @ 1a2b3c4» либо «неизвестна». Без Revit API,
+покрыт `tests/test_about.py`.
+
 ## geometry.py
 Геометрия элементов Revit, не привязанная к конкретной дисциплине.
 

@@ -1,0 +1,40 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="О программе LowLife" Width="560" SizeToContent="Height"
+        ResizeMode="NoResize" WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13" Background="White">
+    <StackPanel>
+        <Border Background="Black" Padding="24,22">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Image x:Name="logo_img" Width="72" Height="72" Margin="0,0,20,0"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                <Image x:Name="wordmark_img" Height="72" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+            </StackPanel>
+        </Border>
+        <StackPanel Margin="24,18,24,20">
+            <TextBlock x:Name="tagline_tb" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock x:Name="disciplines_tb" Foreground="#666666" Margin="0,4,0,14"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Версия:" Foreground="#666666" Margin="0,0,10,4"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="version_tb" FontFamily="Consolas"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Репозиторий:" Foreground="#666666" Margin="0,0,10,0"/>
+                <TextBlock Grid.Row="1" Grid.Column="1">
+                    <Hyperlink x:Name="repo_link" Foreground="#F08C28">
+                        <Run x:Name="repo_run"/>
+                    </Hyperlink>
+                </TextBlock>
+            </Grid>
+            <Button Content="Закрыть" HorizontalAlignment="Right" Padding="18,5" Margin="0,18,0,0"
+                    x:Name="close_btn" IsCancel="True" IsDefault="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
