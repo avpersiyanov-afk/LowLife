@@ -1,0 +1,57 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Обратная связь по LowLife" Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13" Background="White">
+    <Window.Resources>
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#555555"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,6"/>
+            <Setter Property="MinWidth" Value="100"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="6,4"/>
+        </Style>
+    </Window.Resources>
+    <StackPanel Margin="18">
+        <Border Background="#F2F5F9" CornerRadius="4" Padding="10,8">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold" FontSize="14"
+                           Text="Нашли ошибку или есть идея? Напишите — сообщение увидит только автор LowLife."
+                           TextWrapping="Wrap"/>
+                <TextBlock x:Name="txtContext" Foreground="#666666" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Style="{StaticResource Caption}" Text="Панель"/>
+        <ComboBox x:Name="cmbPanel" MaxDropDownHeight="420"/>
+
+        <TextBlock Style="{StaticResource Caption}" Text="Кнопка"/>
+        <ComboBox x:Name="cmbButton" MaxDropDownHeight="420"/>
+
+        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+            <RadioButton x:Name="rbProblem" Content="Проблема" IsChecked="True" Margin="0,0,24,0"/>
+            <RadioButton x:Name="rbIdea" Content="Предложение"/>
+        </StackPanel>
+
+        <TextBlock Style="{StaticResource Caption}"
+                   Text="Описание — что делали, что ожидали и что получилось (или что хотелось бы)"/>
+        <TextBox x:Name="txtText" Height="160" AcceptsReturn="True" TextWrapping="Wrap" Padding="4"
+                 VerticalScrollBarVisibility="Auto"/>
+
+        <TextBlock Style="{StaticResource Caption}" Text="Как с вами связаться (необязательно)"/>
+        <TextBox x:Name="txtContact" Padding="4"/>
+
+        <TextBlock x:Name="txtStatus" Foreground="#B04A00" TextWrapping="Wrap" Margin="0,10,0,0"/>
+
+        <DockPanel Margin="0,14,0,0" LastChildFill="False">
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="#888888" FontSize="11"
+                       Text="Ctrl+Enter — отправить, Esc — отмена"/>
+            <Button x:Name="btnCancel" DockPanel.Dock="Right" Content="Отмена" Margin="8,0,0,0"/>
+            <Button x:Name="btnSend" DockPanel.Dock="Right" Content="Отправить" FontWeight="SemiBold"/>
+        </DockPanel>
+    </StackPanel>
+</Window>

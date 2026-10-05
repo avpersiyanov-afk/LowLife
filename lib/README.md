@@ -22,6 +22,15 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 или угол поворота по часовой) и признак акцента (оранжевая «Γ», как в логотипе).
 Без Revit API, покрыт `tests/test_about.py`.
 
+## ribbon_catalog.py
+Список панелей и кнопок вкладки по папкам расширения — для окна «Обратная связь»
+(`pnotes/feedback.py`). `list_panels(root=None)` → `[(подпись панели, [подписи
+кнопок]), ...]` в порядке ленты: подписи из `bundle.yaml` (`title:`), иначе
+`__title__` из `script.py`, иначе имя папки; порядок — по `layout:`, остальное по
+алфавиту; `.stack` раскрывается в свои кнопки, панели без кнопок пропускаются.
+`read_bundle(folder)` → `(title, layout)` — разбор только этих двух ключей.
+Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
+
 ## wordmark_wpf.py
 `build_geometries(letters=None, font_family=None, gap_em=0.05)` — название
 LowLife как пара WPF-`GeometryGroup` (обычные буквы, акцентные) из контуров букв
@@ -1887,6 +1896,13 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
   напоминаний), `AnswerWindow` (ответ / решение), `SetupWindow` (разметка в `pnotes/xaml/*.xaml`) и точки входа
   кнопок/хука: `run_new_note(uidoc)`, `run_summary(uidoc)`, `run_setup(doc)`,
   `run_open_reminders(doc)` (раз за сеанс Revit на проект, без сети — молча выходит).
+- `pnotes/feedback.py` — кнопка «Обратная связь» (`_Themes.panel/Feedback`):
+  `FeedbackWindow` (панель → кнопка из `lowlife.ribbon_catalog` → проблема/предложение →
+  описание, разметка `xaml/feedback.xaml`), `run(uiapp)`. Отправка — `core._post` на
+  `FEEDBACK_URL` (отдельная таблица автора, `docs/feedback/Code.gs`, только запись;
+  личный адрес для проверки — `%APPDATA%\pyRevit\LowLifeFeedback\config.json`),
+  сначала в локальную очередь `queue.json`, потом `flush_queue`. Подробности —
+  `docs/feedback-panel.md`.
 
 ## Куда добавлять новое
 

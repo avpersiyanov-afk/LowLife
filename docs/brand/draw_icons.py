@@ -221,6 +221,15 @@ def diag_tag(c):
     c.circle((58, 60), 5, None, ORANGE)
 
 
+def feedback(c):
+    """«Обратная связь»: облачко сообщения с оранжевым восклицательным знаком."""
+    c.rect((12, 16, 84, 64), BLUE, WHITE, 5, 12)
+    c.polygon([(28, 61), (26, 82), (46, 61)], fill=BLUE)
+    c.polygon([(31, 59), (30, 74), (42, 59)], fill=WHITE)
+    c.line([(48, 26), (48, 44)], ORANGE, 7)
+    c.circle((48, 54), 4.2, None, ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -234,6 +243,7 @@ ICONS = [
     ("SKUD.panel/InspectSchematicDevices.pushbutton", diag_schematic),
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
+    ("_Themes.panel/Feedback.pushbutton", feedback),
 ]
 
 
