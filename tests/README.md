@@ -59,7 +59,7 @@
   что `room_lots/room_finder/room_info_settings` и
   `equipment_tags_settings` сохранили свои файлы, умолчания и функции. Окно (WPF) не тестируется. Модуль без
   обязательного `unicode()`, поэтому идёт и под Python 3.
-- `level_name_fill.py` (частично) — только `pick_level_by_elevation` (выбор
+- `level_assign.py` (частично) — только `pick_level_by_elevation` (выбор
   уровня по высоте для кнопки «Обновить имя уровня»); Revit API модуль
   импортирует лениво. Без `unicode()`, идёт и под Python 3.
 

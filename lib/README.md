@@ -1789,20 +1789,26 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
 | `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
 
-## level_name_fill.py / level_name_settings.py
-Кнопка `LOI.panel/UpdateLevelName` («Обновить имя уровня»): выбранным
-элементам пишет имя уровня в текстовый параметр (имя параметра — проектное,
-`%APPDATA%\pyRevit\LowLifeLevelName_settings.json`, окно — `settings_core.TextSettings`,
-Shift+клик). Уровень — `Element.LevelId`, а если его нет (семейство на грани
-связи и т.п.) — по высоте. Revit API импортируется лениво, поэтому
-`pick_level_by_elevation` тестируется вне Revit.
+## level_assign.py
+Кнопка `LOI.panel/UpdateLevelName` («Обновить имя уровня»): назначает опорный
+уровень выбранным экземплярам семейств без уровня (`LevelId` пуст) и без основы.
+Сначала — параметром «Уровень» (`FAMILY_LEVEL_PARAM`/`INSTANCE_REFERENCE_LEVEL_PARAM`),
+если он редактируемый, с возвратом элемента в исходную точку; иначе — пересозданием
+(`NewFamilyInstance(point|curve, symbol, level, NonStructural)`): поворот/отражение,
+редактируемые параметры экземпляра, электрические цепи (`AddToCircuit`/`SelectPanel`)
+переносятся, старый удаляется, всё — в `SubTransaction` на элемент. Revit API
+импортируется лениво, поэтому `pick_level_by_elevation` тестируется вне Revit.
 
 | Функция | Что делает |
 |---|---|
 | `pick_level_by_elevation(z, levels_with_elevation, tol)` | Уровень с наибольшей отметкой `<= z + tol` из `[(отметка, уровень)]`; ниже всех — самый нижний; `None` — уровней нет |
-| `element_elevation(el)` | Z точки вставки, иначе низ кривой, иначе низ габарита |
-| `resolve_level(doc, el, levels_with_elevation)` | `(Level, "level_id" \| "elevation")` или `(None, None)`; высоты уровней — `Level.ProjectElevation` (та же система, что Z элементов) |
-| `fill_level_names(doc, elements, target_param_name)` | Пишет имя уровня (перезаписывает), возвращает `FillResult` (`from_level_id`, `by_elevation`, `no_level`, `failed`) |
+| `classify(doc, el)` | `None` — элементу нужен уровень; иначе причина пропуска (`SKIP_*`: уже есть уровень, не семейство, на основе, вложенное, в группе, нет точки/линии) |
+| `can_assign_by_param(el)` | Редактируемый ли у экземпляра параметр «Уровень» (иначе — только пересоздание) |
+| `levels_with_project_elevation(doc)` / `level_for_element(el, levels)` | Уровень по высоте: `Level.ProjectElevation` — та же система, что Z элементов |
+| `assign_by_param(doc, el, level)` | Уровень параметром + возврат на место; `False` — откатилось |
+| `recreate_with_level(doc, el, level)` | `(новый, None, предупреждения)` или `(None, ошибка, [])` |
+| `copy_instance_params(old, new)` | Копия редактируемых параметров экземпляра (кроме уровня/смещений/типа); число неудачных |
+| `assign_levels(doc, elements, fixed_level, allow_recreate)` | Всё вместе → `AssignResult` (`by_param`, `recreated`, `levels`, `failed`, `warnings`) |
 
 ## family_section.py / family_section_settings.py
 Разрез по экземпляру семейства — кнопка `Tools.panel/FamilySection`

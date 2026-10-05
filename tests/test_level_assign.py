@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Тесты для lowlife.level_name_fill.pick_level_by_elevation — уровень по
-высоте для элементов без уровня в свойствах (кнопка «Обновить имя уровня»,
+"""Тесты для lowlife.level_assign.pick_level_by_elevation — уровень по
+высоте для элементов без опорного уровня (кнопка «Обновить имя уровня»,
 LOI.panel/UpdateLevelName)."""
 
-from lowlife.level_name_fill import pick_level_by_elevation
+from lowlife.level_assign import pick_level_by_elevation
 
 LEVELS = [(10.0, "L2"), (-5.0, "B1"), (0.0, "L1"), (20.0, "L3")]
 
