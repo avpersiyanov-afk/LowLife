@@ -404,7 +404,7 @@ _write_all = _STORE.write
 
 Нестандартные окна (выбор типоразмеров и категорий через
 `SelectFromList`, переключатели, флажки, таблицы, мнемосхемы, окно
-«Задачи из почты» с проверкой пути к claude.exe и стандартным промптом из
+«Задачи из почты» с выбором способа подключения ИИ и стандартным промптом из
 файла) пока остаются в своих модулях и берут отсюда только `JsonStore`.
 
 ## settings_transfer.py
@@ -1461,7 +1461,7 @@ room_number_param)` — запись по точкам прохода, возв�
 |---|---|---|
 | `press_key` | `press_key(key)` | Имитирует нажатие и отпускание виртуальной клавиши `key` через `ctypes`/`user32` |
 
-## email_tasks_core.py / email_outlook.py / email_claude.py / email_tasks_excel.py / email_tasks_settings.py
+## email_tasks_core.py / email_outlook.py / email_ai*.py / email_claude.py / email_codex.py / email_tasks_excel.py / email_tasks_settings.py
 Кнопка «Задачи из почты» (`Mail.panel/EmailTasks`), подробности — `docs/email-tasks.md`.
 
 - `email_tasks_core.py` — чистая логика без .NET/COM (покрыта тестами):
@@ -1473,15 +1473,32 @@ room_number_param)` — запись по точкам прохода, возв�
 - `email_outlook.py` — `read_inbox(days, unread_only, subfolder, tick)`:
   чтение «Входящих» классического Outlook через COM (только чтение),
   SMTP Exchange-отправителя через `GetExchangeUser()`; `OutlookError`.
+- `email_ai.py` — выбор способа подключения ИИ по `settings["provider"]`:
+  `prepare(settings)` → `Engine` (`.run(text, tick)`, `.name`,
+  `.description`) или `AIError` (программа не найдена / нет ключа).
+- `email_ai_core.py` — чистая логика без .NET (покрыта тестами):
+  `PROVIDERS`, `DEFAULT_MODELS`, `resolve_key` (поле или переменная
+  окружения), `mask_key`; `anthropic_request`/`parse_anthropic_response`,
+  `openai_request`/`parse_openai_response`, `classify_http_error`;
+  `codex_arguments`, `classify_codex_failure`; исключения `AIError`
+  (`fatal` — дальше пачки не слать) и `Cancelled`.
+- `email_ai_net.py` — .NET-обвязка: `find_executable`, `run_process`
+  (запрос через stdin в UTF-8, ожидание с `tick()`), `post_json` (HTTP в
+  фоновом потоке, ожидание с `tick()`, `Abort` при отмене).
 - `email_claude.py` — `find_claude(path)` (настройка → PATH →
   `~\.local\bin` → `%APPDATA%\npm`), `run_claude(path, model, text, tick)`:
-  `claude -p --output-format json ...`, запрос через stdin в UTF-8,
-  таймаут 3 мин; `ClaudeError` (`fatal` — не залогинен/лимит/нет модели).
+  `claude -p --output-format json ...`, таймаут 3 мин; `ClaudeError` —
+  прежнее имя `AIError`.
+- `email_codex.py` — `find_codex(path)` (настройка → PATH →
+  `%APPDATA%\npm` → `~\.local\bin`), `run_codex(path, model, text, tick)`:
+  `codex exec ... -o <файл> -`, таймаут 5 мин.
 - `email_tasks_excel.py` — `save_tasks(rows, path)`: книга Excel через COM
   (выпадающий статус, условное форматирование, закреплённая шапка,
   автофильтр), `default_output_path()`.
 - `email_tasks_settings.py` — `load()`/`save()`/`edit_interactive(default_prompt)`/`effective_prompt(values, default_prompt)`:
-  `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` и WPF-окно Shift+клика.
+  `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` и WPF-окно Shift+клика
+  (выбор способа подключения, поля только выбранного способа, ссылки на
+  разделы инструкции `GUIDE_URLS`).
 
 ## export_rename.py
 Тело кнопки `Tools.panel/RenameExportFiles` («Переименование выгрузки»).

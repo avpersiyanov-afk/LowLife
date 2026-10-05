@@ -3,11 +3,12 @@ __title__ = u"Задачи\nиз почты"
 __doc__ = (
     u"Разбирает «Входящие» классического Outlook за последние N дней и "
     u"составляет список задач в Excel (Документы\\Задачи из почты). Письма "
-    u"анализирует Claude через Claude Code CLI (claude -p) под вашей "
-    u"подпиской. Почта только читается: ничего не отправляется, не "
-    u"помечается прочитанным и не перемещается.\n\n"
-    u"Shift+клик — настройки: период, только непрочитанные, подпапка, путь "
-    u"к claude.exe, модель, тестовый режим."
+    u"анализирует Claude или ChatGPT — через приложение (Claude Code / Codex "
+    u"CLI, под вашей подпиской) или по ключу API. Почта только читается: "
+    u"ничего не отправляется, не помечается прочитанным и не перемещается.\n\n"
+    u"Shift+клик — настройки: способ подключения ИИ (со ссылками на "
+    u"инструкции), модель, период, только непрочитанные, подпапка, промпт, "
+    u"тестовый режим."
 )
 __author__ = "Pipers"
 __context__ = "zero-doc"
@@ -23,7 +24,7 @@ from System.Windows.Forms import Application
 from pyrevit import forms, script, EXEC_PARAMS
 
 from lowlife import email_tasks_core as core
-from lowlife import email_tasks_settings, email_claude, email_outlook, email_tasks_excel
+from lowlife import email_tasks_settings, email_ai, email_outlook, email_tasks_excel
 
 BUNDLE_DIR = os.path.dirname(__file__)
 PROMPT_FILE = os.path.join(BUNDLE_DIR, "prompt.txt")
@@ -59,18 +60,10 @@ if not prompt_text.strip():
                 u"(Shift+клик по кнопке).".format(PROMPT_FILE),
                 exitscript=True)
 
-claude_path = email_claude.find_claude(settings["claude_path"])
-if claude_path is None:
-    if settings["claude_path"]:
-        msg = (u"claude не найден по пути из настроек:\n{}\n\n"
-               u"Исправьте путь (Shift+клик по кнопке) или очистите поле для "
-               u"автопоиска.".format(settings["claude_path"]))
-    else:
-        msg = (u"Claude Code (claude.exe) не найден: нет ни в PATH, ни в "
-               u"%USERPROFILE%\\.local\\bin, ни в %APPDATA%\\npm.\n\n"
-               u"Укажите полный путь к claude.exe в настройках (Shift+клик). "
-               u"Узнать его можно командой `where claude` в командной строке.")
-    forms.alert(msg, exitscript=True)
+try:
+    engine = email_ai.prepare(settings)
+except email_ai.AIError as ex:
+    forms.alert(ex.message, title=u"Задачи из почты", exitscript=True)
 
 
 def _pump():
@@ -143,28 +136,29 @@ with forms.ProgressBar(title=u"Чтение почты…", cancellable=True) as
         except Exception as ex:
             fatal_error = u"Ошибка чтения почты из Outlook:\n{}".format(ex)
 
-    # --- 2. Анализ в Claude, пачками
+    # --- 2. Анализ в ИИ, пачками
     if emails and not fatal_error and not cancelled:
         emails_by_id = dict((e["id"], e) for e in emails)
         batches = core.make_batches(emails)
         total = len(batches)
         for part, batch in enumerate(batches, start=1):
-            pb.title = u"Анализ писем в Claude: часть {} из {} (писем: {})".format(part, total, len(batch))
+            pb.title = u"Анализ писем в {}: часть {} из {} (писем: {})".format(
+                engine.name, part, total, len(batch))
             pb.update_progress(part - 1, total)
             _set_indeterminate(pb, True)
             _pump()
 
-            def claude_tick():
+            def ai_tick():
                 _pump()
                 return pb.cancelled
 
             request = core.build_request(prompt_text, batch, today)
             try:
-                answer = email_claude.run_claude(claude_path, settings["model"], request, tick=claude_tick)
-            except email_claude.Cancelled:
+                answer = engine.run(request, tick=ai_tick)
+            except email_ai.Cancelled:
                 cancelled = True
                 break
-            except email_claude.ClaudeError as ex:
+            except email_ai.AIError as ex:
                 text = ex.message
                 if ex.details:
                     text += u"\n\nПодробности:\n" + ex.details[:1500]
@@ -179,8 +173,8 @@ with forms.ProgressBar(title=u"Чтение почты…", cancellable=True) as
             except core.ParseError as ex:
                 raw_path = _save_raw_answer(part, answer)
                 batch_errors.append(
-                    u"Часть {} из {}: не удалось разобрать ответ Claude ({}). "
-                    u"Ответ сохранён: {}".format(part, total, ex, raw_path))
+                    u"Часть {} из {}: не удалось разобрать ответ {} ({}). "
+                    u"Ответ сохранён: {}".format(part, total, engine.name, ex, raw_path))
                 continue
             rows.extend(core.normalize_task(t, emails_by_id) for t in tasks)
 
@@ -226,8 +220,8 @@ if batch_errors and not rows:
         title=u"Задачи из почты")
 
 output.print_md(u"## Задачи из почты — {}".format(_fmt_date(datetime.datetime.now(), with_time=True)))
-output.print_md(u"Папка: **{}**, писем разобрано: **{}**, задач найдено: **{}**. Модель: `{}`.".format(
-    folder_name, len(emails), len(rows), settings["model"]))
+output.print_md(u"Папка: **{}**, писем разобрано: **{}**, задач найдено: **{}**. ИИ: {}.".format(
+    folder_name, len(emails), len(rows), engine.description))
 if read_warning:
     output.print_md(u"> ⚠ " + read_warning)
 
