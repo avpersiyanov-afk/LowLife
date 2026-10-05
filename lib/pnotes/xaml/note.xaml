@@ -32,7 +32,7 @@
 
         <TextBlock Style="{StaticResource Caption}" Text="Текст"/>
         <TextBox x:Name="txtText" Height="130" AcceptsReturn="True" TextWrapping="Wrap" Padding="4"
-                 VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True" Language="ru-RU"/>
+                 VerticalScrollBarVisibility="Auto"/>
 
         <Grid>
             <Grid.ColumnDefinitions>

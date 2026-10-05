@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """Окна «Заметок по проекту»: новая заметка, сводка, настройка, напоминания."""
 import os
+import io
 import datetime
+import traceback
 
 from pyrevit import forms
 
@@ -46,6 +48,40 @@ def fmt_date(iso):
         return u'{}.{}.{}{}'.format(d, m, y, iso[10:])
     except Exception:
         return iso
+
+
+def _spellcheck(textbox):
+    """Проверка орфографии — только если она есть в системе: на части машин WPF падает при её включении."""
+    try:
+        from System.Windows.Markup import XmlLanguage
+        textbox.Language = XmlLanguage.GetLanguage('ru-RU')
+        textbox.SpellCheck.IsEnabled = True
+    except Exception:
+        pass
+
+
+ERROR_LOG = os.path.join(core.USER_DIR, 'error.log')
+
+
+def guarded(func):
+    """Точка входа кнопки: любая ошибка — понятное окно и запись в error.log, а не пустое окно pyRevit."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as ex:
+            details = traceback.format_exc()
+            try:
+                if not os.path.isdir(core.USER_DIR):
+                    os.makedirs(core.USER_DIR)
+                with io.open(ERROR_LOG, 'a', encoding='utf-8') as f:
+                    f.write(u'\n==== {} — {}\n{}'.format(
+                        datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S'), func.__name__, details))
+            except Exception:
+                pass
+            forms.alert(u'{}\n\nПодробности записаны в файл:\n{}'.format(core.err_text(ex), ERROR_LOG),
+                        title=u'Заметки: ошибка', expanded=details)
+    wrapper.__name__ = func.__name__
+    return wrapper
 
 
 def _balloon(text):
@@ -103,6 +139,7 @@ class NoteWindow(forms.WPFWindow):
         if not online and note is None:
             self.txtStatus.Text = u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.'
 
+        _spellcheck(self.txtText)
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
         self.PreviewKeyDown += self.on_key
@@ -492,6 +529,7 @@ class AnswerWindow(forms.WPFWindow):
             self.chkClose.Visibility = Visibility.Collapsed
         if self.is_question:
             self.txtHint.Text = u'Это вопрос — закрыть его можно только с ответом.'
+        _spellcheck(self.txtAnswer)
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
         self.PreviewKeyDown += self.on_key
@@ -659,6 +697,7 @@ def _project_doc(uidoc):
     return doc
 
 
+@guarded
 def run_setup(doc, settings=None):
     if settings is None:
         settings = core.get_settings()[0]
@@ -667,6 +706,7 @@ def run_setup(doc, settings=None):
     return win.saved
 
 
+@guarded
 def run_new_note(uidoc):
     doc = _project_doc(uidoc)
     if doc is None:
@@ -693,6 +733,7 @@ def run_new_note(uidoc):
                     title=u'Заметка сохранена локально')
 
 
+@guarded
 def run_summary(uidoc):
     doc = _project_doc(uidoc)
     if doc is None:
