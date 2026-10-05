@@ -20,7 +20,7 @@
 
         <TextBlock Text="Ответ / решение" Foreground="#555555" Margin="0,12,0,4"/>
         <TextBox x:Name="txtAnswer" Height="130" AcceptsReturn="True" TextWrapping="Wrap" Padding="4"
-                 VerticalScrollBarVisibility="Auto" SpellCheck.IsEnabled="True" Language="ru-RU"/>
+                 VerticalScrollBarVisibility="Auto"/>
 
         <CheckBox x:Name="chkClose" Content="Отметить «Выполнено»" Margin="0,12,0,0"/>
         <TextBlock x:Name="txtHint" Foreground="#B04A00" TextWrapping="Wrap" Margin="0,10,0,0"/>
