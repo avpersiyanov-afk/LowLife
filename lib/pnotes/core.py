@@ -85,11 +85,32 @@ def _read_json(path, default=None):
         return default
 
 
+def _dumps(data, indent=None):
+    """json.dumps с ASCII-результатом, безопасный для IronPython.
+
+    Стандартный ensure_ascii=True в IronPython (pyRevit на части машин, напр. Revit 2022) падает на
+    любой кириллице: UnicodeEncodeError 'ascii' codec can't encode character. Поэтому строим текст
+    с ensure_ascii=False и сами заменяем не-ASCII символы на \\uXXXX — результат тот же, что у CPython.
+    """
+    text = json.dumps(data, ensure_ascii=False, indent=indent)
+    out = []
+    for ch in text:
+        code = ord(ch)
+        if code < 128:
+            out.append(ch)
+        elif code > 0xFFFF:  # CPython 3: символ вне BMP — суррогатная пара
+            code -= 0x10000
+            out.append(u'\\u{:04x}\\u{:04x}'.format(0xD800 + (code >> 10), 0xDC00 + (code & 0x3FF)))
+        else:
+            out.append(u'\\u{:04x}'.format(code))
+    return u''.join(out)
+
+
 def _write_json(path, data):
     folder = os.path.dirname(path)
     if not os.path.isdir(folder):
         os.makedirs(folder)
-    text = json.dumps(data, indent=2)  # ensure_ascii по умолчанию — файл всегда чистый ASCII
+    text = _dumps(data, indent=2)  # чистый ASCII
     with io.open(path, 'w', encoding='utf-8') as f:
         f.write(u'' + text)
 
@@ -172,7 +193,7 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None):
     body['action'] = action
     body['token'] = token
     try:
-        raw = _post(url, json.dumps(body), timeout_ms)
+        raw = _post(url, _dumps(body), timeout_ms)
     except Exception as ex:
         raise ApiError(u'Нет связи с Google Таблицей: ' + err_text(ex))
     try:
