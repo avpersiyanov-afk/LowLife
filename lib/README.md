@@ -1789,6 +1789,21 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
 | `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
 
+## level_name_fill.py / level_name_settings.py
+Кнопка `LOI.panel/UpdateLevelName` («Обновить имя уровня»): выбранным
+элементам пишет имя уровня в текстовый параметр (имя параметра — проектное,
+`%APPDATA%\pyRevit\LowLifeLevelName_settings.json`, окно — `settings_core.TextSettings`,
+Shift+клик). Уровень — `Element.LevelId`, а если его нет (семейство на грани
+связи и т.п.) — по высоте. Revit API импортируется лениво, поэтому
+`pick_level_by_elevation` тестируется вне Revit.
+
+| Функция | Что делает |
+|---|---|
+| `pick_level_by_elevation(z, levels_with_elevation, tol)` | Уровень с наибольшей отметкой `<= z + tol` из `[(отметка, уровень)]`; ниже всех — самый нижний; `None` — уровней нет |
+| `element_elevation(el)` | Z точки вставки, иначе низ кривой, иначе низ габарита |
+| `resolve_level(doc, el, levels_with_elevation)` | `(Level, "level_id" \| "elevation")` или `(None, None)`; высоты уровней — `Level.ProjectElevation` (та же система, что Z элементов) |
+| `fill_level_names(doc, elements, target_param_name)` | Пишет имя уровня (перезаписывает), возвращает `FillResult` (`from_level_id`, `by_elevation`, `no_level`, `failed`) |
+
 ## family_section.py / family_section_settings.py
 Разрез по экземпляру семейства — кнопка `Tools.panel/FamilySection`
 («Разрез по семейству»). Разрез смотрит на лицевую сторону семейства
