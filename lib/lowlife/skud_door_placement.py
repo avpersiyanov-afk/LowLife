@@ -51,6 +51,7 @@ from Autodesk.Revit.DB import (
 from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife import skud_door_layout as layout
+from lowlife import level_assign
 from lowlife.geometry import find_level_for_elevation
 from lowlife.scs import safe_element_name
 from lowlife.room_info import _room_param_value
@@ -567,17 +568,16 @@ def create_slot_instance(doc, symbol, frame, side, point, level):
         except:
             pass
 
-    inst = None
-    if level is not None:
-        try:
-            inst = doc.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural)
-        except:
-            inst = None
+    # С уровнем (в т.ч. на плоскость уровня для семейств на основе рабочей
+    # плоскости); без уровня — только в крайнем случае, и тогда уровень
+    # назначается следом, чтобы экземпляр не остался без опорного уровня.
+    inst = level_assign.create_on_level(doc, symbol, point, level)
     if inst is None:
         try:
             inst = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural)
         except:
             return None
+        level_assign.ensure_level(doc, inst, level)
     _move_to(doc, inst, point)
     _align_facing(doc, inst, point, normal)
     return inst

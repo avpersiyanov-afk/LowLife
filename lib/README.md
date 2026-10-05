@@ -1805,6 +1805,8 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `classify(doc, el)` | `None` — элементу нужен уровень; иначе причина пропуска (`SKIP_*`: уже есть уровень, не семейство, на основе, вложенное, в группе, нет точки/линии) |
 | `can_assign_by_param(el)` | Редактируемый ли у экземпляра параметр «Уровень» (иначе — только пересоздание) |
 | `levels_with_project_elevation(doc)` / `level_for_element(el, levels)` | Уровень по высоте: `Level.ProjectElevation` — та же система, что Z элементов |
+| `create_on_level(doc, symbol, point, level)` | Новый экземпляр сразу с уровнем: `NewFamilyInstance(point, symbol, level)`, иначе на плоскость уровня (`Level.GetPlaneReference()`, для семейств на основе рабочей плоскости) с подъёмом до `point`; `None` — не вышло. Используют `companion_placement.create_companion_instance` (а через неё JSON-создание) и `skud_door_placement.create_slot_instance` |
+| `ensure_level(doc, inst, level)` | Только что созданному без уровня экземпляру — уровень параметром (`assign_by_param`); `True` — уровень есть |
 | `assign_by_param(doc, el, level)` | Уровень параметром + возврат на место; `False` — откатилось |
 | `recreate_with_level(doc, el, level)` | `(новый, None, предупреждения)` или `(None, ошибка, [])` |
 | `copy_instance_params(old, new)` | Копия редактируемых параметров экземпляра (кроме уровня/смещений/типа); число неудачных |

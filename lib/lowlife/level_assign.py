@@ -435,6 +435,73 @@ def _circuit_name(system):
         return u""
 
 
+# --- создание сразу с уровнем -------------------------------------------------------
+
+def create_on_level(doc, symbol, point, level):
+    """
+    Новый экземпляр symbol в point с опорным уровнем level — общий хелпер
+    для кнопок расстановки, чтобы они не оставляли экземпляры без уровня:
+      1. NewFamilyInstance(point, symbol, level, NonStructural) — семейства
+         на основе уровня;
+      2. если Revit отказал или уровень не прописался (типично — семейство
+         на основе рабочей плоскости), — на плоскость уровня
+         (Level.GetPlaneReference()), с подъёмом до point (смещение от
+         рабочей плоскости).
+    Возвращает экземпляр с уровнем или None (ничего не оставляет в модели).
+    Вызывать внутри Transaction.
+    """
+    from Autodesk.Revit.DB import XYZ
+    from Autodesk.Revit.DB.Structure import StructuralType
+    from lowlife import geometry
+
+    if level is None or symbol is None or point is None:
+        return None
+
+    if not symbol.IsActive:
+        symbol.Activate()
+        doc.Regenerate()
+
+    def _attempts():
+        yield lambda: doc.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural)
+        yield lambda: doc.Create.NewFamilyInstance(level.GetPlaneReference(), point, XYZ.BasisX, symbol)
+
+    for make in _attempts():
+        try:
+            inst = make()
+        except:
+            inst = None
+        if inst is None:
+            continue
+        try:
+            doc.Regenerate()
+            if geometry.get_element_level(doc, inst) is not None:
+                _move_anchor_to(doc, inst, point)
+                return inst
+            doc.Delete(inst.Id)
+        except:
+            pass
+
+    return None
+
+
+def ensure_level(doc, inst, level):
+    """
+    Если у только что созданного inst нет опорного уровня — пробует
+    назначить level параметром «Уровень» (assign_by_param). True — уровень
+    есть. Для запасных веток расстановки, где экземпляр пришлось создать
+    без уровня (на основе без уровня или вовсе без привязки).
+    """
+    from lowlife import geometry
+
+    if inst is None:
+        return False
+    if geometry.get_element_level(doc, inst) is not None:
+        return True
+    if level is None:
+        return False
+    return assign_by_param(doc, inst, level)
+
+
 # --- назначение ------------------------------------------------------------------
 
 def assign_by_param(doc, el, level):
@@ -491,13 +558,12 @@ def recreate_with_level(doc, el, level):
     st = SubTransaction(doc)
     st.Start()
     try:
-        if not symbol.IsActive:
-            symbol.Activate()
-            doc.Regenerate()
-
         if isinstance(loc, LocationPoint):
-            new = doc.Create.NewFamilyInstance(loc.Point, symbol, level, StructuralType.NonStructural)
+            new = create_on_level(doc, symbol, loc.Point, level)
         else:
+            if not symbol.IsActive:
+                symbol.Activate()
+                doc.Regenerate()
             new = doc.Create.NewFamilyInstance(loc.Curve, symbol, level, StructuralType.NonStructural)
 
         if new is None:
