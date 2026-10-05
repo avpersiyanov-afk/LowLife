@@ -46,7 +46,7 @@ def _collect_instances():
 
 
 def main():
-    from lowlife import family_section, family_section_settings as fss
+    from lowlife import family_section, family_section_settings as fss, level_name_template
 
     try:
         config_mode = bool(EXEC_PARAMS.config_mode)
@@ -100,6 +100,10 @@ def main():
         groups = [[el] for el in instances]
 
     taken_names = family_section.existing_view_names(doc)
+    level_template = level_name_template.LevelNameTemplate(settings[fss.LEVEL_TEMPLATE_KEY])
+    if level_template.error:
+        warnings.append(u"Шаблон имени уровня «{}»: {} — корпуса не учитываются.".format(
+            level_template.template, level_template.error))
     results = []
 
     with revit.Transaction(TITLE):
@@ -109,7 +113,8 @@ def main():
                 settings[fss.SIDE_KEY], settings[fss.FRONT_KEY], settings[fss.BACK_KEY],
                 taken_names, flip=settings[fss.FLIP_KEY],
                 hide_other_buildings=settings[fss.HIDE_OTHER_BUILDINGS_KEY],
-                bottom_mm=options[fss.BOTTOM_KEY]
+                bottom_mm=options[fss.BOTTOM_KEY],
+                level_template=level_template
             ))
 
     created = [r for r in results if r.view is not None]

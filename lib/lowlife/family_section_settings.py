@@ -19,7 +19,7 @@ clr.AddReference('PresentationCore')
 from pyrevit import forms
 
 from lowlife import settings_core, settings_transfer
-from lowlife import family_section
+from lowlife import family_section, level_name_template
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -42,6 +42,7 @@ BACK_KEY = "back_offset_mm"
 OPEN_VIEW_KEY = "open_view"
 FLIP_KEY = "flip_side"
 HIDE_OTHER_BUILDINGS_KEY = "hide_other_building_levels"
+LEVEL_TEMPLATE_KEY = "level_name_template"
 # Ответы окна-вопроса перед построением (ask_run_options) — запоминаются как
 # значения по умолчанию для следующего запуска.
 COMBINE_KEY = "combine_multiple"
@@ -57,6 +58,7 @@ DEFAULTS = {
     OPEN_VIEW_KEY: True,
     FLIP_KEY: False,
     HIDE_OTHER_BUILDINGS_KEY: True,
+    LEVEL_TEMPLATE_KEY: level_name_template.DEFAULT_TEMPLATE,
     COMBINE_KEY: False,
     BOTTOM_KEY: 0.0,
 }
@@ -91,6 +93,8 @@ def load_saved_values():
     values[FLIP_KEY] = bool(values[FLIP_KEY])
     values[HIDE_OTHER_BUILDINGS_KEY] = bool(values[HIDE_OTHER_BUILDINGS_KEY])
     values[COMBINE_KEY] = bool(values[COMBINE_KEY])
+    if not (values[LEVEL_TEMPLATE_KEY] or u"").strip():
+        values[LEVEL_TEMPLATE_KEY] = DEFAULTS[LEVEL_TEMPLATE_KEY]
     return values
 
 
@@ -205,9 +209,7 @@ def show_settings_form(doc, values):
     _label(root, u"Подрезка, мм", bold=True, top=14)
     _hint(root, u"Насколько область разреза выходит за габарит самого семейства. "
                 u"По высоте — от базового уровня семейства до следующего этажа "
-                u"того же корпуса. Имя уровня разбирается по шаблону "
-                u"Дисциплина_Корпус_Отметка_Этаж_Комментарий: берётся ближайший "
-                u"по отметке уровень выше с тем же корпусом и другим этажом.")
+                u"того же корпуса (см. «Шаблон имени уровня» ниже).")
 
     _label(root, u"Слева и справа от семейства")
     side_box = _textbox(root, _fmt_mm(values[SIDE_KEY]))
@@ -224,6 +226,19 @@ def show_settings_form(doc, values):
     _hint(root, u"Обычно не нужно: разрез смотрит на лицевую сторону семейства "
                 u"(для устройств на стене — со стороны помещения). Включите, "
                 u"если у ваших семейств лицевая сторона задана наоборот.")
+
+    _label(root, u"Шаблон имени уровня", bold=True, top=14)
+    level_tpl_box = _textbox(root, values.get(LEVEL_TEMPLATE_KEY) or level_name_template.DEFAULT_TEMPLATE)
+    _hint(root, u"Как в ваших именах уровней записаны корпус и этаж. {Корпус}, {Этаж} и "
+                u"{Комментарий} — значимые части, любые другие имена в скобках "
+                u"({Дисциплина}, {Отметка}, ...) — пропускаемые; текст между скобками "
+                u"должен совпадать буквально. {Этаж} обязателен; без {Корпус} все уровни "
+                u"считаются одним корпусом; {Комментарий} в конце необязателен. "
+                u"Верх разреза — ближайший уровень выше с тем же корпусом и другим "
+                u"этажом. Примеры: «{Дисциплина}_{Корпус}_{Отметка}_{Этаж}_{Комментарий}» "
+                u"(по умолчанию), «{Корпус}-{Этаж}», «Этаж {Этаж}». Уровни, не подходящие "
+                u"под шаблон, не учитываются; если не подходит базовый уровень — верх "
+                u"берётся по ближайшему уровню выше из всех.")
 
     hide_cb = CheckBox()
     hide_cb.Content = u"Скрывать на разрезе уровни других корпусов"
@@ -259,6 +274,10 @@ def show_settings_form(doc, values):
         side = _parse_mm(side_box.Text, u"Слева и справа", errors)
         front = _parse_mm(front_box.Text, u"Перед геометрией", errors)
         back = _parse_mm(back_box.Text, u"За геометрией", errors)
+        level_tpl = (level_tpl_box.Text or u"").strip()
+        tpl_error = level_name_template.validate(level_tpl)
+        if tpl_error:
+            errors.append(u"Шаблон имени уровня: {}".format(tpl_error))
         if errors:
             forms.alert(u"\n".join(errors), title=u"Разрез по семейству")
             return
@@ -275,6 +294,7 @@ def show_settings_form(doc, values):
             OPEN_VIEW_KEY: bool(open_cb.IsChecked),
             FLIP_KEY: bool(flip_cb.IsChecked),
             HIDE_OTHER_BUILDINGS_KEY: bool(hide_cb.IsChecked),
+            LEVEL_TEMPLATE_KEY: level_tpl,
         }
         win.Close()
 
