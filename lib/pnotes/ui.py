@@ -11,7 +11,7 @@ import clr
 clr.AddReference('System.Data')
 import System
 from System.Data import DataTable
-from System.Diagnostics import Process
+from System.Diagnostics import Process, ProcessStartInfo
 from System.Windows import Visibility
 from System.Windows.Input import Key, Keyboard, ModifierKeys, Cursors
 from System.Collections.Generic import List
@@ -61,6 +61,17 @@ def _spellcheck(textbox):
 
 
 ERROR_LOG = os.path.join(core.USER_DIR, 'error.log')
+
+REPO_URL = u'https://github.com/avpersiyanov-afk/LowLife'
+GUIDE_URL = REPO_URL + u'/blob/main/docs/notes-panel.md#подключение-для-новой-команды-или-компании'
+SCRIPT_URL = REPO_URL + u'/blob/main/docs/notes/Code.gs'
+
+
+def open_url(url):
+    """Открыть ссылку в браузере; UseShellExecute нужен в Revit 2025+ (.NET 8)."""
+    info = ProcessStartInfo(url)
+    info.UseShellExecute = True
+    Process.Start(info)
 
 
 def guarded(func):
@@ -508,7 +519,7 @@ class SummaryWindow(forms.WPFWindow):
     def on_sheet(self, sender, e):
         url = self.settings.get('sheet_url')
         if url:
-            Process.Start(url)
+            open_url(url)
 
 
 # ================================================================ ответ / решение
@@ -602,6 +613,8 @@ class SetupWindow(forms.WPFWindow):
         self.cmbKey.SelectionChanged += self.update_preview
         self.cmbName.SelectionChanged += self.update_preview
         self.btnTest.Click += self.on_test
+        self.lnkGuide.Click += lambda s, e: open_url(GUIDE_URL)
+        self.lnkScript.Click += lambda s, e: open_url(SCRIPT_URL)
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
         self.update_preview()
