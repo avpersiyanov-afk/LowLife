@@ -33,6 +33,8 @@
   (`classify_element`, `get_workset_name`, `clear_stray_address_params`,
   `collect_target_panel_devices`, ...) по-прежнему не тестируется вне
   Revit.
+- `sot_sections.py` — деление структурной схемы СОТ на блоки «Корпус →
+  Секция»: порядок блоков, секции внутри корпуса, пустые значения, подписи.
 - `scs_schematic.py` (частично) — только `panel_riser_x` (X стояка
   панели по её порядковому номеру, структурная схема СКС): чистая
   формула без Revit API. `sync_panel_buses` импортирует
