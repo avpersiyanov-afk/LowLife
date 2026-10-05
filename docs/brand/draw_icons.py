@@ -230,6 +230,24 @@ def feedback(c):
     c.circle((48, 54), 4.2, None, ORANGE)
 
 
+def level_name(c):
+    """«Обновить имя уровня»: элементы на линии уровня, отметка уровня с
+    оранжевой стрелкой к элементу — имя уровня прописывается элементам."""
+    # Линии уровней (верхняя — пунктиром), с отметкой-треугольником справа.
+    c.dashed((10, 30), (62, 30), BLUE, 3, 6, 4)
+    c.line([(10, 70), (62, 70)], BLUE, 5)
+    for y in (30, 70):
+        c.polygon([(66, y - 9), (84, y - 9), (75, y)], fill=WHITE, outline=BLUE, w=3.5)
+        c.line([(75, y), (75, y + 4)], BLUE, 3)
+    c.polygon([(70, 61), (80, 61), (75, 66)], fill=ORANGE)
+    # Элементы, стоящие на уровне.
+    c.rect((14, 48, 30, 64), BLUE, WHITE, 4.5, 2)
+    c.rect((38, 52, 52, 64), BLUE, WHITE, 4.5, 2)
+    # Стрелка: имя уровня -> элемент.
+    c.line([(75, 54), (75, 42), (22, 42), (22, 46)], ORANGE, 4)
+    c.polygon([(16, 44), (28, 44), (22, 51)], fill=ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -244,6 +262,7 @@ ICONS = [
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
     ("_Themes.panel/Feedback.pushbutton", feedback),
+    ("LOI.panel/UpdateLevelName.pushbutton", level_name),
 ]
 
 

@@ -1609,6 +1609,33 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | `apply_renames` | `apply_renames(plans)` | Переименовывает пары со статусом `"ok"`; `(renamed, errors)` |
 | `run` | `run()` | Сценарий кнопки: папка → `collect_names` → таблица → `plan_renames`/`apply_renames` → итоговый `alert` |
 
+## sot_sections.py
+
+Деление структурной схемы СОТ (BuildSotSchematic) на блоки «Корпус →
+Секция» — чистая логика без Revit API. Объект делится на корпуса, корпус —
+на секции, у каждой секции свой стояк и свой шкаф, поэтому каждая пара
+(корпус, секция) — отдельный блок схемы: заголовок «Корпус 1, секция 2»,
+под ним этажи этой секции, свой стояк и линии к шкафу этой секции. Без
+параметров корпуса/секции в настройках — один блок без заголовка (прежняя
+схема).
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `split_into_groups` | `split_into_groups(items, building_of, section_of)` | Блоки `[{"key", "label", "building", "section", "items"}]` сверху вниз: по корпусу, внутри — по секции, естественный порядок; пустое значение — блок «(без корпуса)»/«(без секции)» в конце; `None` от функции — измерение не используется |
+| `group_label` | `group_label(building, section)` | «Корпус 1, секция 2» (слово не дублируется, если уже есть в значении) |
+| `group_key` | `group_key(building, section)` | Ключ блока в JSON раскладки; без корпуса и секции — `u""` |
+
+Рисует блоки `sot_schematic.sync_section_groups(doc, view, groups,
+previous_state, unmatched_report, stats, **аргументы sync_levels)`: каждый
+блок — `sync_levels` со своим state и своим `y_start` (новый необязательный
+аргумент `sync_levels`, по умолчанию 0 — СКС/СПС не затронуты; в state
+пишется `y_end`), заголовок — над рамкой первого этажа блока. Раскладка
+вида — `{"v": 2, "levels": {}, "groups": {key: state блока}, "cable_line_ids": [...]}`;
+старая раскладка (`{"levels": ...}`) читается как один блок с ключом `u""`
+(`previous_section_groups`), так что схема без корпусов/секций после
+обновления не перерисовывается. Стояк и линии к шкафу — `sync_cable_connections`
+на state каждого блока отдельно (свой шкаф — среди устройств блока).
+
 ## sot_fov.py
 Тело ДВУХ кнопок `SOT.panel` — «Зоны обзора» (`CameraFov`, только читает
 параметры и рисует зону) и «Навести на помещение» (`AimCameras`, только
@@ -1770,6 +1797,29 @@ WPF `DataGrid` (тот же приём, что `family_catalog.show_status_form`
 | `room_sort_key(r)` | Имя лота → секция → номер помещения (натуральная сортировка, без лота — в конце) |
 | `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
 | `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
+
+## level_assign.py
+Кнопка `LOI.panel/UpdateLevelName` («Обновить имя уровня»): назначает опорный
+уровень выбранным экземплярам семейств без уровня (`LevelId` пуст) и без основы.
+Сначала — параметром «Уровень» (`FAMILY_LEVEL_PARAM`/`INSTANCE_REFERENCE_LEVEL_PARAM`),
+если он редактируемый, с возвратом элемента в исходную точку; иначе — пересозданием
+(`NewFamilyInstance(point|curve, symbol, level, NonStructural)`): поворот/отражение,
+редактируемые параметры экземпляра, электрические цепи (`AddToCircuit`/`SelectPanel`)
+переносятся, старый удаляется, всё — в `SubTransaction` на элемент. Revit API
+импортируется лениво, поэтому `pick_level_by_elevation` тестируется вне Revit.
+
+| Функция | Что делает |
+|---|---|
+| `pick_level_by_elevation(z, levels_with_elevation, tol)` | Уровень с наибольшей отметкой `<= z + tol` из `[(отметка, уровень)]`; ниже всех — самый нижний; `None` — уровней нет |
+| `classify(doc, el)` | `None` — элементу нужен уровень; иначе причина пропуска (`SKIP_*`: уже есть уровень, не семейство, на основе, вложенное, в группе, нет точки/линии) |
+| `can_assign_by_param(el)` | Редактируемый ли у экземпляра параметр «Уровень» (иначе — только пересоздание) |
+| `levels_with_project_elevation(doc)` / `level_for_element(el, levels)` | Уровень по высоте: `Level.ProjectElevation` — та же система, что Z элементов |
+| `create_on_level(doc, symbol, point, level)` | Новый экземпляр сразу с уровнем: `NewFamilyInstance(point, symbol, level)`, иначе на плоскость уровня (`Level.GetPlaneReference()`, для семейств на основе рабочей плоскости) с подъёмом до `point`; `None` — не вышло. Используют `companion_placement.create_companion_instance` (а через неё JSON-создание) и `skud_door_placement.create_slot_instance` |
+| `ensure_level(doc, inst, level)` | Только что созданному без уровня экземпляру — уровень параметром (`assign_by_param`); `True` — уровень есть |
+| `assign_by_param(doc, el, level)` | Уровень параметром + возврат на место; `False` — откатилось |
+| `recreate_with_level(doc, el, level)` | `(новый, None, предупреждения)` или `(None, ошибка, [])` |
+| `copy_instance_params(old, new)` | Копия редактируемых параметров экземпляра (кроме уровня/смещений/типа); число неудачных |
+| `assign_levels(doc, elements, fixed_level, allow_recreate)` | Всё вместе → `AssignResult` (`by_param`, `recreated`, `levels`, `failed`, `warnings`) |
 
 ## family_section.py / family_section_settings.py
 Разрез по экземпляру семейства — кнопка `Tools.panel/FamilySection`

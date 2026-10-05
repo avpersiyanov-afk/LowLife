@@ -33,6 +33,8 @@
   (`classify_element`, `get_workset_name`, `clear_stray_address_params`,
   `collect_target_panel_devices`, ...) по-прежнему не тестируется вне
   Revit.
+- `sot_sections.py` — деление структурной схемы СОТ на блоки «Корпус →
+  Секция»: порядок блоков, секции внутри корпуса, пустые значения, подписи.
 - `scs_schematic.py` (частично) — только `panel_riser_x` (X стояка
   панели по её порядковому номеру, структурная схема СКС): чистая
   формула без Revit API. `sync_panel_buses` импортирует
@@ -57,6 +59,9 @@
   что `room_lots/room_finder/room_info_settings` и
   `equipment_tags_settings` сохранили свои файлы, умолчания и функции. Окно (WPF) не тестируется. Модуль без
   обязательного `unicode()`, поэтому идёт и под Python 3.
+- `level_assign.py` (частично) — только `pick_level_by_elevation` (выбор
+  уровня по высоте для кнопки «Обновить имя уровня»); Revit API модуль
+  импортирует лениво. Без `unicode()`, идёт и под Python 3.
 
 Не покрыто и не может быть протестировано вне Revit: `route_nodes.py`,
 `route_addressing.py`, `skud.py`, `fire_alarm.py`,

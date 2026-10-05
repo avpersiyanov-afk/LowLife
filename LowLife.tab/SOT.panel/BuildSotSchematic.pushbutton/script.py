@@ -14,15 +14,18 @@ __doc__ = (
     u"теми же элементами. Соседи справа/ниже места изменения сдвигаются, "
     u"чтобы закрыть/освободить место. Шаблон вида (если выбран в настройках) "
     u"применяется на каждом запуске.\n\n"
-    u"Если в настройках заданы параметр корпуса/секции и значение для "
-    u"фильтрации — берутся только устройства с этим значением (остальные "
-    u"игнорируются). Чтобы вести отдельную схему по каждому корпусу, "
-    u"задайте для каждого своё имя вида и своё значение фильтра в настройках.\n\n"
+    u"Корпуса и секции: если в настройках заданы параметр корпуса и/или "
+    u"параметр секции — схема делится на блоки «Корпус → Секция» (друг под "
+    u"другом, по порядку корпусов, внутри корпуса — по порядку секций). У "
+    u"каждого блока свой заголовок («Корпус 1, секция 2»), свои этажи, свой "
+    u"стояк и свой шкаф. Если задано ещё и значение корпуса для фильтрации — "
+    u"на схеме только этот корпус (его секции — по-прежнему отдельными "
+    u"блоками); так можно вести отдельный вид на каждый корпус.\n\n"
     u"Если в настройках задана категория «Шкаф» — рисуются линии до него "
     u"шинной топологией: на каждом этаже один общий горизонтальный "
     u"коллектор чуть ниже узлов, от каждого узла к нему короткий "
-    u"вертикальный отвод, коллекторы всех этажей выходят на один общий "
-    u"вертикальный стояк слева от рамок этажей. Эти линии не редактируются "
+    u"вертикальный отвод, коллекторы этажей секции выходят на вертикальный "
+    u"стояк этой секции слева от рамок этажей. Эти линии не редактируются "
     u"вручную — на каждом запуске перерисовываются заново по актуальным "
     u"позициям.\n\n"
     u"Shift+клик — настройки этой кнопки."
@@ -53,7 +56,10 @@ from lowlife.sot_settings import (
     SOURCE_CATEGORIES
 )
 from lowlife.sot_levels import group_elements_by_level, sorted_level_names, get_level_label
-from lowlife.sot_schematic import sync_levels, sync_cable_connections
+from lowlife.sot_schematic import (
+    sync_section_groups, sync_cable_connections, previous_section_groups, delete_elements
+)
+from lowlife.sot_sections import split_into_groups, natural_sort_key, normalize_value, NO_BUILDING
 from lowlife.sot_layout_state import find_layout_view, save_state
 from lowlife.room_info import get_point as get_room_point, find_room_value
 
@@ -95,7 +101,8 @@ LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_MASK = settings["room_mask"]
 ADDRESS_PARAM_NAME = settings["address_param_name"]
-BUILDING_PARAM_NAME = settings["building_param_name"]
+BUILDING_PARAM_NAME = (settings.get("building_param_name") or u"").strip()
+SECTION_PARAM_NAME = (settings.get("section_param_name") or u"").strip()
 BUILDING_FILTER_VALUE = settings["building_filter_value"].strip()
 SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
 LAYOUT_PARAM_NAME = settings["layout_param_name"]
@@ -182,48 +189,69 @@ if not elements:
 
 
 # ------------------------------------------------------------
-# ФИЛЬТР ПО КОРПУСУ/СЕКЦИИ (оба поля заданы в настройках — без диалога)
+# ФИЛЬТР ПО КОРПУСУ (оба поля заданы в настройках — без диалога)
 # ------------------------------------------------------------
 
-if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
-    def _element_building(el):
-        value = get_string_param(el, BUILDING_PARAM_NAME)
-        return value.strip() if value and value.strip() else u"(без корпуса)"
+def _raw_param(el, param_name):
+    """Значение параметра корпуса/секции; None — параметр не задан в настройках."""
+    if not param_name:
+        return None
+    return get_string_param(el, param_name) or u""
 
-    elements = [el for el in elements if _element_building(el) == BUILDING_FILTER_VALUE]
+
+if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
+    elements = [
+        el for el in elements
+        if normalize_value(_raw_param(el, BUILDING_PARAM_NAME), NO_BUILDING) == BUILDING_FILTER_VALUE
+    ]
 
     if not elements:
         forms.alert(
-            u"После фильтрации по корпусу/секции «{}» не осталось устройств.\n\n"
-            u"Проверьте значение в «Параметры СОТ» — «Значение корпуса/секции для "
+            u"После фильтрации по корпусу «{}» не осталось устройств.\n\n"
+            u"Проверьте значение в настройках СОТ — «Значение корпуса для "
             u"фильтрации».".format(BUILDING_FILTER_VALUE),
             exitscript=True
         )
 
 
 # ------------------------------------------------------------
-# ШКАФ — линии от остальных узлов к нему (см. sync_cable_connections)
+# БЛОКИ «КОРПУС → СЕКЦИЯ» (без параметров — один блок, как раньше)
 # ------------------------------------------------------------
 
-CABINET_UID = None
-cabinet_extra_count = 0
+section_groups = split_into_groups(
+    elements,
+    lambda el: _raw_param(el, BUILDING_PARAM_NAME),
+    lambda el: _raw_param(el, SECTION_PARAM_NAME)
+)
+
+
+# ------------------------------------------------------------
+# ШКАФ — свой в каждом блоке; линии от остальных узлов блока к нему
+# (см. sync_cable_connections)
+# ------------------------------------------------------------
+
+cabinet_uid_by_group = {}
+cabinet_extra_by_group = {}
 
 if CABINET_CATEGORY_NAME:
-    cabinet_elements = [el for el in elements if category_for_device(el) == CABINET_CATEGORY_NAME]
+    for group in section_groups:
+        cabinet_elements = [el for el in group["items"] if category_for_device(el) == CABINET_CATEGORY_NAME]
 
-    if cabinet_elements:
-        cabinet_elements.sort(key=lambda el: get_string_param(el, ADDRESS_PARAM_NAME) or u"")
-        CABINET_UID = cabinet_elements[0].UniqueId
-        cabinet_extra_count = len(cabinet_elements) - 1
+        if cabinet_elements:
+            cabinet_elements.sort(key=lambda el: natural_sort_key(get_string_param(el, ADDRESS_PARAM_NAME) or u""))
+            cabinet_uid_by_group[group["key"]] = cabinet_elements[0].UniqueId
+            if len(cabinet_elements) > 1:
+                cabinet_extra_by_group[group["key"]] = len(cabinet_elements) - 1
 
 
 # ------------------------------------------------------------
-# ГРУППИРОВКА ПО ЭТАЖУ
+# ГРУППИРОВКА ПО ЭТАЖУ (внутри каждого блока)
 # ------------------------------------------------------------
 
-level_groups = group_elements_by_level(doc, elements, LEVEL_PARAM_NAME)
-level_order = sorted_level_names(level_groups)
-level_labels = dict((name, get_level_label(name)) for name in level_order)
+for group in section_groups:
+    group["level_groups"] = group_elements_by_level(doc, group["items"], LEVEL_PARAM_NAME)
+    group["level_order"] = sorted_level_names(group["level_groups"])
+    group["level_labels"] = dict((name, get_level_label(name)) for name in group["level_order"])
 
 
 def resolve_room_value(doc, el, counters):
@@ -295,20 +323,23 @@ room_counters = {"already_set": 0, "looked_up": 0, "not_found": 0}
 sync_stats = {}
 
 with revit.Transaction(u"Sync SOT Schematic"):
-    level_room_groups = OrderedDict()
+    for group in section_groups:
+        level_room_groups = OrderedDict()
 
-    for level_name in level_order:
-        room_groups = OrderedDict()
+        for level_name in group["level_order"]:
+            room_groups = OrderedDict()
 
-        for el in level_groups[level_name]["elements"]:
-            room_value = resolve_room_value(doc, el, room_counters)
-            room_key = room_value if room_value else u"(пусто)"
+            for el in group["level_groups"][level_name]["elements"]:
+                room_value = resolve_room_value(doc, el, room_counters)
+                room_key = room_value if room_value else u"(пусто)"
 
-            if room_key not in room_groups:
-                room_groups[room_key] = []
-            room_groups[room_key].append(el)
+                if room_key not in room_groups:
+                    room_groups[room_key] = []
+                room_groups[room_key].append(el)
 
-        level_room_groups[level_name] = room_groups
+            level_room_groups[level_name] = room_groups
+
+        group["level_room_groups"] = level_room_groups
 
     if is_new_view:
         view = ViewDrafting.Create(doc, drafting_type_id)
@@ -322,16 +353,29 @@ with revit.Transaction(u"Sync SOT Schematic"):
     except:
         pass
 
-    new_state, all_report_rows = sync_levels(
-        doc, view, level_order, level_room_groups, level_labels, CATEGORY_SYMBOLS, category_for_device,
-        ROOM_PARAM_NAME, ADDRESS_PARAM_NAME, DEVICE_UID_PARAM_NAME, ANNOTATION_SYMBOL,
-        NODE_LABEL_OFFSET_MM, previous_state, unmatched_report, sync_stats,
-        max_row_width_mm=MAX_ROW_WIDTH_MM
+    # Старые линии к шкафу удаляются до синхронизации блоков: блок мог
+    # пропасть целиком, а его линии лежат в общем списке раскладки.
+    old_cable_line_ids = list(previous_state.get("cable_line_ids", []))
+    for prev_group in previous_section_groups(previous_state).values():
+        old_cable_line_ids.extend(prev_group.get("cable_line_ids", []))
+    delete_elements(doc, old_cable_line_ids)
+
+    new_state, all_report_rows = sync_section_groups(
+        doc, view, section_groups, previous_state, unmatched_report, sync_stats,
+        category_symbols=CATEGORY_SYMBOLS, category_for_device=category_for_device,
+        room_param_name=ROOM_PARAM_NAME, address_param_name=ADDRESS_PARAM_NAME,
+        device_uid_param_name=DEVICE_UID_PARAM_NAME, annotation_symbol=ANNOTATION_SYMBOL,
+        label_offset_mm=NODE_LABEL_OFFSET_MM, max_row_width_mm=MAX_ROW_WIDTH_MM
     )
 
+    cable_line_ids = []
     if CABINET_CATEGORY_NAME:
-        old_cable_line_ids = previous_state.get("cable_line_ids", [])
-        new_state["cable_line_ids"] = sync_cable_connections(doc, view, new_state, old_cable_line_ids, CABINET_UID)
+        for group in section_groups:
+            cabinet_uid = cabinet_uid_by_group.get(group["key"])
+            group_state = new_state["groups"].get(group["key"])
+            if cabinet_uid and group_state:
+                cable_line_ids.extend(sync_cable_connections(doc, view, group_state, [], cabinet_uid))
+    new_state["cable_line_ids"] = cable_line_ids
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
 
@@ -352,25 +396,46 @@ if not state_saved:
     )
 
 if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
-    output.print_md(u"Корпус/секция (фильтр): **{}**".format(BUILDING_FILTER_VALUE))
+    output.print_md(u"Корпус (фильтр): **{}**".format(BUILDING_FILTER_VALUE))
+
+level_count = sum(len(group["level_order"]) for group in section_groups)
+has_section_blocks = bool(BUILDING_PARAM_NAME or SECTION_PARAM_NAME)
+
+if has_section_blocks:
+    output.print_md(u"Блоков «корпус/секция» на схеме: **{}**".format(len(section_groups)))
+    for group in section_groups:
+        output.print_md(u"- {}: этажей {}, устройств {}".format(
+            group["label"], len(group["level_order"]), len(group["items"])
+        ))
 
 if CABINET_CATEGORY_NAME:
-    if CABINET_UID is None:
-        output.print_md(
-            u"⚠ Категория «Шкаф» задана («{}»), но среди устройств на схеме такого нет — "
-            u"линии не нарисованы.".format(CABINET_CATEGORY_NAME)
-        )
-    else:
-        cable_count = len(new_state.get("cable_line_ids", []))
-        output.print_md(u"Линий к шкафу нарисовано: **{}**".format(cable_count))
-        if cabinet_extra_count:
+    groups_without_cabinet = [g for g in section_groups if g["key"] not in cabinet_uid_by_group]
+    if groups_without_cabinet:
+        if has_section_blocks:
             output.print_md(
-                u"Найдено ещё {} устройств категории «Шкаф» кроме первого — "
-                u"линии рисуются только к одному (по алфавиту адреса).".format(cabinet_extra_count)
+                u"⚠ Категория «Шкаф» задана («{}»), но в этих блоках шкафа нет — "
+                u"линии и стояк там не нарисованы: {}".format(
+                    CABINET_CATEGORY_NAME, u", ".join(g["label"] for g in groups_without_cabinet)
+                )
+            )
+        else:
+            output.print_md(
+                u"⚠ Категория «Шкаф» задана («{}»), но среди устройств на схеме такого нет — "
+                u"линии не нарисованы.".format(CABINET_CATEGORY_NAME)
+            )
+    output.print_md(u"Линий к шкафам нарисовано: **{}**".format(len(new_state.get("cable_line_ids", []))))
+    for group in section_groups:
+        extra = cabinet_extra_by_group.get(group["key"])
+        if extra:
+            output.print_md(
+                u"{}найдено ещё {} устройств категории «Шкаф» кроме первого — "
+                u"линии рисуются только к одному (по порядку адреса).".format(
+                    (group["label"] + u": ") if group["label"] else u"", extra
+                )
             )
 output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
     u"Вид создан заново" if is_new_view else u"Вид обновлён",
-    len(level_order), len(all_report_rows)
+    level_count, len(all_report_rows)
 ))
 output.print_md(
     u"Помещения: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
@@ -429,6 +494,6 @@ forms.alert(
          )
          if not state_saved else u""),
         view_name, (u"новый" if is_new_view else u"обновлён"),
-        len(level_order), len(all_report_rows), len(unmatched_report)
+        level_count, len(all_report_rows), len(unmatched_report)
     )
 )

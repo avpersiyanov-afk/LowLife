@@ -1124,7 +1124,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
                  annotation_symbol, label_offset_mm, previous_state, unmatched_report, stats=None,
                  extra_bottom_mm=0.0, extra_left_mm=0.0, room_sort_values=None, timing=None,
                  max_row_width_mm=0.0, mirror_rows=True, extra_room_width_mm=None,
-                 extra_row_wrap_step_mm=0.0):
+                 extra_row_wrap_step_mm=0.0, y_start=0.0):
     """
     level_order — ключи этажей (те же, что group_elements_by_level даёт),
     в порядке отрисовки сверху вниз (sorted_level_names).
@@ -1190,6 +1190,13 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     диагностика, чтобы увидеть, что именно на конкретной модели
     занимает время, вместо гаданий по общему времени вызова.
 
+    y_start — Y (футы) первого (верхнего) этажа, по умолчанию 0.0 — как
+    раньше. Нужно, когда на одном виде друг под другом несколько блоков
+    этажей (СОТ — блоки «Корпус → Секция», см. sync_section_groups): каждый
+    следующий блок начинается ниже предыдущего. В new_state дополнительно
+    пишется "y_end" — Y, с которого начался бы следующий этаж (низ блока
+    для вызывающего кода).
+
     Возвращает (new_state, report_rows); new_state — готов для
     sot_layout_state.save_state.
     """
@@ -1197,7 +1204,7 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
     extra_bottom_changed = (previous_state or {}).get("extra_bottom_mm", 0.0) != extra_bottom_mm
     extra_left_changed = (previous_state or {}).get("extra_left_mm", 0.0) != extra_left_mm
 
-    y_cursor = 0.0
+    y_cursor = y_start
     new_levels_state = {}
     report_rows = []
 
@@ -1280,8 +1287,159 @@ def sync_levels(doc, view, level_order, level_room_groups, level_labels, categor
 
     return {
         "v": 1, "levels": new_levels_state,
-        "extra_bottom_mm": extra_bottom_mm, "extra_left_mm": extra_left_mm
+        "extra_bottom_mm": extra_bottom_mm, "extra_left_mm": extra_left_mm,
+        "y_end": y_cursor
     }, report_rows
+
+
+# ------------------------------------------------------------
+# БЛОКИ «КОРПУС → СЕКЦИЯ» — несколько блоков этажей на одном виде
+# ------------------------------------------------------------
+
+# Верх рамки этажа относительно его Y (непрерывная верхняя линия, см.
+# _draw_level_frame) — над ним рисуется заголовок блока.
+LEVEL_FRAME_TOP_MM = HEADER_TOP_LINE_MM + CONTINUOUS_TOP_LINE_OFFSET_MM
+
+# Полоса под заголовок блока («Корпус 1, секция 2») над рамкой его
+# первого этажа, и зазор от низа предыдущего блока до этой полосы.
+SECTION_HEADER_MM = 12.0
+SECTION_HEADER_TEXT_GAP_MM = 2.0
+SECTION_GAP_MM = 20.0
+
+# Левый край заголовка — по третьей (крайней левой) линии рамки этажа.
+SECTION_HEADER_X_MM = -(LEVEL_LINE_1_OFFSET_MM + LEVEL_LINE_2_OFFSET_MM + LEVEL_LINE_3_OFFSET_MM)
+
+
+def create_section_text(doc, view, text, x, y):
+    """Заголовок блока: левый край в x, низ текста в y."""
+    if view is None or not text:
+        return None
+
+    text_type = get_text_note_type(doc)
+    if text_type is None:
+        return None
+
+    try:
+        text_note = TextNote.Create(doc, view.Id, XYZ(x, y, 0.0), text, text_type.Id)
+        try:
+            text_note.HorizontalAlignment = HorizontalTextAlignment.Left
+        except:
+            pass
+        try:
+            text_note.VerticalAlignment = VerticalTextAlignment.Bottom
+        except:
+            pass
+        return text_note
+    except:
+        return None
+
+
+def previous_section_groups(previous_state):
+    """
+    {group_key: state блока} из сохранённой раскладки. Раскладка до
+    появления блоков (просто {"levels": ...}) считается одним блоком без
+    заголовка с ключом u"" — так схема без корпусов/секций после
+    обновления остаётся теми же элементами на тех же местах.
+    """
+    if not previous_state:
+        return {}
+    if "groups" in previous_state:
+        return dict(previous_state.get("groups") or {})
+    if previous_state.get("levels"):
+        return {u"": previous_state}
+    return {}
+
+
+def sync_section_groups(doc, view, groups, previous_state, unmatched_report, stats=None, **level_kwargs):
+    """
+    Несколько блоков этажей на одном виде друг под другом — по блоку на
+    каждую пару (корпус, секция), см. sot_sections.split_into_groups.
+
+    groups — список блоков в порядке сверху вниз:
+    [{"key", "label", "level_order", "level_room_groups", "level_labels"}, ...].
+    label пуст — заголовок не рисуется (один блок без корпусов/секций —
+    ровно прежняя схема, этажи с Y=0).
+    level_kwargs — остальные аргументы sync_levels (category_symbols,
+    category_for_device, room_param_name, ...), общие для всех блоков.
+
+    Каждый блок синхронизируется через sync_levels со своим state (тот же
+    инкрементальный принцип: блок, у которого ничего не поменялось, но
+    который сдвинулся из-за соседа выше, просто переносится). Блоки,
+    пропавшие с прошлого запуска, удаляются целиком.
+
+    Возвращает (new_state, report_rows); new_state["groups"][key] — state
+    блока (в формате sync_levels, плюс заголовок) — по нему вызывающий код
+    рисует стояк и линии к шкафу каждого блока отдельно
+    (sync_cable_connections на state блока).
+    """
+    prev_groups = previous_section_groups(previous_state)
+
+    new_groups = {}
+    group_order = []
+    report_rows = []
+    y_end = None
+
+    for group in groups:
+        key = group["key"]
+        label = group.get("label") or u""
+        prev_group = prev_groups.get(key)
+
+        if y_end is None:
+            levels_start = 0.0
+        else:
+            levels_start = y_end - (SECTION_GAP_MM + (SECTION_HEADER_MM if label else 0.0)) * MM_TO_FT
+
+        group_state, group_rows = sync_levels(
+            doc, view, group["level_order"], group["level_room_groups"], group["level_labels"],
+            previous_state=(prev_group or {"levels": {}}), unmatched_report=unmatched_report,
+            stats=stats, y_start=levels_start, **level_kwargs
+        )
+        report_rows.extend(group_rows)
+
+        prev_text_id = (prev_group or {}).get("header_text_id")
+        header_text_id = None
+
+        if label and group_state["levels"]:
+            header_y = levels_start + (LEVEL_FRAME_TOP_MM + SECTION_HEADER_TEXT_GAP_MM) * MM_TO_FT
+            same_header = (
+                prev_text_id is not None
+                and prev_group.get("header_label") == label
+                and _resolve(doc, prev_text_id) is not None
+            )
+            if same_header:
+                translate_elements(doc, [prev_text_id], 0.0, levels_start - prev_group.get("y_start", 0.0))
+                header_text_id = prev_text_id
+            else:
+                if prev_text_id is not None:
+                    delete_elements(doc, [prev_text_id])
+                text_note = create_section_text(doc, view, label, SECTION_HEADER_X_MM * MM_TO_FT, header_y)
+                if text_note is not None:
+                    header_text_id = text_note.Id.IntegerValue
+        elif prev_text_id is not None:
+            delete_elements(doc, [prev_text_id])
+
+        group_state["y_start"] = levels_start
+        group_state["header_label"] = label
+        group_state["header_text_id"] = header_text_id
+        new_groups[key] = group_state
+        group_order.append(key)
+
+        # Блок, в котором ничего не разместилось (нет схемных семейств
+        # для его устройств), места на виде не занимает.
+        if group_state["levels"]:
+            y_end = group_state["y_end"]
+
+    for key, prev_group in prev_groups.items():
+        if key in new_groups:
+            continue
+        sync_levels(
+            doc, view, [], {}, {}, previous_state=prev_group, unmatched_report=unmatched_report,
+            stats=stats, **level_kwargs
+        )
+        if prev_group.get("header_text_id") is not None:
+            delete_elements(doc, [prev_group["header_text_id"]])
+
+    return {"v": 2, "levels": {}, "groups": new_groups, "group_order": group_order}, report_rows
 
 
 # ------------------------------------------------------------
