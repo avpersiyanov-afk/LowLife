@@ -21,6 +21,12 @@
             <TextBlock Style="{StaticResource Header}" Text="1. Подключение к Google Таблице"/>
             <TextBlock Style="{StaticResource Hint}" Margin="0,2,0,8"
                        Text="Адрес веб-приложения (заканчивается на /exec) и токен — у того, кто настраивал таблицу (меню таблицы «Заметки Revit → Показать токен»). Сохраняются только на этом компьютере, в %APPDATA%\pyRevit\ProjectNotes\config.json."/>
+            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8">
+                <Run Text="Таблицы ещё нет?"/>
+                <Hyperlink x:Name="lnkGuide">Как создать таблицу и получить адрес и токен</Hyperlink>
+                <Run Text="  ·  "/>
+                <Hyperlink x:Name="lnkScript">Скрипт для таблицы (Code.gs)</Hyperlink>
+            </TextBlock>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
