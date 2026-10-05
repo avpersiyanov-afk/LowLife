@@ -62,6 +62,7 @@ from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife.geometry import get_point, get_element_level, find_level_for_elevation
 from lowlife.params import get_param_any, set_param_any, set_element_id_param
+from lowlife import level_assign
 from lowlife.scs import safe_element_name
 from lowlife.electrical_circuits import create_circuit
 from lowlife.fire_alarm_wire_marks import collect_member_points, mark_wire_lines
@@ -160,7 +161,11 @@ def create_companion_instance(doc, symbol, point, host, level):
     Создаёт экземпляр компаньона в точке point — первое, что примет Revit
     для этого семейства: сначала хостовое размещение с уровнем (если у
     базового объекта есть хост, например стена), затем просто хостовое,
-    затем по уровню без хоста, и в крайнем случае вовсе без привязки.
+    затем с уровнем без хоста (level_assign.create_on_level — в т.ч. на
+    плоскость уровня для семейств на основе рабочей плоскости), и в
+    крайнем случае вовсе без привязки. Экземпляру, созданному без уровня,
+    уровень назначается следом (level_assign.ensure_level) — иначе он
+    остаётся без опорного уровня (см. кнопку LOI «Обновить имя уровня»).
     Возвращает созданный элемент либо None, если ни один вариант не
     подошёл (например, семейство требует размещения на грани, а не в
     точке/на хосте — такие компаньоны эта кнопка пока не умеет).
@@ -176,20 +181,22 @@ def create_companion_instance(doc, symbol, point, host, level):
 
     if host is not None:
         try:
-            return doc.Create.NewFamilyInstance(point, symbol, host, StructuralType.NonStructural)
+            inst = doc.Create.NewFamilyInstance(point, symbol, host, StructuralType.NonStructural)
+            level_assign.ensure_level(doc, inst, level)
+            return inst
         except:
             pass
 
-    if level is not None:
-        try:
-            return doc.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural)
-        except:
-            pass
+    inst = level_assign.create_on_level(doc, symbol, point, level)
+    if inst is not None:
+        return inst
 
     try:
-        return doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural)
+        inst = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural)
     except:
         return None
+    level_assign.ensure_level(doc, inst, level)
+    return inst
 
 
 def collect_elements_by_type_ids(doc, view, type_ids):
