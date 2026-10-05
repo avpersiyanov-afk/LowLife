@@ -13,6 +13,45 @@ import os
 REPO_URL = u"https://github.com/avpersiyanov-afk/LowLife"
 TAGLINE = u"Слаботочные системы в Revit"
 DISCIPLINES = u"СКС · СКУД · СОТ · СОУЭ · СПС · СПА · КНК"
+PARAMS_URL = REPO_URL + u"/blob/main/docs/parameters.md"
+
+# Поддерживаемые версии Revit — то же, что таблица в README.md
+# («Поддерживаемые версии Revit»); меняя одно, поправьте и другое.
+# (первая версия, последняя версия включительно, статус)
+REVIT_SUPPORT = [
+    (2024, 2024, u"основная рабочая версия"),
+    (2025, 2026, u"поддерживается"),
+    (2022, 2023, u"должно работать, отдельно не проверялось"),
+]
+UNSUPPORTED_STATUS = u"не поддерживается"
+UNKNOWN_STATUS = u"не проверялось"
+
+
+def revit_support_summary():
+    """Однострочный список поддерживаемых версий для окна."""
+    parts = []
+    for first, last, status in REVIT_SUPPORT:
+        years = u"{}".format(first) if first == last else u"{}–{}".format(first, last)
+        parts.append(u"{} — {}".format(years, status))
+    return u"; ".join(parts)
+
+
+def revit_version_text(version):
+    """«2024 (основная рабочая версия)» для номера версии Revit.
+
+    version — строка или число (`Application.VersionNumber`), None/мусор →
+    «неизвестна». Версии новее последней из таблицы — «не проверялось»,
+    старее первой — «не поддерживается»."""
+    try:
+        year = int(u"{}".format(version).strip()[:4])
+    except (TypeError, ValueError):
+        return u"неизвестна"
+    for first, last, status in REVIT_SUPPORT:
+        if first <= year <= last:
+            return u"{} ({})".format(year, status)
+    oldest = min(first for first, _, _ in REVIT_SUPPORT)
+    status = UNSUPPORTED_STATUS if year < oldest else UNKNOWN_STATUS
+    return u"{} ({})".format(year, status)
 
 
 def extension_root():

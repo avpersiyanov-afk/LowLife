@@ -23,11 +23,24 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Версия:" Foreground="#666666" Margin="0,0,10,4"/>
                 <TextBlock Grid.Row="0" Grid.Column="1" x:Name="version_tb" FontFamily="Consolas"/>
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Репозиторий:" Foreground="#666666" Margin="0,0,10,0"/>
-                <TextBlock Grid.Row="1" Grid.Column="1">
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Ваш Revit:" Foreground="#666666" Margin="0,0,10,4"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="revit_tb" Margin="0,0,0,4"/>
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Версии Revit:" Foreground="#666666" Margin="0,0,10,4"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="revit_support_tb" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Параметры:" Foreground="#666666" Margin="0,0,10,4"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,0,0,4">
+                    <Hyperlink x:Name="params_link" Foreground="#F08C28">
+                        <Run Text="таблица параметров по типам устройств"/>
+                    </Hyperlink>
+                </TextBlock>
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Репозиторий:" Foreground="#666666" Margin="0,0,10,0"/>
+                <TextBlock Grid.Row="4" Grid.Column="1">
                     <Hyperlink x:Name="repo_link" Foreground="#F08C28">
                         <Run x:Name="repo_run"/>
                     </Hyperlink>

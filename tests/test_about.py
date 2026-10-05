@@ -69,3 +69,18 @@ def test_only_life_l_is_accent():
     accents = [ch for ch, _, accent in about.WORDMARK_LETTERS if accent]
     assert accents == [u"L"]
     assert about.WORDMARK_LETTERS[3][2] is True
+
+
+def test_revit_version_text():
+    assert about.revit_version_text(u"2024") == u"2024 (основная рабочая версия)"
+    assert about.revit_version_text(2026) == u"2026 (поддерживается)"
+    assert about.revit_version_text(u"2022") == u"2022 (должно работать, отдельно не проверялось)"
+    assert about.revit_version_text(u"2021") == u"2021 (не поддерживается)"
+    assert about.revit_version_text(u"2027") == u"2027 (не проверялось)"
+    assert about.revit_version_text(None) == u"неизвестна"
+
+
+def test_revit_support_summary():
+    text = about.revit_support_summary()
+    assert u"2024 — основная рабочая версия" in text
+    assert u"2025–2026 — поддерживается" in text

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __title__ = u"LowLife"
-__doc__ = u"О программе: логотип, версия расширения и ссылка на репозиторий"
+__doc__ = u"О программе: логотип, версия расширения, поддерживаемые версии Revit, таблица параметров и ссылка на репозиторий"
 __author__ = "Pipers"
 
 import os
@@ -36,6 +36,13 @@ def _bitmap(path):
     return bmp
 
 
+def _revit_version():
+    try:
+        return __revit__.Application.VersionNumber
+    except Exception:
+        return None
+
+
 class AboutWindow(forms.WPFWindow):
     def __init__(self):
         forms.WPFWindow.__init__(self, os.path.join(HERE, "about.xaml"))
@@ -49,6 +56,9 @@ class AboutWindow(forms.WPFWindow):
         self.tagline_tb.Text = about.TAGLINE
         self.disciplines_tb.Text = about.DISCIPLINES
         self.version_tb.Text = about.version_text()
+        self.revit_tb.Text = about.revit_version_text(_revit_version())
+        self.revit_support_tb.Text = about.revit_support_summary()
+        self.params_link.Click += lambda s, e: _open_url(about.PARAMS_URL)
         self.repo_run.Text = about.REPO_URL
         self.repo_link.Click += lambda s, e: _open_url(about.REPO_URL)
         self.close_btn.Click += lambda s, e: self.Close()
