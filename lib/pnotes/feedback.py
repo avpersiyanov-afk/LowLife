@@ -19,8 +19,8 @@ from lowlife import about, ribbon_catalog
 
 
 # Адрес веб-приложения обратной связи (…/exec) — см. docs/feedback-panel.md.
-# Пока пусто, отзывы копятся на компьютере пользователя и уйдут, когда адрес появится.
-FEEDBACK_URL = u''
+# Если адрес пуст, отзывы копятся на компьютере пользователя и уйдут, когда он появится.
+FEEDBACK_URL = u'https://script.google.com/macros/s/AKfycbzByb8QevXsU_6u9kMImtZCxRD8Dh_kHpSeH6LnCQkI1BuFBm-LgbSgykBif52ftDM5/exec'
 
 USER_DIR = os.path.join(os.environ.get('APPDATA') or os.path.expanduser('~'), 'pyRevit', 'LowLifeFeedback')
 # Необязательный личный адрес — чтобы проверить веб-приложение до того, как вписать его в FEEDBACK_URL
