@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Настройки кнопки «Экспликация фрагмента» (ToolsRooms.panel): заголовки и
-ширины столбцов, параметр категории помещения, знаки площади.
+Настройки кнопок «Экспликация фрагмента» / «Обновить экспликацию»
+(ToolsRooms.panel): название таблицы, заголовки и ширины граф, высота строк,
+параметр категории помещения, знаки площади.
 
 Хранятся в %APPDATA%\\pyRevit\\LowLifeRoomExplication_settings.json через
 settings_core.TextSettings (Shift+клик по кнопке). Умолчания заголовков и
@@ -10,7 +11,7 @@ settings_core.TextSettings (Shift+клик по кнопке). Умолчани�
 
 from lowlife import settings_core
 from lowlife.room_explication_core import (
-    COLUMNS, HEADER_HEIGHT_MM, OLD_DEFAULT_WIDTHS, ROW_HEIGHT_MM)
+    COLUMNS, HEADER_HEIGHT_MM, OLD_DEFAULT_WIDTHS, ROW_HEIGHT_MM, TITLE)
 
 _LABELS = {
     "number": u"Номер помещения",
@@ -53,6 +54,10 @@ def _num(value):
         return None
 
 
+def title(settings):
+    return (settings.get("title") or u"").strip() or TITLE
+
+
 def heights(settings):
     """(высота шапки, высота строки) в мм."""
     return (float(settings.get("header_height") or HEADER_HEIGHT_MM),
@@ -64,7 +69,13 @@ SETTINGS = settings_core.TextSettings(
     button_name=u"Экспликация фрагмента",
     heading=u"Экспликация фрагмента: столбцы таблицы",
     transfer_label=u"экспликации фрагмента",
-    fields=_column_fields() + [
+    fields=[
+        settings_core.TextField(
+            "title", u"Таблица", u"Название над таблицей",
+            hint=u"Пусто — «{}».".format(TITLE),
+            default=TITLE, required=False,
+        ),
+    ] + _column_fields() + [
         settings_core.TextField(
             "category_param", u"⑤ Данные", u"Параметр категории помещения",
             hint=(
@@ -86,15 +97,13 @@ SETTINGS = settings_core.TextSettings(
         ),
         settings_core.NumberField(
             "row_height", u"", u"Строка помещения, мм",
-            hint=(u"По умолчанию 8 мм. Если Revit не даёт задать высоту строк "
-                  u"тела спецификации, она берётся из размера текста — кнопка "
-                  u"об этом скажет."),
+            hint=u"По умолчанию 8 мм (форма 2 ГОСТ 21.501).",
             default=ROW_HEIGHT_MM, minimum=3.0,
         ),
     ],
     migrate=_migrate,
     reset_button=True,
-    width=720, height=720,
+    width=720, height=760,
 )
 
 load_saved_values = SETTINGS.load_saved_values

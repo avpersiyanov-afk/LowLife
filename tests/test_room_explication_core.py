@@ -27,12 +27,11 @@ def test_build_rows_sorted_and_deduplicated():
 
 def test_names_are_clean():
     assert core.schedule_name(u"План 1: [фрагмент]") == u"Экспликация - План 1 фрагмент"
-    assert core.key_param_name(u"A{B}") == u"Экспликация ключ - AB"
 
 
-def test_key_names():
-    assert core.key_names(3) == [u"001", u"002", u"003"]
-    assert core.key_names(1200)[-1] == u"1200"
+def test_unique_name():
+    assert core.unique_name(u"Э", set()) == u"Э"
+    assert core.unique_name(u"Э", {u"Э", u"Э (2)"}) == u"Э (3)"
 
 
 def test_in_rect():

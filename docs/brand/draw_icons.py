@@ -302,6 +302,29 @@ def fragment_explication(c):
     c.line([(50, 59), (70, 59)], ORANGE, 3)
 
 
+def update_explication(c):
+    """«Обновить экспликацию»: таблица экспликации и оранжевые стрелки
+    обновления."""
+    c.rect((8, 10, 62, 60), BLUE, WHITE, 4.5, 2)
+    c.d.rectangle([8 * K, 10 * K, 62 * K, 20 * K], fill=BLUE)
+    for y in (32, 46):
+        c.line([(10, y), (60, y)], BLUE, 2.5)
+    for x in (20, 50):
+        c.line([(x, 20), (x, 60)], BLUE, 2.5)
+    cx, cy, r = 66, 66, 18
+    c.circle((cx, cy), r + 4, None, WHITE)
+    box = [(cx - r) * K, (cy - r) * K, (cx + r) * K, (cy + r) * K]
+    c.d.arc(box, 200, 340, fill=ORANGE, width=int(5 * K))
+    c.d.arc(box, 20, 160, fill=ORANGE, width=int(5 * K))
+    for ang, turn in ((340, 1), (160, 1)):
+        a = math.radians(ang)
+        tip = (cx + r * math.cos(a), cy + r * math.sin(a))
+        t = (-math.sin(a), math.cos(a))
+        c.polygon([(tip[0] + t[0] * 7, tip[1] + t[1] * 7),
+                   (tip[0] - math.cos(a) * 6, tip[1] - math.sin(a) * 6),
+                   (tip[0] + math.cos(a) * 6, tip[1] + math.sin(a) * 6)], fill=ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -320,6 +343,7 @@ ICONS = [
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),
     ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
+    ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
 ]
 
 
