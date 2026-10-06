@@ -1865,35 +1865,40 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `build_boxes` | `build_boxes(level_order, rows_by_level)` | `OrderedDict(level_name -> [box, ...])` для `room_schematic.rebuild`, только непустые этажи |
 
 ## room_explication.py / room_explication_core.py / room_explication_settings.py
-Кнопка «Экспликация фрагмента» (`ToolsRooms.panel/FragmentExplication`).
+Кнопки «Экспликация фрагмента» и «Обновить экспликацию»
+(`ToolsRooms.panel/FragmentExplication`, `UpdateExplication`). Таблица
+свободная — без параметров в модели.
 
 - `room_explication_core.py` (без Revit API, покрыт
-  `tests/test_room_explication_core.py`): `COLUMNS` — столбцы, заголовки и
-  ширины по умолчанию (форма 2 ГОСТ 21.501: 15/80/20/10 мм, шапка 20 мм,
-  строка 8 мм — `HEADER_HEIGHT_MM`/`ROW_HEIGHT_MM`); `build_rows(rooms, decimals)` —
-  строки таблицы, сортировка номеров с числами внутри (`natural_key`),
+  `tests/test_room_explication_core.py`): `COLUMNS` — графы, заголовки и
+  ширины по умолчанию (форма 2 ГОСТ 21.501: 15/80/20/10 мм), высоты
+  `HEADER_HEIGHT_MM`/`ROW_HEIGHT_MM` (20/8 мм); `build_rows(rooms, decimals)`
+  — строки таблицы, сортировка номеров с числами внутри (`natural_key`),
   площадь с запятой (`format_area`), без повторов; `schedule_name`/
-  `key_param_name` — имена спецификации и её ключевого параметра по виду
-  (без недопустимых в Revit символов); `key_names(n)` — «001, 002, …».
-- `room_explication.py` (Revit API): `unsupported_reason(view)` — нужен
-  план с включённой подрезкой; `collect_fragment_rooms(doc, view,
-  category_param)` — помещения модели и видимых связей, чья точка
-  размещения в рамке подрезки и в секущем диапазоне плана, по источникам
-  + число отброшенных с площадью 0; `ensure_params(doc, app)` — четыре
-  текстовых общих параметра `LL_Экспликация_*` с фиксированными GUID
-  (`PARAMS`), привязанных к помещениям, заводятся через временный ФОП
-  (подключённый ФОП пользователя восстанавливается); `build_schedule(doc,
-  app, view_name, rows, columns)` — создаёт или находит по имени ключевую
-  спецификацию помещений, ставит поля/заголовки/ширины, скрывает
-  «Ключевое имя» и сортирует по нему, заменяет строки, задаёт высоту шапки
-  граф и строк (`heights`; если Revit не принимает высоту строк тела —
-  возвращает об этом флаг). Помещениям ключ не
-  назначается, так что на сами помещения параметры не влияют; Revit лишь
-  добавляет помещениям ключевой параметр этой спецификации.
-- `room_explication_settings.py` — `TextSettings` (Shift+клик): заголовки и
-  ширины четырёх столбцов, высота шапки и строк, параметр категории, знаки
-  площади; `columns(settings)`, `heights(settings)`; настройки, сохранённые со
-  старыми умолчаниями ширин (60/15), переводятся на форму ГОСТ (80/10).
+  `unique_name` — имя спецификации по виду (без недопустимых символов, с
+  « (2)» при совпадении).
+- `room_explication.py` (Revit API):
+  - `unsupported_reason(view)` — нужен план с включённой подрезкой;
+    `collect_fragment_rooms(doc, view, category_param)` — помещения модели и
+    видимых связей, чья точка размещения в рамке подрезки и в секущем
+    диапазоне плана, по источникам + число отброшенных с площадью 0.
+  - Таблица: спецификация помещений с пустым телом (фильтр по номеру,
+    под который ничего не подходит, заголовки граф скрыты); её четыре
+    поля — встроенные параметры помещения — задают только графы и их
+    ширины. Сама экспликация — текст в ячейках ШАПКИ (`fill_table`):
+    строка названия, строка заголовков граф и по строке на помещение, с
+    заданной высотой строк. `build_explication` — создать/пересобрать.
+  - Метка ExtensibleStorage на спецификации (`SCHEMA_GUID`): UniqueId плана
+    и выбранные источники; `list_explications`, `explications_of_view`,
+    `explications_to_update(doc, uidoc)` (выделенные → открытая → открытого
+    плана → открытого листа). `rebuild(doc, view, sources, settings,
+    schedule)` — общий сценарий обеих кнопок.
+  - `find_legacy`/`delete_legacy` — уборка за первой версией кнопки
+    (ключевые спецификации и параметры `LL_Экспликация_*` по их GUID).
+- `room_explication_settings.py` — `TextSettings` (Shift+клик по «Экспликации
+  фрагмента»): название таблицы, заголовки и ширины граф, высота шапки и
+  строк, параметр категории, знаки площади; `title`, `columns`, `heights`;
+  настройки со старыми умолчаниями ширин (60/15) переводятся на 80/10.
 
 ## room_lots.py / room_lots_settings.py
 Анализ помещений связанной модели по лотам — кнопка `ToolsRooms.panel/RoomLots`

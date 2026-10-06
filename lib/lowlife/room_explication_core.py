@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Экспликация фрагмента — часть без Revit API (`ToolsRooms.panel/FragmentExplication`).
+"""Экспликация фрагмента — часть без Revit API (`ToolsRooms.panel/FragmentExplication`,
+`UpdateExplication`).
 
 Столбцы, их заголовки и ширины по умолчанию (форма 2 «Экспликация
 помещений» ГОСТ 21.501), сортировка номеров «по-человечески», формат
@@ -29,7 +30,7 @@ ROW_HEIGHT_MM = 8.0
 # переводятся на новые (room_explication_settings._migrate).
 OLD_DEFAULT_WIDTHS = {"name": 60.0, "category": 15.0}
 
-TITLE = u"Экспликация помещений"
+TITLE = u"Экспликация помещений"  # строка названия над таблицей
 
 # Символы, недопустимые в именах видов и параметров Revit.
 _FORBIDDEN = u"\\:{}[]|;<>?`~"
@@ -42,13 +43,18 @@ def clean_name(text):
 
 
 def schedule_name(view_name):
-    """Имя спецификации для фрагмента (по нему же повторный запуск её находит)."""
+    """Имя спецификации для фрагмента (занятое — дополняется unique_name)."""
     return clean_name(u"Экспликация - {}".format(view_name))
 
 
-def key_param_name(view_name):
-    """Имя ключевого параметра помещений, который Revit заводит под спецификацию."""
-    return clean_name(u"Экспликация ключ - {}".format(view_name))
+def unique_name(name, existing):
+    """name, а если занято — «name (2)», «name (3)», …"""
+    if name not in existing:
+        return name
+    i = 2
+    while u"{} ({})".format(name, i) in existing:
+        i += 1
+    return u"{} ({})".format(name, i)
 
 
 def natural_key(text):
@@ -85,12 +91,6 @@ def build_rows(rooms, decimals=2):
         seen.add(row)
         rows.append(row)
     return rows
-
-
-def key_names(count):
-    """Ключевые имена строк: 001, 002, … — по ним сортируется спецификация."""
-    width = max(3, len(str(count)))
-    return [str(i + 1).zfill(width) for i in range(count)]
 
 
 def in_rect(x, y, rect):

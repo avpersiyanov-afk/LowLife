@@ -4,10 +4,11 @@ __title__ = u"Экспликация\nфрагмента"
 __doc__ = (
     u"Экспликация помещений по обрезанному плану (фрагменту). Берёт "
     u"помещения модели и видимых связей, чья точка размещения попадает в "
-    u"рамку подрезки активного плана, и создаёт ключевую спецификацию: "
-    u"номер, наименование, площадь, категория — без настройки фильтров. "
-    u"Повторный запуск на том же виде обновляет эту же спецификацию.\n\n"
-    u"Shift+клик — настройки: заголовки и ширины столбцов, высота шапки и "
+    u"рамку подрезки активного плана, и создаёт спецификацию-таблицу: "
+    u"номер, наименование, площадь, категория. Таблица свободная — без "
+    u"параметров в модели и без фильтров. Если у плана экспликация уже "
+    u"есть — она обновляется (то же делает кнопка «Обновить экспликацию»).\n\n"
+    u"Shift+клик — настройки: название, заголовки и ширины граф, высота "
     u"строк (по умолчанию — форма 2 ГОСТ 21.501: 15/80/20/10 мм, шапка 20, "
     u"строка 8), параметр категории, знаки площади."
 )
@@ -17,8 +18,8 @@ import traceback
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
-from lowlife import room_explication, room_explication_settings
-from lowlife import room_explication_core as core
+from lowlife import room_explication as rexp
+from lowlife import room_explication_settings
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -37,54 +38,59 @@ if config_mode:
     script.exit()
 
 settings = room_explication_settings.get_settings_silent()
-category_param = (settings.get("category_param") or u"").strip()
 
-reason = room_explication.unsupported_reason(view)
+reason = rexp.unsupported_reason(view)
 if reason:
     forms.alert(reason, title=TITLE, exitscript=True)
 
-by_source, skipped = room_explication.collect_fragment_rooms(doc, view, category_param)
-if not by_source:
-    forms.alert(u"В рамке подрезки вида нет размещённых помещений "
-                u"(ни в модели, ни в видимых связях).", title=TITLE, exitscript=True)
+# Уборка за первой версией кнопки (ключевая спецификация + параметры).
+legacy_schedules, legacy_params = rexp.find_legacy(doc)
+if legacy_schedules or legacy_params:
+    if forms.alert(
+            u"В проекте осталось от прежней версии кнопки: ключевых "
+            u"спецификаций — {}, параметров LL_Экспликация_* — {}. Теперь "
+            u"экспликация делается без параметров.\n\nУдалить их?".format(
+                len(legacy_schedules), len(legacy_params)),
+            title=TITLE, yes=True, no=True):
+        with revit.Transaction(u"Удалить старую экспликацию"):
+            rexp.delete_legacy(doc, legacy_schedules, legacy_params)
 
-# Помещения есть и в модели, и в связи (или в нескольких связях) — спросить.
-sources = sorted(by_source.keys())
-if len(sources) > 1:
-    options = [u"{} ({} пом.)".format(s, len(by_source[s])) for s in sources]
-    all_option = u"Все источники"
-    choice = forms.CommandSwitchWindow.show(
-        options + [all_option],
-        message=u"Помещения фрагмента найдены в нескольких моделях. Откуда брать?")
-    if not choice:
-        script.exit()
-    if choice != all_option:
-        sources = [sources[options.index(choice)]]
-
-rooms = []
-for s in sources:
-    rooms.extend(by_source[s])
-rows = core.build_rows(rooms, settings.get("area_decimals", 2))
-columns = room_explication_settings.columns(settings)
+existing = rexp.explications_of_view(doc, view)
+if existing:
+    schedule, _view, sources = existing[0]
+else:
+    schedule = None
+    by_source, _skipped = rexp.collect_fragment_rooms(
+        doc, view, (settings.get("category_param") or u"").strip())
+    if not by_source:
+        forms.alert(u"В рамке подрезки вида нет размещённых помещений "
+                    u"(ни в модели, ни в видимых связях).", title=TITLE, exitscript=True)
+    sources = []
+    labels = sorted(by_source.keys())
+    if len(labels) > 1:
+        options = [u"{} ({} пом.)".format(s, len(by_source[s])) for s in labels]
+        all_option = u"Все источники"
+        choice = forms.CommandSwitchWindow.show(
+            options + [all_option],
+            message=u"Помещения фрагмента найдены в нескольких моделях. Откуда брать?")
+        if not choice:
+            script.exit()
+        if choice != all_option:
+            sources = [labels[options.index(choice)]]
 
 try:
     with revit.Transaction(TITLE):
-        schedule, created, rows_ok = room_explication.build_schedule(
-            doc, __revit__.Application, view.Name, rows, columns,
-            room_explication_settings.heights(settings))
+        schedule, count, skipped = rexp.rebuild(doc, view, sources, settings, schedule)
 except Exception:
     forms.alert(u"Не удалось построить экспликацию.\n\n" + traceback.format_exc(),
                 title=TITLE, exitscript=True)
 
 lines = [u"{} «{}»: {} пом.".format(
-    u"Создана спецификация" if created else u"Обновлена спецификация",
-    core.schedule_name(view.Name), len(rows))]
+    u"Обновлена экспликация" if existing else u"Создана экспликация",
+    rexp.element_name(schedule), count)]
 if skipped:
     lines.append(u"Пропущено неразмещённых/незамкнутых помещений (площадь 0): {}.".format(skipped))
-if not rows_ok:
-    lines.append(u"Высоту строк помещений Revit задать не дал — она идёт от "
-                 u"размера текста спецификации.")
-if not category_param:
+if not (settings.get("category_param") or u"").strip():
     lines.append(u"Графа «Категория» пустая: параметр категории не задан "
                  u"(Shift+клик по кнопке).")
 lines.append(u"\nОткрыть спецификацию?")

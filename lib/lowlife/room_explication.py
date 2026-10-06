@@ -1,45 +1,65 @@
 # -*- coding: utf-8 -*-
-"""Экспликация фрагмента — Revit API (`ToolsRooms.panel/FragmentExplication`).
+"""Экспликация фрагмента — Revit API (`ToolsRooms.panel/FragmentExplication`,
+`ToolsRooms.panel/UpdateExplication`).
 
-1. Помещения фрагмента: помещения модели и видимых связей, чья точка
-   размещения попадает в рамку подрезки плана (в плане) и в его секущий
-   диапазон (по высоте).
-2. Данные таблицы пишутся в строки КЛЮЧЕВОЙ спецификации помещений — она
-   не зависит от фильтров и показывает ровно переданный список. Столбцы —
-   четыре текстовых общих параметра LowLife с фиксированными GUID
-   (`PARAMS`), привязанные к помещениям; заводятся автоматически через
-   временный ФОП (подключённый ФОП пользователя не меняется). Помещениям
-   ключ не назначается, поэтому на сами помещения эти параметры не влияют.
-3. Спецификация называется по виду (`room_explication_core.schedule_name`);
-   повторный запуск на том же виде обновляет её строки, заголовки и
-   ширины — на листе она остаётся на месте.
+Свободная таблица без параметров:
+
+1. Помещения фрагмента — помещения модели и видимых связей, чья точка
+   размещения попадает в рамку подрезки плана и в его секущий диапазон.
+2. Спецификация помещений, у которой тело всегда пустое (фильтр по номеру
+   помещения, под который ничего не подходит, заголовки граф скрыты).
+   Её четыре поля — встроенные параметры помещения — задают только
+   столбцы и их ширины; сама экспликация — текст в ячейках ШАПКИ
+   спецификации (строка заголовков граф + по строке на помещение), где
+   Revit даёт задать и текст, и высоту строк. Новых параметров в модели нет.
+3. Какой план и какие источники (модель/связи) у экспликации — скрытая
+   метка ExtensibleStorage на самой спецификации; по ней «Обновить»
+   находит экспликации и пересобирает строки.
+
+`find_legacy`/`delete_legacy` — убрать то, что оставила первая версия
+кнопки (ключевые спецификации и параметры `LL_Экспликация_*`).
 """
 
-import io
-import os
-import tempfile
-
 from Autodesk.Revit.DB import (
-    BuiltInCategory, BuiltInParameter, ElementId, ElementOwnerViewFilter,
-    FilteredElementCollector, RevitLinkInstance, ScheduleSortGroupField,
-    SectionType, SharedParameterElement, ViewSchedule, ViewType,
+    BuiltInCategory, BuiltInParameter, ElementId, FilteredElementCollector,
+    RevitLinkInstance, ScheduleFilter, ScheduleFilterType, SectionType,
+    SharedParameterElement, ViewSchedule, ViewType,
 )
-from System import Guid
+from System import Guid, String
 
 from lowlife import room_explication_core as core
 
-# Ключ столбца -> (имя общего параметра, GUID). Имена/GUID не менять:
-# по GUID повторный запуск находит уже заведённые параметры.
-PARAMS = (
-    ("number", u"LL_Экспликация_Номер", "0d49f254-a0c7-4953-b450-116639cca2e2"),
-    ("name", u"LL_Экспликация_Наименование", "cf634822-e8ed-4901-8aab-3626a0804411"),
-    ("area", u"LL_Экспликация_Площадь", "13bf02c5-69f7-4fb1-9d5b-6d9208a2112c"),
-    ("category", u"LL_Экспликация_Категория", "590902e1-804a-4a96-aec1-e0d7d60437ce"),
-)
-GROUP_NAME = u"LowLife"
-
 # Запас по высоте при отборе помещений по секущему диапазону плана, футы.
 Z_TOLERANCE_FT = 1.0
+
+# Номер помещения, под который не подходит ни одно помещение — тело пустое.
+EMPTY_FILTER_VALUE = u"LowLife: экспликация без строк тела"
+
+# Встроенные параметры помещения — поля-«столбцы» спецификации (по порядку
+# граф). Значения из них не выводятся (тело пустое), они задают ширины.
+COLUMN_BIPS = (
+    BuiltInParameter.ROOM_NUMBER,
+    BuiltInParameter.ROOM_NAME,
+    BuiltInParameter.ROOM_AREA,
+    BuiltInParameter.ROOM_LEVEL_ID,
+)
+
+# Скрытая метка на спецификации (ExtensibleStorage). GUID не менять.
+SCHEMA_GUID = Guid("ce570e42-1621-434a-a0f4-ddc2d2795d98")
+SCHEMA_NAME = "LowLifeFragmentExplication"
+SCHEMA_VENDOR = "LowLife"
+_F_VIEW = "SourceViewUniqueId"
+_F_SOURCES = "Sources"
+_SOURCES_SEP = u"\n"
+
+# Параметры первой версии кнопки (ключевая спецификация) — только для уборки.
+LEGACY_PARAM_GUIDS = (
+    "0d49f254-a0c7-4953-b450-116639cca2e2",
+    "cf634822-e8ed-4901-8aab-3626a0804411",
+    "13bf02c5-69f7-4fb1-9d5b-6d9208a2112c",
+    "590902e1-804a-4a96-aec1-e0d7d60437ce",
+)
+
 
 
 # ---------------------------------------------------------------------------
@@ -163,113 +183,90 @@ def collect_fragment_rooms(doc, view, category_param=u""):
             result.setdefault(label, []).append(_room_data(room, category_param))
     return result, skipped
 
-
 # ---------------------------------------------------------------------------
-# Общие параметры столбцов
+# Метка на спецификации
 # ---------------------------------------------------------------------------
 
-def _text_spec():
+def _schema():
+    from Autodesk.Revit.DB.ExtensibleStorage import AccessLevel, Schema, SchemaBuilder
+    schema = Schema.Lookup(SCHEMA_GUID)
+    if schema is not None:
+        return schema
+    sb = SchemaBuilder(SCHEMA_GUID)
+    sb.SetSchemaName(SCHEMA_NAME)
+    sb.SetVendorId(SCHEMA_VENDOR)
+    sb.SetReadAccessLevel(AccessLevel.Public)
+    sb.SetWriteAccessLevel(AccessLevel.Public)
+    sb.AddSimpleField(_F_VIEW, String)
+    sb.AddSimpleField(_F_SOURCES, String)
+    return sb.Finish()
+
+
+def read_mark(schedule):
+    """(UniqueId плана, [источники] или [] = все) или None, если это не
+    экспликация фрагмента."""
+    from Autodesk.Revit.DB.ExtensibleStorage import Schema
+    schema = Schema.Lookup(SCHEMA_GUID)
+    if schema is None:
+        return None
     try:
-        from Autodesk.Revit.DB import SpecTypeId
-        return SpecTypeId.String.Text
+        ent = schedule.GetEntity(schema)
+        if ent is None or not ent.IsValid():
+            return None
+        view_uid = ent.Get[String](_F_VIEW)
+        sources = ent.Get[String](_F_SOURCES) or u""
     except Exception:
-        from Autodesk.Revit.DB import ParameterType
-        return ParameterType.Text
+        return None
+    if not view_uid:
+        return None
+    return view_uid, [s for s in sources.split(_SOURCES_SEP) if s]
 
 
-def _insert_binding(doc, definition, binding, reinsert):
-    method = doc.ParameterBindings.ReInsert if reinsert else doc.ParameterBindings.Insert
-    try:
-        from Autodesk.Revit.DB import GroupTypeId
-        return method(definition, binding, GroupTypeId.Text)
-    except Exception:
-        from Autodesk.Revit.DB import BuiltInParameterGroup
-        return method(definition, binding, BuiltInParameterGroup.PG_TEXT)
+def _write_mark(schedule, view, sources):
+    from Autodesk.Revit.DB.ExtensibleStorage import Entity
+    ent = Entity(_schema())
+    ent.Set[String](_F_VIEW, view.UniqueId)
+    ent.Set[String](_F_SOURCES, _SOURCES_SEP.join(sources or []))
+    schedule.SetEntity(ent)
 
 
-def _find_binding(doc, guid):
-    it = doc.ParameterBindings.ForwardIterator()
-    while it.MoveNext():
-        definition = it.Key
+def list_explications(doc):
+    """[(спецификация, план или None, [источники])] — все экспликации фрагмента."""
+    result = []
+    for v in FilteredElementCollector(doc).OfClass(ViewSchedule):
         try:
-            shared = doc.GetElement(definition.Id)
-            if isinstance(shared, SharedParameterElement) and shared.GuidValue == guid:
-                return definition, it.Current
+            if v.IsTemplate:
+                continue
         except Exception:
             continue
-    return None, None
-
-
-def _create_definitions(app, missing):
-    """Определения недостающих параметров из временного ФОП (подключённый ФОП
-    пользователя восстанавливается). {ключ: ExternalDefinition}."""
-    from Autodesk.Revit.DB import ExternalDefinitionCreationOptions
-    old_path = app.SharedParametersFilename
-    path = os.path.join(tempfile.gettempdir(), u"LowLife_explication_params.txt")
-    with io.open(path, "wb"):
-        pass  # пустой файл — Revit сам запишет в него заголовок ФОП
-    result = {}
-    try:
-        app.SharedParametersFilename = path
-        sp_file = app.OpenSharedParameterFile()
-        group = sp_file.Groups.Create(GROUP_NAME)
-        for key, name, guid in missing:
-            opts = ExternalDefinitionCreationOptions(name, _text_spec())
-            opts.GUID = Guid(guid)
-            opts.Visible = True
-            result[key] = group.Definitions.Create(opts)
-    finally:
-        try:
-            app.SharedParametersFilename = old_path or u""
-        except Exception:
-            pass
-        try:
-            os.remove(path)
-        except Exception:
-            pass
+        mark = read_mark(v)
+        if mark is None:
+            continue
+        view_uid, sources = mark
+        result.append((v, doc.GetElement(view_uid), sources))
     return result
 
 
-def ensure_params(doc, app):
-    """
-    Четыре параметра столбцов привязаны к помещениям (экземпляр). Вызывать
-    в транзакции. Возвращает {ключ: ElementId параметра}.
-    """
-    rooms_cat = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Rooms)
-    missing = []
-    for key, name, guid in PARAMS:
-        definition, binding = _find_binding(doc, Guid(guid))
-        if definition is None:
-            missing.append((key, name, guid))
-        elif not binding.Categories.Contains(rooms_cat):
-            cats = app.Create.NewCategorySet()
-            for c in binding.Categories:
-                cats.Insert(c)
-            cats.Insert(rooms_cat)
-            _insert_binding(doc, definition, app.Create.NewInstanceBinding(cats), True)
+def explications_of_view(doc, view):
+    return [e for e in list_explications(doc)
+            if e[1] is not None and e[1].Id == view.Id]
 
-    if missing:
-        created = _create_definitions(app, missing)
-        for key, name, guid in missing:
-            cats = app.Create.NewCategorySet()
-            cats.Insert(rooms_cat)
-            if not _insert_binding(doc, created[key], app.Create.NewInstanceBinding(cats), False):
-                raise RuntimeError(u"Не удалось привязать параметр «{}» к помещениям.".format(name))
 
-    ids = {}
-    for key, name, guid in PARAMS:
-        shared = SharedParameterElement.Lookup(doc, Guid(guid))
-        if shared is None:
-            raise RuntimeError(u"Параметр «{}» не найден после создания.".format(name))
-        ids[key] = shared.Id
-    return ids
+def pick_rooms(by_source, sources):
+    """Помещения выбранных источников ([] — все; несуществующие пропускаются,
+    а если не осталось ни одного — берутся все)."""
+    chosen = [s for s in (sources or []) if s in by_source] or sorted(by_source.keys())
+    rooms = []
+    for s in chosen:
+        rooms.extend(by_source[s])
+    return rooms
 
 
 # ---------------------------------------------------------------------------
-# Ключевая спецификация
+# Спецификация-«бланк» и таблица в шапке
 # ---------------------------------------------------------------------------
 
-def _element_name(el):
+def element_name(el):
     try:
         from Autodesk.Revit.DB import Element
         return Element.Name.GetValue(el)
@@ -277,170 +274,219 @@ def _element_name(el):
         return el.Name
 
 
-def find_schedule(doc, name):
+def _schedule_names(doc):
+    names = set()
     for v in FilteredElementCollector(doc).OfClass(ViewSchedule):
         try:
-            if not v.IsTemplate and v.Definition.IsKeySchedule and _element_name(v) == name:
-                return v
+            names.add(element_name(v))
         except Exception:
-            continue
-    return None
+            pass
+    return names
 
 
-def _schedule_rows(doc, schedule):
-    return list(FilteredElementCollector(doc)
-                .WherePasses(ElementOwnerViewFilter(schedule.Id))
-                .WhereElementIsNotElementType())
-
-
-def _is_key_name_field(field):
-    try:
-        return field.ParameterId == ElementId(BuiltInParameter.REF_TABLE_ELEM_NAME)
-    except Exception:
-        return False
-
-
-def _fields_by_param(definition):
-    # Ключ — str(ElementId): не полагаемся на хеширование .NET-объектов в dict.
-    result = {}
-    for field_id in definition.GetFieldOrder():
-        field = definition.GetField(field_id)
-        result[str(field.ParameterId)] = field
-    return result
-
-
-def _setup_fields(doc, schedule, param_ids, columns):
-    """Поля в порядке столбцов, заголовки, ширины; «Ключевое имя» скрыто и по
-    нему сортировка."""
+def _create_blank(doc, view_name):
+    """Спецификация помещений с пустым телом и четырьмя полями-столбцами."""
+    schedule = ViewSchedule.CreateSchedule(doc, ElementId(BuiltInCategory.OST_Rooms))
+    schedule.Name = core.unique_name(core.schedule_name(view_name), _schedule_names(doc))
     d = schedule.Definition
-    existing = _fields_by_param(d)
-    schedulable = dict((str(sf.ParameterId), sf) for sf in d.GetSchedulableFields())
-
-    key_field = None
-    for field in existing.values():
-        if _is_key_name_field(field):
-            key_field = field
-    order = []
-    for key, heading, width_mm in columns:
-        pid = str(param_ids[key])
-        field = existing.get(pid)
-        if field is None:
-            sf = schedulable.get(pid)
-            if sf is None:
-                raise RuntimeError(u"Параметр столбца «{}» недоступен в "
-                                   u"ключевой спецификации помещений.".format(heading))
-            field = d.AddField(sf)
-        field.IsHidden = False
-        field.ColumnHeading = heading
-        field.GridColumnWidth = width_mm / core.MM_IN_FOOT
-        order.append(field.FieldId)
-
-    rest = [fid for fid in d.GetFieldOrder() if fid not in order]
+    by_param = dict((str(sf.ParameterId), sf) for sf in d.GetSchedulableFields())
+    fields = []
+    for bip in COLUMN_BIPS:
+        sf = by_param.get(str(ElementId(bip)))
+        if sf is None:
+            raise RuntimeError(u"В спецификации помещений нет поля {}.".format(bip))
+        fields.append(d.AddField(sf))
+    d.AddFilter(ScheduleFilter(fields[0].FieldId, ScheduleFilterType.Equal, EMPTY_FILTER_VALUE))
+    d.ShowHeaders = False
+    d.ShowTitle = True
     try:
-        from System.Collections.Generic import List
-        from Autodesk.Revit.DB import ScheduleFieldId
-        d.SetFieldOrder(List[ScheduleFieldId](order + rest))
+        d.ShowGrandTotal = False
+    except Exception:
+        pass
+    d.IsItemized = True
+    return schedule
+
+
+def _visible_fields(schedule):
+    d = schedule.Definition
+    fields = []
+    for fid in d.GetFieldOrder():
+        field = d.GetField(fid)
+        if not field.IsHidden:
+            fields.append(field)
+    return fields
+
+
+def _set_style(section, row, col, center, bold=False):
+    """Выравнивание текста ячейки шапки (по центру/влево)."""
+    try:
+        from Autodesk.Revit.DB import (
+            HorizontalAlignmentStyle, TableCellStyleOverrideOptions)
+        style = section.GetTableCellStyle(row, col)
+        opts = TableCellStyleOverrideOptions()
+        opts.HorizontalAlignment = True
+        if bold:
+            opts.Bold = True
+            style.IsFontBold = True
+        style.SetCellStyleOverrideOptions(opts)
+        style.FontHorizontalAlignment = (HorizontalAlignmentStyle.Center if center
+                                         else HorizontalAlignmentStyle.Left)
+        section.SetCellStyle(row, col, style)
     except Exception:
         pass
 
-    if key_field is not None:
-        key_field.IsHidden = True
-        try:
-            d.ClearSortGroupFields()
-            d.AddSortGroupField(ScheduleSortGroupField(key_field.FieldId))
-        except Exception:
-            pass
+
+def _unmerge_row(section, row, col0, count):
+    """Новая строка шапки могла унаследовать объединение ячеек от строки
+    названия — разбиваем на отдельные ячейки."""
+    try:
+        from Autodesk.Revit.DB import TableMergedCell
+        for j in range(count):
+            c = col0 + j
+            section.SetMergedCell(row, c, TableMergedCell(row, c, row, c))
+    except Exception:
+        pass
 
 
-def _insert_rows(doc, schedule, count):
-    """Добавляет count строк (Revit сам создаёт элементы-строки)."""
-    section = schedule.GetTableData().GetSectionData(SectionType.Body)
-    for _ in range(count):
-        first, last = section.FirstRowNumber, section.LastRowNumber
-        for idx in (last + 1, last, first + 1, first):
+def fill_table(doc, schedule, title, columns, rows, heights):
+    """
+    Пересобирает таблицу в шапке: строка названия, строка заголовков граф
+    (высота heights[0] мм), по строке на помещение (heights[1] мм). Ширины
+    граф — у полей тела. Вызывать в транзакции.
+    """
+    fields = _visible_fields(schedule)
+    if len(fields) < len(columns):
+        raise RuntimeError(u"У спецификации «{}» меньше {} видимых столбцов — "
+                           u"удалите её и создайте экспликацию заново."
+                           .format(element_name(schedule), len(columns)))
+    for field, (_key, _heading, width_mm) in zip(fields, columns):
+        field.GridColumnWidth = width_mm / core.MM_IN_FOOT
+    doc.Regenerate()
+
+    header = schedule.GetTableData().GetSectionData(SectionType.Header)
+    first = header.FirstRowNumber
+    for r in range(header.LastRowNumber, first, -1):
+        header.RemoveRow(r)
+    header.SetCellText(first, header.FirstColumnNumber, title)
+
+    header_mm, row_mm = heights
+    col0 = header.FirstColumnNumber
+    table = [[c[1] for c in columns]] + [list(r) for r in rows]
+    for i, values in enumerate(table):
+        r = first + 1 + i
+        header.InsertRow(r)
+        header.SetRowHeight(r, (header_mm if i == 0 else row_mm) / core.MM_IN_FOOT)
+        _unmerge_row(header, r, col0, len(values))
+        for j, text in enumerate(values):
+            header.SetCellText(r, col0 + j, text)
+            # Наименование помещения — влево, остальное и заголовки — по центру.
+            _set_style(header, r, col0 + j, center=(i == 0 or columns[j][0] != "name"))
+
+
+def build_explication(doc, view, sources, title, columns, rows, heights, schedule=None):
+    """
+    Создаёт (schedule=None) или пересобирает экспликацию плана view.
+    sources — выбранные источники ([] = все), запоминаются в метке.
+    Вызывать в транзакции. Возвращает спецификацию.
+    """
+    if schedule is None:
+        schedule = _create_blank(doc, view.Name)
+        doc.Regenerate()
+    fill_table(doc, schedule, title, columns, rows, heights)
+    _write_mark(schedule, view, sources)
+    return schedule
+
+
+# ---------------------------------------------------------------------------
+# Уборка за первой версией (ключевая спецификация + параметры)
+# ---------------------------------------------------------------------------
+
+def find_legacy(doc):
+    """(ключевые спецификации первой версии, параметры LL_Экспликация_*)."""
+    params = []
+    for guid in LEGACY_PARAM_GUIDS:
+        el = SharedParameterElement.Lookup(doc, Guid(guid))
+        if el is not None:
+            params.append(el)
+    param_ids = set(str(p.Id) for p in params)
+    schedules = []
+    if param_ids:
+        for v in FilteredElementCollector(doc).OfClass(ViewSchedule):
             try:
-                if section.CanInsertRow(idx):
-                    section.InsertRow(idx)
-                    break
+                d = v.Definition
+                if not d.IsKeySchedule:
+                    continue
+                if any(str(d.GetField(fid).ParameterId) in param_ids
+                       for fid in d.GetFieldOrder()):
+                    schedules.append(v)
             except Exception:
                 continue
-        else:
-            raise RuntimeError(u"Revit не дал добавить строку в ключевую спецификацию.")
+    return schedules, params
 
 
-def _set_row_heights(schedule, header_mm, row_mm):
+def delete_legacy(doc, schedules, params):
+    """Удаляет найденное find_legacy. Вызывать в транзакции."""
+    from System.Collections.Generic import List
+    ids = [el.Id for el in list(schedules) + list(params)]
+    if ids:
+        doc.Delete(List[ElementId](ids))
+    return len(ids)
+
+
+# ---------------------------------------------------------------------------
+# Общий сценарий кнопок
+# ---------------------------------------------------------------------------
+
+def rebuild(doc, view, sources, settings, schedule=None):
     """
-    Высота строки заголовков граф (первая строка тела) и строк помещений.
-    Возвращает True, если высоту строк помещений удалось задать (Revit
-    может её не принимать — тогда она идёт от размера текста).
+    Собирает помещения фрагмента view (источники sources, [] = все) и
+    создаёт/пересобирает экспликацию по настройкам кнопки. Вызывать в
+    транзакции. Возвращает (спецификация, число строк, пропущено с площадью 0).
     """
-    body = schedule.GetTableData().GetSectionData(SectionType.Body)
-    first, last = body.FirstRowNumber, body.LastRowNumber
-    try:
-        body.SetRowHeight(first, header_mm / core.MM_IN_FOOT)
-    except Exception:
-        pass
-    ok = True
-    for row in range(first + 1, last + 1):
-        try:
-            body.SetRowHeight(row, row_mm / core.MM_IN_FOOT)
-        except Exception:
-            ok = False
-    return ok
+    from lowlife import room_explication_settings as rs
+    category_param = (settings.get("category_param") or u"").strip()
+    by_source, skipped = collect_fragment_rooms(doc, view, category_param)
+    rows = core.build_rows(pick_rooms(by_source, sources),
+                           settings.get("area_decimals", 2))
+    schedule = build_explication(doc, view, sources, rs.title(settings),
+                                 rs.columns(settings), rows, rs.heights(settings),
+                                 schedule)
+    return schedule, len(rows), skipped
 
 
-def build_schedule(doc, app, view_name, rows, columns, heights=None):
+def explications_to_update(doc, uidoc):
     """
-    Создаёт или обновляет ключевую спецификацию фрагмента. Вызывать в
-    транзакции. rows — из room_explication_core.build_rows; columns — из
-    room_explication_settings.columns; heights — (шапка, строка) в мм.
-    Возвращает (спецификация, создана ли, задана ли высота строк).
+    Какие экспликации обновлять, по контексту: выделенные на листе/в
+    диспетчере → открытая спецификация → открытый план → открытый лист.
+    Возвращает (список из list_explications, описание) или ([], None),
+    если контекст ни на что не указывает (тогда — все в проекте).
     """
-    param_ids = ensure_params(doc, app)
-    name = core.schedule_name(view_name)
-    schedule = find_schedule(doc, name)
-    created = schedule is None
-    if created:
-        schedule = ViewSchedule.CreateKeySchedule(doc, ElementId(BuiltInCategory.OST_Rooms))
-        schedule.Name = name
-        try:
-            schedule.Definition.KeyScheduleParameterName = core.key_param_name(view_name)
-        except Exception:
-            pass
-        doc.Regenerate()
+    from Autodesk.Revit.DB import ScheduleSheetInstance, ViewSheet
+    all_items = list_explications(doc)
+    by_id = dict((str(e[0].Id), e) for e in all_items)
 
-    _setup_fields(doc, schedule, param_ids, columns)
+    picked = []
+    for eid in uidoc.Selection.GetElementIds():
+        el = doc.GetElement(eid)
+        if isinstance(el, ScheduleSheetInstance):
+            eid = el.ScheduleId
+        item = by_id.get(str(eid))
+        if item is not None and item not in picked:
+            picked.append(item)
+    if picked:
+        return picked, u"выделенные"
 
-    old = _schedule_rows(doc, schedule)
-    if old:
-        from System.Collections.Generic import List
-        doc.Delete(List[ElementId]([r.Id for r in old]))
-        doc.Regenerate()
-
-    _insert_rows(doc, schedule, len(rows))
-    doc.Regenerate()
-    new_rows = _schedule_rows(doc, schedule)
-    if len(new_rows) != len(rows):
-        raise RuntimeError(u"Создано строк: {}, нужно: {}.".format(len(new_rows), len(rows)))
-
-    # Ключевые имена уникальны: сначала временные, чтобы «007» не совпало
-    # с автоматическим именем другой новой строки.
-    for row_el in new_rows:
-        row_el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME).Set(
-            u"tmp-{}".format(row_el.UniqueId))
-    guids = [(i, Guid(guid)) for i, (_key, _name, guid) in enumerate(PARAMS)]
-    for row_el, key_name, values in zip(new_rows, core.key_names(len(rows)), rows):
-        row_el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME).Set(key_name)
-        for i, guid in guids:
-            row_el.get_Parameter(guid).Set(values[i])
-
-    try:
-        header = schedule.GetTableData().GetSectionData(SectionType.Header)
-        header.SetCellText(header.FirstRowNumber, header.FirstColumnNumber, core.TITLE)
-    except Exception:
-        pass
-
-    doc.Regenerate()
-    header_mm, row_mm = heights or (core.HEADER_HEIGHT_MM, core.ROW_HEIGHT_MM)
-    rows_ok = _set_row_heights(schedule, header_mm, row_mm)
-    return schedule, created, rows_ok
+    view = doc.ActiveView
+    item = by_id.get(str(view.Id))
+    if item is not None:
+        return [item], u"открытая спецификация"
+    on_view = [e for e in all_items if e[1] is not None and e[1].Id == view.Id]
+    if on_view:
+        return on_view, u"экспликации открытого плана"
+    if isinstance(view, ViewSheet):
+        placed = set(str(i.ScheduleId) for i in FilteredElementCollector(doc, view.Id)
+                     .OfClass(ScheduleSheetInstance))
+        on_sheet = [e for e in all_items if str(e[0].Id) in placed]
+        if on_sheet:
+            return on_sheet, u"на открытом листе"
+    return [], None
