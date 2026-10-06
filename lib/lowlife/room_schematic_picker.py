@@ -1,521 +1,473 @@
 # -*- coding: utf-8 -*-
 """
-Выбор помещений/групп для кнопки Schematic.panel/BuildRoomSchematic
-(«Рыба структурной схемы»).
+Окно кнопки Schematic.panel/BuildRoomSchematic («Рыба структурной схемы»).
 
-Список помещений приходит от room_finder.get_records(doc) — та же база
-(хост + все связи, с кэшем на сессию), что уже использует ToolsRooms.panel/
-FindRoom. Уровни (порядок и подписи) — sot_levels.sorted_level_names/
-get_level_label, та же сортировка этажей, что у СОТ/СПС/СКС.
+Одно окно на весь сценарий (раньше были цепочки SelectFromList: четыре
+параметра, затем по 3-4 диалога на каждый этаж — пользователь жаловался,
+что это слишком сложно):
 
-Сценарий (v7):
+  - слева — список этажей (порядок и подписи — sot_levels, как у
+    СОТ/СПС/СКС), у каждого — сколько боксов на нём уже будет;
+  - справа — таблица помещений выбранного этажа: «Номер», «Имя» и
+    редактируемый столбец «На схеме» — как помещение показать на схеме.
+    Пусто — помещения на схеме нет. Одинаковая подпись у нескольких
+    помещений этажа — они сливаются в один бокс (так делаются группы);
+  - под таблицей — массовые действия над выделенными строками (задать
+    подпись, подставить имя помещения, убрать со схемы) и копирование
+    подписей с другого этажа по именам помещений;
+  - типовые этажи: при открытии этажа без подписей, у которого тот же
+    набор помещений, что у уже заполненного этажа, подписи подставляются
+    сразу (room_schematic_core.find_typical_source/copy_labels_by_name), о
+    чём говорит строка над таблицей.
 
-  1. Четыре параметра, один раз, в этом порядке (закрыть диалог без выбора
-     = использовать значение по умолчанию — см. _ask_param):
-       а. параметр для ИМЕНИ помещения в маске (по умолчанию — встроенное
-          "Имя");
-       б. параметр для НОМЕРА помещения в маске (по умолчанию — встроенный
-          "Номер"), маска = "Имя (Номер)" (см. _room_label);
-       в. параметр для СЕКЦИИ — если у здания несколько секций, каждое
-          значение даёт свою отдельную схему/вид (по умолчанию — без
-          деления на секции, один прогон);
-       г. параметр для ОБЩЕЙ ГРУППЫ — общее значение объединяет несколько
-          помещений в один бокс схемы (по умолчанию — группы не строятся,
-          только отдельные помещения).
-  2. Для каждой секции — этажи ПО ПОРЯДКУ, один за другим (см.
-     _pick_section_boxes): на этаже сначала список отдельных помещений
-     (маска "Имя (Номер)"), затем список значений параметра общей группы,
-     найденных на этом этаже (_floor_group_values) — на схеме этажа будут
-     и то, и другое одновременно (независимо друг от друга).
+Подписи запоминаются между запусками (по UniqueId помещения, на каждый
+файл модели свои) в %APPDATA%\\pyRevit\\LowLifeRoomSchematic_settings.json,
+вместе с именем вида — повторный запуск открывает окно уже заполненным.
 
-     Типовые этажи/"довыбрать": то, что было выбрано (отдельные помещения
-     — по совпадению ИМЕНИ, группы — по совпадению ЗНАЧЕНИЯ) на предыдущем
-     обработанном этаже, переносится на новый этаж АВТОМАТИЧЕСКИ, без
-     отдельного вопроса — списки на новом этаже показывают только то, что
-     ЕЩЁ не перенесено (см. _pick_floor_boxes), чтобы можно было только
-     ДОБАВИТЬ недостающее; отдельным вопросом да/нет предлагается убрать
-     что-то из перенесённого, если этаж всё же отличается. То же самое —
-     при возврате на уже пройденный этаж (см. "Вернуться к другому этажу").
-
-     После этажа — "Следующий этаж" (по умолчанию) / "Вернуться к другому
-     этажу" / "Завершить и построить".
-
-  3. Когда все секции пройдены — имя чертёжного вида (forms.ask_for_string;
-     для нескольких секций к нему добавляется "— <секция>", см.
-     room_schematic.schematic_view_name).
-
-Возвращает (view_base_name, OrderedDict(section_label ->
-OrderedDict(level_name -> [box, ...]))), section_label=None, если деления
-на секции не было. None, если в итоге ничего не выбрано ни в одной секции.
-
-ИСТОРИЯ (важно при дальнейшей правке — здесь нет живого Revit для проверки,
-см. CLAUDE.md, поэтому ориентируйтесь на неё, а не угадывайте заново):
-  - Ранняя версия показывала список с ПРЕДВАРИТЕЛЬНО отмеченными похожими
-    помещениями через forms.TemplateListItem — в реальном Revit это вызвало
-    пустой белый экран при нажатии "Сохранить". Больше не используется.
-  - Другая версия использовала forms.CommandSwitchWindow почти на каждом
-    шаге — после этого пользователь сообщил, что кнопка вообще ничего не
-    строит. forms.CommandSwitchWindow тоже больше не используется.
-  - Единственные formsAPI, которыми пользуется этот файл сейчас —
-    forms.SelectFromList (обычные объекты, без предотметок),
-    forms.alert(yes=True, no=True) и forms.ask_for_string — у каждого есть
-    рабочий прецедент в другом месте этого же проекта (см. ниже по коду).
-    Не добавляйте сюда другие формы pyRevit без крайней необходимости.
+Помещения — из room_finder.get_records(doc) (хост + все связи).
+Логика без WPF/Revit — room_schematic_core.py.
 """
 
 from collections import OrderedDict
 
+import clr
+clr.AddReference('System')
+clr.AddReference('PresentationFramework')
+clr.AddReference('PresentationCore')
+clr.AddReference('WindowsBase')
+
+from System.Collections.Generic import List
+from System.Windows import (
+    Window, WindowStartupLocation, Thickness, FontWeights, GridLength,
+    GridUnitType, VerticalAlignment, TextWrapping,
+)
+from System.Windows.Controls import (
+    StackPanel, TextBlock, TextBox, Button, ComboBox, ListBox, ListBoxItem,
+    Orientation, DockPanel, Dock, WrapPanel, Grid, ColumnDefinition,
+    DataGrid, DataGridTextColumn, DataGridLength, DataGridLengthUnitType,
+    DataGridHeadersVisibility, DataGridGridLinesVisibility,
+    DataGridSelectionMode, DataGridEditingUnit,
+)
+from System.Windows.Data import Binding, BindingMode, UpdateSourceTrigger
+from System.Windows.Input import Key
+
 from pyrevit import forms
 
-from lowlife import room_finder
-from lowlife.params import get_param_any
+from lowlife import room_schematic_core as core
 from lowlife.room_finder import natural_key
 from lowlife.room_schematic import SCHEMATIC_VIEW_NAME
+from lowlife.settings_core import JsonStore
 from lowlife.sot_levels import sorted_level_names, get_level_label
 
-_NEXT = u"Следующий этаж"
-_BACK = u"Вернуться к другому этажу"
-_FINISH = u"Завершить и построить"
+TITLE = u"Рыба структурной схемы"
+
+_store = JsonStore("LowLifeRoomSchematic_settings.json", label=u"рыбы структурной схемы")
 
 
-def list_room_param_names(records):
-    """
-    Отсортированный список имён параметров, встречающихся хотя бы на одном
-    помещении из records — для всех четырёх диалогов выбора параметра.
-    Объединение (не пересечение): у части помещений (особенно из разных
-    связей/типов) набор параметров может отличаться, показываем всё, что
-    вообще где-то есть, а не только общее для всех сразу.
-    """
-    names = set()
-    for record in records:
-        try:
-            for p in record.room.Parameters:
-                name = p.Definition.Name if p and p.Definition else None
-                if name:
-                    names.add(name)
-        except Exception:
-            continue
-    return sorted(names, key=lambda n: n.lower())
+# --- запоминание подписей между запусками --------------------------------------
+
+def _doc_key(doc):
+    try:
+        path = doc.PathName
+    except Exception:
+        path = None
+    if path:
+        return path
+    try:
+        return doc.Title
+    except Exception:
+        return u""
 
 
-def _ask_param(param_names, title):
-    """Имя выбранного параметра, либо None (использовать значение по
-    умолчанию) — как явным закрытием диалога, так и (защитно) отсутствием
-    выбора. См. модульный докстринг про то, почему это не считается
-    отменой всего сценария."""
-    choice = forms.SelectFromList.show(
-        param_names,
-        title=u"{} (закройте окно без выбора, чтобы использовать значение по умолчанию)".format(title),
-        button_name=u"Выбрать",
-        multiselect=False,
-    )
-    return choice or None
+def _room_key(record):
+    try:
+        return record.room.UniqueId
+    except Exception:
+        return None
 
 
-def _name_value(record, name_param):
-    """Имя помещения для маски — параметр из настроек, если задан и
-    заполнен, иначе встроенное имя (record.name)."""
-    if not name_param:
-        return record.name
-    value = get_param_any(record.room, name_param)
-    return value.strip() if value else record.name
+def _load_saved(doc):
+    entry = _store.read().get(_doc_key(doc))
+    return entry if isinstance(entry, dict) else {}
 
 
-def _room_label(record, name_param, number_param):
-    name = (_name_value(record, name_param) or u"").strip()
-    number = (room_finder.number_value(record, number_param) or u"").strip()
-    if name and number:
-        return u"{} ({})".format(name, number)
-    return name or number or u"(без имени)"
+def _save(doc, view_name, rows_by_level):
+    labels = {}
+    for rows in rows_by_level.values():
+        for row in rows:
+            label = (row.label or u"").strip()
+            if label and row.key:
+                labels[row.key] = label
+    _store.update({_doc_key(doc): {"view_name": view_name, "labels": labels}})
 
 
-def _floor_group_values(level_records, group_param):
-    """OrderedDict(value -> [record, ...]) — непустые значения group_param
-    среди помещений ЭТОГО этажа, в порядке появления. {} если параметр
-    общей группы не задан."""
-    groups = OrderedDict()
-    if not group_param:
-        return groups
-    for record in level_records:
-        value = room_finder.type_value(record, group_param)
-        if value:
-            groups.setdefault(value, []).append(record)
-    return groups
+# --- строки таблицы ---------------------------------------------------------------
+
+class _RoomRow(object):
+    """Строка таблицы; атрибуты name/number/label/room_id — то, что ждёт
+    room_schematic_core, они же — пути привязки столбцов DataGrid."""
+
+    def __init__(self, record, label):
+        self.number = record.number or u""
+        self.name = record.name or u""
+        self.label = label or u""
+        self.room_id = record.room_id
+        self.key = _room_key(record)
 
 
-def _box_signature(box):
-    return box["kind"], box["label"], tuple(sorted(box["room_ids"]))
-
-
-def _build_level_groups(records):
-    """
-    OrderedDict(level_name -> {"elements": [...], "level": Level|None,
-    "order": int}) — форма, ожидаемая sot_levels.sorted_level_names.
-    Level берётся с самого room (record.room.Level) — он резолвится Revit
-    API на родном документе помещения (хост или связь), поэтому безопасен
-    и для помещений из связи, в отличие от doc.GetElement(record.room.LevelId)
-    на документе-хосте (см. sot_levels.group_elements_by_level — та функция
-    для этого случая не подходит).
-    """
-    groups = OrderedDict()
+def _rows_by_level(records, saved_labels):
+    """(level_order, OrderedDict(level_name -> [_RoomRow, ...])) — строки
+    этажа отсортированы по номеру помещения."""
+    level_groups = OrderedDict()
     for index, record in enumerate(records):
         name = record.level_name or u"Без уровня"
-        if name not in groups:
-            level = None
+        if name not in level_groups:
             try:
                 level = record.room.Level
             except Exception:
                 level = None
-            groups[name] = {"elements": [], "level": level, "order": index}
-        groups[name]["elements"].append(record)
-    return groups
+            level_groups[name] = {"elements": [], "level": level, "order": index}
+        level_groups[name]["elements"].append(record)
 
-
-def _split_into_sections(records, section_param):
-    """OrderedDict(section_label -> [record, ...]). section_param=None ->
-    {None: records} (одна секция, без разбиения). Иначе — по значению
-    параметра, непустые значения в порядке появления, пустые/отсутствующие
-    — одной группой "Без секции" в конце (не отбрасываются)."""
-    if not section_param:
-        return OrderedDict([(None, list(records))])
-
-    buckets = OrderedDict()
-    empty_label = u"Без секции"
-    for record in records:
-        value = get_param_any(record.room, section_param)
-        value = value.strip() if value else u""
-        label = value or empty_label
-        buckets.setdefault(label, []).append(record)
-
-    ordered = OrderedDict()
-    for label, recs in buckets.items():
-        if label != empty_label:
-            ordered[label] = recs
-    if empty_label in buckets:
-        ordered[empty_label] = buckets[empty_label]
-    return ordered
-
-
-class _LevelOption(object):
-    def __init__(self, level_name, label):
-        self.level_name = level_name
-        self.label = label
-
-    def __str__(self):
-        return self.label
-
-
-class _RoomEntry(object):
-    """Один пункт списка выбора — отдельное помещение как свой бокс."""
-
-    def __init__(self, record, name_param, number_param):
-        self.record = record
-        self.name_param = name_param
-        self.number_param = number_param
-
-    def __str__(self):
-        return _room_label(self.record, self.name_param, self.number_param)
-
-    def to_box(self):
-        return {
-            "kind": "room",
-            "label": _room_label(self.record, self.name_param, self.number_param),
-            "room_ids": [self.record.room_id] if self.record.room_id is not None else [],
-        }
-
-
-class _GroupValueEntry(object):
-    """Один пункт списка выбора — значение параметра общей группы, целиком
-    как один будущий бокс схемы."""
-
-    def __init__(self, value, records):
-        self.value = value
-        self.records = records
-
-    def __str__(self):
-        return u"▦ {} ({} пом.) — один бокс".format(self.value, len(self.records))
-
-    def to_box(self):
-        return {
-            "kind": "group",
-            "label": self.value,
-            "room_ids": [r.room_id for r in self.records if r.room_id is not None],
-        }
-
-
-class _CarriedEntry(object):
-    """Один пункт списка "что убрать из перенесённого" — оборачивает уже
-    готовый box-словарь (перенесённый с предыдущего этажа), не запись
-    помещения."""
-
-    def __init__(self, box):
-        self.box = box
-
-    def __str__(self):
-        kind_label = u"группа" if self.box["kind"] == "group" else u"помещение"
-        return u"{}: {}".format(kind_label, self.box["label"])
-
-
-def _ask_jump_to_level(level_order, boxes, section_label=None):
-    """Список ВСЕХ этажей секции (с пометкой, где уже что-то добавлено) —
-    только для явного "вернуться к другому этажу". Основной проход по
-    этажам идёт по порядку сам, без этого диалога на каждом шаге."""
-    prefix = u"[{}] ".format(section_label) if section_label else u""
-    options = []
-    for level_name in level_order:
-        count = len(boxes.get(level_name, []))
-        label = get_level_label(level_name)
-        if count:
-            label = u"{} (уже добавлено: {})".format(label, count)
-        options.append(_LevelOption(level_name, label))
-
-    picked = forms.SelectFromList.show(
-        options,
-        title=u"{}К какому этажу вернуться?".format(prefix),
-        button_name=u"Перейти",
-        multiselect=False,
-    )
-    return picked.level_name if picked else None
-
-
-def _compute_carry_over(reference_boxes, level_records, records_by_id, name_param, number_param, group_param):
-    """
-    box-словари, автоматически переносимые на этот этаж с предыдущего
-    обработанного (reference_boxes) — отдельные помещения по совпадению
-    ИМЕНИ (не номера — тот обычно на каждом этаже свой), группы по
-    точному совпадению ЗНАЧЕНИЯ параметра общей группы. Пустой список,
-    если сравнивать не с чем или совпадений не нашлось.
-    """
-    if not reference_boxes:
-        return []
-
-    current_by_name = {}
-    for record in level_records:
-        key = _name_value(record, name_param)
-        if key and key not in current_by_name:
-            current_by_name[key] = record
-
-    current_group_values = _floor_group_values(level_records, group_param)
-
-    carried = []
-    for ref_box in reference_boxes:
-        if ref_box["kind"] == "group":
-            value = ref_box["label"]
-            recs = current_group_values.get(value)
-            if recs:
-                carried.append({
-                    "kind": "group",
-                    "label": value,
-                    "room_ids": [r.room_id for r in recs if r.room_id is not None],
-                })
-        else:
-            ref_room_id = ref_box["room_ids"][0] if ref_box["room_ids"] else None
-            ref_record = records_by_id.get(ref_room_id) if ref_room_id is not None else None
-            if ref_record is None:
-                continue
-            match = current_by_name.get(_name_value(ref_record, name_param))
-            if match is not None:
-                carried.append({
-                    "kind": "room",
-                    "label": _room_label(match, name_param, number_param),
-                    "room_ids": [match.room_id] if match.room_id is not None else [],
-                })
-
-    return carried
-
-
-def _pick_floor_boxes(level_records, level_name, section_label, baseline, name_param, number_param, group_param):
-    """
-    Итоговый список box-словарей для этажа. baseline — то, что уже
-    перенесено автоматически (типовой этаж) или сохранено раньше
-    (повторный заход) — списки ниже показывают только то, что ЕЩЁ не в
-    baseline (см. модульный докстринг), плюс отдельный вопрос про удаление
-    чего-то из baseline, если он не пуст.
-    """
-    prefix = u"[{}] ".format(section_label) if section_label else u""
-    level_label = get_level_label(level_name)
-
-    baseline_room_ids = set()
-    for b in baseline:
-        baseline_room_ids.update(b["room_ids"])
-    baseline_group_values = set(b["label"] for b in baseline if b["kind"] == "group")
-    carried_labels = u", ".join(b["label"] for b in baseline)
-
-    # --- отдельные помещения: что добавить ---
-    remaining_records = [r for r in level_records if r.room_id not in baseline_room_ids]
-    room_entries = [
-        _RoomEntry(r, name_param, number_param)
-        for r in sorted(remaining_records, key=lambda r: natural_key(room_finder.number_value(r, number_param)))
-    ]
-
-    added_rooms = []
-    if room_entries:
-        title = u"{}{} — отметьте помещения для схемы".format(prefix, level_label)
-        if baseline:
-            title = (
-                u"{}{}: с предыдущего этажа уже перенесено — {}. "
-                u"Отметьте, какие ЕЩЁ отдельные помещения добавить."
-            ).format(prefix, level_label, carried_labels)
-        picked = forms.SelectFromList.show(room_entries, title=title, button_name=u"Добавить", multiselect=True)
-        if picked:
-            added_rooms = [entry.to_box() for entry in picked]
-
-    # --- группы: что добавить ---
-    floor_groups = _floor_group_values(level_records, group_param)
-    remaining_groups = OrderedDict(
-        (value, recs) for value, recs in floor_groups.items() if value not in baseline_group_values
-    )
-
-    added_groups = []
-    if remaining_groups:
-        group_entries = [_GroupValueEntry(value, recs) for value, recs in remaining_groups.items()]
-        picked = forms.SelectFromList.show(
-            group_entries,
-            title=u"{}{} — какие группы объединить в отдельный бокс".format(prefix, level_label),
-            button_name=u"Добавить",
-            multiselect=True,
-        )
-        if picked:
-            added_groups = [entry.to_box() for entry in picked]
-
-    # --- что убрать из перенесённого ---
-    kept_baseline = list(baseline)
-    if baseline:
-        remove_something = forms.alert(
-            u"{}{}: перенесено с предыдущего этажа — {}.\n\nУбрать что-то из этого списка?".format(
-                prefix, level_label, carried_labels
-            ),
-            title=u"Рыба структурной схемы",
-            yes=True, no=True,
-        )
-        if remove_something:
-            remove_entries = [_CarriedEntry(b) for b in baseline]
-            picked = forms.SelectFromList.show(
-                remove_entries,
-                title=u"{}{} — отметьте, что убрать".format(prefix, level_label),
-                button_name=u"Убрать отмеченное",
-                multiselect=True,
-            )
-            if picked:
-                remove_signatures = set(_box_signature(entry.box) for entry in picked)
-                kept_baseline = [b for b in baseline if _box_signature(b) not in remove_signatures]
-
-    return kept_baseline + added_rooms + added_groups
-
-
-def _pick_section_boxes(section_records, records_by_id, name_param, number_param, group_param, section_label=None):
-    """
-    Проход по этажам ОДНОЙ секции (или всего проекта, если секций нет —
-    section_label=None) — по порядку, без вопроса "на каком этаже": боксы
-    обычно нужны на всех этажах подряд, поэтому после каждого этажа сразу
-    идёт следующий. Возвращает OrderedDict(level_name -> [box, ...]).
-    """
-    level_groups = _build_level_groups(section_records)
     level_order = sorted_level_names(level_groups)
-
-    boxes = OrderedDict()
-    visited_levels = set()
-    last_level_with_boxes = None
-    prefix = u"[{}] ".format(section_label) if section_label else u""
-
-    if not level_order:
-        return boxes
-
-    level_index = 0
-
-    while True:
-        level_name = level_order[level_index]
-        level_records = level_groups[level_name]["elements"]
-        existing_boxes = boxes.get(level_name, [])
-
-        baseline = existing_boxes
-        if not baseline and level_name not in visited_levels and last_level_with_boxes is not None:
-            baseline = _compute_carry_over(
-                boxes.get(last_level_with_boxes, []), level_records, records_by_id,
-                name_param, number_param, group_param
-            )
-
-        visited_levels.add(level_name)
-
-        boxes[level_name] = _pick_floor_boxes(
-            level_records, level_name, section_label, baseline, name_param, number_param, group_param
+    rows_by_level = OrderedDict()
+    for level_name in level_order:
+        level_records = sorted(
+            level_groups[level_name]["elements"],
+            key=lambda r: (natural_key(r.number), natural_key(r.name)),
         )
+        rows_by_level[level_name] = [
+            _RoomRow(r, saved_labels.get(_room_key(r))) for r in level_records
+        ]
+    return level_order, rows_by_level
 
-        if boxes.get(level_name):
-            last_level_with_boxes = level_name
 
-        is_last = level_index == len(level_order) - 1
-        total_boxes = sum(len(v) for v in boxes.values())
+# --- окно ---------------------------------------------------------------------------
 
-        nav_options = ([_NEXT] if not is_last else []) + [_BACK, _FINISH]
-        nav_choice = forms.SelectFromList.show(
-            nav_options,
-            title=u"{}Этаж «{}» готов. Боксов на нём: {} (всего боксов: {}). Что дальше?".format(
-                prefix, get_level_label(level_name), len(boxes.get(level_name, [])), total_boxes
-            ),
-            button_name=u"Выбрать",
-            multiselect=False,
-        )
+def _star(n):
+    return DataGridLength(n, DataGridLengthUnitType.Star)
 
-        if nav_choice == _BACK:
-            jump_to = _ask_jump_to_level(level_order, boxes, section_label)
-            if jump_to is not None:
-                level_index = level_order.index(jump_to)
-                continue
-            if is_last:
-                break
-            nav_choice = _NEXT
 
-        if nav_choice == _NEXT:
-            level_index += 1
-            continue
+def _button(text, bold=False):
+    btn = Button()
+    btn.Content = text
+    btn.Padding = Thickness(10, 3, 10, 3)
+    btn.Margin = Thickness(0, 0, 6, 4)
+    if bold:
+        btn.FontWeight = FontWeights.Bold
+    return btn
 
-        break
 
-    return boxes
+def _label(text):
+    tb = TextBlock()
+    tb.Text = text
+    tb.VerticalAlignment = VerticalAlignment.Center
+    tb.Margin = Thickness(0, 0, 6, 4)
+    return tb
+
+
+def _floor_caption(level_name, rows):
+    boxes = len(core.boxes_for_floor(rows))
+    text = u"{}  ·  пом.: {}".format(get_level_label(level_name), len(rows))
+    if boxes:
+        text += u"  ·  боксов: {}".format(boxes)
+    return text
 
 
 def show(doc, records):
     """
-    Ведёт пользователя через весь сценарий (см. модульный докстринг).
-    Возвращает (view_base_name, OrderedDict(section_label ->
-    OrderedDict(level_name -> [box, ...]))), либо None, если в итоге
-    ничего не выбрано ни в одной секции.
+    Показывает окно. Возвращает (view_name, OrderedDict(level_name ->
+    [box, ...])) для room_schematic.rebuild, либо None, если окно закрыто
+    без построения.
     """
     if not records:
         return None
 
-    param_names = list_room_param_names(records)
-    name_param = _ask_param(param_names, u"Параметр для имени помещения")
-    number_param = _ask_param(param_names, u"Параметр для номера помещения")
-    section_param = _ask_param(
-        param_names, u"Параметр для номера секции (по нему будет несколько схем)"
-    )
-    group_param = _ask_param(
-        param_names, u"Параметр для объединения нескольких помещений в общую группу"
-    )
-
-    records_by_id = dict((r.room_id, r) for r in records if r.room_id is not None)
-    sections = _split_into_sections(records, section_param)
-
-    result = OrderedDict()
-    for section_label, section_records in sections.items():
-        boxes = _pick_section_boxes(
-            section_records, records_by_id, name_param, number_param, group_param, section_label
-        )
-        if any(boxes.values()):
-            result[section_label] = boxes
-
-    if not result:
+    saved = _load_saved(doc)
+    saved_labels = saved.get("labels") or {}
+    level_order, rows_by_level = _rows_by_level(records, saved_labels)
+    if not level_order:
         return None
 
-    view_name = forms.ask_for_string(
-        default=SCHEMATIC_VIEW_NAME,
-        prompt=u"Имя чертёжного вида схемы"
-               + (u" (для секций к нему добавится «— <секция>»)" if len(result) > 1 else u"") + u":",
-        title=u"Рыба структурной схемы",
-    )
-    if not view_name:
-        view_name = SCHEMATIC_VIEW_NAME
+    state = {"level": None, "auto_filled": set(), "result": None}
 
-    return view_name, result
+    win = Window()
+    win.Title = TITLE
+    win.Width = 1050
+    win.Height = 720
+    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+
+    outer = DockPanel()
+    outer.LastChildFill = True
+
+    # --- шапка ---
+    header = TextBlock()
+    header.Text = (
+        u"Выберите этаж слева и в столбце «На схеме» напишите, как показать "
+        u"помещение на схеме. Пусто — помещения на схеме не будет. Одинаковая "
+        u"подпись у нескольких помещений этажа — один общий бокс (группа). "
+        u"Можно выделить несколько строк (Shift/Ctrl) и задать им подпись "
+        u"разом. Этаж с тем же набором помещений, что у уже заполненного "
+        u"(типовой), заполнится сам."
+    )
+    header.TextWrapping = TextWrapping.Wrap
+    header.Margin = Thickness(12, 10, 12, 8)
+    DockPanel.SetDock(header, Dock.Top)
+
+    # --- низ: имя вида + кнопки ---
+    bottom = DockPanel()
+    bottom.Margin = Thickness(12, 8, 12, 12)
+    DockPanel.SetDock(bottom, Dock.Bottom)
+
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    DockPanel.SetDock(buttons, Dock.Right)
+    cancel_btn = _button(u"Отмена")
+    build_btn = _button(u"Построить схему", bold=True)
+    buttons.Children.Add(cancel_btn)
+    buttons.Children.Add(build_btn)
+
+    view_row = StackPanel()
+    view_row.Orientation = Orientation.Horizontal
+    view_row.Children.Add(_label(u"Имя чертёжного вида:"))
+    view_box = TextBox()
+    view_box.Width = 360
+    view_box.Margin = Thickness(0, 0, 6, 4)
+    view_box.Text = saved.get("view_name") or SCHEMATIC_VIEW_NAME
+    view_row.Children.Add(view_box)
+
+    bottom.Children.Add(buttons)
+    bottom.Children.Add(view_row)
+
+    # --- середина: этажи | таблица ---
+    body = Grid()
+    body.Margin = Thickness(12, 0, 12, 0)
+    left_col = ColumnDefinition()
+    left_col.Width = GridLength(280)
+    right_col = ColumnDefinition()
+    right_col.Width = GridLength(1, GridUnitType.Star)
+    body.ColumnDefinitions.Add(left_col)
+    body.ColumnDefinitions.Add(right_col)
+
+    floors = ListBox()
+    floors.Margin = Thickness(0, 0, 10, 0)
+    floor_items = []
+    for level_name in level_order:
+        item = ListBoxItem()
+        item.Content = _floor_caption(level_name, rows_by_level[level_name])
+        floors.Items.Add(item)
+        floor_items.append(item)
+    Grid.SetColumn(floors, 0)
+    body.Children.Add(floors)
+
+    right = DockPanel()
+    right.LastChildFill = True
+    Grid.SetColumn(right, 1)
+    body.Children.Add(right)
+
+    banner = TextBlock()
+    banner.TextWrapping = TextWrapping.Wrap
+    banner.FontWeight = FontWeights.Bold
+    banner.Margin = Thickness(0, 0, 0, 6)
+    DockPanel.SetDock(banner, Dock.Top)
+    right.Children.Add(banner)
+
+    tools = WrapPanel()
+    tools.Margin = Thickness(0, 6, 0, 0)
+    DockPanel.SetDock(tools, Dock.Bottom)
+    tools.Children.Add(_label(u"Выделенным:"))
+    label_box = TextBox()
+    label_box.Width = 180
+    label_box.Margin = Thickness(0, 0, 6, 4)
+    tools.Children.Add(label_box)
+    set_btn = _button(u"Задать подпись")
+    name_btn = _button(u"Подпись = имя помещения")
+    clear_btn = _button(u"Убрать со схемы")
+    tools.Children.Add(set_btn)
+    tools.Children.Add(name_btn)
+    tools.Children.Add(clear_btn)
+    tools.Children.Add(_label(u"   Как на этаже:"))
+    copy_combo = ComboBox()
+    copy_combo.Width = 200
+    copy_combo.Margin = Thickness(0, 0, 6, 4)
+    for level_name in level_order:
+        copy_combo.Items.Add(get_level_label(level_name))
+    tools.Children.Add(copy_combo)
+    copy_btn = _button(u"Скопировать")
+    tools.Children.Add(copy_btn)
+    right.Children.Add(tools)
+
+    grid = DataGrid()
+    grid.AutoGenerateColumns = False
+    grid.CanUserAddRows = False
+    grid.CanUserDeleteRows = False
+    grid.CanUserResizeRows = False
+    grid.HeadersVisibility = DataGridHeadersVisibility.Column
+    grid.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal
+    grid.SelectionMode = DataGridSelectionMode.Extended
+
+    number_col = DataGridTextColumn()
+    number_col.Header = u"Номер"
+    number_col.Binding = Binding("number")
+    number_col.IsReadOnly = True
+    number_col.Width = DataGridLength(90)
+    grid.Columns.Add(number_col)
+
+    name_col = DataGridTextColumn()
+    name_col.Header = u"Имя"
+    name_col.Binding = Binding("name")
+    name_col.IsReadOnly = True
+    name_col.Width = _star(1)
+    grid.Columns.Add(name_col)
+
+    label_binding = Binding("label")
+    label_binding.Mode = BindingMode.TwoWay
+    label_binding.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+    label_col = DataGridTextColumn()
+    label_col.Header = u"На схеме"
+    label_col.Binding = label_binding
+    label_col.Width = _star(1)
+    grid.Columns.Add(label_col)
+
+    right.Children.Add(grid)
+
+    # --- поведение ---
+
+    def commit():
+        try:
+            grid.CommitEdit(DataGridEditingUnit.Row, True)
+        except Exception:
+            pass
+
+    def current_rows():
+        return rows_by_level.get(state["level"]) or []
+
+    def refresh():
+        """Перерисовать таблицу и подпись этажа после правок из кода
+        (строки — обычные python-объекты без INotifyPropertyChanged)."""
+        commit()
+        try:
+            grid.Items.Refresh()
+        except Exception:
+            pass
+        level_name = state["level"]
+        if level_name is not None:
+            index = level_order.index(level_name)
+            floor_items[index].Content = _floor_caption(level_name, current_rows())
+
+    def selected_rows():
+        rows = [row for row in grid.SelectedItems]
+        if not rows:
+            forms.alert(u"Выделите строки в таблице (Shift/Ctrl — несколько).", title=TITLE)
+        return rows
+
+    def open_level(level_name):
+        commit()
+        if state["level"] is not None:
+            refresh()
+        state["level"] = level_name
+        rows = rows_by_level[level_name]
+        banner.Text = u""
+
+        if (not core.has_labels(rows)) and level_name not in state["auto_filled"]:
+            source = core.find_typical_source(level_order, rows_by_level, level_name)
+            if source is not None:
+                core.copy_labels_by_name(rows_by_level[source], rows)
+                state["auto_filled"].add(level_name)
+                banner.Text = (
+                    u"Типовой этаж: подписи взяты с «{}» (тот же набор помещений). "
+                    u"Проверьте и при необходимости поправьте."
+                ).format(get_level_label(source))
+
+        data = List[object]()
+        for row in rows:
+            data.Add(row)
+        grid.ItemsSource = data
+        refresh()
+
+    def on_floor_changed(sender, args):
+        index = floors.SelectedIndex
+        if 0 <= index < len(level_order):
+            open_level(level_order[index])
+
+    def on_set(sender, args):
+        text = (label_box.Text or u"").strip()
+        if not text:
+            forms.alert(u"Впишите подпись в поле слева от кнопки.", title=TITLE)
+            return
+        commit()
+        for row in selected_rows():
+            row.label = text
+        refresh()
+
+    def on_name(sender, args):
+        commit()
+        for row in selected_rows():
+            row.label = row.name
+        refresh()
+
+    def on_clear(sender, args):
+        commit()
+        for row in selected_rows():
+            row.label = u""
+        refresh()
+
+    def on_label_key(sender, args):
+        if args.Key == Key.Enter:
+            on_set(sender, args)
+
+    def on_copy(sender, args):
+        index = copy_combo.SelectedIndex
+        if not (0 <= index < len(level_order)):
+            forms.alert(u"Выберите этаж-образец в списке.", title=TITLE)
+            return
+        source = level_order[index]
+        if source == state["level"]:
+            return
+        commit()
+        copied = core.copy_labels_by_name(rows_by_level[source], current_rows())
+        banner.Text = u"С «{}» перенесено подписей (по именам помещений): {}.".format(
+            get_level_label(source), copied)
+        refresh()
+
+    def on_cancel(sender, args):
+        win.Close()
+
+    def on_build(sender, args):
+        commit()
+        refresh()
+        boxes = core.build_boxes(level_order, rows_by_level)
+        if not boxes:
+            forms.alert(u"Ни у одного помещения нет подписи «На схеме» — строить нечего.", title=TITLE)
+            return
+        state["result"] = (view_name_text(), boxes)
+        win.Close()
+
+    def view_name_text():
+        return (view_box.Text or u"").strip() or SCHEMATIC_VIEW_NAME
+
+    def on_closing(sender, args):
+        # Подписи сохраняются и при «Отмене»/крестике — чтобы не потерять
+        # заполненное, если окно закрыли, не построив схему.
+        commit()
+        _save(doc, view_name_text(), rows_by_level)
+
+    floors.SelectionChanged += on_floor_changed
+    set_btn.Click += on_set
+    name_btn.Click += on_name
+    clear_btn.Click += on_clear
+    label_box.KeyDown += on_label_key
+    copy_btn.Click += on_copy
+    cancel_btn.Click += on_cancel
+    build_btn.Click += on_build
+    win.Closing += on_closing
+
+    outer.Children.Add(header)
+    outer.Children.Add(bottom)
+    outer.Children.Add(body)
+    win.Content = outer
+
+    floors.SelectedIndex = 0
+    win.ShowDialog()
+
+    return state["result"]

@@ -23,31 +23,26 @@ if not picked:
     import sys
     sys.exit()
 
-base_view_name, sections = picked
+view_name, boxes = picked
 
-# Проверка/подбор вида на КАЖДУЮ секцию — до открытия транзакции (только
-# чтение модели), чтобы ошибка конфликта имени вида остановила скрипт
-# раньше, чем что-либо начнёт строиться (см. room_schematic.check_view).
-view_plans = []
-for section_label, boxes in sections.items():
-    view_name = room_schematic.schematic_view_name(base_view_name, section_label)
-    existing_view, drafting_type_id, error = room_schematic.check_view(doc, view_name)
-    if error:
-        forms.alert(error, title=u"Рыба структурной схемы", exitscript=True)
-    view_plans.append((view_name, existing_view, drafting_type_id, boxes))
-
-summary_lines = []
-last_view = None
+# Проверка/подбор вида — до открытия транзакции (только чтение модели),
+# чтобы конфликт имени вида остановил скрипт раньше, чем что-либо начнёт
+# строиться (см. room_schematic.check_view).
+existing_view, drafting_type_id, error = room_schematic.check_view(doc, view_name)
+if error:
+    forms.alert(error, title=u"Рыба структурной схемы", exitscript=True)
 
 with revit.Transaction(u"Build Room Schematic"):
-    for view_name, existing_view, drafting_type_id, boxes in view_plans:
-        view = existing_view if existing_view is not None else room_schematic.create_view(
-            doc, drafting_type_id, view_name
-        )
-        num_levels, num_boxes = room_schematic.rebuild(doc, view, boxes)
-        summary_lines.append(u"«{}»: уровней — {}, боксов — {}".format(view_name, num_levels, num_boxes))
-        last_view = view
+    view = existing_view if existing_view is not None else room_schematic.create_view(
+        doc, drafting_type_id, view_name
+    )
+    num_levels, num_boxes = room_schematic.rebuild(doc, view, boxes)
 
-revit.uidoc.ActiveView = last_view
+revit.uidoc.ActiveView = view
 
-forms.alert(u"Готово.\n\n" + u"\n".join(summary_lines), title=u"Рыба структурной схемы")
+forms.alert(
+    u"Готово.
+
+«{}»: этажей — {}, боксов — {}".format(view_name, num_levels, num_boxes),
+    title=u"Рыба структурной схемы",
+)

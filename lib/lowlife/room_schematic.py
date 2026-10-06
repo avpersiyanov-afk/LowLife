@@ -37,17 +37,6 @@ from lowlife.sot_schematic import (
 SCHEMATIC_VIEW_NAME = u"Структурная схема (черновик)"
 
 
-def schematic_view_name(base_name, section_label):
-    """Имя чертёжного вида для одной секции — base_name (имя, которое
-    пользователь ввёл в room_schematic_picker.show, по умолчанию
-    SCHEMATIC_VIEW_NAME) без изменений, если секций нет (section_label=
-    None), иначе с суффиксом значения секции — по одному виду на секцию
-    (см. room_schematic_picker._split_into_sections)."""
-    base_name = base_name or SCHEMATIC_VIEW_NAME
-    if not section_label:
-        return base_name
-    return u"{} — {}".format(base_name, section_label)
-
 # Максимальная ширина одного ряда боксов на этаже, мм — после этой ширины
 # следующий бокс переносится на новую строку ниже (см. _place_level_boxes),
 # как в sot_schematic.sync_rooms_in_level, но без настройки в v1 — тут нет
@@ -161,8 +150,8 @@ def check_view(doc, view_name):
     """
     (view, drafting_type_id, error) — вызывать ДО открытия транзакции
     (только читает модель, как и BuildSotSchematic перед своим
-    is_new_view/drafting_type_id). view_name — обычно
-    schematic_view_name(section_label), своё имя на каждую секцию:
+    is_new_view/drafting_type_id). view_name — имя из окна
+    room_schematic_picker.show:
       - вид с этим именем уже есть и это ViewDrafting -> (view, None, None);
       - вид с таким именем есть, но не чертёжный -> (None, None, текст
         ошибки) — переименовать/удалить должен пользователь;
