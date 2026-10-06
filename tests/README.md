@@ -79,6 +79,8 @@
 - `level_assign.py` (частично) — только `pick_level_by_elevation` (выбор
   уровня по высоте для кнопки «Обновить имя уровня»); Revit API модуль
   импортирует лениво. Без `unicode()`, идёт и под Python 3.
+- `view_crop.py` (частично) — только `crop_rect` (рамка «Обрезать вид» из
+  двух углов, отказ для вырожденной рамки); Revit API импортируется лениво.
 
 Не покрыто и не может быть протестировано вне Revit: `route_nodes.py`,
 `route_addressing.py`, `skud.py`, `fire_alarm.py`,

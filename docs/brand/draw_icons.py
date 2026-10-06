@@ -271,6 +271,20 @@ def spell_check(c):
     c.line([(62, 70), (68, 77), (79, 63)], ORANGE, 5)
 
 
+def crop_view(c):
+    """«Обрезать вид»: план с рамкой подрезки, заданной двумя оранжевыми
+    углами-точками; за рамкой — пунктир обрезанной части."""
+    c.dashed((10, 30), (86, 30), BLUE, 3, 5, 4)
+    c.dashed((30, 10), (30, 86), BLUE, 3, 5, 4)
+    c.rect((22, 22, 74, 74), BLUE, WHITE, 5, 2)
+    c.line([(32, 40), (64, 40)], BLUE, 4)
+    c.line([(32, 54), (56, 54)], BLUE, 4)
+    c.rect((40, 60, 64, 68), BLUE, None, 3, 1)
+    for p in ((22, 22), (74, 74)):
+        c.circle(p, 7, None, ORANGE)
+        c.circle(p, 2.5, None, WHITE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -287,6 +301,7 @@ ICONS = [
     ("_Themes.panel/Feedback.pushbutton", feedback),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
+    ("Tools.panel/CropView.pushbutton", crop_view),
 ]
 
 
