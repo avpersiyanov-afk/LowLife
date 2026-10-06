@@ -45,6 +45,9 @@
         <TextBlock Style="{StaticResource Caption}" Text="Как с вами связаться (необязательно)"/>
         <TextBox x:Name="txtContact" Padding="4"/>
 
+        <TextBlock Foreground="#888888" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                   Text="Отправляя сообщение, вы соглашаетесь, что его текст, контакт, имена пользователя Revit и Windows, версии LowLife и Revit и имя открытой модели будут сохранены в таблице автора LowLife и использованы только для ответа вам и доработки расширения. Видит их только автор."/>
+
         <TextBlock x:Name="txtStatus" Foreground="#B04A00" TextWrapping="Wrap" Margin="0,10,0,0"/>
 
         <DockPanel Margin="0,14,0,0" LastChildFill="False">

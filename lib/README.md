@@ -13,7 +13,7 @@ from lowlife.geometry import get_point
 
 ## about.py
 Данные окна «О программе» (`_Themes.panel/About`): `REPO_URL`, `TAGLINE`,
-`DISCIPLINES` и версия расширения. `git_revision(root=None)` читает текущий
+`DISCIPLINES`, лицензия (`LICENSE_TEXT`, `LICENSE_URL`, `COPYRIGHT`) и версия расширения. `git_revision(root=None)` читает текущий
 коммит прямо из файлов `.git` (HEAD → `refs/heads/…` или `packed-refs`,
 detached HEAD — хеш в самом HEAD) и возвращает `(ветка, хеш)` или `None`;
 `version_text()` — строка «ветка @ 1a2b3c4» либо «неизвестна».

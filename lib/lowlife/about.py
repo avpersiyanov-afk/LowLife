@@ -14,6 +14,11 @@ REPO_URL = u"https://github.com/avpersiyanov-afk/LowLife"
 TAGLINE = u"Слаботочные системы в Revit"
 DISCIPLINES = u"СКС · СКУД · СОТ · СОУЭ · СПС · СПА · КНК"
 PARAMS_URL = REPO_URL + u"/blob/main/docs/parameters.md"
+# Лицензия — файл LICENSE в корне репозитория; меняя её, поправьте и раздел
+# «Лицензия» в README.md.
+LICENSE_TEXT = u"MIT — предоставляется «как есть», без гарантий"
+LICENSE_URL = REPO_URL + u"/blob/main/LICENSE"
+COPYRIGHT = u"© 2026 Андрей Персиянов"
 
 # Поддерживаемые версии Revit — то же, что таблица в README.md
 # («Поддерживаемые версии Revit»); меняя одно, поправьте и другое.

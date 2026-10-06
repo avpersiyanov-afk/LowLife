@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 __title__ = u"LowLife"
-__doc__ = u"О программе: логотип, версия расширения, поддерживаемые версии Revit, таблица параметров и ссылка на репозиторий"
+__doc__ = u"О программе: логотип, версия расширения, поддерживаемые версии Revit, таблица параметров, ссылка на репозиторий и лицензия"
 __author__ = "Pipers"
 
 import os
@@ -61,6 +61,9 @@ class AboutWindow(forms.WPFWindow):
         self.params_link.Click += lambda s, e: _open_url(about.PARAMS_URL)
         self.repo_run.Text = about.REPO_URL
         self.repo_link.Click += lambda s, e: _open_url(about.REPO_URL)
+        self.license_run.Text = about.LICENSE_TEXT
+        self.license_link.Click += lambda s, e: _open_url(about.LICENSE_URL)
+        self.copyright_tb.Text = about.COPYRIGHT
         self.close_btn.Click += lambda s, e: self.Close()
 
 
