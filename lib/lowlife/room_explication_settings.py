@@ -9,7 +9,8 @@ settings_core.TextSettings (Shift+клик по кнопке). Умолчани�
 """
 
 from lowlife import settings_core
-from lowlife.room_explication_core import COLUMNS
+from lowlife.room_explication_core import (
+    COLUMNS, HEADER_HEIGHT_MM, OLD_DEFAULT_WIDTHS, ROW_HEIGHT_MM)
 
 _LABELS = {
     "number": u"Номер помещения",
@@ -36,6 +37,28 @@ def _column_fields():
     return fields
 
 
+def _migrate(saved, values):
+    """Ширины, сохранённые со старыми умолчаниями (60/15), — на форму ГОСТ."""
+    old = all(_num(saved.get("width_" + k)) == w for k, w in OLD_DEFAULT_WIDTHS.items())
+    if old:
+        for key, _heading, width in COLUMNS:
+            if key in OLD_DEFAULT_WIDTHS:
+                values["width_" + key] = width
+
+
+def _num(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def heights(settings):
+    """(высота шапки, высота строки) в мм."""
+    return (float(settings.get("header_height") or HEADER_HEIGHT_MM),
+            float(settings.get("row_height") or ROW_HEIGHT_MM))
+
+
 SETTINGS = settings_core.TextSettings(
     file_name="LowLifeRoomExplication_settings.json",
     button_name=u"Экспликация фрагмента",
@@ -56,9 +79,22 @@ SETTINGS = settings_core.TextSettings(
             hint=u"По умолчанию 2 (12,35).",
             default=2, minimum=0, integer=True,
         ),
+        settings_core.NumberField(
+            "header_height", u"⑥ Высота строк", u"Шапка таблицы, мм",
+            hint=u"По умолчанию 20 мм (форма 2 ГОСТ 21.501).",
+            default=HEADER_HEIGHT_MM, minimum=3.0,
+        ),
+        settings_core.NumberField(
+            "row_height", u"", u"Строка помещения, мм",
+            hint=(u"По умолчанию 8 мм. Если Revit не даёт задать высоту строк "
+                  u"тела спецификации, она берётся из размера текста — кнопка "
+                  u"об этом скажет."),
+            default=ROW_HEIGHT_MM, minimum=3.0,
+        ),
     ],
+    migrate=_migrate,
     reset_button=True,
-    width=720, height=640,
+    width=720, height=720,
 )
 
 load_saved_values = SETTINGS.load_saved_values

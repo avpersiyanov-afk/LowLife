@@ -43,3 +43,19 @@ def test_in_rect():
 def test_default_columns_follow_gost_form():
     assert [c[1] for c in core.COLUMNS] == [
         u"Номер помещения", u"Наименование", u"Площадь, м²", u"Кат. помещения"]
+
+
+def test_default_sizes_match_gost_form_2():
+    assert [c[2] for c in core.COLUMNS] == [15.0, 80.0, 20.0, 10.0]
+    assert sum(c[2] for c in core.COLUMNS) == 125.0
+    assert (core.HEADER_HEIGHT_MM, core.ROW_HEIGHT_MM) == (20.0, 8.0)
+
+
+def test_old_default_widths_migrate_to_gost():
+    from lowlife import room_explication_settings as rs
+    values = {"width_name": 60.0, "width_category": 15.0}
+    rs._migrate({"width_name": 60, "width_category": u"15"}, values)
+    assert values == {"width_name": 80.0, "width_category": 10.0}
+    custom = {"width_name": 70.0, "width_category": 15.0}
+    rs._migrate({"width_name": 70, "width_category": 15}, custom)
+    assert custom == {"width_name": 70.0, "width_category": 15.0}

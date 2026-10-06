@@ -7,8 +7,9 @@ __doc__ = (
     u"рамку подрезки активного плана, и создаёт ключевую спецификацию: "
     u"номер, наименование, площадь, категория — без настройки фильтров. "
     u"Повторный запуск на том же виде обновляет эту же спецификацию.\n\n"
-    u"Shift+клик — настройки: заголовки и ширины столбцов (по умолчанию — "
-    u"форма 2 ГОСТ 21.501), параметр категории, знаки площади."
+    u"Shift+клик — настройки: заголовки и ширины столбцов, высота шапки и "
+    u"строк (по умолчанию — форма 2 ГОСТ 21.501: 15/80/20/10 мм, шапка 20, "
+    u"строка 8), параметр категории, знаки площади."
 )
 __author__ = "Pipers"
 
@@ -68,8 +69,9 @@ columns = room_explication_settings.columns(settings)
 
 try:
     with revit.Transaction(TITLE):
-        schedule, created = room_explication.build_schedule(
-            doc, __revit__.Application, view.Name, rows, columns)
+        schedule, created, rows_ok = room_explication.build_schedule(
+            doc, __revit__.Application, view.Name, rows, columns,
+            room_explication_settings.heights(settings))
 except Exception:
     forms.alert(u"Не удалось построить экспликацию.\n\n" + traceback.format_exc(),
                 title=TITLE, exitscript=True)
@@ -79,6 +81,9 @@ lines = [u"{} «{}»: {} пом.".format(
     core.schedule_name(view.Name), len(rows))]
 if skipped:
     lines.append(u"Пропущено неразмещённых/незамкнутых помещений (площадь 0): {}.".format(skipped))
+if not rows_ok:
+    lines.append(u"Высоту строк помещений Revit задать не дал — она идёт от "
+                 u"размера текста спецификации.")
 if not category_param:
     lines.append(u"Графа «Категория» пустая: параметр категории не задан "
                  u"(Shift+клик по кнопке).")

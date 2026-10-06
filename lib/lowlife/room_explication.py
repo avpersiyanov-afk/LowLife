@@ -368,11 +368,33 @@ def _insert_rows(doc, schedule, count):
             raise RuntimeError(u"Revit не дал добавить строку в ключевую спецификацию.")
 
 
-def build_schedule(doc, app, view_name, rows, columns):
+def _set_row_heights(schedule, header_mm, row_mm):
+    """
+    Высота строки заголовков граф (первая строка тела) и строк помещений.
+    Возвращает True, если высоту строк помещений удалось задать (Revit
+    может её не принимать — тогда она идёт от размера текста).
+    """
+    body = schedule.GetTableData().GetSectionData(SectionType.Body)
+    first, last = body.FirstRowNumber, body.LastRowNumber
+    try:
+        body.SetRowHeight(first, header_mm / core.MM_IN_FOOT)
+    except Exception:
+        pass
+    ok = True
+    for row in range(first + 1, last + 1):
+        try:
+            body.SetRowHeight(row, row_mm / core.MM_IN_FOOT)
+        except Exception:
+            ok = False
+    return ok
+
+
+def build_schedule(doc, app, view_name, rows, columns, heights=None):
     """
     Создаёт или обновляет ключевую спецификацию фрагмента. Вызывать в
     транзакции. rows — из room_explication_core.build_rows; columns — из
-    room_explication_settings.columns. Возвращает (спецификация, создана ли).
+    room_explication_settings.columns; heights — (шапка, строка) в мм.
+    Возвращает (спецификация, создана ли, задана ли высота строк).
     """
     param_ids = ensure_params(doc, app)
     name = core.schedule_name(view_name)
@@ -417,4 +439,8 @@ def build_schedule(doc, app, view_name, rows, columns):
         header.SetCellText(header.FirstRowNumber, header.FirstColumnNumber, core.TITLE)
     except Exception:
         pass
-    return schedule, created
+
+    doc.Regenerate()
+    header_mm, row_mm = heights or (core.HEADER_HEIGHT_MM, core.ROW_HEIGHT_MM)
+    rows_ok = _set_row_heights(schedule, header_mm, row_mm)
+    return schedule, created, rows_ok
