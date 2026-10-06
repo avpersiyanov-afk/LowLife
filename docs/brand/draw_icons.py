@@ -285,6 +285,23 @@ def crop_view(c):
         c.circle(p, 2.5, None, WHITE)
 
 
+def fragment_explication(c):
+    """«Экспликация фрагмента»: фрагмент плана в рамке подрезки (оранжевые
+    углы) и таблица экспликации рядом."""
+    c.rect((8, 14, 46, 52), BLUE, WHITE, 4, 2)
+    c.line([(8, 34), (30, 34), (30, 14)], BLUE, 3)
+    c.line([(30, 34), (30, 52)], BLUE, 3)
+    for p in ((8, 14), (46, 52)):
+        c.circle(p, 5, None, ORANGE)
+    c.rect((34, 44, 88, 86), BLUE, WHITE, 4.5, 2)
+    c.d.rectangle([34 * K, 44 * K, 88 * K, 54 * K], fill=BLUE)
+    for y in (64, 75):
+        c.line([(36, y), (86, y)], BLUE, 2.5)
+    for x in (46, 76):
+        c.line([(x, 54), (x, 86)], BLUE, 2.5)
+    c.line([(50, 59), (70, 59)], ORANGE, 3)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -302,6 +319,7 @@ ICONS = [
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),
+    ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
 ]
 
 
