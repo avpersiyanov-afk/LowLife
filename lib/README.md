@@ -1864,6 +1864,33 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `boxes_for_floor` | `boxes_for_floor(rows)` | Боксы этажа: по одному на каждую различную подпись, в порядке первого появления |
 | `build_boxes` | `build_boxes(level_order, rows_by_level)` | `OrderedDict(level_name -> [box, ...])` для `room_schematic.rebuild`, только непустые этажи |
 
+## room_explication.py / room_explication_core.py / room_explication_settings.py
+Кнопка «Экспликация фрагмента» (`ToolsRooms.panel/FragmentExplication`).
+
+- `room_explication_core.py` (без Revit API, покрыт
+  `tests/test_room_explication_core.py`): `COLUMNS` — столбцы, заголовки и
+  ширины по умолчанию (форма 2 ГОСТ 21.501; размеры граф ГОСТ оставляет
+  разработчику, взяты 15/60/20/15 мм); `build_rows(rooms, decimals)` —
+  строки таблицы, сортировка номеров с числами внутри (`natural_key`),
+  площадь с запятой (`format_area`), без повторов; `schedule_name`/
+  `key_param_name` — имена спецификации и её ключевого параметра по виду
+  (без недопустимых в Revit символов); `key_names(n)` — «001, 002, …».
+- `room_explication.py` (Revit API): `unsupported_reason(view)` — нужен
+  план с включённой подрезкой; `collect_fragment_rooms(doc, view,
+  category_param)` — помещения модели и видимых связей, чья точка
+  размещения в рамке подрезки и в секущем диапазоне плана, по источникам
+  + число отброшенных с площадью 0; `ensure_params(doc, app)` — четыре
+  текстовых общих параметра `LL_Экспликация_*` с фиксированными GUID
+  (`PARAMS`), привязанных к помещениям, заводятся через временный ФОП
+  (подключённый ФОП пользователя восстанавливается); `build_schedule(doc,
+  app, view_name, rows, columns)` — создаёт или находит по имени ключевую
+  спецификацию помещений, ставит поля/заголовки/ширины, скрывает
+  «Ключевое имя» и сортирует по нему, заменяет строки. Помещениям ключ не
+  назначается, так что на сами помещения параметры не влияют; Revit лишь
+  добавляет помещениям ключевой параметр этой спецификации.
+- `room_explication_settings.py` — `TextSettings` (Shift+клик): заголовки и
+  ширины четырёх столбцов, параметр категории, знаки площади; `columns(settings)`.
+
 ## room_lots.py / room_lots_settings.py
 Анализ помещений связанной модели по лотам — кнопка `ToolsRooms.panel/RoomLots`
 («Двухуровневые лоты»). Берутся только помещения связей (без самой модели),
