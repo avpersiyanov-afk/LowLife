@@ -16,7 +16,7 @@ import uuid
 
 from lowlife import email_ai_net
 from lowlife.email_ai_core import (
-    AIError, codex_arguments, codex_request_text, classify_codex_failure
+    AIError, SYSTEM_PROMPT, codex_arguments, codex_request_text, classify_codex_failure
 )
 
 # Codex думает дольше одного хода Claude — даём больше времени
@@ -39,12 +39,13 @@ def find_codex(configured_path=u""):
         configured_path, [u"codex.exe", u"codex.cmd", u"codex"], extra)
 
 
-def run_codex(codex_path, model, request_text, tick=None, timeout_seconds=TIMEOUT_SECONDS):
+def run_codex(codex_path, model, request_text, tick=None, timeout_seconds=TIMEOUT_SECONDS,
+              system=SYSTEM_PROMPT):
     """Запускает codex exec, возвращает текст последнего ответа модели."""
     out_file = os.path.join(email_ai_net.work_dir(), u"codex_answer_{}.txt".format(uuid.uuid4().hex))
     try:
         exit_code, stdout, stderr = email_ai_net.run_process(
-            codex_path, codex_arguments(model, out_file), codex_request_text(request_text),
+            codex_path, codex_arguments(model, out_file), codex_request_text(request_text, system or SYSTEM_PROMPT),
             u"codex", tick=tick, timeout_seconds=timeout_seconds)
 
         answer = u""

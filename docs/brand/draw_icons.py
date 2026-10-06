@@ -248,6 +248,29 @@ def level_name(c):
     c.polygon([(16, 44), (28, 44), (22, 51)], fill=ORANGE)
 
 
+
+def spell_check(c):
+    """«Проверка орфографии»: надпись «Абв» с оранжевым волнистым
+    подчёркиванием ошибки, строки текста и галочка исправления."""
+    font = None
+    for name in ("arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            font = ImageFont.truetype(name, 30 * K)
+            break
+        except IOError:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+    c.d.text((12 * K, 10 * K), u"Абв", font=font, fill=BLUE)
+    # Волнистое подчёркивание под словом
+    wave = [(12 + i * 1.5, 50 + 3 * math.sin(i * 1.5 / 4.0 * math.pi)) for i in range(41)]
+    c.line(wave, ORANGE, 3.5)
+    c.line([(12, 66), (46, 66)], BLUE, 5)
+    c.line([(12, 80), (44, 80)], BLUE, 5)
+    c.badge((70, 70), 17)
+    c.line([(62, 70), (68, 77), (79, 63)], ORANGE, 5)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -263,6 +286,7 @@ ICONS = [
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
     ("_Themes.panel/Feedback.pushbutton", feedback),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
+    ("Tools.panel/SpellCheck.pushbutton", spell_check),
 ]
 
 

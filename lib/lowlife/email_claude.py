@@ -50,7 +50,7 @@ def find_claude(configured_path=u""):
         configured_path, [u"claude.exe", u"claude.cmd", u"claude"], extra)
 
 
-def build_arguments(model):
+def build_arguments(model, system=SYSTEM_PROMPT):
     return [
         u"-p",
         u"--output-format", u"json",
@@ -59,7 +59,7 @@ def build_arguments(model):
         u"--max-turns", u"1",
         u"--no-session-persistence",
         u"--strict-mcp-config",
-        u"--system-prompt", SYSTEM_PROMPT,
+        u"--system-prompt", system or SYSTEM_PROMPT,
     ]
 
 
@@ -112,13 +112,14 @@ def _parse_cli_json(stdout):
     return None
 
 
-def run_claude(claude_path, model, request_text, tick=None, timeout_seconds=TIMEOUT_SECONDS):
+def run_claude(claude_path, model, request_text, tick=None, timeout_seconds=TIMEOUT_SECONDS,
+               system=SYSTEM_PROMPT):
     """
     Запускает claude -p, отдаёт request_text в stdin, возвращает текст
     ответа модели (поле result). tick() — см. email_ai_net.run_process.
     """
     exit_code, stdout, stderr = email_ai_net.run_process(
-        claude_path, build_arguments(model), request_text, u"claude",
+        claude_path, build_arguments(model, system), request_text, u"claude",
         tick=tick, timeout_seconds=timeout_seconds)
 
     result = _parse_cli_json(stdout)

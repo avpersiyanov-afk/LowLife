@@ -138,8 +138,9 @@ def anthropic_model(model):
     return ANTHROPIC_ALIASES.get(model.lower(), model)
 
 
-def anthropic_request(api_key, model, request_text):
-    """(заголовки, тело) запроса POST /v1/messages."""
+def anthropic_request(api_key, model, request_text, system=SYSTEM_PROMPT):
+    """(заголовки, тело) запроса POST /v1/messages. system — системный промпт
+    (по умолчанию — для писем; у «Проверки орфографии» свой)."""
     model = anthropic_model(model)
     headers = {
         "x-api-key": api_key,
@@ -149,7 +150,7 @@ def anthropic_request(api_key, model, request_text):
     body = {
         "model": model,
         "max_tokens": ANTHROPIC_MAX_TOKENS,
-        "system": SYSTEM_PROMPT,
+        "system": system,
         "messages": [{"role": "user", "content": request_text}],
     }
     if model in _ANTHROPIC_FALLBACK_MODELS:
@@ -164,15 +165,15 @@ def parse_anthropic_response(raw):
     stop = data.get("stop_reason")
     if stop == "refusal":
         details = data.get("stop_details") or {}
-        raise AIError(u"Claude отказался обрабатывать эту часть писем "
+        raise AIError(u"Claude отказался обрабатывать эту часть запроса "
                       u"(фильтр безопасности{}).".format(
                           u": " + details["category"] if details.get("category") else u""),
                       details=details.get("explanation") or u"")
     text = u"".join(block.get("text") or u"" for block in (data.get("content") or [])
                     if block.get("type") == "text").strip()
     if stop == "max_tokens":
-        raise AIError(u"Ответ Claude оборвался на лимите длины. Уменьшите период "
-                      u"или число писем.", details=text[:1500])
+        raise AIError(u"Ответ Claude оборвался на лимите длины. Уменьшите объём "
+                      u"запроса (период, число писем или текстов).", details=text[:1500])
     if not text:
         raise AIError(u"В ответе Anthropic API нет текста.", details=_short(raw))
     return text
@@ -184,7 +185,7 @@ def openai_model(model):
     return (model or u"").strip() or DEFAULT_MODELS[OPENAI_API]
 
 
-def openai_request(api_key, model, request_text):
+def openai_request(api_key, model, request_text, system=SYSTEM_PROMPT):
     """(заголовки, тело) запроса POST /v1/chat/completions."""
     headers = {
         "authorization": "Bearer " + api_key,
@@ -193,7 +194,7 @@ def openai_request(api_key, model, request_text):
     body = {
         "model": openai_model(model),
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": request_text},
         ],
     }
@@ -208,12 +209,12 @@ def parse_openai_response(raw):
     choice = choices[0]
     message = choice.get("message") or {}
     if message.get("refusal"):
-        raise AIError(u"ChatGPT отказался обрабатывать эту часть писем.",
+        raise AIError(u"ChatGPT отказался обрабатывать эту часть запроса.",
                       details=message.get("refusal"))
     text = (message.get("content") or u"").strip()
     if choice.get("finish_reason") == "length":
-        raise AIError(u"Ответ ChatGPT оборвался на лимите длины. Уменьшите период "
-                      u"или число писем.", details=text[:1500])
+        raise AIError(u"Ответ ChatGPT оборвался на лимите длины. Уменьшите объём "
+                      u"запроса (период, число писем или текстов).", details=text[:1500])
     if not text:
         raise AIError(u"В ответе OpenAI API нет текста.", details=_short(raw))
     return text
@@ -294,9 +295,9 @@ def codex_arguments(model, output_file):
     return args
 
 
-def codex_request_text(request_text):
+def codex_request_text(request_text, system=SYSTEM_PROMPT):
     """У codex exec нет флага системного промпта — он идёт первой строкой запроса."""
-    return SYSTEM_PROMPT + u"\n\n" + request_text
+    return system + u"\n\n" + request_text
 
 
 def classify_codex_failure(text):

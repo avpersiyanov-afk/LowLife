@@ -104,8 +104,7 @@ LowLife как пара WPF-`GeometryGroup` (обычные буквы, акце
 
 Режим (`ask_bypass_mode`) — явный выбор пользователя (`forms.alert(yes=True,
 no=True)`, а не `forms.CommandSwitchWindow`/`TemplateListItem` — оба по
-опыту этого же проекта капризничали в реальном Revit, см. историю в
-`room_schematic_picker.py`), НЕ автоматика по числу пересечений:
+опыту этого же проекта капризничали в реальном Revit), НЕ автоматика по числу пересечений:
 - «Одиночный» (`bundle_mode=False`) — если вторая линия пересекает
   несколько базовых, на КАЖДОМ пересечении отдельно строится своя
   маленькая дуга ровно введённого диаметра (несколько дуг подряд на одной
@@ -1474,7 +1473,7 @@ room_number_param)` — запись по точкам прохода, возв�
   чтение «Входящих» классического Outlook через COM (только чтение),
   SMTP Exchange-отправителя через `GetExchangeUser()`; `OutlookError`.
 - `email_ai.py` — выбор способа подключения ИИ по `settings["provider"]`:
-  `prepare(settings)` → `Engine` (`.run(text, tick)`, `.name`,
+  `prepare(settings, system_prompt=None)` → `Engine` (`.run(text, tick)`, `.name`,
   `.description`) или `AIError` (программа не найдена / нет ключа).
 - `email_ai_core.py` — чистая логика без .NET (покрыта тестами):
   `PROVIDERS`, `DEFAULT_MODELS`, `resolve_key` (поле или переменная
@@ -1497,8 +1496,40 @@ room_number_param)` — запись по точкам прохода, возв�
   автофильтр), `default_output_path()`.
 - `email_tasks_settings.py` — `load()`/`save()`/`edit_interactive(default_prompt)`/`effective_prompt(values, default_prompt)`:
   `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` и WPF-окно Shift+клика
-  (выбор способа подключения, поля только выбранного способа, ссылки на
-  разделы инструкции `GUIDE_URLS`).
+  (блок «Подключение ИИ» — `ai_settings.ConnectionSection`, общий с
+  «Проверкой орфографии»).
+
+## ai_settings.py
+Общее подключение ИИ для «Задач из почты» и «Проверки орфографии»:
+`DEFAULTS`/`KEYS` (способ, пути к claude/codex, ключи API, модели),
+`normalize(values)`, `load()`/`save(values)` — эти ключи лежат в
+`%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` (`save` дописывает
+только их, остальные настройки файла не трогает). `ConnectionSection(root,
+values, shared_note)` — блок окна настроек «Подключение ИИ» (`read()`,
+`validate()`), плюс мелкие WPF-хелперы `label`/`hint`/`link`/`textbox`/
+`password`/`checkbox`. Вызов ИИ — `email_ai.prepare(settings,
+system_prompt=...)`: системный промпт передаётся параметром (по умолчанию —
+разбор писем).
+
+## spellcheck_core.py / spellcheck.py / spellcheck_settings.py
+Кнопка «Проверка орфографии» (`Tools.panel/SpellCheck`), подробности —
+`docs/spellcheck.md`.
+
+- `spellcheck_core.py` — чистая логика (покрыта тестами): `collect_items`
+  (одинаковые тексты — один пункт), `make_batches` (≈6000 символов),
+  `build_request`, `parse_fixes` (`{"fixes":[{"id","text"}]}`, `ParseError`),
+  `review_fix` (`FIX_OK`/`FIX_SAME`/`FIX_EMPTY`/`FIX_REWRITE` — сходство
+  ниже `MIN_SIMILARITY`), `split_text`/`full_text` (разделитель строк
+  Revit `\r` и пробелы по краям), `replacement_spans` (минимальные замены
+  по словам, длина ≥ 1), `apply_spans`, `describe_changes`, `SYSTEM_PROMPT`.
+- `spellcheck.py` — Revit: `collect_text_notes(doc, scope, view, selected)`,
+  `selected_text_notes`, `plain_text`, `skip_reason` (группа, чужой или
+  устаревший элемент совместной модели), `apply_fix` — замены в
+  `FormattedText` (`SetPlainText(TextRange, …)`), при неудаче —
+  `TextNote.Text` целиком.
+- `spellcheck_settings.py` — `load()` (подключение из `ai_settings` + свой
+  `prompt` в `LowLifeSpellCheck_settings.json`), `save`,
+  `effective_prompt`, `edit_interactive(default_prompt)`.
 
 ## export_rename.py
 Тело кнопки `Tools.panel/RenameExportFiles` («Переименование выгрузки»).
@@ -1799,6 +1830,27 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 по умолчанию `OST_SecurityDevices` — «Охранная сигнализация») и проверка
 типа вида (`ViewPlan`/`ViewDrafting`) — в `script.py` каждой кнопки, не
 здесь.
+
+## room_schematic.py / room_schematic_core.py / room_schematic_picker.py
+Кнопка `Schematic.panel/BuildRoomSchematic` («Рыба структурной схемы») —
+скелет схемы по помещениям, без устройств. `room_schematic_picker.show` —
+одно WPF-окно: слева этажи, справа таблица помещений этажа с редактируемым
+столбцом «На схеме» (пусто — не показывать; одинаковая подпись у нескольких
+помещений этажа — один общий бокс). Типовой этаж (тот же набор имён
+помещений, что у заполненного) заполняется сам. Подписи запоминаются по
+`UniqueId` помещения, на каждый файл модели свои
+(`LowLifeRoomSchematic_settings.json`). Логика без WPF/Revit — в
+`room_schematic_core.py` (тесты — `tests/test_room_schematic_core.py`),
+отрисовка вида — `room_schematic.py`.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `floor_signature` | `floor_signature(rows)` | Набор имён помещений этажа (с повторами, без учёта регистра/пробелов) — для поиска типовых этажей |
+| `has_labels` | `has_labels(rows)` | Есть ли на этаже хоть одна непустая подпись |
+| `copy_labels_by_name` | `copy_labels_by_name(src_rows, dst_rows)` | Переносит подписи по имени помещения: i-е по номеру помещение с этим именем получает подпись i-го с тем же именем на образце; возвращает число перенесённых |
+| `find_typical_source` | `find_typical_source(level_order, rows_by_level, level_name)` | Ближайший по порядку заполненный этаж с тем же `floor_signature`, либо `None` |
+| `boxes_for_floor` | `boxes_for_floor(rows)` | Боксы этажа: по одному на каждую различную подпись, в порядке первого появления |
+| `build_boxes` | `build_boxes(level_order, rows_by_level)` | `OrderedDict(level_name -> [box, ...])` для `room_schematic.rebuild`, только непустые этажи |
 
 ## room_lots.py / room_lots_settings.py
 Анализ помещений связанной модели по лотам — кнопка `ToolsRooms.panel/RoomLots`

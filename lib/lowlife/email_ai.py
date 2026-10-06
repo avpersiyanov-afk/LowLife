@@ -4,6 +4,7 @@
 в настройках) и единый вызов для script.py:
 
     engine = email_ai.prepare(settings)   # AIError — не найдено / нет ключа
+    engine = email_ai.prepare(settings, system_prompt=...)  # свой системный промпт
     answer = engine.run(request_text, tick)
 
 Способы: Claude Code (email_claude.py), Codex CLI (email_codex.py),
@@ -44,8 +45,10 @@ def model_for(settings, provider):
     return (settings.get(provider + "_model") or u"").strip() or core.DEFAULT_MODELS[provider]
 
 
-def prepare(settings):
-    """Engine для выбранного в настройках способа или AIError с подсказкой."""
+def prepare(settings, system_prompt=None):
+    """Engine для выбранного в настройках способа или AIError с подсказкой.
+    system_prompt — системный промпт; None — промпт разбора писем."""
+    system = system_prompt or core.SYSTEM_PROMPT
     provider = core.normalize_provider(settings.get("provider"))
     model = model_for(settings, provider)
 
@@ -57,7 +60,7 @@ def prepare(settings):
                 u"Claude Code (claude.exe)", configured,
                 u"%USERPROFILE%\\.local\\bin, %APPDATA%\\npm", u"claude"), fatal=True)
         return Engine(provider, model,
-                      lambda text, tick: email_claude.run_claude(path, model, text, tick=tick))
+                      lambda text, tick: email_claude.run_claude(path, model, text, tick=tick, system=system))
 
     if provider == core.CODEX_CLI:
         configured = settings.get("codex_path") or u""
@@ -67,7 +70,7 @@ def prepare(settings):
                 u"Codex CLI (codex)", configured,
                 u"%APPDATA%\\npm, %USERPROFILE%\\.local\\bin", u"codex"), fatal=True)
         return Engine(provider, model,
-                      lambda text, tick: email_codex.run_codex(path, model, text, tick=tick))
+                      lambda text, tick: email_codex.run_codex(path, model, text, tick=tick, system=system))
 
     key = core.resolve_key(settings.get(provider + "_key"), provider, os.environ)
     if not key:
@@ -78,10 +81,10 @@ def prepare(settings):
     if provider == core.ANTHROPIC_API:
         model = core.anthropic_model(model)
         return Engine(provider, model, lambda text, tick: _run_api(
-            provider, core.ANTHROPIC_URL, core.anthropic_request(key, model, text),
+            provider, core.ANTHROPIC_URL, core.anthropic_request(key, model, text, system),
             core.parse_anthropic_response, tick))
     return Engine(provider, model, lambda text, tick: _run_api(
-        provider, core.OPENAI_URL, core.openai_request(key, model, text),
+        provider, core.OPENAI_URL, core.openai_request(key, model, text, system),
         core.parse_openai_response, tick))
 
 
