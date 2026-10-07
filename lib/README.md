@@ -119,7 +119,8 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
   несопоставимы — только `$INSUNITS` без сдвига (`"units_only"`).
 - `dwg_transfer.py` — Revit-часть. `find_imports` (выделенные `ImportInstance`,
   иначе видимые на виде), `import_file_path` (путь связанного файла),
-  `sibling_dxf`, `find_oda_converter`/`convert_with_oda` (ODA File Converter →
+  `find_dxf` (DXF с тем же именем без учёта регистра в папке DWG, затем модели;
+  относительный путь связи — от папки модели), `find_oda_converter`/`convert_with_oda` (ODA File Converter →
   DXF во временной папке). `collect_geometry(doc, imp, view)` → `ImportGeometry`:
   кривые в координатах модели со слоем (`GraphicsStyleCategory`), без слоёв,
   скрытых на виде; габарит в координатах символа для `fit_mapping`.

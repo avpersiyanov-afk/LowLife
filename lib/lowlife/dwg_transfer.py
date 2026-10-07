@@ -90,30 +90,85 @@ def import_label(doc, imp):
     return name or u"Импорт {}".format(imp.Id.IntegerValue)
 
 
+def _model_folder(doc):
+    """Папка файла модели (для облачных/серверных моделей — None)."""
+    try:
+        folder = os.path.dirname(doc.PathName or u"")
+    except Exception:
+        return None
+    return folder if folder and os.path.isdir(folder) else None
+
+
+def _resolve(doc, path):
+    """Относительный путь связи — относительно папки модели (так считает Revit)."""
+    if not os.path.isabs(path):
+        base = _model_folder(doc)
+        if base:
+            path = os.path.join(base, path)
+    return os.path.normpath(path)
+
+
 def import_file_path(doc, imp):
-    """Полный путь к файлу связанного DWG/DXF или None (вставлен, не связан)."""
+    """
+    Путь к файлу связанного DWG/DXF: абсолютный, иначе сохранённый в связи
+    (относительный — от папки модели). None — DWG вставлен, а не связан.
+    Возвращается первый существующий путь, иначе первый найденный.
+    """
     cad_type = doc.GetElement(imp.GetTypeId())
-    if not isinstance(cad_type, CADLinkType):
+    if cad_type is None:
         return None
     try:
         ref = cad_type.GetExternalFileReference()
-        path = ModelPathUtils.ConvertModelPathToUserVisiblePath(ref.GetAbsolutePath())
     except Exception:
         return None
-    return path or None
-
-
-def sibling_dxf(path):
-    """DXF с тем же именем рядом с файлом (или сам файл, если это DXF)."""
-    if not path:
+    if ref is None:
         return None
-    root, ext = os.path.splitext(path)
-    if ext.lower() == ".dxf" and os.path.isfile(path):
-        return path
-    for candidate in (root + ".dxf", root + ".DXF"):
-        if os.path.isfile(candidate):
-            return candidate
-    return None
+    first = None
+    for getter in (ref.GetAbsolutePath, ref.GetPath):
+        try:
+            path = ModelPathUtils.ConvertModelPathToUserVisiblePath(getter())
+        except Exception:
+            continue
+        if not path:
+            continue
+        path = _resolve(doc, path)
+        if os.path.isfile(path):
+            return path
+        first = first or path
+    return first
+
+
+def find_dxf(doc, imp, file_path):
+    """
+    DXF того же чертежа: сам файл, если связан DXF; иначе файл с тем же именем
+    (без учёта регистра) в папке DWG, затем в папке модели. Имя — из пути
+    связи и из имени типа импорта (у вставленного DWG это имя исходного файла).
+    → (путь к DXF или None, [где искали]).
+    """
+    if file_path and file_path.lower().endswith(".dxf") and os.path.isfile(file_path):
+        return file_path, [file_path]
+    names = []
+    for source in (file_path, import_label(doc, imp)):
+        if source:
+            stem = os.path.splitext(os.path.basename(source))[0].strip()
+            if stem and (stem + u".dxf").lower() not in names:
+                names.append((stem + u".dxf").lower())
+    folders = []
+    for folder in (os.path.dirname(file_path) if file_path else None, _model_folder(doc)):
+        if folder and os.path.normcase(folder) not in [os.path.normcase(f) for f in folders]:
+            folders.append(folder)
+    searched = []
+    for folder in folders:
+        try:
+            listing = os.listdir(folder)
+        except Exception:
+            listing = []
+        by_lower = dict((f.lower(), f) for f in listing)
+        for name in names:
+            searched.append(os.path.join(folder, name))
+            if name in by_lower:
+                return os.path.join(folder, by_lower[name]), searched
+    return None, searched
 
 
 # --- ODA File Converter ----------------------------------------------------
