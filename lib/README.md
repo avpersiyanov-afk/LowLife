@@ -1881,12 +1881,13 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   ширины по умолчанию (форма 2 ГОСТ 21.501: 15/80/20/10 мм), высоты
   `HEADER_HEIGHT_MM`/`ROW_HEIGHT_MM` (20/8 мм); `build_rows(rooms, decimals)`
   — строки таблицы, сортировка номеров с числами внутри (`natural_key`),
-  площадь с запятой (`format_area`), без повторов; `schedule_name`/
+  площадь с запятой (`format_area`; `area_text` — и для текста из своего
+  параметра площади), без повторов; `schedule_name`/
   `unique_name` — имя спецификации по виду (без недопустимых символов, с
   « (2)» при совпадении).
 - `room_explication.py` (Revit API):
   - `unsupported_reason(view)` — нужен план с включённой подрезкой;
-    `collect_fragment_rooms(doc, view, category_param)` — помещения модели и
+    `collect_fragment_rooms(doc, view, params)` — помещения модели и
     видимых связей, чья точка размещения в рамке подрезки (X/Y вида) и
     которые Revit показывает на этом плане (`FilteredElementCollector(doc,
     view.Id[, link.Id])`, для связей — Revit 2024+); если Revit этого не
@@ -1909,7 +1910,8 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
     (ключевые спецификации и параметры `LL_Экспликация_*` по их GUID).
 - `room_explication_settings.py` — `TextSettings` (Shift+клик по «Экспликации
   фрагмента»): название таблицы, заголовки и ширины граф, высота шапки и
-  строк, параметр категории, знаки площади; `title`, `columns`, `heights`;
+  строк, параметры номера/имени/площади (пусто — встроенные) и категории,
+  знаки площади; `room_params`, `title`, `columns`, `heights`;
   настройки со старыми умолчаниями ширин (60/15) переводятся на 80/10.
 
 ## room_lots.py / room_lots_settings.py

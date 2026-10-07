@@ -70,9 +70,24 @@ def format_area(sq_m, decimals=2, separator=u","):
     return text.replace(u".", separator)
 
 
+def area_text(value, decimals=2):
+    """Площадь для таблицы: число (м²) — форматом ГОСТ; текст из своего
+    параметра — тоже, если это число («12.5» -> «12,50»), иначе как есть."""
+    if value is None:
+        return u""
+    if isinstance(value, (int, float)):
+        return format_area(value, decimals)
+    text = u"{}".format(value).strip()
+    try:
+        return format_area(float(text.replace(u",", u".").replace(u" ", u"")), decimals)
+    except ValueError:
+        return text
+
+
 def build_rows(rooms, decimals=2):
     """
-    rooms — список dict {number, name, area_m2, category}. Возвращает
+    rooms — список dict {number, name, area_m2, category}; area_m2 — число
+    в м² или текст из параметра площади (см. area_text). Возвращает
     список строк таблицы (кортежи текстов в порядке COLUMNS), по номеру
     помещения; одинаковые строки (помещение пришло дважды) — один раз.
     """
@@ -83,7 +98,7 @@ def build_rows(rooms, decimals=2):
         row = (
             (r.get("number") or u"").strip(),
             (r.get("name") or u"").strip(),
-            format_area(r.get("area_m2") or 0.0, decimals),
+            area_text(r.get("area_m2"), decimals),
             (r.get("category") or u"").strip(),
         )
         if row in seen:

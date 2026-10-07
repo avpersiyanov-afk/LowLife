@@ -10,7 +10,8 @@ __doc__ = (
     u"есть — она обновляется (то же делает кнопка «Обновить экспликацию»).\n\n"
     u"Shift+клик — настройки: название, заголовки и ширины граф, высота "
     u"строк (по умолчанию — форма 2 ГОСТ 21.501: 15/80/20/10 мм, шапка 20, "
-    u"строка 8), параметр категории, знаки площади."
+    u"строка 8), параметры номера/имени/площади/категории помещения, "
+    u"знаки площади."
 )
 __author__ = "Pipers"
 
@@ -61,7 +62,7 @@ if existing:
 else:
     schedule = None
     by_source, skipped, stats = rexp.collect_fragment_rooms(
-        doc, view, (settings.get("category_param") or u"").strip())
+        doc, view, room_explication_settings.room_params(settings))
     if not by_source:
         details = u"\n".join(st.text() for st in stats)
         if skipped:
