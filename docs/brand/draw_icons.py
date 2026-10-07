@@ -325,6 +325,30 @@ def update_explication(c):
                    (tip[0] + math.cos(a) * 6, tip[1] + math.sin(a) * 6)], fill=ORANGE)
 
 
+def dwg_to_drafting(c):
+    """«DWG → чертёжный»: пунктирная подложка, обводка сплошными линиями
+    (оранжевым — обводимый сейчас отрезок) и перенесённая надпись «Аа»."""
+    # Подложка DWG — пунктиром: контур помещения и перегородка.
+    c.dashed((10, 12), (74, 12), BLUE, 3, 5, 4)
+    c.dashed((74, 12), (74, 50), BLUE, 3, 5, 4)
+    c.dashed((40, 12), (40, 40), BLUE, 3, 5, 4)
+    # Уже обведено линиями детализации.
+    c.line([(74, 12), (10, 12), (10, 62), (40, 62)], BLUE, 5)
+    c.line([(40, 12), (40, 26)], ORANGE, 5)
+    # Перенесённый текст.
+    font = None
+    for name in ("arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            font = ImageFont.truetype(name, 22 * K)
+            break
+        except IOError:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+    c.rect((44, 54, 88, 86), BLUE, WHITE, 4, 4)
+    c.d.text((66 * K, 70 * K), u"Аа", font=font, fill=BLUE, anchor="mm")
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -344,6 +368,7 @@ ICONS = [
     ("Tools.panel/CropView.pushbutton", crop_view),
     ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
     ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
+    ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
 ]
 
 
