@@ -130,16 +130,13 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     uidoc.PostRequestForElementTypePlacement(tray_type)
 
 
-def run_tray_button(doc, uidoc, panel_folder, button_folder, button_name, default_tray_type):
+def run_tray_button(doc, uidoc, panel_folder, button_folder):
     """
-    Тело script.py кнопки «Лоток ...». Shift+клик — окно настроек (тип
-    лотка этой кнопки и общий рабочий набор); обычный клик — берёт
+    Тело script.py кнопки «Лоток ...». Shift+клик — общее окно настроек
+    всех кнопок лотков (cable_tray_settings); обычный клик — берёт
     сохранённые значения (или умолчания) и запускает
     run_create_cable_tray_button.
     """
-    settings_obj = cable_tray_settings.button_settings(
-        panel_folder, button_folder, button_name, default_tray_type
-    )
     type_key = cable_tray_settings.tray_type_key(panel_folder, button_folder)
 
     try:
@@ -149,15 +146,24 @@ def run_tray_button(doc, uidoc, panel_folder, button_folder, button_name, defaul
         config_mode = False
 
     if config_mode:
-        edited = settings_obj.get_settings_interactive()
+        edited = cable_tray_settings.get_settings_interactive()
         forms.alert(
             u"Отменено, настройки не изменены." if edited is None
             else u"Настройки сохранены."
         )
         script.exit()
 
-    settings = settings_obj.get_settings_silent()
-    settings_obj.require(settings, [type_key, cable_tray_settings.WORKSET_KEY])
+    settings = cable_tray_settings.get_settings_silent()
+    missing = cable_tray_settings.missing(settings, [type_key, cable_tray_settings.WORKSET_KEY])
+    if missing:
+        forms.alert(
+            u"Не заполнены настройки кнопки «{}»:\n\n{}\n\n"
+            u"Откройте настройки лотков: Shift+клик по любой кнопке лотка.".format(
+                cable_tray_settings.button_title(panel_folder, button_folder),
+                u"\n".join(missing)
+            ),
+            exitscript=True
+        )
 
     run_create_cable_tray_button(
         doc, uidoc,
