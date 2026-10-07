@@ -96,6 +96,42 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 (режим + суффикс с предпросмотром имени); последний выбор — в
 `LowLifeCropView_settings.json`.
 
+## dxf_text.py / dwg_transfer.py / dwg_transfer_settings.py
+Кнопка `Tools.panel/DwgToDrafting` («DWG → чертёжный»): DWG-подложка →
+линии детализации + текстовые примечания, в новый чертёжный вид или на тот же вид.
+
+- `dxf_text.py` — без Revit API (тесты `tests/test_dxf_text.py`). Revit API не
+  отдаёт текст импортированного DWG, поэтому текст читается из DXF того же
+  чертежа. `read_dxf(path)`/`parse_dxf_bytes`/`parse_dxf_text` → `DxfDrawing`:
+  `texts` (`DxfText`: текст с `\n`, точка, высота, поворот в радианах,
+  выравнивание `left/center/right` × `bottom/middle/top`, сжатие, слой) — TEXT,
+  видимые ATTRIB, MTEXT пространства модели, рекурсивно через INSERT (масштаб,
+  поворот, массивы) и блоки DIMENSION; слой «0» в блоке — слой вхождения;
+  выключенные/замороженные слои пропускаются (`skipped_hidden`). `extents` —
+  габарит линий/дуг/полилиний/эллипсов/сплайнов, `units_to_feet` — по `$INSUNITS`.
+  Кодировка: AC1021+ — UTF-8, старее — `$DWGCODEPAGE`; `\U+XXXX`, `%%c/%%d/%%p`
+  и коды форматирования MTEXT (`mtext_plain`, `mtext_height`) снимаются.
+  `fit_mapping(dxf_extents, revit_extents, units_to_feet)` → `(scale, ox, oy, how)`:
+  перевод координат DXF в координаты символа импорта по габаритам геометрии
+  (точный масштаб — по `$INSUNITS`, если совпадает в пределах 5%); габариты
+  несопоставимы — только `$INSUNITS` без сдвига (`"units_only"`).
+- `dwg_transfer.py` — Revit-часть. `find_imports` (выделенные `ImportInstance`,
+  иначе видимые на виде), `import_file_path` (путь связанного файла),
+  `sibling_dxf`, `find_oda_converter`/`convert_with_oda` (ODA File Converter →
+  DXF во временной папке). `collect_geometry(doc, imp, view)` → `ImportGeometry`:
+  кривые в координатах модели со слоем (`GraphicsStyleCategory`), без слоёв,
+  скрытых на виде; габарит в координатах символа для `fit_mapping`.
+  `Placement` — перевод в плоскость целевого вида: `placement_drafting` (система
+  вида-источника → XY, у плана X/Y сохраняются) и `placement_same_view`
+  (проекция на плоскость вида). `LayerStyles` — стили линий «<префикс><слой>» с
+  цветом/весом/образцом слоя импорта; `TextTypes` — копии исходного типа текста
+  нужной высоты на бумаге (с шагом 0,1 мм) и сжатия, прозрачный фон.
+  `transfer_lines`/`transfer_texts` → `TransferResult`; кривая, которую Revit не
+  принял как линию детализации, переносится ломаной.
+- `dwg_transfer_settings.py` — `TextSettings` (Shift+клик): стиль линий (пусто —
+  по слоям) и префикс стилей слоёв, исходный типоразмер текста и префикс типов,
+  путь к `ODAFileConverter.exe` (пусто — поиск в `Program Files\ODA`).
+
 ## line_bypass.py
 Дуга обхода на пересечении линий детализации (`Tools.panel/LineBypass`) —
 не привязано к дисциплине, работает на любом виде с линиями детализации.
