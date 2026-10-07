@@ -20,10 +20,10 @@
 как его показывает спецификация.
 
 Незаполненные элементы всех категорий показываются на 3D-виде
-VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, на которой
-изолированы только они (временная изоляция, переведённая в постоянное
-скрытие остального). Повторный запуск переиспользует вид: сначала
-показывает всё скрытое на нём, потом изолирует заново.
+VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, на которой всё
+остальное скрыто («Скрыть элементы», постоянно). Повторный запуск
+переиспользует вид: прошлое скрытие пересчитывается по каждому элементу
+(_apply_visibility).
 """
 
 from Autodesk.Revit.DB import (
@@ -408,18 +408,35 @@ def _find_3d_view(doc, name):
     return None
 
 
-def _unhide_all(doc, view):
-    """Показывает элементы, скрытые на виде (прошлый запуск кнопки)."""
+def _apply_visibility(doc, view, keep_ids):
+    """
+    На виде видны только элементы keep_ids (int ElementId.IntegerValue):
+    остальное, что можно скрыть, скрывается, а ранее скрытое из keep_ids
+    показывается. Состояние берётся по каждому элементу (IsHidden), а не по
+    тому, что сейчас видно на виде, — поэтому работает и при повторном
+    запуске в той же транзакции, без регенерации (временная изоляция
+    IsolateElementsTemporary после UnhideElements не прятала только что
+    показанные элементы, и на виде оставалось всё).
+    """
     from System.Collections.Generic import List
-    hidden = List[ElementId]()
+    to_hide = List[ElementId]()
+    to_unhide = List[ElementId]()
     for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
         try:
-            if el.IsHidden(view) and el.CanBeHidden(view):
-                hidden.Add(el.Id)
+            if not el.CanBeHidden(view):
+                continue
+            hidden = el.IsHidden(view)
         except Exception:
             continue
-    if hidden.Count:
-        view.UnhideElements(hidden)
+        if el.Id.IntegerValue in keep_ids:
+            if hidden:
+                to_unhide.Add(el.Id)
+        elif not hidden:
+            to_hide.Add(el.Id)
+    if to_unhide.Count:
+        view.UnhideElements(to_unhide)
+    if to_hide.Count:
+        view.HideElements(to_hide)
 
 
 def build_3d_view(doc, elements):
@@ -427,7 +444,6 @@ def build_3d_view(doc, elements):
     3D-вид VIEW_3D_NAME, на котором видны только elements. Вызывать внутри
     транзакции. Возвращает вид или None (нет элементов / нет типа 3D-вида).
     """
-    from System.Collections.Generic import List
     from Autodesk.Revit.DB import View3D
 
     if not elements:
@@ -445,7 +461,6 @@ def build_3d_view(doc, elements):
             view.DisableTemporaryViewMode(_temporary_mode())
         except Exception:
             pass
-        _unhide_all(doc, view)
 
     try:
         view.ViewTemplateId = ElementId.InvalidElementId
@@ -456,11 +471,7 @@ def build_3d_view(doc, elements):
     except Exception:
         pass
 
-    ids = List[ElementId]()
-    for el in elements:
-        ids.Add(el.Id)
-    view.IsolateElementsTemporary(ids)
-    view.ConvertTemporaryHideIsolateToPermanent()
+    _apply_visibility(doc, view, set(el.Id.IntegerValue for el in elements))
     return view
 
 
