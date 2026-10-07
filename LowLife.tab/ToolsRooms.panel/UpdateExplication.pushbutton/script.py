@@ -42,7 +42,14 @@ else:
     items, scope = rexp.explications_to_update(doc, uidoc)
     if not items:
         # Ничего не выделено и не открыто — выбрать из списка.
-        by_name = dict((rexp.element_name(e[0]), e) for e in all_items)
+        by_name = {}
+        for e in all_items:
+            plan = (u"план «{}»".format(rexp.element_name(e[1])) if e[1] is not None
+                    else u"план удалён")
+            label = u"{}   ({})".format(rexp.element_name(e[0]), plan)
+            if label in by_name:  # одинаковые имена — различаем по Id
+                label = u"{} [{}]".format(label, e[0].Id)
+            by_name[label] = e
         picked = forms.SelectFromList.show(
             sorted(by_name.keys()), title=u"Какие экспликации обновить",
             button_name=u"Обновить", multiselect=True)
