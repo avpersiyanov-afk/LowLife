@@ -18,3 +18,16 @@ def test_degenerate_rect_rejected():
 
 def test_min_size_override():
     assert crop_rect((0, 0), (0.5, 0.5), min_size=0.1) == (0.0, 0.0, 0.5, 0.5)
+
+
+def test_copy_name():
+    from lowlife.view_crop import copy_name
+    assert copy_name(u"Фрагмент - ", u"План 1", set()) == u"Фрагмент - План 1"
+    assert copy_name(u"Ф: ", u"План [1]", {u"Ф План 1"}) == u"Ф План 1 (2)"
+    assert copy_name(u"", u"", set()) == u"Фрагмент"
+
+
+def test_modes_start_with_self():
+    from lowlife.view_crop import MODES, MODE_SELF, DEFAULT_MODE
+    assert MODES[0][0] == MODE_SELF
+    assert DEFAULT_MODE in [m[0] for m in MODES]
