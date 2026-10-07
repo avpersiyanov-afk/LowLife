@@ -105,8 +105,10 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
   чертежа. `read_dxf(path)`/`parse_dxf_bytes`/`parse_dxf_text` → `DxfDrawing`:
   `texts` (`DxfText`: текст с `\n`, точка, высота, поворот в радианах,
   выравнивание `left/center/right` × `bottom/middle/top`, сжатие, слой) — TEXT,
-  видимые ATTRIB, MTEXT пространства модели, рекурсивно через INSERT (масштаб,
-  поворот, массивы) и блоки DIMENSION; слой «0» в блоке — слой вхождения;
+  видимые ATTRIB, постоянные ATTDEF в блоках, MTEXT, текст мультивыносок
+  (MULTILEADER, `mleader_context`) пространства модели, рекурсивно через INSERT
+  (масштаб, поворот, массивы), блоки DIMENSION и таблиц ACAD_TABLE; `counts()` —
+  надписи по видам, `unsupported` — неразобранные типы объектов (для отчёта); слой «0» в блоке — слой вхождения;
   выключенные/замороженные слои пропускаются (`skipped_hidden`). `extents` —
   габарит линий/дуг/полилиний/эллипсов/сплайнов, `units_to_feet` — по `$INSUNITS`.
   Кодировка: AC1021+ — UTF-8, старее — `$DWGCODEPAGE`; `\U+XXXX`, `%%c/%%d/%%p`

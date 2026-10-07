@@ -218,9 +218,21 @@ else:
     if mapping_how == "units_only":
         lines.append(u"Внимание: габариты DXF и DWG не совпали (это тот же чертёж?) — "
                      u"текст поставлен только по единицам DXF, проверьте его положение.")
+    kinds = drawing.counts()
+    if kinds:
+        names = [(u"TEXT", u"однострочный"), (u"MTEXT", u"многострочный"),
+                 (u"ATTRIB", u"атрибуты блоков"), (u"ATTDEF", u"постоянные атрибуты"),
+                 (u"MULTILEADER", u"мультивыноски")]
+        lines.append(u"Найдено в DXF: " + u", ".join(
+            u"{} {}".format(label, kinds[k]) for k, label in names if kinds.get(k)) + u".")
     if drawing.missing_blocks:
         lines.append(u"В DXF нет описаний блоков: {}.".format(
             u", ".join(sorted(drawing.missing_blocks)[:5])))
+
+if drawing is not None and drawing.unsupported:
+    top = sorted(drawing.unsupported.items(), key=lambda kv: -kv[1])[:6]
+    lines.append(u"Не разобраны объекты DXF (их текст не перенесён): " + u", ".join(
+        u"{} ×{}".format(k, v) for k, v in top) + u".")
 
 if styles is not None and styles.created:
     lines.append(u"Создано стилей линий по слоям: {}.".format(len(styles.created)))
