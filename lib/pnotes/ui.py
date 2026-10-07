@@ -15,6 +15,7 @@ from System.Diagnostics import Process, ProcessStartInfo
 from System.Windows import Visibility
 from System.Windows.Input import Key, Keyboard, ModifierKeys, Cursors
 from System.Collections.Generic import List
+from System.Threading import Thread, ThreadStart
 from Autodesk.Revit.DB import ElementId
 
 from pnotes import core
@@ -81,18 +82,73 @@ def guarded(func):
             return func(*args, **kwargs)
         except Exception as ex:
             details = traceback.format_exc()
-            try:
-                if not os.path.isdir(core.USER_DIR):
-                    os.makedirs(core.USER_DIR)
-                with io.open(ERROR_LOG, 'a', encoding='utf-8') as f:
-                    f.write(u'\n==== {} — {}\n{}'.format(
-                        datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S'), func.__name__, details))
-            except Exception:
-                pass
+            _log_error(func.__name__, details)
             forms.alert(u'{}\n\nПодробности записаны в файл:\n{}'.format(core.err_text(ex), ERROR_LOG),
                         title=u'Заметки: ошибка', expanded=details)
     wrapper.__name__ = func.__name__
     return wrapper
+
+
+def _log_error(where, details):
+    try:
+        if not os.path.isdir(core.USER_DIR):
+            os.makedirs(core.USER_DIR)
+        with io.open(ERROR_LOG, 'a', encoding='utf-8') as f:
+            f.write(u'\n==== {} — {}\n{}'.format(
+                datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S'), where, details))
+    except Exception:
+        pass
+
+
+def in_background(window, work, done):
+    """work() — в фоновом потоке (только сеть и файлы, без Revit API), затем done(результат, ошибка)
+    — в потоке окна. Пока идёт запрос, окно живое и Revit не «зависает».
+    При закрытии окна идущие запросы обрываются, а потоки дожидаются (_stop_background)."""
+    if not getattr(window, '_bg_threads', None):
+        window._bg_threads = []
+        window._bg_closed = False
+        window.Closed += lambda s, e: _stop_background(window)
+    core.begin_requests()
+
+    def deliver(result, error):
+        if window._bg_closed:
+            return
+        try:
+            done(result, error)
+        except Exception:
+            _log_error(getattr(done, '__name__', 'done'), traceback.format_exc())
+
+    def body():
+        result, error = None, None
+        try:
+            result = work()
+        except core.ApiError as ex:
+            error = core.err_text(ex)
+        except Exception as ex:
+            error = core.err_text(ex)
+            _log_error(getattr(work, '__name__', 'work'), traceback.format_exc())
+        except:  # noqa: E722 — из фонового потока не должно вылететь ничего: это уронило бы Revit
+            error = u'ошибка'
+        try:
+            window.Dispatcher.BeginInvoke(System.Action(lambda: deliver(result, error)))
+        except:  # noqa: E722
+            pass
+
+    thread = Thread(ThreadStart(body))
+    thread.IsBackground = True
+    window._bg_threads.append(thread)
+    thread.Start()
+
+
+def _stop_background(window):
+    window._bg_closed = True
+    core.abort_requests()
+    for thread in window._bg_threads:
+        try:
+            thread.Join(3000)
+        except Exception:
+            pass
+    core.begin_requests()
 
 
 def _balloon(text):
@@ -111,9 +167,11 @@ class NoteWindow(forms.WPFWindow):
     """Новая заметка; с note=... — редактирование существующей (результат в self.changes)."""
 
     def __init__(self, ctx, settings, online, note=None):
+        """online=None — настройки взяты из копии, связь проверяется в фоне после открытия окна."""
         forms.WPFWindow.__init__(self, _xaml('note.xaml'))
         self.ctx = ctx
         self.note = note
+        self._sending = False
         self.result = None  # None — отменено, True — в таблице, False — в локальной очереди
         self.changes = None  # редактирование: {поле: новое значение} или None — отменено
 
@@ -147,14 +205,30 @@ class NoteWindow(forms.WPFWindow):
             self.chkElements.Content = u'Привязать выбранные элементы (сейчас ничего не выбрано)'
             self.chkElements.IsEnabled = False
 
-        if not online and note is None:
-            self.txtStatus.Text = u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.'
+        if online is False and note is None:
+            self._offline_notice()
 
         _spellcheck(self.txtText)
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
         self.PreviewKeyDown += self.on_key
+        self.Closing += self.on_closing
         self.Loaded += lambda s, e: self.cmbType.Focus()
+        if online is None and note is None:
+            # обновить копию настроек команды, пока пишется заметка (Revit не ждёт)
+            self.Loaded += lambda s, e: in_background(self, lambda: core.get_settings(timeout_ms=30000)[1],
+                                                      self._settings_checked)
+
+    def _offline_notice(self):
+        self.txtStatus.Text = u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.'
+
+    def _settings_checked(self, online, error):
+        if not online and not self._sending and self.result is None:
+            self._offline_notice()
+
+    def on_closing(self, sender, e):
+        if self._sending:
+            e.Cancel = True  # заметка уже в локальной очереди; дождёмся ответа таблицы (не дольше таймаута)
 
     @staticmethod
     def _with(items, value):
@@ -206,11 +280,18 @@ class NoteWindow(forms.WPFWindow):
         note = core.new_note(self.ctx, ntype, section, text, due, assignee, elements)
         core.save_state(type=ntype, section=section)
 
-        self.Cursor = Cursors.Wait
-        try:
-            self.result = core.add_note(note)
-        finally:
-            self.Cursor = None
+        core.queue_note(note)  # с этого момента заметка не потеряется, даже если связи нет
+        self._sending = True
+        self.btnSave.IsEnabled = False
+        self.btnCancel.IsEnabled = False
+        self.Cursor = Cursors.AppStarting
+        self.txtStatus.Text = u'Отправка в таблицу…'
+        in_background(self, lambda: core.flush_queue(30000)[1] == 0, self._sent)
+
+    def _sent(self, delivered, error):
+        self._sending = False
+        self.Cursor = None
+        self.result = bool(delivered) and error is None
         self.Close()
 
 
@@ -232,7 +313,8 @@ def _sorted(notes):
 
 
 class SummaryWindow(forms.WPFWindow):
-    def __init__(self, ctx, settings, notes, error=None, uidoc=None, reminders_mode=False):
+    def __init__(self, ctx, settings, notes, error=None, uidoc=None, reminders_mode=False, load=False):
+        """load=True — notes это сохранённая копия; свежие заметки подгружаются в фоне после открытия."""
         forms.WPFWindow.__init__(self, _xaml('summary.xaml'))
         self._ready = False
         self.ctx = ctx
@@ -279,6 +361,8 @@ class SummaryWindow(forms.WPFWindow):
 
         self._ready = True
         self.refresh()
+        if load:
+            self.Loaded += self.on_reload
 
     @staticmethod
     def _merge(base, extra):
@@ -502,11 +586,35 @@ class SummaryWindow(forms.WPFWindow):
             self.uidoc.RequestViewChange(view)
 
     def on_reload(self, sender, e):
-        self.Cursor = Cursors.Wait
-        try:
-            notes, online, error = core.load_notes(self.ctx['key'])
-        finally:
-            self.Cursor = None
+        if not self.btnRefresh.IsEnabled:
+            return
+        self.btnRefresh.IsEnabled = False
+        self.Cursor = Cursors.AppStarting
+        if not self.notes:
+            self.txtInfo.Text = u'Загрузка заметок из таблицы…'
+        self._notice(u'Обновление из таблицы…')
+        key = self.ctx['key']
+
+        def work():
+            notes, online, error = core.load_notes(key, timeout_ms=30000)
+            settings = None
+            if online:
+                settings, fresh = core.get_settings(timeout_ms=30000)  # заодно обновить копию настроек
+                if not fresh:
+                    settings = None
+            return notes, error, settings
+        in_background(self, work, self._loaded)
+
+    def _loaded(self, result, error):
+        self.btnRefresh.IsEnabled = True
+        self.Cursor = None
+        if error is not None:  # сбой вне load_notes — оставить то, что уже показано
+            self._notice(error)
+            return
+        notes, error, settings = result
+        if settings is not None:
+            self.settings = settings
+            self.btnSheet.IsEnabled = bool(settings.get('sheet_url'))
         if self.reminders_mode:
             notes = core.reminders(notes, self.ctx['user'], self.settings.get('remind_days'))
         self.notes = notes
@@ -713,7 +821,7 @@ def _project_doc(uidoc):
 @guarded
 def run_setup(doc, settings=None):
     if settings is None:
-        settings = core.get_settings()[0]
+        settings = core.get_settings_fast()
     win = SetupWindow(doc, settings)
     win.ShowDialog()
     return win.saved
@@ -728,12 +836,16 @@ def run_new_note(uidoc):
         forms.alert(u'Сначала подключим Google Таблицу и посмотрим, что заполнено в «Сведениях о проекте».')
         if not run_setup(doc):
             return
-    settings, online = core.get_settings()
-    if online and not settings.get('key_param'):
+    if core.has_cached_settings():
+        # копия настроек — окно открывается сразу; свежие настройки и связь проверяются в фоне
+        settings, online = core.get_settings(online=False)[0], None
+    else:
+        settings, online = core.get_settings()
+    if not settings.get('key_param') and core.has_cached_settings():
         forms.alert(u'Первый запуск: посмотрим, что заполнено в «Сведениях о проекте», '
                     u'и выберем, по какому параметру различать проекты.')
         if run_setup(doc, settings):
-            settings, online = core.get_settings()
+            settings = core.get_settings(online=False)[0]
 
     ctx = core.get_context(doc, uidoc, settings)
     win = NoteWindow(ctx, settings, online)
@@ -754,10 +866,11 @@ def run_summary(uidoc):
     if not core.is_configured():
         forms.alert(u'Подключение к таблице ещё не настроено — нажмите «Настройка».')
         return
-    settings = core.get_settings()[0]
+    settings = core.get_settings_fast()
     ctx = core.get_context(doc, uidoc, settings)
-    notes, online, error = core.load_notes(ctx['key'])
-    SummaryWindow(ctx, settings, notes, error, uidoc=uidoc).ShowDialog()
+    # окно открывается сразу с последней копией, свежие заметки подгружаются в фоне
+    notes, _ = core.cached_notes(ctx['key'])
+    SummaryWindow(ctx, settings, notes, uidoc=uidoc, load=True).ShowDialog()
 
 
 def run_open_reminders(doc):

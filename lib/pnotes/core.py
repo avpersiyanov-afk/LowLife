@@ -4,13 +4,16 @@ import os
 import io
 import json
 import uuid
+import time
 import datetime
+import threading
 
 import clr
 clr.AddReference('System')
 import System
-from System.Net import HttpWebRequest, ServicePointManager, SecurityProtocolType, CredentialCache
-from System.IO import StreamReader
+from System.Net import (HttpWebRequest, ServicePointManager, SecurityProtocolType, CredentialCache,
+                        WebException, WebExceptionStatus)
+from System.IO import StreamReader, IOException
 from System.Text import Encoding
 
 from Autodesk.Revit.DB import (BuiltInParameter, StorageType, ModelPathUtils, ElementId, ViewSheet, View,
@@ -156,9 +159,34 @@ def is_configured():
     return bool(cfg['url'] and cfg['token'])
 
 
+# Запросы, идущие сейчас (в т.ч. из фоновых потоков окон): при закрытии окна их обрывают,
+# чтобы фоновый поток не пережил окно.
+_active = []
+_lock = threading.Lock()
+_cancelled = [False]
+
+
+def begin_requests():
+    _cancelled[0] = False
+
+
+def abort_requests():
+    """Оборвать все идущие запросы (окно закрыто); следующие до begin_requests() не начнутся."""
+    _cancelled[0] = True
+    with _lock:
+        reqs = list(_active)
+    for req in reqs:
+        try:
+            req.Abort()
+        except Exception:
+            pass
+
+
 def _post(url, body, timeout_ms):
     try:
         ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | SecurityProtocolType.Tls12
+        # Без этого .NET шлёт «Expect: 100-continue» и ждёт лишний обмен с сервером (часть прокси его рвёт)
+        ServicePointManager.Expect100Continue = False
     except Exception:
         pass
     data = Encoding.UTF8.GetBytes(body)
@@ -171,19 +199,51 @@ def _post(url, body, timeout_ms):
     if req.Proxy is not None:
         req.Proxy.Credentials = CredentialCache.DefaultNetworkCredentials
     req.ContentLength = data.Length
-    stream = req.GetRequestStream()
+    with _lock:
+        _active.append(req)
     try:
-        stream.Write(data, 0, data.Length)
+        stream = req.GetRequestStream()
+        try:
+            stream.Write(data, 0, data.Length)
+        finally:
+            stream.Close()
+        resp = req.GetResponse()
+        try:
+            return StreamReader(resp.GetResponseStream(), Encoding.UTF8).ReadToEnd()
+        finally:
+            resp.Close()
     finally:
-        stream.Close()
-    resp = req.GetResponse()
-    try:
-        return StreamReader(resp.GetResponseStream(), Encoding.UTF8).ReadToEnd()
-    finally:
-        resp.Close()
+        with _lock:
+            if req in _active:
+                _active.remove(req)
 
 
-def call(action, payload=None, timeout_ms=15000, url=None, token=None):
+_TRANSIENT = (WebExceptionStatus.ConnectionClosed, WebExceptionStatus.KeepAliveFailure,
+              WebExceptionStatus.ReceiveFailure, WebExceptionStatus.SendFailure,
+              WebExceptionStatus.ConnectFailure, WebExceptionStatus.NameResolutionFailure,
+              WebExceptionStatus.PipelineFailure, WebExceptionStatus.SecureChannelFailure)
+
+
+def _is_transient(ex):
+    """Сбой, который у Google случается сам по себе и проходит при повторе (обрыв, 5xx, 429).
+    Таймаут и отмену не повторяем: это удвоило бы ожидание."""
+    if _cancelled[0]:
+        return False
+    net = getattr(ex, 'clsException', None) or ex
+    if isinstance(net, WebException):
+        if net.Status == WebExceptionStatus.ProtocolError:
+            try:
+                code = int(net.Response.StatusCode)
+            except Exception:
+                return False
+            return code >= 500 or code == 429
+        return net.Status in _TRANSIENT
+    return isinstance(net, IOException)
+
+
+def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1):
+    """Запрос к веб-приложению. Временный сбой связи повторяется (retries раз): все действия
+    сервера безопасно повторять — «add» отсеивает повторную отправку по id."""
     cfg = load_config()
     url = url or cfg['url']
     token = token or cfg['token']
@@ -192,15 +252,30 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None):
     body = dict(payload or {})
     body['action'] = action
     body['token'] = token
-    try:
-        raw = _post(url, _dumps(body), timeout_ms)
-    except Exception as ex:
-        raise ApiError(u'Нет связи с Google Таблицей: ' + err_text(ex))
-    try:
-        resp = json.loads(raw)
-    except Exception:
-        raise ApiError(u'Таблица ответила не данными, а страницей. Проверьте адрес (должен заканчиваться на /exec) '
-                       u'и что веб-приложение развернуто с доступом «Все».')
+    text = _dumps(body)
+    attempt = 0
+    while True:
+        if _cancelled[0]:
+            raise ApiError(u'Запрос отменён: окно закрыто.')
+        try:
+            raw = _post(url, text, timeout_ms)
+        except Exception as ex:
+            if attempt < retries and _is_transient(ex):
+                attempt += 1
+                time.sleep(1)
+                continue
+            raise ApiError(u'Нет связи с Google Таблицей: ' + err_text(ex))
+        try:
+            resp = json.loads(raw)
+        except Exception:
+            # Google иногда отдаёт страницу ошибки вместо ответа скрипта — один раз повторяем
+            if attempt < retries and not _cancelled[0]:
+                attempt += 1
+                time.sleep(1)
+                continue
+            raise ApiError(u'Таблица ответила не данными, а страницей. Проверьте адрес (должен заканчиваться на /exec) '
+                           u'и что веб-приложение развернуто с доступом «Все».')
+        break
     if not resp.get('ok'):
         raise ApiError(resp.get('error') or u'Неизвестная ошибка')
     return resp
@@ -234,6 +309,14 @@ def get_settings(online=True, timeout_ms=10000):
 
 def has_cached_settings():
     return os.path.exists(SETTINGS_CACHE)
+
+
+def get_settings_fast():
+    """Настройки без ожидания сети: сохранённая копия, а если её ещё нет (первый запуск) — с сервера.
+    Копию обновляют окна в фоне (get_settings), так что правки листа «Настройки» доходят со следующего открытия."""
+    if has_cached_settings():
+        return get_settings(online=False)[0]
+    return get_settings()[0]
 
 
 def save_mapping(key_param, name_param, extra_params):
@@ -461,22 +544,33 @@ def flush_queue(timeout_ms=15000):
     return sent, len(left)
 
 
-def add_note(note):
-    """Сначала кладёт заметку в локальную очередь (ничего не теряется), затем отправляет. True — дошла."""
+def queue_note(note):
+    """Кладёт заметку в локальную очередь (ничего не теряется); отправляет flush_queue."""
     queue = _load_queue()
     queue.append(note)
     _write_json(QUEUE_FILE, queue)
-    sent, left = flush_queue()
+
+
+def add_note(note, timeout_ms=15000):
+    """Сначала в очередь, затем отправка. True — дошла."""
+    queue_note(note)
+    sent, left = flush_queue(timeout_ms)
     return left == 0
+
+
+def cached_notes(key):
+    """(заметки из последней копии + неотправленные, время копии или '') — мгновенно, без сети."""
+    entry = (_read_json(NOTES_CACHE, {}) or {}).get(key) or {}
+    return (entry.get('notes') or []) + pending_notes(key), entry.get('time') or u''
 
 
 def load_notes(key, timeout_ms=15000):
     """(заметки, есть_связь, текст_ошибки). Без связи — последняя копия + неотправленные."""
-    cache = _read_json(NOTES_CACHE, {}) or {}
     error = None
     try:
         flush_queue(timeout_ms)
         notes = call('list', {'project_key': key}, timeout_ms).get('notes') or []
+        cache = _read_json(NOTES_CACHE, {}) or {}
         cache[key] = {'time': datetime.datetime.now().strftime('%d.%m.%Y %H:%M'), 'notes': notes}
         try:
             _write_json(NOTES_CACHE, cache)
@@ -484,7 +578,7 @@ def load_notes(key, timeout_ms=15000):
             pass
         online = True
     except ApiError as ex:
-        entry = cache.get(key) or {}
+        entry = (_read_json(NOTES_CACHE, {}) or {}).get(key) or {}
         notes = entry.get('notes') or []
         error = err_text(ex)
         if entry.get('time'):
