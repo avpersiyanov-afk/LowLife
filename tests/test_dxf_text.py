@@ -143,3 +143,40 @@ def test_fit_inconsistent_falls_back_to_units():
 def test_binary_dxf_rejected():
     with pytest.raises(ValueError):
         dxf_text.parse_dxf_bytes(b"AutoCAD Binary DXF\r\n\x1a\x00")
+
+
+def test_multileader_text():
+    ents = [(0, "MULTILEADER"), (8, "Выноски"), (300, "CONTEXT_DATA{"), (40, "1"),
+            (10, "5"), (20, "5"), (41, "3"), (290, "1"),
+            (304, u"Кабель\\PВВГнг"), (11, "0"), (21, "0"), (12, "40"), (22, "50"),
+            (13, "1"), (23, "0"), (171, "2"),
+            (302, "LEADER{"), (10, "0"), (20, "0"), (12, "999"), (303, "}"),
+            (301, "}"), (170, "1")]
+    d = dxf_text.parse_dxf_text(_dxf(entities=ents))
+    t = d.texts[0]
+    assert t.text == u"Кабель\nВВГнг"
+    assert (t.x, t.y, t.height) == pytest.approx((40, 50, 3))
+    assert (t.halign, t.valign, t.kind) == ("center", "top", "MULTILEADER")
+    assert t.layer == u"Выноски"
+    assert d.counts() == {"MULTILEADER": 1}
+
+
+def test_constant_attdef_and_table_block():
+    blocks = ([(0, "BLOCK"), (2, "МАРКА"), (10, "0"), (20, "0"),
+               (0, "ATTDEF"), (8, "0"), (10, "1"), (20, "1"), (40, "1"), (1, u"пост"), (2, "TAG"), (70, "2"),
+               (0, "ATTDEF"), (8, "0"), (10, "1"), (20, "1"), (40, "1"), (1, u"перем"), (2, "TAG2"), (70, "0"),
+               (0, "ENDBLK")] +
+              [(0, "BLOCK"), (2, "*T1"), (10, "0"), (20, "0")] + _text(u"ячейка", 2, 3) + [(0, "ENDBLK")])
+    ents = [(0, "INSERT"), (2, "МАРКА"), (10, "10"), (20, "10"),
+            (0, "ACAD_TABLE"), (2, "*T1"), (10, "100"), (20, "200"), (41, "0.06"), (70, "0"), (71, "5")]
+    d = dxf_text.parse_dxf_text(_dxf(blocks=blocks, entities=ents))
+    by = dict((t.text, (t.x, t.y)) for t in d.texts)
+    assert set(by) == {u"пост", u"ячейка"}
+    assert by[u"пост"] == pytest.approx((11, 11))
+    assert by[u"ячейка"] == pytest.approx((102, 203))
+
+
+def test_unsupported_types_are_counted():
+    ents = [(0, "ACAD_PROXY_ENTITY"), (8, "0"), (0, "HATCH"), (8, "0")]
+    d = dxf_text.parse_dxf_text(_dxf(entities=ents))
+    assert d.unsupported == {"ACAD_PROXY_ENTITY": 1}

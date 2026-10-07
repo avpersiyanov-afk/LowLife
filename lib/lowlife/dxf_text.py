@@ -105,6 +105,14 @@ class DxfDrawing(object):
         self.version = u""
         self.skipped_hidden = 0     # надписей на выключенных/замороженных слоях
         self.missing_blocks = set()
+        self.unsupported = {}       # тип объекта → сколько (для отчёта: что не разобрано)
+
+    def counts(self):
+        """{вид надписи: сколько} — TEXT/MTEXT/ATTRIB/ATTDEF/MULTILEADER."""
+        result = {}
+        for t in self.texts:
+            result[t.kind] = result.get(t.kind, 0) + 1
+        return result
 
 
 # --- чтение и кодировка ------------------------------------------------------
@@ -421,6 +429,13 @@ def _walk(ents, m, depth, parent_layer, drawing, ext, blocks, hidden_layers):
 
         if etype in ("TEXT", "ATTRIB"):
             _add_text(drawing, etype, tags, _compose(m, _ocs(tags)), layer, hidden_layers)
+        elif etype == "ATTDEF":
+            # Описание атрибута в блоке видно на чертеже, только если атрибут
+            # постоянный (значение не хранится во вхождении ATTRIB).
+            if depth > 0 and _int(tags, 70) & 2:
+                _add_text(drawing, etype, tags, _compose(m, _ocs(tags)), layer, hidden_layers)
+        elif etype in ("MULTILEADER", "MLEADER"):
+            _add_mleader(drawing, tags, m, layer, hidden_layers)
         elif etype == "MTEXT":
             _add_mtext(drawing, tags, m, layer, hidden_layers)
         elif etype == "INSERT":
@@ -439,11 +454,21 @@ def _walk(ents, m, depth, parent_layer, drawing, ext, blocks, hidden_layers):
                 for row in range(rows):
                     im = _compose(om, _insert_matrix(tags, base, col, row))
                     _walk(inner, im, depth + 1, layer, drawing, ext, blocks, hidden_layers)
-        elif etype == "DIMENSION":
+        elif etype in ("DIMENSION", "ACAD_TABLE"):
             name = (_get(tags, 2) or u"").strip()
             block = blocks.get(name.upper())
-            if block is not None and depth < _MAX_DEPTH:
-                _walk(block[1], m, depth + 1, layer, drawing, ext, blocks, hidden_layers)
+            if block is None or depth >= _MAX_DEPTH:
+                continue
+            if etype == "DIMENSION":
+                # блок размера хранится уже в мировых координатах
+                bm = m
+            else:
+                # таблица — вхождение блока *T: только перенос в точку вставки
+                # (коды 41/70/71 у таблицы значат другое, не масштаб/массив)
+                (bx, by), _inner = block
+                bm = _compose(m, (1.0, 0.0, 0.0, 1.0,
+                                  _float(tags, 10) - bx, _float(tags, 20) - by))
+            _walk(block[1], bm, depth + 1, layer, drawing, ext, blocks, hidden_layers)
         elif etype == "LINE":
             _add_points(ext, m, [(_float(tags, 10), _float(tags, 20)),
                                  (_float(tags, 11), _float(tags, 21))])
@@ -481,6 +506,16 @@ def _walk(ents, m, depth, parent_layer, drawing, ext, blocks, hidden_layers):
             pts = [(_float(tags, 10 + k), _float(tags, 20 + k)) for k in range(4)
                    if _get(tags, 10 + k) is not None]
             _add_points(ext, _compose(m, _ocs(tags)) if etype != "3DFACE" else m, pts)
+        elif etype not in _QUIET_TYPES:
+            drawing.unsupported[etype] = drawing.unsupported.get(etype, 0) + 1
+
+
+# Объекты без текста — не попадают в отчёт «не разобрано».
+_QUIET_TYPES = frozenset([
+    "POLYLINE", "SEQEND", "POINT", "HATCH", "VIEWPORT", "XLINE", "RAY",
+    "LEADER", "IMAGE", "WIPEOUT", "REGION", "3DSOLID", "BODY", "MESH",
+    "SURFACE", "ATTDEF", "OLE2FRAME", "TOLERANCE",
+])
 
 
 def _placed(m, x, y, angle, height, width_factor):
@@ -505,6 +540,7 @@ _TEXT_V = {0: VALIGN_BOTTOM, 1: VALIGN_BOTTOM, 2: VALIGN_MIDDLE, 3: VALIGN_TOP}
 def _add_text(drawing, etype, tags, m, layer, hidden_layers):
     if etype == "ATTRIB" and _int(tags, 70) & 1:
         return
+    # у ATTDEF код 1 — значение по умолчанию (оно и показывается у постоянного)
     raw = _get(tags, 1)
     if raw is None:
         return
@@ -515,7 +551,7 @@ def _add_text(drawing, etype, tags, m, layer, hidden_layers):
         drawing.skipped_hidden += 1
         return
     h_code = _int(tags, 72)
-    v_code = _int(tags, 74 if etype == "ATTRIB" else 73)
+    v_code = _int(tags, 74 if etype in ("ATTRIB", "ATTDEF") else 73)
     x, y = _float(tags, 10), _float(tags, 20)
     if (h_code or v_code) and h_code not in (3, 5) and _get(tags, 11) is not None:
         x, y = _float(tags, 11), _float(tags, 21)
@@ -555,6 +591,48 @@ def _add_mtext(drawing, tags, m, layer, hidden_layers):
         return
     px, py, angle, height, wf = placed
     drawing.texts.append(DxfText(text, px, py, height, angle, halign, valign, wf, layer, "MTEXT"))
+
+
+_MLEADER_H = {1: HALIGN_LEFT, 2: HALIGN_CENTER, 3: HALIGN_RIGHT}
+
+
+def mleader_context(tags):
+    """
+    Теги текстовой части мультивыноски: от «300 CONTEXT_DATA{» до первой
+    ветви «302 LEADER{» (дальше — вершины выносок со своими 10/11/12).
+    """
+    start = None
+    for i, (code, value) in enumerate(tags):
+        if code == 300 and start is None:
+            start = i + 1
+        elif start is not None and code in (301, 302):
+            return tags[start:i]
+    return tags[start:] if start is not None else []
+
+
+def _add_mleader(drawing, tags, m, layer, hidden_layers):
+    ctx = mleader_context(tags)
+    raw = _get(ctx, 304)
+    if raw is None or _get(ctx, 12) is None:
+        return  # выноска с блоком вместо текста
+    text = u"\n".join(line.rstrip() for line in mtext_plain(raw).split(u"\n")).strip(u"\n ")
+    if not text.strip():
+        return
+    if layer.upper() in hidden_layers:
+        drawing.skipped_hidden += 1
+        return
+    if _get(ctx, 13) is not None:
+        angle = math.atan2(_float(ctx, 23), _float(ctx, 13))
+    else:
+        angle = _float(ctx, 42)
+    height = mtext_height(raw, _float(ctx, 41))
+    placed = _placed(m, _float(ctx, 12), _float(ctx, 22), angle, height, 1.0)
+    if placed is None:
+        return
+    px, py, angle, height, wf = placed
+    halign = _MLEADER_H.get(_int(ctx, 171, 1), HALIGN_LEFT)
+    drawing.texts.append(DxfText(text, px, py, height, angle, halign, VALIGN_TOP, wf, layer,
+                                 "MULTILEADER"))
 
 
 # --- совмещение с геометрией Revit -----------------------------------------
