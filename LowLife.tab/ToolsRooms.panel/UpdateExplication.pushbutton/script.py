@@ -3,10 +3,11 @@
 __title__ = u"Обновить\nэкспликацию"
 __doc__ = (
     u"Пересобирает экспликации фрагментов (созданные кнопкой «Экспликация "
-    u"фрагмента») по текущим помещениям и настройкам. Что обновлять — по "
-    u"контексту: выделенные спецификации (на листе или в диспетчере "
-    u"проекта), открытая экспликация, экспликации открытого плана или "
-    u"открытого листа; иначе — все экспликации проекта (с подтверждением)."
+    u"фрагмента») по текущим помещениям и настройкам.\n\n"
+    u"Клик — все экспликации фрагментов в проекте.\n"
+    u"Shift+клик — только выбранные: выделенные спецификации (на листе или в "
+    u"диспетчере проекта), открытая экспликация, экспликации открытого плана "
+    u"или листа; если ничего не выбрано — список, из которого выбрать."
 )
 __author__ = "Pipers"
 
@@ -14,7 +15,7 @@ import traceback
 
 from Autodesk.Revit.DB import SubTransaction
 
-from pyrevit import revit, forms, script
+from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife import room_explication as rexp
 from lowlife import room_explication_settings
@@ -25,16 +26,29 @@ TITLE = u"Обновить экспликацию"
 
 settings = room_explication_settings.get_settings_silent()
 
-items, scope = rexp.explications_to_update(doc, uidoc)
-if not items:
-    items = rexp.list_explications(doc)
+try:
+    only_selected = bool(EXEC_PARAMS.config_mode)  # Shift+клик
+except Exception:
+    only_selected = False
+
+all_items = rexp.list_explications(doc)
+if not all_items:
+    forms.alert(u"В проекте нет экспликаций фрагментов. Создайте их "
+                u"кнопкой «Экспликация фрагмента».", title=TITLE, exitscript=True)
+
+if not only_selected:
+    items, scope = all_items, u"все в проекте"
+else:
+    items, scope = rexp.explications_to_update(doc, uidoc)
     if not items:
-        forms.alert(u"В проекте нет экспликаций фрагментов. Создайте их "
-                    u"кнопкой «Экспликация фрагмента».", title=TITLE, exitscript=True)
-    if not forms.alert(u"Обновить все экспликации фрагментов в проекте ({})?"
-                       .format(len(items)), title=TITLE, yes=True, no=True):
-        script.exit()
-    scope = u"все в проекте"
+        # Ничего не выделено и не открыто — выбрать из списка.
+        by_name = dict((rexp.element_name(e[0]), e) for e in all_items)
+        picked = forms.SelectFromList.show(
+            sorted(by_name.keys()), title=u"Какие экспликации обновить",
+            button_name=u"Обновить", multiselect=True)
+        if not picked:
+            script.exit()
+        items, scope = [by_name[n] for n in picked], u"выбранные"
 
 done, lost, failed = [], [], []
 with revit.Transaction(TITLE):
