@@ -1980,7 +1980,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 многокатегорийной не ограничить набор категорий) и показывает все элементы —
 «хотя бы один пуст» фильтром спецификации не выразить, поэтому незаполненные
 перечислены в отчёте кнопки и изолированы на 3D-виде `LOI проверка — незаполненные`
-(изометрия без шаблона; `IsolateElementsTemporary` → `ConvertTemporaryHideIsolateToPermanent`,
+(изометрия без шаблона, открыть ли — кнопка спрашивает; `IsolateElementsTemporary` → `ConvertTemporaryHideIsolateToPermanent`,
 при повторном запуске скрытое на виде сначала показывается). Повторный запуск
 пересобирает спецификацию с тем же именем и категорией. Настройки — `%APPDATA%\pyRevit\LowLifeLOICheck_settings.json`
 (Shift+клик): `category_names`, `labels_text` (список построчно), `param_map`

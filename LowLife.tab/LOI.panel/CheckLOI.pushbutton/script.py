@@ -103,12 +103,25 @@ def main():
 
     _report(script.get_output(), results, rows, missing_categories, view_3d)
 
-    first = view_3d or next((r.schedule for r in results if r.schedule is not None), None)
-    if first is not None:
-        try:
-            uidoc.ActiveView = first
-        except Exception:
-            pass
+    if view_3d is not None:
+        total = len(incomplete)
+        if forms.alert(
+                u"Элементов с незаполненными параметрами: {}.\n\n"
+                u"Открыть 3D-вид «{}»?".format(total, view_3d.Name),
+                title=TITLE, yes=True, no=True):
+            _open(view_3d)
+        return
+
+    _open(next((r.schedule for r in results if r.schedule is not None), None))
+
+
+def _open(view):
+    if view is None:
+        return
+    try:
+        uidoc.ActiveView = view
+    except Exception:
+        pass
 
 
 try:
