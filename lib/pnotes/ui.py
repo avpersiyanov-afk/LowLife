@@ -2,6 +2,7 @@
 """Окна «Заметок по проекту»: новая заметка, сводка, настройка, напоминания."""
 import os
 import io
+import time
 import datetime
 import traceback
 
@@ -322,6 +323,8 @@ class SummaryWindow(forms.WPFWindow):
         self.notes = notes
         self.uidoc = uidoc
         self.reminders_mode = reminders_mode
+        self._settings_refreshed = False
+        self._load_seconds = None
 
         title = ctx['key'] if ctx['name'] == ctx['key'] else u'{} — {}'.format(ctx['key'], ctx['name'])
         if reminders_mode:
@@ -441,6 +444,8 @@ class SummaryWindow(forms.WPFWindow):
         unanswered = len([n for n in self.notes if core.needs_answer(n)])
         self.txtInfo.Text = u'Показано {} из {}   ·   открытых {}   ·   просрочено {}   ·   вопросов без ответа {}'.format(
             len(visible), len(self.notes), open_count, overdue, unanswered)
+        if self._load_seconds is not None:
+            self.txtInfo.Text += u'   ·   загружено из таблицы за {:.1f} с'.format(float(self._load_seconds))
 
     def _selected(self):
         ids = [drv.Row['id'] for drv in self.dg.SelectedItems]
@@ -594,15 +599,10 @@ class SummaryWindow(forms.WPFWindow):
             self.txtInfo.Text = u'Загрузка заметок из таблицы…'
         self._notice(u'Обновление из таблицы…')
         key = self.ctx['key']
+        started = time.time()
 
         def work():
-            notes, online, error = core.load_notes(key, timeout_ms=30000)
-            settings = None
-            if online:
-                settings, fresh = core.get_settings(timeout_ms=30000)  # заодно обновить копию настроек
-                if not fresh:
-                    settings = None
-            return notes, error, settings
+            return core.load_notes(key, timeout_ms=30000) + (time.time() - started,)
         in_background(self, work, self._loaded)
 
     def _loaded(self, result, error):
@@ -611,10 +611,8 @@ class SummaryWindow(forms.WPFWindow):
         if error is not None:  # сбой вне load_notes — оставить то, что уже показано
             self._notice(error)
             return
-        notes, error, settings = result
-        if settings is not None:
-            self.settings = settings
-            self.btnSheet.IsEnabled = bool(settings.get('sheet_url'))
+        notes, online, error, seconds = result
+        self._load_seconds = seconds if online else None
         if self.reminders_mode:
             notes = core.reminders(notes, self.ctx['user'], self.settings.get('remind_days'))
         self.notes = notes
@@ -623,6 +621,15 @@ class SummaryWindow(forms.WPFWindow):
         self._fill_authors()
         self._ready = True
         self.refresh()
+        if online and not self._settings_refreshed:
+            # копию настроек команды обновляем отдельным запросом уже после показа заметок — их он не задерживает
+            self._settings_refreshed = True
+            in_background(self, lambda: core.get_settings(timeout_ms=30000), self._settings_loaded)
+
+    def _settings_loaded(self, result, error):
+        if error is None and result[1]:
+            self.settings = result[0]
+            self.btnSheet.IsEnabled = bool(self.settings.get('sheet_url'))
 
     def on_sheet(self, sender, e):
         url = self.settings.get('sheet_url')
