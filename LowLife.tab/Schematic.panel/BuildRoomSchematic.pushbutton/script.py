@@ -41,8 +41,6 @@ with revit.Transaction(u"Build Room Schematic"):
 revit.uidoc.ActiveView = view
 
 forms.alert(
-    u"Готово.
-
-«{}»: этажей — {}, боксов — {}".format(view_name, num_levels, num_boxes),
+    u"Готово.\n\n«{}»: этажей — {}, боксов — {}".format(view_name, num_levels, num_boxes),
     title=u"Рыба структурной схемы",
 )
