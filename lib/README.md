@@ -1971,6 +1971,29 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
 | `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
 
+## loi_check.py / loi_check_core.py / loi_check_settings.py
+Кнопка `LOI.panel/CheckLOI` («Проверка LOI»): проверяет заполнение параметров из
+настроек у всех экземпляров выбранных категорий (значение — у экземпляра, иначе у
+типа) и строит по каждой категории спецификацию `LOI проверка — <категория>`:
+«Тип», «Семейство», «Этаж» и по столбцу на строку списка (заголовок — строка
+списка), сортировка этаж → семейство → тип. Спецификация одна на категорию (у
+многокатегорийной не ограничить набор категорий) и показывает все элементы —
+«хотя бы один пуст» фильтром спецификации не выразить, поэтому незаполненные
+перечислены в отчёте кнопки. Повторный запуск пересобирает спецификацию с тем же
+именем и категорией. Настройки — `%APPDATA%\pyRevit\LowLifeLOICheck_settings.json`
+(Shift+клик): `category_names`, `labels_text` (список построчно), `param_map`
+({строка: параметр модели}, пусто — сама строка), `floor_param_name` (пусто —
+параметр «Заполнения этажа», иначе уровень элемента).
+
+| Функция | Что делает |
+|---|---|
+| `loi_check_core.parse_labels(text)` / `build_rows(labels, param_map)` / `clean_param_map(labels, param_map)` | Строки списка; пары (строка, параметр) с подстановкой строки; соответствия для сохранения. Без Revit API, покрыто `tests/test_loi_check_core.py` |
+| `loi_check_core.status_of(found, value)` / `CategorySummary` | `FILLED`/`EMPTY`/`ABSENT` и подсчёт по категории |
+| `loi_check.list_categories(doc)` / `resolve_categories(doc, names)` | Модельные категории с экземплярами (для выбора) / имена → `Category` |
+| `loi_check.read_param(doc, el, name)` | `(найден, текст)` — экземпляр, потом тип |
+| `loi_check.check_category(doc, cat, rows, floor_param)` | `CategoryResult`: итог и строки незаполненных элементов |
+| `loi_check.build_schedule(doc, cat, rows, floor_param)` | `(спецификация, [строки без поля])`, в транзакции |
+
 ## level_assign.py
 Кнопка `LOI.panel/UpdateLevelName` («Обновить имя уровня»): назначает опорный
 уровень выбранным экземплярам семейств без уровня (`LevelId` пуст) и без основы.
