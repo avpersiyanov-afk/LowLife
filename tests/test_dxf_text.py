@@ -65,7 +65,7 @@ def test_mtext_formatting():
 
 
 def test_mtext_entity_attachment_and_direction():
-    ents = [(0, "MTEXT"), (8, "Подписи"), (10, "10"), (20, "20"), (40, "2"), (71, "5"),
+    ents = [(0, "MTEXT"), (8, u"Подписи"), (10, "10"), (20, "20"), (40, "2"), (71, "5"),
             (11, "0"), (21, "1"), (3, u"Длинный "), (1, u"текст\\Pстрока 2")]
     d = dxf_text.parse_dxf_text(_dxf(entities=ents))
     t = d.texts[0]
@@ -83,9 +83,9 @@ def test_text_alignment_uses_second_point():
 
 
 def test_insert_transforms_text_and_layer_zero():
-    blocks = [(0, "BLOCK"), (2, "МАРКА"), (10, "1"), (20, "0")] + \
+    blocks = [(0, "BLOCK"), (2, u"МАРКА"), (10, "1"), (20, "0")] + \
         _text(u"А", 2, 0, h=1.0) + [(0, "ENDBLK")]
-    ents = [(0, "INSERT"), (8, "Оборудование"), (2, "МАРКА"), (10, "100"), (20, "100"),
+    ents = [(0, "INSERT"), (8, u"Оборудование"), (2, u"МАРКА"), (10, "100"), (20, "100"),
             (41, "2"), (42, "2"), (50, "90")]
     d = dxf_text.parse_dxf_text(_dxf(blocks=blocks, entities=ents))
     t = d.texts[0]
@@ -106,9 +106,9 @@ def test_non_uniform_insert_changes_width_factor():
 
 
 def test_hidden_layers_paper_space_and_invisible_attrib():
-    tables = [(0, "LAYER"), (2, "Выкл"), (70, "0"), (62, "-7"),
-              (0, "LAYER"), (2, "Замор"), (70, "1"), (62, "7")]
-    ents = (_text(u"off", 0, 0, layer="Выкл") + _text(u"frozen", 0, 0, layer="Замор") +
+    tables = [(0, "LAYER"), (2, u"Выкл"), (70, "0"), (62, "-7"),
+              (0, "LAYER"), (2, u"Замор"), (70, "1"), (62, "7")]
+    ents = (_text(u"off", 0, 0, layer=u"Выкл") + _text(u"frozen", 0, 0, layer=u"Замор") +
             _text(u"sheet", 0, 0, extra=[(67, "1")]) +
             [(0, "ATTRIB"), (8, "0"), (10, "0"), (20, "0"), (40, "1"), (1, "hidden"), (70, "1")] +
             [(0, "ATTRIB"), (8, "0"), (10, "0"), (20, "0"), (40, "1"), (1, "shown"), (70, "0")])
@@ -146,7 +146,7 @@ def test_binary_dxf_rejected():
 
 
 def test_multileader_text():
-    ents = [(0, "MULTILEADER"), (8, "Выноски"), (300, "CONTEXT_DATA{"), (40, "1"),
+    ents = [(0, "MULTILEADER"), (8, u"Выноски"), (300, "CONTEXT_DATA{"), (40, "1"),
             (10, "5"), (20, "5"), (41, "3"), (290, "1"),
             (304, u"Кабель\\PВВГнг"), (11, "0"), (21, "0"), (12, "40"), (22, "50"),
             (13, "1"), (23, "0"), (171, "2"),
@@ -162,12 +162,12 @@ def test_multileader_text():
 
 
 def test_constant_attdef_and_table_block():
-    blocks = ([(0, "BLOCK"), (2, "МАРКА"), (10, "0"), (20, "0"),
+    blocks = ([(0, "BLOCK"), (2, u"МАРКА"), (10, "0"), (20, "0"),
                (0, "ATTDEF"), (8, "0"), (10, "1"), (20, "1"), (40, "1"), (1, u"пост"), (2, "TAG"), (70, "2"),
                (0, "ATTDEF"), (8, "0"), (10, "1"), (20, "1"), (40, "1"), (1, u"перем"), (2, "TAG2"), (70, "0"),
                (0, "ENDBLK")] +
               [(0, "BLOCK"), (2, "*T1"), (10, "0"), (20, "0")] + _text(u"ячейка", 2, 3) + [(0, "ENDBLK")])
-    ents = [(0, "INSERT"), (2, "МАРКА"), (10, "10"), (20, "10"),
+    ents = [(0, "INSERT"), (2, u"МАРКА"), (10, "10"), (20, "10"),
             (0, "ACAD_TABLE"), (2, "*T1"), (10, "100"), (20, "200"), (41, "0.06"), (70, "0"), (71, "5")]
     d = dxf_text.parse_dxf_text(_dxf(blocks=blocks, entities=ents))
     by = dict((t.text, (t.x, t.y)) for t in d.texts)
