@@ -324,7 +324,7 @@ class SummaryWindow(forms.WPFWindow):
         self.uidoc = uidoc
         self.reminders_mode = reminders_mode
         self._settings_refreshed = False
-        self._load_seconds = None
+        self._load_timing = None
 
         title = ctx['key'] if ctx['name'] == ctx['key'] else u'{} — {}'.format(ctx['key'], ctx['name'])
         if reminders_mode:
@@ -444,8 +444,17 @@ class SummaryWindow(forms.WPFWindow):
         unanswered = len([n for n in self.notes if core.needs_answer(n)])
         self.txtInfo.Text = u'Показано {} из {}   ·   открытых {}   ·   просрочено {}   ·   вопросов без ответа {}'.format(
             len(visible), len(self.notes), open_count, overdue, unanswered)
-        if self._load_seconds is not None:
-            self.txtInfo.Text += u'   ·   загружено из таблицы за {:.1f} с'.format(float(self._load_seconds))
+        if self._load_timing is not None:
+            t = self._load_timing
+            text = u'   ·   загружено из таблицы за {:.1f} с'.format(float(t['total']))
+            parts = []
+            if t['server'] is not None:
+                parts.append(u'скрипт Google {:.1f} с'.format(t['server'] / 1000.0))
+            if t['queue'] >= 0.1:
+                parts.append(u'отправка неотправленных {:.1f} с'.format(float(t['queue'])))
+            if parts:
+                text += u' (' + u', '.join(parts) + u')'
+            self.txtInfo.Text += text
 
     def _selected(self):
         ids = [drv.Row['id'] for drv in self.dg.SelectedItems]
@@ -602,7 +611,17 @@ class SummaryWindow(forms.WPFWindow):
         started = time.time()
 
         def work():
-            return core.load_notes(key, timeout_ms=30000) + (time.time() - started,)
+            # очередь отдельно — чтобы в строке состояния было видно, на что ушло время
+            try:
+                core.flush_queue(30000)
+            except Exception:
+                pass
+            flushed = time.time()
+            core.last_server_ms[0] = None
+            notes, online, error = core.load_notes(key, timeout_ms=30000)
+            timing = {'total': time.time() - started, 'queue': flushed - started,
+                      'server': core.last_server_ms[0]}
+            return notes, online, error, timing
         in_background(self, work, self._loaded)
 
     def _loaded(self, result, error):
@@ -611,8 +630,8 @@ class SummaryWindow(forms.WPFWindow):
         if error is not None:  # сбой вне load_notes — оставить то, что уже показано
             self._notice(error)
             return
-        notes, online, error, seconds = result
-        self._load_seconds = seconds if online else None
+        notes, online, error, timing = result
+        self._load_timing = timing if online else None
         if self.reminders_mode:
             notes = core.reminders(notes, self.ctx['user'], self.settings.get('remind_days'))
         self.notes = notes
@@ -788,8 +807,10 @@ class SetupWindow(forms.WPFWindow):
             return
         self.Cursor = Cursors.Wait
         try:
+            started = time.time()
             resp = core.call('ping', timeout_ms=15000)
-            self.txtConn.Text = u'✓ Связь есть, таблица «{}».'.format(resp.get('sheet') or u'')
+            self.txtConn.Text = u'✓ Связь есть, таблица «{}», ответ за {:.1f} с.'.format(
+                resp.get('sheet') or u'', float(time.time() - started))
         except core.ApiError as ex:
             self.txtConn.Text = core.err_text(ex)
         finally:
