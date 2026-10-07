@@ -2,7 +2,7 @@
 """
 Настройки кнопок «Экспликация фрагмента» / «Обновить экспликацию»
 (ToolsRooms.panel): название таблицы, заголовки и ширины граф, высота строк,
-параметр категории помещения, знаки площади.
+параметры помещения (номер, имя, площадь, категория), знаки площади.
 
 Хранятся в %APPDATA%\\pyRevit\\LowLifeRoomExplication_settings.json через
 settings_core.TextSettings (Shift+клик по кнопке). Умолчания заголовков и
@@ -54,6 +54,12 @@ def _num(value):
         return None
 
 
+def room_params(settings):
+    """{"number", "name", "area", "category": имя параметра или ""}."""
+    return dict((key, (settings.get(key + "_param") or u"").strip())
+                for key in ("number", "name", "area", "category"))
+
+
 def title(settings):
     return (settings.get("title") or u"").strip() or TITLE
 
@@ -77,7 +83,26 @@ SETTINGS = settings_core.TextSettings(
         ),
     ] + _column_fields() + [
         settings_core.TextField(
-            "category_param", u"⑤ Данные", u"Параметр категории помещения",
+            "number_param", u"⑤ Параметры помещения (в модели или связи АР)",
+            u"Номер помещения",
+            hint=u"Имя параметра с номером. Пусто — встроенный «Номер».",
+            default=u"", required=False,
+        ),
+        settings_core.TextField(
+            "name_param", u"", u"Наименование",
+            hint=u"Имя параметра с наименованием. Пусто — встроенное «Имя».",
+            default=u"", required=False,
+        ),
+        settings_core.TextField(
+            "area_param", u"", u"Площадь",
+            hint=(u"Имя параметра с площадью. Пусто — встроенная «Площадь». "
+                  u"Параметр типа «Площадь» переводится в м², другое число "
+                  u"берётся как есть, текст — как написан (число — с нужным "
+                  u"числом знаков)."),
+            default=u"", required=False,
+        ),
+        settings_core.TextField(
+            "category_param", u"", u"Категория помещения",
             hint=(
                 u"Имя параметра помещения с категорией по взрывопожарной и "
                 u"пожарной опасности (в модели или связи АР). Пусто — графа "
@@ -103,7 +128,7 @@ SETTINGS = settings_core.TextSettings(
     ],
     migrate=_migrate,
     reset_button=True,
-    width=720, height=760,
+    width=720, height=820,
 )
 
 load_saved_values = SETTINGS.load_saved_values

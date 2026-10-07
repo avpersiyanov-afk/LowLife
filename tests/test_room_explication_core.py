@@ -13,6 +13,15 @@ def test_format_area():
     assert core.format_area(7.4, 0) == u"7"
 
 
+def test_area_text_from_number_or_parameter_text():
+    assert core.area_text(12.345) == u"12,35"
+    assert core.area_text(u"12.5") == u"12,50"
+    assert core.area_text(u" 7,1 ") == u"7,10"
+    assert core.area_text(u"12,5 м²") == u"12,5 м²"
+    assert core.area_text(None) == u""
+    assert core.area_text(u"") == u""
+
+
 def test_build_rows_sorted_and_deduplicated():
     rooms = [
         {"number": u"10", "name": u"Склад", "area_m2": 5.0, "category": u"В3"},
