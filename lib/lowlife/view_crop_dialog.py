@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Окно кнопки «Обрезать вид» после выбора рамки: что обрезать — этот вид
-или его копию (view_crop.MODES) — и префикс имени копии.
+или его копию (view_crop.MODES) — и суффикс в конце имени копии.
 
 Последний выбор запоминается в %APPDATA%\\pyRevit\\LowLifeCropView_settings.json
 (settings_core.JsonStore). Только IronPython/WPF.
@@ -14,20 +14,20 @@ STORE = settings_core.JsonStore("LowLifeCropView_settings.json", u"настро�
 def load_choice():
     data = STORE.read()
     mode = data.get("mode") or view_crop.DEFAULT_MODE
-    prefix = data.get("prefix")
-    if prefix is None:
-        prefix = view_crop.DEFAULT_PREFIX
-    return mode, prefix
+    suffix = data.get("suffix")
+    if suffix is None:
+        suffix = view_crop.DEFAULT_SUFFIX
+    return mode, suffix
 
 
-def save_choice(mode, prefix):
-    STORE.update({"mode": mode, "prefix": prefix})
+def save_choice(mode, suffix):
+    STORE.update({"mode": mode, "suffix": suffix})
 
 
 def ask(modes, source_name):
     """
     modes — [(ключ, подпись, ...)] из view_crop.available_modes. Возвращает
-    (ключ режима, префикс) или None, если окно закрыли/отменили.
+    (ключ режима, суффикс) или None, если окно закрыли/отменили.
     """
     import clr
     clr.AddReference('PresentationFramework')
@@ -41,7 +41,7 @@ def ask(modes, source_name):
     )
     from System.Windows.Media import Brushes
 
-    mode, prefix = load_choice()
+    mode, suffix = load_choice()
     keys = [m[0] for m in modes]
     if mode not in keys:
         mode = view_crop.DEFAULT_MODE if view_crop.DEFAULT_MODE in keys else keys[0]
@@ -73,11 +73,11 @@ def ask(modes, source_name):
         root.Children.Add(rb)
 
     lbl = TextBlock()
-    lbl.Text = u"Префикс имени копии"
+    lbl.Text = u"Добавить в конец имени копии"
     lbl.Margin = Thickness(0, 12, 0, 2)
     root.Children.Add(lbl)
     box = TextBox()
-    box.Text = prefix
+    box.Text = suffix
     root.Children.Add(box)
     preview = TextBlock()
     preview.Foreground = Brushes.Gray
