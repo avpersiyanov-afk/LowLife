@@ -1905,8 +1905,9 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
     заданной высотой строк. `build_explication` — создать/пересобрать.
   - Метка ExtensibleStorage на спецификации (`SCHEMA_GUID`): UniqueId плана
     и выбранные источники; `list_explications`, `explications_of_view`,
-    `explications_to_update(doc, uidoc)` (выделенные → открытая → открытого
-    плана → открытого листа). `rebuild(doc, view, sources, settings,
+    `explications_to_update(doc, uidoc)` (для Shift+клика по «Обновить»:
+    выделенные → открытая → открытого плана → открытого листа; обычный клик
+    обновляет все). `rebuild(doc, view, sources, settings,
     schedule)` — общий сценарий обеих кнопок.
   - `find_legacy`/`delete_legacy` — уборка за первой версией кнопки
     (ключевые спецификации и параметры `LL_Экспликация_*` по их GUID).
