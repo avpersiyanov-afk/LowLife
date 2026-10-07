@@ -77,17 +77,24 @@ LowLife как пара WPF-`GeometryGroup` (обычные буквы, акце
 |---|---|---|
 | `get_single_selection` | `get_single_selection(doc, uidoc, empty_message=..., multiple_message=...)` | Возвращает единственный выбранный элемент; если выделено 0 или >1 — показывает `forms.alert` и останавливает скрипт (`exitscript=True`) |
 
-## view_crop.py
+## view_crop.py / view_crop_dialog.py
 Обрезка вида по двум точкам (`Tools.panel/CropView`, «Обрезать вид»).
-`crop_rect(p1, p2, min_size)` — два угла в координатах вида (в любом порядке)
-→ `(xmin, ymin, xmax, ymax)`, `ValueError` для вырожденной рамки (покрыт
-`tests/test_view_crop.py`). Revit-часть: `unsupported_reason(view)` — план,
-разрез, фасад, узел или текст причины; `ensure_work_plane(doc, view)` —
-создаёт рабочую плоскость вида для `PickPoint`, если её нет (разрезы/фасады);
-`apply_crop(view, pt1, pt2)` — переводит точки модели в систему `CropBox`,
+Чистая часть (покрыта `tests/test_view_crop.py`): `crop_rect(p1, p2,
+min_size)` — два угла в координатах вида (в любом порядке) → `(xmin, ymin,
+xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` — что обрезать:
+сам вид или копию (`Duplicate`/`WithDetailing`/`AsDependent`);
+`copy_name(prefix, source_name, existing)` — префикс + имя вида без
+недопустимых символов, « (2)» при совпадении. Revit-часть:
+`unsupported_reason(view)`; `ensure_work_plane`/`remove_work_plane` —
+временная рабочая плоскость для `PickPoint` (разрезы/фасады), убирается после
+выбора; `check_points(view, pt1, pt2)`; `available_modes(view)` — режимы,
+разрешённые `CanViewBeDuplicated`; `duplicate_view(doc, view, mode, prefix)`;
+`apply_crop(view, pt1, pt2)` — переводит точки в систему `CropBox`,
 сбрасывает непрямоугольную рамку, задаёт новую (глубину Z не трогает),
-включает подрезку вида и аннотаций с минимальным отступом аннотаций;
-возвращает список некритичных предупреждений.
+включает подрезку вида и аннотаций с минимальным отступом аннотаций.
+`view_crop_dialog.ask(modes, source_name)` — WPF-окно после выбора рамки
+(режим + префикс с предпросмотром имени); последний выбор — в
+`LowLifeCropView_settings.json`.
 
 ## line_bypass.py
 Дуга обхода на пересечении линий детализации (`Tools.panel/LineBypass`) —
