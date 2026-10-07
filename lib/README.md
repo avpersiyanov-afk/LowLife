@@ -83,17 +83,17 @@ LowLife как пара WPF-`GeometryGroup` (обычные буквы, акце
 min_size)` — два угла в координатах вида (в любом порядке) → `(xmin, ymin,
 xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` — что обрезать:
 сам вид или копию (`Duplicate`/`WithDetailing`/`AsDependent`);
-`copy_name(prefix, source_name, existing)` — префикс + имя вида без
+`copy_name(suffix, source_name, existing)` — имя вида + суффикс без
 недопустимых символов, « (2)» при совпадении. Revit-часть:
-`unsupported_reason(view)`; `ensure_work_plane`/`remove_work_plane` —
-временная рабочая плоскость для `PickPoint` (разрезы/фасады), убирается после
-выбора; `check_points(view, pt1, pt2)`; `available_modes(view)` — режимы,
-разрешённые `CanViewBeDuplicated`; `duplicate_view(doc, view, mode, prefix)`;
+`unsupported_reason(view)`; `check_points(view, pt1, pt2)` (углы рамки
+кнопка берёт из `PickBox` — живой прямоугольник без привязок и без рабочей
+плоскости; два `PickPoint` в тяжёлых видах подвисали); `available_modes(view)` — режимы,
+разрешённые `CanViewBeDuplicated`; `duplicate_view(doc, view, mode, suffix)`;
 `apply_crop(view, pt1, pt2)` — переводит точки в систему `CropBox`,
 сбрасывает непрямоугольную рамку, задаёт новую (глубину Z не трогает),
 включает подрезку вида и аннотаций с минимальным отступом аннотаций.
 `view_crop_dialog.ask(modes, source_name)` — WPF-окно после выбора рамки
-(режим + префикс с предпросмотром имени); последний выбор — в
+(режим + суффикс с предпросмотром имени); последний выбор — в
 `LowLifeCropView_settings.json`.
 
 ## line_bypass.py

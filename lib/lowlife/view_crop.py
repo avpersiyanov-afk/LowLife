@@ -3,7 +3,7 @@
 
 Пользователь указывает мышью два противоположных угла прямоугольника, затем
 выбирает, что обрезать: сам вид или его копию (простую, с детализацией или
-зависимую), с префиксом к имени копии. По углам задаётся область подрезки
+зависимую), с суффиксом в конце имени копии. По углам задаётся область подрезки
 (CropBox) и включается подрезка аннотаций с минимальным отступом от неё —
 аннотации за пределами рамки тоже скрываются.
 
@@ -32,15 +32,15 @@ MODES = (
     ("dependent", u"Копировать как зависимый", "AsDependent"),
 )
 DEFAULT_MODE = "copy"
-DEFAULT_PREFIX = u"Фрагмент - "
+DEFAULT_SUFFIX = u" - Фрагмент"
 
 # Символы, недопустимые в именах видов Revit.
 _FORBIDDEN = u"\\:{}[]|;<>?`~"
 
 
-def copy_name(prefix, source_name, existing):
-    """Имя копии: префикс + имя исходного вида; если занято — « (2)», « (3)», …"""
-    text = u"".join(ch for ch in (prefix or u"") + (source_name or u"") if ch not in _FORBIDDEN)
+def copy_name(suffix, source_name, existing):
+    """Имя копии: имя исходного вида + суффикс; если занято — « (2)», « (3)», …"""
+    text = u"".join(ch for ch in (source_name or u"") + (suffix or u"") if ch not in _FORBIDDEN)
     name = u" ".join(text.split()) or u"Фрагмент"
     if name not in existing:
         return name
@@ -88,32 +88,6 @@ def unsupported_reason(view):
     return None
 
 
-def ensure_work_plane(doc, view):
-    """Рабочая плоскость вида для PickPoint (на разрезах/фасадах её часто нет).
-
-    Создаёт плоскость через начало вида по его направлению; вызывать внутри
-    транзакции. Возвращает Id созданной плоскости (её потом убирает
-    remove_work_plane) или None, если плоскость у вида уже была.
-    """
-    from Autodesk.Revit.DB import Plane, SketchPlane
-    if view.SketchPlane is not None:
-        return None
-    plane = Plane.CreateByNormalAndOrigin(view.ViewDirection, view.Origin)
-    sketch = SketchPlane.Create(doc, plane)
-    view.SketchPlane = sketch
-    return sketch.Id
-
-
-def remove_work_plane(doc, plane_id):
-    """Удаляет временную рабочую плоскость (нужна была только для PickPoint)."""
-    if plane_id is None:
-        return
-    try:
-        doc.Delete(plane_id)
-    except Exception:
-        pass
-
-
 def available_modes(view):
     """MODES, которые Revit разрешает для этого вида (CanViewBeDuplicated)."""
     from Autodesk.Revit.DB import ViewDuplicateOption
@@ -130,8 +104,8 @@ def available_modes(view):
     return result
 
 
-def duplicate_view(doc, view, mode, prefix):
-    """Копия вида в режиме mode (ключ из MODES) с именем префикс + имя вида.
+def duplicate_view(doc, view, mode, suffix):
+    """Копия вида в режиме mode (ключ из MODES) с именем «имя вида + суффикс».
     Вызывать в транзакции. Для MODE_SELF возвращает сам view."""
     from Autodesk.Revit.DB import Element, FilteredElementCollector, View, ViewDuplicateOption
     option = dict((k, o) for k, _l, o in MODES).get(mode)
@@ -145,7 +119,7 @@ def duplicate_view(doc, view, mode, prefix):
                 existing.add(Element.Name.GetValue(v))
         except Exception:
             pass
-    new_view.Name = copy_name(prefix, Element.Name.GetValue(view), existing)
+    new_view.Name = copy_name(suffix, Element.Name.GetValue(view), existing)
     return new_view
 
 

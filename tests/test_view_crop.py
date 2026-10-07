@@ -22,8 +22,8 @@ def test_min_size_override():
 
 def test_copy_name():
     from lowlife.view_crop import copy_name
-    assert copy_name(u"Фрагмент - ", u"План 1", set()) == u"Фрагмент - План 1"
-    assert copy_name(u"Ф: ", u"План [1]", {u"Ф План 1"}) == u"Ф План 1 (2)"
+    assert copy_name(u" - Фрагмент", u"План 1", set()) == u"План 1 - Фрагмент"
+    assert copy_name(u" :Ф", u"План [1]", {u"План 1 Ф"}) == u"План 1 Ф (2)"
     assert copy_name(u"", u"", set()) == u"Фрагмент"
 
 
