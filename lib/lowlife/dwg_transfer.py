@@ -209,6 +209,25 @@ def _curve_points(curve):
         return []
 
 
+def polyline_lines(points, tol):
+    """
+    Ломаная → отрезки. Точки ближе tol к предыдущей оставленной
+    выбрасываются (Revit не создаёт отрезки короче ShortCurveTolerance —
+    в DWG такие бывают у плотных полилиний), форма ломаной сохраняется.
+    """
+    kept = []
+    for p in points:
+        if not kept or p.DistanceTo(kept[-1]) > tol:
+            kept.append(p)
+    lines = []
+    for a, b in zip(kept, kept[1:]):
+        try:
+            lines.append(Line.CreateBound(a, b))
+        except Exception:
+            pass
+    return lines
+
+
 def _walk_symbol(doc, view, geom, to_symbol, geo):
     """to_symbol — из координат geom в координаты символа верхнего экземпляра."""
     for obj in geom:
@@ -217,9 +236,12 @@ def _walk_symbol(doc, view, geom, to_symbol, geo):
             continue
         if isinstance(obj, PolyLine):
             pts = list(obj.GetTransformed(to_symbol).GetCoordinates())
-            curves = [Line.CreateBound(a, b) for a, b in zip(pts, pts[1:]) if a.DistanceTo(b) > 1e-9]
+            curves = polyline_lines(pts, doc.Application.ShortCurveTolerance)
         elif isinstance(obj, Curve):
-            curves = [obj.CreateTransformed(to_symbol)]
+            try:
+                curves = [obj.CreateTransformed(to_symbol)]
+            except Exception:
+                continue  # вырожденная кривая (короче допуска Revit)
             pts = _curve_points(curves[0])
         else:
             continue  # тела, сетки, заливки — не переносятся
@@ -265,7 +287,13 @@ def collect_geometry(doc, imp, view):
         else:
             _walk_symbol(doc, view, [obj], inv, geo)
     top = geo.top_transform
-    geo.items = [(c.CreateTransformed(top), cat) for c, cat in geo.items]
+    items = []
+    for c, cat in geo.items:
+        try:
+            items.append((c.CreateTransformed(top), cat))
+        except Exception:
+            pass  # после масштаба импорта кривая стала короче допуска Revit
+    geo.items = items
     return geo
 
 
@@ -320,7 +348,7 @@ class Placement(object):
     def polyline(self, curve):
         """Запасной вариант: кривая как ломаная, каждая точка — проекцией."""
         pts = [self.point(p) for p in _curve_points(curve)]
-        return [Line.CreateBound(a, b) for a, b in zip(pts, pts[1:]) if a.DistanceTo(b) > 1e-6]
+        return polyline_lines(pts, self.view.Document.Application.ShortCurveTolerance)
 
 
 def _bounded(c):
