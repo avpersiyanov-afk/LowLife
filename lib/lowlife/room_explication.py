@@ -144,16 +144,56 @@ def _room_data(room, category_param):
     }
 
 
+def _visible_room_ids(doc, view, link=None):
+    """
+    Id помещений, которые Revit показывает на этом плане (его уровень и
+    секущий диапазон): для модели — FilteredElementCollector(doc, view.Id),
+    для связи — (doc, view.Id, link.Id), есть с Revit 2024. None — Revit не
+    ответил (старая версия, ошибка) или ответил пустым набором (например,
+    категория «Помещения» скрыта на виде) — тогда проверка по высоте.
+    """
+    try:
+        if link is None:
+            collector = FilteredElementCollector(doc, view.Id)
+        else:
+            collector = FilteredElementCollector(doc, view.Id, link.Id)
+        ids = set(str(el.Id) for el in collector.OfCategory(BuiltInCategory.OST_Rooms)
+                  .WhereElementIsNotElementType())
+    except Exception:
+        return None
+    return ids or None
+
+
+class RoomStats(object):
+    """Сколько помещений отсеялось на каждом шаге — для сообщения, если
+    во фрагменте не нашлось ни одного."""
+
+    def __init__(self, label):
+        self.label = label
+        self.total = 0      # всего помещений в модели/связи
+        self.in_frame = 0   # точка размещения в рамке подрезки (в плане)
+        self.on_level = 0   # из них — на этом этаже
+        self.method = u""   # как определялся этаж
+
+    def text(self):
+        return u"{}: всего {}, в рамке (в плане) {}, из них на этом этаже {} ({})".format(
+            self.label, self.total, self.in_frame, self.on_level, self.method)
+
+
 def collect_fragment_rooms(doc, view, category_param=u""):
     """
     Помещения фрагмента по источникам: {подпись источника: [dict помещения]}
-    (dict — как ждёт room_explication_core.build_rows) и число отброшенных
-    неразмещённых/незамкнутых помещений (площадь 0) внутри рамки.
+    (dict — как ждёт room_explication_core.build_rows), число отброшенных
+    неразмещённых/незамкнутых помещений (площадь 0) и [RoomStats].
+
+    В рамке — точка размещения внутри рамки подрезки (только X/Y вида).
+    На этом этаже — помещение показано на плане (_visible_room_ids); если
+    Revit этого не сказал — точка в секущем диапазоне плана (_z_range).
     """
     to_view, rect = _crop_frame(view)
     lo, hi = _z_range(doc, view)
 
-    sources = [(u"Эта модель", doc, None)]
+    sources = [(u"Эта модель", doc, None, None)]
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         try:
             link_doc = link.GetLinkDocument()
@@ -162,26 +202,41 @@ def collect_fragment_rooms(doc, view, category_param=u""):
         except Exception:
             continue
         sources.append((u"Связь: {}".format(link_doc.Title), link_doc,
-                        link.GetTotalTransform()))
+                        link.GetTotalTransform(), link))
 
     result = {}
     skipped = 0
-    for label, source_doc, transform in sources:
+    stats = []
+    for label, source_doc, transform, link in sources:
+        st = RoomStats(label)
+        stats.append(st)
+        visible = _visible_room_ids(doc, view, link)
+        st.method = (u"по видимости на плане" if visible is not None
+                     else u"по высоте секущего диапазона")
         for room in _rooms(source_doc):
+            st.total += 1
             loc = room.Location
-            if loc is None or not hasattr(loc, "Point"):
+            pt = getattr(loc, "Point", None) if loc is not None else None
+            if pt is None:
                 continue
-            pt = loc.Point if transform is None else transform.OfPoint(loc.Point)
-            if not lo <= pt.Z <= hi:
-                continue
+            if transform is not None:
+                pt = transform.OfPoint(pt)
             local = to_view.OfPoint(pt)
             if not core.in_rect(local.X, local.Y, rect):
                 continue
+            st.in_frame += 1
+            if visible is not None:
+                if str(room.Id) not in visible:
+                    continue
+            elif not lo <= pt.Z <= hi:
+                continue
+            st.on_level += 1
             if room.Area <= 0:
                 skipped += 1
                 continue
             result.setdefault(label, []).append(_room_data(room, category_param))
-    return result, skipped
+    return result, skipped, stats
+
 
 # ---------------------------------------------------------------------------
 # Метка на спецификации
@@ -445,7 +500,7 @@ def rebuild(doc, view, sources, settings, schedule=None):
     """
     from lowlife import room_explication_settings as rs
     category_param = (settings.get("category_param") or u"").strip()
-    by_source, skipped = collect_fragment_rooms(doc, view, category_param)
+    by_source, skipped, _stats = collect_fragment_rooms(doc, view, category_param)
     rows = core.build_rows(pick_rooms(by_source, sources),
                            settings.get("area_decimals", 2))
     schedule = build_explication(doc, view, sources, rs.title(settings),

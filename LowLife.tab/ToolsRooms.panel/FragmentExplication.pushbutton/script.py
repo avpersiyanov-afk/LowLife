@@ -60,11 +60,15 @@ if existing:
     schedule, _view, sources = existing[0]
 else:
     schedule = None
-    by_source, _skipped = rexp.collect_fragment_rooms(
+    by_source, skipped, stats = rexp.collect_fragment_rooms(
         doc, view, (settings.get("category_param") or u"").strip())
     if not by_source:
-        forms.alert(u"В рамке подрезки вида нет размещённых помещений "
-                    u"(ни в модели, ни в видимых связях).", title=TITLE, exitscript=True)
+        details = u"\n".join(st.text() for st in stats)
+        if skipped:
+            details += u"\nНеразмещённых/незамкнутых (площадь 0): {}".format(skipped)
+        forms.alert(u"Во фрагменте не найдено ни одного помещения.\n\n" + details +
+                    u"\n\nЕсли помещения в рамке есть, пришлите этот текст "
+                    u"разработчику.", title=TITLE, exitscript=True)
     sources = []
     labels = sorted(by_source.keys())
     if len(labels) > 1:
