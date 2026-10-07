@@ -18,6 +18,12 @@
 
 Значение параметра ищется сначала у экземпляра, потом у его типа — так же,
 как его показывает спецификация.
+
+Незаполненные элементы всех категорий показываются на 3D-виде
+VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, на которой
+изолированы только они (временная изоляция, переведённая в постоянное
+скрытие остального). Повторный запуск переиспользует вид: сначала
+показывает всё скрытое на нём, потом изолирует заново.
 """
 
 from Autodesk.Revit.DB import (
@@ -30,6 +36,7 @@ from lowlife import geometry, loi_check_core as core
 from lowlife.params import param_to_text
 
 SCHEDULE_PREFIX = u"LOI проверка"
+VIEW_3D_NAME = u"LOI проверка — незаполненные"
 
 TYPE_HEADING = u"Тип"
 FAMILY_HEADING = u"Семейство"
@@ -375,3 +382,88 @@ def build_schedule(doc, category, rows, floor_param):
             pass
 
     return schedule, missing
+
+
+# --- 3D-вид с незаполненными элементами ------------------------------------------
+
+def _three_d_type(doc):
+    from Autodesk.Revit.DB import ViewFamily, ViewFamilyType
+    for vft in FilteredElementCollector(doc).OfClass(ViewFamilyType):
+        try:
+            if vft.ViewFamily == ViewFamily.ThreeDimensional:
+                return vft
+        except Exception:
+            continue
+    return None
+
+
+def _find_3d_view(doc, name):
+    from Autodesk.Revit.DB import View3D
+    for v in FilteredElementCollector(doc).OfClass(View3D):
+        try:
+            if not v.IsTemplate and v.Name == name:
+                return v
+        except Exception:
+            continue
+    return None
+
+
+def _unhide_all(doc, view):
+    """Показывает элементы, скрытые на виде (прошлый запуск кнопки)."""
+    from System.Collections.Generic import List
+    hidden = List[ElementId]()
+    for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
+        try:
+            if el.IsHidden(view) and el.CanBeHidden(view):
+                hidden.Add(el.Id)
+        except Exception:
+            continue
+    if hidden.Count:
+        view.UnhideElements(hidden)
+
+
+def build_3d_view(doc, elements):
+    """
+    3D-вид VIEW_3D_NAME, на котором видны только elements. Вызывать внутри
+    транзакции. Возвращает вид или None (нет элементов / нет типа 3D-вида).
+    """
+    from System.Collections.Generic import List
+    from Autodesk.Revit.DB import View3D
+
+    if not elements:
+        return None
+
+    view = _find_3d_view(doc, VIEW_3D_NAME)
+    if view is None:
+        vft = _three_d_type(doc)
+        if vft is None:
+            return None
+        view = View3D.CreateIsometric(doc, vft.Id)
+        view.Name = VIEW_3D_NAME
+    else:
+        try:
+            view.DisableTemporaryViewMode(_temporary_mode())
+        except Exception:
+            pass
+        _unhide_all(doc, view)
+
+    try:
+        view.ViewTemplateId = ElementId.InvalidElementId
+    except Exception:
+        pass
+    try:
+        view.IsSectionBoxActive = False
+    except Exception:
+        pass
+
+    ids = List[ElementId]()
+    for el in elements:
+        ids.Add(el.Id)
+    view.IsolateElementsTemporary(ids)
+    view.ConvertTemporaryHideIsolateToPermanent()
+    return view
+
+
+def _temporary_mode():
+    from Autodesk.Revit.DB import TemporaryViewMode
+    return TemporaryViewMode.TemporaryHideIsolate

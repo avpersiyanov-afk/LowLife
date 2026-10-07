@@ -19,8 +19,13 @@ def _cell(text):
     return unicode(text or u"").replace(u"|", u"/")
 
 
-def _report(output, results, rows, missing_categories):
+def _report(output, results, rows, missing_categories, view_3d):
     output.print_md(u"# Проверка LOI")
+    if view_3d is not None:
+        output.print_md(u"3D-вид с незаполненными элементами: {}".format(
+            output.linkify(view_3d.Id, view_3d.Name)))
+    else:
+        output.print_md(u"Незаполненных элементов нет — 3D-вид не обновлялся (если он есть, на нём результат прошлого запуска).")
     if missing_categories:
         output.print_md(u"**Категории из настроек не найдены в документе:** {}".format(
             u", ".join(missing_categories)))
@@ -88,19 +93,35 @@ def main():
 
     results = [loi_check.check_category(doc, cat, rows, floor_param) for cat in categories]
 
-    with revit.Transaction(u"Проверка LOI — спецификации"):
+    incomplete = [row.element for res in results for row in res.incomplete_rows]
+
+    with revit.Transaction(u"Проверка LOI — спецификации и 3D-вид"):
         for res in results:
             res.schedule, res.missing_fields = loi_check.build_schedule(
                 doc, res.category, rows, floor_param)
+        view_3d = loi_check.build_3d_view(doc, incomplete)
 
-    _report(script.get_output(), results, rows, missing_categories)
+    _report(script.get_output(), results, rows, missing_categories, view_3d)
 
-    first = next((r.schedule for r in results if r.schedule is not None), None)
-    if first is not None:
-        try:
-            uidoc.ActiveView = first
-        except Exception:
-            pass
+    if view_3d is not None:
+        total = len(incomplete)
+        if forms.alert(
+                u"Элементов с незаполненными параметрами: {}.\n\n"
+                u"Открыть 3D-вид «{}»?".format(total, view_3d.Name),
+                title=TITLE, yes=True, no=True):
+            _open(view_3d)
+        return
+
+    _open(next((r.schedule for r in results if r.schedule is not None), None))
+
+
+def _open(view):
+    if view is None:
+        return
+    try:
+        uidoc.ActiveView = view
+    except Exception:
+        pass
 
 
 try:
