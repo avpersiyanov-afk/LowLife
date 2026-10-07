@@ -104,30 +104,32 @@ function doGet() {
 }
 
 function doPost(e) {
+  const started = Date.now();
+  const out = obj => { obj.ms = Date.now() - started; return json_(obj); }; // время работы скрипта — Revit показывает его в сводке
   let req;
   try {
     req = JSON.parse(e.postData.contents);
   } catch (err) {
-    return json_({ ok: false, error: 'Некорректный запрос' });
+    return out({ ok: false, error: 'Некорректный запрос' });
   }
   const token = getToken_(false);
   if (!token || req.token !== token) {
-    return json_({ ok: false, error: 'Неверный токен. Сверьте его с меню таблицы «Заметки Revit → Показать токен».' });
+    return out({ ok: false, error: 'Неверный токен. Сверьте его с меню таблицы «Заметки Revit → Показать токен».' });
   }
   try {
     switch (req.action) {
-      case 'ping': return json_({ ok: true, sheet: SpreadsheetApp.getActive().getName() });
-      case 'settings': return json_(getSettings_());
-      case 'saveSettings': return json_(saveSettings_(req.settings || {}));
-      case 'add': return json_(addNote_(req.note || {}));
-      case 'list': return json_(listNotes_(req.project_key));
-      case 'setStatus': return json_(setStatus_(req.ids || [], req.status, req.by));
-      case 'answer': return json_(setAnswer_(req.id, req.answer, req.status, req.by));
-      case 'update': return json_(updateNote_(req.id, req.fields || {}, req.by));
-      default: return json_({ ok: false, error: 'Неизвестное действие: ' + req.action });
+      case 'ping': return out({ ok: true, sheet: SpreadsheetApp.getActive().getName() });
+      case 'settings': return out(getSettings_());
+      case 'saveSettings': return out(saveSettings_(req.settings || {}));
+      case 'add': return out(addNote_(req.note || {}));
+      case 'list': return out(listNotes_(req.project_key));
+      case 'setStatus': return out(setStatus_(req.ids || [], req.status, req.by));
+      case 'answer': return out(setAnswer_(req.id, req.answer, req.status, req.by));
+      case 'update': return out(updateNote_(req.id, req.fields || {}, req.by));
+      default: return out({ ok: false, error: 'Неизвестное действие: ' + req.action });
     }
   } catch (err) {
-    return json_({ ok: false, error: String((err && err.message) || err) });
+    return out({ ok: false, error: String((err && err.message) || err) });
   }
 }
 

@@ -241,6 +241,10 @@ def _is_transient(ex):
     return isinstance(net, IOException)
 
 
+# Сколько работал сам скрипт Google в последнем ответе (мс) — чтобы отличить медленную таблицу от медленной сети
+last_server_ms = [None]
+
+
 def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1):
     """Запрос к веб-приложению. Временный сбой связи повторяется (retries раз): все действия
     сервера безопасно повторять — «add» отсеивает повторную отправку по id."""
@@ -276,6 +280,10 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
             raise ApiError(u'Таблица ответила не данными, а страницей. Проверьте адрес (должен заканчиваться на /exec) '
                            u'и что веб-приложение развернуто с доступом «Все».')
         break
+    try:
+        last_server_ms[0] = float(resp.get('ms'))
+    except Exception:
+        last_server_ms[0] = None  # Code.gs старой версии не сообщает своё время
     if not resp.get('ok'):
         raise ApiError(resp.get('error') or u'Неизвестная ошибка')
     return resp
