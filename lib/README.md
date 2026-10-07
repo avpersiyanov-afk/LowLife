@@ -1496,10 +1496,10 @@ room_number_param)` — запись по точкам прохода, возв�
 семейство (`Autodesk.Revit.DB.Electrical.CableTrayType`), а не загружаемое —
 типы перечисляются через `FilteredElementCollector(doc).OfClass(CableTrayType)`,
 а не через `Family.GetFamilySymbolIds()` (тот путь — для загружаемых семейств,
-см. `scs_settings.list_generic_model_symbols`). Не привязан к дисциплине,
-поэтому не имеет своего `*_settings.py` — тип лотка и ключевое слово рабочего
-набора передаются кнопкой напрямую (тип — уникален для кнопки, ключевое слово
-рабочего набора одно на все кнопки, `DEFAULT_WORKSET_FILTER = u"КНК"`).
+см. `scs_settings.list_generic_model_symbols`). Подстрока имени типа лотка
+(своя у кнопки) и ключевое слово рабочего набора (общее для всех кнопок,
+по умолчанию «КНК») хранятся в `cable_tray_settings.py` и меняются по
+Shift+клику; `script.py` кнопки — один вызов `run_tray_button`.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
@@ -1507,6 +1507,20 @@ room_number_param)` — запись по точкам прохода, возв�
 | `find_worksets` | `find_worksets(doc, name_filter)` | Все пользовательские `Workset` (`WorksetKind.UserWorkset`), у которых `name_filter` входит в имя |
 | `set_active_workset` | `set_active_workset(doc, workset)` | `WorksetTable.SetActiveWorksetId` — новые элементы будут создаваться в этом рабочем наборе |
 | `run_create_cable_tray_button` | `run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DEFAULT_WORKSET_FILTER)` | Весь сценарий кнопки: находит ровно один подходящий тип лотка и ровно один подходящий рабочий набор (иначе `forms.alert(exitscript=True)` с пояснением), переключает активный рабочий набор, затем `UIDocument.PostRequestForElementTypePlacement(tray_type)` — запускает штатный интерактивный инструмент вставки лотка Revit уже с этим типом, без имитации кликов по селектору типов. Если API `PostRequestForElementTypePlacement` недоступен (старая версия Revit) — сообщает, что рабочий набор уже переключён, и просит запустить инструмент «Лоток» вручную |
+| `run_tray_button` | `run_tray_button(doc, uidoc, panel_folder, button_folder, button_name, default_tray_type)` | Тело `script.py` кнопки: Shift+клик — окно настроек этой кнопки (`cable_tray_settings.button_settings`); обычный клик — сохранённые значения (или умолчания) → `run_create_cable_tray_button` |
+
+## cable_tray_settings.py
+Настройки кнопок «Лоток ...» — один файл `%APPDATA%\pyRevit\LowLifeCableTray_settings.json`
+на все 20 кнопок, через `settings_core.TextSettings`. У каждой кнопки свой ключ
+`tray_type_<Панель>_<Кнопка>` (умолчание — подстрока, которая раньше была
+зашита в `script.py`), ключ `workset_filter` общий (умолчание «КНК»).
+`save_values` дописывает только свои ключи, поэтому окна разных кнопок не
+затирают друг друга. Без Revit API — покрыт тестами.
+
+| Функция | Сигнатура | Что делает |
+|---|---|---|
+| `tray_type_key` | `tray_type_key(panel_folder, button_folder)` | Ключ подстроки типа кнопки в файле |
+| `button_settings` | `button_settings(panel_folder, button_folder, button_name, default_tray_type)` | `TextSettings` кнопки: поле типа лотка и общее поле рабочего набора, кнопка «Сбросить» |
 
 ## media_keys.py
 Эмуляция нажатий медиаклавиш Windows (`Music.panel`).

@@ -15,13 +15,19 @@ API's own way to start the correct in-canvas placement tool for a given
 ElementType from an external command — it is what lets a button "call the
 create cable tray command with this type already selected" without
 simulating clicks in the Type Selector.
+
+The tray type substring (one per button) and the workset keyword (shared by
+all buttons) live in cable_tray_settings and are edited by Shift+click;
+run_tray_button is the whole body of a button's script.py.
 """
 
 from Autodesk.Revit.DB import Element, FilteredElementCollector, FilteredWorksetCollector, WorksetKind
 from Autodesk.Revit.DB.Electrical import CableTrayType
-from pyrevit import forms
+from pyrevit import forms, script
 
-DEFAULT_WORKSET_FILTER = u"КНК"
+from lowlife import cable_tray_settings
+
+DEFAULT_WORKSET_FILTER = cable_tray_settings.DEFAULT_WORKSET_FILTER
 
 
 def _safe_type_name(el):
@@ -73,14 +79,18 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     tray_types = find_cable_tray_types(doc, tray_type_filter)
     if not tray_types:
         forms.alert(
-            u"Не найден тип лотка, содержащий «{}» в имени.".format(tray_type_filter),
+            u"Не найден тип лотка, содержащий «{}» в имени.
+
+"
+            u"Создайте в проекте тип кабельного лотка с таким текстом в имени "
+            u"или поменяйте текст в настройках кнопки (Shift+клик).".format(tray_type_filter),
             exitscript=True
         )
     if len(tray_types) > 1:
         forms.alert(
             u"Найдено несколько типов лотка с «{}» в имени ({} шт.) — "
-            u"уточните имена типов в проекте, чтобы подстрока совпадала "
-            u"ровно с одним.".format(tray_type_filter, len(tray_types)),
+            u"уточните имена типов в проекте или текст в настройках кнопки "
+            u"(Shift+клик), чтобы он совпадал ровно с одним.".format(tray_type_filter, len(tray_types)),
             exitscript=True
         )
     tray_type = tray_types[0]
@@ -88,13 +98,18 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     worksets = find_worksets(doc, workset_filter)
     if not worksets:
         forms.alert(
-            u"Не найден рабочий набор, содержащий «{}» в имени.".format(workset_filter),
+            u"Не найден рабочий набор, содержащий «{}» в имени.
+
+"
+            u"Создайте такой рабочий набор или поменяйте текст в настройках "
+            u"кнопки (Shift+клик).".format(workset_filter),
             exitscript=True
         )
     if len(worksets) > 1:
         forms.alert(
             u"Найдено несколько рабочих наборов с «{}» в имени ({} шт.) — "
-            u"уточните имена рабочих наборов в проекте.".format(workset_filter, len(worksets)),
+            u"уточните имена рабочих наборов в проекте или текст в настройках "
+            u"кнопки (Shift+клик).".format(workset_filter, len(worksets)),
             exitscript=True
         )
     workset = worksets[0]
@@ -113,3 +128,39 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
         )
 
     uidoc.PostRequestForElementTypePlacement(tray_type)
+
+
+def run_tray_button(doc, uidoc, panel_folder, button_folder, button_name, default_tray_type):
+    """
+    Тело script.py кнопки «Лоток ...». Shift+клик — окно настроек (тип
+    лотка этой кнопки и общий рабочий набор); обычный клик — берёт
+    сохранённые значения (или умолчания) и запускает
+    run_create_cable_tray_button.
+    """
+    settings_obj = cable_tray_settings.button_settings(
+        panel_folder, button_folder, button_name, default_tray_type
+    )
+    type_key = cable_tray_settings.tray_type_key(panel_folder, button_folder)
+
+    try:
+        from pyrevit import EXEC_PARAMS
+        config_mode = bool(EXEC_PARAMS.config_mode)
+    except Exception:
+        config_mode = False
+
+    if config_mode:
+        edited = settings_obj.get_settings_interactive()
+        forms.alert(
+            u"Отменено, настройки не изменены." if edited is None
+            else u"Настройки сохранены."
+        )
+        script.exit()
+
+    settings = settings_obj.get_settings_silent()
+    settings_obj.require(settings, [type_key, cable_tray_settings.WORKSET_KEY])
+
+    run_create_cable_tray_button(
+        doc, uidoc,
+        settings[type_key].strip(),
+        settings[cable_tray_settings.WORKSET_KEY].strip(),
+    )

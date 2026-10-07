@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
 __title__ = u"Лоток\nСС"
 __doc__ = (
-    u"Лоток СС (Неперфорированный, тип содержит «СС_ЛН_1.5_СЦ») — "
-    u"переключает активный рабочий набор на содержащий «КНК» и запускает "
-    u"вставку кабельного лотка этого типа."
+    u"Лоток СС (Неперфорированный) — переключает активный рабочий набор (по умолчанию содержащий «КНК») и запускает вставку кабельного лотка типа, в имени которого есть «СС_ЛН_1.5_СЦ». Shift+клик — настройки: текст имени типа лотка и рабочего набора."
 )
 __author__ = "Pipers"
 
 from pyrevit import revit
 
-from lowlife.cable_tray import run_create_cable_tray_button
+from lowlife.cable_tray import run_tray_button
 
-doc = revit.doc
-uidoc = revit.uidoc
-
-run_create_cable_tray_button(doc, uidoc, u"СС_ЛН_1.5_СЦ")
+run_tray_button(
+    revit.doc, revit.uidoc,
+    "TrayUnperforated", "TraySS", u"Лоток СС (Неперфорированный лоток)",
+    u"СС_ЛН_1.5_СЦ",
+)
