@@ -432,37 +432,100 @@ def _set_style(section, row, col, center, bold=False):
         pass
 
 
+def _merged_span(section, row, col):
+    """(лево, право) объединения, в которое входит ячейка, или None."""
+    try:
+        m = section.GetMergedCell(row, col)
+        return m.Left, m.Right
+    except Exception:
+        return None
+
+
 def _unmerge_row(section, row, col0, count):
     """Новая строка шапки могла унаследовать объединение ячеек от строки
-    названия — разбиваем на отдельные ячейки."""
-    try:
-        from Autodesk.Revit.DB import TableMergedCell
-        for j in range(count):
-            c = col0 + j
-            section.SetMergedCell(row, c, TableMergedCell(row, c, row, c))
-    except Exception:
-        pass
+    названия — разбиваем на отдельные ячейки (как «Разъединить» в Revit)."""
+    from Autodesk.Revit.DB import TableMergedCell
+    for j in range(count):
+        c = col0 + j
+        span = _merged_span(section, row, c)
+        if span is None or span[0] == span[1]:
+            continue
+        try:
+            section.SetMergedCell(row, span[0], TableMergedCell(row, span[0], row, span[0]))
+        except Exception:
+            pass
+
+
+def _ensure_header_columns(section, widths_ft):
+    """
+    Шапка должна иметь столько же столбцов, сколько граф. Обычно Revit
+    повторяет в шапке столбцы тела, но если их меньше — добавляем
+    (InsertColumn). Ширины задаём и в шапке. Возвращает число столбцов.
+    """
+    need = len(widths_ft)
+    for _ in range(need):
+        if section.NumberOfColumns >= need:
+            break
+        inserted = False
+        for idx in (section.LastColumnNumber + 1, section.LastColumnNumber):
+            try:
+                if section.CanInsertColumn(idx):
+                    section.InsertColumn(idx)
+                    inserted = True
+                    break
+            except Exception:
+                continue
+        if not inserted:
+            break
+    col0 = section.FirstColumnNumber
+    for j, width in enumerate(widths_ft):
+        if j >= section.NumberOfColumns:
+            break
+        try:
+            section.SetColumnWidth(col0 + j, width)
+        except Exception:
+            pass
+    return section.NumberOfColumns
+
+
+def _header_report(section, row, count):
+    """Что Revit отдал в шапке — для текста ошибки."""
+    spans = []
+    for j in range(count):
+        c = section.FirstColumnNumber + j
+        spans.append(u"{}:{}".format(c, _merged_span(section, row, c)))
+    return (u"столбцов в шапке {} (первый {}, последний {}); объединения в строке {}: {}"
+            .format(section.NumberOfColumns, section.FirstColumnNumber,
+                    section.LastColumnNumber, row, u", ".join(spans)))
 
 
 def fill_table(doc, schedule, title, columns, rows, heights):
     """
     Пересобирает таблицу в шапке: строка названия, строка заголовков граф
     (высота heights[0] мм), по строке на помещение (heights[1] мм). Ширины
-    граф — у полей тела. Вызывать в транзакции.
+    граф — у полей тела и у столбцов шапки. Вызывать в транзакции.
     """
     fields = _visible_fields(schedule)
     if len(fields) < len(columns):
         raise RuntimeError(u"У спецификации «{}» меньше {} видимых столбцов — "
                            u"удалите её и создайте экспликацию заново."
                            .format(element_name(schedule), len(columns)))
-    for field, (_key, _heading, width_mm) in zip(fields, columns):
-        field.GridColumnWidth = width_mm / core.MM_IN_FOOT
+    widths_ft = [c[2] / core.MM_IN_FOOT for c in columns]
+    for field, width in zip(fields, widths_ft):
+        field.GridColumnWidth = width
     doc.Regenerate()
 
     header = schedule.GetTableData().GetSectionData(SectionType.Header)
     first = header.FirstRowNumber
     for r in range(header.LastRowNumber, first, -1):
         header.RemoveRow(r)
+    _ensure_header_columns(header, widths_ft)
+    try:
+        from Autodesk.Revit.DB import TableMergedCell
+        header.SetMergedCell(first, header.FirstColumnNumber, TableMergedCell(
+            first, header.FirstColumnNumber, first, header.LastColumnNumber))
+    except Exception:
+        pass  # название — на всю ширину таблицы; не вышло — останется как есть
     header.SetCellText(first, header.FirstColumnNumber, title)
 
     header_mm, row_mm = heights
@@ -474,7 +537,12 @@ def fill_table(doc, schedule, title, columns, rows, heights):
         header.SetRowHeight(r, (header_mm if i == 0 else row_mm) / core.MM_IN_FOOT)
         _unmerge_row(header, r, col0, len(values))
         for j, text in enumerate(values):
-            header.SetCellText(r, col0 + j, text)
+            try:
+                header.SetCellText(r, col0 + j, text)
+            except Exception as err:
+                raise RuntimeError(u"Revit не дал записать ячейку шапки ({}, {}): {}\n{}"
+                                   .format(r, col0 + j, err,
+                                           _header_report(header, r, len(values))))
             # Наименование помещения — влево, остальное и заголовки — по центру.
             _set_style(header, r, col0 + j, center=(i == 0 or columns[j][0] != "name"))
 
