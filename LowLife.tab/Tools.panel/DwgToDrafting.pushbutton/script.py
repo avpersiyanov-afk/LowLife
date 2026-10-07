@@ -99,7 +99,7 @@ if not target_choice:
 # --- откуда текст ---------------------------------------------------------------
 
 file_path = dt.import_file_path(doc, imp)
-dxf_path = dt.sibling_dxf(file_path)
+dxf_path, searched = dt.find_dxf(doc, imp, file_path)
 temp_dir = None
 convert_error = None
 if dxf_path is None and file_path and file_path.lower().endswith(".dwg") and os.path.isfile(file_path):
@@ -111,8 +111,11 @@ if dxf_path is None and file_path and file_path.lower().endswith(".dwg") and os.
             convert_error = u"{}".format(err)
 
 if dxf_path is None:
+    where = u""
+    if searched:
+        where = u"\n\nDXF искался здесь:\n" + u"\n".join(searched[:6])
     if not file_path:
-        why = u"DWG вставлен в проект, а не связан — путь к файлу неизвестен."
+        why = u"DWG вставлен в проект, а не связан — путь к нему неизвестен."
     elif not os.path.isfile(file_path):
         why = u"Файл DWG не найден:\n{}".format(file_path)
     elif convert_error:
@@ -125,11 +128,15 @@ if dxf_path is None:
     SKIP = u"Без текста — только линии"
     text_choice = forms.CommandSwitchWindow.show(
         [PICK, SKIP],
-        message=u"Текст DWG читается из DXF того же чертежа. " + why)
+        message=u"Текст DWG читается из DXF того же чертежа. " + why + where)
     if not text_choice:
         script.exit()
     if text_choice == PICK:
-        dxf_path = forms.pick_file(file_ext="dxf")
+        start_dir = os.path.dirname(file_path) if file_path else None
+        if start_dir and os.path.isdir(start_dir):
+            dxf_path = forms.pick_file(file_ext="dxf", init_dir=start_dir)
+        else:
+            dxf_path = forms.pick_file(file_ext="dxf")
         if not dxf_path:
             script.exit()
 
@@ -193,6 +200,9 @@ if target.Id != view.Id:
 
 lines = [u"«{}» → {}".format(label, u"чертёжный вид «{}»".format(dt.element_name(target))
                               if target.Id != view.Id else u"этот вид")]
+if dxf_path:
+    lines.append(u"Текст из: " + (u"DWG, сконвертированного ODA File Converter"
+                                  if temp_dir else dxf_path))
 line_text = u"Линий детализации: {}".format(result.lines)
 if result.lines_failed:
     line_text += u" (не удалось: {})".format(result.lines_failed)
