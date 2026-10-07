@@ -349,6 +349,21 @@ def dwg_to_drafting(c):
     c.d.text((66 * K, 70 * K), u"Аа", font=font, fill=BLUE, anchor="mm")
 
 
+def check_loi(c):
+    """«Проверка LOI»: спецификация (шапка, строки, столбцы) с оранжевой
+    пустой ячейкой и лупа над ней — проверка заполнения параметров."""
+    c.rect((8, 10, 70, 74), BLUE, WHITE, 4.5, 2)
+    c.d.rectangle([8 * K, 10 * K, 70 * K, 21 * K], fill=BLUE)
+    for y in (34, 47, 60):
+        c.line([(10, y), (68, y)], BLUE, 2.5)
+    for x in (28, 49):
+        c.line([(x, 21), (x, 74)], BLUE, 2.5)
+    c.d.rectangle([50 * K, 35 * K, 67 * K, 46 * K], fill=PALE_ORANGE)
+    c.line([(54, 40.5), (63, 40.5)], ORANGE, 3)
+    c.magnifier((60, 58), 13, 14)
+    c.line([(54, 58), (59, 63), (67, 53)], ORANGE, 4)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -369,6 +384,7 @@ ICONS = [
     ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
     ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
     ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
+    ("LOI.panel/CheckLOI.pushbutton", check_loi),
 ]
 
 
