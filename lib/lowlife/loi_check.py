@@ -21,9 +21,9 @@
 
 Незаполненные элементы всех категорий показываются на 3D-виде
 VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, на которой
-изолированы только они (временная изоляция, переведённая в постоянное
-скрытие остального). Повторный запуск переиспользует вид: сначала
-показывает всё скрытое на нём, потом изолирует заново.
+остальные модельные элементы скрыты («Скрыть элементы», постоянно).
+Повторный запуск переиспользует вид: прошлое скрытие снимается, вид
+регенерируется и скрытие считается заново (_apply_visibility).
 """
 
 from Autodesk.Revit.DB import (
@@ -408,13 +408,47 @@ def _find_3d_view(doc, name):
     return None
 
 
+# Модельные категории, которые не скрываем: служебные точки проекта —
+# их скрытие поштучно ни к чему, а режим «Показать скрытые элементы» на
+# виде с ними ведёт себя ненадёжно.
+_NEVER_HIDE_BICS = ("OST_ProjectBasePoint", "OST_SharedBasePoint", "OST_IOS_GeoSite",
+                    "OST_Cameras", "OST_Viewers", "OST_SectionBox")
+
+
+def _never_hide_ids():
+    from Autodesk.Revit.DB import BuiltInCategory
+    ids = set()
+    for name in _NEVER_HIDE_BICS:
+        bic = getattr(BuiltInCategory, name, None)
+        if bic is not None:
+            ids.add(int(bic))
+    return ids
+
+
+def _hideable(el, view, skip_cat_ids):
+    """Только «настоящие» модельные элементы: с модельной категорией, не
+    видозависимые, не служебные точки, и Revit разрешает их скрыть."""
+    try:
+        if el.ViewSpecific:
+            return False
+        cat = el.Category
+        if cat is None or cat.CategoryType != CategoryType.Model:
+            return False
+        if cat.Id.IntegerValue in skip_cat_ids:
+            return False
+        return el.CanBeHidden(view)
+    except Exception:
+        return False
+
+
 def _unhide_all(doc, view):
-    """Показывает элементы, скрытые на виде (прошлый запуск кнопки)."""
+    """Показывает всё, что скрыто на виде поштучно (прошлый запуск кнопки,
+    в том числе старой версии, скрывавшей и служебные элементы)."""
     from System.Collections.Generic import List
     hidden = List[ElementId]()
     for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
         try:
-            if el.IsHidden(view) and el.CanBeHidden(view):
+            if el.IsHidden(view):
                 hidden.Add(el.Id)
         except Exception:
             continue
@@ -422,12 +456,39 @@ def _unhide_all(doc, view):
         view.UnhideElements(hidden)
 
 
+def _apply_visibility(doc, view, keep_ids):
+    """
+    На виде видны только элементы keep_ids (int ElementId.IntegerValue).
+
+    Скрываются только модельные элементы, реально попадающие на вид
+    (FilteredElementCollector по виду, после Regenerate), а не всё подряд
+    по документу: раньше прятались и служебные/видозависимые элементы
+    других видов, а это лишняя нагрузка на режим «Показать скрытые
+    элементы» (на таком виде Revit падал). Перед этим всё скрытое
+    поштучно показывается и вид регенерируется — иначе только что
+    показанные элементы не попадают в выборку по виду и остаются видны.
+    """
+    from System.Collections.Generic import List
+
+    _unhide_all(doc, view)
+    doc.Regenerate()
+
+    skip = _never_hide_ids()
+    to_hide = List[ElementId]()
+    for el in FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType():
+        if el.Id.IntegerValue in keep_ids:
+            continue
+        if _hideable(el, view, skip):
+            to_hide.Add(el.Id)
+    if to_hide.Count:
+        view.HideElements(to_hide)
+
+
 def build_3d_view(doc, elements):
     """
     3D-вид VIEW_3D_NAME, на котором видны только elements. Вызывать внутри
     транзакции. Возвращает вид или None (нет элементов / нет типа 3D-вида).
     """
-    from System.Collections.Generic import List
     from Autodesk.Revit.DB import View3D
 
     if not elements:
@@ -441,11 +502,14 @@ def build_3d_view(doc, elements):
         view = View3D.CreateIsometric(doc, vft.Id)
         view.Name = VIEW_3D_NAME
     else:
-        try:
-            view.DisableTemporaryViewMode(_temporary_mode())
-        except Exception:
-            pass
-        _unhide_all(doc, view)
+        # вид мог остаться во временном режиме — «Показать скрытые элементы»
+        # (лампочка) или временное скрытие/изоляция; менять скрытие под ними
+        # не стоит
+        for mode in _temporary_modes():
+            try:
+                view.DisableTemporaryViewMode(mode)
+            except Exception:
+                pass
 
     try:
         view.ViewTemplateId = ElementId.InvalidElementId
@@ -456,14 +520,15 @@ def build_3d_view(doc, elements):
     except Exception:
         pass
 
-    ids = List[ElementId]()
-    for el in elements:
-        ids.Add(el.Id)
-    view.IsolateElementsTemporary(ids)
-    view.ConvertTemporaryHideIsolateToPermanent()
+    _apply_visibility(doc, view, set(el.Id.IntegerValue for el in elements))
     return view
 
 
-def _temporary_mode():
+def _temporary_modes():
     from Autodesk.Revit.DB import TemporaryViewMode
-    return TemporaryViewMode.TemporaryHideIsolate
+    modes = []
+    for name in ("RevealHiddenElements", "TemporaryHideIsolate"):
+        mode = getattr(TemporaryViewMode, name, None)
+        if mode is not None:
+            modes.append(mode)
+    return modes
