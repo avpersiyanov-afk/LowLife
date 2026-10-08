@@ -62,3 +62,30 @@ def test_side_column_leaders_start_on_symbol_edge():
         on_edge = (abs(p.end[0] - r[0]) < 1e-9 or abs(p.end[0] - r[2]) < 1e-9 or
                    abs(p.end[1] - r[1]) < 1e-9 or abs(p.end[1] - r[3]) < 1e-9)
         assert on_edge
+
+
+def test_dense_column_splits_to_both_sides_without_steep_leaders():
+    # элементы чаще, чем высота марки: одна колонка дала бы «веер»
+    items = [_box(i, 0, i * 0.9) for i in range(12)]
+    pl = _clean(items)
+    assert any(p.tag_rect[0] > 0 for p in pl) and any(p.tag_rect[2] < 0 for p in pl)
+    for p in pl:
+        du = abs(p.elbow[0] - p.end[0])
+        dv = abs(p.elbow[1] - p.end[1])
+        assert dv <= du + 1e-9
+
+
+def test_dense_grid_has_no_conflicts_and_square_outer_rows():
+    # сетка 5×5 вплотную (марка шире шага сетки): раньше средние ряды
+    # давали пересечения и «веер» наклонных выносок через всю сетку
+    items = [TagItem((i, j), (i * 8.0, j * 8.0),
+                     (i * 8.0 - 2, j * 8.0 - 2, i * 8.0 + 2, j * 8.0 + 2), (15.0, 3.5))
+             for i in range(5) for j in range(5)]
+    pl = layout(items, offset=3.0, gap=1.0, shelf=3.0, cluster_dist=8.0)
+    assert count_conflicts(pl, items) == (0, 0)
+    for it, p in zip(items, pl):
+        if it.key[1] in (0, 4):  # верхний/нижний ряд — наружу, вертикаль + полка
+            assert abs(p.end[0] - p.elbow[0]) < 1e-9
+            assert abs(p.elbow[1] - p.attach[1]) < 1e-9
+        for a, b in p.leader_segments():
+            assert abs(b[1] - a[1]) <= abs(b[0] - a[0]) + 1e-9 or abs(b[0] - a[0]) < 1e-9
