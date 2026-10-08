@@ -1989,7 +1989,20 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `group_by_level(rooms)` | `[(уровень, отметка, [LotRoom])]`, уровни снизу вверх |
 | `group_by_lot(rooms)` / `multilevel_lots(rooms)` | `Lot` по имени лота в пределах связи / только лоты на ≥2 уровнях (`Lot.is_multilevel()`) |
 
-## loi_check.py / loi_check_core.py / loi_check_settings.py
+## loi_check.py / loi_check_core.py / loi_check_settings.py / loi_appendix.py
+Этапы проверки по приложению «Требования к LOI»: `loi_appendix.read_appendix(path)`
+разбирает таблицу Excel, сохранённую как «Таблица XML 2003» (SpreadsheetML, с
+объединёнными ячейками), — разделы, элементы (группа, категория Revit, классы с
+кодами по классификатору), параметры и для каждого столбца «Подэтап проверки ПЧ/НЧ»
+каждой стадии — с какого подэтапа параметр обязателен (`Б-2` → 2). Столбцы находятся
+по заголовку, имена параметров и категорий — только из файла (в коде их нет). Выбранные
+разделы сохраняются в настройках (`appendix`). При запуске кнопка спрашивает этап
+(`loi_check_core.Stage`: стадия · часть · подэтап, обязательны параметры с подэтапом
+`<=` выбранного) или «свой список»; `CategoryPlan` — столбцы категории (объединение
+параметров её классов) и обязательные параметры элемента по его коду (код уточняет класс
+— «A.05.10.20» относится к «A.05.10»; без кода — общие параметры классов категории; код
+не из загруженных разделов — элемент не проверяется и упоминается в отчёте).
+
 Кнопка `LOI.panel/CheckLOI` («Проверка LOI»): проверяет заполнение параметров из
 настроек у всех экземпляров выбранных категорий (значение — у экземпляра, иначе у
 типа) и строит по каждой категории спецификацию `LOI проверка — <категория>`:
@@ -2012,7 +2025,10 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `loi_check_core.status_of(found, value)` / `CategorySummary` | `FILLED`/`EMPTY`/`ABSENT` и подсчёт по категории |
 | `loi_check.list_categories(doc)` / `resolve_categories(doc, names)` | Модельные категории с экземплярами (для выбора) / имена → `Category` |
 | `loi_check.read_param(doc, el, name)` | `(найден, текст)` — экземпляр, потом тип |
-| `loi_check.check_category(doc, cat, rows, floor_param)` | `CategoryResult`: итог и строки незаполненных элементов |
+| `loi_check.check_category(doc, cat, rows, floor_param, plan=None, code_param=None)` | `CategoryResult`: итог и строки незаполненных элементов; с `plan` — по этапу приложения |
+| `loi_check.resolve_plan_categories(doc, plans)` | `[(Category, CategoryPlan)]` и ненайденные имена (без регистра и «ё») |
+| `loi_appendix.build_grid(rows)` / `parse(values, origins)` / `select_sections(...)` | Сетка с учётом объединений / разбор / выбор разделов. Без Revit API, покрыто `tests/test_loi_appendix.py` |
+| `loi_check_core.list_stages` / `find_stage` / `plans_for_stage` / `CategoryPlan.required_for(code)` | Этапы приложения и требования к элементу на этапе |
 | `loi_check.build_schedule(doc, cat, rows, floor_param)` | `(спецификация, [строки без поля])`, в транзакции |
 | `loi_check.build_3d_view(doc, elements)` | 3D-вид, где видны только `elements`; `None` — нечего показывать; в транзакции |
 

@@ -92,11 +92,14 @@ class CategorySummary(object):
         self.stats = [LabelStats(label, param) for label, param in rows]
 
     def add(self, statuses):
-        """statuses — список FILLED/EMPTY/ABSENT в порядке rows. Возвращает
-        True, если у элемента есть хоть один незаполненный параметр."""
+        """statuses — список FILLED/EMPTY/ABSENT (None — параметр у этого
+        элемента не требуется) в порядке rows. Возвращает True, если у
+        элемента есть хоть один незаполненный обязательный параметр."""
         self.total += 1
         bad = False
         for st, status in zip(self.stats, statuses):
+            if status is None:
+                continue
             if status == FILLED:
                 st.filled += 1
             elif status == EMPTY:
@@ -111,7 +114,10 @@ class CategorySummary(object):
 
 
 def status_text(status, value):
-    """Текст ячейки отчёта: значение, «—» для пустого, «нет параметра»."""
+    """Текст ячейки отчёта: значение, «—» для пустого, «нет параметра»;
+    u"" — параметр у элемента не требуется."""
+    if status is None:
+        return u""
     if status == FILLED:
         return _text(value).strip()
     if status == EMPTY:
@@ -125,3 +131,136 @@ def schedule_name(prefix, category_name):
     for ch in u"{}[]|;<>?`~:\\":
         name = name.replace(ch, u"_")
     return name
+
+
+# --- этапы проверки по приложению LOI (loi_appendix.parse) ----------------------
+
+class Stage(object):
+    """Этап проверки: столбец «Подэтап проверки» стадии и номер подэтапа.
+    Обязательны параметры, у которых в этом столбце подэтап <= level."""
+
+    def __init__(self, column, level):
+        self.key = column["key"]
+        self.level = level
+        self.title = u"{} · {} · {}-{}".format(
+            column["stage"], column["part"], column["prefix"], level)
+
+    def __str__(self):
+        return self.title
+
+
+def list_stages(appendix):
+    """Все этапы приложения по порядку столбцов и подэтапов."""
+    stages = []
+    for column in (appendix or {}).get("columns") or []:
+        for level in column.get("levels") or []:
+            stages.append(Stage(column, level))
+    return stages
+
+
+def find_stage(appendix, title):
+    for stage in list_stages(appendix):
+        if stage.title == title:
+            return stage
+    return None
+
+
+def required_params(rule, stage):
+    """Имена параметров правила, обязательных на этапе (в порядке приложения)."""
+    names = []
+    for p in rule.get("params") or []:
+        level = (p.get("levels") or {}).get(stage.key)
+        if level is not None and level <= stage.level and p["name"] not in names:
+            names.append(p["name"])
+    return names
+
+
+def norm_name(text):
+    """Для сравнения имён категорий: регистр, «ё», пробелы."""
+    return u" ".join(_text(text or u"").lower().replace(u"ё", u"е").split())
+
+
+def code_matches(element_code, class_code):
+    """Код элемента относится к классу: совпадает или уточняет его
+    («А.05.10.20» относится к классу «А.05.10»)."""
+    element_code = _text(element_code or u"").strip()
+    class_code = _text(class_code or u"").strip()
+    if not element_code or not class_code:
+        return False
+    return element_code == class_code or element_code.startswith(class_code + u".")
+
+
+class CategoryPlan(object):
+    """
+    Что проверять у элементов одной категории Revit на этапе: столбцы
+    (объединение обязательных параметров всех классов категории) и
+    обязательные параметры конкретного элемента по его коду классификатора.
+
+    Элемент без кода: если у категории один класс — проверяется по нему,
+    иначе — по параметрам, обязательным для всех классов категории сразу
+    (из тех, которым на этапе вообще что-то требуется)
+    (параметр кода среди них обычно есть, так что элемент и так попадёт в
+    незаполненные). Элемент с кодом, которого нет в загруженных разделах
+    приложения, не проверяется — это элемент другой дисциплины (в одной
+    категории, например «Электрооборудование», бывают элементы разных
+    разделов); такие коды перечисляются в отчёте.
+    """
+
+    MATCHED = "matched"
+    NO_CODE = "no_code"
+    UNKNOWN = "unknown"
+
+
+    def __init__(self, category, rules, stage):
+        self.category = category
+        self.entries = []  # [(коды, [обязательные параметры])]
+        self.columns = []
+        for rule in rules:
+            req = required_params(rule, stage)
+            codes = [code for _name, code in rule.get("classes") or [] if code]
+            self.entries.append((codes, req))
+            for name in req:
+                if name not in self.columns:
+                    self.columns.append(name)
+        # общие — только по классам, которым на этапе что-то требуется
+        sets = [set(req) for _codes, req in self.entries if req]
+        common = set.intersection(*sets) if sets else set()
+        self.fallback = [n for n in self.columns if n in common]
+
+    def required_for(self, element_code):
+        """(обязательные параметры или None — не проверять, MATCHED/NO_CODE/
+        UNKNOWN)."""
+        element_code = _text(element_code or u"").strip()
+        if not element_code:
+            if len(self.entries) == 1:
+                return self.entries[0][1], self.NO_CODE
+            return self.fallback, self.NO_CODE
+        best, best_len = None, -1
+        for codes, req in self.entries:
+            for code in codes:
+                if code_matches(element_code, code) and len(code) > best_len:
+                    best, best_len = req, len(code)
+        if best is not None:
+            return best, self.MATCHED
+        return None, self.UNKNOWN
+
+
+def plans_for_stage(appendix, stage):
+    """[CategoryPlan] по категориям приложения (в порядке появления), только
+    с обязательными на этом этапе параметрами."""
+    order, by_cat = [], {}
+    for rule in (appendix or {}).get("rules") or []:
+        key = norm_name(rule.get("category"))
+        if not key:
+            continue
+        if key not in by_cat:
+            by_cat[key] = (rule["category"], [])
+            order.append(key)
+        by_cat[key][1].append(rule)
+    plans = []
+    for key in order:
+        name, rules = by_cat[key]
+        plan = CategoryPlan(name, rules, stage)
+        if plan.columns:
+            plans.append(plan)
+    return plans
