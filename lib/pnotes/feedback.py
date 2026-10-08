@@ -12,7 +12,7 @@ import traceback
 import datetime
 
 from pyrevit import forms
-from System.Windows.Input import Key, Keyboard, ModifierKeys, Cursors
+from System.Windows.Input import Key, Keyboard, ModifierKeys
 
 from pnotes import core
 from lowlife import about, ribbon_catalog
@@ -47,8 +47,14 @@ def _send(item, timeout_ms=15000):
     url = feedback_url()
     if not url:
         raise core.ApiError(u'Адрес таблицы обратной связи ещё не задан.')
+    body = core._dumps({'action': 'feedback', 'feedback': item})
     try:
-        raw = core._post(url, core._dumps({'action': 'feedback', 'feedback': item}), timeout_ms)
+        try:
+            raw = core._post(url, body, timeout_ms, track=False)
+        except Exception as ex:
+            if not core._is_transient(ex):
+                raise
+            raw = core._post(url, body, timeout_ms, track=False)  # разовый сбой Google — один повтор
     except Exception as ex:
         raise core.ApiError(u'Нет связи с таблицей обратной связи: ' + core.err_text(ex))
     try:
@@ -59,31 +65,45 @@ def _send(item, timeout_ms=15000):
         raise core.ApiError(resp.get('error') or u'Неизвестная ошибка')
 
 
+QUEUE_LOCK = 'lowlife_feedback_queue_lock'
+
+
+def queue_size():
+    return len(core._read_json(QUEUE_FILE, []) or [])
+
+
 def flush_queue(timeout_ms=15000):
-    """Отправляет накопленные отзывы. Возвращает (отправлено, осталось)."""
+    """Отправляет накопленные отзывы. Возвращает (отправлено, осталось).
+    Из файла убираются только отправленные: добавленное во время отправки не теряется."""
     queue = core._read_json(QUEUE_FILE, []) or []
     if not queue:
         return 0, 0
-    left, sent, failed = [], 0, False
+    sent = set()
     for item in queue:
-        if not failed:
-            try:
-                _send(item, timeout_ms)
-                sent += 1
-                continue
-            except core.ApiError:
-                failed = True
-        left.append(item)
-    core._write_json(QUEUE_FILE, left)
-    return sent, len(left)
+        try:
+            _send(item, timeout_ms)
+            sent.add(item.get('id'))
+        except core.ApiError:
+            break  # нет связи — остальные уйдут в следующий раз
+    with core._QueueLock(QUEUE_LOCK):
+        left = [i for i in (core._read_json(QUEUE_FILE, []) or []) if i.get('id') not in sent]
+        if sent:
+            core._write_json(QUEUE_FILE, left)
+    return len(sent), len(left)
 
 
-def submit(item):
-    """Сначала в локальную очередь (ничего не теряется), затем отправка. True — дошло до таблицы."""
-    queue = core._read_json(QUEUE_FILE, []) or []
-    queue.append(item)
-    core._write_json(QUEUE_FILE, queue)
-    return flush_queue()[1] == 0
+def queue_item(item):
+    """Кладёт сообщение в локальную очередь — с этого момента оно не потеряется."""
+    with core._QueueLock(QUEUE_LOCK):
+        queue = core._read_json(QUEUE_FILE, []) or []
+        queue.append(item)
+        core._write_json(QUEUE_FILE, queue)
+
+
+def send_detached():
+    """Отправка очереди в фоне после закрытия окна (у кнопки постоянный движок pyRevit)."""
+    if feedback_url():
+        core.run_detached('lowlife_feedback_sending', lambda: flush_queue(30000))
 
 
 def new_item(ctx, panel, button, kind, text, contact):
@@ -146,7 +166,7 @@ class FeedbackWindow(forms.WPFWindow):
                                                     'xaml', 'feedback.xaml'))
         self.ctx = ctx
         self.buttons = dict(panels)
-        self.result = None  # None — отменено, True — в таблице, False — в локальной очереди
+        self.result = None  # None — отменено, True — сообщение в очереди на отправку
 
         self.txtContext.Text = u'   ·   '.join(
             v for v in (u'Автор: ' + (ctx['user'] or ctx['windows_user'] or u'—'),
@@ -165,6 +185,8 @@ class FeedbackWindow(forms.WPFWindow):
         if not feedback_url():
             self.txtStatus.Text = (u'Адрес таблицы обратной связи ещё не задан — сообщение сохранится '
                                    u'на этом компьютере и отправится, когда он появится в обновлении LowLife.')
+        elif queue_size():
+            self.txtStatus.Text = u'Ещё не отправлено сообщений: {} — уйдут вместе с этим.'.format(queue_size())
         try:
             from System.Windows.Markup import XmlLanguage
             self.txtText.Language = XmlLanguage.GetLanguage('ru-RU')
@@ -206,11 +228,8 @@ class FeedbackWindow(forms.WPFWindow):
         _save_state(panel=panel, contact=contact)
         item = new_item(self.ctx, u'' if panel == GENERAL_PANEL else panel, button, kind, text, contact)
 
-        self.Cursor = Cursors.Wait
-        try:
-            self.result = submit(item)
-        finally:
-            self.Cursor = None
+        queue_item(item)
+        self.result = True  # отправит _run в фоне, уже после закрытия окна
         self.Close()
 
 
@@ -224,15 +243,16 @@ def run(uiapp):
 def _run(uiapp):
     win = FeedbackWindow(get_context(uiapp), ribbon_catalog.list_panels())
     win.ShowDialog()
-    if win.result is True:
-        try:
-            forms.show_balloon(u'LowLife', u'Спасибо! Сообщение отправлено.')
-        except Exception:
-            pass
-    elif win.result is False and not feedback_url():
+    if not win.result:
+        return
+    if not feedback_url():
         forms.alert(u'Сообщение сохранено на этом компьютере и отправится, когда в обновлении LowLife '
                     u'появится адрес таблицы обратной связи.', title=u'Сообщение сохранено')
-    elif win.result is False:
-        forms.alert(u'Связи с таблицей обратной связи нет — сообщение сохранено на этом компьютере '
-                    u'и отправится автоматически при следующей отправке через «Обратную связь».',
-                    title=u'Сообщение сохранено')
+        return
+    # не ждём таблицу: отправка идёт в фоне, Revit свободен сразу; без связи сообщение
+    # остаётся в очереди и уйдёт со следующим
+    send_detached()
+    try:
+        forms.show_balloon(u'LowLife', u'Спасибо! Сообщение отправляется.')
+    except Exception:
+        pass
