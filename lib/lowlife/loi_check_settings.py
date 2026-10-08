@@ -17,7 +17,15 @@ pyrevit.script.get_config()).
     строки вписывается нужный параметр; пусто — берётся сама строка, см.
     loi_check_core.build_rows);
   - floor_param_name — параметр для столбца «Этаж»; пусто — тот же, что
-    у кнопки «Заполнение этажа», а если и там пусто — уровень элемента.
+    у кнопки «Заполнение этажа», а если и там пусто — уровень элемента;
+  - appendix — импортированное приложение «Требования к LOI» (только
+    выбранные разделы, см. loi_appendix.parse): если оно есть, при запуске
+    кнопка спрашивает этап проверки (стадия · ПЧ/НЧ · подэтап) или «свой
+    список» (категории и параметры выше);
+  - last_stage — последний выбранный этап (предлагается первым).
+
+Имена параметров и категорий из приложения хранятся только здесь, в файле
+настроек пользователя, — в репозитории их нет.
 """
 
 import clr
@@ -50,6 +58,10 @@ CATEGORIES_KEY = "category_names"
 LABELS_KEY = "labels_text"
 PARAM_MAP_KEY = "param_map"
 FLOOR_KEY = "floor_param_name"
+APPENDIX_KEY = "appendix"
+LAST_STAGE_KEY = "last_stage"
+
+MANUAL_TITLE = u"Свой список (категории и параметры из настроек)"
 
 
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
@@ -69,6 +81,8 @@ def load_saved_values():
         PARAM_MAP_KEY: ({unicode(k): unicode(v) for k, v in param_map.items()}
                         if isinstance(param_map, dict) else {}),
         FLOOR_KEY: unicode(saved.get(FLOOR_KEY, u"") or u""),
+        APPENDIX_KEY: saved.get(APPENDIX_KEY) if isinstance(saved.get(APPENDIX_KEY), dict) else None,
+        LAST_STAGE_KEY: unicode(saved.get(LAST_STAGE_KEY, u"") or u""),
     }
 
 
@@ -94,6 +108,48 @@ def get_floor_param(settings):
         return unicode(floor_settings.load_saved_values().get(floor_settings.PARAM_KEY) or u"").strip()
     except Exception:
         return u""
+
+
+def get_appendix(settings):
+    appendix = settings.get(APPENDIX_KEY)
+    return appendix if appendix and appendix.get("rules") else None
+
+
+class _ModeOption(object):
+    def __init__(self, title, stage):
+        self.name = title
+        self.stage = stage
+
+    def __str__(self):
+        return self.name
+
+
+def choose_stage(settings):
+    """
+    Режим проверки при запуске. Без импортированного приложения — сразу
+    «свой список» (возвращает None). Иначе — список этапов приложения +
+    «свой список»; возвращает loi_check_core.Stage или None (свой список).
+    Отмена — останавливает скрипт.
+    """
+    appendix = get_appendix(settings)
+    if appendix is None:
+        return None
+    stages = core.list_stages(appendix)
+    options = [_ModeOption(st.title, st) for st in stages]
+    options.append(_ModeOption(MANUAL_TITLE, None))
+    last = settings.get(LAST_STAGE_KEY)
+    options.sort(key=lambda o: 0 if o.name == last else 1)
+
+    chosen = forms.SelectFromList.show(
+        options,
+        title=u"Этап проверки LOI (стадия · ПЧ/НЧ · подэтап)",
+        button_name=u"Проверить",
+        multiselect=False
+    )
+    if chosen is None:
+        raise SystemExit
+    save_values({LAST_STAGE_KEY: chosen.name})
+    return chosen.stage
 
 
 def require(settings):
@@ -143,6 +199,65 @@ def _hint(text):
     return tb
 
 
+def _appendix_label_text(appendix):
+    if not appendix or not appendix.get("rules"):
+        return u"Не загружено — проверяется только свой список ниже."
+    return u"{}: {}. Элементов: {}, этапов: {}.".format(
+        appendix.get("source") or u"Приложение",
+        u"; ".join(appendix.get("sections") or []),
+        len(appendix.get("rules") or []),
+        len(core.list_stages(appendix)))
+
+
+class _SectionOption(object):
+    def __init__(self, name, count):
+        self.raw_name = name
+        self.name = u"{} ({})".format(name, count)
+
+    def __str__(self):
+        return self.name
+
+
+def import_appendix(current=None):
+    """
+    Выбор файла приложения (Excel → «Таблица XML 2003») и разделов. Возвращает
+    словарь для APPENDIX_KEY или None (отмена/ошибка — с сообщением).
+    """
+    import os
+    from lowlife import loi_appendix
+
+    path = forms.pick_file(file_ext="xml", title=u"Приложение «Требования к LOI» (XML)")
+    if not path:
+        return None
+    try:
+        appendix = loi_appendix.read_appendix(path)
+    except Exception as ex:
+        forms.alert(u"Не удалось разобрать файл:\n\n{}".format(ex), title=BUTTON_NAME)
+        return None
+    if not appendix["rules"]:
+        forms.alert(u"В файле не найдено ни одного элемента с параметрами LOI.", title=BUTTON_NAME)
+        return None
+
+    counts = {}
+    for rule in appendix["rules"]:
+        counts[rule["section"]] = counts.get(rule["section"], 0) + 1
+    was = set((current or {}).get("sections") or [])
+    items = [forms.TemplateListItem(_SectionOption(name, counts.get(name, 0)),
+                                    checked=(name in was))
+             for name in appendix["sections"]]
+    chosen = forms.SelectFromList.show(
+        items,
+        title=u"Разделы приложения для проверки (в скобках — число элементов)",
+        button_name=u"Загрузить",
+        multiselect=True
+    )
+    if not chosen:
+        return None
+    appendix = loi_appendix.select_sections(appendix, [o.raw_name for o in chosen])
+    appendix["source"] = os.path.basename(path)
+    return appendix
+
+
 def _categories_label_text(names):
     if not names:
         return u"Категории не выбраны."
@@ -162,6 +277,7 @@ def show_settings_form(doc, values):
         # все когда-либо вписанные соответствия — строку можно удалить из
         # списка и вернуть, не теряя вписанный для неё параметр
         "map": dict(values.get(PARAM_MAP_KEY) or {}),
+        "appendix": values.get(APPENDIX_KEY),
     }
 
     win = Window()
@@ -183,8 +299,56 @@ def show_settings_form(doc, values):
     root.Children.Add(title)
     root.Children.Add(_hint(u"Значения сохраняются и подставляются при следующих запусках."))
 
-    # --- ① категории ---------------------------------------------------------
-    root.Children.Add(_section(u"① Категории семейств", 8))
+    # --- ① приложение LOI ----------------------------------------------------
+    root.Children.Add(_section(u"① Требования LOI по этапам (приложение)", 8))
+
+    app_row = StackPanel()
+    app_row.Orientation = Orientation.Horizontal
+    app_row.Margin = Thickness(0, 4, 0, 0)
+
+    app_btn = Button()
+    app_btn.Content = u"Загрузить приложение…"
+    app_btn.Padding = Thickness(8, 2, 8, 2)
+    app_row.Children.Add(app_btn)
+
+    app_clear_btn = Button()
+    app_clear_btn.Content = u"Убрать"
+    app_clear_btn.Padding = Thickness(8, 2, 8, 2)
+    app_clear_btn.Margin = Thickness(6, 0, 0, 0)
+    app_row.Children.Add(app_clear_btn)
+    root.Children.Add(app_row)
+
+    app_label = TextBlock()
+    app_label.Text = _appendix_label_text(state["appendix"])
+    app_label.TextWrapping = TextWrapping.Wrap
+    app_label.Margin = Thickness(0, 4, 0, 0)
+    root.Children.Add(app_label)
+
+    root.Children.Add(_hint(
+        u"Таблица «Требования к LOI», сохранённая из Excel как «Таблица XML 2003» "
+        u"(*.xml). Берутся выбранные разделы: категории Revit, классы с кодами "
+        u"по классификатору и для каждого параметра — с какого подэтапа "
+        u"(Б-1…, ПЭ-1…) он обязателен на стадии, отдельно ПЧ и НЧ. При запуске "
+        u"кнопка спросит этап; у каждого элемента проверяются только параметры "
+        u"его класса (по значению параметра кода классификатора)."))
+
+    def on_import(sender, args):
+        appendix = import_appendix(state["appendix"])
+        if appendix is not None:
+            state["appendix"] = appendix
+            app_label.Text = _appendix_label_text(appendix)
+
+    def on_clear(sender, args):
+        state["appendix"] = None
+        app_label.Text = _appendix_label_text(None)
+
+    app_btn.Click += on_import
+    app_clear_btn.Click += on_clear
+
+    root.Children.Add(_section(u"Свой список — если этап из приложения не выбран"))
+
+    # --- ② категории ---------------------------------------------------------
+    root.Children.Add(_section(u"② Категории семейств", 8))
 
     cat_row = StackPanel()
     cat_row.Orientation = Orientation.Horizontal
@@ -229,7 +393,7 @@ def show_settings_form(doc, values):
     cat_btn.Click += on_pick_categories
 
     # --- ② список параметров ---------------------------------------------------
-    root.Children.Add(_section(u"② Список параметров (по одному на строке) *"))
+    root.Children.Add(_section(u"③ Список параметров (по одному на строке) *"))
     root.Children.Add(_hint(
         u"Впишите параметры так, как они названы в требованиях LOI, — по "
         u"одному на строке. Строка станет заголовком столбца спецификации."))
@@ -244,7 +408,7 @@ def show_settings_form(doc, values):
     root.Children.Add(labels_box)
 
     # --- ③ параметр для каждой строки ----------------------------------------
-    root.Children.Add(_section(u"③ Параметр модели для каждой строки"))
+    root.Children.Add(_section(u"④ Параметр модели для каждой строки"))
     root.Children.Add(_hint(
         u"Таблица повторяет список выше. Для каждой строки впишите имя "
         u"параметра в модели (экземпляра или типа), из которого брать значение. "
@@ -305,7 +469,7 @@ def show_settings_form(doc, values):
     labels_box.TextChanged += on_labels_changed
 
     # --- ④ этаж -------------------------------------------------------------
-    root.Children.Add(_section(u"④ Параметр для столбца «Этаж»"))
+    root.Children.Add(_section(u"⑤ Параметр для столбца «Этаж»"))
     floor_box = TextBox()
     floor_box.Text = values.get(FLOOR_KEY, u"")
     floor_box.Padding = Thickness(4)
@@ -339,6 +503,7 @@ def show_settings_form(doc, values):
             LABELS_KEY: u"\n".join(labels),
             PARAM_MAP_KEY: core.clean_param_map(labels, state["map"]),
             FLOOR_KEY: floor_box.Text.strip(),
+            APPENDIX_KEY: state["appendix"],
         }
         win.Close()
 

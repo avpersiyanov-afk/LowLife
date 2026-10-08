@@ -19,6 +19,12 @@
 Значение параметра ищется сначала у экземпляра, потом у его типа — так же,
 как его показывает спецификация.
 
+Два режима (loi_check_settings): «свой список» — категории и параметры из
+настроек, обязательны все; «этап приложения LOI» — категории, классы и
+параметры из импортированного приложения (loi_appendix), у каждого элемента
+обязательны только параметры его класса на выбранном этапе
+(loi_check_core.CategoryPlan).
+
 Незаполненные элементы всех категорий показываются на 3D-виде
 VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, на которой
 остальные модельные элементы скрыты («Скрыть элементы», постоянно).
@@ -218,25 +224,52 @@ class ElementRow(object):
 
 
 class CategoryResult(object):
-    def __init__(self, category, summary):
+    def __init__(self, category, summary, rows):
         self.category = category
         self.summary = summary
+        self.rows = rows  # [(строка, параметр)] — столбцы отчёта и спецификации
         self.incomplete_rows = []
         self.schedule = None
         self.missing_fields = []  # строки, которых нет среди полей спецификации
+        self.unknown_codes = {}  # код не из приложения -> число элементов (не проверялись)
+        self.no_code = 0  # элементов без кода классификатора (проверены по общим параметрам)
 
 
-def check_category(doc, category, rows, floor_param):
-    """Проверяет все экземпляры категории. rows — [(строка, параметр)]."""
+def check_category(doc, category, rows, floor_param, plan=None, code_param=None):
+    """
+    Проверяет все экземпляры категории. rows — [(строка, параметр)].
+
+    plan (loi_check_core.CategoryPlan) — проверка по этапу приложения LOI:
+    у каждого элемента обязательны только параметры его класса (класс — по
+    значению параметра code_param), остальные ячейки строки не проверяются.
+    Без plan обязательны все rows.
+    """
     summary = core.CategorySummary(category.Name, rows)
-    result = CategoryResult(category, summary)
+    result = CategoryResult(category, summary, rows)
 
     for el in collect_elements(doc, category):
         type_name, family_name, el_type = element_info(doc, el)
+        required = None
+        if plan is not None:
+            code = u""
+            if code_param:
+                _found, code = read_param(doc, el, code_param, el_type)
+                code = code or u""
+            required, how = plan.required_for(code)
+            if how == plan.UNKNOWN:
+                key = code.strip()
+                result.unknown_codes[key] = result.unknown_codes.get(key, 0) + 1
+                continue
+            if how == plan.NO_CODE:
+                result.no_code += 1
+            required = set(required)
         statuses, cells = [], []
         for _label, param in rows:
-            found, value = read_param(doc, el, param, el_type)
-            status = core.status_of(found, value)
+            if required is not None and param not in required:
+                status, value = None, None
+            else:
+                found, value = read_param(doc, el, param, el_type)
+                status = core.status_of(found, value)
             statuses.append(status)
             cells.append(core.status_text(status, value))
         if summary.add(statuses):
@@ -246,6 +279,25 @@ def check_category(doc, category, rows, floor_param):
 
     result.incomplete_rows.sort(key=lambda r: (r.floor, r.family_name, r.type_name))
     return result
+
+
+def resolve_plan_categories(doc, plans):
+    """[(Category, CategoryPlan)] для категорий приложения, найденных в
+    документе, и список ненайденных имён. Сравнение — без регистра и «ё»."""
+    by_norm = {}
+    for cat in doc.Settings.Categories:
+        try:
+            by_norm.setdefault(core.norm_name(cat.Name), cat)
+        except Exception:
+            continue
+    found, missing = [], []
+    for plan in plans:
+        cat = by_norm.get(core.norm_name(plan.category))
+        if cat is None:
+            missing.append(plan.category)
+        else:
+            found.append((cat, plan))
+    return found, missing
 
 
 # --- спецификация ------------------------------------------------------------
