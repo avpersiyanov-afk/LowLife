@@ -539,15 +539,16 @@ def pending_notes(key):
 class _QueueLock(object):
     """Блокировка файла очереди на весь процесс Revit: её трогают окна разных кнопок (каждая — в своём
     движке pyRevit со своей копией модуля) и фоновая отправка. Объект блокировки — в AppDomain."""
-    KEY = 'pnotes_queue_lock'
+    def __init__(self, key='pnotes_queue_lock'):
+        self.key = key
 
     def __enter__(self):
         domain = System.AppDomain.CurrentDomain
-        obj = domain.GetData(self.KEY)
+        obj = domain.GetData(self.key)
         if obj is None:
             obj = System.Object()
-            domain.SetData(self.KEY, obj)
-            obj = domain.GetData(self.KEY)
+            domain.SetData(self.key, obj)
+            obj = domain.GetData(self.key)
         self.obj = obj
         Monitor.Enter(obj)
         return self
@@ -589,27 +590,27 @@ def queue_note(note):
         _write_json(QUEUE_FILE, queue)
 
 
-def send_queue_detached(timeout_ms=30000):
-    """Отправить очередь в фоне, не дожидаясь ответа: окно уже закрыто, Revit свободен.
-    Поток живёт дольше скрипта кнопки, поэтому у кнопки «Заметка» постоянный движок pyRevit
-    (engine: persistent в bundle.yaml). Не отправилось — заметка остаётся в очереди и уйдёт
-    со следующей заметкой или при открытии сводки (там она видна как «Не отправлено»)."""
+def run_detached(flag, flush):
+    """flush() -> (отправлено, осталось) — в фоновом потоке, который живёт дольше скрипта кнопки
+    (у такой кнопки постоянный движок pyRevit: engine: persistent в bundle.yaml). Пока очередь
+    убывает, отправка повторяется. flag — имя флага в AppDomain: если отправка уже идёт, вторая
+    не запускается (идущая перечитывает очередь и заберёт новое)."""
     domain = System.AppDomain.CurrentDomain
-    if domain.GetData('pnotes_sending'):
-        return  # уже идёт отправка — она перечитывает очередь и заберёт и эту заметку
-    domain.SetData('pnotes_sending', True)
+    if domain.GetData(flag):
+        return
+    domain.SetData(flag, True)
 
     def body():
         try:
             while True:
-                sent, left = flush_queue(timeout_ms, track=False)
+                sent, left = flush()
                 if not left or not sent:
                     break
         except:  # noqa: E722 — исключение из фонового потока уронило бы Revit
             pass
         finally:
             try:
-                domain.SetData('pnotes_sending', None)
+                domain.SetData(flag, None)
             except:  # noqa: E722
                 pass
 
@@ -618,7 +619,14 @@ def send_queue_detached(timeout_ms=30000):
     try:
         thread.Start()
     except Exception:
-        domain.SetData('pnotes_sending', None)
+        domain.SetData(flag, None)
+
+
+def send_queue_detached(timeout_ms=30000):
+    """Отправить очередь заметок в фоне, не дожидаясь ответа: окно уже закрыто, Revit свободен.
+    Не отправилось — заметка остаётся в очереди и уйдёт со следующей заметкой или при открытии
+    сводки (там она видна как «Не отправлено»)."""
+    run_detached('pnotes_sending', lambda: flush_queue(timeout_ms, track=False))
 
 
 def add_note(note, timeout_ms=15000):
