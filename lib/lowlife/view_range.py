@@ -5,7 +5,8 @@
 
 Диапазон задаётся так:
   - низ и глубина вида — уровень плана, смещение 0;
-  - секущая плоскость — уровень плана, смещение 1200 мм;
+  - секущая плоскость — уровень плана, смещение 1200 мм (если до следующего
+    этажа меньше 1400 мм — 900 мм);
   - верх — следующий этаж, смещение -200 мм.
 
 Следующий этаж ищется так же, как верх подрезки у «Разреза по семейству»:
@@ -29,6 +30,9 @@ MM_IN_FOOT = 304.8
 
 BOTTOM_OFFSET_MM = 0.0
 CUT_OFFSET_MM = 1200.0
+# Низкий этаж (до уровня выше меньше LOW_FLOOR_MM) — секущая плоскость ниже.
+LOW_FLOOR_MM = 1400.0
+LOW_CUT_OFFSET_MM = 900.0
 TOP_OFFSET_MM = -200.0
 
 _SUPPORTED_TYPES = (ViewType.FloorPlan, ViewType.EngineeringPlan, ViewType.AreaPlan)
@@ -41,6 +45,7 @@ class RangeResult(object):
         self.view = view
         self.top_level = None
         self.error = None
+        self.cut_mm = None
         self.note = None
 
     def view_name(self):
@@ -98,13 +103,21 @@ def align_view_range(doc, view, level_template=None):
     result.top_level = above
     result.note = note
 
+    height_mm = None
+    cut_mm = CUT_OFFSET_MM
+    if above is not None:
+        height_mm = (above.ProjectElevation - level.ProjectElevation) * MM_IN_FOOT
+        if height_mm < LOW_FLOOR_MM:
+            cut_mm = LOW_CUT_OFFSET_MM
+    result.cut_mm = cut_mm
+
     vr = view.GetViewRange()
     vr.SetLevelId(PlanViewPlane.BottomClipPlane, level.Id)
     vr.SetOffset(PlanViewPlane.BottomClipPlane, BOTTOM_OFFSET_MM / MM_IN_FOOT)
     vr.SetLevelId(PlanViewPlane.ViewDepthPlane, level.Id)
     vr.SetOffset(PlanViewPlane.ViewDepthPlane, BOTTOM_OFFSET_MM / MM_IN_FOOT)
     vr.SetLevelId(PlanViewPlane.CutPlane, level.Id)
-    vr.SetOffset(PlanViewPlane.CutPlane, CUT_OFFSET_MM / MM_IN_FOOT)
+    vr.SetOffset(PlanViewPlane.CutPlane, cut_mm / MM_IN_FOOT)
     if above is not None:
         vr.SetLevelId(PlanViewPlane.TopClipPlane, above.Id)
         vr.SetOffset(PlanViewPlane.TopClipPlane, TOP_OFFSET_MM / MM_IN_FOOT)
@@ -116,11 +129,9 @@ def align_view_range(doc, view, level_template=None):
         view.SetViewRange(vr)
     except Exception as ex:
         result.error = u"Revit не принял диапазон: {}".format(ex)
-        if above is not None:
-            height_mm = (above.ProjectElevation - level.ProjectElevation) * MM_IN_FOOT
-            if height_mm + TOP_OFFSET_MM <= CUT_OFFSET_MM:
-                result.error = (u"до уровня «{}» всего {:.0f} мм — секущая плоскость "
-                                u"{:.0f} мм выше верха диапазона".format(
-                                    geometry.level_name(above), float(height_mm),
-                                    CUT_OFFSET_MM))
+        if height_mm is not None and height_mm + TOP_OFFSET_MM <= cut_mm:
+            result.error = (u"до уровня «{}» всего {:.0f} мм — секущая плоскость "
+                            u"{:.0f} мм выше верха диапазона".format(
+                                geometry.level_name(above), float(height_mm),
+                                float(cut_mm)))
     return result

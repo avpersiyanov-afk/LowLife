@@ -50,7 +50,8 @@ def main():
     lines = [u"Выровнено видов: {}".format(len(done))]
     for r in done:
         top = level_name(r.top_level) if r.top_level is not None else u"неограниченно"
-        lines.append(u"  • {} — верх: {}".format(r.view_name(), top))
+        lines.append(u"  • {} — секущая {:.0f} мм, верх: {}".format(
+            r.view_name(), float(r.cut_mm), top))
     if failed:
         lines.append(u"")
         lines.append(u"Пропущено:")
