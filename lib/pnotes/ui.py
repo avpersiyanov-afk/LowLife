@@ -172,8 +172,7 @@ class NoteWindow(forms.WPFWindow):
         forms.WPFWindow.__init__(self, _xaml('note.xaml'))
         self.ctx = ctx
         self.note = note
-        self._sending = False
-        self.result = None  # None — отменено, True — в таблице, False — в локальной очереди
+        self.result = None  # None — отменено, True — заметка в очереди на отправку
         self.changes = None  # редактирование: {поле: новое значение} или None — отменено
 
         if ctx['name'] and ctx['name'] != ctx['key']:
@@ -208,12 +207,15 @@ class NoteWindow(forms.WPFWindow):
 
         if online is False and note is None:
             self._offline_notice()
+        elif note is None:
+            waiting = core.queue_size()
+            if waiting:
+                self.txtStatus.Text = u'Ещё не отправлено заметок: {} — уйдут вместе с этой.'.format(waiting)
 
         _spellcheck(self.txtText)
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
         self.PreviewKeyDown += self.on_key
-        self.Closing += self.on_closing
         self.Loaded += lambda s, e: self.cmbType.Focus()
         if online is None and note is None:
             # обновить копию настроек команды, пока пишется заметка (Revit не ждёт)
@@ -224,12 +226,8 @@ class NoteWindow(forms.WPFWindow):
         self.txtStatus.Text = u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.'
 
     def _settings_checked(self, online, error):
-        if not online and not self._sending and self.result is None:
+        if not online and self.result is None:
             self._offline_notice()
-
-    def on_closing(self, sender, e):
-        if self._sending:
-            e.Cancel = True  # заметка уже в локальной очереди; дождёмся ответа таблицы (не дольше таймаута)
 
     @staticmethod
     def _with(items, value):
@@ -282,17 +280,7 @@ class NoteWindow(forms.WPFWindow):
         core.save_state(type=ntype, section=section)
 
         core.queue_note(note)  # с этого момента заметка не потеряется, даже если связи нет
-        self._sending = True
-        self.btnSave.IsEnabled = False
-        self.btnCancel.IsEnabled = False
-        self.Cursor = Cursors.AppStarting
-        self.txtStatus.Text = u'Отправка в таблицу…'
-        in_background(self, lambda: core.flush_queue(30000)[1] == 0, self._sent)
-
-    def _sent(self, delivered, error):
-        self._sending = False
-        self.Cursor = None
-        self.result = bool(delivered) and error is None
+        self.result = True  # отправит run_new_note в фоне, уже после закрытия окна
         self.Close()
 
 
@@ -878,12 +866,10 @@ def run_new_note(uidoc):
     ctx = core.get_context(doc, uidoc, settings)
     win = NoteWindow(ctx, settings, online)
     win.ShowDialog()
-    if win.result is True:
-        _balloon(u'Заметка сохранена в таблицу.')
-    elif win.result is False:
-        forms.alert(u'Связи с таблицей нет — заметка сохранена на этом компьютере '
-                    u'и отправится автоматически при следующей заметке или открытии сводки.',
-                    title=u'Заметка сохранена локально')
+    if win.result:
+        # не ждём таблицу: отправка идёт в фоне, Revit свободен сразу
+        core.send_queue_detached()
+        _balloon(u'Заметка сохранена и отправляется в таблицу.')
 
 
 @guarded

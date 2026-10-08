@@ -14,6 +14,7 @@ import System
 from System.Net import (HttpWebRequest, ServicePointManager, SecurityProtocolType, CredentialCache,
                         WebException, WebExceptionStatus)
 from System.IO import StreamReader, IOException
+from System.Threading import Thread, ThreadStart, Monitor
 from System.Text import Encoding
 
 from Autodesk.Revit.DB import (BuiltInParameter, StorageType, ModelPathUtils, ElementId, ViewSheet, View,
@@ -182,7 +183,7 @@ def abort_requests():
             pass
 
 
-def _post(url, body, timeout_ms):
+def _post(url, body, timeout_ms, track=True):
     try:
         ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | SecurityProtocolType.Tls12
         # Без этого .NET шлёт «Expect: 100-continue» и ждёт лишний обмен с сервером (часть прокси его рвёт)
@@ -199,8 +200,9 @@ def _post(url, body, timeout_ms):
     if req.Proxy is not None:
         req.Proxy.Credentials = CredentialCache.DefaultNetworkCredentials
     req.ContentLength = data.Length
-    with _lock:
-        _active.append(req)
+    if track:
+        with _lock:
+            _active.append(req)
     try:
         stream = req.GetRequestStream()
         try:
@@ -245,9 +247,10 @@ def _is_transient(ex):
 last_server_ms = [None]
 
 
-def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1):
+def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1, track=True):
     """Запрос к веб-приложению. Временный сбой связи повторяется (retries раз): все действия
-    сервера безопасно повторять — «add» отсеивает повторную отправку по id."""
+    сервера безопасно повторять — «add» отсеивает повторную отправку по id.
+    track=False — запрос не обрывается закрытием окна (фоновая отправка после закрытия, send_queue_detached)."""
     cfg = load_config()
     url = url or cfg['url']
     token = token or cfg['token']
@@ -259,10 +262,10 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
     text = _dumps(body)
     attempt = 0
     while True:
-        if _cancelled[0]:
+        if track and _cancelled[0]:
             raise ApiError(u'Запрос отменён: окно закрыто.')
         try:
-            raw = _post(url, text, timeout_ms)
+            raw = _post(url, text, timeout_ms, track)
         except Exception as ex:
             if attempt < retries and _is_transient(ex):
                 attempt += 1
@@ -533,30 +536,89 @@ def pending_notes(key):
     return result
 
 
-def flush_queue(timeout_ms=15000):
-    """Отправляет очередь. Возвращает (отправлено, осталось)."""
+class _QueueLock(object):
+    """Блокировка файла очереди на весь процесс Revit: её трогают окна разных кнопок (каждая — в своём
+    движке pyRevit со своей копией модуля) и фоновая отправка. Объект блокировки — в AppDomain."""
+    KEY = 'pnotes_queue_lock'
+
+    def __enter__(self):
+        domain = System.AppDomain.CurrentDomain
+        obj = domain.GetData(self.KEY)
+        if obj is None:
+            obj = System.Object()
+            domain.SetData(self.KEY, obj)
+            obj = domain.GetData(self.KEY)
+        self.obj = obj
+        Monitor.Enter(obj)
+        return self
+
+    def __exit__(self, *args):
+        Monitor.Exit(self.obj)
+        return False
+
+
+def queue_size():
+    return len(_load_queue())
+
+
+def flush_queue(timeout_ms=15000, track=True):
+    """Отправляет очередь. Возвращает (отправлено, осталось).
+    Из файла убираются только отправленные заметки: то, что добавили во время отправки, не теряется."""
     queue = _load_queue()
     if not queue:
         return 0, 0
-    left, sent, failed = [], 0, False
+    sent = set()
     for note in queue:
-        if not failed:
-            try:
-                call('add', {'note': note}, timeout_ms)
-                sent += 1
-                continue
-            except ApiError:
-                failed = True
-        left.append(note)
-    _write_json(QUEUE_FILE, left)
-    return sent, len(left)
+        try:
+            call('add', {'note': note}, timeout_ms, track=track)
+            sent.add(note.get('id'))
+        except ApiError:
+            break  # нет связи — остальные не пробуем, уйдут в следующий раз
+    with _QueueLock():
+        left = [n for n in _load_queue() if n.get('id') not in sent]
+        if sent:
+            _write_json(QUEUE_FILE, left)
+    return len(sent), len(left)
 
 
 def queue_note(note):
     """Кладёт заметку в локальную очередь (ничего не теряется); отправляет flush_queue."""
-    queue = _load_queue()
-    queue.append(note)
-    _write_json(QUEUE_FILE, queue)
+    with _QueueLock():
+        queue = _load_queue()
+        queue.append(note)
+        _write_json(QUEUE_FILE, queue)
+
+
+def send_queue_detached(timeout_ms=30000):
+    """Отправить очередь в фоне, не дожидаясь ответа: окно уже закрыто, Revit свободен.
+    Поток живёт дольше скрипта кнопки, поэтому у кнопки «Заметка» постоянный движок pyRevit
+    (engine: persistent в bundle.yaml). Не отправилось — заметка остаётся в очереди и уйдёт
+    со следующей заметкой или при открытии сводки (там она видна как «Не отправлено»)."""
+    domain = System.AppDomain.CurrentDomain
+    if domain.GetData('pnotes_sending'):
+        return  # уже идёт отправка — она перечитывает очередь и заберёт и эту заметку
+    domain.SetData('pnotes_sending', True)
+
+    def body():
+        try:
+            while True:
+                sent, left = flush_queue(timeout_ms, track=False)
+                if not left or not sent:
+                    break
+        except:  # noqa: E722 — исключение из фонового потока уронило бы Revit
+            pass
+        finally:
+            try:
+                domain.SetData('pnotes_sending', None)
+            except:  # noqa: E722
+                pass
+
+    thread = Thread(ThreadStart(body))
+    thread.IsBackground = True
+    try:
+        thread.Start()
+    except Exception:
+        domain.SetData('pnotes_sending', None)
 
 
 def add_note(note, timeout_ms=15000):
@@ -602,11 +664,12 @@ def set_status(ids, status, user):
 def update_note(note, changes, user):
     """Правка полей заметки (тип, раздел, текст, срок, кому). Неотправленная — правится в очереди."""
     if note.get('status') == STATUS_PENDING:
-        queue = _load_queue()
-        for queued in queue:
-            if queued.get('id') == note.get('id'):
-                queued.update(changes)
-        _write_json(QUEUE_FILE, queue)
+        with _QueueLock():
+            queue = _load_queue()
+            for queued in queue:
+                if queued.get('id') == note.get('id'):
+                    queued.update(changes)
+            _write_json(QUEUE_FILE, queue)
         return {'ok': True}
     return call('update', {'id': note['id'], 'fields': changes, 'by': user})
 
