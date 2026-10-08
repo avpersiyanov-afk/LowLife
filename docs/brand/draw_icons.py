@@ -230,6 +230,15 @@ def feedback(c):
     c.circle((48, 54), 4.2, None, ORANGE)
 
 
+def ribbon_search(c):
+    """«Поиск»: кнопки ленты сеткой, одна найдена (оранжевая), над ней лупа."""
+    for x, y in ((12, 12), (40, 12), (12, 40)):
+        c.rect((x, y, x + 22, y + 22), BLUE, WHITE, 4, 5)
+    c.rect((40, 40, 62, 62), ORANGE, PALE_ORANGE, 4, 5)
+    c.magnifier((51, 51), 17, 18)
+    c.rect((45, 45, 57, 57), None, ORANGE, 0, 3)
+
+
 def level_name(c):
     """«Обновить имя уровня»: элементы на линии уровня, отметка уровня с
     оранжевой стрелкой к элементу — имя уровня прописывается элементам."""
@@ -378,6 +387,7 @@ ICONS = [
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
     ("_Themes.panel/Feedback.pushbutton", feedback),
+    ("_Themes.panel/Search.pushbutton", ribbon_search),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),
