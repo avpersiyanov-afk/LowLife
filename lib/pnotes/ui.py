@@ -312,6 +312,9 @@ class SummaryWindow(forms.WPFWindow):
         self.uidoc = uidoc
         self.reminders_mode = reminders_mode
         self._settings_refreshed = False
+        self._pending = 0  # изменений, ещё не дошедших до таблицы
+        self._overrides = []  # изменения из этого окна — поверх загрузки, начатой до их сохранения
+        self._close_when_done = False
         self._load_timing = None
 
         title = ctx['key'] if ctx['name'] == ctx['key'] else u'{} — {}'.format(ctx['key'], ctx['name'])
@@ -348,6 +351,7 @@ class SummaryWindow(forms.WPFWindow):
         self.btnRefresh.Click += self.on_reload
         self.btnSheet.Click += self.on_sheet
         self.btnClose.Click += lambda s, e: self.Close()
+        self.Closing += self.on_closing
         self.btnSheet.IsEnabled = bool(settings.get('sheet_url'))
 
         self._ready = True
@@ -463,17 +467,9 @@ class SummaryWindow(forms.WPFWindow):
                             u'выделите его и нажмите «Ответ / решение».'.format(len(unanswered)),
                             title=u'Нужен ответ')
                 return
-        self.Cursor = Cursors.Wait
-        try:
-            core.set_status([n['id'] for n in selected], status, self.ctx['user'])
-        except core.ApiError as ex:
-            self.Cursor = None
-            forms.alert(core.err_text(ex), title=u'Не удалось изменить статус')
-            return
-        self.Cursor = None
-        for n in selected:
-            n['status'] = status
-        self.refresh()
+        ids, user = [n['id'] for n in selected], self.ctx['user']
+        self._apply(selected, {'status': status}, lambda: core.set_status(ids, status, user),
+                    u'Не удалось изменить статус')
 
     def on_edit(self, sender, e):
         selected = self._selected()
@@ -486,16 +482,9 @@ class SummaryWindow(forms.WPFWindow):
         dlg.ShowDialog()
         if not dlg.changes:
             return
-        self.Cursor = Cursors.Wait
-        try:
-            core.update_note(note, dlg.changes, self.ctx['user'])
-        except core.ApiError as ex:
-            self.Cursor = None
-            forms.alert(core.err_text(ex), title=u'Не удалось сохранить изменения')
-            return
-        self.Cursor = None
-        note.update(dlg.changes)
-        self.refresh()
+        changes, user, sent = dict(dlg.changes), self.ctx['user'], dict(note)
+        self._apply([note], changes, lambda: core.update_note(sent, changes, user),
+                    u'Не удалось сохранить изменения')
 
     def on_answer(self, sender, e):
         selected = [n for n in self._selected() if n.get('status') != core.STATUS_PENDING]
@@ -511,18 +500,48 @@ class SummaryWindow(forms.WPFWindow):
         if dlg.answer is None:
             return
         status = core.STATUS_DONE if dlg.mark_done else None
-        self.Cursor = Cursors.Wait
-        try:
-            core.set_answer(note['id'], dlg.answer, status, self.ctx['user'])
-        except core.ApiError as ex:
-            self.Cursor = None
-            forms.alert(core.err_text(ex), title=u'Не удалось записать решение')
-            return
-        self.Cursor = None
-        note['answer'] = dlg.answer
+        changes = {'answer': dlg.answer}
         if status:
-            note['status'] = status
+            changes['status'] = status
+        note_id, answer, user = note['id'], dlg.answer, self.ctx['user']
+        self._apply([note], changes, lambda: core.set_answer(note_id, answer, status, user),
+                    u'Не удалось записать решение')
+
+    def _apply(self, notes, changes, send, fail_title):
+        """Изменение видно в сводке сразу, а в таблицу уходит в фоне. Не прошло — откатывается.
+        Пока изменения отправляются, окно не закрывается (закроется само, когда они уйдут)."""
+        before = [dict((k, n.get(k)) for k in changes) for n in notes]
+        for n in notes:
+            n.update(changes)
         self.refresh()
+        self._pending += 1
+        self._notice(u'Сохранение в таблицу…')
+        # если параллельно идёт загрузка из таблицы, её данные могут быть старше этого изменения
+        override = {'ids': set(n.get('id') for n in notes), 'changes': changes, 'done_at': None}
+        self._overrides.append(override)
+
+        def done(result, error):
+            self._pending -= 1
+            override['done_at'] = time.time()
+            if error is not None:
+                self._overrides.remove(override)
+                for n, old in zip(notes, before):
+                    n.update(old)
+                self.refresh()
+            if not self._pending:
+                self._notice(None)
+                if self._close_when_done:
+                    self.Close()
+                    return
+            if error is not None:
+                forms.alert(error, title=fail_title)
+        in_background(self, send, done)
+
+    def on_closing(self, sender, e):
+        if self._pending:
+            e.Cancel = True
+            self._close_when_done = True
+            self._notice(u'Изменения ещё отправляются в таблицу — окно закроется, как только они сохранятся.')
 
     def on_show(self, sender, e):
         if self.uidoc is None or self.reminders_mode:
@@ -608,7 +627,7 @@ class SummaryWindow(forms.WPFWindow):
             core.last_server_ms[0] = None
             notes, online, error = core.load_notes(key, timeout_ms=30000)
             timing = {'total': time.time() - started, 'queue': flushed - started,
-                      'server': core.last_server_ms[0]}
+                      'server': core.last_server_ms[0], 'started': started}
             return notes, online, error, timing
         in_background(self, work, self._loaded)
 
@@ -620,10 +639,15 @@ class SummaryWindow(forms.WPFWindow):
             return
         notes, online, error, timing = result
         self._load_timing = timing if online else None
+        for o in self._overrides:
+            if o['done_at'] is None or o['done_at'] > timing['started']:
+                for n in notes:
+                    if n.get('id') in o['ids']:
+                        n.update(o['changes'])
         if self.reminders_mode:
             notes = core.reminders(notes, self.ctx['user'], self.settings.get('remind_days'))
         self.notes = notes
-        self._notice(error)
+        self._notice(error or (u'Сохранение в таблицу…' if self._pending else None))
         self._ready = False
         self._fill_authors()
         self._ready = True
