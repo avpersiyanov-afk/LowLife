@@ -188,6 +188,9 @@ def _post(url, body, timeout_ms, track=True):
         ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | SecurityProtocolType.Tls12
         # Без этого .NET шлёт «Expect: 100-continue» и ждёт лишний обмен с сервером (часть прокси его рвёт)
         ServicePointManager.Expect100Continue = False
+        # По умолчанию 2 соединения на хост: фоновые отправки и загрузка сводки стояли бы в очереди друг за другом
+        if ServicePointManager.DefaultConnectionLimit < 8:
+            ServicePointManager.DefaultConnectionLimit = 8
     except Exception:
         pass
     data = Encoding.UTF8.GetBytes(body)
@@ -226,13 +229,16 @@ _TRANSIENT = (WebExceptionStatus.ConnectionClosed, WebExceptionStatus.KeepAliveF
               WebExceptionStatus.PipelineFailure, WebExceptionStatus.SecureChannelFailure)
 
 
-def _is_transient(ex):
+def _is_transient(ex, timeout=False):
     """Сбой, который у Google случается сам по себе и проходит при повторе (обрыв, 5xx, 429).
-    Таймаут и отмену не повторяем: это удвоило бы ожидание."""
+    Таймаут повторяем только с timeout=True — в фоне, где лишнее ожидание не блокирует Revit:
+    у Google отдельный запрос иногда «зависает», а новый проходит за несколько секунд."""
     if _cancelled[0]:
         return False
     net = getattr(ex, 'clsException', None) or ex
     if isinstance(net, WebException):
+        if net.Status == WebExceptionStatus.Timeout:
+            return timeout
         if net.Status == WebExceptionStatus.ProtocolError:
             try:
                 code = int(net.Response.StatusCode)
@@ -247,7 +253,8 @@ def _is_transient(ex):
 last_server_ms = [None]
 
 
-def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1, track=True):
+def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1, track=True,
+         retry_timeout=False):
     """Запрос к веб-приложению. Временный сбой связи повторяется (retries раз): все действия
     сервера безопасно повторять — «add» отсеивает повторную отправку по id.
     track=False — запрос не обрывается закрытием окна (фоновая отправка после закрытия, send_queue_detached)."""
@@ -267,7 +274,7 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
         try:
             raw = _post(url, text, timeout_ms, track)
         except Exception as ex:
-            if attempt < retries and _is_transient(ex):
+            if attempt < retries and _is_transient(ex, retry_timeout):
                 attempt += 1
                 time.sleep(1)
                 continue
@@ -562,7 +569,7 @@ def queue_size():
     return len(_load_queue())
 
 
-def flush_queue(timeout_ms=15000, track=True):
+def flush_queue(timeout_ms=15000, track=True, retry_timeout=False):
     """Отправляет очередь. Возвращает (отправлено, осталось).
     Из файла убираются только отправленные заметки: то, что добавили во время отправки, не теряется."""
     queue = _load_queue()
@@ -571,7 +578,7 @@ def flush_queue(timeout_ms=15000, track=True):
     sent = set()
     for note in queue:
         try:
-            call('add', {'note': note}, timeout_ms, track=track)
+            call('add', {'note': note}, timeout_ms, track=track, retry_timeout=retry_timeout)
             sent.add(note.get('id'))
         except ApiError:
             break  # нет связи — остальные не пробуем, уйдут в следующий раз
@@ -626,7 +633,7 @@ def send_queue_detached(timeout_ms=30000):
     """Отправить очередь заметок в фоне, не дожидаясь ответа: окно уже закрыто, Revit свободен.
     Не отправилось — заметка остаётся в очереди и уйдёт со следующей заметкой или при открытии
     сводки (там она видна как «Не отправлено»)."""
-    run_detached('pnotes_sending', lambda: flush_queue(timeout_ms, track=False))
+    run_detached('pnotes_sending', lambda: flush_queue(timeout_ms, track=False, retry_timeout=True))
 
 
 def add_note(note, timeout_ms=15000):
@@ -642,12 +649,14 @@ def cached_notes(key):
     return (entry.get('notes') or []) + pending_notes(key), entry.get('time') or u''
 
 
-def load_notes(key, timeout_ms=15000):
-    """(заметки, есть_связь, текст_ошибки). Без связи — последняя копия + неотправленные."""
+def load_notes(key, timeout_ms=15000, retry_timeout=False):
+    """(заметки, есть_связь, текст_ошибки). Без связи — последняя копия + неотправленные.
+    retry_timeout=True — для фоновой загрузки: «зависший» запрос повторяется один раз."""
     error = None
     try:
-        flush_queue(timeout_ms)
-        notes = call('list', {'project_key': key}, timeout_ms).get('notes') or []
+        flush_queue(timeout_ms, retry_timeout=retry_timeout)
+        notes = call('list', {'project_key': key}, timeout_ms,
+                     retry_timeout=retry_timeout).get('notes') or []
         cache = _read_json(NOTES_CACHE, {}) or {}
         cache[key] = {'time': datetime.datetime.now().strftime('%d.%m.%Y %H:%M'), 'notes': notes}
         try:
@@ -666,7 +675,7 @@ def load_notes(key, timeout_ms=15000):
 
 
 def set_status(ids, status, user):
-    return call('setStatus', {'ids': ids, 'status': status, 'by': user})
+    return call('setStatus', {'ids': ids, 'status': status, 'by': user}, 20000, retry_timeout=True)
 
 
 def update_note(note, changes, user):
@@ -679,12 +688,13 @@ def update_note(note, changes, user):
                     queued.update(changes)
             _write_json(QUEUE_FILE, queue)
         return {'ok': True}
-    return call('update', {'id': note['id'], 'fields': changes, 'by': user})
+    return call('update', {'id': note['id'], 'fields': changes, 'by': user}, 20000, retry_timeout=True)
 
 
 def set_answer(note_id, answer, status, user):
     """Записывает «Решение»; status — None (не менять) или новый статус."""
-    return call('answer', {'id': note_id, 'answer': answer, 'status': status, 'by': user})
+    return call('answer', {'id': note_id, 'answer': answer, 'status': status, 'by': user}, 20000,
+                retry_timeout=True)
 
 
 def is_question(note):
