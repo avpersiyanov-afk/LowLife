@@ -52,7 +52,7 @@ def _send(item, timeout_ms=15000):
         try:
             raw = core._post(url, body, timeout_ms, track=False)
         except Exception as ex:
-            if not core._is_transient(ex):
+            if not core._is_transient(ex, timeout=True):  # отправка всегда в фоне
                 raise
             raw = core._post(url, body, timeout_ms, track=False)  # разовый сбой Google — один повтор
     except Exception as ex:

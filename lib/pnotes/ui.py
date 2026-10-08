@@ -441,7 +441,10 @@ class SummaryWindow(forms.WPFWindow):
             text = u'   ·   загружено из таблицы за {:.1f} с'.format(float(t['total']))
             parts = []
             if t['server'] is not None:
-                parts.append(u'скрипт Google {:.1f} с'.format(t['server'] / 1000.0))
+                script = t['server'] / 1000.0
+                parts.append(u'скрипт Google {:.1f} с'.format(script))
+                parts.append(u'сеть и запуск веб-приложения {:.1f} с'.format(
+                    max(0.0, float(t['total'] - t['queue']) - script)))
             if t['queue'] >= 0.1:
                 parts.append(u'отправка неотправленных {:.1f} с'.format(float(t['queue'])))
             if parts:
@@ -620,12 +623,14 @@ class SummaryWindow(forms.WPFWindow):
         def work():
             # очередь отдельно — чтобы в строке состояния было видно, на что ушло время
             try:
-                core.flush_queue(30000)
+                core.flush_queue(20000, retry_timeout=True)
             except Exception:
                 pass
             flushed = time.time()
             core.last_server_ms[0] = None
-            notes, online, error = core.load_notes(key, timeout_ms=30000)
+            # 20 с на попытку и один повтор: «зависший» у Google запрос дольше ждать бессмысленно —
+            # новый обычно проходит за несколько секунд
+            notes, online, error = core.load_notes(key, timeout_ms=20000, retry_timeout=True)
             timing = {'total': time.time() - started, 'queue': flushed - started,
                       'server': core.last_server_ms[0], 'started': started}
             return notes, online, error, timing
