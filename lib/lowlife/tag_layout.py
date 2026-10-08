@@ -17,7 +17,10 @@ Revit API (поэтому модуль можно гонять и проверя
          каждая напротив своего элемента; если соседние марки не влезают
          по высоте, они раздвигаются с зазором ``gap`` (минимально
          отходя от своих элементов). Выноска — наклонная от элемента до
-         полки длиной ``shelf`` перед маркой;
+         полки длиной ``shelf`` перед маркой. Если столбик плотнее, чем
+         высота марок, одна колонка вылезает за кучку вверх и вниз и
+         выноски расходятся крутым «веером» — тогда марки ставятся
+         двумя колонками, по обе стороны кучки;
        - «стопка» (одиночный элемент или оборудование рядом по
          горизонтали): марки стопкой друг над другом над (или под)
          кучкой, выноски прямоугольные — вертикально вверх от элемента,
@@ -28,7 +31,8 @@ Revit API (поэтому модуль можно гонять и проверя
      слева, вверх/вниз, 1×/2×/3× отступ, запасная форма блока) и
      выбирается вариант с наименьшим штрафом: наложение марок на уже
      поставленные марки и на оборудование, пересечение выносок с
-     марками/выносками/чужим оборудованием, дальность. Кучки
+     марками/выносками/чужим оборудованием, дальность, наклон выносок
+     круче 45°. Кучки
      обрабатываются от самых больших к одиночным — большим блокам
      сложнее найти место.
 """
@@ -293,10 +297,13 @@ def _spread_1d(desired, sizes, gap):
     return centers
 
 
-def _layout_side(cluster, side, off, gap, shelf):
-    """Колонка марок сбоку кучки, каждая напротив своего элемента."""
+def _layout_side(cluster, side, off, gap, shelf, box=None):
+    """Колонка марок сбоку кучки, каждая напротив своего элемента.
+    box — габарит, от которого считается отступ (по умолчанию — сама
+    кучка; для колонок с двух сторон — вся кучка, а не её половина)."""
     items = sorted(cluster, key=lambda it: it.anchor[1])
-    box = rect_union(it.elem_rect for it in cluster)
+    if box is None:
+        box = rect_union(it.elem_rect for it in cluster)
     desired = [it.anchor[1] for it in items]
     shelf = min(shelf, off)
     elbow_x = box[2] + off - shelf if side == "right" else box[0] - off + shelf
@@ -338,6 +345,32 @@ def _layout_side(cluster, side, off, gap, shelf):
             attach = (x1, cy)
             elbow = (x1 + shelf, cy)
         result.append(Placement(it.key, rect, elbow, it.anchor, attach))
+    return result
+
+
+def _layout_two_sides(cluster, off, gap, shelf, by_x):
+    """
+    Колонки марок с ОБЕИХ сторон кучки-«столбика». Когда оборудование
+    стоит в столбик плотнее, чем высота марки, одна колонка марок
+    получается выше самой кучки и раздвигается вверх и вниз — выноски
+    расходятся «веером» с крутыми наклонами (как скаты крыши). Две
+    колонки вдвое ниже, марки остаются напротив своих элементов.
+    by_x — левая половина элементов (по горизонтали) — влево, правая —
+    вправо; иначе — через один по высоте.
+    """
+    box = rect_union(it.elem_rect for it in cluster)
+    if by_x:
+        ordered = sorted(cluster, key=lambda it: it.anchor[0])
+        half = len(ordered) // 2
+        left, right = ordered[:half], ordered[half:]
+    else:
+        ordered = sorted(cluster, key=lambda it: it.anchor[1])
+        right, left = ordered[0::2], ordered[1::2]
+    result = []
+    if right:
+        result.extend(_layout_side(right, "right", off, gap, shelf, box))
+    if left:
+        result.extend(_layout_side(left, "left", off, gap, shelf, box))
     return result
 
 
@@ -390,6 +423,10 @@ def _candidates(cluster, off, gap, shelf):
         for side, pen in (("right", 0.0), ("left", 0.5)):
             out.append((side_pen + pen + dist_pen,
                         _layout_side(cluster, side, o, gap, shelf)))
+        if column and len(cluster) >= 4:
+            for by_x in (True, False):
+                out.append((1.0 + dist_pen,
+                            _layout_two_sides(cluster, o, gap, shelf, by_x)))
         for vdir, vpen in (("up", 0.0), ("down", 1.0)):
             for hdir, hpen in (("right", 0.0), ("left", 0.5)):
                 out.append((stack_pen + vpen + hpen + dist_pen,
@@ -408,6 +445,7 @@ W_LEADER_THRU_TAG = 60.0   # выноска через марку
 W_LEADER_CROSS = 40.0      # выноска через выноску
 W_LEADER_THRU_ELEM = 8.0   # выноска через другое оборудование
 W_LENGTH = 0.5             # за длину выноски (в долях высоты марки)
+W_STEEP = 2.0              # за наклонную выноску круче 45° (в долях высоты марки)
 
 
 def _score(placements, elem_rects, obstacles, placed, placed_leaders, unit):
@@ -436,6 +474,11 @@ def _score(placements, elem_rects, obstacles, placed, placed_leaders, unit):
                 if segment_hits_rect(a, b, r):
                     s += W_LEADER_THRU_ELEM
             s += W_LENGTH * _seg_len(a, b) / unit
+            # наклонный участок круче 45° — марка далеко ушла от своего
+            # элемента по высоте; у многих таких выносок — «веер»
+            du, dv = abs(b[0] - a[0]), abs(b[1] - a[1])
+            if du > 1e-9 and dv > 1e-9 and dv > du:
+                s += W_STEEP * (dv - du) / unit
     return s
 
 

@@ -62,3 +62,14 @@ def test_side_column_leaders_start_on_symbol_edge():
         on_edge = (abs(p.end[0] - r[0]) < 1e-9 or abs(p.end[0] - r[2]) < 1e-9 or
                    abs(p.end[1] - r[1]) < 1e-9 or abs(p.end[1] - r[3]) < 1e-9)
         assert on_edge
+
+
+def test_dense_column_splits_to_both_sides_without_steep_leaders():
+    # элементы чаще, чем высота марки: одна колонка дала бы «веер»
+    items = [_box(i, 0, i * 0.9) for i in range(12)]
+    pl = _clean(items)
+    assert any(p.tag_rect[0] > 0 for p in pl) and any(p.tag_rect[2] < 0 for p in pl)
+    for p in pl:
+        du = abs(p.elbow[0] - p.end[0])
+        dv = abs(p.elbow[1] - p.end[1])
+        assert dv <= du + 1e-9
