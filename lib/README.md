@@ -23,13 +23,33 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 Без Revit API, покрыт `tests/test_about.py`.
 
 ## ribbon_catalog.py
-Список панелей и кнопок вкладки по папкам расширения — для окна «Обратная связь»
-(`pnotes/feedback.py`). `list_panels(root=None)` → `[(подпись панели, [подписи
+Список панелей и кнопок вкладки по папкам расширения — для окон «Обратная связь»
+(`pnotes/feedback.py`) и «Поиск» (`ribbon_search.py`). `list_panels(root=None)` → `[(подпись панели, [подписи
 кнопок]), ...]` в порядке ленты: подписи из `bundle.yaml` (`title:`), иначе
 `__title__` из `script.py`, иначе имя папки; порядок — по `layout:`, остальное по
 алфавиту; `.stack` раскрывается в свои кнопки, панели без кнопок пропускаются.
-`read_bundle(folder)` → `(title, layout)` — разбор только этих двух ключей.
+`read_bundle(folder)` → `(title, layout)` (внутри `_parse_bundle` разбирает ещё
+`tooltip:`). Для кнопки «Поиск»: `list_buttons(root=None)` → все запускаемые кнопки
+в порядке ленты — dict с `panel`/`button` (имена папок), `path` (папки от панели
+вниз, через `.pulldown`), `title`/`panel_title`, `tooltip` (из `bundle.yaml`, иначе
+`__doc__` скрипта); выпадающие списки раскрываются, `.combobox` пропускается.
+`search(entries, query)` — все слова запроса должны найтись (без регистра, ё = е,
+гласное окончание отбрасывается: «цепи» находит «цепей»); порядок — начало подписи,
+подпись, панель, подсказка, внутри — порядок ленты; если пусто — повтор в русской
+раскладке (`switch_layout`: «wtgb» → «цепи»).
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
+
+## ribbon_search.py
+Кнопка «Поиск» (`_Themes.panel/Search`): окно (`SearchWindow`, XAML строкой) со
+строкой поиска и списком `ribbon_catalog.search`; стрелки в строке листают список.
+`run_button(uiapp, entry)` — находит кнопку на ленте через обёртки pyRevit
+(`get_current_ui()` → панель по подписи → `find_child` по `path`) и запускает её
+`UIApplication.PostCommand` по `RibbonItem.Id` (Revit выполнит её сразу после
+скрипта поиска, как клик; Shift+клик так не передать). Не вышло — `show_button`.
+`show_button(entry)` — открывает вкладку LowLife, делает кнопку и панель видимыми
+(даже если тема их скрыла — до следующего переключения темы) и подсвечивает кнопку
+(`HighlightMode.New`) на `HIGHLIGHT_SECONDS`, снимая подсветку таймером — поэтому у
+кнопки постоянный движок pyRevit.
 
 ## wordmark_wpf.py
 `build_geometries(letters=None, font_family=None, gap_em=0.05)` — название
