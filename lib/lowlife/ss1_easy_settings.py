@@ -12,11 +12,15 @@ pyrevit.script.get_config(), см. CLAUDE.md).
 помещений («Прихожая», «Коридор», «Вестибюль»), подпись «Ниша СС» и
 высоты — общая лексика, у них разумные умолчания.
 
-Окно Shift+клика (show_settings_window) — выбор семейства и типоразмера
-кросса и кабельного подвода (два выпадающих списка «семейство → тип» по
-загруженным в проект семействам) + кнопка, открывающая типовое окно
-остальных полей (settings_core.TextSettings). Выбранные типоразмеры
-хранятся в том же файле под ключами SYMBOL_KEYS.
+Окно Shift+клика (show_settings_window) — выпадающие списки по
+загруженным в проект семействам:
+  - шахта СС: семейство «Обобщённой модели» → галочка (параметр Да/Нет
+    типа или экземпляра: «СС»; у шахт других систем отмечены «СБ»,
+    «СПЗ»…);
+  - кросс и кабельный подвод: семейство → тип;
+и кнопка, открывающая типовое окно остальных полей
+(settings_core.TextSettings: помещения, параметры, высоты). Шахта и
+типоразмеры хранятся в том же файле под ключами SHAFT_KEYS/SYMBOL_KEYS.
 """
 
 from lowlife import settings_core
@@ -27,46 +31,12 @@ BUTTON_NAME = u"СС1-Easy"
 SETTINGS = settings_core.TextSettings(
     file_name="LowLifeSS1Easy_settings.json",
     button_name=BUTTON_NAME,
-    heading=u"СС1-Easy: шахты, помещения, параметры, высоты",
+    heading=u"СС1-Easy: помещения, параметры, высоты",
     transfer_label=u"СС1-Easy",
     fields=[
         settings_core.TextField(
-            "shaft_family_name",
-            u"① Шахта СС",
-            u"Имя семейства шахты инженерных коммуникаций (Обобщённая модель)",
-            hint=u"Шахты ищутся в текущей модели среди экземпляров этого семейства.",
-            default=u"", required=True,
-        ),
-        settings_core.TextField(
-            "shaft_flag_param",
-            u"",
-            u"Параметр-флажок «шахта СС» (Да/Нет или текст)",
-            hint=(
-                u"Экземпляр или тип шахты с этим флажком считается шахтой СС. "
-                u"Пусто — не проверяется."
-            ),
-            default=u"",
-        ),
-        settings_core.TextField(
-            "shaft_discipline_param",
-            u"",
-            u"Параметр дисциплины шахты",
-            hint=(
-                u"Шахта считается шахтой СС, если в этом параметре (экземпляра или "
-                u"типа) есть ключевое слово ниже. Пусто — не проверяется. Если пусты "
-                u"оба параметра — шахтой СС считается любая шахта семейства."
-            ),
-            default=u"",
-        ),
-        settings_core.TextField(
-            "shaft_discipline_keyword",
-            u"",
-            u"Ключевое слово дисциплины",
-            default=u"СС",
-        ),
-        settings_core.TextField(
             "target_room_name",
-            u"② Помещения (в связи АР)",
+            u"① Помещения (в связи АР)",
             u"Помещение квартиры, где ставится кабельный подвод",
             hint=u"Подвод ставится у двери из этого помещения в одно из соседних ниже.",
             default=u"Прихожая", required=True,
@@ -90,7 +60,7 @@ SETTINGS = settings_core.TextSettings(
         ),
         settings_core.TextField(
             "room_target_param",
-            u"③ Запись в оборудование",
+            u"② Запись в оборудование",
             u"Параметр экземпляра «Помещение» у кросса и подвода",
             hint=(
                 u"Кроссам пишется текст ниже, подводам — имя лота. Пусто — "
@@ -106,7 +76,7 @@ SETTINGS = settings_core.TextSettings(
         ),
         settings_core.NumberField(
             "cross_height_1_mm",
-            u"④ Высоты, мм (от уровня)",
+            u"③ Высоты, мм (от уровня)",
             u"Кросс №1",
             default=1000.0, minimum=0,
         ),
@@ -137,9 +107,18 @@ SETTINGS = settings_core.TextSettings(
     width=760, height=640,
 )
 
-REQUIRED_KEYS = [
-    "shaft_family_name", "target_room_name", "neighbor_room_names", "lot_param_name",
+REQUIRED_KEYS = ["target_room_name", "neighbor_room_names", "lot_param_name"]
+
+# Шахта СС: семейство + параметр (типа или экземпляра) + значение — в окне
+# Shift+клика, хранятся в том же файле.
+SHAFT_KEYS = [
+    ("shaft_family_name", u"Шахта СС — семейство"),
+    ("shaft_param", u"Шахта СС — галочка"),
 ]
+
+# Галочка, которая подставляется в список, если у семейства шахты она есть
+# (общее обозначение системы, не имя конкретного проекта).
+DEFAULT_SHAFT_FLAG = u"СС"
 
 # Роль → (ключ семейства, ключ типоразмера, подпись)
 SYMBOL_KEYS = [
@@ -150,50 +129,67 @@ SYMBOL_KEYS = [
 load_saved_values = SETTINGS.load_saved_values
 require = SETTINGS.require
 
+# Сколько экземпляров семейства шахты просматривать, собирая параметры и
+# их значения для выпадающих списков (параметры типа берутся у всех типов).
+_MAX_SAMPLE_INSTANCES = 300
+
 
 def load_all():
-    """Поля TextSettings + выбранные типоразмеры (семейство/тип по ролям)."""
+    """Поля TextSettings + шахта СС + выбранные типоразмеры."""
     values = SETTINGS.load_saved_values()
     saved = SETTINGS.store.read()
+    for key, _ in SHAFT_KEYS:
+        values[key] = saved.get(key) or u""
     for _, family_key, type_key, _ in SYMBOL_KEYS:
         values[family_key] = saved.get(family_key) or u""
         values[type_key] = saved.get(type_key) or u""
     return values
 
 
-def missing_symbols(values):
-    """Подписи ролей, у которых не выбран семейство+тип."""
-    return [label for _, family_key, type_key, label in SYMBOL_KEYS
-            if not values.get(family_key) or not values.get(type_key)]
+def missing_main(values):
+    """Подписи незаполненных пунктов главного окна (шахта, кросс, подвод)."""
+    missing = [label for key, label in SHAFT_KEYS if not (values.get(key) or u"").strip()]
+    missing += [label + u" — семейство и тип" for _, family_key, type_key, label in SYMBOL_KEYS
+                if not values.get(family_key) or not values.get(type_key)]
+    return missing
 
 
 def require_all(values):
-    """Обязательные поля + выбранные типоразмеры; иначе — сообщение и выход."""
-    SETTINGS.require(values, REQUIRED_KEYS)
-    missing = missing_symbols(values)
+    """Всё обязательное заполнено; иначе — сообщение и выход."""
+    missing = missing_main(values)
     if missing:
         settings_core._alert(
-            u"Не выбраны семейство и тип:\n\n{}\n\n"
+            u"Не заполнены настройки:\n\n{}\n\n"
             u"Откройте настройки: Shift+клик по кнопке «{}».".format(
                 u"\n".join(missing), BUTTON_NAME),
             exitscript=True
         )
+    SETTINGS.require(values, REQUIRED_KEYS)
 
 
 # ------------------------------------------------------------
-# Типоразмеры проекта
+# Семейства, типы, параметры проекта
 # ------------------------------------------------------------
 
-def list_family_types(doc):
+def _is_generic_model(family):
+    from Autodesk.Revit.DB import BuiltInCategory
+    try:
+        category = family.FamilyCategory
+        return category is not None and category.Id.IntegerValue == int(BuiltInCategory.OST_GenericModel)
+    except Exception:
+        return False
+
+
+def list_families(doc):
     """
-    {имя семейства: [имена типоразмеров]} всех загружаемых модельных
-    семейств проекта — через OfClass(Family) → GetFamilySymbolIds(), чтобы
+    [(имя семейства, обобщённая модель?, [имена типов])] всех загружаемых
+    модельных семейств — через OfClass(Family) → GetFamilySymbolIds(), чтобы
     попали и ещё не вставленные типы (см. CLAUDE.md).
     """
     from Autodesk.Revit.DB import FilteredElementCollector, Family, CategoryType
     from lowlife.scs import safe_element_name
 
-    result = {}
+    result = []
     for family in FilteredElementCollector(doc).OfClass(Family):
         try:
             category = family.FamilyCategory
@@ -211,8 +207,88 @@ def list_family_types(doc):
             if type_name:
                 names.append(type_name)
         if names:
-            result[family_name] = sorted(set(names), key=lambda n: n.lower())
-    return result
+            result.append((family_name, _is_generic_model(family),
+                           sorted(set(names), key=lambda n: n.lower())))
+    return sorted(result, key=lambda item: item[0].lower())
+
+
+_YES_NO_TEXTS = (u"да", u"нет", u"yes", u"no")
+
+
+def is_yes_no_param(param):
+    """
+    Параметр типа Да/Нет (галочка): по типу данных (Revit 2022+ —
+    SpecTypeId.Boolean.YesNo, раньше — ParameterType.YesNo), а если тип
+    определить не удалось — по тексту значения «Да»/«Нет».
+    """
+    definition = param.Definition
+    try:
+        from Autodesk.Revit.DB import SpecTypeId
+        if definition.GetDataType() == SpecTypeId.Boolean.YesNo:
+            return True
+    except Exception:
+        pass
+    try:  # Revit до 2022
+        from Autodesk.Revit.DB import ParameterType
+        if definition.ParameterType == ParameterType.YesNo:
+            return True
+    except Exception:
+        pass
+    try:
+        return (param.AsValueString() or u"").strip().lower() in _YES_NO_TEXTS
+    except Exception:
+        return False
+
+
+def list_yes_no_params(doc, family_name):
+    """
+    Имена параметров-галочек (Да/Нет) у типов семейства family_name и его
+    экземпляров (первые _MAX_SAMPLE_INSTANCES) — для списка «Галочка
+    шахты СС» (у шахт это параметры типа «СС», «СБ», «СПЗ»…).
+    """
+    from Autodesk.Revit.DB import FilteredElementCollector, Family, FamilyInstance, StorageType
+    from lowlife.scs import safe_element_name
+
+    names = set()
+
+    def collect(element):
+        for param in element.Parameters:
+            try:
+                if param.StorageType != StorageType.Integer or not is_yes_no_param(param):
+                    continue
+                name = param.Definition.Name
+            except Exception:
+                continue
+            if name:
+                names.add(name)
+
+    family = None
+    for candidate in FilteredElementCollector(doc).OfClass(Family):
+        if safe_element_name(candidate) == family_name:
+            family = candidate
+            break
+    if family is None:
+        return []
+
+    for symbol_id in family.GetFamilySymbolIds():
+        symbol = doc.GetElement(symbol_id)
+        if symbol is not None:
+            collect(symbol)
+
+    symbol_ids = set(i.IntegerValue for i in family.GetFamilySymbolIds())
+    seen = 0
+    for instance in FilteredElementCollector(doc).OfClass(FamilyInstance):
+        try:
+            if instance.GetTypeId().IntegerValue not in symbol_ids:
+                continue
+        except Exception:
+            continue
+        collect(instance)
+        seen += 1
+        if seen >= _MAX_SAMPLE_INSTANCES:
+            break
+
+    return sorted(names, key=lambda n: n.lower())
 
 
 # ------------------------------------------------------------
@@ -221,8 +297,9 @@ def list_family_types(doc):
 
 def show_settings_window(doc):
     """
-    Выбор семейства+типа кросса и подвода, кнопка «Остальные настройки…».
-    Сохраняет по «Сохранить»; True — сохранено, False — отмена.
+    Шахта СС (семейство → параметр → значение), кросс и подвод (семейство →
+    тип), кнопка «Помещения, параметры и высоты…». Сохраняет по
+    «Сохранить»; True — сохранено, False — отмена.
     """
     import clr
     clr.AddReference('PresentationFramework')
@@ -233,105 +310,125 @@ def show_settings_window(doc):
         TextWrapping, SizeToContent
     )
     from System.Windows.Controls import (
-        StackPanel, TextBlock, Button, ComboBox, Orientation
+        StackPanel, TextBlock, Button, ComboBox, Orientation, ScrollViewer, ScrollBarVisibility
     )
     from System.Windows.Media import Brushes
 
     from pyrevit import forms
 
     values = load_all()
-    family_types = list_family_types(doc)
-    family_names = sorted(family_types.keys(), key=lambda n: n.lower())
+    families = list_families(doc)
+    family_types = dict((name, types) for name, _, types in families)
+    all_names = [name for name, _, _ in families]
+    generic_names = [name for name, is_generic, _ in families if is_generic]
+    param_cache = {}
+
+    def family_flags(name):
+        if name not in param_cache:
+            param_cache[name] = list_yes_no_params(doc, name) if name else []
+        return param_cache[name]
 
     win = Window()
     win.Title = u"Настройки: {}".format(BUTTON_NAME)
     win.Width = 620
     win.SizeToContent = SizeToContent.Height
+    win.MaxHeight = 860
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     root = StackPanel()
     root.Margin = Thickness(16)
-    win.Content = root
+    scroll = ScrollViewer()
+    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    scroll.Content = root
+    win.Content = scroll
 
-    title = TextBlock()
-    title.Text = u"Семейства оборудования СС1"
-    title.FontSize = 16
-    title.FontWeight = FontWeights.Bold
-    title.Margin = Thickness(0, 0, 0, 4)
-    root.Children.Add(title)
+    def add_text(text, bold=False, size=None, gray=False, top=0, bottom=0):
+        block = TextBlock()
+        block.Text = text
+        block.TextWrapping = TextWrapping.Wrap
+        block.Margin = Thickness(0, top, 0, bottom)
+        if bold:
+            block.FontWeight = FontWeights.Bold
+        if size:
+            block.FontSize = size
+        if gray:
+            block.FontSize = 11
+            block.Foreground = Brushes.Gray
+        root.Children.Add(block)
+        return block
 
-    hint = TextBlock()
-    hint.Text = (u"Список — загруженные в проект семейства. Перед расстановкой "
-                 u"все экземпляры выбранных типоразмеров на отмеченных уровнях "
-                 u"удаляются и ставятся заново.")
-    hint.FontSize = 11
-    hint.Foreground = Brushes.Gray
-    hint.TextWrapping = TextWrapping.Wrap
-    hint.Margin = Thickness(0, 0, 0, 6)
-    root.Children.Add(hint)
+    def add_combo(label, editable=False):
+        add_text(label, top=4)
+        combo = ComboBox()
+        combo.IsEditable = editable
+        combo.IsTextSearchEnabled = True
+        root.Children.Add(combo)
+        return combo
 
-    combos = {}
+    def fill(combo, items, selected):
+        combo.Items.Clear()
+        for item in items:
+            combo.Items.Add(item)
+        if selected and selected in items:
+            combo.SelectedItem = selected
+        elif selected and combo.IsEditable:
+            combo.Text = selected
+        elif len(items) == 1:
+            combo.SelectedIndex = 0
 
-    def fill_types(type_combo, family_name, selected_type):
-        type_combo.Items.Clear()
-        for type_name in family_types.get(family_name, []):
-            type_combo.Items.Add(type_name)
-        if selected_type and selected_type in family_types.get(family_name, []):
-            type_combo.SelectedItem = selected_type
-        elif type_combo.Items.Count == 1:
-            type_combo.SelectedIndex = 0
+    add_text(u"СС1-Easy: что и куда ставить", bold=True, size=16, bottom=4)
+    add_text(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
+             u"выбранных типов кросса и подвода на отмеченных уровнях удаляются и "
+             u"ставятся заново.", gray=True, bottom=4)
 
+    # --- шахта СС ---------------------------------------------------------
+    add_text(u"Шахта СС *", bold=True, top=12)
+    add_text(u"Шахта СС — экземпляр этого семейства (Обобщённая модель), у типа "
+             u"которого отмечена выбранная галочка (параметр Да/Нет, например «СС»; "
+             u"у шахт других систем отмечены «СБ», «СПЗ»…).", gray=True)
+    shaft_family = add_combo(u"Семейство шахты")
+    shaft_param = add_combo(u"Галочка шахты СС")
+
+    def fill_shaft_params(family_name, selected_param):
+        fill(shaft_param, family_flags(family_name), selected_param or DEFAULT_SHAFT_FLAG)
+
+    fill(shaft_family, generic_names, values.get("shaft_family_name"))
+    fill_shaft_params(shaft_family.SelectedItem, values.get("shaft_param"))
+
+    def on_shaft_family(sender, args):
+        fill_shaft_params(shaft_family.SelectedItem, None)
+
+    shaft_family.SelectionChanged += on_shaft_family
+
+    # --- кросс, подвод ------------------------------------------------------
+    symbol_combos = {}
     for role, family_key, type_key, label in SYMBOL_KEYS:
-        caption = TextBlock()
-        caption.Text = label + u" *"
-        caption.FontWeight = FontWeights.Bold
-        caption.Margin = Thickness(0, 12, 0, 2)
-        root.Children.Add(caption)
-
-        family_label = TextBlock()
-        family_label.Text = u"Семейство"
-        root.Children.Add(family_label)
-
-        family_combo = ComboBox()
-        family_combo.IsEditable = True
-        family_combo.IsTextSearchEnabled = True
-        for name in family_names:
-            family_combo.Items.Add(name)
-        root.Children.Add(family_combo)
-
-        type_label = TextBlock()
-        type_label.Text = u"Тип"
-        type_label.Margin = Thickness(0, 4, 0, 0)
-        root.Children.Add(type_label)
-
-        type_combo = ComboBox()
-        root.Children.Add(type_combo)
-
-        saved_family = values.get(family_key) or u""
-        if saved_family in family_types:
-            family_combo.SelectedItem = saved_family
-            fill_types(type_combo, saved_family, values.get(type_key))
-        elif saved_family:
-            family_combo.Text = saved_family
-            missing = TextBlock()
-            missing.Text = u"Сохранённое семейство «{}» не загружено в проект.".format(saved_family)
+        add_text(label + u" *", bold=True, top=12)
+        family_combo = add_combo(u"Семейство")
+        type_combo = add_combo(u"Тип")
+        fill(family_combo, all_names, values.get(family_key))
+        fill(type_combo, family_types.get(family_combo.SelectedItem, []), values.get(type_key))
+        saved_family = values.get(family_key)
+        if saved_family and saved_family not in family_types:
+            missing = add_text(u"Сохранённое семейство «{}» не загружено в проект.".format(
+                saved_family), gray=True)
             missing.Foreground = Brushes.IndianRed
-            missing.FontSize = 11
-            root.Children.Add(missing)
 
-        def on_family_changed(sender, args, type_combo=type_combo):
-            name = sender.SelectedItem
-            fill_types(type_combo, name, None)
+        def on_family(sender, args, type_combo=type_combo):
+            fill(type_combo, family_types.get(sender.SelectedItem, []), None)
 
-        family_combo.SelectionChanged += on_family_changed
-        combos[role] = (family_combo, type_combo)
+        family_combo.SelectionChanged += on_family
+        symbol_combos[role] = (family_combo, type_combo)
 
+    # --- остальное ----------------------------------------------------------
     other_btn = Button()
-    other_btn.Content = u"Шахты, помещения, параметры и высоты…"
+    other_btn.Content = u"Помещения, параметры и высоты…"
     other_btn.Padding = Thickness(10, 4, 10, 4)
     other_btn.Margin = Thickness(0, 16, 0, 0)
     other_btn.HorizontalAlignment = HorizontalAlignment.Left
     root.Children.Add(other_btn)
+    add_text(u"Имена прихожей и соседних помещений, параметр имени лота, параметр "
+             u"«Помещение» оборудования, высоты кроссов и подвода.", gray=True, top=2)
 
     def on_other(sender, args):
         # Окно без Topmost — дочернее окно не застрянет позади (см. CLAUDE.md).
@@ -360,19 +457,17 @@ def show_settings_window(doc):
     result = {"saved": False}
 
     def on_ok(sender, args):
-        update = {}
-        problems = []
+        update = {
+            "shaft_family_name": shaft_family.SelectedItem or u"",
+            "shaft_param": shaft_param.SelectedItem or u"",
+        }
         for role, family_key, type_key, label in SYMBOL_KEYS:
-            family_combo, type_combo = combos[role]
-            family_name = family_combo.SelectedItem
-            type_name = type_combo.SelectedItem
-            if not family_name or not type_name:
-                problems.append(label)
-                continue
-            update[family_key] = family_name
-            update[type_key] = type_name
+            family_combo, type_combo = symbol_combos[role]
+            update[family_key] = family_combo.SelectedItem or u""
+            update[type_key] = type_combo.SelectedItem or u""
+        problems = missing_main(update)
         if problems:
-            forms.alert(u"Выберите семейство и тип:\n\n" + u"\n".join(problems))
+            forms.alert(u"Заполните:\n\n" + u"\n".join(problems))
             return
         SETTINGS.store.update(update)
         result["saved"] = True

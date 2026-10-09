@@ -42,25 +42,6 @@ def shaft_spans_level(shaft_min_z, shaft_max_z, level_z, tol):
     return shaft_min_z - tol <= level_z and shaft_max_z > level_z + tol
 
 
-def flag_value_is_set(value):
-    """Значение флажка-параметра («СС» и т.п.): 1/да/true/yes/x/✓."""
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value == 1
-    return normalize(value) in (u"1", u"true", u"да", u"yes", u"x", u"✓", u"галочка")
-
-
-def text_contains_keyword(value, keyword):
-    """Есть ли keyword в value (без учёта регистра). Пустой keyword — нет."""
-    keyword = normalize(keyword)
-    if not keyword or value is None:
-        return False
-    return keyword in normalize(value)
-
-
 def door_target_side(from_name, to_name, target_name, neighbor_names):
     """
     Какое из помещений двери — целевое («Прихожая»), если второе — одно из

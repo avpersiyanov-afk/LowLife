@@ -7,9 +7,9 @@
   1. Удаление старого: все экземпляры выбранных типоразмеров кросса и
      кабельного подвода, стоящие на отмеченных уровнях, удаляются — кнопка
      каждый раз расставляет оборудование заново.
-  2. Кроссы: шахты СС — экземпляры «Обобщённой модели» заданного семейства
-     с флажком СС или ключевым словом в параметре дисциплины (экземпляра
-     или типа). На каждом отмеченном уровне, через который шахта проходит
+  2. Кроссы: шахты СС — экземпляры «Обобщённой модели» заданного семейства,
+     у типа (или экземпляра) которых отмечена заданная галочка — параметр
+     Да/Нет «СС» (у шахт других систем отмечены «СБ», «СПЗ»…). На каждом отмеченном уровне, через который шахта проходит
      (по высоте её габарита, ss1_easy_core.shaft_spans_level), в центре
      шахты ставятся два кросса на заданных высотах от уровня, повёрнутые
      по шахте + 180°. В параметр «Помещение» пишется «Ниша СС».
@@ -77,24 +77,12 @@ def activate_symbol(doc, symbol):
         pass
 
 
-def _param_raw(param):
-    """Значение параметра: int у Integer (Да/Нет), иначе строка."""
+def _param_checked(param):
+    """Галочка (Да/Нет) отмечена: целочисленное значение 1."""
     try:
-        if param.StorageType == StorageType.Integer:
-            return param.AsInteger()
+        return param.StorageType == StorageType.Integer and param.AsInteger() == 1
     except Exception:
-        pass
-    value = None
-    try:
-        value = param.AsString()
-    except Exception:
-        pass
-    if value is None:
-        try:
-            value = param.AsValueString()
-        except Exception:
-            pass
-    return value
+        return False
 
 
 def _instance_and_type(element):
@@ -108,18 +96,18 @@ def _instance_and_type(element):
     return result
 
 
-def _param_values(element, param_name):
-    values = []
+def _flag_checked(element, param_name):
+    """Галочка param_name отмечена у типа или у экземпляра element."""
     if not param_name:
-        return values
-    for obj in _instance_and_type(element):
+        return False
+    for obj in reversed(_instance_and_type(element)):  # сначала тип
         try:
             param = obj.LookupParameter(param_name)
         except Exception:
             param = None
-        if param is not None and param.HasValue:
-            values.append(_param_raw(param))
-    return values
+        if param is not None and param.HasValue and _param_checked(param):
+            return True
+    return False
 
 
 def set_text_param(element, param_name, value):
@@ -259,18 +247,11 @@ def delete_old(doc, symbols, level_ids):
 # ------------------------------------------------------------
 
 def is_ss_shaft(element, settings):
-    flag_param = (settings.get("shaft_flag_param") or u"").strip()
-    discipline_param = (settings.get("shaft_discipline_param") or u"").strip()
-    keyword = settings.get("shaft_discipline_keyword") or u""
-    if not flag_param and not discipline_param:
-        return True
-    for value in _param_values(element, flag_param):
-        if core.flag_value_is_set(value):
-            return True
-    for value in _param_values(element, discipline_param):
-        if core.text_contains_keyword(value, keyword):
-            return True
-    return False
+    """
+    Шахта СС: у типа (или экземпляра) отмечена галочка shaft_param («СС»;
+    у шахт других систем отмечены «СБ», «СПЗ»…).
+    """
+    return _flag_checked(element, (settings.get("shaft_param") or u"").strip())
 
 
 def facing_angle(element):
