@@ -7,23 +7,31 @@
   вида `CustomCtrl_%CustomCtrl_%LowLife%Панель%Кнопка`); Revit выполнит её сразу после этого скрипта,
   как обычный клик.
 - «Показать на ленте» — открывает вкладку LowLife, делает кнопку и её панель видимыми (даже если
-  текущая тема их скрывает — до следующего переключения темы) и на несколько секунд подсвечивает её.
+  текущая тема их скрывает — до следующего переключения темы) и несколько раз мигает поверх неё
+  оранжевой заливкой (Adorner в слое украшений ленты, если его нет — прозрачный Popup того же
+  размера; не нашли кнопку на экране — штатная отметка `HighlightMode.New`).
 """
 import traceback
 
 from pyrevit import forms
-from System import TimeSpan
-from System.Windows import Thickness, FontWeights, TextTrimming, TextWrapping
-from System.Windows.Controls import ListBoxItem, StackPanel, TextBlock, DockPanel, Dock
+from System import Object, TimeSpan
+from System.Windows import (Thickness, CornerRadius, FontWeights, TextTrimming, TextWrapping,
+                            FrameworkElement, Rect)
+from System.Windows.Controls import ListBoxItem, StackPanel, TextBlock, DockPanel, Dock, Border
+from System.Windows.Controls.Primitives import Popup, PlacementMode
+from System.Windows.Documents import Adorner, AdornerLayer
 from System.Windows.Input import Key, Keyboard, ModifierKeys
-from System.Windows.Media import SolidColorBrush, Color
+from System.Windows.Media import SolidColorBrush, Color, Pen, Visual, VisualTreeHelper
 from System.Windows.Threading import DispatcherTimer
 
 from lowlife import ribbon_catalog
 
 TAB_NAME = u"LowLife"
 SELF = (u"_Themes", u"Search")  # саму кнопку «Поиск» в результатах не показываем
-HIGHLIGHT_SECONDS = 8
+HIGHLIGHT_SECONDS = 8      # запасная штатная отметка, если заливку поверх кнопки нарисовать не вышло
+FLASH_TIMES = 6            # сколько раз мигнуть заливкой
+FLASH_INTERVAL_MS = 350
+FLASH_ALPHA = 170          # непрозрачность заливки (из 255): подпись кнопки под ней ещё читается
 MAX_TOOLTIP = 160
 
 _XAML = u'''
@@ -228,8 +236,129 @@ def _set_highlight(adwin, on):
     adwin.Highlight = HighlightMode.New if on else getattr(HighlightMode, "None")
 
 
+# ---------------------------------------------------------------- мигающая заливка кнопки
+
+def _fill_brush():
+    return SolidColorBrush(Color.FromArgb(FLASH_ALPHA, 0xF0, 0x8C, 0x28))  # оранжевый логотипа
+
+
+def _edge_pen():
+    return Pen(SolidColorBrush(Color.FromRgb(0xF0, 0x8C, 0x28)), 2)
+
+
+class _FillAdorner(Adorner):
+    """Оранжевый прямоугольник поверх кнопки ленты; мыши не мешает (IsHitTestVisible = False)."""
+
+    def __init__(self, element):  # конструктор Adorner(element) IronPython вызывает сам
+        self.IsHitTestVisible = False
+        self.brush = _fill_brush()
+        self.pen = _edge_pen()
+
+    def OnRender(self, dc):
+        size = self.AdornedElement.RenderSize
+        dc.DrawRoundedRectangle(self.brush, self.pen, Rect(1, 1, max(size.Width - 2, 0),
+                                                           max(size.Height - 2, 0)), 3, 3)
+
+
+def _ribbon_visual(item):
+    """Элемент WPF ленты, которым нарисован item: самый внешний с DataContext = этот RibbonItem.
+
+    Ищется обходом в ширину по дереву ленты — в нём только открытая вкладка, поэтому вкладку
+    открывают до поиска. None — кнопка не нарисована (панель свёрнута, лента ещё не обновилась).
+    """
+    from Autodesk.Windows import ComponentManager
+    queue = [ComponentManager.Ribbon]
+    while queue:
+        el = queue.pop(0)
+        if (isinstance(el, FrameworkElement) and Object.ReferenceEquals(el.DataContext, item)
+                and el.IsVisible and el.ActualWidth > 0):
+            return el
+        if isinstance(el, Visual):
+            for i in range(VisualTreeHelper.GetChildrenCount(el)):
+                queue.append(VisualTreeHelper.GetChild(el, i))
+    return None
+
+
+def _overlay(element):
+    """(видимый элемент заливки, функция убрать) — в слое украшений ленты, иначе во всплывающем окне."""
+    layer = AdornerLayer.GetAdornerLayer(element)
+    if layer is not None:
+        adorner = _FillAdorner(element)
+        layer.Add(adorner)
+        return adorner, lambda: layer.Remove(adorner)
+    # у ленты нет слоя украшений — накрываем кнопку прозрачным всплывающим окном того же размера
+    border = Border()
+    border.Background = _fill_brush()
+    border.BorderBrush = _edge_pen().Brush
+    border.BorderThickness = Thickness(2)
+    border.CornerRadius = CornerRadius(3)
+    border.IsHitTestVisible = False
+    popup = Popup()
+    popup.AllowsTransparency = True
+    popup.Placement = PlacementMode.Relative
+    popup.PlacementTarget = element
+    popup.Width = element.ActualWidth
+    popup.Height = element.ActualHeight
+    popup.IsHitTestVisible = False
+    popup.Child = border
+    popup.IsOpen = True
+
+    def _close():
+        popup.IsOpen = False
+    return border, _close
+
+
+def flash_item(adwin):
+    """Мигает оранжевой заливкой поверх кнопки ленты (FLASH_TIMES раз). False — кнопку не нашли на экране."""
+    import clr
+    clr.AddReference("AdWindows")
+    from Autodesk.Windows import ComponentManager
+    try:
+        ComponentManager.Ribbon.UpdateLayout()  # только что открытая вкладка/панель должна успеть нарисоваться
+    except Exception:
+        pass
+    element = _ribbon_visual(adwin)
+    if element is None:
+        return False
+    fill, remove = _overlay(element)
+    state = {"ticks": 0}
+    timer = DispatcherTimer()
+    timer.Interval = TimeSpan.FromMilliseconds(FLASH_INTERVAL_MS)
+
+    def _tick(sender, e):
+        state["ticks"] += 1
+        if state["ticks"] >= FLASH_TIMES * 2:
+            timer.Stop()
+            try:
+                remove()
+            except Exception:
+                pass
+            return
+        fill.Opacity = 0.0 if state["ticks"] % 2 else 1.0
+
+    timer.Tick += _tick
+    timer.Start()
+    return True
+
+
+def _highlight_later(adwin):
+    """Запасной вариант без заливки: штатная отметка Revit «новое» на кнопке на HIGHLIGHT_SECONDS."""
+    _set_highlight(adwin, True)
+    timer = DispatcherTimer()
+    timer.Interval = TimeSpan.FromSeconds(HIGHLIGHT_SECONDS)
+
+    def _off(sender, e):
+        timer.Stop()
+        try:
+            _set_highlight(adwin, False)
+        except Exception:
+            pass
+    timer.Tick += _off
+    timer.Start()
+
+
 def show_button(entry):
-    """Открывает вкладку LowLife, делает кнопку видимой и подсвечивает её. Возвращает текст ошибки или None."""
+    """Открывает вкладку LowLife, делает кнопку видимой и мигает на ней заливкой. Возвращает текст ошибки или None."""
     panel, chain = _find_ribbon_item(entry)
     if not chain:
         return u"Кнопка «{}» не найдена на ленте — перезагрузите pyRevit.".format(entry[u"title"])
@@ -244,20 +373,16 @@ def show_button(entry):
         _activate_tab()
     except Exception:
         pass
+    adwin = chain[0].get_adwindows_object()  # кнопка в выпадающем списке — мигает сам список
+    if adwin is None:
+        return None
     try:
-        adwin = chain[0].get_adwindows_object()  # кнопка в выпадающем списке — подсвечиваем сам список
-        _set_highlight(adwin, True)
-        timer = DispatcherTimer()
-        timer.Interval = TimeSpan.FromSeconds(HIGHLIGHT_SECONDS)
-
-        def _off(sender, e):
-            timer.Stop()
-            try:
-                _set_highlight(adwin, False)
-            except Exception:
-                pass
-        timer.Tick += _off
-        timer.Start()
+        if flash_item(adwin):
+            return None
+    except Exception:
+        pass
+    try:
+        _highlight_later(adwin)
     except Exception:
         pass  # без подсветки кнопка всё равно на виду
     return None
