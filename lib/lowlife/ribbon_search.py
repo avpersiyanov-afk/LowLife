@@ -37,19 +37,28 @@ MAX_TOOLTIP = 160
 _XAML = u'''
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Поиск кнопки LowLife" Width="640" Height="520" MinWidth="420" MinHeight="300"
+        Title="Поиск кнопки LowLife" Width="820" Height="640" MinWidth="600" MinHeight="360"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
         FontFamily="Segoe UI" FontSize="13" Background="White">
     <DockPanel Margin="14">
         <TextBox x:Name="txtQuery" DockPanel.Dock="Top" Padding="6,5" FontSize="14"/>
-        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
-            <TextBlock x:Name="txtStatus" DockPanel.Dock="Left" VerticalAlignment="Center"
-                       Foreground="#888888" FontSize="11"/>
-            <Button x:Name="btnRun" DockPanel.Dock="Right" Content="Запустить" FontWeight="SemiBold"
-                    Padding="16,6" MinWidth="100" Margin="8,0,0,0"/>
-            <Button x:Name="btnShow" DockPanel.Dock="Right" Content="Показать на ленте"
-                    Padding="16,6" MinWidth="100"/>
-        </DockPanel>
+        <!-- сетка, а не DockPanel: текст слева сжимается/переносится и никогда не выталкивает кнопки -->
+        <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                <TextBlock x:Name="txtStatus" Foreground="#555555" TextWrapping="Wrap"/>
+                <TextBlock Foreground="#888888" FontSize="11" TextWrapping="Wrap"
+                           Text="Enter — запустить · Ctrl+Enter — показать на ленте · Esc — закрыть"/>
+            </StackPanel>
+            <Button x:Name="btnShow" Grid.Column="1" Content="Показать на ленте"
+                    Padding="16,6" MinWidth="100" VerticalAlignment="Center"/>
+            <Button x:Name="btnRun" Grid.Column="2" Content="Запустить" FontWeight="SemiBold"
+                    Padding="16,6" MinWidth="100" Margin="8,0,0,0" VerticalAlignment="Center"/>
+        </Grid>
         <ListBox x:Name="lstResults" Margin="0,8,0,0" HorizontalContentAlignment="Stretch"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
     </DockPanel>
@@ -119,8 +128,7 @@ class SearchWindow(forms.WPFWindow):
         if found:
             self.lstResults.SelectedIndex = 0
             self.lstResults.ScrollIntoView(self.lstResults.Items[0])
-        self.txtStatus.Text = (u"Найдено: {}   ·   Enter — запустить, Ctrl+Enter — показать на ленте, Esc — закрыть"
-                               .format(len(found)) if found else u"Ничего не нашлось")
+        self.txtStatus.Text = u"Найдено: {}".format(len(found)) if found else u"Ничего не нашлось"
         self.update_buttons()
 
     def update_buttons(self):
