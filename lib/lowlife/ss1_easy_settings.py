@@ -14,8 +14,9 @@ pyrevit.script.get_config(), см. CLAUDE.md).
 
 Окно Shift+клика (show_settings_window) — выпадающие списки по
 загруженным в проект семействам:
-  - шахта СС: семейство «Обобщённой модели» → параметр (типа или
-    экземпляра) → значение («СС»; у других шахт там «СБ», «СПЗ»…);
+  - шахта СС: семейство «Обобщённой модели» → галочка (параметр Да/Нет
+    типа или экземпляра: «СС»; у шахт других систем отмечены «СБ»,
+    «СПЗ»…);
   - кросс и кабельный подвод: семейство → тип;
 и кнопка, открывающая типовое окно остальных полей
 (settings_core.TextSettings: помещения, параметры, высоты). Шахта и
@@ -112,9 +113,12 @@ REQUIRED_KEYS = ["target_room_name", "neighbor_room_names", "lot_param_name"]
 # Shift+клика, хранятся в том же файле.
 SHAFT_KEYS = [
     ("shaft_family_name", u"Шахта СС — семейство"),
-    ("shaft_param", u"Шахта СС — параметр"),
-    ("shaft_value", u"Шахта СС — значение"),
+    ("shaft_param", u"Шахта СС — галочка"),
 ]
+
+# Галочка, которая подставляется в список, если у семейства шахты она есть
+# (общее обозначение системы, не имя конкретного проекта).
+DEFAULT_SHAFT_FLAG = u"СС"
 
 # Роль → (ключ семейства, ключ типоразмера, подпись)
 SYMBOL_KEYS = [
@@ -208,43 +212,55 @@ def list_families(doc):
     return sorted(result, key=lambda item: item[0].lower())
 
 
-def _param_text(param):
-    """Значение параметра текстом: строка как есть, остальное — как в Revit."""
-    from Autodesk.Revit.DB import StorageType
-    value = None
+_YES_NO_TEXTS = (u"да", u"нет", u"yes", u"no")
+
+
+def is_yes_no_param(param):
+    """
+    Параметр типа Да/Нет (галочка): по типу данных (Revit 2022+ —
+    SpecTypeId.Boolean.YesNo, раньше — ParameterType.YesNo), а если тип
+    определить не удалось — по тексту значения «Да»/«Нет».
+    """
+    definition = param.Definition
     try:
-        if param.StorageType == StorageType.String:
-            value = param.AsString()
-        else:
-            value = param.AsValueString()
+        from Autodesk.Revit.DB import SpecTypeId
+        if definition.GetDataType() == SpecTypeId.Boolean.YesNo:
+            return True
     except Exception:
         pass
-    return (value or u"").strip()
+    try:  # Revit до 2022
+        from Autodesk.Revit.DB import ParameterType
+        if definition.ParameterType == ParameterType.YesNo:
+            return True
+    except Exception:
+        pass
+    try:
+        return (param.AsValueString() or u"").strip().lower() in _YES_NO_TEXTS
+    except Exception:
+        return False
 
 
-def list_family_params(doc, family_name):
+def list_yes_no_params(doc, family_name):
     """
-    {имя параметра: [значения]} параметров типов семейства family_name и
-    его экземпляров (первые _MAX_SAMPLE_INSTANCES). Значения — непустые,
-    встретившиеся у типов/экземпляров (для списка «Значение»).
+    Имена параметров-галочек (Да/Нет) у типов семейства family_name и его
+    экземпляров (первые _MAX_SAMPLE_INSTANCES) — для списка «Галочка
+    шахты СС» (у шахт это параметры типа «СС», «СБ», «СПЗ»…).
     """
-    from Autodesk.Revit.DB import FilteredElementCollector, Family, FamilyInstance
+    from Autodesk.Revit.DB import FilteredElementCollector, Family, FamilyInstance, StorageType
     from lowlife.scs import safe_element_name
 
-    params = {}
+    names = set()
 
     def collect(element):
         for param in element.Parameters:
             try:
+                if param.StorageType != StorageType.Integer or not is_yes_no_param(param):
+                    continue
                 name = param.Definition.Name
             except Exception:
                 continue
-            if not name:
-                continue
-            values = params.setdefault(name, set())
-            text = _param_text(param)
-            if text:
-                values.add(text)
+            if name:
+                names.add(name)
 
     family = None
     for candidate in FilteredElementCollector(doc).OfClass(Family):
@@ -252,7 +268,7 @@ def list_family_params(doc, family_name):
             family = candidate
             break
     if family is None:
-        return {}
+        return []
 
     for symbol_id in family.GetFamilySymbolIds():
         symbol = doc.GetElement(symbol_id)
@@ -272,7 +288,7 @@ def list_family_params(doc, family_name):
         if seen >= _MAX_SAMPLE_INSTANCES:
             break
 
-    return dict((name, sorted(values, key=lambda v: v.lower())) for name, values in params.items())
+    return sorted(names, key=lambda n: n.lower())
 
 
 # ------------------------------------------------------------
@@ -307,9 +323,9 @@ def show_settings_window(doc):
     generic_names = [name for name, is_generic, _ in families if is_generic]
     param_cache = {}
 
-    def family_params(name):
+    def family_flags(name):
         if name not in param_cache:
-            param_cache[name] = list_family_params(doc, name) if name else {}
+            param_cache[name] = list_yes_no_params(doc, name) if name else []
         return param_cache[name]
 
     win = Window()
@@ -367,34 +383,22 @@ def show_settings_window(doc):
 
     # --- шахта СС ---------------------------------------------------------
     add_text(u"Шахта СС *", bold=True, top=12)
-    add_text(u"Шахта — экземпляр этого семейства (Обобщённая модель), у которого "
-             u"параметр (типа или экземпляра) равен значению. Например, параметр со "
-             u"значениями СС / СБ / СПЗ и значение «СС».", gray=True)
-    shaft_family = add_combo(u"Семейство")
-    shaft_param = add_combo(u"Параметр, по которому отличаются шахты")
-    shaft_value = add_combo(u"Значение для шахты СС", editable=True)
+    add_text(u"Шахта СС — экземпляр этого семейства (Обобщённая модель), у типа "
+             u"которого отмечена выбранная галочка (параметр Да/Нет, например «СС»; "
+             u"у шахт других систем отмечены «СБ», «СПЗ»…).", gray=True)
+    shaft_family = add_combo(u"Семейство шахты")
+    shaft_param = add_combo(u"Галочка шахты СС")
 
-    def fill_shaft_params(family_name, selected_param, selected_value):
-        params = family_params(family_name)
-        fill(shaft_param, sorted(params.keys(), key=lambda n: n.lower()), selected_param)
-        fill_shaft_values(family_name, shaft_param.SelectedItem, selected_value)
-
-    def fill_shaft_values(family_name, param_name, selected_value):
-        values_list = family_params(family_name).get(param_name, []) if param_name else []
-        fill(shaft_value, values_list, selected_value)
+    def fill_shaft_params(family_name, selected_param):
+        fill(shaft_param, family_flags(family_name), selected_param or DEFAULT_SHAFT_FLAG)
 
     fill(shaft_family, generic_names, values.get("shaft_family_name"))
-    fill_shaft_params(shaft_family.SelectedItem, values.get("shaft_param"),
-                      values.get("shaft_value") or u"СС")
+    fill_shaft_params(shaft_family.SelectedItem, values.get("shaft_param"))
 
     def on_shaft_family(sender, args):
-        fill_shaft_params(shaft_family.SelectedItem, None, u"СС")
-
-    def on_shaft_param(sender, args):
-        fill_shaft_values(shaft_family.SelectedItem, shaft_param.SelectedItem, u"СС")
+        fill_shaft_params(shaft_family.SelectedItem, None)
 
     shaft_family.SelectionChanged += on_shaft_family
-    shaft_param.SelectionChanged += on_shaft_param
 
     # --- кросс, подвод ------------------------------------------------------
     symbol_combos = {}
@@ -456,7 +460,6 @@ def show_settings_window(doc):
         update = {
             "shaft_family_name": shaft_family.SelectedItem or u"",
             "shaft_param": shaft_param.SelectedItem or u"",
-            "shaft_value": (shaft_value.Text or u"").strip(),
         }
         for role, family_key, type_key, label in SYMBOL_KEYS:
             family_combo, type_combo = symbol_combos[role]

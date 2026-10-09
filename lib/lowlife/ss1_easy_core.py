@@ -42,29 +42,6 @@ def shaft_spans_level(shaft_min_z, shaft_max_z, level_z, tol):
     return shaft_min_z - tol <= level_z and shaft_max_z > level_z + tol
 
 
-def value_tokens(value):
-    """«СС, СБ / СПЗ» → {«сс», «сб», «спз»} (разделители: , ; / пробел)."""
-    text = normalize(value)
-    for sep in (u",", u";", u"/", u"\n", u"\t"):
-        text = text.replace(sep, u" ")
-    return set(chunk for chunk in text.split(u" ") if chunk)
-
-
-def value_matches(value, wanted):
-    """
-    Подходит ли значение параметра шахты («СС», «СБ», «СПЗ»…) под нужное
-    («СС»): совпадает целиком (без учёта регистра и пробелов по краям) или
-    есть среди перечисленных через запятую/пробел. Частичное совпадение не
-    считается: «ССТ» ≠ «СС». Пустое wanted — не подходит ничего.
-    """
-    wanted = normalize(wanted)
-    if not wanted or value is None:
-        return False
-    if normalize(value) == wanted:
-        return True
-    return wanted in value_tokens(value)
-
-
 def door_target_side(from_name, to_name, target_name, neighbor_names):
     """
     Какое из помещений двери — целевое («Прихожая»), если второе — одно из
