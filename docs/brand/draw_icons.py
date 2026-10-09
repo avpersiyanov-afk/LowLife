@@ -392,6 +392,21 @@ def align_view_range(c):
     c.rect((46, 68, 58, 80), BLUE, WHITE, 4, 2)
 
 
+def ss1_placement(c):
+    # Шахта (штриховка) с двумя кроссами одна над другой — слева; справа
+    # дверь из прихожей с кабельным подводом над ней (оранжевый).
+    c.rect((10, 10, 44, 86), BLUE, WHITE, 4.5, 3)
+    for y in (22, 40, 58, 76):
+        c.dashed((14, y), (40, y - 8), BLUE, 2, 3, 3)
+    c.rect((17, 30, 37, 44), BLUE, WHITE, 4, 2)
+    c.rect((17, 52, 37, 66), BLUE, WHITE, 4, 2)
+    c.line([(52, 86), (88, 86)], BLUE, 4.5)
+    c.rect((58, 44, 82, 86), BLUE, WHITE, 4.5, 2)
+    c.circle((76, 66), 2.5, None, BLUE)
+    c.circle((70, 26), 9, None, ORANGE)
+    c.line([(70, 35), (70, 44)], ORANGE, 4)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -415,6 +430,7 @@ ICONS = [
     ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
     ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
     ("LOI.panel/CheckLOI.pushbutton", check_loi),
+    ("SS1.panel/SS1Easy.pushbutton", ss1_placement),
 ]
 
 
