@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Иконка кнопки «СС1-Easy» (CPython 3 + Pillow).
+"""Иконка кнопки «СС1-8Mile» (CPython 3 + Pillow).
 
     python docs/brand/draw_ss1_easy_icon.py
 
