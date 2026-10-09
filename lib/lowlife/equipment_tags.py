@@ -22,9 +22,15 @@ v — ``UpDirection``, начало — ``view.Origin``), там же раскл
 для раскладки (на него не кладутся марки), центр — точка, куда смотрит
 выноска, а конец выноски ставится на край этого габарита. Точка
 вставки/габарит семейства целиком не годятся: УГО часто смещено от
-точки вставки (к стене, к потолку) и меньше/больше 3D-тела. Если на виде
-у элемента нет отдельных кривых — берётся вся его видимая геометрия, а
-если и её нет — ``get_BoundingBox(view)``.
+точки вставки (к стене, к потолку) и меньше/больше 3D-тела.
+
+Если на виде у элемента нет отдельных кривых (УГО нет), марка ставится к
+самому семейству, как это делает Revit: прямоугольник элемента —
+габарит семейства на виде (``get_BoundingBox(view)``, при его
+отсутствии — видимое тело), выноска смотрит в точку вставки
+(:func:`family_anchor`), а конец выноски привязан к элементу
+(``LeaderEndCondition.Attached``) — Revit сам ставит его на семейство и
+ведёт за ним при перемещении.
 
 Двухэтажные марки. Семейство марки считается двухэтажным, если хотя
 бы у одного его типа в имени есть «/» (например «Марка/Длина»). Типы
@@ -36,8 +42,8 @@ v — ``UpDirection``, начало — ``view.Origin``), там же раскл
 без «/» в именах типов не трогаются: настоящую одноэтажную марку резать
 пополам нельзя.
 
-Конец выноски свободный (``LeaderEndCondition.Free``) — только так он
-встаёт точно на край УГО, а излом — ровно по вертикали/горизонтали.
+У элементов с УГО конец выноски свободный (``LeaderEndCondition.Free``)
+— только так он встаёт точно на край УГО, а излом — ровно по вертикали/горизонтали.
 Минус: если потом подвинуть оборудование, конец выноски за ним не
 поедет — перезапустите кнопку на этих элементах.
 
@@ -52,7 +58,8 @@ from Autodesk.Revit.DB import (
     BuiltInCategory, CategoryType, Element, ElementId, Family,
     FamilyInstance, FamilySymbol, FilteredElementCollector, IndependentTag,
     LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewType,
-    XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point
+    XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point,
+    LocationPoint
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter
 
@@ -321,6 +328,16 @@ def _walk_geometry(geom, curve_pts, body_pts):
 
 def symbol_rect(el, view, frame):
     """Габарит УГО элемента на виде (u0, v0, u1, v1) или None."""
+    return symbol_info(el, view, frame)[0]
+
+
+def symbol_info(el, view, frame):
+    """
+    (габарит, есть ли УГО). УГО — отдельные кривые элемента на виде; их
+    габарит. Нет кривых — УГО нет: габарит семейства на виде
+    (``get_BoundingBox(view)``, при его отсутствии — видимое тело) и
+    False — такую марку ставим к самому семейству (см. :func:`run`).
+    """
     curve_pts, body_pts = [], []
     try:
         opts = Options()
@@ -330,10 +347,27 @@ def symbol_rect(el, view, frame):
         _walk_geometry(el.get_Geometry(opts), curve_pts, body_pts)
     except Exception:
         pass
-    rect = frame.rect_of_points(curve_pts) or frame.rect_of_points(body_pts)
+    rect = frame.rect_of_points(curve_pts)
+    if rect is not None:
+        return rect, True
+    rect = frame.rect(el.get_BoundingBox(view))
     if rect is None:
-        rect = frame.rect(el.get_BoundingBox(view))
-    return rect
+        rect = frame.rect_of_points(body_pts)
+    return rect, False
+
+
+def family_anchor(el, frame, rect):
+    """Точка вставки семейства на виде (если она в его габарите), иначе
+    центр габарита — куда смотрит выноска марки «к семейству»."""
+    try:
+        loc = el.Location
+        if isinstance(loc, LocationPoint):
+            u, v = frame.uv(loc.Point)
+            if rect[0] <= u <= rect[2] and rect[1] <= v <= rect[3]:
+                return (u, v)
+    except Exception:
+        pass
+    return tag_layout.rect_center(rect)
 
 
 # ------------------------------------------------------------
@@ -371,14 +405,19 @@ def upper_floor_only(doc, tag, cache):
 # ВЫНОСКИ
 # ------------------------------------------------------------
 
-def _set_leader(tag, ref, end, elbow):
+def _set_leader(tag, ref, end, elbow, attached=False):
+    """Выноска с изломом. attached — конец привязан к семейству (Revit
+    сам ставит его на элемент и ведёт за ним), end тогда не задаётся."""
     tag.HasLeader = True
-    tag.LeaderEndCondition = LeaderEndCondition.Free
+    tag.LeaderEndCondition = (LeaderEndCondition.Attached if attached
+                              else LeaderEndCondition.Free)
     try:
-        tag.SetLeaderEnd(ref, end)  # 2022+
+        if not attached:
+            tag.SetLeaderEnd(ref, end)  # 2022+
         tag.SetLeaderElbow(ref, elbow)
     except AttributeError:
-        tag.LeaderEnd = end
+        if not attached:
+            tag.LeaderEnd = end
         tag.LeaderElbow = elbow
 
 
@@ -448,7 +487,7 @@ def run(doc, view, elements, settings, type_by_category):
     транзакции. Возвращает словарь статистики.
     """
     stats = {"created": 0, "moved": 0, "no_bbox": 0, "failed": 0,
-             "overlaps": 0, "crossings": 0, "upper_floor": 0}
+             "overlaps": 0, "crossings": 0, "upper_floor": 0, "no_symbol": 0}
 
     scale = float(view.Scale or 1)
     k = MM_TO_FT * scale
@@ -462,12 +501,18 @@ def run(doc, view, elements, settings, type_by_category):
 
     # 1. элементы с габаритом на виде; недостающие марки
     entries = []  # (el, tag, elem_rect, anchor)
+    attached = set()  # id элементов без УГО — марка к самому семейству
     for el in elements:
-        rect = symbol_rect(el, view, frame)
+        rect, has_symbol = symbol_info(el, view, frame)
         if rect is None:
             stats["no_bbox"] += 1
             continue
-        anchor = tag_layout.rect_center(rect)
+        if has_symbol:
+            anchor = tag_layout.rect_center(rect)
+        else:
+            anchor = family_anchor(el, frame, rect)
+            attached.add(id_int(el.Id))
+            stats["no_symbol"] += 1
         tag = existing.get(id_int(el.Id))
         if tag is None:
             try:
@@ -534,7 +579,8 @@ def run(doc, view, elements, settings, type_by_category):
         try:
             tag.TagHeadPosition = frame.xyz((cu + ou, cv + ov), depth)
             _set_leader(tag, _tag_reference(tag, el),
-                        frame.xyz(p.end, depth), frame.xyz(p.elbow, depth))
+                        frame.xyz(p.end, depth), frame.xyz(p.elbow, depth),
+                        attached=p.key in attached)
             stats["moved"] += 1
         except Exception:
             stats["failed"] += 1

@@ -126,6 +126,8 @@ if stats["failed"]:
 if stats["upper_floor"]:
     lines.append(u"Только верхний этаж (тип без «/» в двухэтажном "
                  u"семействе): {}".format(stats["upper_floor"]))
+if stats["no_symbol"]:
+    lines.append(u"Без УГО — марка к семейству: {}".format(stats["no_symbol"]))
 if stats["no_bbox"]:
     lines.append(u"Не видно на виде (пропущено): {}".format(stats["no_bbox"]))
 if stats["overlaps"] or stats["crossings"]:
