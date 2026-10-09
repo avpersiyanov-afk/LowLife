@@ -55,3 +55,13 @@ def test_match_level():
 def test_dedupe_key():
     assert core.dedupe_key(1.0, 2.0, 7) == core.dedupe_key(1.01, 2.01, 7)
     assert core.dedupe_key(1.0, 2.0, 7) != core.dedupe_key(1.0, 2.0, 8)
+
+
+def test_filter_names():
+    names = [u"Шахта инж. коммуникаций", u"Кросс распределительный оптический", u"Подвод кабельный"]
+    assert core.filter_names(names, u"") == names
+    assert core.filter_names(names, u"  ") == names
+    assert core.filter_names(names, u"КРОСС") == [names[1]]
+    assert core.filter_names(names, u"кабельный подвод") == [names[2]]
+    assert core.filter_names(names, u"опт рас") == [names[1]]
+    assert core.filter_names(names, u"лоток") == []

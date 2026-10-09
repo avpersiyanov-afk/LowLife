@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Настройки кнопки «СС1-Easy» (SS1.panel/SS1Easy) + их хранение между
+Настройки кнопки «СС1-8Mile» (SS1.panel/SS1Easy) + их хранение между
 запусками.
 
 Хранятся в JSON-файле %APPDATA%\\pyRevit\\LowLifeSS1Easy_settings.json —
@@ -26,13 +26,13 @@ pyrevit.script.get_config(), см. CLAUDE.md).
 from lowlife import settings_core
 
 
-BUTTON_NAME = u"СС1-Easy"
+BUTTON_NAME = u"СС1-8Mile"
 
 SETTINGS = settings_core.TextSettings(
     file_name="LowLifeSS1Easy_settings.json",
     button_name=BUTTON_NAME,
-    heading=u"СС1-Easy: помещения, параметры, высоты",
-    transfer_label=u"СС1-Easy",
+    heading=u"СС1-8Mile: помещения, параметры, высоты",
+    transfer_label=u"СС1-8Mile",
     fields=[
         settings_core.TextField(
             "target_room_name",
@@ -310,11 +310,14 @@ def show_settings_window(doc):
         TextWrapping, SizeToContent
     )
     from System.Windows.Controls import (
-        StackPanel, TextBlock, Button, ComboBox, Orientation, ScrollViewer, ScrollBarVisibility
+        StackPanel, TextBlock, TextBox, Button, ComboBox, Orientation, ScrollViewer,
+        ScrollBarVisibility, DockPanel, Dock
     )
     from System.Windows.Media import Brushes
 
     from pyrevit import forms
+
+    from lowlife import ss1_easy_core as core
 
     values = load_all()
     families = list_families(doc)
@@ -365,6 +368,44 @@ def show_settings_window(doc):
         root.Children.Add(combo)
         return combo
 
+    def add_search_combo(label, names):
+        """
+        Список семейств с полем поиска слева: ввод фильтрует список по части
+        имени (core.filter_names); если найдено одно — оно и выбирается.
+        """
+        add_text(label + u" — слева поиск по части имени", top=4)
+        row = DockPanel()
+        search = TextBox()
+        search.Width = 170
+        search.Padding = Thickness(2)
+        search.Margin = Thickness(0, 0, 6, 0)
+        search.ToolTip = u"Поиск: введите часть имени семейства (можно несколько слов)"
+        DockPanel.SetDock(search, Dock.Left)
+        row.Children.Add(search)
+        combo = ComboBox()
+        combo.IsTextSearchEnabled = True
+        row.Children.Add(combo)
+        root.Children.Add(row)
+        found = add_text(u"", gray=True)
+
+        def on_search(sender, args):
+            current = combo.SelectedItem
+            matches = core.filter_names(names, search.Text)
+            combo.Items.Clear()
+            for name in matches:
+                combo.Items.Add(name)
+            if current in matches:
+                combo.SelectedItem = current
+            elif len(matches) == 1:
+                combo.SelectedIndex = 0
+            if (search.Text or u"").strip():
+                found.Text = u"Найдено: {} из {}".format(len(matches), len(names))
+            else:
+                found.Text = u""
+
+        search.TextChanged += on_search
+        return combo
+
     def fill(combo, items, selected):
         combo.Items.Clear()
         for item in items:
@@ -376,7 +417,7 @@ def show_settings_window(doc):
         elif len(items) == 1:
             combo.SelectedIndex = 0
 
-    add_text(u"СС1-Easy: что и куда ставить", bold=True, size=16, bottom=4)
+    add_text(u"СС1-8Mile: что и куда ставить", bold=True, size=16, bottom=4)
     add_text(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
              u"выбранных типов кросса и подвода на отмеченных уровнях удаляются и "
              u"ставятся заново.", gray=True, bottom=4)
@@ -386,7 +427,7 @@ def show_settings_window(doc):
     add_text(u"Шахта СС — экземпляр этого семейства (Обобщённая модель), у типа "
              u"которого отмечена выбранная галочка (параметр Да/Нет, например «СС»; "
              u"у шахт других систем отмечены «СБ», «СПЗ»…).", gray=True)
-    shaft_family = add_combo(u"Семейство шахты")
+    shaft_family = add_search_combo(u"Семейство шахты", generic_names)
     shaft_param = add_combo(u"Галочка шахты СС")
 
     def fill_shaft_params(family_name, selected_param):
@@ -404,7 +445,7 @@ def show_settings_window(doc):
     symbol_combos = {}
     for role, family_key, type_key, label in SYMBOL_KEYS:
         add_text(label + u" *", bold=True, top=12)
-        family_combo = add_combo(u"Семейство")
+        family_combo = add_search_combo(u"Семейство", all_names)
         type_combo = add_combo(u"Тип")
         fill(family_combo, all_names, values.get(family_key))
         fill(type_combo, family_types.get(family_combo.SelectedItem, []), values.get(type_key))

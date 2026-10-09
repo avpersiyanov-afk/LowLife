@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__title__ = u"СС1-Easy"
+__title__ = u"СС1-8Mile"
 __doc__ = (
     u"Расстановка оборудования СС1. Кроссы: два в каждой шахте СС на каждом "
     u"отмеченном уровне, через который шахта проходит. Кабельные подводы: у "
@@ -17,7 +17,7 @@ from pyrevit import revit, forms, script, EXEC_PARAMS
 from lowlife import ss1_easy, ss1_easy_settings
 
 doc = revit.doc
-TITLE = u"СС1-Easy"
+TITLE = u"СС1-8Mile"
 
 
 try:
@@ -52,12 +52,12 @@ levels, offset_mm = ss1_easy.ask_levels_and_offset(doc, settings["feed_height_mm
 if not levels:
     script.exit()
 
-with revit.Transaction(u"СС1-Easy: кроссы и кабельные подводы"):
+with revit.Transaction(u"СС1-8Mile: кроссы и кабельные подводы"):
     result = ss1_easy.run(doc, levels, offset_mm, settings, cross_symbol, feed_symbol)
 
 
 output = script.get_output()
-output.print_md(u"## СС1-Easy")
+output.print_md(u"## СС1-8Mile")
 output.print_md(u"**Уровни:** " + u", ".join(level.Name for level in levels))
 output.print_md(u"**Смещение подвода:** {:.0f} мм".format(float(offset_mm)))
 output.print_md(u"### Кроссы")

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Расстановка оборудования СС1 (SS1.panel/SS1Easy, «СС1-Easy»). Revit-часть;
+Расстановка оборудования СС1 (SS1.panel/SS1Easy, «СС1-8Mile»). Revit-часть;
 чистая логика — ss1_easy_core.py, настройки — ss1_easy_settings.py.
 
 Сценарий (run):
@@ -580,11 +580,11 @@ def ask_levels_and_offset(doc, default_offset_mm):
 
     levels = get_levels(doc)
     if not levels:
-        forms.alert(u"В проекте нет ни одного уровня.", title=u"СС1-Easy")
+        forms.alert(u"В проекте нет ни одного уровня.", title=u"СС1-8Mile")
         return None, None
 
     window = Window()
-    window.Title = u"СС1-Easy — кроссы и кабельные подводы"
+    window.Title = u"СС1-8Mile — кроссы и кабельные подводы"
     window.Width = 440
     window.Height = 590
     window.MinWidth = 400
@@ -653,14 +653,14 @@ def ask_levels_and_offset(doc, default_offset_mm):
     def on_ok(sender, args):
         checked = [cb.Tag for cb in checks if cb.IsChecked]
         if not checked:
-            forms.alert(u"Отметьте хотя бы один уровень.", title=u"СС1-Easy")
+            forms.alert(u"Отметьте хотя бы один уровень.", title=u"СС1-8Mile")
             return
         try:
             value = float(offset_box.Text.strip().replace(u",", u"."))
             if value < 0:
                 raise ValueError()
         except Exception:
-            forms.alert(u"Введите неотрицательное число для смещения подвода.", title=u"СС1-Easy")
+            forms.alert(u"Введите неотрицательное число для смещения подвода.", title=u"СС1-8Mile")
             return
         state["result"] = (checked, value)
         window.Close()

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Чистая логика кнопки «СС1-Easy» (SS1.panel/SS1Easy) без Revit API —
+Чистая логика кнопки «СС1-8Mile» (SS1.panel/SS1Easy) без Revit API —
 покрыта тестами (tests/test_ss1_easy_core.py). Revit-часть — ss1_easy.py.
 
 Все высоты/отметки — в одной системе координат (футы, как у Revit), какие
@@ -108,3 +108,15 @@ def match_level(z, levels, tol):
 def dedupe_key(x, y, level_key, grid=0.05):
     """Ключ места (X/Y с округлением ~15 мм + уровень) против двойных шахт."""
     return (int(round(x / grid)), int(round(y / grid)), level_key)
+
+
+def filter_names(names, query):
+    """
+    Поиск по списку имён (семейств): без учёта регистра, каждое слово
+    запроса должно встречаться в имени (в любом порядке). Пустой запрос —
+    весь список. Порядок исходного списка сохраняется.
+    """
+    words = normalize(query).split()
+    if not words:
+        return list(names)
+    return [name for name in names if all(word in normalize(name) for word in words)]
