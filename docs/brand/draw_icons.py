@@ -373,6 +373,25 @@ def check_loi(c):
     c.line([(54, 58), (59, 63), (67, 53)], ORANGE, 4)
 
 
+def align_view_range(c):
+    """«Секущий диапазон»: вид сбоку на этаж — нижний уровень (сплошной),
+    уровень выше (пунктир), между ними оранжевая секущая плоскость и
+    скобка диапазона с отметками-треугольниками."""
+    # Уровни: текущий — сплошной, следующий этаж — пунктир.
+    c.dashed((10, 18), (70, 18), BLUE, 3, 6, 4)
+    c.line([(10, 80), (70, 80)], BLUE, 5)
+    for y in (18, 80):
+        c.polygon([(72, y - 9), (88, y - 9), (80, y)], fill=WHITE, outline=BLUE, w=3.5)
+    # Верх диапазона чуть ниже уровня выше, секущая плоскость — оранжевая.
+    c.line([(18, 30), (62, 30)], BLUE, 3.5)
+    c.line([(18, 52), (62, 52)], ORANGE, 5)
+    c.polygon([(62, 45), (62, 59), (72, 52)], fill=ORANGE)
+    # Скобка диапазона слева: от уровня до верха.
+    c.line([(18, 30), (12, 30), (12, 80)], BLUE, 3.5)
+    c.rect((26, 62, 40, 80), BLUE, WHITE, 4, 2)
+    c.rect((46, 68, 58, 80), BLUE, WHITE, 4, 2)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -391,6 +410,7 @@ ICONS = [
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),
+    ("Tools.panel/AlignViewRange.pushbutton", align_view_range),
     ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
     ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
     ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
