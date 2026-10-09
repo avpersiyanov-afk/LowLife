@@ -2177,7 +2177,10 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   (типы марок категории + мультикатегорийные), `run(doc, view, elements,
   settings, type_by_category)` — создать недостающие марки, измерить,
   разложить, записать голову/конец/излом выноски (API выносок 2022+ и
-  старый, через AttributeError).
+  старый, через AttributeError). `symbol_info` — габарит УГО на виде и
+  есть ли оно; у элемента без УГО марка ставится к самому семейству:
+  габарит семейства на виде, выноска к точке вставки (`family_anchor`),
+  конец выноски привязан к элементу (`Attached`).
 - `equipment_tags_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeEquipmentTags_settings.json`:
   `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm` (мм на листе);
   `load_settings()`, `get_settings_interactive()` (Shift+клик).
