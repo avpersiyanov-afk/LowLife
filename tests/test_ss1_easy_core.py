@@ -23,19 +23,16 @@ def test_shaft_spans_level():
     assert not core.shaft_spans_level(10.0, 20.0, 20.0, tol)
 
 
-def test_flag_value_is_set():
-    assert core.flag_value_is_set(1)
-    assert not core.flag_value_is_set(0)
-    assert core.flag_value_is_set(u" Да ")
-    assert core.flag_value_is_set(u"x")
-    assert not core.flag_value_is_set(u"нет")
-    assert not core.flag_value_is_set(None)
-
-
-def test_text_contains_keyword():
-    assert core.text_contains_keyword(u"ЭОМ, СС", u"сс")
-    assert not core.text_contains_keyword(u"ЭОМ", u"СС")
-    assert not core.text_contains_keyword(u"СС", u"")
+def test_value_matches():
+    assert core.value_matches(u"СС", u"сс")
+    assert core.value_matches(u" сс ", u"СС")
+    assert core.value_matches(u"СБ, СС", u"СС")
+    assert core.value_matches(u"СПЗ/СС", u"СС")
+    assert not core.value_matches(u"СБ", u"СС")
+    assert not core.value_matches(u"СПЗ", u"СС")
+    assert not core.value_matches(u"ССТ", u"СС")
+    assert not core.value_matches(u"СС", u"")
+    assert not core.value_matches(None, u"СС")
 
 
 def test_door_target_side():

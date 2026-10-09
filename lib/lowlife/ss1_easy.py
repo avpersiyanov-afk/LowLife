@@ -7,9 +7,9 @@
   1. Удаление старого: все экземпляры выбранных типоразмеров кросса и
      кабельного подвода, стоящие на отмеченных уровнях, удаляются — кнопка
      каждый раз расставляет оборудование заново.
-  2. Кроссы: шахты СС — экземпляры «Обобщённой модели» заданного семейства
-     с флажком СС или ключевым словом в параметре дисциплины (экземпляра
-     или типа). На каждом отмеченном уровне, через который шахта проходит
+  2. Кроссы: шахты СС — экземпляры «Обобщённой модели» заданного семейства,
+     у которых заданный параметр (экземпляра или типа) равен значению
+     («СС»; у шахт других систем там «СБ», «СПЗ»…). На каждом отмеченном уровне, через который шахта проходит
      (по высоте её габарита, ss1_easy_core.shaft_spans_level), в центре
      шахты ставятся два кросса на заданных высотах от уровня, повёрнутые
      по шахте + 180°. В параметр «Помещение» пишется «Ниша СС».
@@ -77,23 +77,16 @@ def activate_symbol(doc, symbol):
         pass
 
 
-def _param_raw(param):
-    """Значение параметра: int у Integer (Да/Нет), иначе строка."""
-    try:
-        if param.StorageType == StorageType.Integer:
-            return param.AsInteger()
-    except Exception:
-        pass
+def _param_text(param):
+    """Значение параметра текстом: строка как есть, остальное — как в Revit."""
     value = None
     try:
-        value = param.AsString()
+        if param.StorageType == StorageType.String:
+            value = param.AsString()
+        else:
+            value = param.AsValueString()
     except Exception:
         pass
-    if value is None:
-        try:
-            value = param.AsValueString()
-        except Exception:
-            pass
     return value
 
 
@@ -118,7 +111,7 @@ def _param_values(element, param_name):
         except Exception:
             param = None
         if param is not None and param.HasValue:
-            values.append(_param_raw(param))
+            values.append(_param_text(param))
     return values
 
 
@@ -259,16 +252,14 @@ def delete_old(doc, symbols, level_ids):
 # ------------------------------------------------------------
 
 def is_ss_shaft(element, settings):
-    flag_param = (settings.get("shaft_flag_param") or u"").strip()
-    discipline_param = (settings.get("shaft_discipline_param") or u"").strip()
-    keyword = settings.get("shaft_discipline_keyword") or u""
-    if not flag_param and not discipline_param:
-        return True
-    for value in _param_values(element, flag_param):
-        if core.flag_value_is_set(value):
-            return True
-    for value in _param_values(element, discipline_param):
-        if core.text_contains_keyword(value, keyword):
+    """
+    Шахта СС: параметр shaft_param (экземпляра или типа) равен shaft_value
+    («СС»; у шахт других систем там «СБ», «СПЗ»…), см. core.value_matches.
+    """
+    param_name = (settings.get("shaft_param") or u"").strip()
+    wanted = settings.get("shaft_value") or u""
+    for value in _param_values(element, param_name):
+        if core.value_matches(value, wanted):
             return True
     return False
 
