@@ -100,6 +100,9 @@ THEMES = {
         (u"CircuitsSPA", u"CalcLoopLengthsSPA"),
         (u"SPA", u"PlaceCompanionDevices"),
     ],
+    u"SS1": [
+        (u"SS1", u"SS1Easy"),
+    ],
     u"КНК": [
         (u"TrayLadder", u"TraySPZo"),
         (u"TrayLadder", u"TraySPZp"),
@@ -174,7 +177,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"КНК", u"Circuits", u"Settings", u"General", u"Service"]
+THEME_NAMES = [u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"SS1", u"КНК", u"Circuits", u"Settings", u"General", u"Service"]
 
 # A pyRevit RibbonPanel's runtime .name mirrors the Revit API RibbonPanel.Name,
 # which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
@@ -189,6 +192,7 @@ PANEL_RIBBON_NAMES = {
     u"CircuitsSKUD": u"Цепи СКУД",
     u"CircuitsSPS": u"Цепи СПС",
     u"CircuitsSPA": u"Цепи СПА",
+    u"SS1": u"СС1",
     u"CircuitsGeneric": u"Цепи (общее)",
     u"CircuitsDelete": u"Удаление",
     u"ToolsRooms": u"Помещения",
