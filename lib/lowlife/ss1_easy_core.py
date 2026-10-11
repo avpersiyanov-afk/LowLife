@@ -120,3 +120,31 @@ def filter_names(names, query):
     if not words:
         return list(names)
     return [name for name in names if all(word in normalize(name) for word in words)]
+
+
+def pick_shaft(x, y, section, shafts):
+    """
+    Шахта, от кросса которой строится цепь к подводу в точке (x, y).
+
+    shafts — [(ключ, x, y, секция)] шахт СС того же уровня.
+    section — секция помещения подвода; пусто — секция неизвестна.
+
+    Если секция задана — ближайшая по плану шахта той же секции (без учёта
+    регистра и пробелов по краям); такой нет — (None, "no_section").
+    Если секции нет — ближайшая из всех, причина "no_room_section"
+    (вызывающий код пишет предупреждение). Шахт нет — (None, "no_shafts").
+    Возвращает (ключ или None, причина или None).
+    """
+    if not shafts:
+        return None, "no_shafts"
+
+    def nearest(candidates):
+        return min(candidates, key=lambda s: (s[1] - x) ** 2 + (s[2] - y) ** 2)[0]
+
+    wanted = normalize(section)
+    if not wanted:
+        return nearest(shafts), "no_room_section"
+    same = [s for s in shafts if normalize(s[3]) == wanted]
+    if not same:
+        return None, "no_section"
+    return nearest(same), None

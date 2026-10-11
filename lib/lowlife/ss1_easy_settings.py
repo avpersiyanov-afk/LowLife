@@ -59,6 +59,23 @@ SETTINGS = settings_core.TextSettings(
             default=u"", required=True,
         ),
         settings_core.TextField(
+            "room_section_param",
+            u"",
+            u"Параметр помещения «Номер секции»",
+            hint=(
+                u"Цепь к подводу строится от кросса №1 шахты СС той же секции на том "
+                u"же уровне (из нескольких — ближайшей). Пусто вместе с параметром "
+                u"шахты ниже — от ближайшей шахты уровня."
+            ),
+            default=u"",
+        ),
+        settings_core.TextField(
+            "shaft_section_param",
+            u"",
+            u"Параметр шахты «Номер секции» (экземпляра или типа)",
+            default=u"",
+        ),
+        settings_core.TextField(
             "room_target_param",
             u"② Запись в оборудование",
             u"Параметр экземпляра «Помещение» у кросса и подвода",
