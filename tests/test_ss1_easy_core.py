@@ -65,3 +65,16 @@ def test_filter_names():
     assert core.filter_names(names, u"кабельный подвод") == [names[2]]
     assert core.filter_names(names, u"опт рас") == [names[1]]
     assert core.filter_names(names, u"лоток") == []
+
+
+def test_pick_shaft_by_section_then_nearest():
+    shafts = [("A1", 0.0, 0.0, u"1"), ("A2", 100.0, 0.0, u"1"), ("B", 10.0, 0.0, u"2")]
+    # своя секция, ближайшая из неё — даже если чужая шахта ближе
+    assert core.pick_shaft(90.0, 0.0, u" 1 ", shafts) == ("A2", None)
+    assert core.pick_shaft(9.0, 0.0, u"1", shafts) == ("A1", None)
+    assert core.pick_shaft(9.0, 0.0, u"2", shafts) == ("B", None)
+    # шахт этой секции нет
+    assert core.pick_shaft(0.0, 0.0, u"3", shafts) == (None, "no_section")
+    # секция помещения не заполнена — ближайшая с предупреждением
+    assert core.pick_shaft(9.0, 0.0, u"", shafts) == ("B", "no_room_section")
+    assert core.pick_shaft(0.0, 0.0, u"1", []) == (None, "no_shafts")

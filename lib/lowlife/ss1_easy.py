@@ -9,18 +9,26 @@
      каждый раз расставляет оборудование заново.
   2. Кроссы: шахты СС — экземпляры «Обобщённой модели» заданного семейства,
      у типа (или экземпляра) которых отмечена заданная галочка — параметр
-     Да/Нет «СС» (у шахт других систем отмечены «СБ», «СПЗ»…). На каждом отмеченном уровне, через который шахта проходит
-     (по высоте её габарита, ss1_easy_core.shaft_spans_level), в центре
-     шахты ставятся два кросса на заданных высотах от уровня, повёрнутые
-     по шахте + 180°. В параметр «Помещение» пишется «Ниша СС».
+     Да/Нет «СС» (у шахт других систем отмечены «СБ», «СПЗ»…). На каждом
+     отмеченном уровне, через который шахта проходит (по высоте её
+     габарита, ss1_easy_core.shaft_spans_level), в центре шахты ставятся
+     два кросса на заданных высотах от уровня, повёрнутые по шахте + 90°
+     (лицом от шахты и ещё на 90° по часовой — чтобы УГО стояло прямо). В
+     параметр «Помещение» пишется «Ниша СС».
   3. Кабельные подводы: в каждой загруженной связи (АР) — двери между
      целевым помещением («Прихожая») и одним из соседних («Коридор»,
      «Вестибюль»), по последней стадии связи. У двухуровневой квартиры
      (одно имя лота на разных уровнях) берётся только нижняя прихожая;
      помещения без имени лота не группируются — подвод ставится в каждое,
-     с предупреждением. Подвод ставится в точку двери на уровне модели,
+     с предупреждением. Подвод ставится на грань стены двери со стороны
+     коридора (сторона прихожей определяется GetRoomAtPoint по обе стороны
+     двери) и поворачивается лицом в коридор; на уровне модели,
      совпадающем по отметке с уровнем двери (с учётом сдвига связи по Z),
      если этот уровень отмечен; в «Помещение» пишется имя лота.
+  4. Цепи: по электрической цепи на каждый подвод от кросса №1 шахты СС
+     того же уровня и той же секции (ближайшей из них; параметры секции
+     помещения и шахты — в настройках, без них — ближайшая шахта уровня),
+     тип системы — по коннектору подвода (иначе Data).
 
 Высота: экземпляр создаётся NewFamilyInstance(точка, тип, уровень) с
 Z точки = смещению от уровня (отметка уровня не прибавляется) — так
@@ -32,18 +40,29 @@ import math
 from Autodesk.Revit.DB import (
     XYZ, Line, FilteredElementCollector, BuiltInCategory, BuiltInParameter,
     RevitLinkInstance, FamilyInstance, Family, LocationPoint, LocationCurve,
-    ElementTransformUtils, ElementId, Level, StorageType
+    ElementTransformUtils, ElementId, Level, StorageType, Wall
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife import ss1_easy_core as core
+from lowlife.electrical_circuits import create_circuit, detect_electrical_system_type
 from lowlife.scs import safe_element_name
 
 MM_TO_FT = 1.0 / 304.8
 FT_TO_MM = 304.8
 
-# Кроссы разворачиваются лицом от шахты.
-MIRROR_ROTATION = math.pi
+# Поворот кросса относительно шахты: лицом от шахты (180°) и ещё на 90° по
+# часовой стрелке, чтобы УГО на плане стояло прямо — итого +90° к
+# направлению шахты (против часовой — положительный угол).
+CROSS_ROTATION = math.pi / 2.0
+
+# Зондирование помещений по обе стороны двери: насколько отступить от грани
+# стены и на какую высоту подняться над точкой двери.
+ROOM_PROBE_MM = 300.0
+ROOM_PROBE_HEIGHT_MM = 1000.0
+
+# Тип системы цепи, если у коннектора подвода его определить не удалось.
+FALLBACK_SYSTEM_TYPE = u"Data"
 
 
 def mm_to_ft(value_mm):
@@ -108,6 +127,26 @@ def _flag_checked(element, param_name):
         if param is not None and param.HasValue and _param_checked(param):
             return True
     return False
+
+
+def text_value(element, param_name):
+    """Значение параметра экземпляра, иначе типа — текстом; пусто — u""."""
+    if not param_name:
+        return u""
+    for obj in _instance_and_type(element):
+        try:
+            param = obj.LookupParameter(param_name)
+            if param is None or not param.HasValue:
+                continue
+            if param.StorageType == StorageType.String:
+                value = param.AsString()
+            else:
+                value = param.AsValueString()
+            if value and value.strip():
+                return value.strip()
+        except Exception:
+            pass
+    return u""
 
 
 def set_text_param(element, param_name, value):
@@ -266,8 +305,9 @@ def facing_angle(element):
 
 
 def collect_ss_shafts(doc, settings):
-    """[(шахта, центр XYZ, низ Z, верх Z)] шахт СС текущей модели."""
+    """[(шахта, центр XYZ, низ Z, верх Z, секция)] шахт СС текущей модели."""
     family_name = core.normalize(settings.get("shaft_family_name"))
+    section_param = (settings.get("shaft_section_param") or u"").strip()
     result = []
     collector = (FilteredElementCollector(doc)
                  .OfCategory(BuiltInCategory.OST_GenericModel)
@@ -283,7 +323,8 @@ def collect_ss_shafts(doc, settings):
         center = XYZ((bbox.Min.X + bbox.Max.X) / 2.0,
                      (bbox.Min.Y + bbox.Max.Y) / 2.0,
                      (bbox.Min.Z + bbox.Max.Z) / 2.0)
-        result.append((element, center, bbox.Min.Z, bbox.Max.Z))
+        result.append((element, center, bbox.Min.Z, bbox.Max.Z,
+                       text_value(element, section_param)))
     return result
 
 
@@ -296,7 +337,14 @@ class Result(object):
         self.feeds = 0
         self.deleted_crosses = 0
         self.deleted_feeds = 0
+        self.feeds_unoriented = 0
+        self.circuits = 0
+        self.circuits_failed = 0
         self.diagnostics = []
+        # Для цепей: {level_id: [(кросс №1, x, y, секция шахты)]} и
+        # [(подвод, x, y, секция помещения, level_id, имя уровня)].
+        self.panel_crosses = {}
+        self.placed_feeds = []
 
 
 def place_crosses(doc, shafts, levels, settings, symbol, result):
@@ -308,7 +356,7 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
 
     for level in levels:
         level_z = level.ProjectElevation
-        for shaft, center, min_z, max_z in shafts:
+        for shaft, center, min_z, max_z, section in shafts:
             if not core.shaft_spans_level(min_z, max_z, level_z, tol):
                 result.shaft_levels_skipped += 1
                 continue
@@ -320,7 +368,7 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
                 continue
             seen.add(key)
 
-            angle = facing_angle(shaft) + MIRROR_ROTATION
+            angle = facing_angle(shaft) + CROSS_ROTATION
             for number, height in enumerate(heights, 1):
                 try:
                     instance = create_on_level(doc, center.X, center.Y, height, symbol, level)
@@ -330,6 +378,9 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
                             u"Кросс Id {}: не удалось записать «{}».".format(
                                 instance.Id.IntegerValue, room_param))
                     result.crosses += 1
+                    if number == 1:
+                        result.panel_crosses.setdefault(level.Id.IntegerValue, []).append(
+                            (instance, center.X, center.Y, section))
                 except Exception as ex:
                     result.diagnostics.append(
                         u"Шахта Id {}, уровень «{}»: ошибка установки кросса №{}: {}".format(
@@ -434,6 +485,69 @@ def _door_level_z(door, link_doc, transform):
     return None
 
 
+def _horizontal_unit(vector):
+    try:
+        length = math.hypot(vector.X, vector.Y)
+    except Exception:
+        return None
+    if length < 1e-9:
+        return None
+    return XYZ(vector.X / length, vector.Y / length, 0)
+
+
+def _wall_half_width(door):
+    try:
+        host = door.Host
+        if isinstance(host, Wall):
+            return host.Width / 2.0
+    except Exception:
+        pass
+    return 0.0
+
+
+def corridor_side(door, link_doc, phase, target_room_id):
+    """
+    (точка на грани стены со стороны коридора, нормаль в коридор) — обе в
+    координатах связи, — или None, если не удалось понять, с какой стороны
+    двери прихожая. Сторона определяется зондированием: точка чуть в
+    стороне от двери вдоль её FacingOrientation (и в обратную сторону)
+    проверяется GetRoomAtPoint; где прихожая — там не ставим.
+    """
+    origin = _door_point(door)
+    try:
+        facing = _horizontal_unit(door.FacingOrientation)
+    except Exception:
+        facing = None
+    if origin is None or facing is None:
+        return None
+    half = _wall_half_width(door)
+    reach = half + ROOM_PROBE_MM * MM_TO_FT
+    lift = XYZ(0, 0, ROOM_PROBE_HEIGHT_MM * MM_TO_FT)
+    for sign in (1, -1):
+        probe = origin.Add(facing.Multiply(reach * sign)).Add(lift)
+        try:
+            room = link_doc.GetRoomAtPoint(probe, phase)
+        except Exception:
+            room = None
+        if room is not None and room.Id.IntegerValue == target_room_id:
+            normal = facing.Multiply(-sign)
+            return origin.Add(normal.Multiply(half)), normal
+    return None
+
+
+def align_facing(doc, instance, normal):
+    """Поворачивает экземпляр вокруг вертикали так, чтобы он смотрел по normal."""
+    try:
+        have = _horizontal_unit(instance.FacingOrientation)
+    except Exception:
+        have = None
+    if have is None:
+        return False
+    angle = math.atan2(normal.Y, normal.X) - math.atan2(have.Y, have.X)
+    rotate_instance(doc, instance, angle)
+    return True
+
+
 def _link_label(link_instance):
     try:
         return safe_element_name(link_instance) or u"связь"
@@ -446,6 +560,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
     neighbors = core.split_names(settings.get("neighbor_room_names"))
     lot_param = (settings.get("lot_param_name") or u"").strip()
     room_param = (settings.get("room_target_param") or u"").strip()
+    section_param = (settings.get("room_section_param") or u"").strip()
     tol = mm_to_ft(settings.get("level_tolerance_mm") or 0.0)
     level_marks = [(level, level.ProjectElevation) for level in levels]
 
@@ -472,6 +587,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
         # Целевые помещения связи: у дуплекса — только нижнее.
         rooms = []
         room_lots = {}
+        room_sections = {}
         room_collector = (FilteredElementCollector(link_doc)
                           .OfCategory(BuiltInCategory.OST_Rooms)
                           .WhereElementIsNotElementType())
@@ -480,6 +596,8 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                 continue
             lot = _room_text_param(room, lot_param)
             room_lots[room.Id.IntegerValue] = lot
+            room_sections[room.Id.IntegerValue] = (
+                _room_text_param(room, section_param) if section_param else u"")
             rooms.append((room.Id.IntegerValue, lot, _room_elevation(link_doc, room)))
         keep, _ = core.lowest_room_per_lot(rooms)
         warned_rooms = set()
@@ -505,17 +623,32 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                     continue
 
                 result.doors += 1
-                point = _door_point(door)
-                if point is None:
-                    result.diagnostics.append(
-                        u"{}: дверь Id {} — не удалось определить точку.".format(
-                            label, door.Id.IntegerValue))
-                    continue
+                side_info = corridor_side(door, link_doc, phase, room_id)
+                host_normal = None
+                if side_info is not None:
+                    point, normal = side_info
+                    host_normal = transform.OfVector(normal)
+                else:
+                    point = _door_point(door)
+                    if point is None:
+                        result.diagnostics.append(
+                            u"{}: дверь Id {} — не удалось определить точку.".format(
+                                label, door.Id.IntegerValue))
+                        continue
                 host_point = transform.OfPoint(point)
 
                 lot = room_lots.get(room_id) or u""
                 instance = create_on_level(doc, host_point.X, host_point.Y, offset_mm, symbol, level)
                 result.feeds += 1
+                if host_normal is None or not align_facing(doc, instance, host_normal):
+                    result.feeds_unoriented += 1
+                    result.diagnostics.append(
+                        u"{}: дверь Id {} — не удалось определить сторону коридора, подвод "
+                        u"Id {} поставлен по оси стены без поворота.".format(
+                            label, door.Id.IntegerValue, instance.Id.IntegerValue))
+                result.placed_feeds.append(
+                    (instance, host_point.X, host_point.Y, room_sections.get(room_id) or u"",
+                     level.Id.IntegerValue, level.Name))
                 if not lot:
                     if room_id not in warned_rooms:
                         warned_rooms.add(room_id)
@@ -531,6 +664,52 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
             except Exception as ex:
                 result.diagnostics.append(u"{}: дверь Id {} — ошибка: {}".format(
                     label, door.Id.IntegerValue, ex))
+
+
+# ------------------------------------------------------------
+# Электрические цепи кросс №1 → подвод
+# ------------------------------------------------------------
+
+def build_circuits(doc, settings, result):
+    """
+    По цепи на каждый подвод от кросса №1 шахты СС того же уровня: той же
+    секции (ближайшей из них), если заданы оба параметра секции, иначе —
+    ближайшей шахты уровня (core.pick_shaft).
+    """
+    by_section = bool((settings.get("room_section_param") or u"").strip()
+                      and (settings.get("shaft_section_param") or u"").strip())
+
+    for feed, x, y, section, level_id, level_name in result.placed_feeds:
+        crosses = result.panel_crosses.get(level_id, [])
+        candidates = [(index, cx, cy, csec if by_section else u"")
+                      for index, (_, cx, cy, csec) in enumerate(crosses)]
+        index, reason = core.pick_shaft(x, y, section if by_section else u"", candidates)
+        if reason == "no_room_section" and by_section:
+            result.diagnostics.append(
+                u"Подвод Id {}: у помещения не заполнена секция — цепь от ближайшей "
+                u"шахты уровня «{}».".format(feed.Id.IntegerValue, level_name))
+        if index is None:
+            result.circuits_failed += 1
+            if reason == "no_section":
+                why = u"на уровне нет шахты СС секции «{}»".format(section)
+            else:
+                why = u"на уровне нет кроссов"
+            result.diagnostics.append(u"Подвод Id {} (уровень «{}»): цепь не создана — {}.".format(
+                feed.Id.IntegerValue, level_name, why))
+            continue
+
+        cross = crosses[index][0]
+        system_type = detect_electrical_system_type(feed) or FALLBACK_SYSTEM_TYPE
+        try:
+            circuit, error = create_circuit(doc, cross, [feed], system_type)
+        except Exception as ex:
+            circuit, error = None, ex
+        if circuit is None:
+            result.circuits_failed += 1
+            result.diagnostics.append(u"Подвод Id {} → кросс Id {}: цепь не создана: {}".format(
+                feed.Id.IntegerValue, cross.Id.IntegerValue, error))
+        else:
+            result.circuits += 1
 
 
 # ------------------------------------------------------------
@@ -553,6 +732,8 @@ def run(doc, levels, offset_mm, settings, cross_symbol, feed_symbol):
     result.shafts = len(shafts)
     place_crosses(doc, shafts, levels, settings, cross_symbol, result)
     place_feeds(doc, levels, settings, feed_symbol, offset_mm, result)
+    doc.Regenerate()
+    build_circuits(doc, settings, result)
     return result
 
 

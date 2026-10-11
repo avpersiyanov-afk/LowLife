@@ -5,7 +5,8 @@ __doc__ = (
     u"Расстановка оборудования СС1. Кроссы: два в каждой шахте СС на каждом "
     u"отмеченном уровне, через который шахта проходит. Кабельные подводы: у "
     u"двери из прихожей в коридор/вестибюль по связи АР (у двухуровневой "
-    u"квартиры — только в нижней прихожей). Перед расстановкой все "
+    u"квартиры — только в нижней прихожей), со стороны коридора. Цепи: от "
+    u"кросса №1 шахты своей секции к каждому подводу. Перед расстановкой все "
     u"экземпляры выбранных типоразмеров кросса и подвода на отмеченных "
     u"уровнях удаляются.\n\n"
     u"Shift+клик — настройки (шахта СС, семейства и типы кросса и подвода, помещения, параметры, высоты)."
@@ -52,7 +53,7 @@ levels, offset_mm = ss1_easy.ask_levels_and_offset(doc, settings["feed_height_mm
 if not levels:
     script.exit()
 
-with revit.Transaction(u"СС1-8Mile: кроссы и кабельные подводы"):
+with revit.Transaction(u"СС1-8Mile: кроссы, кабельные подводы и цепи"):
     result = ss1_easy.run(doc, levels, offset_mm, settings, cross_symbol, feed_symbol)
 
 
@@ -68,6 +69,11 @@ output.print_md(u"### Кабельные подводы")
 output.print_md(u"- удалено старых: {}".format(result.deleted_feeds))
 output.print_md(u"- подходящих дверей: {}".format(result.doors))
 output.print_md(u"- установлено подводов: {}".format(result.feeds))
+if result.feeds_unoriented:
+    output.print_md(u"- без определённой стороны коридора: {}".format(result.feeds_unoriented))
+output.print_md(u"### Цепи кросс №1 → подвод")
+output.print_md(u"- создано: {}".format(result.circuits))
+output.print_md(u"- не создано: {}".format(result.circuits_failed))
 if result.diagnostics:
     output.print_md(u"### Диагностика")
     for line in result.diagnostics:
@@ -77,9 +83,11 @@ warnings = [line for line in result.diagnostics if line.startswith(u"ВНИМА�
 message = (
     u"Готово.\n\n"
     u"Шахт СС: {}\nКроссов установлено: {} (удалено старых: {})\n\n"
-    u"Подходящих дверей: {}\nПодводов установлено: {} (удалено старых: {})"
+    u"Подходящих дверей: {}\nПодводов установлено: {} (удалено старых: {})\n\n"
+    u"Цепей создано: {} (не создано: {})"
 ).format(result.shafts, result.crosses, result.deleted_crosses,
-         result.doors, result.feeds, result.deleted_feeds)
+         result.doors, result.feeds, result.deleted_feeds,
+         result.circuits, result.circuits_failed)
 if warnings:
     message += u"\n\nПомещений без имени лота: {} — см. отчёт.".format(len(warnings))
 if len(result.diagnostics) > len(warnings):
