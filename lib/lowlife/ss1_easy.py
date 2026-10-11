@@ -21,8 +21,8 @@
      (одно имя лота на разных уровнях) берётся только нижняя прихожая;
      помещения без имени лота не группируются — подвод ставится в каждое,
      с предупреждением. Подвод ставится на грань стены двери со стороны
-     коридора (сторона прихожей определяется GetRoomAtPoint по обе стороны
-     двери) и поворачивается лицом в коридор; на уровне модели,
+     квартиры (сторона прихожей определяется GetRoomAtPoint по обе стороны
+     двери) и поворачивается лицом в прихожую; на уровне модели,
      совпадающем по отметке с уровнем двери (с учётом сдвига связи по Z),
      если этот уровень отмечен; в «Помещение» пишется имя лота.
   4. Цепи: по электрической цепи на каждый подвод от кросса №1 шахты СС
@@ -505,13 +505,13 @@ def _wall_half_width(door):
     return 0.0
 
 
-def corridor_side(door, link_doc, phase, target_room_id):
+def apartment_side(door, link_doc, phase, target_room_id):
     """
-    (точка на грани стены со стороны коридора, нормаль в коридор) — обе в
+    (точка на грани стены со стороны квартиры, нормаль в прихожую) — обе в
     координатах связи, — или None, если не удалось понять, с какой стороны
     двери прихожая. Сторона определяется зондированием: точка чуть в
     стороне от двери вдоль её FacingOrientation (и в обратную сторону)
-    проверяется GetRoomAtPoint; где прихожая — там не ставим.
+    проверяется GetRoomAtPoint; где прихожая — туда и ставим.
     """
     origin = _door_point(door)
     try:
@@ -530,7 +530,7 @@ def corridor_side(door, link_doc, phase, target_room_id):
         except Exception:
             room = None
         if room is not None and room.Id.IntegerValue == target_room_id:
-            normal = facing.Multiply(-sign)
+            normal = facing.Multiply(sign)
             return origin.Add(normal.Multiply(half)), normal
     return None
 
@@ -623,7 +623,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                     continue
 
                 result.doors += 1
-                side_info = corridor_side(door, link_doc, phase, room_id)
+                side_info = apartment_side(door, link_doc, phase, room_id)
                 host_normal = None
                 if side_info is not None:
                     point, normal = side_info
@@ -643,7 +643,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                 if host_normal is None or not align_facing(doc, instance, host_normal):
                     result.feeds_unoriented += 1
                     result.diagnostics.append(
-                        u"{}: дверь Id {} — не удалось определить сторону коридора, подвод "
+                        u"{}: дверь Id {} — не удалось определить сторону квартиры, подвод "
                         u"Id {} поставлен по оси стены без поворота.".format(
                             label, door.Id.IntegerValue, instance.Id.IntegerValue))
                 result.placed_feeds.append(
