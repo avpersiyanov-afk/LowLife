@@ -41,9 +41,10 @@ def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0):
             output.print_md(u"Спецификация: {}".format(
                 output.linkify(res.schedule.Id, res.schedule.Name)))
         if res.missing_fields:
-            output.print_md(
-                u"**Не выведены в спецификацию** (нет такого параметра среди полей "
-                u"категории): {}".format(u", ".join(res.missing_fields)))
+            output.print_md(u"**Не выведены в спецификацию:**")
+            output.print_table(
+                table_data=[[_cell(label), reason] for label, reason in res.missing_fields],
+                columns=[u"Параметр", u"Почему"])
         if res.no_code:
             output.print_md(
                 u"Без кода классификатора: {} — проверены по параметрам, общим "

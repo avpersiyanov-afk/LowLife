@@ -2189,7 +2189,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `loi_check.resolve_plan_categories(doc, plans)` | `[(Category, CategoryPlan)]` и ненайденные имена (без регистра и «ё») |
 | `loi_appendix.build_grid(rows)` / `parse(values, origins)` / `select_sections(...)` | Сетка с учётом объединений / разбор / выбор разделов. Без Revit API, покрыто `tests/test_loi_appendix.py` |
 | `loi_check_core.list_stages` / `find_stage` / `plans_for_stage` / `CategoryPlan.required_for(code)` | Этапы приложения и требования к элементу на этапе |
-| `loi_check.build_schedule(doc, cat, rows, floor_param)` | `(спецификация, [строки без поля])`, в транзакции |
+| `loi_check.build_schedule(doc, cat, rows, floor_param, elements=None)` | `(спецификация, [(строка, причина)])` — поле ищется по имени без учёта регистра/«ё»/пробелов, затем по Id параметра у элементов категории; причина — не общий параметр семейства, не выводится в спецификацию или нет ни у одного элемента; в транзакции |
 | `loi_check.build_3d_view(doc, elements)` | 3D-вид, где видны только `elements`; `None` — нечего показывать; в транзакции |
 
 ## level_assign.py
