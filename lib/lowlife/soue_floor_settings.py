@@ -1,21 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-Настройки кнопки «СОУЭ — расстановка типовой этаж»
+Настройки кнопки «СОУЭ - расстановка типовой этаж»
 (SOUE.panel/PlaceTypicalFloor) + их хранение между запусками.
 
 Хранятся в JSON-файле %APPDATA%\\pyRevit\\LowLifeSOUEFloor_settings.json —
 тот же подход, что у остальных кнопок (см. CLAUDE.md).
 
-Окно Shift+клика (show_settings_window) — по образцу «СС1-8Mile»: для
-каждой роли (квартиры, коридоры МОП, лифтовые холлы) — семейство
-(выпадающий список с поиском) → тип, способ установки (на стену / на
-потолок) и высота от уровня; у ролей МОП ещё чувствительность SPL и
-мощность (для акустического расчёта количества) и второй тип — для
-помещений без подвесного потолка (на перекрытие, обычно подвесной
-оповещатель). Кнопка открывает типовое окно остальных полей
-(settings_core.TextSettings: имена помещений, параметры расчёта,
-отступы). Имена семейств и параметров — соглашение проекта, умолчания у
-них пустые; имена помещений и высоты — общая лексика, с умолчаниями.
+Окно Shift+клика (show_settings_window) — по образцу «СС1-8Mile»:
+  - квартиры: семейство (выпадающий список с поиском) → тип, установка (на
+    стену / на потолок) и высота от уровня;
+  - остальные помещения: высота настенных; сами оповещатели подбираются
+    автоматически из всех типов проекта с параметрами SPL/мощность/исполнение
+    (кнопка «Оповещатели проекта…» показывает, что найдено);
+  - кнопка «Помещения объекта…» — таблица уникальных имён помещений
+    (категория, уровень шума, «исключить»; soue_floor_rooms.py, хранится
+    здесь же под ключом ROOM_TABLE_KEY);
+  - кнопка «Параметры и отступы…» — типовое окно TextSettings (имена
+    помещений квартир, параметр лота, параметры оповещателя SPL/мощность,
+    отступы).
+Исходные данные расчёта (превышение 15 дБ, ШДН 6 дБ, расчётная точка
+1,5 м, шум по категориям) зашиты в soue_floor_core.
 """
 
 from lowlife import settings_core
@@ -27,92 +31,61 @@ BUTTON_NAME = u"СОУЭ - расстановка типовой этаж"
 SETTINGS = settings_core.TextSettings(
     file_name="LowLifeSOUEFloor_settings.json",
     button_name=BUTTON_NAME,
-    heading=u"СОУЭ, типовой этаж: помещения, параметры, отступы",
+    heading=u"СОУЭ, типовой этаж: квартиры, параметры, отступы",
     transfer_label=u"СОУЭ (типовой этаж)",
     fields=[
         settings_core.TextField(
             "apartment_room_names",
-            u"① Помещения (в связи АР)",
-            u"Квартира: где ставить оповещатель (через запятую, по приоритету)",
+            u"① Квартиры (помещения связи АР)",
+            u"Где ставить оповещатель в квартире (через запятую, по приоритету)",
             hint=(
                 u"В каждом лоте — один оповещатель в первом найденном помещении из "
                 u"списка: «Прихожая, Холл» — в прихожей, а если её нет — в холле. У "
-                u"двухуровневой квартиры — на нижнем уровне."
+                u"двухуровневой квартиры — на нижнем уровне. Остальные помещения "
+                u"квартиры не оснащаются."
             ),
             default=u"Прихожая", required=True,
-        ),
-        settings_core.TextField(
-            "corridor_room_names",
-            u"",
-            u"Коридоры МОП (через запятую)",
-            hint=u"Помещения с такими именами внутри квартиры (с её именем лота) пропускаются.",
-            default=u"Коридор, Коридор МОП, Поэтажный коридор",
-        ),
-        settings_core.TextField(
-            "lift_hall_room_names",
-            u"",
-            u"Лифтовые холлы (через запятую)",
-            default=u"Лифтовой холл, Лифтовый холл",
         ),
         settings_core.TextField(
             "lot_param_name",
             u"",
             u"Параметр помещения «Имя лота»",
+            hint=u"Лот, в котором есть помещение из списка выше, — квартира.",
             default=u"", required=True,
         ),
-        settings_core.NumberField(
-            "mop_noise_dba",
-            u"② Акустический расчёт МОП",
-            u"Уровень звука постоянного шума N, дБА",
+        settings_core.TextField(
+            "spl_param_name",
+            u"② Параметры оповещателя (типа или экземпляра)",
+            u"Чувствительность SPL (1 Вт/1 м), дБ",
             hint=(
-                u"Количество оповещателей в коридорах и лифтовых холлах считается так, "
-                u"чтобы в любой точке на высоте расчётной точки уровень был не ниже N + "
-                u"превышение: rmax = 10^((SPL + 10·lg P − ШДН − ΔLпр − Nтр)/20), в плане "
-                u"R = √(rmax² − (h − hрасч)²). SPL и P — у типа оповещателя в главном окне."
+                u"Числовой или текстовый параметр («87», «87 дБ») у типа (или у стоящего "
+                u"экземпляра). Все типы проекта, у которых он есть, участвуют в автоподборе "
+                u"оповещателей для помещений вне квартир."
             ),
-            default=50.0, minimum=0,
+            default=u"СОУЭ_Чувствительность",
         ),
-        settings_core.NumberField(
-            "excess_db",
+        settings_core.TextField(
+            "power_param_name",
             u"",
-            u"Превышение над уровнем шума, дБ",
-            default=15.0, minimum=0,
-        ),
-        settings_core.NumberField(
-            "dn_loss_db",
-            u"",
-            u"Ослабление на границе ШДН (1 кГц), дБ",
-            default=6.0, minimum=0,
-        ),
-        settings_core.NumberField(
-            "obstacle_db",
-            u"",
-            u"Ослабление через препятствие ΔLпр, дБ",
-            default=0.0, minimum=0,
-        ),
-        settings_core.NumberField(
-            "calc_height_mm",
-            u"",
-            u"Высота расчётной точки над полом, мм",
-            default=1500.0, minimum=0,
-        ),
-        settings_core.NumberField(
-            "slab_drop_mm",
-            u"",
-            u"Без подвесного потолка: от низа перекрытия до низа оповещателя, мм",
+            u"Отводы мощности трансформатора, Вт",
             hint=(
-                u"Над помещением ищется ближайший подвесной потолок или перекрытие (луч "
-                u"вверх по связям). Потолок — оповещатель в плоскость потолка; перекрытие — "
-                u"тип «на перекрытие» на этом расстоянии ниже плиты."
+                u"Все отводы через «/»: «1,5 / 3 / 6». Подбирается лучший отвод; если у "
+                u"экземпляра есть такой записываемый параметр — в него пишется выбранный."
             ),
-            default=0.0, minimum=0,
+            default=u"СОУЭ_Мощность",
+        ),
+        settings_core.TextField(
+            "kind_param_name",
+            u"",
+            u"Исполнение: «Настенный» / «Потолочный»",
+            hint=u"Нет параметра — исполнение ищется в имени семейства/типа («настен», «потол»).",
+            default=u"СОУЭ_Исполнение",
         ),
         settings_core.NumberField(
-            "mop_step_m",
+            "fallback_power_w",
             u"",
-            u"Шаг вручную, м (0 — по акустическому расчёту)",
-            hint=u"Больше 0 — расчёт не делается: помещение делится на клетки не больше шага.",
-            default=0.0, minimum=0,
+            u"Мощность, если параметра нет, Вт",
+            default=1.5, minimum=0,
         ),
         settings_core.NumberField(
             "wall_margin_mm",
@@ -124,7 +97,7 @@ SETTINGS = settings_core.TextSettings(
             "opening_clearance_mm",
             u"",
             u"Отступ от дверей и окон, мм (на стене)",
-            hint=u"Считается от края проёма; если вся стена занята — ставится в ближайшую точку.",
+            hint=u"Считается от края проёма.",
             default=200.0, minimum=0,
         ),
         settings_core.NumberField(
@@ -138,7 +111,7 @@ SETTINGS = settings_core.TextSettings(
             "room_target_param",
             u"④ Запись в оборудование",
             u"Параметр экземпляра «Помещение»",
-            hint=u"В квартирах пишется имя лота, в МОП — имя помещения. Пусто — ничего не пишется.",
+            hint=u"В квартирах пишется имя лота, в остальных — имя помещения. Пусто — ничего не пишется.",
             default=u"",
         ),
     ],
@@ -147,29 +120,23 @@ SETTINGS = settings_core.TextSettings(
 
 REQUIRED_KEYS = ["apartment_room_names", "lot_param_name"]
 
-# Роль → (ключ семейства, ключ типа, ключ установки, ключ высоты, подпись,
-# установка по умолчанию, высота по умолчанию)
-ROLE_KEYS = [
-    (core.ROLE_APARTMENT, "apartment_family", "apartment_type", "apartment_mount",
-     "apartment_height_mm", u"Квартиры", core.MOUNT_WALL, 2300.0),
-    (core.ROLE_CORRIDOR, "corridor_family", "corridor_type", "corridor_mount",
-     "corridor_height_mm", u"Коридоры (МОП)", core.MOUNT_WALL, 2300.0),
-    (core.ROLE_LIFT_HALL, "lift_hall_family", "lift_hall_type", "lift_hall_mount",
-     "lift_hall_height_mm", u"Лифтовые холлы", core.MOUNT_WALL, 2300.0),
+# Роль оповещателя → (ключ семейства, ключ типа, подпись).
+SYMBOL_APARTMENT = "apartment"
+SYMBOL_KEYS = [
+    (SYMBOL_APARTMENT, "apartment_family", "apartment_type", u"Квартиры"),
 ]
+
+# Прочие значения главного окна: ключ → умолчание.
+MAIN_DEFAULTS = {
+    "apartment_mount": core.MOUNT_WALL,
+    "apartment_height_mm": 2300.0,
+    "room_wall_height_mm": 2500.0,
+}
 
 MOUNT_LABELS = [(core.MOUNT_WALL, u"На стену"), (core.MOUNT_CEILING, u"На потолок")]
 
-# Роль МОП → (ключ семейства «на перекрытие», ключ его типа, SPL и мощность
-# основного типа, SPL и мощность типа «на перекрытие»). Умолчания SPL —
-# по справочнику расчёта: настенный 91 дБ, потолочный 87 дБ.
-MOP_KEYS = [
-    (core.ROLE_CORRIDOR, "corridor_slab_family", "corridor_slab_type",
-     "corridor_spl_db", "corridor_power_w", "corridor_slab_spl_db", "corridor_slab_power_w"),
-    (core.ROLE_LIFT_HALL, "lift_hall_slab_family", "lift_hall_slab_type",
-     "lift_hall_spl_db", "lift_hall_power_w", "lift_hall_slab_spl_db", "lift_hall_slab_power_w"),
-]
-MOP_DEFAULTS = {"spl": 91.0, "power": 1.5, "slab_spl": 87.0, "slab_power": 1.5}
+# Таблица помещений объекта: {нормализованное имя: {name, category, noise, exclude}}.
+ROOM_TABLE_KEY = "room_table"
 
 load_saved_values = SETTINGS.load_saved_values
 
@@ -183,39 +150,41 @@ def _number(value, default):
 
 
 def load_all():
-    """Поля TextSettings + семейство/тип/установка/высота каждой роли."""
+    """Поля TextSettings + типы оповещателей, установка и высоты."""
     values = SETTINGS.load_saved_values()
     saved = SETTINGS.store.read()
-    for _, family_key, type_key, mount_key, height_key, _, mount, height in ROLE_KEYS:
+    for _, family_key, type_key, _ in SYMBOL_KEYS:
         values[family_key] = saved.get(family_key) or u""
         values[type_key] = saved.get(type_key) or u""
-        values[mount_key] = saved.get(mount_key) if saved.get(mount_key) in (
-            core.MOUNT_WALL, core.MOUNT_CEILING) else mount
-        values[height_key] = _number(saved.get(height_key, height), height)
-    for _, family_key, type_key, spl, power, slab_spl, slab_power in MOP_KEYS:
-        values[family_key] = saved.get(family_key) or u""
-        values[type_key] = saved.get(type_key) or u""
-        for key, name in ((spl, "spl"), (power, "power"), (slab_spl, "slab_spl"),
-                          (slab_power, "slab_power")):
-            values[key] = _number(saved.get(key, MOP_DEFAULTS[name]), MOP_DEFAULTS[name])
+    mount = saved.get("apartment_mount")
+    values["apartment_mount"] = mount if mount in (core.MOUNT_WALL, core.MOUNT_CEILING) \
+        else MAIN_DEFAULTS["apartment_mount"]
+    for key in ("apartment_height_mm", "room_wall_height_mm"):
+        values[key] = _number(saved.get(key, MAIN_DEFAULTS[key]), MAIN_DEFAULTS[key])
     return values
 
 
-def configured_roles(values):
-    """Роли, у которых выбраны семейство и тип (их помещения оснащаются)."""
-    return [role for role, family_key, type_key, _, _, _, _, _ in ROLE_KEYS
-            if values.get(family_key) and values.get(type_key)]
+def load_room_table():
+    """{ключ: core.RoomRow} из настроек."""
+    return core.table_from_saved(SETTINGS.store.read().get(ROOM_TABLE_KEY))
+
+
+def save_room_table(rows):
+    """Сохраняет строки (дополняя/заменяя по имени) в таблицу помещений."""
+    table = SETTINGS.store.read().get(ROOM_TABLE_KEY) or {}
+    table.update(core.table_to_saved(rows))
+    SETTINGS.store.update({ROOM_TABLE_KEY: table})
+
+
+def configured(values, role):
+    for key, family_key, type_key, _ in SYMBOL_KEYS:
+        if key == role:
+            return bool(values.get(family_key) and values.get(type_key))
+    return False
 
 
 def require_all(values):
-    """Хотя бы одна роль настроена и обязательные поля заполнены; иначе — выход."""
-    if not configured_roles(values):
-        settings_core._alert(
-            u"Не выбрано ни одного оповещателя (семейство и тип для квартир, "
-            u"коридоров или лифтовых холлов).\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «{}».".format(BUTTON_NAME),
-            exitscript=True
-        )
+    """Обязательные поля заполнены; иначе — сообщение и выход."""
     SETTINGS.require(values, REQUIRED_KEYS)
 
 
@@ -225,10 +194,9 @@ def require_all(values):
 
 def show_settings_window(doc):
     """
-    Для каждой роли: семейство → тип, установка, высота (у МОП — ещё SPL,
-    мощность и тип «на перекрытие»); кнопка «Помещения, параметры и
-    отступы…». Сохраняет по «Сохранить»; True — сохранено.
-    Роль без семейства и типа не оснащается.
+    Типы оповещателей, установка в квартирах, высоты; кнопки «Помещения
+    объекта…» и «Параметры и отступы…». Сохраняет по «Сохранить»; True —
+    сохранено.
     """
     import clr
     clr.AddReference('PresentationFramework')
@@ -334,16 +302,8 @@ def show_settings_window(doc):
         elif len(items) == 1:
             combo.SelectedIndex = 0
 
-    add_text(u"СОУЭ: оповещатели типового этажа", bold=True, size=16, bottom=4)
-    add_text(u"Списки — семейства, загруженные в проект. Роль без семейства и типа "
-             u"не оснащается. При запуске все экземпляры выбранных типов на отмеченных "
-             u"уровнях удаляются и ставятся заново.", gray=True, bottom=4)
-
-    mount_names = [label for _, label in MOUNT_LABELS]
-    mop_keys = dict((item[0], item[1:]) for item in MOP_KEYS)
-
-    def add_symbol_pick(family_label, family_value, type_value):
-        family_combo = add_search_combo(family_label, all_names)
+    def add_symbol_pick(family_value, type_value):
+        family_combo = add_search_combo(u"Семейство", all_names)
         type_combo = add_combo(u"Тип")
         fill(family_combo, all_names, family_value)
         fill(type_combo, family_types.get(family_combo.SelectedItem, []), type_value)
@@ -358,82 +318,95 @@ def show_settings_window(doc):
         family_combo.SelectionChanged += on_family
         return family_combo, type_combo
 
-    def add_number_row(items):
-        """Строка «подпись: [поле]» для нескольких чисел. Возвращает поля."""
+    def add_height_row(label, value):
         row = StackPanel()
         row.Orientation = Orientation.Horizontal
         row.Margin = Thickness(0, 6, 0, 0)
-        boxes = []
-        for index, (label, value) in enumerate(items):
-            add_text(label, parent=row).Margin = Thickness(16 if index else 0, 3, 6, 0)
-            box = TextBox()
-            box.Width = 70
-            box.Text = (u"{:.0f}" if float(value) == int(float(value)) else u"{}").format(float(value))
-            row.Children.Add(box)
-            boxes.append(box)
+        add_text(label, parent=row).Margin = Thickness(0, 3, 6, 0)
+        box = TextBox()
+        box.Width = 80
+        box.Text = u"{:.0f}".format(float(value or 0.0))
+        row.Children.Add(box)
         root.Children.Add(row)
-        return boxes
+        return row, box
 
-    role_controls = {}
-    for role, family_key, type_key, mount_key, height_key, label, _, _ in ROLE_KEYS:
-        add_text(label, bold=True, top=14)
-        family_combo, type_combo = add_symbol_pick(
-            u"Семейство оповещателя", values.get(family_key), values.get(type_key))
+    add_text(u"СОУЭ: оповещатели", bold=True, size=16, bottom=4)
+    add_text(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
+             u"выбранных типов на отмеченных уровнях удаляются и ставятся заново.",
+             gray=True, bottom=4)
 
-        row = StackPanel()
-        row.Orientation = Orientation.Horizontal
-        row.Margin = Thickness(0, 6, 0, 0)
-        add_text(u"Установка:", parent=row).Margin = Thickness(0, 3, 6, 0)
-        mount_combo = ComboBox()
-        mount_combo.Width = 130
-        for name in mount_names:
-            mount_combo.Items.Add(name)
-        mount_combo.SelectedIndex = [key for key, _ in MOUNT_LABELS].index(values.get(mount_key))
-        row.Children.Add(mount_combo)
-        add_text(u"Высота от уровня, мм:", parent=row).Margin = Thickness(16, 3, 6, 0)
-        height_box = TextBox()
-        height_box.Width = 80
-        height_box.Text = u"{:.0f}".format(float(values.get(height_key) or 0.0))
-        row.Children.Add(height_box)
-        root.Children.Add(row)
-        controls = {"family": family_combo, "type": type_combo, "mount": mount_combo,
-                    "height": height_box}
+    symbol_combos = {}
 
-        if role in mop_keys:
-            slab_family, slab_type, spl, power, slab_spl, slab_power = mop_keys[role]
-            controls["spl"], controls["power"] = add_number_row(
-                [(u"SPL (1 Вт/1 м), дБ:", values.get(spl)), (u"Мощность, Вт:", values.get(power))])
-            add_text(u"На перекрытие — если над помещением нет подвесного потолка "
-                     u"(не выбрано — ставится основной тип под плитой):", top=8)
-            controls["slab_family"], controls["slab_type"] = add_symbol_pick(
-                u"Семейство", values.get(slab_family), values.get(slab_type))
-            controls["slab_spl"], controls["slab_power"] = add_number_row(
-                [(u"SPL (1 Вт/1 м), дБ:", values.get(slab_spl)),
-                 (u"Мощность, Вт:", values.get(slab_power))])
-        role_controls[role] = controls
+    # --- квартиры ---
+    add_text(u"Квартиры", bold=True, top=14)
+    add_text(u"Один оповещатель на лот — в прихожей (список помещений — в «Параметрах»). "
+             u"Не выбрано — квартиры не оснащаются.", gray=True)
+    symbol_combos[SYMBOL_APARTMENT] = add_symbol_pick(
+        values.get("apartment_family"), values.get("apartment_type"))
+    row, apartment_height = add_height_row(u"Высота от уровня, мм:", values.get("apartment_height_mm"))
+    add_text(u"Установка:", parent=row).Margin = Thickness(16, 3, 6, 0)
+    mount_combo = ComboBox()
+    mount_combo.Width = 130
+    for _, label in MOUNT_LABELS:
+        mount_combo.Items.Add(label)
+    mount_combo.SelectedIndex = [key for key, _ in MOUNT_LABELS].index(values.get("apartment_mount"))
+    row.Children.Add(mount_combo)
 
-    add_text(u"На стену — на стену помещения в стороне от дверей и окон, лицом в "
-             u"помещение, на заданной высоте. На потолок — высота определяется сама: "
-             u"луч вверх ищет подвесной потолок (оповещатель — в его плоскость) или "
-             u"перекрытие (тип «на перекрытие» под плитой); ничего не найдено — "
-             u"высота из поля. В коридорах и лифтовых холлах количество и места — по "
-             u"акустическому расчёту (SPL и мощность — выбранного типа).", gray=True, top=6)
+    # --- остальные помещения ---
+    add_text(u"Остальные помещения", bold=True, top=14)
+    add_text(u"Все помещения объекта вне квартир, кроме исключённых: количество, места и "
+             u"оповещатель — по акустическому расчёту. Оповещатель и отвод подбираются из всех "
+             u"типов проекта с параметрами SPL/мощность/исполнение: где меньше штук, при "
+             u"равенстве — меньше суммарная мощность. По умолчанию настенные (на стены и "
+             u"колонны); при подвесном потолке — потолочные в плоскость потолка.", gray=True)
+    _, wall_height = add_height_row(u"Высота настенных от уровня, мм:", values.get("room_wall_height_mm"))
 
-    other_btn = Button()
-    other_btn.Content = u"Помещения, параметры и отступы…"
-    other_btn.Padding = Thickness(10, 4, 10, 4)
-    other_btn.Margin = Thickness(0, 16, 0, 0)
-    other_btn.HorizontalAlignment = HorizontalAlignment.Left
-    root.Children.Add(other_btn)
-    add_text(u"Имена помещений квартир, коридоров и лифтовых холлов, параметр имени "
-             u"лота, исходные данные акустического расчёта (шум, превышение, ШДН, "
-             u"расчётная точка), отступы от плиты, углов и проёмов, параметр «Помещение».",
-             gray=True, top=2)
+    # --- кнопки дополнительных окон ---
+    def add_button(text, hint):
+        btn = Button()
+        btn.Content = text
+        btn.Padding = Thickness(10, 4, 10, 4)
+        btn.Margin = Thickness(0, 16, 0, 0)
+        btn.HorizontalAlignment = HorizontalAlignment.Left
+        root.Children.Add(btn)
+        add_text(hint, gray=True, top=2)
+        return btn
+
+    rooms_btn = add_button(
+        u"Помещения объекта: шум и исключения…",
+        u"Уникальные имена помещений всех связей: категория и уровень шума (справочник "
+        u"расчёта), «исключить». Выгрузка в Excel и загрузка обратно.")
+    speakers_btn = add_button(
+        u"Оповещатели проекта…",
+        u"Какие типы найдены для автоподбора: исполнение, SPL, отводы.")
+    other_btn = add_button(
+        u"Параметры и отступы…",
+        u"Помещения квартир, параметр имени лота, параметры оповещателя (SPL, отводы, исполнение), "
+        u"отступы от углов и проёмов, параметр «Помещение».")
+
+    def on_rooms(sender, args):
+        from lowlife import soue_floor_rooms
+        soue_floor_rooms.edit_all_rooms(doc)
 
     def on_other(sender, args):
         # Окно без Topmost — дочернее окно не застрянет позади (см. CLAUDE.md).
         SETTINGS.get_settings_interactive()
 
+    def on_speakers(sender, args):
+        from lowlife import soue_floor
+        speakers, messages = soue_floor.collect_speakers(doc, load_all())
+        kinds = {core.KIND_WALL: u"настенный", core.KIND_CEILING: u"потолочный",
+                 core.KIND_PENDANT: u"подвесной (не используется)"}
+        lines = [u"{} — {}, SPL {:g} дБ, отводы {} Вт".format(
+            sp.label, kinds.get(sp.kind, sp.kind), float(sp.spl),
+            u" / ".join(u"{:g}".format(float(t)) for t in sp.taps)) for sp in speakers]
+        text = u"\n".join(lines) if lines else u"Не найдено ни одного типа с параметром SPL."
+        if messages:
+            text += u"\n\n" + u"\n".join(messages)
+        forms.alert(text, title=u"Оповещатели проекта ({})".format(len(speakers)))
+
+    speakers_btn.Click += on_speakers
+    rooms_btn.Click += on_rooms
     other_btn.Click += on_other
 
     buttons = StackPanel()
@@ -459,37 +432,20 @@ def show_settings_window(doc):
     def on_ok(sender, args):
         update = {}
         problems = []
-
-        def read_symbol(family_combo, type_combo, family_key, type_key, label):
+        for role, family_key, type_key, label in SYMBOL_KEYS:
+            family_combo, type_combo = symbol_combos[role]
             update[family_key] = family_combo.SelectedItem or u""
             update[type_key] = type_combo.SelectedItem or u""
             if bool(update[family_key]) != bool(update[type_key]):
                 problems.append(u"{}: выберите и семейство, и тип (или ни того, ни другого)".format(label))
-
-        def read_number(box, key, label, positive=False):
+        for box, key, label in ((apartment_height, "apartment_height_mm", u"Квартиры: высота"),
+                                (wall_height, "room_wall_height_mm", u"Настенный: высота")):
             number = _number(box.Text, None)
-            if number is None or (positive and number <= 0):
-                problems.append(u"{} — нужно {} число".format(
-                    label, u"положительное" if positive else u"неотрицательное"))
+            if number is None:
+                problems.append(u"{} — нужно неотрицательное число".format(label))
             else:
                 update[key] = number
-
-        for role, family_key, type_key, mount_key, height_key, label, _, _ in ROLE_KEYS:
-            controls = role_controls[role]
-            read_symbol(controls["family"], controls["type"], family_key, type_key, label)
-            update[mount_key] = MOUNT_LABELS[max(0, controls["mount"].SelectedIndex)][0]
-            read_number(controls["height"], height_key, label + u": высота")
-            if "spl" in controls:
-                slab_family, slab_type, spl, power, slab_spl, slab_power = mop_keys[role]
-                read_symbol(controls["slab_family"], controls["slab_type"], slab_family,
-                            slab_type, label + u" (на перекрытие)")
-                read_number(controls["spl"], spl, label + u": SPL")
-                read_number(controls["power"], power, label + u": мощность", positive=True)
-                read_number(controls["slab_spl"], slab_spl, label + u" (на перекрытие): SPL")
-                read_number(controls["slab_power"], slab_power,
-                            label + u" (на перекрытие): мощность", positive=True)
-        if not problems and not configured_roles(update):
-            problems.append(u"Выберите семейство и тип хотя бы для одной роли")
+        update["apartment_mount"] = MOUNT_LABELS[max(0, mount_combo.SelectedIndex)][0]
         if problems:
             forms.alert(u"Исправьте:\n\n" + u"\n".join(problems))
             return

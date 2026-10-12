@@ -2,8 +2,6 @@
 from lowlife import soue_floor_core as core
 
 APT = [u"Прихожая", u"Холл"]
-CORR = [u"Коридор"]
-LIFT = [u"Лифтовой холл"]
 
 
 def test_classify_one_room_per_lot_by_priority_and_level():
@@ -13,32 +11,124 @@ def test_classify_one_room_per_lot_by_priority_and_level():
         (3, u"Холл", u"Кв.2", 0.0),       # в Кв.2 прихожей нет
         (4, u"Прихожая", u"Кв.3", 6.0),   # двухуровневая: берётся нижняя
         (5, u"прихожая", u"кв.3", 3.0),
-        (6, u"Кухня", u"Кв.1", 0.0),
+        (6, u"Кухня", u"Кв.1", 0.0),      # прочие помещения квартиры не оснащаются
     ]
-    roles, no_lot = core.classify_rooms(rooms, APT, CORR, LIFT)
+    roles, no_lot = core.classify_rooms(rooms, APT)
     assert roles == {1: core.ROLE_APARTMENT, 3: core.ROLE_APARTMENT, 5: core.ROLE_APARTMENT}
     assert no_lot == []
 
 
-def test_classify_mop_skips_apartment_corridors():
+def test_classify_other_rooms_and_exclusions():
     rooms = [
         (1, u"Прихожая", u"Кв.1", 0.0),
         (2, u"Коридор", u"Кв.1", 0.0),    # коридор внутри квартиры
         (3, u"Коридор", u"", 0.0),
-        (4, u"Коридор", u"МОП", 0.0),     # лот без прихожей — не квартира
-        (5, u"Лифтовой холл", u"", 0.0),
+        (4, u"Офис", u"ПСН-1", 0.0),      # лот без прихожей — не квартира
+        (5, u"Шахта лифта", u"", 0.0),
+        (6, u"Венткамера", u"", 0.0),
     ]
-    roles, _ = core.classify_rooms(rooms, APT, CORR, LIFT)
-    assert roles == {1: core.ROLE_APARTMENT, 3: core.ROLE_CORRIDOR,
-                     4: core.ROLE_CORRIDOR, 5: core.ROLE_LIFT_HALL}
+    roles, _ = core.classify_rooms(rooms, APT, excluded=[u"шахта лифта"])
+    assert roles == {1: core.ROLE_APARTMENT, 3: core.ROLE_ROOM, 4: core.ROLE_ROOM,
+                     6: core.ROLE_ROOM}
 
 
 def test_classify_room_without_lot():
-    rooms = [(1, u"Прихожая", u"", None), (2, u"Холл", u"", 0.0)]
-    roles, no_lot = core.classify_rooms(rooms, APT, CORR, [u"Холл"])
-    # «Холл» есть и в квартирах, и в МОП: без лота — МОП
-    assert roles == {1: core.ROLE_APARTMENT, 2: core.ROLE_LIFT_HALL}
+    rooms = [(1, u"Прихожая", u"", None), (2, u"Кухня", u"", 0.0)]
+    roles, no_lot = core.classify_rooms(rooms, APT)
+    assert roles == {1: core.ROLE_APARTMENT, 2: core.ROLE_ROOM}
     assert no_lot == [1]
+
+
+# --- справочник шума и таблица помещений ------------------------------------
+
+def test_category_noise_and_match():
+    assert core.category_noise(u"МОП") == 50.0
+    assert core.category_noise(u"парковки") == 70.0
+    assert core.category_noise(u"Нет такой") is None
+    assert core.match_category(u"технические помещения вент") == \
+        u"Технические помещения вентмашин и насосных"
+    assert core.match_category(u"") is None
+
+
+def test_guess_category():
+    assert core.guess_category(u"Лифтовой холл") == core.CATEGORY_MOP
+    assert core.guess_category(u"Коридор") == core.CATEGORY_MOP
+    assert core.guess_category(u"Венткамера") == u"Технические помещения вентмашин и насосных"
+    assert core.guess_category(u"ИТП") == u"Технические помещения вентмашин и насосных"
+    assert core.guess_category(u"Электрощитовая") == u"Технические помещения серверных и кроссовых"
+    assert core.guess_category(u"ПУИ") == u"Склады, кладовые и подсобные помещения, ПУИ"
+    assert core.guess_category(u"Комната уборочного инвентаря") == \
+        u"Склады, кладовые и подсобные помещения, ПУИ"
+    assert core.guess_category(u"С/У") == u"Санитарно-бытовые помещения"
+    assert core.guess_category(u"Подземная автостоянка") == u"Парковки"
+    assert core.guess_category(u"Офис УК") == u"Помещения УК (принято как МОП, требует согласования)"
+    assert core.guess_category(u"Помещение охраны") == u"Помещения диспетчерских служб"
+    assert core.guess_category(u"Нечто") is None
+    assert core.guess_exclude(u"Шахта лифта")
+    assert not core.guess_exclude(u"Коридор")
+
+
+def test_parse_number_and_flag():
+    assert core.parse_number(u"1,5 Вт") == 1.5
+    assert core.parse_number(u"87 дБ") == 87.0
+    assert core.parse_number(3) == 3.0
+    assert core.parse_number(u"—") is None
+    assert core.parse_number(None) is None
+    assert core.parse_flag(u"Да") and core.parse_flag(u"x") and core.parse_flag(True)
+    assert not core.parse_flag(u"") and not core.parse_flag(None) and not core.parse_flag(u"нет")
+
+
+def test_room_row_effective_noise():
+    assert core.RoomRow(u"Коридор", category=core.CATEGORY_MOP).effective_noise() == 50.0
+    assert core.RoomRow(u"Коридор", category=core.CATEGORY_MOP, noise=55).effective_noise() == 55
+    assert core.RoomRow(u"Нечто").effective_noise() is None
+
+
+def test_merge_room_table_keeps_saved_and_guesses_new():
+    saved = core.table_from_saved({
+        u"коридор": {"name": u"Коридор", "category": u"МОП", "noise": 52, "exclude": False},
+        u"старое": {"name": u"Старое", "category": u"", "noise": None, "exclude": True},
+        u"пустое": {"name": u"Пустое", "category": u"", "noise": None, "exclude": False},
+    })
+    rows = core.merge_room_table(saved, {u"Коридор": 10, u"Венткамера": 2, u"Шахта": 4})
+    by_key = dict((row.key, row) for row in rows)
+    assert by_key[u"коридор"].noise == 52 and by_key[u"коридор"].count == 10
+    assert by_key[u"венткамера"].category == u"Технические помещения вентмашин и насосных"
+    assert by_key[u"шахта"].exclude
+    assert by_key[u"старое"].count == 0 and by_key[u"старое"].exclude   # заполненное остаётся
+    assert u"пустое" not in by_key                                        # пустое — нет
+    assert rows[-1].key == u"старое"                                      # отсутствующие в конце
+
+
+def test_table_sheet_round_trip():
+    rows = [core.RoomRow(u"Коридор", 10, core.CATEGORY_MOP, None, False),
+            core.RoomRow(u"Венткамера", 2, u"", 78.0, False),
+            core.RoomRow(u"Шахта", 4, u"", None, True)]
+    sheet = core.table_to_sheet(rows)
+    assert sheet[0][:5] == core.TABLE_HEADER
+    assert len(sheet) == 1 + max(len(rows), len(core.NOISE_CATEGORIES))
+    # как вернётся из xlsx_io — всё текстом
+    text = [[None if cell is None else u"{}".format(cell) for cell in line] for line in sheet]
+    back = core.table_from_sheet(text)
+    assert [(r.name, r.category, r.noise, r.exclude) for r in back] == [
+        (u"Коридор", core.CATEGORY_MOP, None, False),
+        (u"Венткамера", u"", 78.0, False),
+        (u"Шахта", u"", None, True)]
+
+
+def test_table_from_sheet_matches_category_prefix_and_columns():
+    sheet = [[u"Исключить", u"Категория", u"Помещение", u"Шум N, дБА"],
+             [u"", u"парковки", u"Паркинг", u""],
+             [u"да", u"", u"Ниша", u""],
+             [u"", u"", u"", u"50"]]
+    rows = core.table_from_sheet(sheet)
+    assert [(r.name, r.category, r.exclude) for r in rows] == [
+        (u"Паркинг", u"Парковки", False), (u"Ниша", u"", True)]
+    assert core.table_from_sheet([[u"Что-то"], [u"x"]]) == []
+
+
+def test_room_reach_uses_built_in_constants():
+    assert core.room_reach(87, 1.5, 50, 3.0) == core.acoustic_reach(87, 1.5, 50, 15, 6, 0, 3.0, 1.5)
 
 
 def test_grid_cells():
@@ -171,5 +261,60 @@ def test_classify_ceiling():
 
 def test_sample_step_limits_point_count():
     assert core.sample_step(30, 2, 0.5) == 0.5
-    step = core.sample_step(100, 100, 0.5, max_samples=600)
-    assert (100 / step) ** 2 <= 600 + 1e-6
+    step = core.sample_step(100, 100, 0.5)
+    assert (100 / step) ** 2 <= 1500 + 1e-6
+
+
+# --- автоподбор оповещателя и колонны ----------------------------------------
+
+def test_parse_numbers_taps():
+    assert core.parse_numbers(u"1,5 / 3 / 6 Вт") == [1.5, 3.0, 6.0]
+    assert core.parse_numbers(u"2,5/5/10") == [2.5, 5.0, 10.0]
+    assert core.parse_numbers(3) == [3.0]
+    assert core.parse_numbers(u"") == [] and core.parse_numbers(None) == []
+
+
+def test_speaker_kind():
+    assert core.speaker_kind(u"Настенный") == core.KIND_WALL
+    assert core.speaker_kind(u"", u"Оповещатель потолочный", u"SC-5106") == core.KIND_CEILING
+    assert core.speaker_kind(None, u"Громкоговоритель подвесной") == core.KIND_PENDANT
+    assert core.speaker_kind(u"Потолочный", u"настенный") == core.KIND_CEILING  # параметр важнее имени
+    assert core.speaker_kind(u"", u"SW-2106") is None
+
+
+def test_reduce_options_drops_dominated():
+    options = [("a", 1.5, 5.0), ("b", 3.0, 7.0), ("c", 6.0, 10.0), ("d", 3.0, 5.0), ("e", 6.0, 9.0)]
+    assert [o[0] for o in core.reduce_options(options)] == ["c", "b", "a"]
+
+
+def test_option_score_prefers_fewer_then_less_power():
+    assert core.option_score(0, 3, 6.0) < core.option_score(1, 1, 1.5)   # всё озвучено — главное
+    assert core.option_score(0, 2, 6.0) < core.option_score(0, 3, 1.5)   # меньше штук
+    assert core.option_score(0, 2, 3.0) < core.option_score(0, 2, 6.0)   # меньше мощность
+
+
+def test_coverage_pairs_and_sets_within_match_coverage():
+    grid = _grid(10, 4)
+    samples = grid.points()
+    candidates = [(0, 2, 1, 0), (10, 2, -1, 0)]
+    pairs = core.coverage_pairs(candidates, samples, 8.0, grid, wall=True)
+    for reach in (3.0, 5.0, 8.0):
+        assert core.sets_within(pairs, reach) == core.coverage(candidates, samples, reach, grid, wall=True)
+
+
+def test_column_faces_extend_wall_coverage():
+    width, height = 24.0, 12.0
+    grid = _grid(width, height)
+    samples = grid.points()
+    walls = [(0, 0, width, 0, 0, 1), (width, 0, width, height, -1, 0),
+             (width, height, 0, height, 0, -1), (0, height, 0, 0, 1, 0)]
+    faces = core.column_faces(11.75, 5.75, 12.25, 6.25)
+    assert faces[0] == (11.75, 5.75, 12.25, 5.75, 0.0, -1.0)
+    reach = 4.0
+
+    def uncovered(segments):
+        candidates = core.wall_candidates(segments, [], 0.3, grid.step)
+        sets = core.coverage(candidates, samples, reach)
+        return core.greedy_cover(candidates, sets, samples)[1]
+
+    assert uncovered(walls + faces) < uncovered(walls)
