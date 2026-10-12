@@ -392,6 +392,22 @@ def align_view_range(c):
     c.rect((46, 68, 58, 80), BLUE, WHITE, 4, 2)
 
 
+def soue_floor(c):
+    """План этажа (квартиры по сторонам коридора) с оповещателями в прихожих и коридоре."""
+    c.rect((10, 14, 86, 82), BLUE, WHITE, 4, 2)
+    c.line([(12, 40), (84, 40)], BLUE, 3.5)
+    c.line([(12, 56), (84, 56)], BLUE, 3.5)
+    for x in (35, 61):
+        c.line([(x, 16), (x, 40)], BLUE, 3.5)
+        c.line([(x, 56), (x, 80)], BLUE, 3.5)
+    # оповещатели: на стенах квартир у коридора и по оси коридора
+    for x in (22, 48, 74):
+        c.polygon([(x - 5, 39), (x + 5, 39), (x + 3, 33), (x - 3, 33)], fill=ORANGE)
+        c.polygon([(x - 5, 57), (x + 5, 57), (x + 3, 63), (x - 3, 63)], fill=ORANGE)
+    for x in (30, 66):
+        c.circle((x, 48), 4.5, None, ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -415,6 +431,7 @@ ICONS = [
     ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
     ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
     ("LOI.panel/CheckLOI.pushbutton", check_loi),
+    ("SOUE.panel/PlaceTypicalFloor.pushbutton", soue_floor),
 ]
 
 
