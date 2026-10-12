@@ -171,25 +171,77 @@ def face_distance(offsets, sign, fallback, tol=1e-6):
     return max(0.0, max(distances))
 
 
-ADDRESS_LETTERS = {
-    u"A": u"A", u"А": u"A",   # латинская и русская
-    u"B": u"B", u"В": u"B",
-    u"C": u"C", u"С": u"C",
+# Русские буквы, которые выглядят как латинские, — одна и та же буква маски,
+# в какой бы раскладке её ни набрали («А.В.С» = «A.B.C»).
+_LOOKALIKES = {
+    u"А": u"A", u"В": u"B", u"С": u"C", u"Е": u"E", u"К": u"K", u"М": u"M",
+    u"Н": u"H", u"О": u"O", u"Р": u"P", u"Т": u"T", u"Х": u"X",
 }
+
+
+def mask_letter(char):
+    """Буква маски в одном написании (русская-двойник → латинская)."""
+    return _LOOKALIKES.get(char, char)
+
+
+def parse_letter_params(text):
+    """
+    Соответствия «буква маски = параметр» из строки настроек:
+    «A=Этаж; B=Секция; C=Номер квартиры» (разделители пар — «;» или новая
+    строка, внутри пары — «=» или «:»). Буква — один символ (регистр
+    важен, русские буквы-двойники латинских считаются той же буквой).
+
+    Возвращает ([(буква, параметр)] в порядке записи, [ошибки]). Пустой
+    параметр — ошибка; повтор буквы — ошибка (берётся первое).
+    """
+    pairs = []
+    errors = []
+    seen = set()
+    if not text:
+        return pairs, errors
+    for chunk in _text(text).replace(u"\n", u";").split(u";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        sep = None
+        for candidate in (u"=", u":"):
+            if candidate in chunk:
+                sep = candidate
+                break
+        if sep is None:
+            errors.append(u"«{}» — нужно «буква = параметр»".format(chunk))
+            continue
+        letter, param = chunk.split(sep, 1)
+        letter = letter.strip()
+        param = param.strip()
+        if len(letter) != 1:
+            errors.append(u"«{}» — слева должна быть одна буква".format(chunk))
+            continue
+        if not param:
+            errors.append(u"«{}» — не указан параметр".format(chunk))
+            continue
+        key = mask_letter(letter)
+        if key in seen:
+            errors.append(u"буква «{}» указана дважды".format(letter))
+            continue
+        seen.add(key)
+        pairs.append((key, param))
+    return pairs, errors
 
 
 def format_address(mask, values):
     """
-    Адрес устройства по маске: буквы A, B, C (латинские или русские А, В, С)
-    заменяются значениями values["A"/"B"/"C"], остальные символы маски
-    остаются как есть («A.B.C» → «3.1.45»). Возвращает (адрес, [буквы без
-    значения]) — буква без значения заменяется пустой строкой.
+    Маркировка по маске: каждая буква маски, для которой есть ключ в values
+    (буквы — из parse_letter_params, русские двойники = латинские),
+    заменяется значением; остальные символы маски остаются как есть
+    («A.B.C» → «3.1.45»). Возвращает (текст, [буквы маски без значения]) —
+    такая буква заменяется пустой строкой.
     """
     parts = []
     missing = []
     for char in mask or u"":
-        letter = ADDRESS_LETTERS.get(char)
-        if letter is None:
+        letter = mask_letter(char)
+        if letter not in values:
             parts.append(char)
             continue
         value = values.get(letter)

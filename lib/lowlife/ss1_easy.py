@@ -36,9 +36,10 @@
   5. LOI: поставленным кроссам и подводам копируются параметры из «Форм»
      (корпус, секция, этаж…) — по настройкам кнопки «Заполнение LOI»
      (loi_settings/loi_fill), как если бы её запустили для этих элементов.
-  6. Адрес устройства подвода по маске («A.B.C» → этаж.секция.квартира,
-     ss1_easy_core.format_address): значения — у самого подвода (после
-     LOI), иначе — у прихожей в связи.
+  6. Маркировка (адрес устройства) подвода по маске из настроек: у каждой
+     буквы маски свой параметр («A=Этаж; B=Секция; C=Номер квартиры»,
+     ss1_easy_core.parse_letter_params/format_address); значения — у самого
+     подвода (после LOI), иначе — у прихожей в связи.
 
 Высота: экземпляр создаётся NewFamilyInstance(точка, тип, уровень) с
 Z точки = смещению от уровня (отметка уровня не прибавляется) — так
@@ -361,7 +362,7 @@ class Result(object):
         self.diagnostics = []
         # Для цепей: {level_id: [(кросс №1, x, y, секция шахты)]} и
         # [(подвод, x, y, секция помещения, level_id, имя уровня,
-        #   {"A"/"B"/"C": значение из прихожей для адреса})];
+        #   {буква маски: значение её параметра у прихожей})];
         # все поставленные кроссы — для LOI.
         self.panel_crosses = {}
         self.placed_feeds = []
@@ -627,11 +628,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
     lot_param = (settings.get("lot_param_name") or u"").strip()
     room_param = (settings.get("room_target_param") or u"").strip()
     section_param = (settings.get("room_section_param") or u"").strip()
-    address_params = {
-        "A": (settings.get("address_floor_param") or u"").strip(),
-        "B": (settings.get("address_section_param") or u"").strip(),
-        "C": (settings.get("address_apartment_param") or u"").strip(),
-    }
+    address_params, _ = core.parse_letter_params(settings.get("address_letters"))
     inset_ft = mm_to_ft(settings.get("feed_wall_inset_mm") or 0.0)
     tol = mm_to_ft(settings.get("level_tolerance_mm") or 0.0)
     level_marks = [(level, level.ProjectElevation) for level in levels]
@@ -673,7 +670,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                 _room_text_param(room, section_param) if section_param else u"")
             room_address[room.Id.IntegerValue] = dict(
                 (letter, _room_text_param(room, name) if name else u"")
-                for letter, name in address_params.items())
+                for letter, name in address_params)
             rooms.append((room.Id.IntegerValue, lot, _room_elevation(link_doc, room)))
         keep, _ = core.lowest_room_per_lot(rooms)
         warned_rooms = set()
@@ -837,31 +834,39 @@ def fill_loi(doc, elements, result):
 
 def fill_addresses(doc, settings, result):
     """
-    Адрес устройства подводов по маске (core.format_address). A/B/C — из
-    параметров самого подвода (после LOI), иначе — из прихожей в связи.
+    Маркировка (адрес устройства) подводов по маске (core.format_address):
+    у каждой буквы маски — свой параметр (строка «буква = параметр» в
+    настройках, core.parse_letter_params); значение — у самого подвода
+    (после LOI), иначе — у прихожей в связи.
     """
     address_param = (settings.get("address_param") or u"").strip()
     if not address_param:
         return
-    mask = settings.get("address_mask") or u"A.B.C"
-    names = {
-        "A": (settings.get("address_floor_param") or u"").strip(),
-        "B": (settings.get("address_section_param") or u"").strip(),
-        "C": (settings.get("address_apartment_param") or u"").strip(),
-    }
+    mask = settings.get("address_mask") or u""
+    letters, errors = core.parse_letter_params(settings.get("address_letters"))
+    if errors:
+        result.diagnostics.append(u"Маркировка: ошибки в «Параметрах букв маски»: {}.".format(
+            u"; ".join(errors)))
+    if not letters:
+        result.diagnostics.append(
+            u"Маркировка не заполнена: не заданы параметры букв маски (Shift+клик → "
+            u"«Помещения, параметры и высоты…», раздел ④).")
+        return
     for feed, _, _, _, _, _, room_values in result.placed_feeds:
         values = {}
-        for letter, name in names.items():
+        for letter, name in letters:
             values[letter] = text_value(feed, name) or room_values.get(letter) or u""
         address, missing = core.format_address(mask, values)
         if missing:
             result.diagnostics.append(
-                u"Адрес подвода Id {}: нет значения {} — записано «{}».".format(
-                    feed.Id.IntegerValue, u", ".join(missing), address))
+                u"Маркировка подвода Id {}: нет значения {} — записано «{}».".format(
+                    feed.Id.IntegerValue,
+                    u", ".join(u"{} ({})".format(letter, dict(letters)[letter]) for letter in missing),
+                    address))
         if set_text_param(feed, address_param, address):
             result.addresses += 1
         else:
-            result.diagnostics.append(u"Адрес подвода Id {}: не удалось записать «{}».".format(
+            result.diagnostics.append(u"Маркировка подвода Id {}: не удалось записать «{}».".format(
                 feed.Id.IntegerValue, address_param))
 
 

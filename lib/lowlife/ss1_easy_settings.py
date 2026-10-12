@@ -28,6 +28,32 @@ from lowlife import settings_core
 
 BUTTON_NAME = u"СС1-8Mile"
 
+
+class LetterParamsField(settings_core.TextField):
+    """Строка «буква = параметр; …» — с проверкой при «Сохранить»."""
+
+    def parse(self, text):
+        from lowlife import ss1_easy_core as core
+        _, errors = core.parse_letter_params(text)
+        if errors:
+            return None, u"{}: {}".format(self.title(), u"; ".join(errors))
+        return (text or u"").strip(), None
+
+
+# Прежние поля маркировки (фиксированные A — этаж, B — секция, C — квартира).
+_OLD_LETTER_KEYS = [("A", "address_floor_param"), ("B", "address_section_param"),
+                    ("C", "address_apartment_param")]
+
+
+def _migrate(saved, values):
+    """Старые три поля A/B/C → строка «A=…; B=…; C=…», если новой ещё нет."""
+    if saved.get("address_letters"):
+        return
+    pairs = [u"{}={}".format(letter, saved.get(key).strip())
+             for letter, key in _OLD_LETTER_KEYS if (saved.get(key) or u"").strip()]
+    if pairs:
+        values["address_letters"] = u"; ".join(pairs)
+
 SETTINGS = settings_core.TextSettings(
     file_name="LowLifeSS1Easy_settings.json",
     button_name=BUTTON_NAME,
@@ -133,42 +159,31 @@ SETTINGS = settings_core.TextSettings(
         ),
         settings_core.TextField(
             "address_param",
-            u"④ Адрес устройства (кабельный подвод)",
-            u"Параметр подвода «Адрес устройства»",
-            hint=u"Куда записать адрес. Пусто — адрес не заполняется.",
+            u"④ Маркировка (адрес устройства) кабельного подвода",
+            u"Параметр подвода, куда записать маркировку",
+            hint=u"Пусто — маркировка не заполняется.",
             default=u"",
         ),
         settings_core.TextField(
             "address_mask",
             u"",
-            u"Маска адреса",
+            u"Маска маркировки",
             hint=(
-                u"A — номер этажа, B — номер секции, C — номер квартиры; остальные "
-                u"символы остаются как есть (буквы можно латинские или русские "
-                u"А, В, С). «A.B.C» → «3.1.45»."
+                u"Буквы из строки ниже заменяются значениями своих параметров, "
+                u"остальные символы остаются как есть: «A.B.C» → «3.1.45». Буквы "
+                u"можно набирать латиницей или по-русски (А = A, В = B, С = C…)."
             ),
             default=u"A.B.C",
         ),
-        settings_core.TextField(
-            "address_floor_param",
+        LetterParamsField(
+            "address_letters",
             u"",
-            u"A — параметр номера этажа",
+            u"Параметры букв маски",
             hint=(
-                u"Значения A, B, C берутся сначала у самого подвода (после заполнения "
-                u"LOI), а если там пусто — у прихожей в связи АР."
+                u"Пары «буква = параметр» через «;», например: «A=Этаж; B=Секция; "
+                u"C=Номер квартиры». Значение берётся сначала у самого подвода "
+                u"(после заполнения LOI), а если там пусто — у прихожей в связи АР."
             ),
-            default=u"",
-        ),
-        settings_core.TextField(
-            "address_section_param",
-            u"",
-            u"B — параметр номера секции",
-            default=u"",
-        ),
-        settings_core.TextField(
-            "address_apartment_param",
-            u"",
-            u"C — параметр номера квартиры",
             default=u"",
         ),
     ],
@@ -178,6 +193,7 @@ SETTINGS = settings_core.TextSettings(
         u"по настройкам кнопки «Заполнение LOI» (какие параметры копировать из "
         u"«Форм» и в каких моделях их искать)."
     ),
+    migrate=_migrate,
     width=760, height=700,
 )
 

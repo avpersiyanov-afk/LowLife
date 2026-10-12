@@ -93,11 +93,25 @@ def test_face_distance_axis_and_face_location_lines():
     assert core.face_distance([], 1, 0.5) == 0.5
 
 
+def test_parse_letter_params():
+    assert core.parse_letter_params(u"A=Этаж; B=Секция; C=Номер квартиры") == (
+        [(u"A", u"Этаж"), (u"B", u"Секция"), (u"C", u"Номер квартиры")], [])
+    # новая строка и двоеточие, русская буква = латинская
+    assert core.parse_letter_params(u"К: Корпус\nF = Этаж") == (
+        [(u"K", u"Корпус"), (u"F", u"Этаж")], [])
+    assert core.parse_letter_params(u"") == ([], [])
+    pairs, errors = core.parse_letter_params(u"A=Этаж; AB=Секция; C=; D; А=Ещё")
+    assert pairs == [(u"A", u"Этаж")]
+    assert len(errors) == 4
+
+
 def test_format_address():
     values = {"A": u"3", "B": u"1", "C": u"45"}
     assert core.format_address(u"A.B.C", values) == (u"3.1.45", [])
     # русские буквы в маске
     assert core.format_address(u"А.В.С", values) == (u"3.1.45", [])
+    # буквы без параметра остаются текстом
     assert core.format_address(u"Кв C (A-B)", values) == (u"Кв 45 (3-1)", [])
-    assert core.format_address(u"A.B.C", {"A": u"3", "B": u" "}) == (u"3..", [u"B", u"C"])
+    assert core.format_address(u"K-F.S", {"K": u"1", "F": u"02", "S": u"3"}) == (u"1-02.3", [])
+    assert core.format_address(u"A.B.C", {"A": u"3", "B": u" ", "C": None}) == (u"3..", [u"B", u"C"])
     assert core.format_address(u"", values) == (u"", [])
