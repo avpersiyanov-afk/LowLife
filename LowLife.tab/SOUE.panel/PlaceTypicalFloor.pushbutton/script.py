@@ -6,12 +6,13 @@ __doc__ = (
     u"уровнях: в каждой квартире (лоте) — один на стене прихожей (или в первом "
     u"найденном помещении из списка в настройках); во всех остальных помещениях, "
     u"кроме исключённых, — по акустическому расчёту (уровень не ниже шума + 15 дБ "
-    u"на высоте 1,5 м): настенные, а при подвесном потолке — потолочные. SPL и "
-    u"мощность берутся из параметров оповещателя, уровень шума — из таблицы "
-    u"помещений объекта. Перед расстановкой все экземпляры выбранных типов на "
+    u"на высоте 1,5 м): настенные (на стены и колонны), а при подвесном потолке — "
+    u"потолочные. Оповещатель и отвод подбираются из всех типов проекта с "
+    u"параметрами SPL/мощность/исполнение, уровень шума — из таблицы помещений "
+    u"объекта. Перед расстановкой все экземпляры выбранных типов на "
     u"отмеченных уровнях удаляются.\n\n"
-    u"Shift+клик — настройки (типы оповещателей, таблица помещений: шум и исключения, "
-    u"параметры)."
+    u"Shift+клик — настройки (оповещатель квартир, найденные оповещатели, таблица "
+    u"помещений: шум и исключения, параметры)."
 )
 __author__ = "Pipers"
 
@@ -37,11 +38,19 @@ if config_mode:
 settings = soue_floor_settings.load_all()
 soue_floor_settings.require_all(settings)
 
-symbols, missing = soue_floor.find_symbols(doc, settings)
+apartment_symbol, missing = soue_floor.find_apartment_symbol(doc, settings)
 if missing:
     forms.alert(
-        u"В проекте не найдены типоразмеры:\n\n{}\n\n"
-        u"Загрузите семейства или выберите другие: Shift+клик по кнопке.".format(u"\n".join(missing)),
+        u"В проекте не найден типоразмер:\n\n{}\n\n"
+        u"Загрузите семейство или выберите другое: Shift+клик по кнопке.".format(missing),
+        title=TITLE, exitscript=True
+    )
+speakers, speaker_messages = soue_floor.collect_speakers(doc, settings)
+if apartment_symbol is None and not speakers:
+    forms.alert(
+        u"Нечего ставить: не выбран оповещатель для квартир и в проекте нет типов с "
+        u"параметром «{}» для автоподбора.\n\nShift+клик по кнопке — настройки.".format(
+            settings.get("spl_param_name") or u""),
         title=TITLE, exitscript=True
     )
 
@@ -54,7 +63,7 @@ tasks, messages = soue_floor.gather(doc, levels, settings, table)
 if not tasks:
     forms.alert(u"На отмеченных уровнях нет помещений для оснащения.", title=TITLE, exitscript=True)
 
-if soue_floor_settings.SYMBOL_WALL in symbols:
+if speakers:
     lacking = soue_floor.missing_noise_rows(tasks, table)
     if lacking:
         if soue_floor_rooms.ask_missing_noise(lacking) is None:
@@ -69,7 +78,8 @@ with forms.ProgressBar(title=u"СОУЭ: помещения {value} из {max_va
             bar.update_progress(index, total)
 
     with revit.Transaction(u"СОУЭ: оповещатели"):
-        result = soue_floor.run(doc, levels, tasks, settings, symbols, table, progress)
+        result = soue_floor.run(doc, levels, tasks, settings, apartment_symbol, speakers, table,
+                                progress)
 
 
 output = script.get_output()
@@ -93,6 +103,7 @@ if result.report:
         table_rows.append([
             row.link, row.level, row.name, u"{}".format(row.room_id), row.category or u"—",
             u"{:.0f}".format(float(row.noise)), row.mount,
+            u"{} ({:g} Вт)".format(row.speaker, float(row.tap)) if row.speaker else u"—",
             u"{:.0f}".format(float(row.height_mm)), u"{:.1f}".format(float(row.reach_m)),
             u"{}".format(row.count),
             u"{} из {}".format(row.uncovered, row.samples) if row.uncovered else u"—",
@@ -100,8 +111,8 @@ if result.report:
     output.print_table(
         table_rows,
         columns=[u"Связь", u"Уровень", u"Помещение", u"Id", u"Категория", u"N, дБА",
-                 u"Установка", u"h, мм", u"R (L), м", u"Оповещателей", u"Не озвучено"])
-diagnostics = messages + result.diagnostics
+                 u"Установка", u"Оповещатель (отвод)", u"h, мм", u"R (L), м", u"Оповещателей", u"Не озвучено"])
+diagnostics = speaker_messages + messages + result.diagnostics
 if diagnostics:
     output.print_md(u"### Диагностика")
     for line in diagnostics:

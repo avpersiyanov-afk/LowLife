@@ -262,4 +262,59 @@ def test_classify_ceiling():
 def test_sample_step_limits_point_count():
     assert core.sample_step(30, 2, 0.5) == 0.5
     step = core.sample_step(100, 100, 0.5)
-    assert (100 / step) ** 2 <= 400 + 1e-6
+    assert (100 / step) ** 2 <= 1500 + 1e-6
+
+
+# --- автоподбор оповещателя и колонны ----------------------------------------
+
+def test_parse_numbers_taps():
+    assert core.parse_numbers(u"1,5 / 3 / 6 Вт") == [1.5, 3.0, 6.0]
+    assert core.parse_numbers(u"2,5/5/10") == [2.5, 5.0, 10.0]
+    assert core.parse_numbers(3) == [3.0]
+    assert core.parse_numbers(u"") == [] and core.parse_numbers(None) == []
+
+
+def test_speaker_kind():
+    assert core.speaker_kind(u"Настенный") == core.KIND_WALL
+    assert core.speaker_kind(u"", u"Оповещатель потолочный", u"SC-5106") == core.KIND_CEILING
+    assert core.speaker_kind(None, u"Громкоговоритель подвесной") == core.KIND_PENDANT
+    assert core.speaker_kind(u"Потолочный", u"настенный") == core.KIND_CEILING  # параметр важнее имени
+    assert core.speaker_kind(u"", u"SW-2106") is None
+
+
+def test_reduce_options_drops_dominated():
+    options = [("a", 1.5, 5.0), ("b", 3.0, 7.0), ("c", 6.0, 10.0), ("d", 3.0, 5.0), ("e", 6.0, 9.0)]
+    assert [o[0] for o in core.reduce_options(options)] == ["c", "b", "a"]
+
+
+def test_option_score_prefers_fewer_then_less_power():
+    assert core.option_score(0, 3, 6.0) < core.option_score(1, 1, 1.5)   # всё озвучено — главное
+    assert core.option_score(0, 2, 6.0) < core.option_score(0, 3, 1.5)   # меньше штук
+    assert core.option_score(0, 2, 3.0) < core.option_score(0, 2, 6.0)   # меньше мощность
+
+
+def test_coverage_pairs_and_sets_within_match_coverage():
+    grid = _grid(10, 4)
+    samples = grid.points()
+    candidates = [(0, 2, 1, 0), (10, 2, -1, 0)]
+    pairs = core.coverage_pairs(candidates, samples, 8.0, grid, wall=True)
+    for reach in (3.0, 5.0, 8.0):
+        assert core.sets_within(pairs, reach) == core.coverage(candidates, samples, reach, grid, wall=True)
+
+
+def test_column_faces_extend_wall_coverage():
+    width, height = 24.0, 12.0
+    grid = _grid(width, height)
+    samples = grid.points()
+    walls = [(0, 0, width, 0, 0, 1), (width, 0, width, height, -1, 0),
+             (width, height, 0, height, 0, -1), (0, height, 0, 0, 1, 0)]
+    faces = core.column_faces(11.75, 5.75, 12.25, 6.25)
+    assert faces[0] == (11.75, 5.75, 12.25, 5.75, 0.0, -1.0)
+    reach = 4.0
+
+    def uncovered(segments):
+        candidates = core.wall_candidates(segments, [], 0.3, grid.step)
+        sets = core.coverage(candidates, samples, reach)
+        return core.greedy_cover(candidates, sets, samples)[1]
+
+    assert uncovered(walls + faces) < uncovered(walls)

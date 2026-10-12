@@ -9,9 +9,9 @@
 Окно Shift+клика (show_settings_window) — по образцу «СС1-8Mile»:
   - квартиры: семейство (выпадающий список с поиском) → тип, установка (на
     стену / на потолок) и высота от уровня;
-  - остальные помещения: настенный оповещатель (семейство → тип, высота) и
-    потолочный — для помещений с подвесным потолком (семейство → тип,
-    высота — по потолку);
+  - остальные помещения: высота настенных; сами оповещатели подбираются
+    автоматически из всех типов проекта с параметрами SPL/мощность/исполнение
+    (кнопка «Оповещатели проекта…» показывает, что найдено);
   - кнопка «Помещения объекта…» — таблица уникальных имён помещений
     (категория, уровень шума, «исключить»; soue_floor_rooms.py, хранится
     здесь же под ключом ROOM_TABLE_KEY);
@@ -58,23 +58,28 @@ SETTINGS = settings_core.TextSettings(
             u"② Параметры оповещателя (типа или экземпляра)",
             u"Чувствительность SPL (1 Вт/1 м), дБ",
             hint=(
-                u"Числовой или текстовый параметр («87», «87 дБ»). Берётся у типа, "
-                u"иначе — у любого уже стоящего экземпляра этого типа."
+                u"Числовой или текстовый параметр («87», «87 дБ») у типа (или у стоящего "
+                u"экземпляра). Все типы проекта, у которых он есть, участвуют в автоподборе "
+                u"оповещателей для помещений вне квартир."
             ),
             default=u"СОУЭ_Чувствительность",
         ),
         settings_core.TextField(
             "power_param_name",
             u"",
-            u"Мощность подключения (отвод трансформатора), Вт",
+            u"Отводы мощности трансформатора, Вт",
+            hint=(
+                u"Все отводы через «/»: «1,5 / 3 / 6». Подбирается лучший отвод; если у "
+                u"экземпляра есть такой записываемый параметр — в него пишется выбранный."
+            ),
             default=u"СОУЭ_Мощность",
         ),
-        settings_core.NumberField(
-            "fallback_spl_db",
+        settings_core.TextField(
+            "kind_param_name",
             u"",
-            u"SPL, если параметра нет, дБ",
-            hint=u"Тогда в отчёт пишется предупреждение.",
-            default=87.0, minimum=0,
+            u"Исполнение: «Настенный» / «Потолочный»",
+            hint=u"Нет параметра — исполнение ищется в имени семейства/типа («настен», «потол»).",
+            default=u"СОУЭ_Исполнение",
         ),
         settings_core.NumberField(
             "fallback_power_w",
@@ -117,13 +122,8 @@ REQUIRED_KEYS = ["apartment_room_names", "lot_param_name"]
 
 # Роль оповещателя → (ключ семейства, ключ типа, подпись).
 SYMBOL_APARTMENT = "apartment"
-SYMBOL_WALL = "wall"
-SYMBOL_CEILING = "ceiling"
 SYMBOL_KEYS = [
     (SYMBOL_APARTMENT, "apartment_family", "apartment_type", u"Квартиры"),
-    (SYMBOL_WALL, "room_wall_family", "room_wall_type", u"Помещения — настенный"),
-    (SYMBOL_CEILING, "room_ceiling_family", "room_ceiling_type",
-     u"Помещения — потолочный (в подвесной потолок)"),
 ]
 
 # Прочие значения главного окна: ключ → умолчание.
@@ -184,14 +184,7 @@ def configured(values, role):
 
 
 def require_all(values):
-    """Квартиры или настенный оповещатель выбраны, обязательные поля заполнены; иначе — выход."""
-    if not configured(values, SYMBOL_APARTMENT) and not configured(values, SYMBOL_WALL):
-        settings_core._alert(
-            u"Не выбраны оповещатели: нужен тип для квартир и/или настенный тип для "
-            u"остальных помещений.\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «{}».".format(BUTTON_NAME),
-            exitscript=True
-        )
+    """Обязательные поля заполнены; иначе — сообщение и выход."""
     SETTINGS.require(values, REQUIRED_KEYS)
 
 
@@ -360,18 +353,13 @@ def show_settings_window(doc):
     row.Children.Add(mount_combo)
 
     # --- остальные помещения ---
-    add_text(u"Остальные помещения — настенный", bold=True, top=14)
-    add_text(u"Все помещения объекта вне квартир, кроме исключённых: количество и места — "
-             u"по акустическому расчёту. По умолчанию — на стену.", gray=True)
-    symbol_combos[SYMBOL_WALL] = add_symbol_pick(
-        values.get("room_wall_family"), values.get("room_wall_type"))
-    _, wall_height = add_height_row(u"Высота от уровня, мм:", values.get("room_wall_height_mm"))
-
-    add_text(u"Остальные помещения — потолочный", bold=True, top=14)
-    add_text(u"Если над помещением подвесной потолок (луч вверх по связям), ставится этот "
-             u"тип в плоскость потолка. Не выбрано — везде настенный.", gray=True)
-    symbol_combos[SYMBOL_CEILING] = add_symbol_pick(
-        values.get("room_ceiling_family"), values.get("room_ceiling_type"))
+    add_text(u"Остальные помещения", bold=True, top=14)
+    add_text(u"Все помещения объекта вне квартир, кроме исключённых: количество, места и "
+             u"оповещатель — по акустическому расчёту. Оповещатель и отвод подбираются из всех "
+             u"типов проекта с параметрами SPL/мощность/исполнение: где меньше штук, при "
+             u"равенстве — меньше суммарная мощность. По умолчанию настенные (на стены и "
+             u"колонны); при подвесном потолке — потолочные в плоскость потолка.", gray=True)
+    _, wall_height = add_height_row(u"Высота настенных от уровня, мм:", values.get("room_wall_height_mm"))
 
     # --- кнопки дополнительных окон ---
     def add_button(text, hint):
@@ -388,9 +376,12 @@ def show_settings_window(doc):
         u"Помещения объекта: шум и исключения…",
         u"Уникальные имена помещений всех связей: категория и уровень шума (справочник "
         u"расчёта), «исключить». Выгрузка в Excel и загрузка обратно.")
+    speakers_btn = add_button(
+        u"Оповещатели проекта…",
+        u"Какие типы найдены для автоподбора: исполнение, SPL, отводы.")
     other_btn = add_button(
         u"Параметры и отступы…",
-        u"Помещения квартир, параметр имени лота, параметры оповещателя (SPL, мощность), "
+        u"Помещения квартир, параметр имени лота, параметры оповещателя (SPL, отводы, исполнение), "
         u"отступы от углов и проёмов, параметр «Помещение».")
 
     def on_rooms(sender, args):
@@ -401,6 +392,20 @@ def show_settings_window(doc):
         # Окно без Topmost — дочернее окно не застрянет позади (см. CLAUDE.md).
         SETTINGS.get_settings_interactive()
 
+    def on_speakers(sender, args):
+        from lowlife import soue_floor
+        speakers, messages = soue_floor.collect_speakers(doc, load_all())
+        kinds = {core.KIND_WALL: u"настенный", core.KIND_CEILING: u"потолочный",
+                 core.KIND_PENDANT: u"подвесной (не используется)"}
+        lines = [u"{} — {}, SPL {:g} дБ, отводы {} Вт".format(
+            sp.label, kinds.get(sp.kind, sp.kind), float(sp.spl),
+            u" / ".join(u"{:g}".format(float(t)) for t in sp.taps)) for sp in speakers]
+        text = u"\n".join(lines) if lines else u"Не найдено ни одного типа с параметром SPL."
+        if messages:
+            text += u"\n\n" + u"\n".join(messages)
+        forms.alert(text, title=u"Оповещатели проекта ({})".format(len(speakers)))
+
+    speakers_btn.Click += on_speakers
     rooms_btn.Click += on_rooms
     other_btn.Click += on_other
 
@@ -441,8 +446,6 @@ def show_settings_window(doc):
             else:
                 update[key] = number
         update["apartment_mount"] = MOUNT_LABELS[max(0, mount_combo.SelectedIndex)][0]
-        if not problems and not (configured(update, SYMBOL_APARTMENT) or configured(update, SYMBOL_WALL)):
-            problems.append(u"Выберите тип для квартир и/или настенный тип для остальных помещений")
         if problems:
             forms.alert(u"Исправьте:\n\n" + u"\n".join(problems))
             return

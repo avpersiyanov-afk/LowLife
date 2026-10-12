@@ -143,6 +143,45 @@ def parse_number(text):
         return None
 
 
+def parse_numbers(text):
+    """Все числа из текста: «1,5 / 3 / 6 Вт» → [1.5, 3.0, 6.0]; число → [число]."""
+    if text is None:
+        return []
+    if isinstance(text, (int, float)):
+        return [float(text)]
+    raw = _to_text(text)
+    # «1,5 / 3» — запятая как десятичный разделитель только между цифрами
+    raw = re.sub(r"(?<=\d),(?=\d)", u".", raw)
+    return [float(m) for m in _NUMBER.findall(raw)]
+
+
+# Исполнение оповещателя.
+KIND_WALL = "wall"
+KIND_CEILING = "ceiling"
+KIND_PENDANT = "pendant"
+
+_KIND_WORDS = [
+    (KIND_PENDANT, [u"подвес", u"pendant"]),
+    (KIND_CEILING, [u"потол", u"ceiling", u"встраив"]),
+    (KIND_WALL, [u"настен", u"стен", u"wall"]),
+]
+
+
+def speaker_kind(*texts):
+    """
+    Исполнение по тексту (значение параметра «исполнение», имя семейства,
+    имя типа — по порядку, первое распознанное): KIND_* или None.
+    """
+    for text in texts:
+        value = normalize(text)
+        if not value:
+            continue
+        for kind, words in _KIND_WORDS:
+            if any(word in value for word in words):
+                return kind
+    return None
+
+
 def parse_flag(text):
     """«да», «yes», «1», «x», «+», True → True."""
     if text is True:
@@ -505,7 +544,7 @@ def room_reach(spl_db, power_w, noise_dba, mount_h):
                           mount_h, CALC_HEIGHT_M)
 
 
-def sample_step(width, height, base, max_samples=400):
+def sample_step(width, height, base, max_samples=1500):
     """Шаг сетки расчётных точек: base, но не больше max_samples точек на габарит."""
     area = max(0.0, width) * max(0.0, height)
     if area <= 0 or base <= 0:
@@ -613,6 +652,70 @@ def coverage(candidates, samples, reach, grid=None, wall=False):
             covered.add(index)
         result.append(covered)
     return result
+
+
+def coverage_pairs(candidates, samples, max_reach, grid=None, wall=False):
+    """
+    Как coverage, но один раз на наибольшую дальность: для каждого кандидата
+    — [(индекс точки, расстояние в плане)] точек не дальше max_reach (в
+    прямой видимости, у настенного — перед стеной). Наборы для меньших
+    дальностей — sets_within.
+    """
+    reach2 = max_reach * max_reach
+    result = []
+    for cand in candidates:
+        cx, cy = cand[0], cand[1]
+        pairs = []
+        for index, (px, py) in enumerate(samples):
+            dx, dy = px - cx, py - cy
+            d2 = dx * dx + dy * dy
+            if d2 > reach2:
+                continue
+            if wall and dx * cand[2] + dy * cand[3] < -1e-6:
+                continue
+            if grid is not None and not grid.visible(cx, cy, px, py):
+                continue
+            pairs.append((index, math.sqrt(d2)))
+        result.append(pairs)
+    return result
+
+
+def sets_within(pairs, reach):
+    """Наборы озвучиваемых точек для дальности reach из coverage_pairs."""
+    return [set(index for index, distance in item if distance <= reach) for item in pairs]
+
+
+def option_score(uncovered, count, power_w):
+    """
+    Ключ выбора варианта (меньше — лучше): сначала меньше неозвученных
+    точек, потом меньше оповещателей, потом меньше суммарная мощность
+    (нагрузка на усилитель), потом меньше мощность одного.
+    """
+    return (uncovered, count, round(count * power_w, 6), power_w)
+
+
+def reduce_options(options):
+    """
+    Варианты [(ключ, мощность, дальность)] без заведомо худших: при той же
+    или большей мощности и не большей дальности вариант не нужен.
+    Порядок — по убыванию дальности.
+    """
+    kept = []
+    for option in sorted(options, key=lambda o: (-o[2], o[1])):
+        if any(other[1] <= option[1] and other[2] >= option[2] for other in kept):
+            continue
+        kept.append(option)
+    return kept
+
+
+def column_faces(min_x, min_y, max_x, max_y):
+    """Грани колонны по её габариту в плане: [(x1, y1, x2, y2, nx, ny)], нормали наружу."""
+    return [
+        (min_x, min_y, max_x, min_y, 0.0, -1.0),
+        (max_x, min_y, max_x, max_y, 1.0, 0.0),
+        (max_x, max_y, min_x, max_y, 0.0, 1.0),
+        (min_x, max_y, min_x, min_y, -1.0, 0.0),
+    ]
 
 
 def greedy_cover(candidates, sets, samples):

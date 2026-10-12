@@ -18,10 +18,11 @@
   2. run (в транзакции): удаление старых экземпляров выбранных типов на
      отмеченных уровнях; квартиры — один оповещатель на стену (или потолок);
      прочие помещения — луч вверх (CeilingProbe): подвесной потолок —
-     потолочный тип в плоскость потолка, иначе — настенный на заданной
-     высоте; количество и места — по акустическому расчёту
-     (soue_floor_core.room_reach: SPL и мощность — из параметров типа
-     оповещателя, шум — из таблицы помещений), plan_calculated.
+     потолочные в плоскость потолка, иначе — настенные на заданной высоте
+     на стены и грани колонн; оповещатель, отвод, количество и места — по
+     акустическому расчёту (plan_best: перебор всех типов проекта с SPL
+     нужного исполнения и их отводов, collect_speakers; шум — из таблицы
+     помещений).
 """
 
 from Autodesk.Revit.DB import (
@@ -33,7 +34,7 @@ from lowlife import soue_floor_core as core
 from lowlife import ss1_easy
 from lowlife.scs import safe_element_name
 from lowlife.ss1_easy_core import match_level
-from lowlife.ss1_easy import (  # noqa: F401 — find_symbol нужен кнопке
+from lowlife.ss1_easy import (
     mm_to_ft, find_symbol, activate_symbol, create_on_level, align_facing,
     set_text_param, delete_old, get_levels
 )
@@ -184,24 +185,15 @@ def room_points(room, level_z, step_ft):
 # Целиком
 # ------------------------------------------------------------
 
-def find_symbols(doc, settings):
-    """
-    Выбранные типоразмеры: ({роль из SYMBOL_KEYS: тип}, [подписи не
-    найденных в проекте]).
-    """
-    from lowlife.soue_floor_settings import SYMBOL_KEYS
-    symbols = {}
-    missing = []
-    for role, family_key, type_key, label in SYMBOL_KEYS:
-        family_name, type_name = settings.get(family_key), settings.get(type_key)
-        if not family_name or not type_name:
-            continue
-        symbol = find_symbol(doc, family_name, type_name)
-        if symbol is None:
-            missing.append(u"{}: {} : {}".format(label, family_name, type_name))
-        else:
-            symbols[role] = symbol
-    return symbols, missing
+def find_apartment_symbol(doc, settings):
+    """(тип оповещателя для квартир или None, сообщение если выбран, но не найден)."""
+    family_name, type_name = settings.get("apartment_family"), settings.get("apartment_type")
+    if not family_name or not type_name:
+        return None, None
+    symbol = find_symbol(doc, family_name, type_name)
+    if symbol is None:
+        return None, u"Квартиры: {} : {}".format(family_name, type_name)
+    return symbol, None
 
 
 def _param_number(element, name):
@@ -227,39 +219,87 @@ def _param_number(element, name):
         return None
 
 
-def speaker_data(doc, symbol, settings):
-    """
-    (SPL дБ, мощность Вт, [предупреждения]) оповещателя: параметры из
-    настроек у типа, иначе — у любого стоящего экземпляра этого типа,
-    иначе — значения «если параметра нет» из настроек.
-    """
-    from Autodesk.Revit.DB import FamilyInstanceFilter
-    instance = None
+def _param_text(element, name):
+    """Текст параметра (AsString, иначе AsValueString) или u""."""
+    if element is None or not name:
+        return u""
     try:
-        instance = FilteredElementCollector(doc).WherePasses(
-            FamilyInstanceFilter(doc, symbol.Id)).FirstElement()
+        param = element.LookupParameter(name)
+        if param is None or not param.HasValue:
+            return u""
+        return param.AsString() or param.AsValueString() or u""
     except Exception:
-        pass
-    label = u"{} : {}".format(safe_element_name(symbol.Family), safe_element_name(symbol))
-    result = []
-    warnings = []
-    for key, fallback_key, what in (("spl_param_name", "fallback_spl_db", u"SPL"),
-                                    ("power_param_name", "fallback_power_w", u"мощность")):
-        name = (settings.get(key) or u"").strip()
-        value = _param_number(symbol, name)
-        if value is None:
-            value = _param_number(instance, name)
-        if value is None:
-            value = float(settings.get(fallback_key) or 0.0)
-            warnings.append(u"Оповещатель «{}»: нет параметра «{}» ({}) — взято {}.".format(
-                label, name, what, value))
-        result.append(value)
-    return result[0], result[1], warnings
+        return u""
 
 
-# ------------------------------------------------------------
-# Потолок над помещением: подвесной или перекрытие
-# ------------------------------------------------------------
+class Speaker(object):
+    """Тип оповещателя проекта с данными для расчёта."""
+
+    def __init__(self, symbol, family_name, type_name, kind, spl, taps):
+        self.symbol = symbol
+        self.family_name = family_name
+        self.type_name = type_name
+        self.kind = kind
+        self.spl = spl
+        self.taps = taps
+
+    @property
+    def label(self):
+        return u"{} : {}".format(self.family_name, self.type_name)
+
+
+def collect_speakers(doc, settings):
+    """
+    Оповещатели проекта для автоподбора: все загруженные типы, у которых
+    есть параметр SPL (у типа, иначе у стоящего экземпляра). Отводы
+    мощности — все числа параметра мощности («1,5 / 3 / 6»), нет — значение
+    «если параметра нет». Исполнение — по параметру исполнения, иначе по
+    имени семейства/типа (core.speaker_kind).
+    Возвращает ([Speaker], [сообщения о пропущенных типах]).
+    """
+    from Autodesk.Revit.DB import Family, FamilyInstanceFilter
+    spl_name = (settings.get("spl_param_name") or u"").strip()
+    power_name = (settings.get("power_param_name") or u"").strip()
+    kind_name = (settings.get("kind_param_name") or u"").strip()
+    fallback_power = float(settings.get("fallback_power_w") or 0.0)
+    speakers = []
+    messages = []
+    if not spl_name:
+        return speakers, [u"Не задано имя параметра SPL — автоподбор оповещателей невозможен."]
+    for family in FilteredElementCollector(doc).OfClass(Family):
+        family_name = safe_element_name(family) or u""
+        for symbol_id in family.GetFamilySymbolIds():
+            symbol = doc.GetElement(symbol_id)
+            if symbol is None:
+                continue
+            instance = None
+            spl = _param_number(symbol, spl_name)
+            if spl is None:
+                try:
+                    instance = FilteredElementCollector(doc).WherePasses(
+                        FamilyInstanceFilter(doc, symbol.Id)).FirstElement()
+                except Exception:
+                    instance = None
+                spl = _param_number(instance, spl_name)
+            if spl is None:
+                continue
+            type_name = safe_element_name(symbol) or u""
+            power_text = _param_text(symbol, power_name) or _param_text(instance, power_name)
+            taps = [t for t in core.parse_numbers(power_text) if t > 0] or (
+                [fallback_power] if fallback_power > 0 else [])
+            kind = core.speaker_kind(_param_text(symbol, kind_name) or _param_text(instance, kind_name),
+                                     family_name, type_name)
+            label = u"{} : {}".format(family_name, type_name)
+            if kind is None:
+                messages.append(u"Оповещатель «{}»: не определено исполнение (настенный/потолочный) — "
+                                u"не используется.".format(label))
+                continue
+            if not taps:
+                messages.append(u"Оповещатель «{}»: нет мощности — не используется.".format(label))
+                continue
+            speakers.append(Speaker(symbol, family_name, type_name, kind, spl, taps))
+    return speakers, messages
+
 
 class CeilingProbe(object):
     """
@@ -392,45 +432,86 @@ def _inward_segments(room, level_z):
     return result
 
 
-def plan_calculated(room, level_z, on_wall, reach_ft, openings, margin):
+def _column_segments(source, room, level_z):
+    """Грани колонн внутри помещения (не ограничивающих его): [(x1, y1, x2, y2, nx, ny)]."""
+    probe_z = level_z + mm_to_ft(ROOM_PROBE_HEIGHT_MM)
+    try:
+        bbox = room.get_BoundingBox(None)
+    except Exception:
+        bbox = None
+    if bbox is None:
+        return []
+    result = []
+    for x0, y0, x1, y1, z0, z1 in source.columns():
+        if not (z0 <= probe_z <= z1):
+            continue
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        if not (bbox.Min.X <= cx <= bbox.Max.X and bbox.Min.Y <= cy <= bbox.Max.Y):
+            continue
+        # ограничивающая колонна уже в границе помещения — её центр вне помещения
+        if _point_in_room(room, cx, cy, probe_z):
+            result.extend(core.column_faces(x0, y0, x1, y1))
+    return result
+
+
+def plan_best(task, on_wall, options, openings, margin):
     """
-    Места оповещателей по акустическому расчёту: жадное покрытие расчётных
-    точек помещения (core.greedy_cover). Кандидаты — узлы сетки (потолок)
-    или точки вдоль стен в стороне от проёмов (стена). Возвращает
-    ([(x, y, нормаль или None)], не озвучено точек, всего точек).
+    Лучший вариант оповещателя для помещения по акустическому расчёту.
+
+    options — [(Speaker, отвод Вт, дальность в футах)]. Расчётные точки —
+    узлы сетки внутри помещения; кандидаты — узлы сетки (потолок) или точки
+    вдоль стен и граней колонн в стороне от проёмов (стена). Пары
+    «кандидат — точка» считаются один раз на наибольшую дальность, для
+    каждого варианта — жадное покрытие (у потолка ещё регулярная сетка);
+    лучший — core.option_score (меньше неозвученных, меньше штук, меньше
+    суммарная мощность).
+
+    Возвращает (вариант, [(x, y, нормаль или None)], не озвучено, всего
+    точек) или None, если сетку не построить.
     """
+    room, level_z = task.room, task.level_z
     grid = room_grid(room, level_z)
-    if grid is None:
-        return [], 0, 0
+    if grid is None or not options:
+        return None
     samples = grid.points()
     if on_wall:
-        candidates = core.wall_candidates(
-            _inward_segments(room, level_z), openings, margin, grid.step * 2.0)
+        segments = _inward_segments(room, level_z) + _column_segments(task.source, room, level_z)
+        candidates = core.wall_candidates(segments, openings, margin, grid.step)
     else:
         candidates = [grid.point((i, j)) for i, j in grid.nodes
                       if len(grid.nodes) <= 250 or (i % 2 == 0 and j % 2 == 0)]
     sight = None if grid.full else grid
-    sets = core.coverage(candidates, samples, reach_ft, sight, wall=on_wall)
-    chosen, uncovered = core.greedy_cover(candidates, sets, samples)
-    if not on_wall and uncovered == 0:
-        # Прямоугольное помещение — регулярная сетка (шаг R·√2 / ряд), если
-        # она озвучивает всё и выходит не больше оповещателей.
-        xs = [x for x, _ in samples]
-        ys = [y for _, y in samples]
-        cells = [p for p in core.lattice(min(xs), min(ys), max(xs), max(ys), reach_ft)
-                 if grid.inside(p[0], p[1])]
-        cell_sets = core.coverage(cells, samples, reach_ft, sight)
-        covered = set()
-        for item in cell_sets:
-            covered |= item
-        if cells and len(covered) == len(samples) and len(cells) <= len(chosen):
-            candidates, chosen = cells, list(range(len(cells)))
+    max_reach = max(option[2] for option in options)
+    pairs = core.coverage_pairs(candidates, samples, max_reach, sight, wall=on_wall)
+    xs = [x for x, _ in samples]
+    ys = [y for _, y in samples]
+
+    best = None
+    for option in options:
+        reach = option[2]
+        sets = core.sets_within(pairs, reach)
+        chosen, uncovered = core.greedy_cover(candidates, sets, samples)
+        points = [candidates[index] for index in chosen]
+        if not on_wall and uncovered == 0:
+            # Прямоугольное помещение — регулярная сетка (шаг R·√2 / ряд), если
+            # она озвучивает всё и выходит не больше оповещателей.
+            cells = [p for p in core.lattice(min(xs), min(ys), max(xs), max(ys), reach)
+                     if grid.inside(p[0], p[1])]
+            covered = set()
+            for item in core.coverage(cells, samples, reach, sight):
+                covered |= item
+            if cells and len(covered) == len(samples) and len(cells) <= len(points):
+                points = cells
+        score = core.option_score(uncovered, len(points), option[1])
+        if best is None or score < best[0]:
+            best = (score, option, points, uncovered)
+
+    _, option, points, uncovered = best
     placements = []
-    for index in chosen:
-        cand = candidates[index]
+    for cand in points:
         normal = XYZ(cand[2], cand[3], 0) if on_wall else None
         placements.append((cand[0], cand[1], normal))
-    return placements, uncovered, len(samples)
+    return option, placements, uncovered, len(samples)
 
 
 class RoomTask(object):
@@ -454,7 +535,10 @@ class RoomTask(object):
 class ReportRow(object):
     """Строка отчёта по расчёту помещения."""
 
-    def __init__(self, task, category, noise, mount, height_mm, reach_m, count, uncovered, samples):
+    def __init__(self, task, category, noise, mount, height_mm, reach_m, count, uncovered, samples,
+                 speaker=u"", tap=None):
+        self.speaker = speaker
+        self.tap = tap
         self.link = task.source.label
         self.name = task.name
         self.room_id = task.room.Id.IntegerValue
@@ -478,12 +562,31 @@ class RoomSource(object):
         self.label = label
         self.element_id = element_id
         self._openings = None
+        self._columns = None
 
     def rooms(self):
         collector = (FilteredElementCollector(self.doc)
                      .OfCategory(BuiltInCategory.OST_Rooms)
                      .WhereElementIsNotElementType())
         return [room for room in collector if _room_placed(room)]
+
+    def columns(self):
+        """Габариты колонн документа: [(x0, y0, x1, y1, z0, z1)] (координаты документа)."""
+        if self._columns is None:
+            self._columns = []
+            for category in (BuiltInCategory.OST_Columns, BuiltInCategory.OST_StructuralColumns):
+                collector = (FilteredElementCollector(self.doc)
+                             .OfCategory(category)
+                             .WhereElementIsNotElementType())
+                for element in collector:
+                    try:
+                        bbox = element.get_BoundingBox(None)
+                    except Exception:
+                        bbox = None
+                    if bbox is not None:
+                        self._columns.append((bbox.Min.X, bbox.Min.Y, bbox.Max.X, bbox.Max.Y,
+                                              bbox.Min.Z, bbox.Max.Z))
+        return self._columns
 
     def openings(self, clearance_mm):
         if self._openings is None:
@@ -599,7 +702,27 @@ class Result(object):
         self.report = []
 
 
-def _place(doc, task, placements, symbol, height_mm, text, room_param, result):
+def _write_tap(instance, power_name, tap):
+    """Отвод мощности в параметр экземпляра (если он есть и записываемый)."""
+    if not power_name or tap is None:
+        return
+    try:
+        param = instance.LookupParameter(power_name)
+        if param is None or param.IsReadOnly:
+            return
+        text = u"{:g}".format(float(tap))
+        if param.StorageType == StorageType.String:
+            param.Set(text)
+        elif param.StorageType == StorageType.Double:
+            param.SetValueString(text)
+        elif param.StorageType == StorageType.Integer:
+            param.Set(int(round(tap)))
+    except Exception:
+        pass
+
+
+def _place(doc, task, placements, symbol, height_mm, text, room_param, result,
+           power_name=None, tap=None):
     dedupe = mm_to_ft(DEDUPE_MM)
     done = []
     for x, y, normal in placements:
@@ -611,6 +734,7 @@ def _place(doc, task, placements, symbol, height_mm, text, room_param, result):
         instance = create_on_level(doc, host.X, host.Y, height_mm, symbol, task.level)
         if normal is not None:
             align_facing(doc, instance, transform.OfVector(normal))
+        _write_tap(instance, power_name, tap)
         if room_param and text and not set_text_param(instance, room_param, text):
             result.diagnostics.append(u"Оповещатель Id {}: не удалось записать «{}».".format(
                 instance.Id.IntegerValue, room_param))
@@ -663,74 +787,85 @@ def _ceiling(probe, task):
     return kind, (origin.Z + distance - task.level.ProjectElevation) * FT_TO_MM
 
 
-def _place_room(task, settings, symbols, speakers, table, probe, result):
-    """Помещение объекта: потолочный при подвесном потолке, иначе настенный; по расчёту."""
-    from lowlife.soue_floor_settings import SYMBOL_WALL, SYMBOL_CEILING
+def _options(speakers, kind, noise, height_mm):
+    """[(Speaker, отвод, дальность в футах)] исполнения kind без заведомо худших."""
+    raw = []
+    for speaker in speakers:
+        if speaker.kind != kind:
+            continue
+        for tap in speaker.taps:
+            _, reach_m = core.room_reach(speaker.spl, tap, noise, height_mm / 1000.0)
+            if reach_m > 0:
+                raw.append(((speaker, tap), tap, mm_to_ft(reach_m * 1000.0)))
+    return [(key[0], key[1], reach) for key, _, reach in core.reduce_options(raw)]
+
+
+def _place_room(task, settings, speakers, table, probe, result):
+    """
+    Помещение объекта: при подвесном потолке — потолочные (если в проекте
+    есть потолочные оповещатели), иначе настенные (на стены и колонны);
+    оповещатель и отвод — лучший по расчёту из всех подходящих типов
+    проекта. Возвращает (места, вариант, высота мм) или (None, None, None).
+    """
     row = table.get(task.key)
     noise = row.effective_noise() if row is not None else None
+    room_id = task.room.Id.IntegerValue
     if noise is None:
         result.skipped_no_noise += 1
         result.diagnostics.append(u"{}: помещение «{}» Id {} — не задан уровень шума, пропущено.".format(
-            task.source.label, task.name, task.room.Id.IntegerValue))
+            task.source.label, task.name, room_id))
         return None, None, None
     category = row.category if row is not None else u""
 
-    role = SYMBOL_WALL
+    on_wall = True
     height_mm = float(settings.get("room_wall_height_mm") or 0.0)
     mount_text = u"стена"
-    if SYMBOL_CEILING in symbols:
+    if any(speaker.kind == core.KIND_CEILING for speaker in speakers):
         kind, ceiling_mm = _ceiling(probe, task)
         if kind == core.CEILING_SUSPENDED:
-            role, height_mm, mount_text = SYMBOL_CEILING, ceiling_mm, u"подвесной потолок"
-    if role not in symbols:
-        result.failed[task.role] += 1
-        result.diagnostics.append(u"{}: помещение «{}» Id {} — не выбран настенный тип.".format(
-            task.source.label, task.name, task.room.Id.IntegerValue))
-        return None, None, None
-    spl, power, _ = speakers[role]
-    on_wall = role == SYMBOL_WALL
-    _, reach_m = core.room_reach(spl, power, noise, height_mm / 1000.0)
-    if reach_m <= 0:
+            on_wall, height_mm, mount_text = False, ceiling_mm, u"подвесной потолок"
+    options = _options(speakers, core.KIND_WALL if on_wall else core.KIND_CEILING, noise, height_mm)
+    if not options:
         result.failed[task.role] += 1
         result.diagnostics.append(
-            u"{}: помещение «{}» Id {} — оповещатель (SPL {:.0f} дБ, {} Вт, h {:.0f} мм) не "
-            u"даёт {:.0f} дБА на высоте 1,5 м; не поставлен.".format(
-                task.source.label, task.name, task.room.Id.IntegerValue, float(spl), power,
-                float(height_mm), float(noise + core.EXCESS_DB)))
+            u"{}: помещение «{}» Id {} — ни один {} оповещатель проекта не даёт {:.0f} дБА "
+            u"на высоте 1,5 м (h {:.0f} мм).".format(
+                task.source.label, task.name, room_id, u"настенный" if on_wall else u"потолочный",
+                float(noise + core.EXCESS_DB), float(height_mm)))
         return None, None, None
     near = []
     if on_wall:
         near = _room_openings(task.room, task.source.openings(settings.get("opening_clearance_mm") or 0.0))
     margin = mm_to_ft(settings.get("wall_margin_mm") or 0.0)
-    placements, uncovered, samples = plan_calculated(
-        task.room, task.level_z, on_wall, mm_to_ft(reach_m * 1000.0), near, margin)
-    result.report.append(ReportRow(task, category, noise, mount_text, height_mm, reach_m,
-                                   len(placements), uncovered, samples))
+    planned = plan_best(task, on_wall, options, near, margin)
+    if planned is None:
+        return [], None, height_mm
+    option, placements, uncovered, samples = planned
+    speaker, tap, reach_ft = option
+    result.report.append(ReportRow(task, category, noise, mount_text, height_mm, reach_ft * FT_TO_MM / 1000.0,
+                                   len(placements), uncovered, samples,
+                                   speaker.label, tap))
     if uncovered:
         result.diagnostics.append(
             u"{}: помещение «{}» Id {} — {} из {} расчётных точек не озвучить "
             u"(нет подходящего места для оповещателя).".format(
-                task.source.label, task.name, task.room.Id.IntegerValue, uncovered, samples))
-    return placements, symbols[role], height_mm
+                task.source.label, task.name, room_id, uncovered, samples))
+    return placements, option, height_mm
 
 
-def run(doc, levels, tasks, settings, symbols, table, progress=None):
+def run(doc, levels, tasks, settings, apartment_symbol, speakers, table, progress=None):
     """
-    levels — отмеченные уровни (на них удаляются старые экземпляры), tasks — из gather, symbols — из find_symbols, table — {ключ: RoomRow}.
-    Всё внутри уже открытой транзакции. progress(i, n) — необязательный.
-    Возвращает Result.
+    levels — отмеченные уровни (на них удаляются старые экземпляры), tasks —
+    из gather, apartment_symbol — тип для квартир (или None), speakers — из
+    collect_speakers, table — {ключ: RoomRow}. Всё внутри уже открытой
+    транзакции. progress(i, n) — необязательный. Возвращает Result.
     """
-    from lowlife.soue_floor_settings import SYMBOL_APARTMENT, SYMBOL_WALL
     result = Result()
-
-    speakers = {}
-    for role, symbol in symbols.items():
-        speakers[role] = speaker_data(doc, symbol, settings)
-        result.diagnostics.extend(speakers[role][2])
+    power_name = (settings.get("power_param_name") or u"").strip()
 
     unique = []
-    for symbol in symbols.values():
-        if all(symbol.Id != other.Id for other in unique):
+    for symbol in [apartment_symbol] + [speaker.symbol for speaker in speakers]:
+        if symbol is not None and all(symbol.Id != other.Id for other in unique):
             unique.append(symbol)
     for symbol in unique:
         activate_symbol(doc, symbol)
@@ -743,28 +878,32 @@ def run(doc, levels, tasks, settings, symbols, table, progress=None):
         for index, task in enumerate(tasks):
             if progress is not None:
                 progress(index, len(tasks))
-            if task.role == core.ROLE_APARTMENT and SYMBOL_APARTMENT not in symbols:
+            if task.role == core.ROLE_APARTMENT and apartment_symbol is None:
                 continue
-            if task.role == core.ROLE_ROOM and SYMBOL_WALL not in symbols:
+            if task.role == core.ROLE_ROOM and not speakers:
                 continue
             result.rooms[task.role] += 1
             try:
+                tap = None
                 if task.role == core.ROLE_APARTMENT:
-                    symbol = symbols[SYMBOL_APARTMENT]
+                    symbol = apartment_symbol
                     placements, height_mm = _place_apartment(task, settings, probe, result)
                     text = task.lot
                 else:
-                    placements, symbol, height_mm = _place_room(
-                        task, settings, symbols, speakers, table, probe, result)
+                    placements, option, height_mm = _place_room(
+                        task, settings, speakers, table, probe, result)
                     if placements is None:
                         continue
+                    if option is not None:
+                        symbol, tap = option[0].symbol, option[1]
                     text = task.name
                 if not placements:
                     result.failed[task.role] += 1
                     result.diagnostics.append(u"{}: помещение «{}» Id {} — не найдена точка.".format(
                         task.source.label, task.name, task.room.Id.IntegerValue))
                     continue
-                _place(doc, task, placements, symbol, height_mm, text, room_param, result)
+                _place(doc, task, placements, symbol, height_mm, text, room_param, result,
+                       power_name, tap)
             except Exception as ex:
                 result.failed[task.role] += 1
                 result.diagnostics.append(u"{}: помещение «{}» Id {} — ошибка: {}".format(
