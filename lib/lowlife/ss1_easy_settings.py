@@ -110,6 +110,17 @@ SETTINGS = settings_core.TextSettings(
             default=2700.0, minimum=0,
         ),
         settings_core.NumberField(
+            "feed_wall_inset_mm",
+            u"",
+            u"Отступ подвода от грани стены внутрь прихожей",
+            hint=(
+                u"Подвод ставится на грань стены двери со стороны прихожей (грань "
+                u"берётся из геометрии стены, а не по половине толщины). 0 — точно "
+                u"на грани."
+            ),
+            default=0.0, minimum=0,
+        ),
+        settings_core.NumberField(
             "level_tolerance_mm",
             u"",
             u"Допуск по высоте при сопоставлении уровней",
@@ -120,8 +131,54 @@ SETTINGS = settings_core.TextSettings(
             ),
             default=100.0, minimum=0,
         ),
+        settings_core.TextField(
+            "address_param",
+            u"④ Адрес устройства (кабельный подвод)",
+            u"Параметр подвода «Адрес устройства»",
+            hint=u"Куда записать адрес. Пусто — адрес не заполняется.",
+            default=u"",
+        ),
+        settings_core.TextField(
+            "address_mask",
+            u"",
+            u"Маска адреса",
+            hint=(
+                u"A — номер этажа, B — номер секции, C — номер квартиры; остальные "
+                u"символы остаются как есть (буквы можно латинские или русские "
+                u"А, В, С). «A.B.C» → «3.1.45»."
+            ),
+            default=u"A.B.C",
+        ),
+        settings_core.TextField(
+            "address_floor_param",
+            u"",
+            u"A — параметр номера этажа",
+            hint=(
+                u"Значения A, B, C берутся сначала у самого подвода (после заполнения "
+                u"LOI), а если там пусто — у прихожей в связи АР."
+            ),
+            default=u"",
+        ),
+        settings_core.TextField(
+            "address_section_param",
+            u"",
+            u"B — параметр номера секции",
+            default=u"",
+        ),
+        settings_core.TextField(
+            "address_apartment_param",
+            u"",
+            u"C — параметр номера квартиры",
+            default=u"",
+        ),
     ],
-    width=760, height=640,
+    intro=(
+        u"Значения сохраняются и подставляются при следующих запусках. После "
+        u"расстановки кнопка сама заполняет LOI у поставленных кроссов и подводов — "
+        u"по настройкам кнопки «Заполнение LOI» (какие параметры копировать из "
+        u"«Форм» и в каких моделях их искать)."
+    ),
+    width=760, height=700,
 )
 
 REQUIRED_KEYS = ["target_room_name", "neighbor_room_names", "lot_param_name"]

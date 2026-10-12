@@ -148,3 +148,53 @@ def pick_shaft(x, y, section, shafts):
     if not same:
         return None, "no_section"
     return nearest(same), None
+
+
+def face_distance(offsets, sign, fallback, tol=1e-6):
+    """
+    Расстояние от точки двери до грани стены с нужной стороны.
+
+    offsets  — смещения граней стены от точки двери вдоль FacingOrientation
+               (со знаком; точка двери лежит на линии привязки стены, а она
+               бывает и по оси, и по любой грани — поэтому половина толщины
+               стены годится только как запасной вариант);
+    sign     — +1 / -1: сторона (по FacingOrientation или против);
+    fallback — что вернуть, если граней с этой стороны нет (половина
+               толщины стены).
+    Берётся самая дальняя грань с этой стороны (внешняя грань стены, а не
+    граница слоя). Грань ровно в точке двери (смещение 0) годится для
+    обеих сторон.
+    """
+    distances = [offset * sign for offset in offsets if offset * sign >= -tol]
+    if not distances:
+        return fallback
+    return max(0.0, max(distances))
+
+
+ADDRESS_LETTERS = {
+    u"A": u"A", u"А": u"A",   # латинская и русская
+    u"B": u"B", u"В": u"B",
+    u"C": u"C", u"С": u"C",
+}
+
+
+def format_address(mask, values):
+    """
+    Адрес устройства по маске: буквы A, B, C (латинские или русские А, В, С)
+    заменяются значениями values["A"/"B"/"C"], остальные символы маски
+    остаются как есть («A.B.C» → «3.1.45»). Возвращает (адрес, [буквы без
+    значения]) — буква без значения заменяется пустой строкой.
+    """
+    parts = []
+    missing = []
+    for char in mask or u"":
+        letter = ADDRESS_LETTERS.get(char)
+        if letter is None:
+            parts.append(char)
+            continue
+        value = values.get(letter)
+        value = u"" if value is None else _text(value).strip()
+        if not value and letter not in missing:
+            missing.append(letter)
+        parts.append(value)
+    return u"".join(parts), missing

@@ -78,3 +78,26 @@ def test_pick_shaft_by_section_then_nearest():
     # секция помещения не заполнена — ближайшая с предупреждением
     assert core.pick_shaft(9.0, 0.0, u"", shafts) == ("B", "no_room_section")
     assert core.pick_shaft(0.0, 0.0, u"1", []) == (None, "no_shafts")
+
+
+def test_face_distance_axis_and_face_location_lines():
+    # линия привязки по оси: грани на ±0.5
+    assert core.face_distance([0.5, -0.5], 1, 0.5) == 0.5
+    assert core.face_distance([0.5, -0.5], -1, 0.5) == 0.5
+    # линия привязки по грани: одна грань в точке двери, другая на -1.0
+    assert core.face_distance([0.0, -1.0], 1, 0.5) == 0.0
+    assert core.face_distance([0.0, -1.0], -1, 0.5) == 1.0
+    # слои: берётся внешняя грань
+    assert core.face_distance([0.2, 0.6, -0.4], 1, 0.5) == 0.6
+    # граней нет — половина толщины
+    assert core.face_distance([], 1, 0.5) == 0.5
+
+
+def test_format_address():
+    values = {"A": u"3", "B": u"1", "C": u"45"}
+    assert core.format_address(u"A.B.C", values) == (u"3.1.45", [])
+    # русские буквы в маске
+    assert core.format_address(u"А.В.С", values) == (u"3.1.45", [])
+    assert core.format_address(u"Кв C (A-B)", values) == (u"Кв 45 (3-1)", [])
+    assert core.format_address(u"A.B.C", {"A": u"3", "B": u" "}) == (u"3..", [u"B", u"C"])
+    assert core.format_address(u"", values) == (u"", [])
