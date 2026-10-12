@@ -9,8 +9,8 @@ __doc__ = (
     u"на высоте 1,5 м): настенные (на стены и колонны), а при подвесном потолке — "
     u"потолочные. Оповещатель и отвод подбираются из всех типов проекта с "
     u"параметрами SPL/мощность/исполнение, уровень шума — из таблицы помещений "
-    u"объекта. Перед расстановкой все экземпляры выбранных типов на "
-    u"отмеченных уровнях удаляются.\n\n"
+    u"объекта. Если на отмеченных уровнях уже есть оповещатели, кнопка спросит: "
+    u"удалить их и расставить заново или оснастить только помещения без них.\n\n"
     u"Shift+клик — настройки (оповещатель квартир, найденные оповещатели, таблица "
     u"помещений: шум и исключения, параметры)."
 )
@@ -58,6 +58,23 @@ levels = soue_floor.ask_levels(doc, TITLE)
 if not levels:
     script.exit()
 
+REPLACE = u"Удалить и расставить заново"
+KEEP = u"Не удалять: оснастить только помещения без оповещателей"
+existing = soue_floor.existing_points(doc, soue_floor.speaker_symbols(apartment_symbol, speakers), levels)
+existing_count = sum(len(points) for points in existing.values())
+replace = True
+if existing_count:
+    answer = forms.alert(
+        u"На отмеченных уровнях уже стоит оповещателей: {}.\n\n"
+        u"«{}» — все они (экземпляры типа квартир и всех типов с параметром SPL) удаляются, "
+        u"включая поставленные вручную.\n"
+        u"«{}» — ничего не удаляется; помещения, где оповещатель уже есть, пропускаются.".format(
+            existing_count, REPLACE, KEEP),
+        title=TITLE, options=[REPLACE, KEEP])
+    if not answer:
+        script.exit()
+    replace = answer == REPLACE
+
 table = soue_floor_settings.load_room_table()
 tasks, messages = soue_floor.gather(doc, levels, settings, table)
 if not tasks:
@@ -79,7 +96,7 @@ with forms.ProgressBar(title=u"СОУЭ: помещения {value} из {max_va
 
     with revit.Transaction(u"СОУЭ: оповещатели"):
         result = soue_floor.run(doc, levels, tasks, settings, apartment_symbol, speakers, table,
-                                progress)
+                                progress, replace)
 
 
 output = script.get_output()
@@ -94,6 +111,8 @@ for role, label in labels:
         line += u", не удалось {}".format(result.failed[role])
     lines.append(line)
     output.print_md(u"- " + line)
+if result.skipped_existing:
+    output.print_md(u"- пропущено помещений, где оповещатель уже стоит: {}".format(result.skipped_existing))
 if result.skipped_no_noise:
     output.print_md(u"- пропущено без уровня шума: {}".format(result.skipped_no_noise))
 if result.report:
@@ -119,6 +138,8 @@ if diagnostics:
         print(line)
 
 message = u"Готово.\n\nУдалено старых: {}\n\n{}".format(result.deleted, u"\n".join(lines))
+if result.skipped_existing:
+    message += u"\n\nПропущено помещений с оповещателями: {}".format(result.skipped_existing)
 if diagnostics:
     message += u"\n\nСообщений диагностики: {} — см. отчёт.".format(len(diagnostics))
 forms.alert(message, title=TITLE)

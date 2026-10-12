@@ -698,6 +698,7 @@ class Result(object):
         self.placed = dict((role, 0) for role in core.ROLES)
         self.failed = dict((role, 0) for role in core.ROLES)
         self.skipped_no_noise = 0
+        self.skipped_existing = 0
         self.diagnostics = []
         self.report = []
 
@@ -853,24 +854,82 @@ def _place_room(task, settings, speakers, table, probe, result):
     return placements, option, height_mm
 
 
-def run(doc, levels, tasks, settings, apartment_symbol, speakers, table, progress=None):
-    """
-    levels — отмеченные уровни (на них удаляются старые экземпляры), tasks —
-    из gather, apartment_symbol — тип для квартир (или None), speakers — из
-    collect_speakers, table — {ключ: RoomRow}. Всё внутри уже открытой
-    транзакции. progress(i, n) — необязательный. Возвращает Result.
-    """
-    result = Result()
-    power_name = (settings.get("power_param_name") or u"").strip()
-
+def speaker_symbols(apartment_symbol, speakers):
+    """Все типы, которые кнопка ставит (без повторов)."""
     unique = []
     for symbol in [apartment_symbol] + [speaker.symbol for speaker in speakers]:
         if symbol is not None and all(symbol.Id != other.Id for other in unique):
             unique.append(symbol)
+    return unique
+
+
+def existing_points(doc, symbols, levels):
+    """
+    Уже стоящие экземпляры типов symbols на уровнях levels:
+    {Id уровня: [точка XYZ в координатах модели]}.
+    """
+    from Autodesk.Revit.DB import FamilyInstance
+    type_ids = set(symbol.Id.IntegerValue for symbol in symbols)
+    level_ids = set(level.Id.IntegerValue for level in levels)
+    result = {}
+    for instance in FilteredElementCollector(doc).OfClass(FamilyInstance):
+        try:
+            if instance.GetTypeId().IntegerValue not in type_ids:
+                continue
+            level_id = ss1_easy._instance_level_id(instance)
+            if level_id is None or level_id.IntegerValue not in level_ids:
+                continue
+            location = instance.Location
+            if not isinstance(location, LocationPoint):
+                continue
+            result.setdefault(level_id.IntegerValue, []).append(location.Point)
+        except Exception:
+            continue
+    return result
+
+
+def _room_has_speaker(task, points):
+    """В помещении задачи уже стоит оповещатель (точка из existing_points)."""
+    if not points:
+        return False
+    inverse = task.source.transform.Inverse
+    probe_z = task.level_z + mm_to_ft(ROOM_PROBE_HEIGHT_MM)
+    try:
+        bbox = task.room.get_BoundingBox(None)
+    except Exception:
+        bbox = None
+    for point in points:
+        local = inverse.OfPoint(point)
+        if bbox is not None and not (bbox.Min.X <= local.X <= bbox.Max.X
+                                     and bbox.Min.Y <= local.Y <= bbox.Max.Y):
+            continue
+        if _point_in_room(task.room, local.X, local.Y, probe_z):
+            return True
+    return False
+
+
+def run(doc, levels, tasks, settings, apartment_symbol, speakers, table, progress=None,
+        replace=True):
+    """
+    levels — отмеченные уровни, tasks — из gather, apartment_symbol — тип
+    для квартир (или None), speakers — из collect_speakers, table — {ключ:
+    RoomRow}. replace=True — старые экземпляры этих типов на отмеченных
+    уровнях удаляются и всё ставится заново; False — ничего не удаляется,
+    помещения, где оповещатель уже стоит, пропускаются. Всё внутри уже
+    открытой транзакции. progress(i, n) — необязательный. Возвращает Result.
+    """
+    result = Result()
+    power_name = (settings.get("power_param_name") or u"").strip()
+
+    unique = speaker_symbols(apartment_symbol, speakers)
     for symbol in unique:
         activate_symbol(doc, symbol)
-    level_ids = set(level.Id.IntegerValue for level in levels)
-    result.deleted = sum(delete_old(doc, unique, level_ids).values())
+    existing = {}
+    if replace:
+        level_ids = set(level.Id.IntegerValue for level in levels)
+        result.deleted = sum(delete_old(doc, unique, level_ids).values())
+    else:
+        existing = existing_points(doc, unique, levels)
 
     room_param = (settings.get("room_target_param") or u"").strip()
     probe = CeilingProbe(doc)
@@ -881,6 +940,9 @@ def run(doc, levels, tasks, settings, apartment_symbol, speakers, table, progres
             if task.role == core.ROLE_APARTMENT and apartment_symbol is None:
                 continue
             if task.role == core.ROLE_ROOM and not speakers:
+                continue
+            if existing and _room_has_speaker(task, existing.get(task.level.Id.IntegerValue)):
+                result.skipped_existing += 1
                 continue
             result.rooms[task.role] += 1
             try:
