@@ -19,13 +19,14 @@ def _cell(text):
     return unicode(text or u"").replace(u"|", u"/")
 
 
-def _report(output, results, missing_categories, view_3d, stage):
+def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0):
     output.print_md(u"# Проверка LOI")
     output.print_md(u"Этап: **{}**".format(stage.title) if stage is not None
                     else u"Проверка по своему списку параметров.")
     if view_3d is not None:
-        output.print_md(u"3D-вид с незаполненными элементами: {}".format(
-            output.linkify(view_3d.Id, view_3d.Name)))
+        output.print_md(u"3D-вид с незаполненными элементами: {} (оставлено {}, скрыто {})".format(
+            output.linkify(view_3d.Id, view_3d.Name),
+            sum(len(r.incomplete_rows) for r in results), hidden_3d))
     else:
         output.print_md(u"Незаполненных элементов нет — 3D-вид не обновлялся (если он есть, на нём результат прошлого запуска).")
     if missing_categories:
@@ -130,9 +131,9 @@ def main():
                 continue
             res.schedule, res.missing_fields = loi_check.build_schedule(
                 doc, res.category, res.rows, floor_param)
-        view_3d = loi_check.build_3d_view(doc, incomplete)
+        view_3d, hidden_3d = loi_check.build_3d_view(doc, incomplete)
 
-    _report(script.get_output(), results, missing_categories, view_3d, stage)
+    _report(script.get_output(), results, missing_categories, view_3d, stage, hidden_3d)
 
     if view_3d is not None:
         total = len(incomplete)

@@ -79,9 +79,7 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     tray_types = find_cable_tray_types(doc, tray_type_filter)
     if not tray_types:
         forms.alert(
-            u"Не найден тип лотка, содержащий «{}» в имени.
-
-"
+            u"Не найден тип лотка, содержащий «{}» в имени.\n\n"
             u"Создайте в проекте тип кабельного лотка с таким текстом в имени "
             u"или поменяйте текст в настройках кнопки (Shift+клик).".format(tray_type_filter),
             exitscript=True
@@ -98,9 +96,7 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     worksets = find_worksets(doc, workset_filter)
     if not worksets:
         forms.alert(
-            u"Не найден рабочий набор, содержащий «{}» в имени.
-
-"
+            u"Не найден рабочий набор, содержащий «{}» в имени.\n\n"
             u"Создайте такой рабочий набор или поменяйте текст в настройках "
             u"кнопки (Shift+клик).".format(workset_filter),
             exitscript=True
