@@ -5,7 +5,7 @@ __author__ = "Pipers"
 
 import traceback
 
-from pyrevit import revit, forms
+from pyrevit import revit, forms, EXEC_PARAMS
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -30,15 +30,29 @@ def _target_views():
 
 
 def main():
-    from lowlife import view_range, family_section_settings as fss, level_name_template
+    from lowlife import view_range, view_range_settings as vrs, level_name_template
     from lowlife.geometry import level_name
+
+    try:
+        config_mode = bool(EXEC_PARAMS.config_mode)
+    except Exception:
+        config_mode = False
+
+    if config_mode:
+        edited = vrs.get_settings_interactive()
+        forms.alert(
+            u"Отменено, настройки не изменены." if edited is None
+            else u"Настройки сохранены.",
+            title=TITLE
+        )
+        return
 
     views = _target_views()
     if not views:
         return
 
     level_template = level_name_template.LevelNameTemplate(
-        fss.get_settings_silent()[fss.LEVEL_TEMPLATE_KEY])
+        vrs.get_settings_silent()[vrs.LEVEL_TEMPLATE_KEY])
 
     with revit.Transaction(TITLE):
         results = [view_range.align_view_range(doc, v, level_template) for v in views]
