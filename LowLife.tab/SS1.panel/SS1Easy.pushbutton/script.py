@@ -6,10 +6,12 @@ __doc__ = (
     u"отмеченном уровне, через который шахта проходит. Кабельные подводы: у "
     u"двери из прихожей в коридор/вестибюль по связи АР (у двухуровневой "
     u"квартиры — только в нижней прихожей), со стороны квартиры. Цепи: от "
-    u"кросса №1 шахты своей секции к каждому подводу. Перед расстановкой все "
+    u"кросса №1 шахты своей секции к каждому подводу. Потом — заполнение LOI "
+    u"(по настройкам «Заполнение LOI») и адрес устройства подводов по маске. "
+    u"Перед расстановкой все "
     u"экземпляры выбранных типоразмеров кросса и подвода на отмеченных "
     u"уровнях удаляются.\n\n"
-    u"Shift+клик — настройки (шахта СС, семейства и типы кросса и подвода, помещения, параметры, высоты)."
+    u"Shift+клик — настройки (шахта СС, семейства и типы кросса и подвода, помещения, параметры, высоты, адрес)."
 )
 __author__ = "Pipers"
 
@@ -53,7 +55,7 @@ levels, offset_mm = ss1_easy.ask_levels_and_offset(doc, settings["feed_height_mm
 if not levels:
     script.exit()
 
-with revit.Transaction(u"СС1-8Mile: кроссы, кабельные подводы и цепи"):
+with revit.Transaction(u"СС1-8Mile: кроссы, подводы, цепи, LOI, адреса"):
     result = ss1_easy.run(doc, levels, offset_mm, settings, cross_symbol, feed_symbol)
 
 
@@ -74,6 +76,12 @@ if result.feeds_unoriented:
 output.print_md(u"### Цепи кросс №1 → подвод")
 output.print_md(u"- создано: {}".format(result.circuits))
 output.print_md(u"- не создано: {}".format(result.circuits_failed))
+output.print_md(u"### LOI и адрес")
+if result.loi_skipped:
+    output.print_md(u"- LOI не заполнено: {}".format(result.loi_skipped))
+else:
+    output.print_md(u"- LOI заполнено у элементов: {}".format(result.loi_filled))
+output.print_md(u"- адресов подводов записано: {}".format(result.addresses))
 if result.diagnostics:
     output.print_md(u"### Диагностика")
     for line in result.diagnostics:
@@ -84,10 +92,13 @@ message = (
     u"Готово.\n\n"
     u"Шахт СС: {}\nКроссов установлено: {} (удалено старых: {})\n\n"
     u"Подходящих дверей: {}\nПодводов установлено: {} (удалено старых: {})\n\n"
-    u"Цепей создано: {} (не создано: {})"
+    u"Цепей создано: {} (не создано: {})\n"
+    u"LOI заполнено: {}\nАдресов записано: {}"
 ).format(result.shafts, result.crosses, result.deleted_crosses,
          result.doors, result.feeds, result.deleted_feeds,
-         result.circuits, result.circuits_failed)
+         result.circuits, result.circuits_failed,
+         result.loi_filled if not result.loi_skipped else u"нет — " + result.loi_skipped,
+         result.addresses)
 if warnings:
     message += u"\n\nПомещений без имени лота: {} — см. отчёт.".format(len(warnings))
 if len(result.diagnostics) > len(warnings):
