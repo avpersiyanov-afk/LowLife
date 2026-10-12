@@ -2,22 +2,22 @@
 
 __title__ = u"СОУЭ - расстановка\nтиповой этаж"
 __doc__ = (
-    u"Расстановка оповещателей СОУЭ на типовом этаже по помещениям связи АР: "
-    u"в каждой квартире (лоте) — один на стене прихожей (или в первом найденном "
-    u"помещении из списка в настройках), в коридорах МОП и лифтовых холлах — по "
-    u"акустическому расчёту (количество и места — чтобы уровень звука везде был "
-    u"не ниже шума + 15 дБ). Для квартир, коридоров и лифтовых холлов — свой тип "
-    u"оповещателя, установка на стену или на потолок и высота; потолок "
-    u"определяется сам — подвесной (оповещатель в его плоскость) или перекрытие "
-    u"(свой тип под плитой). Перед расстановкой все экземпляры выбранных типов "
-    u"на отмеченных уровнях удаляются.\n\n"
-    u"Shift+клик — настройки (семейства и типы, установка, высоты, расчёт, помещения, параметры)."
+    u"Расстановка оповещателей СОУЭ по всем помещениям связей АР на отмеченных "
+    u"уровнях: в каждой квартире (лоте) — один на стене прихожей (или в первом "
+    u"найденном помещении из списка в настройках); во всех остальных помещениях, "
+    u"кроме исключённых, — по акустическому расчёту (уровень не ниже шума + 15 дБ "
+    u"на высоте 1,5 м): настенные, а при подвесном потолке — потолочные. SPL и "
+    u"мощность берутся из параметров оповещателя, уровень шума — из таблицы "
+    u"помещений объекта. Перед расстановкой все экземпляры выбранных типов на "
+    u"отмеченных уровнях удаляются.\n\n"
+    u"Shift+клик — настройки (типы оповещателей, таблица помещений: шум и исключения, "
+    u"параметры)."
 )
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
-from lowlife import soue_floor, soue_floor_settings
+from lowlife import soue_floor, soue_floor_rooms, soue_floor_settings
 
 doc = revit.doc
 TITLE = u"СОУЭ - расстановка типовой этаж"
@@ -49,55 +49,65 @@ levels = soue_floor.ask_levels(doc, TITLE)
 if not levels:
     script.exit()
 
-with revit.Transaction(u"СОУЭ: оповещатели типового этажа"):
-    result = soue_floor.run(doc, levels, settings, symbols)
+table = soue_floor_settings.load_room_table()
+tasks, messages = soue_floor.gather(doc, levels, settings, table)
+if not tasks:
+    forms.alert(u"На отмеченных уровнях нет помещений для оснащения.", title=TITLE, exitscript=True)
+
+if soue_floor_settings.SYMBOL_WALL in symbols:
+    lacking = soue_floor.missing_noise_rows(tasks, table)
+    if lacking:
+        if soue_floor_rooms.ask_missing_noise(lacking) is None:
+            script.exit()
+        table = soue_floor_settings.load_room_table()
+        # исключённые только что — убрать из расстановки
+        tasks, messages = soue_floor.gather(doc, levels, settings, table)
+
+with forms.ProgressBar(title=u"СОУЭ: помещения {value} из {max_value}", cancellable=False) as bar:
+    def progress(index, total):
+        if index % 5 == 0:
+            bar.update_progress(index, total)
+
+    with revit.Transaction(u"СОУЭ: оповещатели"):
+        result = soue_floor.run(doc, levels, tasks, settings, symbols, table, progress)
 
 
 output = script.get_output()
 output.print_md(u"## СОУЭ - расстановка типовой этаж")
 output.print_md(u"**Уровни:** " + u", ".join(level.Name for level in levels))
 output.print_md(u"- удалено старых оповещателей: {}".format(result.deleted))
-output.print_md(u"- связей просмотрено: {}".format(result.links))
+labels = [(soue_floor.core.ROLE_APARTMENT, u"Квартиры"), (soue_floor.core.ROLE_ROOM, u"Остальные помещения")]
 lines = []
-for role, _, _, mount_key, height_key, label, _, _ in soue_floor_settings.ROLE_KEYS:
-    if role not in symbols:
-        continue
-    mount = dict(soue_floor_settings.MOUNT_LABELS).get(settings.get(mount_key), u"")
-    line = u"{}: помещений {}, установлено {}".format(
-        label, result.rooms[role], result.placed[role])
+for role, label in labels:
+    line = u"{}: помещений {}, оповещателей {}".format(label, result.rooms[role], result.placed[role])
     if result.failed[role]:
-        line += u", ошибок {}".format(result.failed[role])
+        line += u", не удалось {}".format(result.failed[role])
     lines.append(line)
-    output.print_md(u"### {}".format(label))
-    if settings.get(mount_key) == soue_floor_settings.core.MOUNT_WALL:
-        output.print_md(u"- установка: на стену, {:.0f} мм от уровня".format(
-            float(settings.get(height_key) or 0.0)))
-    else:
-        output.print_md(u"- установка: {} (высота — по потолку/перекрытию)".format(mount.lower()))
-    output.print_md(u"- помещений: {}".format(result.rooms[role]))
-    output.print_md(u"- установлено оповещателей: {}".format(result.placed[role]))
-    if result.failed[role]:
-        output.print_md(u"- не удалось: {}".format(result.failed[role]))
-if result.mop_rows:
-    output.print_md(u"### Акустический расчёт МОП")
-    table = []
-    for row in result.mop_rows:
-        table.append([
-            row.link, row.name, u"{}".format(row.room_id), row.ceiling,
+    output.print_md(u"- " + line)
+if result.skipped_no_noise:
+    output.print_md(u"- пропущено без уровня шума: {}".format(result.skipped_no_noise))
+if result.report:
+    output.print_md(u"### Акустический расчёт")
+    table_rows = []
+    for row in result.report:
+        table_rows.append([
+            row.link, row.level, row.name, u"{}".format(row.room_id), row.category or u"—",
+            u"{:.0f}".format(float(row.noise)), row.mount,
             u"{:.0f}".format(float(row.height_mm)), u"{:.1f}".format(float(row.reach_m)),
             u"{}".format(row.count),
             u"{} из {}".format(row.uncovered, row.samples) if row.uncovered else u"—",
         ])
     output.print_table(
-        table,
-        columns=[u"Связь", u"Помещение", u"Id", u"Установка", u"h, мм",
-                 u"R (L), м", u"Оповещателей", u"Не озвучено"])
-if result.diagnostics:
+        table_rows,
+        columns=[u"Связь", u"Уровень", u"Помещение", u"Id", u"Категория", u"N, дБА",
+                 u"Установка", u"h, мм", u"R (L), м", u"Оповещателей", u"Не озвучено"])
+diagnostics = messages + result.diagnostics
+if diagnostics:
     output.print_md(u"### Диагностика")
-    for line in result.diagnostics:
+    for line in diagnostics:
         print(line)
 
 message = u"Готово.\n\nУдалено старых: {}\n\n{}".format(result.deleted, u"\n".join(lines))
-if result.diagnostics:
-    message += u"\n\nСообщений диагностики: {} — см. отчёт.".format(len(result.diagnostics))
+if diagnostics:
+    message += u"\n\nСообщений диагностики: {} — см. отчёт.".format(len(diagnostics))
 forms.alert(message, title=TITLE)

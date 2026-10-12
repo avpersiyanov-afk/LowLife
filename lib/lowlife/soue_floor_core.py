@@ -9,18 +9,279 @@
 """
 
 import math
+import re
 
 from lowlife.ss1_easy_core import normalize, split_names  # noqa: F401 — реэкспорт
 
-# Роли помещений.
+try:
+    _to_text = unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3 (тесты)
+    _to_text = str
+
+_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+
+# Роли помещений: квартира (одно помещение на лот) и любое другое помещение
+# объекта (оповещатели по акустическому расчёту).
 ROLE_APARTMENT = "apartment"
-ROLE_CORRIDOR = "corridor"
-ROLE_LIFT_HALL = "lift_hall"
-ROLES = (ROLE_APARTMENT, ROLE_CORRIDOR, ROLE_LIFT_HALL)
+ROLE_ROOM = "room"
+ROLES = (ROLE_APARTMENT, ROLE_ROOM)
 
 # Способ установки.
 MOUNT_WALL = "wall"
 MOUNT_CEILING = "ceiling"
+
+# ------------------------------------------------------------
+# Исходные данные расчёта («Расчёт СОУЭ.xlsx», лист «Справочник»)
+# ------------------------------------------------------------
+
+# Превышение уровня оповещения над шумом, ослабление на границе ШДН (1 кГц),
+# ослабление через препятствие, высота расчётной точки над полом.
+EXCESS_DB = 15.0
+DN_LOSS_DB = 6.0
+OBSTACLE_DB = 0.0
+CALC_HEIGHT_M = 1.5
+
+# Категории помещений и уровень звука постоянного шума N, дБА («Стандарт на
+# проектные решения по слаботочным системам», разд. 3.3.4).
+CATEGORY_APARTMENT = u"Помещения лотов (квартир/апартаментов)"
+CATEGORY_MOP = u"МОП"
+NOISE_CATEGORIES = [
+    (CATEGORY_APARTMENT, 40.0),
+    (CATEGORY_MOP, 50.0),
+    (u"ПСН (торговля/ретейл)", 60.0),
+    (u"ПСН (кафе, рестораны)", 65.0),
+    (u"Санитарно-бытовые помещения", 50.0),
+    (u"Технические помещения вентмашин и насосных", 80.0),
+    (u"Технические помещения серверных и кроссовых", 65.0),
+    (u"Склады, кладовые и подсобные помещения, ПУИ", 55.0),
+    (u"Парковки", 70.0),
+    (u"Помещения диспетчерских служб", 70.0),
+    (u"Помещения УК (принято как МОП, требует согласования)", 50.0),
+]
+
+# Части имени помещения → категория (проверяются по порядку, первая
+# подходящая). Только подсказка для новой строки таблицы — пользователь
+# проверяет и правит.
+CATEGORY_KEYWORDS = [
+    (u"Парковки", [u"паркинг", u"автостоян", u"стоянк", u"парковк", u"рамп"]),
+    (u"Технические помещения вентмашин и насосных",
+     [u"венткамер", u"вентиляцион", u"насосн", u"итп", u"тепловой пункт", u"тепловой узел",
+      u"дгу", u"дизел", u"холодильн", u"чиллер", u"компрессор"]),
+    (u"Технические помещения серверных и кроссовых",
+     [u"сервер", u"кроссов", u"слаботоч", u"щитов", u"грщ", u"аппаратн", u"связи", u"трансформатор"]),
+    (u"Помещения диспетчерских служб", [u"диспетчер", u"охран", u"пожарн", u"цпу"]),
+    (u"Помещения УК (принято как МОП, требует согласования)", [u"управляющ", u"ук "]),
+    (u"ПСН (кафе, рестораны)", [u"кафе", u"ресторан", u"столов", u"бар ", u"кухня ресторан"]),
+    (u"ПСН (торговля/ретейл)", [u"псн", u"магазин", u"торгов", u"коммерч", u"свободного назначения", u"офис"]),
+    (u"Санитарно-бытовые помещения",
+     [u"санузел", u"сан. узел", u"с/у", u"су ", u"туалет", u"уборная", u"душ", u"умывальн", u"мма"]),
+    (u"Склады, кладовые и подсобные помещения, ПУИ",
+     [u"кладов", u"склад", u"пуи", u"уборочн", u"подсобн", u"хозяйств", u"мусор", u"инвентар"]),
+    (CATEGORY_APARTMENT,
+     [u"прихож", u"кухн", u"спальн", u"гостин", u"комнат", u"жилая", u"гардеробн", u"детская"]),
+    (CATEGORY_MOP,
+     [u"коридор", u"холл", u"лифт", u"вестибюл", u"лестни", u"тамбур", u"лобби", u"колясочн",
+      u"фойе", u"моп", u"переход", u"галере", u"шлюз", u"зона ожидани", u"консьерж"]),
+]
+
+# Части имени, при которых помещение по умолчанию исключается (новая строка
+# таблицы): шахты, каналы, ниши, открытые пространства.
+EXCLUDE_KEYWORDS = [u"шахт", u"канал", u"ниш", u"лоджи", u"балкон", u"террас", u"кровл",
+                    u"техпростр", u"подполь", u"чердак"]
+
+
+def category_noise(category):
+    """Уровень шума категории или None."""
+    wanted = normalize(category)
+    for name, noise in NOISE_CATEGORIES:
+        if normalize(name) == wanted:
+            return noise
+    return None
+
+
+def match_category(text):
+    """Категория из справочника по тексту (без учёта регистра; можно начало имени) или None."""
+    wanted = normalize(text)
+    if not wanted:
+        return None
+    for name, _ in NOISE_CATEGORIES:
+        if normalize(name) == wanted:
+            return name
+    for name, _ in NOISE_CATEGORIES:
+        if normalize(name).startswith(wanted):
+            return name
+    return None
+
+
+def guess_category(room_name):
+    """Категория по части имени помещения (CATEGORY_KEYWORDS) или None."""
+    text = u" " + normalize(room_name) + u" "
+    for category, keywords in CATEGORY_KEYWORDS:
+        for keyword in keywords:
+            if keyword in text:
+                return category
+    return None
+
+
+def guess_exclude(room_name):
+    text = normalize(room_name)
+    return any(keyword in text for keyword in EXCLUDE_KEYWORDS)
+
+
+def parse_number(text):
+    """Число из текста («1,5 Вт», «87 дБ», 50) или None."""
+    if text is None:
+        return None
+    if isinstance(text, (int, float)):
+        return float(text)
+    match = _NUMBER.search(_to_text(text).replace(u",", u"."))
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def parse_flag(text):
+    """«да», «yes», «1», «x», «+», True → True."""
+    if text is True:
+        return True
+    return normalize(text) in (u"да", u"yes", u"y", u"1", u"x", u"х", u"+", u"true", u"исключить")
+
+
+# ------------------------------------------------------------
+# Таблица помещений объекта: имя → категория, шум, исключить
+# ------------------------------------------------------------
+
+class RoomRow(object):
+    """Строка таблицы уникальных имён помещений."""
+
+    def __init__(self, name, count=0, category=u"", noise=None, exclude=False):
+        self.name = name
+        self.count = count
+        self.category = category or u""
+        self.noise = noise
+        self.exclude = bool(exclude)
+
+    @property
+    def key(self):
+        return normalize(self.name)
+
+    def effective_noise(self):
+        """Шум: заданный вручную, иначе — по категории, иначе None."""
+        if self.noise is not None:
+            return self.noise
+        return category_noise(self.category)
+
+    def to_dict(self):
+        return {"name": self.name, "category": self.category, "noise": self.noise,
+                "exclude": self.exclude}
+
+
+def table_from_saved(saved):
+    """{ключ: dict} из настроек → {ключ: RoomRow}."""
+    result = {}
+    for key, item in (saved or {}).items():
+        try:
+            result[key] = RoomRow(item.get("name") or key, 0, item.get("category") or u"",
+                                  parse_number(item.get("noise")), item.get("exclude"))
+        except Exception:
+            continue
+    return result
+
+
+def table_to_saved(rows):
+    return dict((row.key, row.to_dict()) for row in rows)
+
+
+def merge_room_table(saved_rows, counts):
+    """
+    Таблица для показа/выгрузки: все имена объекта (counts — {имя: число
+    помещений}) с сохранёнными значениями; у новых имён категория и
+    «исключить» угаданы по имени (guess_category/guess_exclude). Имена,
+    которых в объекте уже нет, но что-то заполнено, остаются в конце (count 0).
+    Возвращает [RoomRow], отсортированный по имени.
+    """
+    rows = {}
+    for name, count in counts.items():
+        key = normalize(name)
+        if not key:
+            continue
+        old = saved_rows.get(key)
+        if key in rows:
+            rows[key].count += count
+            continue
+        if old is not None:
+            rows[key] = RoomRow(name, count, old.category, old.noise, old.exclude)
+        else:
+            rows[key] = RoomRow(name, count, guess_category(name) or u"", None, guess_exclude(name))
+    for key, old in saved_rows.items():
+        if key not in rows and (old.category or old.noise is not None or old.exclude):
+            rows[key] = RoomRow(old.name, 0, old.category, old.noise, old.exclude)
+    return sorted(rows.values(), key=lambda row: (row.count == 0, normalize(row.name)))
+
+
+TABLE_HEADER = [u"Помещение", u"Кол-во", u"Категория", u"Шум N, дБА", u"Исключить"]
+
+
+def table_to_sheet(rows):
+    """[RoomRow] → строки листа Excel (заголовок + данные + справочник справа)."""
+    sheet = [TABLE_HEADER + [u"", u"Категории (справочник)", u"N, дБА"]]
+    for index, row in enumerate(rows):
+        line = [row.name, row.count, row.category,
+                row.noise if row.noise is not None else None,
+                u"да" if row.exclude else u""]
+        if index < len(NOISE_CATEGORIES):
+            line += [u"", NOISE_CATEGORIES[index][0], NOISE_CATEGORIES[index][1]]
+        sheet.append(line)
+    for index in range(len(rows), len(NOISE_CATEGORIES)):
+        sheet.append([None] * 5 + [u"", NOISE_CATEGORIES[index][0], NOISE_CATEGORIES[index][1]])
+    return sheet
+
+
+def table_from_sheet(sheet):
+    """
+    Строки листа Excel → [RoomRow]. Столбцы ищутся по заголовку (первая
+    строка): «Помещение», «Категория», «Шум», «Исключить». Категория
+    сопоставляется со справочником (можно начало названия); неизвестная
+    оставляется как есть. Шум пустой — берётся по категории при расчёте.
+    """
+    if not sheet:
+        return []
+    header = [normalize(cell) for cell in sheet[0]]
+
+    def column(*prefixes):
+        for index, title in enumerate(header):
+            if any(title.startswith(prefix) for prefix in prefixes):
+                return index
+        return None
+
+    name_col = column(u"помещение", u"имя")
+    if name_col is None:
+        return []
+    category_col = column(u"категория")
+    noise_col = column(u"шум", u"n,", u"уровень")
+    exclude_col = column(u"исключ")
+
+    def cell(line, index):
+        if index is None or index >= len(line):
+            return None
+        return line[index]
+
+    rows = []
+    for line in sheet[1:]:
+        name = cell(line, name_col)
+        if name is None or not _to_text(name).strip():
+            continue
+        category = cell(line, category_col)
+        category_text = _to_text(category).strip() if category is not None else u""
+        rows.append(RoomRow(
+            _to_text(name).strip(), 0,
+            match_category(category_text) or category_text,
+            parse_number(cell(line, noise_col)),
+            parse_flag(cell(line, exclude_col))))
+    return rows
 
 
 def name_rank(name, names):
@@ -32,36 +293,37 @@ def name_rank(name, names):
     return None
 
 
-def classify_rooms(rooms, apartment_names, corridor_names, lift_hall_names):
+def classify_rooms(rooms, apartment_names, excluded=()):
     """
-    Какие помещения оснащаются и чем.
+    Какие помещения оснащаются и как.
 
-    rooms — [(ключ, имя помещения, имя лота, отметка или None)].
+    rooms — [(ключ, имя помещения, имя лота, отметка или None)];
+    excluded — нормализованные имена исключённых помещений.
 
     Квартиры: в каждом лоте — одно помещение из apartment_names (список по
     приоритету: «Прихожая, Холл» — сначала прихожая, нет её — холл), из
     равных по приоритету — с минимальной отметкой (у двухуровневой
-    квартиры — нижнее). Помещение квартиры без имени лота ставится само по
-    себе — с предупреждением (ключ в no_lot).
+    квартиры — нижнее); остальные помещения лота квартиры не оснащаются.
+    Помещение из списка квартир без имени лота ставится само по себе — с
+    предупреждением (ключ в no_lot).
 
-    МОП: помещения из corridor_names / lift_hall_names, кроме лежащих в
-    лоте квартиры (коридор внутри квартиры с её именем лота — не МОП).
-    Если имя есть и в списке квартир, и в списке МОП, помещение без имени
-    лота считается МОП.
+    Остальные помещения объекта (не в лоте квартиры, не исключённые) —
+    ROLE_ROOM: оповещатели по акустическому расчёту.
 
     Возвращает (назначения {ключ: роль}, no_lot [ключи]).
     """
+    excluded = set(excluded)
     groups = {}
     no_lot = []
-    mop_names = list(corridor_names) + list(lift_hall_names)
     for key, name, lot, elevation in rooms:
+        if normalize(name) in excluded:
+            continue
         rank = name_rank(name, apartment_names)
         if rank is None:
             continue
         lot_norm = normalize(lot)
         if not lot_norm:
-            if name_rank(name, mop_names) is None:
-                no_lot.append(key)
+            no_lot.append(key)
             continue
         groups.setdefault(lot_norm, []).append((rank, elevation, key))
 
@@ -76,14 +338,11 @@ def classify_rooms(rooms, apartment_names, corridor_names, lift_hall_names):
 
     apartment_lots = set(groups)
     for key, name, lot, elevation in rooms:
-        if key in result:
+        if key in result or normalize(name) in excluded:
             continue
         if normalize(lot) in apartment_lots:
             continue
-        if name_rank(name, corridor_names) is not None:
-            result[key] = ROLE_CORRIDOR
-        elif name_rank(name, lift_hall_names) is not None:
-            result[key] = ROLE_LIFT_HALL
+        result[key] = ROLE_ROOM
     return result, no_lot
 
 
@@ -215,7 +474,7 @@ def wall_point(segments, target, obstacles, margin):
 
 
 # ------------------------------------------------------------
-# Акустический расчёт МОП (методика из «Расчёт СОУЭ.xlsx»)
+# Акустический расчёт (методика из «Расчёт СОУЭ.xlsx»)
 # ------------------------------------------------------------
 
 def acoustic_reach(spl_db, power_w, noise_dba, excess_db, dn_loss_db, obstacle_db,
@@ -240,7 +499,13 @@ def acoustic_reach(spl_db, power_w, noise_dba, excess_db, dn_loss_db, obstacle_d
     return rmax, math.sqrt(max(0.0, rmax * rmax - dh * dh))
 
 
-def sample_step(width, height, base, max_samples=600):
+def room_reach(spl_db, power_w, noise_dba, mount_h):
+    """acoustic_reach с постоянными расчёта (EXCESS_DB, DN_LOSS_DB, ...)."""
+    return acoustic_reach(spl_db, power_w, noise_dba, EXCESS_DB, DN_LOSS_DB, OBSTACLE_DB,
+                          mount_h, CALC_HEIGHT_M)
+
+
+def sample_step(width, height, base, max_samples=400):
     """Шаг сетки расчётных точек: base, но не больше max_samples точек на габарит."""
     area = max(0.0, width) * max(0.0, height)
     if area <= 0 or base <= 0:
