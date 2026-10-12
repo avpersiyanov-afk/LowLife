@@ -340,8 +340,9 @@ def _get_or_create_schedule(doc, category):
 
 
 def _schedulable_index(doc, definition):
-    """(по ключу встроенного параметра, по имени) -> SchedulableField. По
-    имени — поле экземпляра важнее поля типа."""
+    """(по ключу ParameterId, по имени) -> SchedulableField. Имя —
+    нормализованное (core.norm_name: регистр, «ё», пробелы), поле экземпляра
+    важнее поля типа."""
     by_id, by_name = {}, {}
     for sf in definition.GetSchedulableFields():
         try:
@@ -354,6 +355,7 @@ def _schedulable_index(doc, definition):
             continue
         if not name:
             continue
+        name = core.norm_name(name)
         current = by_name.get(name)
         if current is None or (current.FieldType != ScheduleFieldType.Instance
                                and sf.FieldType == ScheduleFieldType.Instance):
@@ -369,6 +371,51 @@ def _first_by_bips(by_id, bip_names):
     return None
 
 
+# причины, по которым параметр не попал в спецификацию
+REASON_NOT_FOUND = u"нет ни у одного элемента категории"
+REASON_FAMILY_PARAM = (u"параметр семейства (не общий) — Revit не выводит такие "
+                       u"в спецификацию, нужен общий параметр или параметр проекта")
+REASON_NOT_SCHEDULABLE = u"Revit не даёт вывести этот параметр в спецификацию категории"
+
+
+def _field_via_elements(doc, by_id, param_name, elements):
+    """
+    Поле спецификации для параметра, найденного у самих элементов (экземпляр,
+    потом тип) — по его Id, а не по имени. Возвращает (SchedulableField или
+    None, причина отсутствия).
+    """
+    seen_family_param = False
+    seen_any = False
+    for el in elements:
+        el_type = _element_type(doc, el)
+        for owner in (el, el_type):
+            if owner is None:
+                continue
+            try:
+                p = owner.LookupParameter(param_name)
+            except Exception:
+                p = None
+            if p is None:
+                continue
+            seen_any = True
+            try:
+                sf = by_id.get(str(p.Id))
+            except Exception:
+                sf = None
+            if sf is not None:
+                return sf, None
+            try:
+                if not p.IsShared and p.Id.IntegerValue > 0:
+                    seen_family_param = True
+            except Exception:
+                pass
+    if seen_family_param:
+        return None, REASON_FAMILY_PARAM
+    if seen_any:
+        return None, REASON_NOT_SCHEDULABLE
+    return None, REASON_NOT_FOUND
+
+
 def _add_field(definition, sf, heading):
     field = definition.AddField(sf)
     try:
@@ -378,12 +425,16 @@ def _add_field(definition, sf, heading):
     return field
 
 
-def build_schedule(doc, category, rows, floor_param):
+def build_schedule(doc, category, rows, floor_param, elements=None):
     """
     Спецификация категории: «Тип», «Семейство», «Этаж» (параметр из
     настроек, иначе уровень элемента) и по столбцу на каждую строку списка
     (заголовок столбца — строка списка). Вызывать внутри транзакции.
-    Возвращает (schedule, [строки списка, для которых нет поля]).
+
+    Поле ищется по имени (без учёта регистра, «ё» и лишних пробелов), а если
+    не нашлось — по Id параметра, найденного у элементов категории
+    (elements; по умолчанию — все экземпляры категории).
+    Возвращает (schedule, [(строка списка, причина)] — что не попало).
     """
     schedule = _get_or_create_schedule(doc, category)
     d = schedule.Definition
@@ -398,7 +449,7 @@ def build_schedule(doc, category, rows, floor_param):
     sort_fields = []
     used = set()
 
-    floor_sf = by_name.get(floor_param) if floor_param else None
+    floor_sf = by_name.get(core.norm_name(floor_param)) if floor_param else None
     if floor_sf is None:
         floor_sf = _first_by_bips(by_id, _LEVEL_BIPS)
 
@@ -413,12 +464,16 @@ def build_schedule(doc, category, rows, floor_param):
         used.add(str(sf.ParameterId))
         sort_fields.append((heading, field))
 
+    if elements is None:
+        elements = collect_elements(doc, category)
     missing = []
     for label, param in rows:
-        sf = by_name.get(param)
+        sf = by_name.get(core.norm_name(param))
         if sf is None:
-            missing.append(label)
-            continue
+            sf, reason = _field_via_elements(doc, by_id, param, elements)
+            if sf is None:
+                missing.append((label, reason))
+                continue
         key = str(sf.ParameterId)
         if key in used:
             continue
