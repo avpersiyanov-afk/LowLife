@@ -237,3 +237,70 @@ def test_equipment_tags_settings_keep_file_defaults_and_api(appdata):
 
 def test_module_imports_without_revit():
     assert settings_core.JsonStore is JsonStore
+
+
+# --- общие значения между кнопками --------------------------------------------
+
+def test_shared_key_rule():
+    assert settings_core.is_shared_key("wire_mark_param")
+    assert settings_core.is_shared_key("level_param_name")
+    assert not settings_core.is_shared_key("schematic_view_name")
+    assert not settings_core.is_shared_key("route_type_id")
+    assert not settings_core.is_shared_key("target_param_name")
+
+
+def test_param_entered_in_one_button_is_default_in_another(appdata):
+    scs = JsonStore("LowLifeA_settings.json")
+    skud = JsonStore("LowLifeB_settings.json")
+    scs.update({"wire_mark_param": u"Марка", "schematic_view_name": u"Схема СКС"})
+
+    saved = skud.read()
+    assert saved == {}  # в сам файл ничего не попало
+    assert saved.get("wire_mark_param", u"") == u"Марка"
+    assert saved.get("wire_mark_param") == u"Марка"
+    # не имя параметра — не делится
+    assert saved.get("schematic_view_name", u"") == u""
+
+
+def test_shared_value_fills_blank_but_not_own_value_or_nonempty_default(appdata):
+    a = JsonStore("LowLifeA_settings.json")
+    b = JsonStore("LowLifeB_settings.json")
+    b.write({"wire_mark_param": u"", "load_name_param": u"Своё"})
+    a.update({"wire_mark_param": u"Марка", "load_name_param": u"Чужое",
+              "cable_type_param": u"Кабель"})
+
+    saved = b.read()
+    assert saved.get("wire_mark_param", u"") == u"Марка"  # пусто в файле — подставляется
+    assert saved.get("load_name_param", u"") == u"Своё"
+    # у модуля свой непустой default — его не перекрываем
+    assert saved.get("cable_type_param", u"По умолчанию") == u"По умолчанию"
+    assert saved["wire_mark_param"] == u""  # [] и `in` — как у обычного dict
+
+
+def test_rewriting_unchanged_values_does_not_overwrite_newer_shared(appdata):
+    a = JsonStore("LowLifeA_settings.json")
+    b = JsonStore("LowLifeB_settings.json")
+    a.update({"wire_mark_param": u"Старое"})
+    b.update({"wire_mark_param": u"Новое"})
+    a.update({"something_else": 1})  # перезапись файла A со старым значением
+
+    assert settings_core.read_shared()["wire_mark_param"] == u"Новое"
+    assert JsonStore("LowLifeC_settings.json").read().get("wire_mark_param") == u"Новое"
+
+
+def test_text_settings_pick_up_shared_values(appdata):
+    JsonStore("LowLifeOther_settings.json").update({"lot_param_name": u"Имя лота"})
+    settings = TextSettings(
+        file_name="LowLifeLots_settings.json", button_name=u"Б", heading=u"З",
+        transfer_label=u"т",
+        fields=[TextField("lot_param_name", u"①", u"Имя лота", required=True)],
+    )
+    assert settings.get_settings_silent() == {"lot_param_name": u"Имя лота"}
+
+
+def test_store_without_share_ignores_shared_values(appdata):
+    JsonStore("LowLifeA_settings.json").update({"wire_mark_param": u"Марка"})
+    plain = JsonStore("LowLifeB_settings.json", share=False)
+    assert plain.read().get("wire_mark_param") is None
+    plain.write({"wire_mark_param": u"Другое"})
+    assert settings_core.read_shared()["wire_mark_param"] == u"Марка"

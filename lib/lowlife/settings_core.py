@@ -18,6 +18,24 @@ pyrevit.script.get_config() (тот не гарантированно делил
 
 Формат файла не изменился — уже сохранённые настройки читаются как раньше.
 
+Общие значения между кнопками
+-----------------------------
+У многих кнопок одни и те же настройки — имена параметров проекта
+(«wire_mark_param», «device_address_param», …): ключи в разных файлах
+названы одинаково. Что пользователь ввёл в одной кнопке, подставляется
+по умолчанию в остальные:
+
+- JsonStore.write запоминает в общем файле LowLifeShared_settings.json
+  новые/изменённые непустые строки по ключам имён параметров (is_shared_key:
+  оканчиваются на «_param»/«_param_name», кроме SHARED_EXCLUDED_KEYS —
+  одинаковых имён с разным смыслом).
+- JsonStore.read возвращает SavedSettings — обычный dict, у которого
+  get(key, default) для такого ключа, не заполненного в своём файле (нет
+  или пусто), и при пустом default берёт запомненное значение. Непустой
+  default модуля (ключевые слова, коэффициенты) не перекрывается, свой
+  файл кнопки — тоже; в сам файл подставленное значение попадает, только
+  когда пользователь сохранит настройки этой кнопки.
+
 Типовое окно (TextSettings)
 ---------------------------
 Для кнопок, у которых настройки — просто несколько текстовых/числовых
@@ -53,8 +71,10 @@ import os
 
 try:
     _text = unicode  # noqa: F821 — IronPython/Python 2
+    _string_types = basestring  # noqa: F821
 except NameError:  # Python 3 (тесты)
     _text = str
+    _string_types = str
 
 
 SETTINGS_FOLDER_NAME = "pyRevit"
@@ -83,6 +103,123 @@ def settings_folder():
     return folder
 
 
+# --- общие значения между кнопками -------------------------------------------
+
+SHARED_FILE_NAME = "LowLifeShared_settings.json"
+
+SHARED_KEY_SUFFIXES = ("_param", "_param_name")
+
+# Ключи имён параметров, которые в разных кнопках значат разное (или
+# участвуют в миграции старых настроек) — их не делим.
+SHARED_EXCLUDED_KEYS = frozenset([
+    "target_param_name",       # «Этаж» у уровней vs параметр помещения у элементов
+    "section_param_name",      # секция у помещения АР vs секция у устройства СОТ
+    "room_number_param_name",  # старый ключ, переносится в room_mask
+])
+
+
+def is_shared_key(key):
+    """Делится ли значение ключа между кнопками (имя параметра проекта)."""
+    return (isinstance(key, _string_types) and key not in SHARED_EXCLUDED_KEYS
+            and key.endswith(SHARED_KEY_SUFFIXES))
+
+
+def _blank(value):
+    if value is None:
+        return True
+    if isinstance(value, _string_types):
+        return not value.strip()
+    return isinstance(value, (list, tuple, dict)) and not value
+
+
+class SavedSettings(dict):
+    """
+    Словарь из файла настроек (JsonStore.read). Отличается от dict только
+    get(): незаполненный в файле общий ключ (is_shared_key) при пустом
+    default берётся из того, что пользователь вводил в других кнопках.
+    """
+
+    def __init__(self, data=None, shared=None):
+        dict.__init__(self, data or {})
+        self.shared = shared or {}
+
+    def shared_value(self, key):
+        """Запомненное в других кнопках значение, если оно здесь подставится; иначе None."""
+        if not is_shared_key(key) or not _blank(dict.get(self, key)):
+            return None
+        value = self.shared.get(key)
+        if isinstance(value, _string_types) and not _blank(value):
+            return value
+        return None
+
+    def get(self, key, default=None):
+        if _blank(default):
+            value = self.shared_value(key)
+            if value is not None:
+                return value
+        return dict.get(self, key, default)
+
+
+def _read_file(path):
+    """Словарь из JSON-файла; {} — файла нет, он пуст, битый или не объект."""
+    if not os.path.isfile(path):
+        return {}
+
+    try:
+        with io.open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        if not text.strip():
+            return {}
+        data = json.loads(text)
+    except Exception:
+        return {}
+
+    return data if isinstance(data, dict) else {}
+
+
+def _write_file(path, data):
+    """Перезаписывает файл целиком. True — записано."""
+    try:
+        with io.open(path, "w", encoding="utf-8") as f:
+            f.write(_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
+        return True
+    except Exception:
+        return False
+
+
+def shared_settings_path():
+    return os.path.join(settings_folder(), SHARED_FILE_NAME)
+
+
+def read_shared():
+    """{ключ: последнее введённое значение} — общая память всех кнопок."""
+    return _read_file(shared_settings_path())
+
+
+def remember_shared(old, new):
+    """
+    Запоминает в общем файле общие ключи, которые в new непустые и
+    отличаются от old (что было в файле кнопки до записи). Неизменённые
+    значения не трогаем: иначе перезапись файла одной кнопки (например,
+    после выбора типоразмеров) вернула бы в общую память её старое
+    значение поверх более нового из другой кнопки.
+    """
+    changed = {}
+    for key, value in new.items():
+        if (is_shared_key(key) and isinstance(value, _string_types)
+                and not _blank(value) and value != old.get(key)):
+            changed[key] = value
+
+    if not changed:
+        return
+
+    shared = read_shared()
+    if all(shared.get(key) == value for key, value in changed.items()):
+        return
+    shared.update(changed)
+    _write_file(shared_settings_path(), shared)
+
+
 class JsonStore(object):
     """
     Один JSON-файл настроек в %APPDATA%\\pyRevit.
@@ -92,11 +229,14 @@ class JsonStore(object):
     label     — что вставить в сообщение об ошибке записи («СКС»,
                 «зон обзора», …); строка или функция. Пусто — общее
                 «Не удалось сохранить настройки в файл».
+    share     — участвовать в общих значениях между кнопками (см. начало
+                модуля): read подставляет, write запоминает.
     """
 
-    def __init__(self, file_name, label=None):
+    def __init__(self, file_name, label=None, share=True):
         self._file_name = file_name
         self._label = label
+        self._share = share
 
     def _resolve(self, value):
         return value() if callable(value) else value
@@ -105,36 +245,31 @@ class JsonStore(object):
         return os.path.join(settings_folder(), self._resolve(self._file_name))
 
     def read(self):
-        """Весь словарь из файла; {} — если файла нет, он пуст или битый."""
-        path = self.path()
-
-        if not os.path.isfile(path):
-            return {}
-
-        try:
-            with io.open(path, "r", encoding="utf-8") as f:
-                text = f.read()
-            if not text.strip():
-                return {}
-            data = json.loads(text)
-        except Exception:
-            return {}
-
-        return data if isinstance(data, dict) else {}
+        """
+        Весь словарь из файла (SavedSettings); пустой — если файла нет, он
+        пуст или битый. get() незаполненных общих ключей подставляет
+        значения из других кнопок.
+        """
+        data = _read_file(self.path())
+        return SavedSettings(data, read_shared() if self._share else None)
 
     def write(self, data):
         """Перезаписывает файл целиком. True — записано; иначе alert и False."""
         path = self.path()
+        old = _read_file(path) if self._share else None
 
-        try:
-            with io.open(path, "w", encoding="utf-8") as f:
-                f.write(_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)))
-            return True
-        except Exception:
+        if not _write_file(path, data):
             label = self._resolve(self._label)
             what = u"настройки {}".format(label) if label else u"настройки"
             _alert(u"Не удалось сохранить {} в файл:\n{}".format(what, path))
             return False
+
+        if self._share:
+            try:
+                remember_shared(old, data)
+            except Exception:
+                pass  # общая память — удобство, запись своих настроек важнее
+        return True
 
     def update(self, values):
         """Дописывает/заменяет переданные ключи, остальные оставляет как есть."""
