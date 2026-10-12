@@ -86,6 +86,7 @@ THEMES = {
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
         (u"SOUE", u"CalcLoopLengths"),
+        (u"SOUE", u"PlaceTypicalFloor"),
     ],
     u"FAD": [
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
