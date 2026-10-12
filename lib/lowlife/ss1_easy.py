@@ -25,10 +25,20 @@
      двери) и поворачивается лицом в прихожую; на уровне модели,
      совпадающем по отметке с уровнем двери (с учётом сдвига связи по Z),
      если этот уровень отмечен; в «Помещение» пишется имя лота.
+     Грань стены берётся из геометрии стены (HostObjectUtils.GetSideFaces,
+     ss1_easy_core.face_distance): точка двери лежит на линии привязки
+     стены, а та бывает и по грани — половина толщины от неё уводила
+     подвод в стену или на сторону коридора.
   4. Цепи: по электрической цепи на каждый подвод от кросса №1 шахты СС
      того же уровня и той же секции (ближайшей из них; параметры секции
      помещения и шахты — в настройках, без них — ближайшая шахта уровня),
      тип системы — по коннектору подвода (иначе Data).
+  5. LOI: поставленным кроссам и подводам копируются параметры из «Форм»
+     (корпус, секция, этаж…) — по настройкам кнопки «Заполнение LOI»
+     (loi_settings/loi_fill), как если бы её запустили для этих элементов.
+  6. Адрес устройства подвода по маске («A.B.C» → этаж.секция.квартира,
+     ss1_easy_core.format_address): значения — у самого подвода (после
+     LOI), иначе — у прихожей в связи.
 
 Высота: экземпляр создаётся NewFamilyInstance(точка, тип, уровень) с
 Z точки = смещению от уровня (отметка уровня не прибавляется) — так
@@ -40,7 +50,8 @@ import math
 from Autodesk.Revit.DB import (
     XYZ, Line, FilteredElementCollector, BuiltInCategory, BuiltInParameter,
     RevitLinkInstance, FamilyInstance, Family, LocationPoint, LocationCurve,
-    ElementTransformUtils, ElementId, Level, StorageType, Wall
+    ElementTransformUtils, ElementId, Level, StorageType, Wall, HostObjectUtils,
+    ShellLayerType
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 
@@ -60,6 +71,10 @@ CROSS_ROTATION = math.pi / 2.0
 # стены и на какую высоту подняться над точкой двери.
 ROOM_PROBE_MM = 300.0
 ROOM_PROBE_HEIGHT_MM = 1000.0
+
+# Проверка, что точка подвода действительно в прихожей: насколько отойти
+# от грани стены внутрь.
+ROOM_CHECK_MM = 50.0
 
 # Тип системы цепи, если у коннектора подвода его определить не удалось.
 FALLBACK_SYSTEM_TYPE = u"Data"
@@ -340,11 +355,17 @@ class Result(object):
         self.feeds_unoriented = 0
         self.circuits = 0
         self.circuits_failed = 0
+        self.loi_filled = 0
+        self.loi_skipped = None   # причина, если LOI не заполнялось вовсе
+        self.addresses = 0
         self.diagnostics = []
         # Для цепей: {level_id: [(кросс №1, x, y, секция шахты)]} и
-        # [(подвод, x, y, секция помещения, level_id, имя уровня)].
+        # [(подвод, x, y, секция помещения, level_id, имя уровня,
+        #   {"A"/"B"/"C": значение из прихожей для адреса})];
+        # все поставленные кроссы — для LOI.
         self.panel_crosses = {}
         self.placed_feeds = []
+        self.placed_crosses = []
 
 
 def place_crosses(doc, shafts, levels, settings, symbol, result):
@@ -378,6 +399,7 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
                             u"Кросс Id {}: не удалось записать «{}».".format(
                                 instance.Id.IntegerValue, room_param))
                     result.crosses += 1
+                    result.placed_crosses.append(instance)
                     if number == 1:
                         result.panel_crosses.setdefault(level.Id.IntegerValue, []).append(
                             (instance, center.X, center.Y, section))
@@ -505,13 +527,54 @@ def _wall_half_width(door):
     return 0.0
 
 
-def apartment_side(door, link_doc, phase, target_room_id):
+def _side_face_offsets(door, origin, facing):
     """
-    (точка на грани стены со стороны квартиры, нормаль в прихожую) — обе в
-    координатах связи, — или None, если не удалось понять, с какой стороны
-    двери прихожая. Сторона определяется зондированием: точка чуть в
-    стороне от двери вдоль её FacingOrientation (и в обратную сторону)
-    проверяется GetRoomAtPoint; где прихожая — туда и ставим.
+    Смещения граней стены двери от точки двери вдоль facing (со знаком), в
+    координатах документа двери. Пусто — граней не нашлось (не стена и т.п.).
+    """
+    offsets = []
+    try:
+        wall = door.Host
+    except Exception:
+        wall = None
+    if not isinstance(wall, Wall):
+        return offsets
+    for shell in (ShellLayerType.Exterior, ShellLayerType.Interior):
+        try:
+            refs = HostObjectUtils.GetSideFaces(wall, shell)
+        except Exception:
+            continue
+        for ref in refs:
+            try:
+                face = wall.GetGeometryObjectFromReference(ref)
+                projected = face.Project(origin)
+                if projected is None:
+                    continue
+                offsets.append(projected.XYZPoint.Subtract(origin).DotProduct(facing))
+            except Exception:
+                continue
+    return offsets
+
+
+def _room_id_at(link_doc, point, phase):
+    try:
+        room = link_doc.GetRoomAtPoint(point, phase)
+    except Exception:
+        room = None
+    return room.Id.IntegerValue if room is not None else None
+
+
+def apartment_side(door, link_doc, phase, target_room_id, inset_ft=0.0):
+    """
+    (точка подвода, нормаль в прихожую) — обе в координатах связи, — или
+    None, если не удалось понять, с какой стороны двери прихожая.
+
+    Сторона — зондированием: точка в стороне от грани стены (вдоль
+    FacingOrientation двери и в обратную сторону) проверяется
+    GetRoomAtPoint; где прихожая — туда и ставим. Точка подвода — на грани
+    стены с этой стороны (core.face_distance по реальным граням стены, не по
+    половине толщины) плюс inset_ft внутрь; ещё раз проверяется, что чуть
+    дальше от неё — прихожая.
     """
     origin = _door_point(door)
     try:
@@ -521,17 +584,20 @@ def apartment_side(door, link_doc, phase, target_room_id):
     if origin is None or facing is None:
         return None
     half = _wall_half_width(door)
-    reach = half + ROOM_PROBE_MM * MM_TO_FT
+    offsets = _side_face_offsets(door, origin, facing)
     lift = XYZ(0, 0, ROOM_PROBE_HEIGHT_MM * MM_TO_FT)
     for sign in (1, -1):
-        probe = origin.Add(facing.Multiply(reach * sign)).Add(lift)
-        try:
-            room = link_doc.GetRoomAtPoint(probe, phase)
-        except Exception:
-            room = None
-        if room is not None and room.Id.IntegerValue == target_room_id:
-            normal = facing.Multiply(sign)
-            return origin.Add(normal.Multiply(half)), normal
+        normal = facing.Multiply(sign)
+        face = core.face_distance(offsets, sign, half)
+        probe = origin.Add(normal.Multiply(face + ROOM_PROBE_MM * MM_TO_FT)).Add(lift)
+        if _room_id_at(link_doc, probe, phase) != target_room_id:
+            continue
+        point = origin.Add(normal.Multiply(face + inset_ft))
+        check = point.Add(normal.Multiply(ROOM_CHECK_MM * MM_TO_FT)).Add(lift)
+        if _room_id_at(link_doc, check, phase) != target_room_id:
+            # грань определилась неверно — ставим на ту глубину, где точно прихожая
+            point = origin.Add(normal.Multiply(face + ROOM_PROBE_MM * MM_TO_FT))
+        return point, normal
     return None
 
 
@@ -561,6 +627,12 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
     lot_param = (settings.get("lot_param_name") or u"").strip()
     room_param = (settings.get("room_target_param") or u"").strip()
     section_param = (settings.get("room_section_param") or u"").strip()
+    address_params = {
+        "A": (settings.get("address_floor_param") or u"").strip(),
+        "B": (settings.get("address_section_param") or u"").strip(),
+        "C": (settings.get("address_apartment_param") or u"").strip(),
+    }
+    inset_ft = mm_to_ft(settings.get("feed_wall_inset_mm") or 0.0)
     tol = mm_to_ft(settings.get("level_tolerance_mm") or 0.0)
     level_marks = [(level, level.ProjectElevation) for level in levels]
 
@@ -588,6 +660,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
         rooms = []
         room_lots = {}
         room_sections = {}
+        room_address = {}
         room_collector = (FilteredElementCollector(link_doc)
                           .OfCategory(BuiltInCategory.OST_Rooms)
                           .WhereElementIsNotElementType())
@@ -598,6 +671,9 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
             room_lots[room.Id.IntegerValue] = lot
             room_sections[room.Id.IntegerValue] = (
                 _room_text_param(room, section_param) if section_param else u"")
+            room_address[room.Id.IntegerValue] = dict(
+                (letter, _room_text_param(room, name) if name else u"")
+                for letter, name in address_params.items())
             rooms.append((room.Id.IntegerValue, lot, _room_elevation(link_doc, room)))
         keep, _ = core.lowest_room_per_lot(rooms)
         warned_rooms = set()
@@ -623,7 +699,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                     continue
 
                 result.doors += 1
-                side_info = apartment_side(door, link_doc, phase, room_id)
+                side_info = apartment_side(door, link_doc, phase, room_id, inset_ft)
                 host_normal = None
                 if side_info is not None:
                     point, normal = side_info
@@ -648,7 +724,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                             label, door.Id.IntegerValue, instance.Id.IntegerValue))
                 result.placed_feeds.append(
                     (instance, host_point.X, host_point.Y, room_sections.get(room_id) or u"",
-                     level.Id.IntegerValue, level.Name))
+                     level.Id.IntegerValue, level.Name, room_address.get(room_id) or {}))
                 if not lot:
                     if room_id not in warned_rooms:
                         warned_rooms.add(room_id)
@@ -679,7 +755,7 @@ def build_circuits(doc, settings, result):
     by_section = bool((settings.get("room_section_param") or u"").strip()
                       and (settings.get("shaft_section_param") or u"").strip())
 
-    for feed, x, y, section, level_id, level_name in result.placed_feeds:
+    for feed, x, y, section, level_id, level_name, _ in result.placed_feeds:
         crosses = result.panel_crosses.get(level_id, [])
         candidates = [(index, cx, cy, csec if by_section else u"")
                       for index, (_, cx, cy, csec) in enumerate(crosses)]
@@ -713,6 +789,83 @@ def build_circuits(doc, settings, result):
 
 
 # ------------------------------------------------------------
+# LOI и адрес устройства
+# ------------------------------------------------------------
+
+def fill_loi(doc, elements, result):
+    """
+    Заполнение LOI для поставленных элементов — по настройкам кнопки
+    «Заполнение LOI»: параметры (корпус, секция, этаж…) копируются из
+    «Формы», внутри которой стоит элемент. Попал в несколько форм — берётся
+    первая, с сообщением в отчёте; ни в одну — сообщение.
+    """
+    from lowlife import loi_fill, loi_settings
+
+    loi = loi_settings.get_settings_silent()
+    param_names = loi_settings.get_param_names(loi)
+    if not param_names:
+        result.loi_skipped = (u"не заданы параметры в настройках кнопки «Заполнение LOI» "
+                              u"(Shift+клик по ней)")
+        return
+    if not elements:
+        return
+    forms_found = loi_fill.find_forms(doc, loi_fill.FORM_CATEGORY_NAME,
+                                      locations=loi_settings.get_search_locations(loi))
+    if not forms_found:
+        result.loi_skipped = u"не найдено ни одной «Формы» в моделях из настроек «Заполнение LOI»"
+        return
+
+    matches = loi_fill.classify_elements(forms_found, elements)
+    for element in elements:
+        match = matches.get(element.Id)
+        if match is None:
+            result.diagnostics.append(
+                u"LOI: элемент Id {} не попал ни в одну «Форму» — не заполнен.".format(
+                    element.Id.IntegerValue))
+            continue
+        if len(match.forms) > 1:
+            result.diagnostics.append(
+                u"LOI: элемент Id {} попал в {} «Формы» — взята первая.".format(
+                    element.Id.IntegerValue, len(match.forms)))
+        values = loi_fill.collect_form_values(match.forms[0].element, param_names)
+        failed = [name for name, _, ok in loi_fill.apply_values(element, values) if not ok]
+        if failed:
+            result.diagnostics.append(u"LOI: элемент Id {} — не записано: {}.".format(
+                element.Id.IntegerValue, u", ".join(failed)))
+        result.loi_filled += 1
+
+
+def fill_addresses(doc, settings, result):
+    """
+    Адрес устройства подводов по маске (core.format_address). A/B/C — из
+    параметров самого подвода (после LOI), иначе — из прихожей в связи.
+    """
+    address_param = (settings.get("address_param") or u"").strip()
+    if not address_param:
+        return
+    mask = settings.get("address_mask") or u"A.B.C"
+    names = {
+        "A": (settings.get("address_floor_param") or u"").strip(),
+        "B": (settings.get("address_section_param") or u"").strip(),
+        "C": (settings.get("address_apartment_param") or u"").strip(),
+    }
+    for feed, _, _, _, _, _, room_values in result.placed_feeds:
+        values = {}
+        for letter, name in names.items():
+            values[letter] = text_value(feed, name) or room_values.get(letter) or u""
+        address, missing = core.format_address(mask, values)
+        if missing:
+            result.diagnostics.append(
+                u"Адрес подвода Id {}: нет значения {} — записано «{}».".format(
+                    feed.Id.IntegerValue, u", ".join(missing), address))
+        if set_text_param(feed, address_param, address):
+            result.addresses += 1
+        else:
+            result.diagnostics.append(u"Адрес подвода Id {}: не удалось записать «{}».".format(
+                feed.Id.IntegerValue, address_param))
+
+
+# ------------------------------------------------------------
 # Целиком
 # ------------------------------------------------------------
 
@@ -734,6 +887,8 @@ def run(doc, levels, offset_mm, settings, cross_symbol, feed_symbol):
     place_feeds(doc, levels, settings, feed_symbol, offset_mm, result)
     doc.Regenerate()
     build_circuits(doc, settings, result)
+    fill_loi(doc, result.placed_crosses + [feed[0] for feed in result.placed_feeds], result)
+    fill_addresses(doc, settings, result)
     return result
 
 
