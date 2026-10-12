@@ -27,9 +27,9 @@
 
 Незаполненные элементы всех категорий показываются на 3D-виде
 VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, на которой
-остальные модельные элементы скрыты («Скрыть элементы», постоянно).
-Повторный запуск переиспользует вид: прошлое скрытие снимается, вид
-регенерируется и скрытие считается заново (_apply_visibility).
+остальные модельные элементы документа скрыты («Скрыть элементы»,
+постоянно). Повторный запуск переиспользует вид: прошлое скрытие снимается
+и считается заново (_apply_visibility).
 """
 
 from Autodesk.Revit.DB import (
@@ -479,10 +479,14 @@ def _never_hide_ids():
 
 def _hideable(el, view, skip_cat_ids):
     """Только «настоящие» модельные элементы: с модельной категорией, не
-    видозависимые, не служебные точки, и Revit разрешает их скрыть."""
+    видозависимые, не служебные точки, и Revit разрешает их скрыть. Плюс
+    вставленные связи и импорт (DWG) — иначе их геометрия остаётся на виде."""
+    from Autodesk.Revit.DB import ImportInstance, RevitLinkInstance
     try:
         if el.ViewSpecific:
             return False
+        if isinstance(el, (RevitLinkInstance, ImportInstance)):
+            return el.CanBeHidden(view)
         cat = el.Category
         if cat is None or cat.CategoryType != CategoryType.Model:
             return False
@@ -508,49 +512,82 @@ def _unhide_all(doc, view):
         view.UnhideElements(hidden)
 
 
+def _keep_with_nested(doc, keep_ids):
+    """keep_ids + вложенные общие семейства оставляемых элементов (иначе у
+    оставленного семейства пропадают его вложенные части)."""
+    from Autodesk.Revit.DB import FamilyInstance
+    keep = set(keep_ids)
+    for eid in list(keep_ids):
+        el = doc.GetElement(ElementId(eid))
+        if not isinstance(el, FamilyInstance):
+            continue
+        stack = [el]
+        while stack:
+            parent = stack.pop()
+            try:
+                sub_ids = parent.GetSubComponentIds()
+            except Exception:
+                continue
+            for sid in sub_ids:
+                if sid.IntegerValue not in keep:
+                    keep.add(sid.IntegerValue)
+                    sub = doc.GetElement(sid)
+                    if isinstance(sub, FamilyInstance):
+                        stack.append(sub)
+    return keep
+
+
 def _apply_visibility(doc, view, keep_ids):
     """
-    На виде видны только элементы keep_ids (int ElementId.IntegerValue).
+    На виде видны только элементы keep_ids (int ElementId.IntegerValue) и
+    их вложенные семейства. Возвращает число скрытых элементов.
 
-    Скрываются только модельные элементы, реально попадающие на вид
-    (FilteredElementCollector по виду, после Regenerate), а не всё подряд
-    по документу: раньше прятались и служебные/видозависимые элементы
-    других видов, а это лишняя нагрузка на режим «Показать скрытые
-    элементы» (на таком виде Revit падал). Перед этим всё скрытое
-    поштучно показывается и вид регенерируется — иначе только что
-    показанные элементы не попадают в выборку по виду и остаются видны.
+    Сначала всё скрытое поштучно показывается (прошлый запуск), потом
+    скрываются модельные элементы ВСЕГО документа, кроме оставляемых
+    (_hideable: без видозависимых и служебных — иначе режим «Показать
+    скрытые элементы» на таком виде ронял Revit). Выборка по документу, а не
+    по виду (FilteredElementCollector(doc, view.Id)): для только что
+    созданного в той же транзакции вида выборка по виду может оказаться
+    пустой — тогда ничего не скрывалось и на виде оставалась вся модель.
     """
     from System.Collections.Generic import List
 
     _unhide_all(doc, view)
-    doc.Regenerate()
 
+    keep = _keep_with_nested(doc, keep_ids)
     skip = _never_hide_ids()
     to_hide = List[ElementId]()
-    for el in FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType():
-        if el.Id.IntegerValue in keep_ids:
+    for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
+        if el.Id.IntegerValue in keep:
+            continue
+        try:
+            if el.IsHidden(view):
+                continue
+        except Exception:
             continue
         if _hideable(el, view, skip):
             to_hide.Add(el.Id)
     if to_hide.Count:
         view.HideElements(to_hide)
+    return to_hide.Count
 
 
 def build_3d_view(doc, elements):
     """
     3D-вид VIEW_3D_NAME, на котором видны только elements. Вызывать внутри
-    транзакции. Возвращает вид или None (нет элементов / нет типа 3D-вида).
+    транзакции. Возвращает (вид, сколько элементов скрыто) или (None, 0) —
+    нет элементов / нет типа 3D-вида.
     """
     from Autodesk.Revit.DB import View3D
 
     if not elements:
-        return None
+        return None, 0
 
     view = _find_3d_view(doc, VIEW_3D_NAME)
     if view is None:
         vft = _three_d_type(doc)
         if vft is None:
-            return None
+            return None, 0
         view = View3D.CreateIsometric(doc, vft.Id)
         view.Name = VIEW_3D_NAME
     else:
@@ -572,8 +609,8 @@ def build_3d_view(doc, elements):
     except Exception:
         pass
 
-    _apply_visibility(doc, view, set(el.Id.IntegerValue for el in elements))
-    return view
+    hidden = _apply_visibility(doc, view, set(el.Id.IntegerValue for el in elements))
+    return view, hidden
 
 
 def _temporary_modes():
