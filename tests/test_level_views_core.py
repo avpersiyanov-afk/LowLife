@@ -63,4 +63,9 @@ def test_normalize_settings():
                                  core.CHECKED_KEY: [u"T", 3]})
     assert s[core.MASK_KEY] == core.DEFAULT_MASK
     assert s[core.VALUES_KEY] == {u"T": u"v"}
+    assert core.DEFAULT_MASK == u"{Значение}_{Корпус}_{Этаж}_{Отметка}"
+    assert core.normalize_settings({core.MASK_KEY: u"{Уровень}_{Значение}"})[core.MASK_KEY] \
+        == core.DEFAULT_MASK
+    assert core.normalize_settings({core.MASK_KEY: u"{Уровень} {Значение}"})[core.MASK_KEY] \
+        == u"{Уровень} {Значение}"
     assert s[core.CHECKED_KEY] == [u"T"]

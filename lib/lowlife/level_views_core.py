@@ -36,7 +36,9 @@ TOKEN_VALUE = u"Значение"
 TOKENS = (TOKEN_LEVEL, TOKEN_FLOOR, TOKEN_BUILDING, TOKEN_COMMENT,
           TOKEN_ELEVATION, TOKEN_TEMPLATE, TOKEN_VALUE)
 
-DEFAULT_MASK = u"{Уровень}_{Значение}"
+DEFAULT_MASK = u"{Значение}_{Корпус}_{Этаж}_{Отметка}"
+# Прежняя маска по умолчанию: сохранённая без изменений — заменяется новой.
+_OLD_DEFAULT_MASK = u"{Уровень}_{Значение}"
 
 # Ключи файла настроек.
 MASK_KEY = "name_mask"
@@ -56,7 +58,7 @@ def normalize_settings(saved):
     """Настройки окна из файла; битые значения — по умолчанию."""
     saved = saved if isinstance(saved, dict) else {}
     mask = _str(saved.get(MASK_KEY))
-    if validate_mask(mask):
+    if validate_mask(mask) or mask == _OLD_DEFAULT_MASK:
         mask = DEFAULT_MASK
     values = saved.get(VALUES_KEY)
     values = values if isinstance(values, dict) else {}
