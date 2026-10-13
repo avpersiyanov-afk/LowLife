@@ -5,7 +5,7 @@ __author__ = "Pipers"
 
 import traceback
 
-from pyrevit import revit, forms, EXEC_PARAMS
+from pyrevit import revit, forms
 
 doc = revit.doc
 
@@ -13,129 +13,57 @@ TITLE = u"Виды по уровням"
 _ALERT_MAX_LINES = 30
 
 
-class _Option(object):
-    def __init__(self, item, label):
-        self.item = item
-        self.label = label
-
-
-def _pick(options, checked_labels, title, button):
-    """Отмеченные варианты (SelectFromList, несколько) или None — отмена."""
-    items = [forms.TemplateListItem(o, checked=(o.label in checked_labels), name_attr="label")
-             for o in options]
-    chosen = forms.SelectFromList.show(
-        items, title=title, button_name=button, multiselect=True, width=520, height=600)
-    if not chosen:
-        return None
-    return chosen
-
-
 def _report(results):
     from lowlife.geometry import level_name
+    from lowlife.level_views import safe_name
 
     done = [r for r in results if r.error is None]
     failed = [r for r in results if r.error is not None]
     created = len([r for r in done if r.action == u"создан"])
-    updated = len(done) - created
 
-    lines = [u"Создано видов: {}, обновлено: {}.".format(created, updated)]
+    lines = [u"Создано видов: {}, уже были (назначен шаблон): {}.".format(
+        created, len(done) - created)]
     if failed:
         lines.append(u"Не получилось: {}.".format(len(failed)))
-    for r in done:
-        line = u"  • {} — {}".format(r.name, r.action)
-        if r.links:
-            line += u"; связи: " + u", ".join(
-                u"{} → «{}»".format(link, view) for link, view in r.links)
-        lines.append(line)
-        lines.extend(u"      ! {}".format(n) for n in r.notes)
-    if failed:
         lines.append(u"")
-        lines.append(u"Ошибки:")
         for r in failed:
-            lines.append(u"  • {} / {}: {}".format(
-                level_name(r.level), r.group[u"name"], r.error))
+            lines.append(u"  • {} ({} / {}): {}".format(
+                r.name or u"—", safe_name(r.template), level_name(r.level), r.error))
+
     if len(lines) <= _ALERT_MAX_LINES:
         forms.alert(u"\n".join(lines), title=TITLE)
         return
-    # Длинный отчёт — в окно вывода pyRevit, в сообщении только итог.
+    # Длинный список ошибок — в окно вывода pyRevit, в сообщении только итог.
     from pyrevit import script
     output = script.get_output()
     output.set_title(TITLE)
     for line in lines:
         print(line)
-    forms.alert(lines[0] + (u"\n" + lines[1] if failed else u"") +
-                u"\n\nПодробности — в окне вывода.", title=TITLE)
+    forms.alert(lines[0] + u"\n" + lines[1] + u"\n\nПодробности — в окне вывода.",
+                title=TITLE)
 
 
 def main():
-    from lowlife import level_views, level_views_settings as lvs, level_views_link_dialog
-    from lowlife import level_name_template
-    from lowlife import level_views_core as core
-    from lowlife.geometry import level_name
+    from lowlife import level_views, level_views_dialog, level_views_settings as lvs
 
-    try:
-        config_mode = bool(EXEC_PARAMS.config_mode)
-    except Exception:
-        config_mode = False
-
-    if config_mode:
-        edited = lvs.get_settings_interactive(doc)
-        forms.alert(
-            u"Отменено, настройки не изменены." if edited is None
-            else u"Настройки сохранены.",
-            title=TITLE
-        )
+    templates = level_views.list_plan_templates(doc)
+    if not templates:
+        forms.alert(u"В проекте нет шаблонов видов для планов.", title=TITLE)
         return
-
-    settings = lvs.get_settings_silent()
-    if not settings[lvs.GROUPS_KEY]:
-        forms.alert(u"Групп видов пока нет — сейчас откроются настройки "
-                    u"(потом их можно открыть Shift+кликом по кнопке).", title=TITLE)
-        settings = lvs.get_settings_interactive(doc)
-        if settings is None or not settings[lvs.GROUPS_KEY]:
-            return
-
     levels = level_views.document_levels(doc)
     if not levels:
         forms.alert(u"В проекте нет уровней.", title=TITLE)
         return
 
-    level_options = [_Option(l, level_name(l)) for l in levels]
-    chosen_levels = _pick(level_options, set(settings[lvs.LAST_LEVELS_KEY]),
-                          u"Уровни, для которых создать виды", u"Далее")
-    if chosen_levels is None:
-        return
-
-    groups = settings[lvs.GROUPS_KEY]
-    if len(groups) == 1:
-        chosen_groups = [_Option(groups[0], groups[0][core.G_NAME])]
-    else:
-        last = set(settings[lvs.LAST_GROUPS_KEY]) or set(g[core.G_NAME] for g in groups)
-        chosen_groups = _pick([_Option(g, g[core.G_NAME]) for g in groups], last,
-                              u"Группы видов", u"Создать виды")
-        if chosen_groups is None:
-            return
-
-    lvs.remember_choice([o.label for o in chosen_levels], [o.label for o in chosen_groups])
-
-    levels = [o.item for o in chosen_levels]
-    groups = [o.item for o in chosen_groups]
-    level_template = level_name_template.LevelNameTemplate(settings[lvs.LEVEL_TEMPLATE_KEY])
-    ctx = level_views.Context(doc, level_template)
-
-    # Связи «По связанному виду» — вид связи для каждого уровня выбирается в окне.
-    picked = level_views_link_dialog.show(ctx, levels, groups, settings[lvs.LINK_CHOICES_KEY])
+    level_template = lvs.level_template()
+    picked = level_views_dialog.show(doc, templates, levels, lvs.load(), level_template)
     if picked is None:
         return
-    link_choices, filters = picked
-    if link_choices or filters:
-        lvs.remember_link_choices(link_choices, filters)
-        for g in groups:
-            if g[core.G_NAME] in filters:
-                g[core.G_LINK_VIEW_MODE], g[core.G_LINK_VIEW_FILTER] = filters[g[core.G_NAME]]
+    mask, items, values = picked
+    lvs.save(mask, values, [level_views.safe_name(t) for t, _v in items])
 
     with revit.Transaction(TITLE):
-        results = level_views.build_views(ctx, levels, groups, link_choices)
+        results = level_views.build_views(doc, levels, items, mask, level_template)
     _report(results)
 
 
