@@ -16,10 +16,10 @@ def appdata(tmpdir, monkeypatch):
 
 def test_save_and_load(appdata):
     assert lvs.load()[core.MASK_KEY] == core.DEFAULT_MASK
-    lvs.save(u"{Уровень} {Значение}", {u"A": u"Свет"}, [u"A"])
-    lvs.save(u"{Уровень}-{Значение}", {u"B": u"Сила"}, [u"B"])
+    lvs.save(u"{Уровень} {Группа вида и назначение}", {u"A": u"Свет"}, [u"A"])
+    lvs.save(u"{Уровень}-{Группа вида и назначение}", {u"B": u"Сила"}, [u"B"])
     s = lvs.load()
-    assert s[core.MASK_KEY] == u"{Уровень}-{Значение}"
+    assert s[core.MASK_KEY] == u"{Уровень}-{Группа вида и назначение}"
     assert s[core.VALUES_KEY] == {u"A": u"Свет", u"B": u"Сила"}
     assert s[core.CHECKED_KEY] == [u"B"]
 

@@ -2337,7 +2337,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 
 ## level_views.py / level_views_core.py / level_views_settings.py / level_views_dialog.py
 Кнопка `Tools.panel/LevelViews` («Виды по уровням»): в окне отмечаются шаблоны
-видов планов (этажа, потолка, несущих), у каждого — своё «Значение», и задаётся
+видов планов (этажа, потолка, несущих), у каждого — своя «Группа вида и назначение», и задаётся
 маска имени; для каждого отмеченного шаблона на каждом уровне модели создаётся
 план (`ViewPlan.Create`, первый по имени тип того же вида, что шаблон) с этим
 шаблоном. Диапазон, связи и видимость задаёт сам шаблон. План с тем же именем на
@@ -2346,7 +2346,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 
 | Модуль / функция | Что делает |
 |---|---|
-| `level_views_core` | Чистая логика (`tests/test_level_views_core.py`): подстановки `{Уровень}`, `{Значение}`, `{Шаблон}`, `{Отметка}` («+3.300»), `{Этаж}`/`{Корпус}`/`{Комментарий}` (по шаблону имени уровня); `build_view_name(mask, level_values, template_name, value)`, `validate_mask`, `mask_warning`, `normalize_settings` |
+| `level_views_core` | Чистая логика (`tests/test_level_views_core.py`): подстановки `{Уровень}`, `{Группа вида и назначение}` (прежнее `{Значение}` тоже понимается), `{Шаблон}`, `{Отметка}` («+3.300»), `{Этаж}`/`{Корпус}`/`{Комментарий}` (по шаблону имени уровня); `build_view_name(mask, level_values, template_name, value)`, `validate_mask`, `mask_warning`, `normalize_settings` |
 | `level_views.build_views(doc, levels, items, mask, level_template)` | Создаёт виды (внутри транзакции), `items` — `[(шаблон, значение)]` → `[ViewResult]` (`name`, `action`, `error`) |
 | `level_views.list_plan_templates` / `document_levels` / `level_values` | Шаблоны планов, уровни по отметке, подстановки уровня |
 | `level_views_settings` | `LowLifeLevelViews_settings.json`: маска, значения по шаблонам, отмеченные шаблоны (`load`/`save`); `level_template()` — шаблон имени уровня из настроек «Секущего диапазона» |
