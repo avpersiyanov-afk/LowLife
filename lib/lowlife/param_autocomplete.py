@@ -30,6 +30,9 @@ WPF, есть тесты. Сбор имён (collect_parameter_names) и окн�
 SINGLE = (u"", None)
 LIST = (u",;\n", None)
 
+# Маска помещения «Имя (Номер)», «Имя, Номер»: имена — между «,», «(», «)».
+MASK = (u",()", None)
+
 _SINGLE_SUFFIXES = ("_param", "_param_name")
 _LIST_SUFFIXES = ("_params", "_param_names", "param_names_text")
 
@@ -46,6 +49,67 @@ def spec_for_key(key):
     if key.endswith(_SINGLE_SUFFIXES):
         return SINGLE
     return None
+
+
+# Поля, где подсказывается не имя параметра (или параметр — по другому
+# правилу): ключ → (что подсказывать, spec, ключ поля, от которого зависит
+# список). Что подсказывать:
+#   "params"        — имена параметров модели;
+#   "views"         — имена видов;
+#   "view_prefixes" — начала имён видов («1», «20» из «1 Этаж», «20_План»);
+#   "families"      — имена семейств (для фильтров по части имени);
+#   "system_types"  — типы электрических цепей Revit;
+#   "lines_of"      — строки другого поля (имя категории схемы — из списка
+#                     категорий выше в том же окне);
+#   "values_of"     — значения в модели параметра, имя которого — в другом
+#                     поле («Тип трассы» = …).
+EXTRA_RULES = {
+    "room_mask": ("params", MASK, None),
+    "schematic_view_name": ("views", SINGLE, None),
+    "view_name_prefixes": ("view_prefixes", LIST, None),
+    "family_filter": ("families", SINGLE, None),
+    "wire_line_family_filter": ("families", SINGLE, None),
+    "circuit_system_type": ("system_types", SINGLE, None),
+    "cabinet_category_name": ("lines_of", SINGLE, "schematic_device_categories_text"),
+    "route_param_value": ("values_of", SINGLE, "route_param_name"),
+    "route_param_value_riser": ("values_of", SINGLE, "route_param_name"),
+    "device_cable_type_value": ("values_of", SINGLE, "cable_param_name"),
+    "install_pipe_key": ("values_of", SINGLE, "cable_param_name"),
+    "install_pipe_open_key": ("values_of", SINGLE, "cable_param_name"),
+    "install_tray_key": ("values_of", SINGLE, "cable_param_name"),
+}
+
+
+def rule_for_key(key):
+    """
+    (что подсказывать, spec, ключ поля-зависимости) для ключа настроек или
+    None — см. EXTRA_RULES; иначе имена параметров по spec_for_key.
+    """
+    if key in EXTRA_RULES:
+        return EXTRA_RULES[key]
+    spec = spec_for_key(key)
+    if spec is not None:
+        return ("params", spec, None)
+    return None
+
+
+def text_lines(text):
+    """Непустые строки поля без повторов, по порядку."""
+    result = []
+    for line in (text or u"").replace(u"\r", u"\n").split(u"\n"):
+        line = line.strip()
+        if line and line not in result:
+            result.append(line)
+    return result
+
+
+def view_name_prefix(name):
+    """Начало имени вида до первого пробела/«_»/«-»/«.»: «20_План» → «20»."""
+    name = (name or u"").strip()
+    for index, ch in enumerate(name):
+        if ch in u" _-.":
+            return name[:index]
+    return name
 
 
 def normalize(text):
@@ -318,6 +382,111 @@ def collect_parameter_names(doc, budget_ms=4000, include_links=True):
     return sorted(collector.names, key=normalize)
 
 
+def _budget_watch():
+    from System.Diagnostics import Stopwatch
+    return Stopwatch.StartNew()
+
+
+def _element_name(element):
+    try:
+        from Autodesk.Revit.DB import Element
+        return Element.Name.GetValue(element)
+    except Exception:
+        return None
+
+
+def collect_family_names(doc):
+    """Имена загруженных семейств."""
+    from Autodesk.Revit.DB import FilteredElementCollector, Family
+    names = set()
+    for family in FilteredElementCollector(doc).OfClass(Family):
+        name = _element_name(family)
+        if name:
+            names.add(name)
+    return sorted(names, key=normalize)
+
+
+def collect_view_names(doc):
+    """Имена видов (без шаблонов видов)."""
+    from Autodesk.Revit.DB import FilteredElementCollector, View
+    names = set()
+    for view in FilteredElementCollector(doc).OfClass(View):
+        try:
+            if view.IsTemplate:
+                continue
+        except Exception:
+            pass
+        name = _element_name(view)
+        if name:
+            names.add(name)
+    return sorted(names, key=normalize)
+
+
+def collect_view_name_prefixes(doc):
+    """Начала имён видов (view_name_prefix), без повторов."""
+    prefixes = set(view_name_prefix(n) for n in collect_view_names(doc))
+    prefixes.discard(u"")
+    return sorted(prefixes, key=normalize)
+
+
+def collect_system_type_names(doc=None):
+    """Типы электрических цепей Revit (Data, Security, FireAlarm…)."""
+    from Autodesk.Revit.DB.Electrical import ElectricalSystemType
+    return sorted(
+        a for a in dir(ElectricalSystemType)
+        if not a.startswith("_")
+        and isinstance(getattr(ElectricalSystemType, a, None), ElectricalSystemType)
+    )
+
+
+def _param_text(param):
+    try:
+        text = param.AsString()
+        if not text:
+            text = param.AsValueString()
+        return (text or u"").strip()
+    except Exception:
+        return u""
+
+
+def collect_param_values(doc, param_name, budget_ms=3000):
+    """
+    Разные непустые значения параметра param_name у элементов модели (у
+    экземпляра, а если у него такого нет — у его типа), пока не истечёт
+    budget_ms.
+    """
+    from Autodesk.Revit.DB import FilteredElementCollector
+    param_name = (param_name or u"").strip()
+    if doc is None or not param_name:
+        return []
+    watch = _budget_watch()
+    values = set()
+    seen_types = set()
+    for element in FilteredElementCollector(doc).WhereElementIsNotElementType():
+        if watch.ElapsedMilliseconds > budget_ms:
+            break
+        try:
+            param = element.LookupParameter(param_name)
+        except Exception:
+            param = None
+        if param is None:
+            try:
+                type_id = element.GetTypeId()
+                if type_id is None or type_id.IntegerValue <= 0 \
+                        or type_id.IntegerValue in seen_types:
+                    continue
+                seen_types.add(type_id.IntegerValue)
+                element_type = doc.GetElement(type_id)
+                param = element_type.LookupParameter(param_name) if element_type else None
+            except Exception:
+                param = None
+        if param is not None:
+            text = _param_text(param)
+            if text:
+                values.add(text)
+    return sorted(values, key=normalize)
+
+
 def active_doc():
     """Активный документ Revit (для окон, которым doc не передают)."""
     try:
@@ -327,57 +496,158 @@ def active_doc():
         return None
 
 
-class NameSource(object):
-    """
-    Имена параметров для одного окна: собираются один раз, при первой
-    подсказке (не задерживают открытие окна). doc=None — активный документ.
-    """
+def _with_wait_cursor(work):
+    cursor_set = False
+    try:
+        from System.Windows.Input import Mouse, Cursors
+        Mouse.OverrideCursor = Cursors.Wait
+        cursor_set = True
+    except Exception:
+        pass
+    try:
+        return work()
+    except Exception:
+        return []
+    finally:
+        if cursor_set:
+            Mouse.OverrideCursor = None
 
-    def __init__(self, doc=None, names=None):
-        self.doc = doc
-        self._names = list(names) if names is not None else None
-
-    def names(self):
-        if self._names is None:
-            doc = self.doc if self.doc is not None else active_doc()
-            cursor_set = False
-            try:
-                from System.Windows.Input import Mouse, Cursors
-                Mouse.OverrideCursor = Cursors.Wait
-                cursor_set = True
-            except Exception:
-                pass
-            try:
-                self._names = collect_parameter_names(doc)
-            except Exception:
-                self._names = []
-            finally:
-                if cursor_set:
-                    Mouse.OverrideCursor = None
-        return self._names
-
-
-# --- окно-подсказка под полем (WPF) ------------------------------------------
 
 HINT = (u"Начните вводить — появятся подходящие параметры модели "
         u"(↓ или Ctrl+Пробел — весь список, Enter — подставить).")
 
+_HINTS = {
+    "views": u"виды модели",
+    "view_prefixes": u"начала имён видов модели",
+    "families": u"семейства модели",
+    "system_types": u"типы электрических цепей Revit",
+    "lines_of": u"значения из списка выше",
+    "values_of": u"значения этого параметра в модели",
+}
 
-def attach_by_keys(boxes, source, overrides=None):
+
+def _hint(what):
+    return (u"Начните вводить — появятся подходящие {} (↓ или Ctrl+Пробел — "
+            u"весь список, Enter — подставить).".format(what))
+
+
+class NameSource(object):
     """
-    Подключает подсказки ко всем полям {ключ: TextBox}, чьи ключи — имена
-    параметров (spec_for_key). overrides — {ключ: spec или None}, если
-    правило по имени ключа не подходит.
+    Имена для подсказки в одном окне: собираются один раз, при первой
+    подсказке (не задерживают открытие окна). doc=None — активный документ.
+    collect(doc) → список имён; по умолчанию — имена параметров.
+    """
+
+    def __init__(self, doc=None, names=None, collect=None, hint=HINT):
+        self.doc = doc
+        self._names = list(names) if names is not None else None
+        self.collect = collect or collect_parameter_names
+        self.hint = hint
+
+    def get_doc(self):
+        return self.doc if self.doc is not None else active_doc()
+
+    def names(self):
+        if self._names is None:
+            doc = self.get_doc()
+            self._names = _with_wait_cursor(lambda: self.collect(doc)) or []
+        return self._names
+
+
+class DependentSource(object):
+    """
+    Имена, зависящие от текста другого поля (get_text()): значения
+    параметра, чьё имя введено рядом, или строки списка выше. collect(doc,
+    text) → список; запоминается для каждого text.
+    """
+
+    def __init__(self, get_text, collect, doc=None, hint=HINT, wait=True):
+        self.get_text = get_text
+        self.collect = collect
+        self.doc = doc
+        self.hint = hint
+        self.wait = wait
+        self._cache = {}
+
+    def names(self):
+        try:
+            text = self.get_text() or u""
+        except Exception:
+            text = u""
+        if text not in self._cache:
+            doc = self.doc if self.doc is not None else active_doc()
+            work = lambda: self.collect(doc, text)
+            self._cache[text] = (_with_wait_cursor(work) if self.wait else work()) or []
+        return self._cache[text]
+
+
+def source_for_rule(rule, params_source, boxes=None, values=None):
+    """
+    Источник подсказки для правила rule_for_key: имена параметров —
+    общий params_source окна, остальное — новый источник на том же doc.
+    Поле-зависимость берётся из boxes, а если его нет в окне — из values
+    (сохранённые настройки).
+    """
+    kind, _, dep_key = rule
+    if kind == "params":
+        return params_source
+    doc = getattr(params_source, "doc", None)
+    hint = _hint(_HINTS.get(kind, u"значения"))
+    if kind == "views":
+        return NameSource(doc, collect=collect_view_names, hint=hint)
+    if kind == "view_prefixes":
+        return NameSource(doc, collect=collect_view_name_prefixes, hint=hint)
+    if kind == "families":
+        return NameSource(doc, collect=collect_family_names, hint=hint)
+    if kind == "system_types":
+        return NameSource(doc, collect=collect_system_type_names, hint=hint)
+
+    boxes = boxes or {}
+    values = values or {}
+
+    def get_text():
+        if dep_key in boxes:
+            return boxes[dep_key].Text
+        return values.get(dep_key) or u""
+
+    if kind == "lines_of":
+        return DependentSource(get_text, lambda doc, text: text_lines(text),
+                               doc, hint, wait=False)
+    if kind == "values_of":
+        return DependentSource(lambda: get_text().strip(), collect_param_values, doc, hint)
+    return None
+
+
+# --- окно-подсказка под полем (WPF) ------------------------------------------
+
+def attach_by_keys(boxes, source, overrides=None, values=None):
+    """
+    Подключает подсказки ко всем полям {ключ: TextBox}, для которых есть
+    правило (rule_for_key): имена параметров — из source (общий
+    NameSource окна), виды/семейства/значения и т. п. — из своих
+    источников. overrides — {ключ: spec имён параметров или None}, если
+    правило по имени ключа не подходит. values — сохранённые настройки:
+    откуда брать поле-зависимость, если его нет в окне.
     """
     overrides = overrides or {}
     for key, box in boxes.items():
-        spec = overrides[key] if key in overrides else spec_for_key(key)
-        if spec is not None:
-            attach(box, source, spec)
+        if key in overrides:
+            if overrides[key] is not None:
+                attach(box, source, overrides[key])
+            continue
+        rule = rule_for_key(key)
+        if rule is None:
+            continue
+        rule_source = source_for_rule(rule, source, boxes, values)
+        if rule_source is not None:
+            attach(box, rule_source, rule[1])
 
 
 def attach(box, source, spec=SINGLE):
-    """Подключает подсказку имён параметров к TextBox. Возвращает box."""
+    """
+    Подключает подсказку к TextBox; source — NameSource/DependentSource
+    (что угодно с .names()). Возвращает box.
+    """
     try:
         _Completion(box, source, spec)
     except Exception:
@@ -436,7 +706,7 @@ class _Completion(object):
         box.PreviewKeyDown += self.on_key
         box.LostKeyboardFocus += self.on_lost_focus
         if box.ToolTip is None:
-            box.ToolTip = HINT
+            box.ToolTip = getattr(source, "hint", None) or HINT
 
     # --- показ ---
 

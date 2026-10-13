@@ -88,3 +88,60 @@ def test_rank_wrong_keyboard_layout():
     # совпадение в набранной раскладке выше, чем в другой
     names = [u"Cnf", u"Стандарт"]
     assert pa.rank(names, u"cnf") == [u"Cnf", u"Стандарт"]
+
+
+def test_rule_for_key():
+    assert pa.rule_for_key("addr_param_name") == ("params", pa.SINGLE, None)
+    assert pa.rule_for_key("offset_param_names") == ("params", pa.LIST, None)
+    assert pa.rule_for_key("room_mask") == ("params", pa.MASK, None)
+    assert pa.rule_for_key("schematic_view_name")[0] == "views"
+    assert pa.rule_for_key("view_name_prefixes") == ("view_prefixes", pa.LIST, None)
+    assert pa.rule_for_key("family_filter")[0] == "families"
+    assert pa.rule_for_key("circuit_system_type")[0] == "system_types"
+    assert pa.rule_for_key("cabinet_category_name") == (
+        "lines_of", pa.SINGLE, "schematic_device_categories_text")
+    assert pa.rule_for_key("route_param_value_riser") == (
+        "values_of", pa.SINGLE, "route_param_name")
+    assert pa.rule_for_key("install_tray_key")[2] == "cable_param_name"
+    # ключевые слова и маска маркировки из букв — без подсказки
+    assert pa.rule_for_key("workset_filter_key") is None
+    assert pa.rule_for_key("address_mask") is None
+
+
+def test_mask_tokens():
+    text = u"Имя (Ном)"
+    assert pa.current_token(text, 8, pa.MASK) == u"Ном"
+    assert pa.replace_token(text, 8, u"Номер", pa.MASK) == (u"Имя (Номер)", 10)
+    assert pa.replace_token(u"Имя,", 4, u"Номер", pa.MASK) == (u"Имя, Номер", 10)
+    assert pa.current_token(u"Им (Номер)", 2, pa.MASK) == u"Им"
+
+
+def test_text_lines_and_view_prefix():
+    assert pa.text_lines(u"Шкаф\r\n Розетка \n\nШкаф") == [u"Шкаф", u"Розетка"]
+    assert pa.text_lines(None) == []
+    assert pa.view_name_prefix(u"20_План 3 этажа") == u"20"
+    assert pa.view_name_prefix(u"1 Этаж") == u"1"
+    assert pa.view_name_prefix(u"План") == u"План"
+    assert pa.view_name_prefix(u"") == u""
+
+
+class _Box(object):
+    def __init__(self, text):
+        self.Text = text
+
+
+def test_dependent_sources_from_boxes_and_values():
+    boxes = {"schematic_device_categories_text": _Box(u"Шкаф\nРозетка")}
+    source = pa.source_for_rule(pa.rule_for_key("cabinet_category_name"), None, boxes, {})
+    assert source.names() == [u"Шкаф", u"Розетка"]
+    boxes["schematic_device_categories_text"].Text = u"Панель"
+    assert source.names() == [u"Панель"]
+    # поля-зависимости нет в окне — берётся из сохранённых настроек
+    source = pa.source_for_rule(pa.rule_for_key("cabinet_category_name"), None, {},
+                                {"schematic_device_categories_text": u"Пульт"})
+    assert source.names() == [u"Пульт"]
+
+
+def test_params_rule_uses_window_source():
+    params = pa.NameSource(names=[u"Марка"])
+    assert pa.source_for_rule(pa.rule_for_key("room_mask"), params) is params

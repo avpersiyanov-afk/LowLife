@@ -499,8 +499,10 @@ def show_settings_form(doc, values):
     outer.Children.Add(scroll)
 
     win.Content = outer
-    # подсказка имён параметров модели в полях имён параметров
-    param_autocomplete.attach_by_keys(boxes, param_autocomplete.NameSource(doc))
+    # подсказки в полях: имена параметров, виды, семейства, значения…
+    param_autocomplete.attach_by_keys(
+        boxes, param_autocomplete.NameSource(doc), values=values
+    )
 
     win.ShowDialog()
 
