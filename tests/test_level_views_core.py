@@ -11,9 +11,9 @@ from lowlife import level_views_core as core
 
 def test_build_view_name_level_and_value():
     values = core.level_tokens(u"Этаж 02", 3300.0, None)
-    assert core.build_view_name(u"{Уровень}_{Значение}", values, u"ЭОМ_Свет", u"Освещение") \
+    assert core.build_view_name(u"{Уровень}_{Группа вида и назначение}", values, u"ЭОМ_Свет", u"Освещение") \
         == u"Этаж 02_Освещение"
-    assert core.build_view_name(u"{Значение} ({Шаблон}) {Отметка}", values, u"ЭОМ_Свет", u"Свет") \
+    assert core.build_view_name(u"{Группа вида и назначение} ({Шаблон}) {Отметка}", values, u"ЭОМ_Свет", u"Свет") \
         == u"Свет (ЭОМ_Свет) +3.300"
 
 
@@ -21,18 +21,18 @@ def test_build_view_name_with_level_template_parts():
     tpl = level_name_template.LevelNameTemplate(u"{Дисциплина}_{Корпус}_{Отметка}_{Этаж}_{Комментарий}")
     name = u"АР_К1_+3.300_02"
     values = core.level_tokens(name, 3300.0, tpl.parse(name))
-    assert core.build_view_name(u"{Корпус} {Этаж} этаж. {Значение}", values, u"T", u"Силовое") \
+    assert core.build_view_name(u"{Корпус} {Этаж} этаж. {Группа вида и назначение}", values, u"T", u"Силовое") \
         == u"К1 02 этаж. Силовое"
 
 
 def test_build_view_name_cleans_empty_parts_and_bad_chars():
     values = core.level_tokens(u"Уровень 1", 0.0, None)
     # {Этаж} пустой (имя не по шаблону) — двойной «_» схлопывается.
-    assert core.build_view_name(u"{Уровень}_{Этаж}_{Значение}", values, u"T", u"Свет") \
+    assert core.build_view_name(u"{Уровень}_{Этаж}_{Группа вида и назначение}", values, u"T", u"Свет") \
         == u"Уровень 1_Свет"
-    assert core.build_view_name(u"{Уровень}: [{Значение}]", values, u"T", u"") == u"Уровень 1"
+    assert core.build_view_name(u"{Уровень}: [{Группа вида и назначение}]", values, u"T", u"") == u"Уровень 1"
     minus = core.level_tokens(u"П1", -2700.0, None)
-    assert core.build_view_name(u"{Отметка}_{Значение}", minus, u"T", u"Свет") == u"-2.700_Свет"
+    assert core.build_view_name(u"{Отметка}_{Группа вида и назначение}", minus, u"T", u"Свет") == u"-2.700_Свет"
 
 
 @pytest.mark.parametrize("mm, text", [
@@ -43,16 +43,16 @@ def test_format_elevation(mm, text):
 
 
 def test_validate_mask():
-    assert core.validate_mask(u"{Уровень}_{Значение}") is None
+    assert core.validate_mask(u"{Уровень}_{Группа вида и назначение}") is None
     assert u"неизвестные" in core.validate_mask(u"{Уровень}_{Марка}")
     assert u"скобка" in core.validate_mask(u"{Уровень")
     assert core.validate_mask(u"  ") == u"маска пустая"
 
 
 def test_mask_warning():
-    assert core.mask_warning(u"{Уровень}_{Значение}", 3) is None
-    assert u"{Уровень}" in core.mask_warning(u"{Значение}", 1)
-    assert u"{Значение}" in core.mask_warning(u"{Уровень}", 2)
+    assert core.mask_warning(u"{Уровень}_{Группа вида и назначение}", 3) is None
+    assert u"{Уровень}" in core.mask_warning(u"{Группа вида и назначение}", 1)
+    assert u"{Группа вида и назначение}" in core.mask_warning(u"{Уровень}", 2)
     assert core.mask_warning(u"{Уровень}", 1) is None
 
 
@@ -63,9 +63,20 @@ def test_normalize_settings():
                                  core.CHECKED_KEY: [u"T", 3]})
     assert s[core.MASK_KEY] == core.DEFAULT_MASK
     assert s[core.VALUES_KEY] == {u"T": u"v"}
-    assert core.DEFAULT_MASK == u"{Значение}_{Корпус}_{Этаж}_{Отметка}"
+    assert s[core.CHECKED_KEY] == [u"T"]
+    assert core.DEFAULT_MASK == u"{Группа вида и назначение}_{Корпус}_{Этаж}_{Отметка}"
     assert core.normalize_settings({core.MASK_KEY: u"{Уровень}_{Значение}"})[core.MASK_KEY] \
         == core.DEFAULT_MASK
-    assert core.normalize_settings({core.MASK_KEY: u"{Уровень} {Значение}"})[core.MASK_KEY] \
-        == u"{Уровень} {Значение}"
-    assert s[core.CHECKED_KEY] == [u"T"]
+    assert core.normalize_settings({core.MASK_KEY: u"{Уровень} {Группа вида и назначение}"})[core.MASK_KEY] \
+        == u"{Уровень} {Группа вида и назначение}"
+    # Прежнее имя подстановки {Значение} — заменяется, и прежние маски по умолчанию тоже.
+    assert core.normalize_settings({core.MASK_KEY: u"{Этаж}-{Значение}"})[core.MASK_KEY] \
+        == u"{Этаж}-{Группа вида и назначение}"
+    assert core.normalize_settings({core.MASK_KEY: u"{Значение}_{Корпус}_{Этаж}_{Отметка}"})[core.MASK_KEY] \
+        == core.DEFAULT_MASK
+
+
+def test_old_value_token_still_works():
+    values = core.level_tokens(u"Этаж 02", 0.0, None)
+    assert core.validate_mask(u"{Значение}_{Уровень}") is None
+    assert core.build_view_name(u"{Значение}_{Уровень}", values, u"T", u"Свет") == u"Свет_Этаж 02"

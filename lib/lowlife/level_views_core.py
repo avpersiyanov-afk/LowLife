@@ -3,7 +3,8 @@
 Чистая логика кнопки «Виды по уровням» (Tools.panel/LevelViews), без
 Revit API: имя вида по маске и сохранённые настройки окна.
 
-Кнопка: в окне отмечаются шаблоны видов, у каждого — своё «Значение»;
+Кнопка: в окне отмечаются шаблоны видов, у каждого — своя «Группа вида и
+назначение»;
 для каждого отмеченного шаблона и каждого уровня модели создаётся план с
 этим шаблоном, имя — по общей маске.
 
@@ -14,7 +15,8 @@ Revit API: имя вида по маске и сохранённые настр�
                   пусто);
   {Отметка}     — отметка уровня, «+3.300»;
   {Шаблон}      — имя шаблона вида;
-  {Значение}    — значение, вписанное в окне для этого шаблона.
+  {Группа вида и назначение} — вписанное в окне для этого шаблона
+                  (прежнее имя подстановки {Значение} тоже понимается).
 """
 
 import re
@@ -32,11 +34,13 @@ TOKEN_BUILDING = u"Корпус"
 TOKEN_COMMENT = u"Комментарий"
 TOKEN_ELEVATION = u"Отметка"
 TOKEN_TEMPLATE = u"Шаблон"
-TOKEN_VALUE = u"Значение"
+TOKEN_VALUE = u"Группа вида и назначение"
+# Прежнее имя подстановки: в сохранённой маске заменяется на TOKEN_VALUE.
+TOKEN_VALUE_OLD = u"Значение"
 TOKENS = (TOKEN_LEVEL, TOKEN_FLOOR, TOKEN_BUILDING, TOKEN_COMMENT,
           TOKEN_ELEVATION, TOKEN_TEMPLATE, TOKEN_VALUE)
 
-DEFAULT_MASK = u"{Значение}_{Корпус}_{Этаж}_{Отметка}"
+DEFAULT_MASK = u"{Группа вида и назначение}_{Корпус}_{Этаж}_{Отметка}"
 # Прежняя маска по умолчанию: сохранённая без изменений — заменяется новой.
 _OLD_DEFAULT_MASK = u"{Уровень}_{Значение}"
 
@@ -60,6 +64,7 @@ def normalize_settings(saved):
     mask = _str(saved.get(MASK_KEY))
     if validate_mask(mask) or mask == _OLD_DEFAULT_MASK:
         mask = DEFAULT_MASK
+    mask = upgrade_mask(mask)
     values = saved.get(VALUES_KEY)
     values = values if isinstance(values, dict) else {}
     checked = saved.get(CHECKED_KEY)
@@ -72,6 +77,11 @@ def normalize_settings(saved):
     }
 
 
+def upgrade_mask(mask):
+    """{Значение} → {Группа вида и назначение} (прежнее имя подстановки)."""
+    return _str(mask).replace(u"{%s}" % TOKEN_VALUE_OLD, u"{%s}" % TOKEN_VALUE)
+
+
 def validate_mask(mask):
     """Текст ошибки маски или None."""
     mask = _str(mask)
@@ -80,7 +90,7 @@ def validate_mask(mask):
     if u"{" in _TOKEN_RE.sub(u"", mask) or u"}" in _TOKEN_RE.sub(u"", mask):
         return u"в маске есть незакрытая фигурная скобка"
     unknown = [m.group(1).strip() for m in _TOKEN_RE.finditer(mask)
-               if m.group(1).strip() not in TOKENS]
+               if m.group(1).strip() not in TOKENS + (TOKEN_VALUE_OLD,)]
     if unknown:
         return u"неизвестные подстановки: {} (доступны: {})".format(
             u", ".join(u"{%s}" % t for t in unknown),
@@ -92,13 +102,13 @@ def mask_warning(mask, templates_count):
     """
     Предупреждение (не ошибка): без {Уровень}/{Этаж}/{Отметка} у видов
     разных уровней будут одинаковые имена; несколько шаблонов без
-    {Шаблон}/{Значение} — одинаковые имена у видов одного уровня.
+    {Шаблон}/{Группа вида и назначение} — одинаковые имена у видов одного уровня.
     """
     tokens = set(m.group(1).strip() for m in _TOKEN_RE.finditer(_str(mask)))
     if not tokens & set((TOKEN_LEVEL, TOKEN_FLOOR, TOKEN_ELEVATION)):
         return u"в маске нет {Уровень} — у видов разных уровней совпадут имена"
-    if templates_count > 1 and not tokens & set((TOKEN_TEMPLATE, TOKEN_VALUE)):
-        return (u"в маске нет {Значение} или {Шаблон} — у видов разных шаблонов "
+    if templates_count > 1 and not tokens & set((TOKEN_TEMPLATE, TOKEN_VALUE, TOKEN_VALUE_OLD)):
+        return (u"в маске нет {Группа вида и назначение} или {Шаблон} — у видов разных шаблонов "
                 u"на одном уровне совпадут имена")
     return None
 
@@ -169,4 +179,5 @@ def build_view_name(mask, level_values, template_name, value):
     values = dict(level_values)
     values[TOKEN_TEMPLATE] = _str(template_name)
     values[TOKEN_VALUE] = _str(value)
+    values[TOKEN_VALUE_OLD] = _str(value)
     return clean_view_name(apply_mask(mask, values))

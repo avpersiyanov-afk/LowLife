@@ -131,7 +131,7 @@ def _build_one(doc, level, template, vft, view_type, name, existing, taken, resu
     key = (view_type, name)
     if key in taken:
         result.error = (u"такое имя уже получил другой вид в этом запуске — добавьте в "
-                        u"маску {Значение} или {Шаблон}")
+                        u"маску {Группа вида и назначение} или {Шаблон}")
         return
     taken.add(key)
     view = existing.get(key)

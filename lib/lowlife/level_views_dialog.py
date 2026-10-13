@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Окно кнопки «Виды по уровням» (Tools.panel/LevelViews): маска имени вида,
-список шаблонов видов планов (галочка «создать» + своё «Значение» у
-каждого) и предпросмотр имён на первом уровне. Логика имён —
+список шаблонов видов планов (галочка «создать» + своя «Группа вида и
+назначение» у каждого) и предпросмотр имён на первом уровне. Логика имён —
 level_views_core, создание видов — level_views.
 """
 
@@ -113,11 +113,12 @@ def show(doc, templates, levels, settings, level_template):
     mask_box.Padding = Thickness(4)
     mask_box.Text = settings[core.MASK_KEY]
     header.Children.Add(mask_box)
-    _hint(header, u"Подстановки: {Уровень} — имя уровня; {Значение} — значение шаблона из "
-                  u"списка ниже; {Шаблон} — имя шаблона; {Отметка} — «+3.300»; {Этаж}, "
+    _hint(header, u"Подстановки: {Уровень} — имя уровня; {Группа вида и назначение} — "
+                  u"вписанное у шаблона в списке ниже; {Шаблон} — имя шаблона; {Отметка} — «+3.300»; {Этаж}, "
                   u"{Корпус}, {Комментарий} — части имени уровня по шаблону из настроек "
-                  u"«Секущего диапазона». По умолчанию «{Значение}_{Корпус}_{Этаж}_"
-                  u"{Отметка}», другой пример — «{Этаж} этаж. {Значение}».")
+                  u"«Секущего диапазона». По умолчанию «{Группа вида и назначение}_"
+                  u"{Корпус}_{Этаж}_{Отметка}», другой пример — «{Этаж} этаж. {Группа вида "
+                  u"и назначение}».")
     outer.Children.Add(header)
 
     # --- низ: предпросмотр и кнопки -----------------------------------------------
@@ -145,7 +146,7 @@ def show(doc, templates, levels, settings, level_template):
     list_head = DockPanel()
     DockPanel.SetDock(list_head, Dock.Top)
     list_title = TextBlock()
-    list_title.Text = u"Шаблоны видов и их значения"
+    list_title.Text = u"Шаблоны видов: группа вида и назначение"
     list_title.FontWeight = FontWeights.Bold
     list_title.VerticalAlignment = VerticalAlignment.Center
     list_head.Children.Add(list_title)
@@ -170,7 +171,7 @@ def show(doc, templates, levels, settings, level_template):
         grid.ColumnDefinitions.Add(col)
 
     grid.RowDefinitions.Add(RowDefinition())
-    for col, text in enumerate((u"Шаблон вида", u"Вид", u"Значение")):
+    for col, text in enumerate((u"Шаблон вида", u"Вид", u"Группа вида и назначение")):
         head = TextBlock()
         head.Text = text
         head.Foreground = Brushes.Gray
