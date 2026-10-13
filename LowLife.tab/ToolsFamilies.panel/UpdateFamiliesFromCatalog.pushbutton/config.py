@@ -9,6 +9,7 @@ clr.AddReference('PresentationFramework')
 from pyrevit import forms
 
 from lowlife import family_catalog as fc
+from lowlife import param_autocomplete
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -101,6 +102,7 @@ root_panel.Children.Add(hint)
 param_box = TextBox()
 param_box.Text = fc.load_stamp_param_name()
 param_box.Padding = Thickness(4)
+param_autocomplete.attach(param_box, param_autocomplete.NameSource())
 root_panel.Children.Add(param_box)
 
 # --- кнопки ---

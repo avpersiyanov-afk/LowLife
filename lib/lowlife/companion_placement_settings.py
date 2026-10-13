@@ -93,7 +93,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
-from lowlife import settings_core, settings_transfer
+from lowlife import param_autocomplete, settings_core, settings_transfer
 from lowlife.scs_settings import (
     TypeOption, _type_display_name, _type_names_display,
     list_wire_catalog_items, WireTypeOption
@@ -367,6 +367,8 @@ def show_settings_form(doc, values):
     """Модальное окно редактирования настроек. Возвращает словарь значений,
     None (Отмена) или settings_transfer.RELOAD (после загрузки из файла)."""
     result = {"values": None}
+    # подсказка имён параметров модели — одна на все поля окна
+    param_names = param_autocomplete.NameSource(doc)
 
     win = Window()
     win.Title = u"Настройки: Расстановка РМ, АМ, МДУ"
@@ -416,6 +418,7 @@ def show_settings_form(doc, values):
     marker_box.HorizontalAlignment = HorizontalAlignment.Left
     marker_box.Padding = Thickness(4, 2, 4, 2)
     marker_box.Margin = Thickness(0, 0, 0, 10)
+    param_autocomplete.attach(marker_box, param_names)
     root.Children.Add(marker_box)
 
     # --- подпись линий проводки номером/именем цепи (как у СПС, общая на все пары) ---
@@ -452,6 +455,7 @@ def show_settings_form(doc, values):
     wire_mark_box.HorizontalAlignment = HorizontalAlignment.Left
     wire_mark_box.Padding = Thickness(4, 2, 4, 2)
     wire_mark_box.Margin = Thickness(0, 0, 0, 10)
+    param_autocomplete.attach(wire_mark_box, param_names)
     root.Children.Add(wire_mark_box)
 
     # --- строка имён пар ---
@@ -651,6 +655,8 @@ def show_settings_form(doc, values):
 
         param_box = TextBox()
         param_box.Text = pair_values.get("param_map_text", u"")
+        # «Источник=Приёмник, ...» — обе стороны пары имена параметров
+        param_autocomplete.attach(param_box, param_names, (u",=", None))
         param_box.Width = 560
         param_box.HorizontalAlignment = HorizontalAlignment.Left
         param_box.Padding = Thickness(4, 2, 4, 2)

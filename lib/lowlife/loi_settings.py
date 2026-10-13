@@ -35,7 +35,7 @@ clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
-from lowlife import settings_core, settings_transfer
+from lowlife import param_autocomplete, settings_core, settings_transfer
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -549,6 +549,13 @@ def show_settings_form(doc, values):
     outer.Children.Add(scroll)
 
     win.Content = outer
+    # подсказка имён параметров модели в полях имён параметров
+    # (список «Параметры для заполнения» — по одному на строке)
+    param_autocomplete.attach_by_keys(
+        boxes, param_autocomplete.NameSource(doc),
+        overrides={"param_names_text": (u"\n", None)}
+    )
+
     win.ShowDialog()
 
     return result["values"]

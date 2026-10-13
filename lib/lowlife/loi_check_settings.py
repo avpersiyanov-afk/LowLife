@@ -34,7 +34,7 @@ clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
-from lowlife import settings_core, settings_transfer, loi_check_core as core
+from lowlife import param_autocomplete, settings_core, settings_transfer, loi_check_core as core
 
 from System.Collections.Generic import List
 
@@ -473,6 +473,7 @@ def show_settings_form(doc, values):
     floor_box = TextBox()
     floor_box.Text = values.get(FLOOR_KEY, u"")
     floor_box.Padding = Thickness(4)
+    param_autocomplete.attach(floor_box, param_autocomplete.NameSource(doc))
     root.Children.Add(floor_box)
     root.Children.Add(_hint(
         u"Пусто — параметр из настроек кнопки «Заполнение этажа», а если "

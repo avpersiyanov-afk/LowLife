@@ -32,6 +32,9 @@ BUTTON_NAME = u"СС1-8Mile"
 class LetterParamsField(settings_core.TextField):
     """Строка «буква = параметр; …» — с проверкой при «Сохранить»."""
 
+    # подсказка имён параметров — после «=» в каждой паре
+    param_spec = (u";", u"=")
+
     def parse(self, text):
         from lowlife import ss1_easy_core as core
         _, errors = core.parse_letter_params(text)

@@ -295,7 +295,14 @@ class TextField(object):
     required — показывать « *»; сама проверка — require(settings, keys),
                ключи передаёт кнопка (у одной настройки разные кнопки могут
                требовать разное).
+
+    param_spec — подсказка имён параметров модели под полем (см.
+               param_autocomplete): "auto" — по имени ключа (*_param,
+               *_param_name — одно имя; *_params, *_param_names — список),
+               None — без подсказки, иначе — spec для token_span.
     """
+
+    param_spec = "auto"
 
     def __init__(self, key, section, label, hint=u"", default=u"", required=False):
         self.key = key
@@ -304,6 +311,12 @@ class TextField(object):
         self.hint = hint
         self.default = default
         self.required = required
+
+    def completion_spec(self):
+        from lowlife import param_autocomplete
+        if self.param_spec == "auto":
+            return param_autocomplete.spec_for_key(self.key)
+        return self.param_spec
 
     def title(self):
         """Как поле называется в сообщениях (require, ошибки ввода)."""
@@ -331,6 +344,8 @@ class NumberField(TextField):
 
     integer — целое (int) вместо дробного (float).
     """
+
+    param_spec = None
 
     def __init__(self, key, section, label, hint=u"", default=0.0, required=False,
                  minimum=None, integer=False):
@@ -479,9 +494,10 @@ class TextSettings(object):
 
         from pyrevit import forms
 
-        from lowlife import settings_transfer
+        from lowlife import param_autocomplete, settings_transfer
 
         result = {"values": None}
+        param_names = param_autocomplete.NameSource()
 
         win = Window()
         win.Title = u"Настройки: {}".format(self.button_name)
@@ -537,6 +553,9 @@ class TextSettings(object):
             box.Padding = Thickness(4)
             root.Children.Add(box)
             boxes[field.key] = box
+            spec = field.completion_spec()
+            if spec is not None:
+                param_autocomplete.attach(box, param_names, spec)
 
             if field.hint:
                 field_hint = TextBlock()

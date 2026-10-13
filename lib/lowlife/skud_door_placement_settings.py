@@ -63,7 +63,7 @@ from System.Windows.Controls import (
 from System.Windows.Media import Brushes, SolidColorBrush, ColorConverter, DoubleCollection
 from System.Windows.Shapes import Rectangle, Ellipse, Line
 
-from lowlife import settings_core, settings_transfer
+from lowlife import param_autocomplete, settings_core, settings_transfer
 from lowlife import skud_door_layout as layout
 from lowlife.scs import safe_element_name
 
@@ -480,7 +480,8 @@ def show_settings_form(doc, values):
     number_box.Width = 280
     number_box.Padding = Thickness(4, 2, 4, 2)
     number_box.Text = values.get("room_number_param") or u""
-    number_box.ToolTip = u"Пусто — штатный параметр «Номер» помещения."
+    number_box.ToolTip = u"Пусто — штатный параметр «Номер» помещения. " + param_autocomplete.HINT
+    param_autocomplete.attach(number_box, param_autocomplete.NameSource(doc))
     number_row.Children.Add(number_box)
     header.Children.Add(number_row)
 
