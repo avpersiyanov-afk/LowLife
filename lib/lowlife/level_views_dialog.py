@@ -59,6 +59,43 @@ def _button(parent, text, handler, bold=False):
     return b
 
 
+# Подстановки маски: (подстановка, что в неё попадёт).
+_TOKEN_HELP = (
+    (u"{Группа вида и назначение}", u"то, что вписано у шаблона в списке ниже"),
+    (u"{Уровень}", u"имя уровня целиком"),
+    (u"{Корпус}, {Этаж}, {Комментарий}",
+     u"части имени уровня — как их выделять, задаёт шаблон имени уровня в настройках "
+     u"кнопки «Секущий диапазон» (Shift+клик); не подходит под шаблон — пусто"),
+    (u"{Отметка}", u"отметка уровня, например «+3.300»"),
+    (u"{Шаблон}", u"имя шаблона вида"),
+)
+
+
+def _tokens_table(parent):
+    """Подстановки маски — по одной на строке: слева подстановка, справа пояснение."""
+    grid = Grid()
+    grid.Margin = Thickness(8, 2, 0, 0)
+    for width in (GridLength(1, GridUnitType.Auto), GridLength(1, GridUnitType.Star)):
+        col = ColumnDefinition()
+        col.Width = width
+        grid.ColumnDefinitions.Add(col)
+    for i, (token, text) in enumerate(_TOKEN_HELP):
+        grid.RowDefinitions.Add(RowDefinition())
+        name = TextBlock()
+        name.Text = token
+        name.FontSize = 11
+        name.Margin = Thickness(0, 1, 12, 1)
+        _place(grid, name, i, 0)
+        desc = TextBlock()
+        desc.Text = text
+        desc.FontSize = 11
+        desc.Foreground = Brushes.Gray
+        desc.TextWrapping = TextWrapping.Wrap
+        desc.Margin = Thickness(0, 1, 0, 1)
+        _place(grid, desc, i, 1)
+    parent.Children.Add(grid)
+
+
 class _Row(object):
     def __init__(self, template, check, value_box):
         self.template = template
@@ -87,7 +124,7 @@ def show(doc, templates, levels, settings, level_template):
     win = Window()
     win.Title = TITLE
     win.Width = 760
-    win.Height = 720
+    win.Height = 800
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
@@ -114,12 +151,10 @@ def show(doc, templates, levels, settings, level_template):
     mask_box.Padding = Thickness(4)
     mask_box.Text = settings[core.MASK_KEY]
     header.Children.Add(mask_box)
-    _hint(header, u"Подстановки: {Уровень} — имя уровня; {Группа вида и назначение} — "
-                  u"вписанное у шаблона в списке ниже; {Шаблон} — имя шаблона; {Отметка} — «+3.300»; {Этаж}, "
-                  u"{Корпус}, {Комментарий} — части имени уровня по шаблону из настроек "
-                  u"«Секущего диапазона». По умолчанию «{Группа вида и назначение}_"
-                  u"{Корпус}_{Этаж}_{Отметка}», другой пример — «{Этаж} этаж. {Группа вида "
-                  u"и назначение}».")
+    _hint(header, u"По умолчанию: «{}». Другой пример: «{{Этаж}} этаж. {{Группа вида и "
+                  u"назначение}}».".format(core.DEFAULT_MASK), top=4)
+    _hint(header, u"Подстановки:", top=6)
+    _tokens_table(header)
     outer.Children.Add(header)
 
     # --- низ: предпросмотр и кнопки -----------------------------------------------
@@ -147,7 +182,7 @@ def show(doc, templates, levels, settings, level_template):
     list_head = DockPanel()
     DockPanel.SetDock(list_head, Dock.Top)
     list_title = TextBlock()
-    list_title.Text = u"Шаблоны видов: группа вида и назначение"
+    list_title.Text = u"Шаблоны видов"
     list_title.FontWeight = FontWeights.Bold
     list_title.VerticalAlignment = VerticalAlignment.Center
     list_head.Children.Add(list_title)
