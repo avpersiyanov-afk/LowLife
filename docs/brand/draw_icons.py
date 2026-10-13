@@ -392,6 +392,19 @@ def align_view_range(c):
     c.rect((46, 68, 58, 80), BLUE, WHITE, 4, 2)
 
 
+def level_views(c):
+    """«Виды по уровням»: три уровня (отметки-треугольники) и на каждом —
+    свой план; оранжевые стрелки «уровень → вид»."""
+    for y in (22, 48, 74):
+        c.polygon([(8, y - 8), (22, y - 8), (15, y)], fill=WHITE, outline=BLUE, w=3)
+        c.line([(15, y), (40, y)], BLUE, 3.5)
+        c.line([(44, y), (52, y)], ORANGE, 4)
+        c.polygon([(52, y - 5), (52, y + 5), (59, y)], fill=ORANGE)
+        c.rect((62, y - 9, 88, y + 9), BLUE, WHITE, 3.5, 2)
+        c.line([(75, y - 9), (75, y + 1)], BLUE, 2.5)
+        c.line([(62, y + 1), (80, y + 1)], BLUE, 2.5)
+
+
 def soue_floor(c):
     """План этажа (квартиры по сторонам коридора) с оповещателями в прихожих и коридоре."""
     c.rect((10, 14, 86, 82), BLUE, WHITE, 4, 2)
@@ -427,6 +440,7 @@ ICONS = [
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),
     ("Tools.panel/AlignViewRange.pushbutton", align_view_range),
+    ("Tools.panel/LevelViews.pushbutton", level_views),
     ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
     ("ToolsRooms.panel/UpdateExplication.pushbutton", update_explication),
     ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
