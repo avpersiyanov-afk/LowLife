@@ -4,7 +4,8 @@
 
 Под полем, куда вводится имя параметра, по мере набора открывается список
 подходящих имён параметров модели (поиск по вхождению, без учёта регистра,
-«ё» = «е», несколько слов — все должны встретиться). ↓/↑ — выбор, Enter или
+«ё» = «е», несколько слов — все должны встретиться, набранное не в той
+раскладке — тоже). ↓/↑ — выбор, Enter или
 Tab — подставить, Esc — закрыть, ↓ или Ctrl+Пробел в поле — весь список.
 Список — только подсказка: в поле по-прежнему можно вписать любое имя.
 
@@ -54,6 +55,28 @@ def normalize(text):
 
 _WORD_STARTS = u" _-.([«\"/"
 
+# Одни и те же клавиши в раскладках QWERTY и ЙЦУКЕН: запрос, набранный
+# не в той раскладке («vfhrf» вместо «марка»), тоже находит имя.
+_EN_KEYS = u"`qwertyuiop[]asdfghjkl;'zxcvbnm,./"
+_RU_KEYS = u"ёйцукенгшщзхъфывапролджэячсмитьбю."
+_EN_TO_RU = dict(zip(_EN_KEYS, _RU_KEYS))
+_RU_TO_EN = dict(zip(_RU_KEYS, _EN_KEYS))
+
+
+def switch_layout(text, table):
+    """Текст (уже normalize) так, как те же клавиши дали бы в другой раскладке."""
+    return u"".join(table.get(ch, ch) for ch in text)
+
+
+def _query_variants(query_norm):
+    """Сам запрос, затем он же в другой раскладке (без повторов)."""
+    variants = [query_norm]
+    for table in (_EN_TO_RU, _RU_TO_EN):
+        other = normalize(switch_layout(query_norm, table))
+        if other not in variants:
+            variants.append(other)
+    return variants
+
 
 def _score(name_norm, query_norm, words):
     if name_norm == query_norm:
@@ -74,19 +97,28 @@ def rank(names, query, limit=300):
     """
     Имена, подходящие под query, лучшие первыми: точное совпадение, начало
     имени, начало слова, вхождение, все слова запроса в любом порядке.
+    Запрос, набранный не в той раскладке, тоже ищется (чуть ниже в списке).
     Внутри одной группы — по алфавиту. Пустой запрос — все имена по алфавиту.
     """
     query_norm = normalize(query).strip()
-    words = query_norm.split()
+    variants = [(v, v.split()) for v in _query_variants(query_norm)]
     scored = []
     for name in names:
         name_norm = normalize(name)
         if not query_norm:
             scored.append((0, name_norm, name))
             continue
-        score = _score(name_norm, query_norm, words)
-        if score is not None:
-            scored.append((score, name_norm, name))
+        best = None
+        for index, (variant, words) in enumerate(variants):
+            score = _score(name_norm, variant, words)
+            if score is not None:
+                # совпадение в другой раскладке — сразу после того же
+                # вида совпадения в набранной
+                score = score * 2 + (1 if index else 0)
+                if best is None or score < best:
+                    best = score
+        if best is not None:
+            scored.append((best, name_norm, name))
     scored.sort()
     result = [item[2] for item in scored]
     return result[:limit] if limit else result

@@ -78,3 +78,13 @@ def test_replace_token_pairs():
     # «Источник=Приёмник» — обе стороны имена
     pair_spec = (u",=", None)
     assert pa.replace_token(u"Марка=Ма", 8, u"Марка", pair_spec) == (u"Марка=Марка", 11)
+
+
+def test_rank_wrong_keyboard_layout():
+    # «марка» в английской раскладке, «ADSK» в русской
+    assert pa.rank(NAMES, u"vfhrf") == [u"Марка", u"ADSK_Марка"]
+    assert pa.rank(NAMES, u"фвыл") == [u"ADSK_Марка"]
+    assert pa.rank(NAMES, u"J,]`v") == [u"Объём"]
+    # совпадение в набранной раскладке выше, чем в другой
+    names = [u"Cnf", u"Стандарт"]
+    assert pa.rank(names, u"cnf") == [u"Cnf", u"Стандарт"]
