@@ -259,7 +259,7 @@ def show_settings_form(doc, values, read_all, write_all):
                   u"шаблон вида не должен управлять «Связями RVT».")
     _label(fields, u"Какие связи: имя содержит (через запятую; пусто — все загруженные)")
     link_filter_box = _textbox(fields)
-    _label(fields, u"Фильтр видов связи (список видов в окне перед созданием)")
+    _label(fields, u"Фильтр видов связи")
     filter_row = DockPanel()
     mode_cb = ComboBox()
     mode_cb.Width = 190
@@ -272,17 +272,25 @@ def show_settings_form(doc, values, read_all, write_all):
     link_view_box.Margin = Thickness(8, 0, 0, 0)
     filter_row.Children.Add(link_view_box)
     fields.Children.Add(filter_row)
-    _hint(fields, u"Перед созданием видов откроется окно: для каждого уровня и каждой связи "
-                  u"— список планов связи под этот фильтр, выбранный план станет "
-                  u"«связанным видом». Несколько значений — через запятую; регистр не важен; "
-                  u"можно с подстановками уровня ({Этаж}, {Корпус}, {Уровень}, {Отметка}). "
-                  u"Например «Начинается с» «2» — планы, имя которых начинается с 2.")
+    _hint(fields, u"Из планов связи, прошедших фильтр, для каждого вида берётся план на "
+                  u"таком же уровне связи: с тем же именем уровня, иначе тот же корпус и "
+                  u"этаж (по шаблону имени уровня выше), иначе ближайший по отметке (до "
+                  u"1500 мм). Например «Начинается с» «2_СС-АР». Несколько значений — через "
+                  u"запятую; регистр не важен; можно с подстановками уровня ({Этаж}, "
+                  u"{Корпус}, {Уровень}, {Отметка}).")
+    pick_cb = CheckBox()
+    pick_cb.Content = u"Показывать окно выбора видов связи перед созданием"
+    pick_cb.Margin = Thickness(0, 8, 0, 0)
+    fields.Children.Add(pick_cb)
+    _hint(fields, u"Таблица «уровень × связь» с подобранными планами — можно проверить и "
+                  u"поменять. Без галочки виды подбираются сами, что выбрано — видно в отчёте.")
 
     def _sync_links_enabled(*_args):
         on = bool(links_cb.IsChecked)
         link_filter_box.IsEnabled = on
         link_view_box.IsEnabled = on
         mode_cb.IsEnabled = on
+        pick_cb.IsEnabled = on
 
     links_cb.Checked += _sync_links_enabled
     links_cb.Unchecked += _sync_links_enabled
@@ -302,6 +310,7 @@ def show_settings_form(doc, values, read_all, write_all):
             core.G_LINK_FILTER: link_filter_box.Text,
             core.G_LINK_VIEW_MODE: core.mode_by_label(unicode(mode_cb.SelectedItem or u"")),
             core.G_LINK_VIEW_FILTER: link_view_box.Text,
+            core.G_LINK_PICK_DIALOG: bool(pick_cb.IsChecked),
         }
 
     # Тексты полей диапазона хранятся как ввёл пользователь, до «Сохранить»
@@ -329,6 +338,7 @@ def show_settings_form(doc, values, read_all, write_all):
             link_filter_box.Text = g[core.G_LINK_FILTER]
             link_view_box.Text = g[core.G_LINK_VIEW_FILTER]
             mode_cb.SelectedItem = core.mode_label(g[core.G_LINK_VIEW_MODE])
+            pick_cb.IsChecked = bool(g[core.G_LINK_PICK_DIALOG])
             _sync_links_enabled()
         finally:
             state["loading"] = False

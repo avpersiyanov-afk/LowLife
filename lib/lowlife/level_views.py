@@ -13,10 +13,12 @@
      family_section.level_above с шаблоном имени уровня из настроек);
      если диапазон задаёт шаблон вида — не трогается, с пояснением;
   5. если в группе включено — связанные модели «По связанному виду»
-     (View.SetLinkOverrides, Revit 2024+): вид связи для каждого уровня
-     выбирается в окне перед запуском (level_views_link_dialog) из планов
-     связи под фильтр группы; не выбран в окне — план под фильтр на
-     уровне, ближайшем по отметке (level_views_core.pick_link_view).
+     (View.SetLinkOverrides, Revit 2024+): вид связи — план связи под
+     фильтр группы на «таком же» уровне (level_views_core.pick_link_view:
+     то же имя уровня, иначе тот же этаж по шаблону имени уровня, иначе
+     ближайший по отметке); если в группе включено — подобранное
+     показывается в окне перед запуском (level_views_link_dialog), где
+     его можно поменять.
      Шаблон вида не должен управлять «Связями RVT» — иначе Revit не даст
      изменить их на виде, это попадёт в отчёт.
 
@@ -116,15 +118,19 @@ def find_template(templates, name):
 class LinkInfo(object):
     """Загруженная связь: экземпляр, документ, имя, сдвиг по Z (мм)."""
 
-    def __init__(self, instance, link_doc, name, dz_mm):
+    def __init__(self, instance, link_doc, name, dz_mm, level_template=None):
         self.instance = instance
+        self.level_template = level_template
         self.doc = link_doc
         self.name = name
         self.dz_mm = dz_mm
         self._plans = {}
 
     def plans(self, view_type):
-        """[(имя плана, отметка уровня в координатах основной модели мм, Id)]."""
+        """
+        [(имя плана, отметка уровня в координатах основной модели мм, Id,
+        имя уровня, ключ этажа level_views_core.level_match_key или None)].
+        """
         if view_type not in self._plans:
             items = []
             for v in FilteredElementCollector(self.doc).OfClass(ViewPlan):
@@ -135,14 +141,16 @@ class LinkInfo(object):
                     if lvl is None:
                         continue
                     z = lvl.ProjectElevation * MM_IN_FOOT + self.dz_mm
-                    items.append((safe_name(v), z, v.Id))
+                    key = core.level_match_key(
+                        family_section.parse_level_name(lvl, self.level_template))
+                    items.append((safe_name(v), z, v.Id, geometry.level_name(lvl), key))
                 except Exception:
                     continue
             self._plans[view_type] = items
         return self._plans[view_type]
 
 
-def list_links(doc):
+def list_links(doc, level_template=None):
     """Загруженные связи (LinkInfo), по имени."""
     result = []
     for inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
@@ -158,7 +166,7 @@ def list_links(doc):
             dz_mm = inst.GetTotalTransform().Origin.Z * MM_IN_FOOT
         except Exception:
             dz_mm = 0.0
-        result.append(LinkInfo(inst, link_doc, name, dz_mm))
+        result.append(LinkInfo(inst, link_doc, name, dz_mm, level_template))
     return sorted(result, key=lambda l: l.name.lower())
 
 
@@ -219,8 +227,13 @@ class Context(object):
 
     def links(self):
         if self._links is None:
-            self._links = list_links(self.doc)
+            self._links = list_links(self.doc, self.level_template)
         return self._links
+
+
+def level_match_key(level, level_template):
+    """Ключ этажа уровня основной модели для поиска «такого же» уровня в связи."""
+    return core.level_match_key(family_section.parse_level_name(level, level_template))
 
 
 def level_values(level, level_template):
@@ -312,7 +325,8 @@ def _apply_links(ctx, view, level, group, values, result, choices):
     """
     choices — выбор в окне перед запуском: {имя связи: {имя уровня: имя
     вида связи или "" — не задавать}}; None или нет записи — вид
-    подбирается сам (фильтр группы + ближайший уровень).
+    подбирается сам: план под фильтр группы на «таком же» уровне связи —
+    с тем же именем, иначе тот же этаж по шаблону, иначе ближайший по отметке.
     """
     if not group[core.G_LINKS]:
         return
@@ -327,14 +341,16 @@ def _apply_links(ctx, view, level, group, values, result, choices):
             if group[core.G_LINK_FILTER] else u""))
         return
 
-    level_key = geometry.level_name(level)
+    level_label = geometry.level_name(level)
     level_z = level.ProjectElevation * MM_IN_FOOT
     for link in links:
-        chosen = ((choices or {}).get(link.name) or {}).get(level_key)
+        chosen = ((choices or {}).get(link.name) or {}).get(level_label)
         note = None
         if chosen is None:
             candidates = link_view_candidates(link, view.ViewType, group, values)
-            picked, note = core.pick_link_view(candidates, level_z)
+            picked, note = core.pick_link_view(
+                candidates, level_z, level_label,
+                level_match_key(level, ctx.level_template))
         elif chosen == u"":
             continue
         else:

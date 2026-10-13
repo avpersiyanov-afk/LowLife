@@ -164,6 +164,29 @@ def test_pick_link_view_ambiguous():
     assert picked[2] == 2 and u"2 планов" in note
 
 
+def test_level_match_key_normalizes_floor():
+    assert core.level_match_key((u"к1", u"02", u"")) == (u"к1", u"2")
+    assert core.level_match_key((u"", u"00", u"")) == (u"", u"0")
+    assert core.level_match_key((u"", u"Кровля", u"")) == (u"", u"кровля")
+    assert core.level_match_key(None) is None
+
+
+def test_pick_link_view_same_level_name_wins_over_elevation():
+    # Отметки уровней АР и ЭОМ не совпадают, но имя уровня то же.
+    cands = [(u"2_СС-АР_План 1", 0.0, 1, u"Этаж 01", (u"", u"1")),
+             (u"2_СС-АР_План 2", 3300.0, 2, u"Этаж 02", (u"", u"2"))]
+    picked, note = core.pick_link_view(cands, 100.0, u"этаж  02", None)
+    assert picked[2] == 2 and note is None
+
+
+def test_pick_link_view_same_floor_by_template():
+    cands = [(u"2_СС-АР_1 эт", 0.0, 1, u"АР_01", (u"", u"1")),
+             (u"2_СС-АР_2 эт", 2900.0, 2, u"АР_02", (u"", u"2")),
+             (u"2_СС-АР_2 эт низ", 2500.0, 3, u"АР_02_низ", (u"", u"2"))]
+    picked, note = core.pick_link_view(cands, 3300.0, u"ЭОМ_02", (u"", u"2"))
+    assert picked[2] == 2 and note is None
+
+
 def test_pick_link_view_too_far_or_none():
     picked, note = core.pick_link_view([(u"План", 0.0, 1)], 6000.0)
     assert picked is None and u"допустимо" in note

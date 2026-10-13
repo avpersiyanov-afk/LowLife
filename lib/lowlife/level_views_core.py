@@ -53,6 +53,7 @@ G_BOTTOM = "bottom_mm"
 G_DEPTH = "depth_mm"
 G_LINKS = "links_by_linked_view"   # связи «По связанному виду»
 G_LINK_FILTER = "link_name_filter"  # какие связи: имя содержит (через запятую)
+G_LINK_PICK_DIALOG = "link_view_pick_dialog"  # показывать окно выбора видов связи
 G_LINK_VIEW_MODE = "link_view_mode"      # фильтр видов связи: LINK_VIEW_MODES
 G_LINK_VIEW_FILTER = "link_view_filter"  # значение фильтра (с подстановками уровня)
 
@@ -69,6 +70,7 @@ GROUP_DEFAULTS = {
     G_DEPTH: 0.0,
     G_LINKS: False,
     G_LINK_FILTER: u"",
+    G_LINK_PICK_DIALOG: False,
     G_LINK_VIEW_MODE: "contains",
     G_LINK_VIEW_FILTER: u"",
 }
@@ -116,7 +118,7 @@ def normalize_group(raw):
                 value = parse_mm(value)
             except (TypeError, ValueError):
                 value = default
-        elif key == G_LINKS:
+        elif key in (G_LINKS, G_LINK_PICK_DIALOG):
             value = bool(value)
         elif key == G_LINK_VIEW_MODE:
             value = value if value in _MODE_KEYS else default
@@ -345,18 +347,18 @@ def filter_link_views(candidates, mode, value):
                   key=lambda c: _str(c[0]).lower())
 
 
-def default_link_view(candidates, level_z_mm, remembered=None,
-                      max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
+def default_link_view(candidates, level_z_mm, remembered=None, level_name=None,
+                      level_key=None, max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
     """
     Что подставить в список выбора вида связи для уровня: запомненный с
-    прошлого раза (если он ещё в списке), иначе вид на ближайшем по отметке
-    уровне (pick_link_view), иначе None — «не задавать».
+    прошлого раза (если он ещё в списке), иначе подобранный pick_link_view,
+    иначе None — «не задавать».
     """
     if remembered:
         for c in candidates:
             if c[0] == remembered:
                 return c
-    return pick_link_view(candidates, level_z_mm, max_gap_mm=max_gap_mm)[0]
+    return pick_link_view(candidates, level_z_mm, level_name, level_key, max_gap_mm)[0]
 
 
 def split_filters(text):
@@ -409,15 +411,39 @@ def range_problem(plan, height_mm):
     return None
 
 
-def pick_link_view(candidates, level_z_mm, max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
+def _norm_level_name(name):
+    return u" ".join(_str(name).lower().split())
+
+
+def _norm_floor(floor):
+    """«02» и «2» — один этаж; нечисловые этажи сравниваются как текст."""
+    floor = _str(floor).strip().lower()
+    digits = floor.lstrip(u"0")
+    if floor.isdigit():
+        return digits or u"0"
+    return floor
+
+
+def level_match_key(parsed):
+    """(корпус, этаж) из level_name_template.parse для сравнения этажей; None — нет."""
+    if not parsed:
+        return None
+    return (_str(parsed[0]).strip().lower(), _norm_floor(parsed[1]))
+
+
+def pick_link_view(candidates, level_z_mm, level_name=None, level_key=None,
+                   max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
     """
-    Вид связи на уровне, ближайшем по отметке к уровню вида.
+    Вид связи для уровня вида — «такой же уровень» в связи.
 
     candidates — [(имя вида, отметка его уровня в координатах основной
-    модели, мм, что угодно — например Id)], уже отфильтрованные
-    (filter_link_views); level_z_mm — отметка уровня вида. Ближайший
-    уровень — не дальше max_gap_mm; несколько видов на нём — первый по
-    имени.
+    модели мм, Id, имя его уровня, ключ этажа level_match_key или None)],
+    уже отфильтрованные (filter_link_views); последние два поля
+    необязательны. Уровень ищется по очереди:
+      1. уровень связи с тем же именем, что и уровень вида (без регистра);
+      2. тот же корпус и этаж по шаблону имени уровня (level_key);
+      3. ближайший по отметке, не дальше max_gap_mm.
+    Несколько видов на найденном уровне — первый по имени.
 
     Возвращает (кандидат или None, пояснение или None).
     """
@@ -425,19 +451,38 @@ def pick_link_view(candidates, level_z_mm, max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
     if not pool:
         return None, u"нет планов под фильтр"
 
+    def first(items, how):
+        items = sorted(items, key=lambda c: _str(c[0]).lower())
+        note = None
+        if len(items) > 1:
+            note = u"уровень найден {}, на нём {} планов — взят «{}»".format(
+                how, len(items), items[0][0])
+        return items[0], note
+
+    if level_name:
+        target = _norm_level_name(level_name)
+        same = [c for c in pool if len(c) > 3 and _norm_level_name(c[3]) == target]
+        if same:
+            return first(same, u"по имени")
+
+    if level_key is not None:
+        same = [c for c in pool if len(c) > 4 and c[4] is not None and c[4] == level_key]
+        if same:
+            # У этажа может быть несколько уровней — берётся ближайший по отметке.
+            gap = min(abs(c[1] - level_z_mm) for c in same)
+            same = [c for c in same if abs(c[1] - level_z_mm) - gap < 1.0]
+            return first(same, u"по этажу")
+
     best_gap = min(abs(c[1] - level_z_mm) for c in pool)
     if best_gap > max_gap_mm:
-        return None, (u"ближайший план связи на уровне в {:.0f} мм от уровня вида "
-                      u"(допустимо до {:.0f} мм)".format(float(best_gap), float(max_gap_mm)))
-    same = sorted([c for c in pool if abs(abs(c[1] - level_z_mm) - best_gap) < 1.0],
-                  key=lambda c: _str(c[0]).lower())
-    note = None
-    if len(same) > 1:
-        note = u"на уровне {} планов, взят «{}»".format(
-            len(same), same[0][0])
-    elif best_gap >= 1.0:
-        note = u"уровень плана связи отличается на {:.0f} мм".format(float(best_gap))
-    return same[0], note
+        return None, (u"нет уровня с тем же именем или этажом, а ближайший план связи "
+                      u"на уровне в {:.0f} мм от уровня вида (допустимо до {:.0f} мм)".format(
+                          float(best_gap), float(max_gap_mm)))
+    same = [c for c in pool if abs(c[1] - level_z_mm) - best_gap < 1.0]
+    picked, note = first(same, u"по отметке")
+    if note is None and best_gap >= 1.0:
+        note = u"уровень найден по отметке, отличается на {:.0f} мм".format(float(best_gap))
+    return picked, note
 
 
 _RANGE_LABELS = {

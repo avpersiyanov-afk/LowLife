@@ -2345,13 +2345,15 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 «Неограниченно»; `cut_mm`/`bottom_mm`/`depth_mm` — от уровня вида; `None` —
 плоскость не трогается, глубина без значения = низ) и связи «По связанному виду»
 (`View.SetLinkOverrides` с `LinkVisibility.ByLinkView`, Revit 2024+). Вид связи
-выбирается в окне перед созданием (`level_views_link_dialog.show`): вкладка на
-группу, таблица «уровень × связь», в ячейке — планы связи того же `ViewType` под
-фильтр группы (`link_view_mode`: «Начинается с», «Содержит», «Заканчивается на»,
-«Не содержит», «Равно», «Регулярное выражение»; значение — через запятую, с
-подстановками уровня); подставлено выбранное в прошлый раз, иначе план на
-уровне, ближайшем по отметке (не дальше `MAX_LINK_LEVEL_GAP_MM`). Фильтр,
-изменённый в окне, сохраняется в группу, выбор — в `link_view_choices`. Уже существующий план с тем же
+— план связи того же `ViewType` под фильтр группы (`link_view_mode`: «Начинается
+с», «Содержит», «Заканчивается на», «Не содержит», «Равно», «Регулярное
+выражение»; значение — через запятую, с подстановками уровня) на «таком же»
+уровне связи (`pick_link_view`): то же имя уровня, иначе тот же корпус и этаж по
+шаблону имени уровня (`level_match_key`, «02» = «2»), иначе ближайший по отметке
+(не дальше `MAX_LINK_LEVEL_GAP_MM`). С галочкой группы `link_view_pick_dialog`
+подобранное показывается перед созданием в окне `level_views_link_dialog.show`
+(вкладка на группу, таблица «уровень × связь», можно поменять; подставлено
+выбранное в прошлый раз, иначе подбор), фильтр, изменённый в окне, сохраняется в группу, выбор — в `link_view_choices`. Уже существующий план с тем же
 именем на том же уровне не создаётся заново — ему заново назначаются шаблон,
 диапазон и связи; имя, занятое видом другого уровня, — ошибка в отчёте. Если
 диапазон задаёт шаблон вида (`view_range.range_controlled_by_template`) —
@@ -2359,7 +2361,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 
 | Модуль / функция | Что делает |
 |---|---|
-| `level_views_core` | Чистая логика (покрыта `tests/test_level_views_core.py`): `normalize_group(s)`, `group_from_form` (поля окна → группа + ошибки), `validate_mask`/`validate_groups`, `level_tokens`/`build_view_name`/`format_elevation`, `range_plan`/`range_problem`, `split_filters`/`name_matches_any`, `LINK_VIEW_MODES`/`link_view_matches`/`validate_link_view_filter`/`filter_link_views`, `pick_link_view(candidates, level_z_mm)`, `default_link_view(candidates, level_z_mm, remembered)` |
+| `level_views_core` | Чистая логика (покрыта `tests/test_level_views_core.py`): `normalize_group(s)`, `group_from_form` (поля окна → группа + ошибки), `validate_mask`/`validate_groups`, `level_tokens`/`build_view_name`/`format_elevation`, `range_plan`/`range_problem`, `split_filters`/`name_matches_any`, `LINK_VIEW_MODES`/`link_view_matches`/`validate_link_view_filter`/`filter_link_views`, `level_match_key`, `pick_link_view(candidates, level_z_mm, level_name, level_key)`, `default_link_view(...)` |
 | `level_views.build_views(ctx, levels, groups, link_choices)` | Создаёт/обновляет виды (внутри транзакции; `ctx = Context(doc, level_template)`, `link_choices` — `{группа: {связь: {уровень: вид связи или ""}}}` из окна) → `[ViewResult]` (`name`, `action`, `error`, `notes`, `links`) |
 | `level_views.list_plan_types` / `list_plan_templates` / `list_links` | Справочники: типы планов (этажа/потолка/несущих), шаблоны планов, загруженные связи (`LinkInfo.plans(view_type)` — планы связи с отметкой уровня в координатах основной модели) |
 | `level_views_settings` | `LowLifeLevelViews_settings.json`: `groups`, `level_name_template` (пока пусто — из «Секущего диапазона»), `last_levels`/`last_groups` (что было отмечено в прошлый раз), `link_view_choices`; `remember_link_choices(choices, filters)`; `get_settings_silent()` / `get_settings_interactive(doc)` |

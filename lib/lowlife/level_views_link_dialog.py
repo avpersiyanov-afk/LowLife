@@ -2,13 +2,14 @@
 """
 Окно выбора видов связанных моделей для «Видов по уровням» — открывается
 перед созданием видов, если у выбранных групп включены связи «По
-связанному виду».
+связанному виду» и галочка «Показывать окно выбора» (без неё виды связей
+подбираются молча, тем же подбором).
 
 На каждую такую группу — вкладка: сверху фильтр видов связи (вид фильтра
 level_views_core.LINK_VIEW_MODES + значение, начальные — из настроек
 группы), ниже таблица «уровень × связь»: в каждой ячейке список планов
 связи под фильтр. Подставлено заранее: выбранное в прошлый раз, иначе план
-на уровне, ближайшем по отметке. «<Не задавать>» — связь на этом виде не
+на «таком же» уровне связи (level_views_core.pick_link_view). «<Не задавать>» — связь на этом виде не
 трогается. Изменённый фильтр сохраняется в настройки группы, выбор — как
 подстановка для следующего раза.
 """
@@ -57,8 +58,9 @@ def _cell(grid, element, row, col):
 class _Cell(object):
     """Список выбора вида одной связи для одного уровня."""
 
-    def __init__(self, level, level_z, values, link, combo):
+    def __init__(self, level, level_z, level_key, values, link, combo):
         self.level = level
+        self.level_key = level_key
         self.level_name = geometry.level_name(level)
         self.level_z = level_z
         self.values = values
@@ -73,7 +75,7 @@ class _Cell(object):
         return unicode(item)
 
     def fill(self, candidates, prefer):
-        """prefer — имя вида, "" — «не задавать», None — подобрать по отметке."""
+        """prefer — имя вида, "" — «не задавать», None — подобрать (pick_link_view)."""
         self.candidates = candidates
         self.combo.Items.Clear()
         self.combo.Items.Add(NOT_SET)
@@ -82,7 +84,8 @@ class _Cell(object):
         if prefer == u"":
             self.combo.SelectedIndex = 0
             return
-        picked = core.default_link_view(candidates, self.level_z, prefer)
+        picked = core.default_link_view(candidates, self.level_z, prefer,
+                                        self.level_name, self.level_key)
         names = [c[0] for c in candidates]
         self.combo.SelectedIndex = names.index(picked[0]) + 1 if picked is not None else 0
 
@@ -125,7 +128,7 @@ class _GroupTab(object):
         self.value_box.Text = group[core.G_LINK_VIEW_FILTER]
         row.Children.Add(self.value_box)
         auto_btn = Button()
-        auto_btn.Content = u"Подобрать по отметке"
+        auto_btn.Content = u"Подобрать заново"
         auto_btn.Padding = Thickness(10, 2, 10, 2)
         auto_btn.Margin = Thickness(8, 0, 0, 0)
         auto_btn.Click += lambda s, a: self.refill(auto=True)
@@ -190,11 +193,12 @@ class _GroupTab(object):
             _cell(grid, name, i + 1, 0)
             values = level_views.level_values(level, ctx.level_template)
             z = level.ProjectElevation * core.MM_IN_FOOT
+            key = level_views.level_match_key(level, ctx.level_template)
             for j, link in enumerate(self.links):
                 combo = ComboBox()
                 combo.Margin = Thickness(0, 2, 8, 2)
                 _cell(grid, combo, i + 1, j + 1)
-                self.cells.append(_Cell(level, z, values, link, combo))
+                self.cells.append(_Cell(level, z, key, values, link, combo))
 
         self.refill(initial=True)
         self.mode_cb.SelectionChanged += lambda s, a: self.refill()
@@ -255,7 +259,7 @@ def show(ctx, levels, groups, remembered):
     {уровень: вид или ""}}}, filters: {группа: (вид фильтра, значение)} —
     или None при отмене. Групп со связями нет — ({}, {}) без окна.
     """
-    link_groups = [g for g in groups if g[core.G_LINKS]]
+    link_groups = [g for g in groups if g[core.G_LINKS] and g[core.G_LINK_PICK_DIALOG]]
     if not link_groups or not ctx.links_supported:
         return {}, {}
     levels = sorted(levels, key=lambda l: l.ProjectElevation)
@@ -279,8 +283,8 @@ def show(ctx, levels, groups, remembered):
     header.Children.Add(title)
     _hint(header, u"Для каждого уровня и каждой связи выберите план связи — он станет "
                   u"«связанным видом» в настройке «Связи RVT» создаваемого вида. Заранее "
-                  u"подставлено выбранное в прошлый раз, иначе план на уровне, ближайшем "
-                  u"по отметке.")
+                  u"подставлено выбранное в прошлый раз, иначе план на таком же уровне связи: "
+                  u"с тем же именем, иначе тот же этаж, иначе ближайший по отметке.")
     outer.Children.Add(header)
 
     buttons = StackPanel()
