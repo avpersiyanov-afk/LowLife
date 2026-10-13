@@ -2,74 +2,40 @@
 """
 Виды по уровням — тело кнопки «Виды по уровням» (Tools.panel/LevelViews).
 
-Для каждого выбранного уровня и каждой выбранной группы видов (настройки
-кнопки, level_views_settings) — один план:
-  1. создаётся ViewPlan.Create с типом вида группы (или берётся уже
-     существующий план с тем же именем на том же уровне — повторный запуск
-     обновляет виды, а не плодит копии);
-  2. имя — по маске группы (level_views_core.build_view_name);
-  3. назначается шаблон вида группы;
-  4. секущий диапазон — смещения группы (верх — от следующего этажа,
-     family_section.level_above с шаблоном имени уровня из настроек);
-     если диапазон задаёт шаблон вида — не трогается, с пояснением;
-  5. если в группе включено — связанные модели «По связанному виду»
-     (View.SetLinkOverrides, Revit 2024+): вид связи — план связи под
-     фильтр группы на «таком же» уровне (level_views_core.pick_link_view:
-     то же имя уровня, иначе тот же этаж по шаблону имени уровня, иначе
-     ближайший по отметке); если в группе включено — подобранное
-     показывается в окне перед запуском (level_views_link_dialog), где
-     его можно поменять.
-     Шаблон вида не должен управлять «Связями RVT» — иначе Revit не даст
-     изменить их на виде, это попадёт в отчёт.
+Для каждого выбранного шаблона вида и каждого уровня модели — один план
+(ViewPlan.Create) с этим шаблоном; имя — по маске (level_views_core).
+Тип плана берётся по виду шаблона: шаблон плана этажа → первый тип «План
+этажа», плана потолка → «План потолка», несущих конструкций → «План
+несущих конструкций». Всё остальное (секущий диапазон, связи, видимость)
+задаёт сам шаблон.
 
-Всё — внутри одной транзакции кнопки; ошибки одного вида не отменяют
-остальные, а пишутся в ViewResult.
+План с тем же именем на том же уровне не создаётся заново — ему только
+назначается шаблон. Имя, занятое видом другого уровня, — ошибка в отчёте.
 """
 
 from Autodesk.Revit.DB import (
-    FilteredElementCollector, Level, PlanViewPlane,
-    PlanViewRange, RevitLinkInstance, View, ViewFamily, ViewFamilyType,
+    FilteredElementCollector, Level, View, ViewFamily, ViewFamilyType,
     ViewPlan, ViewType
 )
 
-from lowlife import family_section, geometry, view_range
+from lowlife import family_section, geometry
 from lowlife import level_views_core as core
 
-MM_IN_FOOT = core.MM_IN_FOOT
+_FAMILY_BY_VIEW_TYPE = {
+    ViewType.FloorPlan: ViewFamily.FloorPlan,
+    ViewType.CeilingPlan: ViewFamily.CeilingPlan,
+    ViewType.EngineeringPlan: ViewFamily.StructuralPlan,
+}
 
-# Семейства видов, из которых можно делать планы по уровню.
-_PLAN_FAMILIES = (
-    (ViewFamily.FloorPlan, u"План этажа"),
-    (ViewFamily.CeilingPlan, u"План потолка"),
-    (ViewFamily.StructuralPlan, u"План несущих конструкций"),
-)
-
-_PLAN_VIEW_TYPES = (ViewType.FloorPlan, ViewType.CeilingPlan, ViewType.EngineeringPlan)
+KIND_LABELS = {
+    ViewType.FloorPlan: u"План этажа",
+    ViewType.CeilingPlan: u"План потолка",
+    ViewType.EngineeringPlan: u"План несущих конструкций",
+}
 
 
 def safe_name(el):
     return family_section.safe_name(el)
-
-
-# --- справочники для окна настроек -------------------------------------------
-
-def list_plan_types(doc):
-    """
-    [(подпись, ViewFamilyType)] типов планов — подпись «План этажа: Имя»
-    (так она и хранится в настройках группы), по порядку семейств и имени.
-    """
-    result = []
-    vfts = list(FilteredElementCollector(doc).OfClass(ViewFamilyType))
-    for family, label in _PLAN_FAMILIES:
-        items = []
-        for vft in vfts:
-            try:
-                if vft.ViewFamily == family:
-                    items.append((u"{}: {}".format(label, safe_name(vft)), vft))
-            except Exception:
-                continue
-        result.extend(sorted(items, key=lambda it: it[0].lower()))
-    return result
 
 
 def list_plan_templates(doc):
@@ -77,389 +43,117 @@ def list_plan_templates(doc):
     result = []
     for view in FilteredElementCollector(doc).OfClass(View):
         try:
-            if view.IsTemplate and view.ViewType in _PLAN_VIEW_TYPES:
+            if view.IsTemplate and view.ViewType in _FAMILY_BY_VIEW_TYPE:
                 result.append(view)
         except Exception:
             continue
     return sorted(result, key=lambda v: safe_name(v).lower())
 
 
-def find_plan_type(doc, label, types=None):
-    """ViewFamilyType по подписи из настроек; пусто — первый «План этажа»."""
-    types = types if types is not None else list_plan_types(doc)
-    label = (label or u"").strip()
-    if not label:
-        for lbl, vft in types:
-            if vft.ViewFamily == ViewFamily.FloorPlan:
-                return vft
-        return None
-    for lbl, vft in types:
-        if lbl == label:
-            return vft
-    # Подпись могла сохраниться без «Семейство: » — ищем по имени типа.
-    for lbl, vft in types:
-        if safe_name(vft) == label:
-            return vft
-    return None
-
-
-def find_template(templates, name):
-    name = (name or u"").strip()
-    if not name:
-        return None
-    for t in templates:
-        if safe_name(t) == name:
-            return t
-    return None
-
-
-# --- связанные модели ---------------------------------------------------------
-
-class LinkInfo(object):
-    """Загруженная связь: экземпляр, документ, имя, сдвиг по Z (мм)."""
-
-    def __init__(self, instance, link_doc, name, dz_mm, level_template=None):
-        self.instance = instance
-        self.level_template = level_template
-        self.doc = link_doc
-        self.name = name
-        self.dz_mm = dz_mm
-        self._plans = {}
-
-    def plans(self, view_type):
-        """
-        [(имя плана, отметка уровня в координатах основной модели мм, Id,
-        имя уровня, ключ этажа level_views_core.level_match_key или None)].
-        """
-        if view_type not in self._plans:
-            items = []
-            for v in FilteredElementCollector(self.doc).OfClass(ViewPlan):
-                try:
-                    if v.IsTemplate or v.ViewType != view_type:
-                        continue
-                    lvl = v.GenLevel
-                    if lvl is None:
-                        continue
-                    z = lvl.ProjectElevation * MM_IN_FOOT + self.dz_mm
-                    key = core.level_match_key(
-                        family_section.parse_level_name(lvl, self.level_template))
-                    items.append((safe_name(v), z, v.Id, geometry.level_name(lvl), key))
-                except Exception:
-                    continue
-            self._plans[view_type] = items
-        return self._plans[view_type]
-
-
-def list_links(doc, level_template=None):
-    """Загруженные связи (LinkInfo), по имени."""
-    result = []
-    for inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        try:
-            link_doc = inst.GetLinkDocument()
-        except Exception:
-            link_doc = None
-        if link_doc is None:
-            continue
-        link_type = doc.GetElement(inst.GetTypeId())
-        name = safe_name(link_type) if link_type is not None else safe_name(inst)
-        try:
-            dz_mm = inst.GetTotalTransform().Origin.Z * MM_IN_FOOT
-        except Exception:
-            dz_mm = 0.0
-        result.append(LinkInfo(inst, link_doc, name, dz_mm, level_template))
-    return sorted(result, key=lambda l: l.name.lower())
-
-
-def link_overrides_supported():
-    try:
-        from Autodesk.Revit.DB import RevitLinkGraphicsSettings, LinkVisibility  # noqa: F401
-    except Exception:
-        return False
-    return hasattr(View, "SetLinkOverrides")
-
-
-def _set_link_by_linked_view(view, link, linked_view_id):
-    from Autodesk.Revit.DB import RevitLinkGraphicsSettings, LinkVisibility
-
-    settings = RevitLinkGraphicsSettings()
-    settings.LinkVisibilityType = LinkVisibility.ByLinkView
-    settings.LinkedViewId = linked_view_id
-    try:
-        view.SetLinkOverrides(link.instance.Id, settings)
-    except Exception:
-        # Если экземпляр не принимается — настройка на тип связи.
-        view.SetLinkOverrides(link.instance.GetTypeId(), settings)
-
-
-# --- построение ---------------------------------------------------------------
-
-class ViewResult(object):
-    """Итог по одному виду: action — «создан»/«обновлён», error — причина сбоя."""
-
-    def __init__(self, level, group, name):
-        self.level = level
-        self.group = group
-        self.name = name
-        self.view = None
-        self.action = None
-        self.error = None
-        self.notes = []
-        self.links = []  # [(имя связи, имя вида связи)]
-
-
-class Context(object):
-    """Всё, что общее для прогона: справочники, занятые имена, связи."""
-
-    def __init__(self, doc, level_template):
-        self.doc = doc
-        self.level_template = level_template
-        self.types = list_plan_types(doc)
-        self.templates = list_plan_templates(doc)
-        self._links = None
-        self.links_supported = link_overrides_supported()
-        self.existing = {}
-        for v in FilteredElementCollector(doc).OfClass(ViewPlan):
-            try:
-                if not v.IsTemplate:
-                    self.existing[(v.ViewType, safe_name(v))] = v
-            except Exception:
-                continue
-
-    def links(self):
-        if self._links is None:
-            self._links = list_links(self.doc, self.level_template)
-        return self._links
-
-
-def level_match_key(level, level_template):
-    """Ключ этажа уровня основной модели для поиска «такого же» уровня в связи."""
-    return core.level_match_key(family_section.parse_level_name(level, level_template))
+def document_levels(doc):
+    return sorted(FilteredElementCollector(doc).OfClass(Level),
+                  key=lambda l: l.ProjectElevation)
 
 
 def level_values(level, level_template):
     """Подстановки маски для уровня."""
-    name = geometry.level_name(level)
     parsed = family_section.parse_level_name(level, level_template)
-    return core.level_tokens(name, level.Elevation * MM_IN_FOOT, parsed)
+    return core.level_tokens(geometry.level_name(level),
+                             level.Elevation * core.MM_IN_FOOT, parsed)
 
 
-def _same_id(a, b):
-    try:
-        return a.Equals(b)
-    except Exception:
-        return a == b
-
-
-def _apply_template(ctx, view, group, result):
-    name = group[core.G_TEMPLATE]
-    if not name:
-        return
-    template = find_template(ctx.templates, name)
-    if template is None:
-        result.notes.append(u"шаблон «{}» не найден в проекте — не назначен".format(name))
-        return
-    try:
-        view.ViewTemplateId = template.Id
-    except Exception as ex:
-        result.notes.append(u"шаблон «{}» не назначен: {}".format(name, ex))
-
-
-def _apply_range(ctx, view, level, group, result):
-    plan = core.range_plan(group)
-    if not plan:
-        return
-    template_name = view_range.range_controlled_by_template(ctx.doc, view)
-    if template_name is not None:
-        result.notes.append(u"секущий диапазон задаёт шаблон «{}» — не менялся".format(
-            template_name))
-        return
-
-    above = None
-    height_mm = None
-    if "top" in plan:
-        above, note = family_section.level_above(ctx.doc, level, ctx.level_template)
-        if note:
-            result.notes.append(note)
-        if above is not None:
-            height_mm = (above.ProjectElevation - level.ProjectElevation) * MM_IN_FOOT
-
-    problem = core.range_problem(plan, height_mm)
-    if problem:
-        result.notes.append(u"секущий диапазон не задан: " + problem)
-        return
-
-    vr = view.GetViewRange()
-    for key, plane in (("cut", PlanViewPlane.CutPlane),
-                       ("bottom", PlanViewPlane.BottomClipPlane),
-                       ("depth", PlanViewPlane.ViewDepthPlane)):
-        if key in plan:
-            vr.SetLevelId(plane, level.Id)
-            vr.SetOffset(plane, plan[key] / MM_IN_FOOT)
-    if "top" in plan:
-        if above is not None:
-            vr.SetLevelId(PlanViewPlane.TopClipPlane, above.Id)
-            vr.SetOffset(PlanViewPlane.TopClipPlane, plan["top"] / MM_IN_FOOT)
-        else:
-            vr.SetLevelId(PlanViewPlane.TopClipPlane, PlanViewRange.Unlimited)
-            vr.SetOffset(PlanViewPlane.TopClipPlane, 0.0)
-    try:
-        view.SetViewRange(vr)
-    except Exception as ex:
-        result.notes.append(u"Revit не принял секущий диапазон: {}".format(ex))
-
-
-def group_links(ctx, group):
-    """Загруженные связи, подходящие под фильтр имени связей группы."""
-    filters = core.split_filters(group[core.G_LINK_FILTER])
-    return [l for l in ctx.links() if core.name_matches_any(l.name, filters)]
-
-
-def link_view_candidates(link, view_type, group, values=None):
-    """Планы связи нужного типа под фильтр видов группы, по имени."""
-    return core.filter_link_views(
-        link.plans(view_type), group[core.G_LINK_VIEW_MODE],
-        core.link_view_filter_value(group, values))
-
-
-def _apply_links(ctx, view, level, group, values, result, choices):
-    """
-    choices — выбор в окне перед запуском: {имя связи: {имя уровня: имя
-    вида связи или "" — не задавать}}; None или нет записи — вид
-    подбирается сам: план под фильтр группы на «таком же» уровне связи —
-    с тем же именем, иначе тот же этаж по шаблону, иначе ближайший по отметке.
-    """
-    if not group[core.G_LINKS]:
-        return
-    if not ctx.links_supported:
-        result.notes.append(u"связи «По связанному виду» задаются из скрипта только "
-                            u"в Revit 2024 и новее — пропущено")
-        return
-    links = group_links(ctx, group)
-    if not links:
-        result.notes.append(u"нет загруженных связей{}".format(
-            u" с «{}» в имени".format(group[core.G_LINK_FILTER])
-            if group[core.G_LINK_FILTER] else u""))
-        return
-
-    level_label = geometry.level_name(level)
-    level_z = level.ProjectElevation * MM_IN_FOOT
-    for link in links:
-        chosen = ((choices or {}).get(link.name) or {}).get(level_label)
-        note = None
-        if chosen is None:
-            candidates = link_view_candidates(link, view.ViewType, group, values)
-            picked, note = core.pick_link_view(
-                candidates, level_z, level_label,
-                level_match_key(level, ctx.level_template))
-        elif chosen == u"":
-            continue
-        else:
-            picked = None
-            for c in link.plans(view.ViewType):
-                if c[0] == chosen:
-                    picked = c
-                    break
-            if picked is None:
-                note = u"вида «{}» больше нет в связи".format(chosen)
-        if picked is None:
-            result.notes.append(u"связь «{}»: {}".format(link.name, note))
-            continue
+def _plan_types(doc):
+    """{ViewFamily: первый по имени ViewFamilyType}."""
+    found = {}
+    for vft in FilteredElementCollector(doc).OfClass(ViewFamilyType):
         try:
-            _set_link_by_linked_view(view, link, picked[2])
-        except Exception as ex:
-            result.notes.append(
-                u"связь «{}»: не удалось задать «По связанному виду» ({}) — "
-                u"возможно, шаблон вида управляет связями RVT".format(link.name, ex))
+            family = vft.ViewFamily
+        except Exception:
             continue
-        result.links.append((link.name, picked[0]))
-        if note:
-            result.notes.append(u"связь «{}»: {}".format(link.name, note))
+        if family in _FAMILY_BY_VIEW_TYPE.values():
+            found.setdefault(family, []).append(vft)
+    return dict((f, sorted(items, key=lambda t: safe_name(t).lower())[0])
+                for f, items in found.items())
 
 
-_VIEW_TYPES = {
-    ViewFamily.FloorPlan: ViewType.FloorPlan,
-    ViewFamily.CeilingPlan: ViewType.CeilingPlan,
-    ViewFamily.StructuralPlan: ViewType.EngineeringPlan,
-}
+class ViewResult(object):
+    """Итог по одному виду: action — «создан»/«обновлён», error — причина сбоя."""
+
+    def __init__(self, level, template, name):
+        self.level = level
+        self.template = template
+        self.name = name
+        self.action = None
+        self.error = None
 
 
-def group_view_type(ctx, group):
-    """(ViewFamilyType группы или None, ViewType создаваемого плана)."""
-    vft = find_plan_type(ctx.doc, group[core.G_VIEW_TYPE], ctx.types)
-    if vft is None:
-        return None, ViewType.FloorPlan
-    return vft, _VIEW_TYPES.get(vft.ViewFamily, ViewType.FloorPlan)
-
-
-def build_view(ctx, level, group, taken, link_choices=None):
+def build_views(doc, levels, items, mask, level_template):
     """
-    Создаёт/обновляет вид группы на уровне (внутри транзакции). taken —
-    множество (ViewType, имя) видов, уже созданных этим прогоном: второй
-    вид с тем же именем — ошибка (маска без {Уровень}/{Группа}).
+    Создаёт виды (внутри транзакции). items — [(шаблон вида, значение)].
+    Возвращает [ViewResult]: шаблоны по порядку, уровни снизу вверх.
     """
-    values = level_values(level, ctx.level_template)
-    name = core.build_view_name(group, values)
-    result = ViewResult(level, group, name)
-    try:
-        if not name:
-            result.error = u"по маске «{}» получилось пустое имя".format(group[core.G_NAME_MASK])
-            return result
+    plan_types = _plan_types(doc)
+    existing = {}
+    for v in FilteredElementCollector(doc).OfClass(ViewPlan):
+        try:
+            if not v.IsTemplate:
+                existing[(v.ViewType, safe_name(v))] = v
+        except Exception:
+            continue
 
-        vft, view_type = group_view_type(ctx, group)
-        if vft is None:
-            result.error = u"тип вида «{}» не найден в проекте".format(
-                group[core.G_VIEW_TYPE] or u"План этажа")
-            return result
-
-        key = (view_type, name)
-        if key in taken:
-            result.error = (u"имя «{}» уже получил другой вид в этом запуске — "
-                            u"добавьте в маску {{Уровень}} или {{Группа}}".format(name))
-            return result
-
-        view = ctx.existing.get(key)
-        if view is not None:
-            if view.GenLevel is None or not _same_id(view.GenLevel.Id, level.Id):
-                result.error = u"имя «{}» уже занято видом другого уровня ({})".format(
-                    name, geometry.level_name(view.GenLevel) if view.GenLevel else u"?")
-                return result
-            result.action = u"обновлён"
-        else:
-            view = ViewPlan.Create(ctx.doc, vft.Id, level.Id)
-            try:
-                view.Name = name
-            except Exception as ex:
-                ctx.doc.Delete(view.Id)
-                result.error = u"не удалось задать имя «{}»: {}".format(name, ex)
-                return result
-            ctx.existing[key] = view
-            result.action = u"создан"
-        taken.add(key)
-        result.view = view
-
-        _apply_template(ctx, view, group, result)
-        _apply_range(ctx, view, level, group, result)
-        _apply_links(ctx, view, level, group, values, result,
-                     (link_choices or {}).get(group[core.G_NAME]))
-    except Exception as ex:
-        result.error = u"{}".format(ex)
-    return result
-
-
-def build_views(ctx, levels, groups, link_choices=None):
-    """
-    Все виды: уровни снизу вверх, внутри уровня — группы по порядку.
-    link_choices — выбор видов связей из окна перед запуском:
-    {имя группы: {имя связи: {имя уровня: имя вида связи или ""}}}.
-    """
     taken = set()
+    levels = sorted(levels, key=lambda l: l.ProjectElevation)
+    values_by_level = [(l, level_values(l, level_template)) for l in levels]
     results = []
-    for level in sorted(levels, key=lambda l: l.ProjectElevation):
-        for group in groups:
-            results.append(build_view(ctx, level, group, taken, link_choices))
+    for template, value in items:
+        view_type = template.ViewType
+        vft = plan_types.get(_FAMILY_BY_VIEW_TYPE.get(view_type))
+        for level, values in values_by_level:
+            name = core.build_view_name(mask, values, safe_name(template), value)
+            result = ViewResult(level, template, name)
+            results.append(result)
+            try:
+                _build_one(doc, level, template, vft, view_type, name, existing, taken,
+                           result)
+            except Exception as ex:
+                result.error = u"{}".format(ex)
     return results
 
 
-def document_levels(doc):
-    return sorted(FilteredElementCollector(doc).OfClass(Level),
-                  key=lambda l: l.ProjectElevation)
+def _build_one(doc, level, template, vft, view_type, name, existing, taken, result):
+    if not name:
+        result.error = u"по маске получилось пустое имя"
+        return
+    if vft is None:
+        result.error = u"в проекте нет типа вида «{}»".format(KIND_LABELS.get(view_type, u"?"))
+        return
+
+    key = (view_type, name)
+    if key in taken:
+        result.error = (u"такое имя уже получил другой вид в этом запуске — добавьте в "
+                        u"маску {Значение} или {Шаблон}")
+        return
+    taken.add(key)
+    view = existing.get(key)
+    if view is not None:
+        gen = view.GenLevel
+        if gen is None or not gen.Id.Equals(level.Id):
+            result.error = u"имя занято видом другого уровня ({})".format(
+                geometry.level_name(gen) if gen is not None else u"?")
+            return
+        result.action = u"обновлён"
+    else:
+        view = ViewPlan.Create(doc, vft.Id, level.Id)
+        try:
+            view.Name = name
+        except Exception as ex:
+            doc.Delete(view.Id)
+            result.error = u"не удалось задать имя: {}".format(ex)
+            return
+        existing[key] = view
+        result.action = u"создан"
+
+    try:
+        view.ViewTemplateId = template.Id
+    except Exception as ex:
+        result.error = u"вид {}, но шаблон не назначен: {}".format(result.action, ex)
