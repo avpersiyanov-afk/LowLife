@@ -12,7 +12,7 @@ clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
-from lowlife import level_views, level_views_core as core
+from lowlife import level_views, level_views_core as core, settings_transfer
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -111,10 +111,15 @@ class _Row(object):
         return core.split_values(self.value_box.Text)
 
 
-def show(doc, templates, levels, settings, level_template):
+def show(doc, templates, levels, settings, level_template, store):
     """
-    Окно. Возвращает (маска, [(шаблон, значение)], {шаблон: значение},
-    выравнивать ли секущий диапазон) или None при отмене.
+    Окно. store — level_views_settings (save/read_all/write_all — для
+    кнопок «Сохранить» и выгрузки/загрузки настроек).
+
+    Возвращает словарь {"action": "run" | "save", "mask", "items" —
+    [(шаблон, значение)], "values" — {шаблон: текст групп}, "checked" —
+    [имена отмеченных шаблонов], "align"}, settings_transfer.RELOAD после
+    загрузки настроек из файла (окно открыть заново) или None при отмене.
     """
     saved_values = settings[core.VALUES_KEY]
     checked = set(settings[core.CHECKED_KEY])
@@ -313,23 +318,59 @@ def show(doc, templates, levels, settings, level_template):
     _button(select_buttons, u"Отметить все", set_all(True))
     _button(select_buttons, u"Снять все", set_all(False))
 
-    def on_ok(sender, args):
+    def form_state(action):
+        """Значения окна или None (неверная маска — с сообщением)."""
         mask = mask_box.Text
         error = core.validate_mask(mask)
         if error:
             forms.alert(u"Маска имени вида: " + error, title=TITLE)
-            return
+            return None
         picked = chosen()
-        if not picked:
+        return {
+            "action": action,
+            "mask": mask,
+            "items": [(r.template, v) for r, v in pairs(picked)],
+            "values": dict((r.name, core.join_values(r.values())) for r in rows),
+            "checked": [r.name for r in picked],
+            "align": bool(align_cb.IsChecked),
+        }
+
+    def save_state(state):
+        return store.save(state["mask"], state["values"], state["checked"], state["align"])
+
+    def on_run(sender, args):
+        state = form_state("run")
+        if state is None:
+            return
+        if not state["items"]:
             forms.alert(u"Отметьте хотя бы один шаблон вида.", title=TITLE)
             return
-        values = dict((r.name, core.join_values(r.values())) for r in rows)
-        result["value"] = (mask, [(r.template, v) for r, v in pairs(picked)], values,
-                           bool(align_cb.IsChecked))
+        result["value"] = state
+        win.Close()
+
+    def on_save(sender, args):
+        state = form_state("save")
+        if state is None or not save_state(state):
+            return
+        result["value"] = state
+        win.Close()
+
+    def read_for_export():
+        # Выгружается то, что сейчас в окне, — сначала сохранить.
+        state = form_state("save")
+        if state is not None:
+            save_state(state)
+        return store.read_all()
+
+    def on_imported():
+        result["value"] = settings_transfer.RELOAD
         win.Close()
 
     _button(buttons, u"Отмена", lambda s, a: win.Close())
-    _button(buttons, u"Создать виды", on_ok, bold=True)
+    _button(buttons, u"Сохранить", on_save)
+    _button(buttons, u"Создать виды", on_run, bold=True)
+    settings_transfer.add_transfer_buttons(
+        buttons, read_for_export, store.write_all, u"видов по уровням", on_imported)
 
     update_preview()
     win.Content = outer

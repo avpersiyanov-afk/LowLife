@@ -62,17 +62,20 @@ def main():
         forms.alert(u"В проекте нет уровней.", title=TITLE)
         return
 
+    from lowlife import settings_transfer
+
     level_template = lvs.level_template()
-    picked = level_views_dialog.show(doc, templates, levels, lvs.load(), level_template)
-    if picked is None:
+    while True:
+        state = level_views_dialog.show(doc, templates, levels, lvs.load(), level_template, lvs)
+        if state != settings_transfer.RELOAD:
+            break
+    if state is None:
         return
-    mask, items, values, align_range = picked
-    checked = []
-    for t, _v in items:
-        name = level_views.safe_name(t)
-        if name not in checked:
-            checked.append(name)
-    lvs.save(mask, values, checked, align_range)
+    if state["action"] == "save":
+        forms.alert(u"Настройки сохранены.", title=TITLE)
+        return
+    mask, items, align_range = state["mask"], state["items"], state["align"]
+    lvs.save(mask, state["values"], state["checked"], align_range)
 
     if align_range and not lvs.view_range_configured():
         from lowlife import view_range_settings
