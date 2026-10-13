@@ -50,10 +50,22 @@ def test_validate_mask():
 
 
 def test_mask_warning():
-    assert core.mask_warning(u"{Уровень}_{Группа вида и назначение}", 3) is None
-    assert u"{Уровень}" in core.mask_warning(u"{Группа вида и назначение}", 1)
-    assert u"{Группа вида и назначение}" in core.mask_warning(u"{Уровень}", 2)
-    assert core.mask_warning(u"{Уровень}", 1) is None
+    G = u"{Группа вида и назначение}"
+    pairs = [(u"T1", u"Свет"), (u"T1", u"Сила"), (u"T2", u"Свет")]
+    assert core.mask_warning(u"{Уровень}_{Шаблон}_" + G, pairs) is None
+    assert u"{Уровень}" in core.mask_warning(G, pairs)
+    # Одинаковые группы у разных шаблонов без {Шаблон} — совпадение.
+    assert u"совпадут" in core.mask_warning(u"{Уровень}_" + G, pairs)
+    # Несколько групп у одного шаблона без {Группа ...} — совпадение.
+    assert u"совпадут" in core.mask_warning(u"{Уровень}_{Шаблон}", pairs)
+    assert core.mask_warning(u"{Уровень}", [(u"T1", u"")]) is None
+
+
+def test_split_and_join_values():
+    assert core.split_values(u" Освещение \r\n\r\nСиловое\n ") == [u"Освещение", u"Силовое"]
+    assert core.split_values(u"  ") == [u""]
+    assert core.split_values(None) == [u""]
+    assert core.join_values([u"Освещение", u"", u"Силовое"]) == u"Освещение\nСиловое"
 
 
 def test_normalize_settings():

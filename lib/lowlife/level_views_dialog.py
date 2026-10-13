@@ -69,8 +69,9 @@ class _Row(object):
     def checked(self):
         return bool(self.check.IsChecked)
 
-    def value(self):
-        return unicode(self.value_box.Text or u"").strip()
+    def values(self):
+        """Группы вида и назначения — по одной на строке."""
+        return core.split_values(self.value_box.Text)
 
 
 def show(doc, templates, levels, settings, level_template):
@@ -155,6 +156,15 @@ def show(doc, templates, levels, settings, level_template):
     select_buttons.HorizontalAlignment = HorizontalAlignment.Right
     list_head.Children.Add(select_buttons)
     middle.Children.Add(list_head)
+    multi_hint = TextBlock()
+    multi_hint.Text = (u"У шаблона может быть несколько групп вида и назначения — по одной на "
+                       u"строке (Enter); на каждую создаётся свой вид на каждом уровне.")
+    multi_hint.FontSize = 11
+    multi_hint.Foreground = Brushes.Gray
+    multi_hint.TextWrapping = TextWrapping.Wrap
+    multi_hint.Margin = Thickness(0, 2, 0, 0)
+    DockPanel.SetDock(multi_hint, Dock.Top)
+    middle.Children.Add(multi_hint)
 
     scroll = ScrollViewer()
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
@@ -185,24 +195,33 @@ def show(doc, templates, levels, settings, level_template):
         check = CheckBox()
         check.Content = name
         check.IsChecked = name in checked
-        check.VerticalAlignment = VerticalAlignment.Center
-        check.Margin = Thickness(0, 3, 8, 3)
+        check.VerticalAlignment = VerticalAlignment.Top
+        check.Margin = Thickness(0, 6, 8, 3)
         _place(grid, check, i + 1, 0)
         kind = TextBlock()
         kind.Text = level_views.KIND_LABELS.get(template.ViewType, u"")
         kind.Foreground = Brushes.Gray
-        kind.VerticalAlignment = VerticalAlignment.Center
-        kind.Margin = Thickness(0, 3, 8, 3)
+        kind.VerticalAlignment = VerticalAlignment.Top
+        kind.Margin = Thickness(0, 6, 8, 3)
         _place(grid, kind, i + 1, 1)
         value_box = TextBox()
         value_box.Padding = Thickness(3)
         value_box.Margin = Thickness(0, 3, 0, 3)
+        value_box.AcceptsReturn = True
+        value_box.TextWrapping = TextWrapping.Wrap
+        value_box.MinHeight = 24
+        value_box.MaxHeight = 160
+        value_box.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         value_box.Text = saved_values.get(name, name)
         _place(grid, value_box, i + 1, 2)
         rows.append(_Row(template, check, value_box))
 
     def chosen():
         return [r for r in rows if r.checked()]
+
+    def pairs(picked):
+        """[(строка, группа вида и назначение)] — по виду на уровень."""
+        return [(r, v) for r in picked for v in r.values()]
 
     def update_preview(*_args):
         mask = mask_box.Text
@@ -218,14 +237,15 @@ def show(doc, templates, levels, settings, level_template):
             preview_title.Text = u"Отметьте шаблоны, для которых создавать виды."
             preview.Text = u""
             return
-        preview_title.Text = u"Будет видов: {} ({} шабл. × {} ур.). Имена на уровне «{}»:".format(
-            len(picked) * len(levels), len(picked), len(levels),
+        items = pairs(picked)
+        preview_title.Text = u"Будет видов: {} ({} на уровень × {} ур.). Имена на уровне «{}»:".format(
+            len(items) * len(levels), len(items), len(levels),
             first_values.get(core.TOKEN_LEVEL, u""))
-        lines = [u"• " + core.build_view_name(mask, first_values, r.name, r.value())
-                 for r in picked[:_PREVIEW_MAX]]
-        if len(picked) > _PREVIEW_MAX:
-            lines.append(u"… и ещё {}".format(len(picked) - _PREVIEW_MAX))
-        warning = core.mask_warning(mask, len(picked))
+        lines = [u"• " + core.build_view_name(mask, first_values, r.name, v)
+                 for r, v in items[:_PREVIEW_MAX]]
+        if len(items) > _PREVIEW_MAX:
+            lines.append(u"… и ещё {}".format(len(items) - _PREVIEW_MAX))
+        warning = core.mask_warning(mask, [(r.name, v) for r, v in items])
         if warning:
             lines.append(u"Внимание: " + warning)
         preview.Text = u"\n".join(lines)
@@ -255,8 +275,8 @@ def show(doc, templates, levels, settings, level_template):
         if not picked:
             forms.alert(u"Отметьте хотя бы один шаблон вида.", title=TITLE)
             return
-        values = dict((r.name, r.value()) for r in rows)
-        result["value"] = (mask, [(r.template, r.value()) for r in picked], values)
+        values = dict((r.name, core.join_values(r.values())) for r in rows)
+        result["value"] = (mask, [(r.template, v) for r, v in pairs(picked)], values)
         win.Close()
 
     _button(buttons, u"Отмена", lambda s, a: win.Close())

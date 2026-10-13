@@ -60,7 +60,12 @@ def main():
     if picked is None:
         return
     mask, items, values = picked
-    lvs.save(mask, values, [level_views.safe_name(t) for t, _v in items])
+    checked = []
+    for t, _v in items:
+        name = level_views.safe_name(t)
+        if name not in checked:
+            checked.append(name)
+    lvs.save(mask, values, checked)
 
     with revit.Transaction(TITLE):
         results = level_views.build_views(doc, levels, items, mask, level_template)
