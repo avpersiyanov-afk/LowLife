@@ -10,7 +10,9 @@ settings_core.JsonStore):
                           в маске имени и поиск следующего этажа (верх
                           диапазона); пока не сохранён — берётся из настроек
                           «Секущего диапазона»;
-  - last_levels / last_groups — что было отмечено в прошлый запуск (имена).
+  - last_levels / last_groups — что было отмечено в прошлый запуск (имена);
+  - link_view_choices   — виды связей, выбранные в прошлый раз:
+                          {группа: {связь: {уровень: вид связи или ""}}}.
 
 Шаблоны и типы видов хранятся по имени, а не по ElementId — как в
 family_section_settings.py: имя переносится между проектами, Id — нет.
@@ -25,6 +27,7 @@ GROUPS_KEY = "groups"
 LEVEL_TEMPLATE_KEY = "level_name_template"
 LAST_LEVELS_KEY = "last_levels"
 LAST_GROUPS_KEY = "last_groups"
+LINK_CHOICES_KEY = "link_view_choices"
 
 _VIEW_RANGE_FILE = "LowLifeViewRange_settings.json"
 
@@ -49,6 +52,48 @@ def _names(value):
     return [v for v in value if isinstance(v, settings_core._string_types)]
 
 
+def _choices(value):
+    """{группа: {связь: {уровень: вид}}} — битые части отбрасываются."""
+    result = {}
+    if not isinstance(value, dict):
+        return result
+    for group, links in value.items():
+        if not isinstance(links, dict):
+            continue
+        for link, levels in links.items():
+            if not isinstance(levels, dict):
+                continue
+            clean = dict((k, v) for k, v in levels.items()
+                         if isinstance(v, settings_core._string_types))
+            result.setdefault(group, {})[link] = clean
+    return result
+
+
+def merge_choices(old, new):
+    """Новый выбор поверх старого (уровни и связи, которых не было в окне, — остаются)."""
+    merged = _choices(old)
+    for group, links in (new or {}).items():
+        for link, levels in links.items():
+            merged.setdefault(group, {}).setdefault(link, {}).update(levels)
+    return merged
+
+
+def remember_link_choices(choices, filters):
+    """
+    Сохраняет выбор видов связей и фильтры, изменённые в окне выбора:
+    filters — {группа: (вид фильтра, значение)}.
+    """
+    saved = _read_all()
+    groups = core.normalize_groups(saved.get(GROUPS_KEY))
+    for g in groups:
+        if g[core.G_NAME] in filters:
+            g[core.G_LINK_VIEW_MODE], g[core.G_LINK_VIEW_FILTER] = filters[g[core.G_NAME]]
+    save_values({
+        GROUPS_KEY: groups,
+        LINK_CHOICES_KEY: merge_choices(saved.get(LINK_CHOICES_KEY), choices),
+    })
+
+
 def load_saved_values():
     saved = _read_all()
     level_tpl = (saved.get(LEVEL_TEMPLATE_KEY) or u"").strip()
@@ -59,6 +104,7 @@ def load_saved_values():
         LEVEL_TEMPLATE_KEY: level_tpl,
         LAST_LEVELS_KEY: _names(saved.get(LAST_LEVELS_KEY)),
         LAST_GROUPS_KEY: _names(saved.get(LAST_GROUPS_KEY)),
+        LINK_CHOICES_KEY: _choices(saved.get(LINK_CHOICES_KEY)),
     }
 
 

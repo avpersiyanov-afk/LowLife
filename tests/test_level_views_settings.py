@@ -46,3 +46,16 @@ def test_round_trip_and_remember_choice(appdata):
     assert values[lvs.LEVEL_TEMPLATE_KEY] == u"{Этаж}"
     assert values[lvs.LAST_LEVELS_KEY] == [u"Этаж 1"]
     assert values[lvs.LAST_GROUPS_KEY] == [u"ЭОМ"]
+
+
+def test_remember_link_choices_merges_and_updates_filter(appdata):
+    group = core.normalize_group({core.G_NAME: u"ЭОМ", core.G_LINKS: True})
+    lvs.save_values({lvs.GROUPS_KEY: [group]})
+    lvs.remember_link_choices({u"ЭОМ": {u"АР.rvt": {u"Этаж 1": u"1 этаж", u"Этаж 2": u""}}},
+                              {u"ЭОМ": (core.MODE_STARTS, u"2")})
+    lvs.remember_link_choices({u"ЭОМ": {u"АР.rvt": {u"Этаж 2": u"2 этаж"}}}, {})
+    values = lvs.get_settings_silent()
+    assert values[lvs.LINK_CHOICES_KEY] == {u"ЭОМ": {u"АР.rvt": {u"Этаж 1": u"1 этаж",
+                                                                  u"Этаж 2": u"2 этаж"}}}
+    g = values[lvs.GROUPS_KEY][0]
+    assert (g[core.G_LINK_VIEW_MODE], g[core.G_LINK_VIEW_FILTER]) == (core.MODE_STARTS, u"2")

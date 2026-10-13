@@ -13,9 +13,10 @@
      family_section.level_above с шаблоном имени уровня из настроек);
      если диапазон задаёт шаблон вида — не трогается, с пояснением;
   5. если в группе включено — связанные модели «По связанному виду»
-     (View.SetLinkOverrides, Revit 2024+): в каждой подходящей связи
-     берётся план того же вида (план этажа / потолка) на уровне,
-     ближайшем по отметке к уровню вида (level_views_core.pick_link_view).
+     (View.SetLinkOverrides, Revit 2024+): вид связи для каждого уровня
+     выбирается в окне перед запуском (level_views_link_dialog) из планов
+     связи под фильтр группы; не выбран в окне — план под фильтр на
+     уровне, ближайшем по отметке (level_views_core.pick_link_view).
      Шаблон вида не должен управлять «Связями RVT» — иначе Revit не даст
      изменить их на виде, это попадёт в отчёт.
 
@@ -294,24 +295,56 @@ def _apply_range(ctx, view, level, group, result):
         result.notes.append(u"Revit не принял секущий диапазон: {}".format(ex))
 
 
-def _apply_links(ctx, view, level, group, values, result):
+def group_links(ctx, group):
+    """Загруженные связи, подходящие под фильтр имени связей группы."""
+    filters = core.split_filters(group[core.G_LINK_FILTER])
+    return [l for l in ctx.links() if core.name_matches_any(l.name, filters)]
+
+
+def link_view_candidates(link, view_type, group, values=None):
+    """Планы связи нужного типа под фильтр видов группы, по имени."""
+    return core.filter_link_views(
+        link.plans(view_type), group[core.G_LINK_VIEW_MODE],
+        core.link_view_filter_value(group, values))
+
+
+def _apply_links(ctx, view, level, group, values, result, choices):
+    """
+    choices — выбор в окне перед запуском: {имя связи: {имя уровня: имя
+    вида связи или "" — не задавать}}; None или нет записи — вид
+    подбирается сам (фильтр группы + ближайший уровень).
+    """
     if not group[core.G_LINKS]:
         return
     if not ctx.links_supported:
         result.notes.append(u"связи «По связанному виду» задаются из скрипта только "
                             u"в Revit 2024 и новее — пропущено")
         return
-    filters = core.split_filters(group[core.G_LINK_FILTER])
-    links = [l for l in ctx.links() if core.name_matches_any(l.name, filters)]
+    links = group_links(ctx, group)
     if not links:
         result.notes.append(u"нет загруженных связей{}".format(
-            u" с «{}» в имени".format(group[core.G_LINK_FILTER]) if filters else u""))
+            u" с «{}» в имени".format(group[core.G_LINK_FILTER])
+            if group[core.G_LINK_FILTER] else u""))
         return
 
-    view_filter = core.link_view_filter_text(group, values)
+    level_key = geometry.level_name(level)
     level_z = level.ProjectElevation * MM_IN_FOOT
     for link in links:
-        picked, note = core.pick_link_view(link.plans(view.ViewType), level_z, view_filter)
+        chosen = ((choices or {}).get(link.name) or {}).get(level_key)
+        note = None
+        if chosen is None:
+            candidates = link_view_candidates(link, view.ViewType, group, values)
+            picked, note = core.pick_link_view(candidates, level_z)
+        elif chosen == u"":
+            continue
+        else:
+            picked = None
+            for c in link.plans(view.ViewType):
+                if c[0] == chosen:
+                    picked = c
+                    break
+            if picked is None:
+                note = u"вида «{}» больше нет в связи".format(chosen)
         if picked is None:
             result.notes.append(u"связь «{}»: {}".format(link.name, note))
             continue
@@ -327,7 +360,22 @@ def _apply_links(ctx, view, level, group, values, result):
             result.notes.append(u"связь «{}»: {}".format(link.name, note))
 
 
-def build_view(ctx, level, group, taken):
+_VIEW_TYPES = {
+    ViewFamily.FloorPlan: ViewType.FloorPlan,
+    ViewFamily.CeilingPlan: ViewType.CeilingPlan,
+    ViewFamily.StructuralPlan: ViewType.EngineeringPlan,
+}
+
+
+def group_view_type(ctx, group):
+    """(ViewFamilyType группы или None, ViewType создаваемого плана)."""
+    vft = find_plan_type(ctx.doc, group[core.G_VIEW_TYPE], ctx.types)
+    if vft is None:
+        return None, ViewType.FloorPlan
+    return vft, _VIEW_TYPES.get(vft.ViewFamily, ViewType.FloorPlan)
+
+
+def build_view(ctx, level, group, taken, link_choices=None):
     """
     Создаёт/обновляет вид группы на уровне (внутри транзакции). taken —
     множество (ViewType, имя) видов, уже созданных этим прогоном: второй
@@ -341,16 +389,11 @@ def build_view(ctx, level, group, taken):
             result.error = u"по маске «{}» получилось пустое имя".format(group[core.G_NAME_MASK])
             return result
 
-        vft = find_plan_type(ctx.doc, group[core.G_VIEW_TYPE], ctx.types)
+        vft, view_type = group_view_type(ctx, group)
         if vft is None:
             result.error = u"тип вида «{}» не найден в проекте".format(
                 group[core.G_VIEW_TYPE] or u"План этажа")
             return result
-        view_type = {
-            ViewFamily.FloorPlan: ViewType.FloorPlan,
-            ViewFamily.CeilingPlan: ViewType.CeilingPlan,
-            ViewFamily.StructuralPlan: ViewType.EngineeringPlan,
-        }.get(vft.ViewFamily, ViewType.FloorPlan)
 
         key = (view_type, name)
         if key in taken:
@@ -380,20 +423,24 @@ def build_view(ctx, level, group, taken):
 
         _apply_template(ctx, view, group, result)
         _apply_range(ctx, view, level, group, result)
-        _apply_links(ctx, view, level, group, values, result)
+        _apply_links(ctx, view, level, group, values, result,
+                     (link_choices or {}).get(group[core.G_NAME]))
     except Exception as ex:
         result.error = u"{}".format(ex)
     return result
 
 
-def build_views(doc, levels, groups, level_template):
-    """Все виды: уровни снизу вверх, внутри уровня — группы по порядку."""
-    ctx = Context(doc, level_template)
+def build_views(ctx, levels, groups, link_choices=None):
+    """
+    Все виды: уровни снизу вверх, внутри уровня — группы по порядку.
+    link_choices — выбор видов связей из окна перед запуском:
+    {имя группы: {имя связи: {имя уровня: имя вида связи или ""}}}.
+    """
     taken = set()
     results = []
     for level in sorted(levels, key=lambda l: l.ProjectElevation):
         for group in groups:
-            results.append(build_view(ctx, level, group, taken))
+            results.append(build_view(ctx, level, group, taken, link_choices))
     return results
 
 

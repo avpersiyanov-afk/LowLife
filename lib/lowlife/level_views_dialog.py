@@ -254,21 +254,35 @@ def show_settings_form(doc, values, read_all, write_all):
     links_cb = CheckBox()
     links_cb.Content = u"Показывать связи «По связанному виду»"
     fields.Children.Add(links_cb)
-    _hint(fields, u"Для каждой связи в вид подставляется её план того же вида (этажа/"
-                  u"потолка) на уровне, ближайшем по отметке к уровню вида. Нужен Revit "
-                  u"2024+, а шаблон вида не должен управлять «Связями RVT».")
+    _hint(fields, u"В настройке «Связи RVT» вида связь показывается «По связанному виду» — "
+                  u"по плану связи, выбранному для этого уровня. Нужен Revit 2024+, а "
+                  u"шаблон вида не должен управлять «Связями RVT».")
     _label(fields, u"Какие связи: имя содержит (через запятую; пусто — все загруженные)")
     link_filter_box = _textbox(fields)
-    _label(fields, u"Вид в связи: имя содержит (пусто — любой план на этом уровне)")
-    link_view_box = _textbox(fields)
-    _hint(fields, u"Нужен, если в связи на одном уровне несколько планов. Можно с "
-                  u"подстановками уровня: {Этаж}, {Корпус}, {Уровень}, {Отметка}, "
-                  u"например «План {Этаж}».")
+    _label(fields, u"Фильтр видов связи (список видов в окне перед созданием)")
+    filter_row = DockPanel()
+    mode_cb = ComboBox()
+    mode_cb.Width = 190
+    for _key, lbl in core.LINK_VIEW_MODES:
+        mode_cb.Items.Add(lbl)
+    DockPanel.SetDock(mode_cb, Dock.Left)
+    filter_row.Children.Add(mode_cb)
+    link_view_box = TextBox()
+    link_view_box.Padding = Thickness(4)
+    link_view_box.Margin = Thickness(8, 0, 0, 0)
+    filter_row.Children.Add(link_view_box)
+    fields.Children.Add(filter_row)
+    _hint(fields, u"Перед созданием видов откроется окно: для каждого уровня и каждой связи "
+                  u"— список планов связи под этот фильтр, выбранный план станет "
+                  u"«связанным видом». Несколько значений — через запятую; регистр не важен; "
+                  u"можно с подстановками уровня ({Этаж}, {Корпус}, {Уровень}, {Отметка}). "
+                  u"Например «Начинается с» «2» — планы, имя которых начинается с 2.")
 
     def _sync_links_enabled(*_args):
         on = bool(links_cb.IsChecked)
         link_filter_box.IsEnabled = on
         link_view_box.IsEnabled = on
+        mode_cb.IsEnabled = on
 
     links_cb.Checked += _sync_links_enabled
     links_cb.Unchecked += _sync_links_enabled
@@ -286,6 +300,7 @@ def show_settings_form(doc, values, read_all, write_all):
             core.G_DEPTH: depth_box.Text,
             core.G_LINKS: bool(links_cb.IsChecked),
             core.G_LINK_FILTER: link_filter_box.Text,
+            core.G_LINK_VIEW_MODE: core.mode_by_label(unicode(mode_cb.SelectedItem or u"")),
             core.G_LINK_VIEW_FILTER: link_view_box.Text,
         }
 
@@ -313,6 +328,7 @@ def show_settings_form(doc, values, read_all, write_all):
             links_cb.IsChecked = bool(g[core.G_LINKS])
             link_filter_box.Text = g[core.G_LINK_FILTER]
             link_view_box.Text = g[core.G_LINK_VIEW_FILTER]
+            mode_cb.SelectedItem = core.mode_label(g[core.G_LINK_VIEW_MODE])
             _sync_links_enabled()
         finally:
             state["loading"] = False

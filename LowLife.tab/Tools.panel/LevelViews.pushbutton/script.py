@@ -68,7 +68,7 @@ def _report(results):
 
 
 def main():
-    from lowlife import level_views, level_views_settings as lvs
+    from lowlife import level_views, level_views_settings as lvs, level_views_link_dialog
     from lowlife import level_name_template
     from lowlife import level_views_core as core
     from lowlife.geometry import level_name
@@ -118,11 +118,24 @@ def main():
 
     lvs.remember_choice([o.label for o in chosen_levels], [o.label for o in chosen_groups])
 
+    levels = [o.item for o in chosen_levels]
+    groups = [o.item for o in chosen_groups]
     level_template = level_name_template.LevelNameTemplate(settings[lvs.LEVEL_TEMPLATE_KEY])
+    ctx = level_views.Context(doc, level_template)
+
+    # Связи «По связанному виду» — вид связи для каждого уровня выбирается в окне.
+    picked = level_views_link_dialog.show(ctx, levels, groups, settings[lvs.LINK_CHOICES_KEY])
+    if picked is None:
+        return
+    link_choices, filters = picked
+    if link_choices or filters:
+        lvs.remember_link_choices(link_choices, filters)
+        for g in groups:
+            if g[core.G_NAME] in filters:
+                g[core.G_LINK_VIEW_MODE], g[core.G_LINK_VIEW_FILTER] = filters[g[core.G_NAME]]
+
     with revit.Transaction(TITLE):
-        results = level_views.build_views(
-            doc, [o.item for o in chosen_levels], [o.item for o in chosen_groups],
-            level_template)
+        results = level_views.build_views(ctx, levels, groups, link_choices)
     _report(results)
 
 

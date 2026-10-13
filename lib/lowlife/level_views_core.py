@@ -53,7 +53,8 @@ G_BOTTOM = "bottom_mm"
 G_DEPTH = "depth_mm"
 G_LINKS = "links_by_linked_view"   # связи «По связанному виду»
 G_LINK_FILTER = "link_name_filter"  # какие связи: имя содержит (через запятую)
-G_LINK_VIEW_FILTER = "link_view_filter"  # вид в связи: имя содержит (маска)
+G_LINK_VIEW_MODE = "link_view_mode"      # фильтр видов связи: LINK_VIEW_MODES
+G_LINK_VIEW_FILTER = "link_view_filter"  # значение фильтра (с подстановками уровня)
 
 RANGE_KEYS = (G_TOP, G_CUT, G_BOTTOM, G_DEPTH)
 
@@ -68,6 +69,7 @@ GROUP_DEFAULTS = {
     G_DEPTH: 0.0,
     G_LINKS: False,
     G_LINK_FILTER: u"",
+    G_LINK_VIEW_MODE: "contains",
     G_LINK_VIEW_FILTER: u"",
 }
 
@@ -116,6 +118,8 @@ def normalize_group(raw):
                 value = default
         elif key == G_LINKS:
             value = bool(value)
+        elif key == G_LINK_VIEW_MODE:
+            value = value if value in _MODE_KEYS else default
         else:
             value = _str(value).strip() if key != G_NAME_MASK else _str(value)
         group[key] = value
@@ -172,10 +176,9 @@ def validate_group(group, existing_names=()):
     mask_error = validate_mask(group[G_NAME_MASK])
     if mask_error:
         errors.append(u"маска имени вида: " + mask_error)
-    if group[G_LINK_VIEW_FILTER]:
-        link_error = validate_mask(group[G_LINK_VIEW_FILTER], LINK_VIEW_TOKENS)
-        if link_error:
-            errors.append(u"вид в связи: " + link_error)
+    link_error = validate_link_view_filter(group[G_LINK_VIEW_MODE], group[G_LINK_VIEW_FILTER])
+    if link_error:
+        errors.append(u"фильтр видов связи: " + link_error)
     return errors
 
 
@@ -244,10 +247,116 @@ def build_view_name(group, level_values):
     return clean_view_name(apply_mask(group[G_NAME_MASK], values))
 
 
-def link_view_filter_text(group, level_values):
-    """Фильтр имени вида связи с подставленными значениями уровня (без регистра)."""
-    text = group.get(G_LINK_VIEW_FILTER) or u""
-    return apply_mask(text, level_values).strip().lower()
+# Фильтр видов связи: (ключ, подпись в окне). Значение — одно или несколько
+# через запятую (подходит любое; для «Не содержит» — ни одного), без учёта
+# регистра, с подстановками уровня ({Этаж}, ...).
+MODE_STARTS = "starts"
+MODE_CONTAINS = "contains"
+MODE_ENDS = "ends"
+MODE_NOT_CONTAINS = "not_contains"
+MODE_EQUALS = "equals"
+MODE_REGEX = "regex"
+LINK_VIEW_MODES = (
+    (MODE_STARTS, u"Начинается с"),
+    (MODE_CONTAINS, u"Содержит"),
+    (MODE_ENDS, u"Заканчивается на"),
+    (MODE_NOT_CONTAINS, u"Не содержит"),
+    (MODE_EQUALS, u"Равно"),
+    (MODE_REGEX, u"Регулярное выражение"),
+)
+_MODE_KEYS = tuple(k for k, _l in LINK_VIEW_MODES)
+
+
+def mode_label(mode):
+    return dict(LINK_VIEW_MODES).get(mode, LINK_VIEW_MODES[1][1])
+
+
+def mode_by_label(label):
+    for key, lbl in LINK_VIEW_MODES:
+        if lbl == label:
+            return key
+    return MODE_CONTAINS
+
+
+def link_view_filter_value(group, level_values=None):
+    """Значение фильтра видов связи с подстановками уровня (если даны)."""
+    text = _str(group.get(G_LINK_VIEW_FILTER))
+    if level_values:
+        text = apply_mask(text, level_values)
+    return text.strip()
+
+
+def validate_link_view_filter(mode, value):
+    """Текст ошибки фильтра видов связи или None."""
+    if mode not in _MODE_KEYS:
+        return u"неизвестный вид фильтра «{}»".format(mode)
+    value = _str(value)
+    if not value.strip():
+        return None
+    stripped = _TOKEN_RE.sub(u"", value)
+    if u"{" in stripped or u"}" in stripped:
+        if mode != MODE_REGEX:
+            return u"незакрытая фигурная скобка"
+    unknown = [t for t in mask_tokens(value) if t not in LINK_VIEW_TOKENS]
+    if mode == MODE_REGEX:
+        try:
+            re.compile(apply_mask(value, dict((t, u"1") for t in LINK_VIEW_TOKENS)),
+                       re.UNICODE | re.IGNORECASE)
+        except re.error as ex:
+            return u"неверное регулярное выражение: {}".format(ex)
+    elif unknown:
+        return u"неизвестные подстановки: {} (доступны: {})".format(
+            u", ".join(u"{%s}" % t for t in unknown),
+            u", ".join(u"{%s}" % t for t in LINK_VIEW_TOKENS))
+    return None
+
+
+def link_view_matches(name, mode, value):
+    """
+    Подходит ли имя вида связи под фильтр. Пустое значение — подходит всё;
+    неверное регулярное выражение — не подходит ничего.
+    """
+    value = _str(value).strip()
+    if not value:
+        return True
+    name = _str(name)
+    if mode == MODE_REGEX:
+        try:
+            return re.search(value, name, re.UNICODE | re.IGNORECASE) is not None
+        except re.error:
+            return False
+    low = name.lower()
+    parts = [p.strip().lower() for p in value.split(u",")]
+    parts = [p for p in parts if p]
+    if mode == MODE_STARTS:
+        return any(low.startswith(p) for p in parts)
+    if mode == MODE_ENDS:
+        return any(low.endswith(p) for p in parts)
+    if mode == MODE_EQUALS:
+        return any(low.strip() == p for p in parts)
+    if mode == MODE_NOT_CONTAINS:
+        return not any(p in low for p in parts)
+    return any(p in low for p in parts)
+
+
+def filter_link_views(candidates, mode, value):
+    """Кандидаты [(имя, отметка мм, ...)] под фильтр, по имени."""
+    return sorted([c for c in candidates if link_view_matches(c[0], mode, value)],
+                  key=lambda c: _str(c[0]).lower())
+
+
+def default_link_view(candidates, level_z_mm, remembered=None,
+                      max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
+    """
+    Что подставить в список выбора вида связи для уровня: запомненный с
+    прошлого раза (если он ещё в списке), иначе вид на ближайшем по отметке
+    уровне (pick_link_view), иначе None — «не задавать».
+    """
+    if remembered:
+        for c in candidates:
+            if c[0] == remembered:
+                return c
+    return pick_link_view(candidates, level_z_mm, max_gap_mm=max_gap_mm)[0]
 
 
 def split_filters(text):
@@ -300,25 +409,21 @@ def range_problem(plan, height_mm):
     return None
 
 
-def pick_link_view(candidates, level_z_mm, name_filter=u"",
-                   max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
+def pick_link_view(candidates, level_z_mm, max_gap_mm=MAX_LINK_LEVEL_GAP_MM):
     """
-    Вид связи для «По связанному виду».
+    Вид связи на уровне, ближайшем по отметке к уровню вида.
 
     candidates — [(имя вида, отметка его уровня в координатах основной
-    модели, мм, что угодно — например Id)]; level_z_mm — отметка уровня
-    вида. Берутся виды, в имени которых есть name_filter (без регистра;
-    пусто — все), из них — на уровне, ближайшем по отметке (не дальше
-    max_gap_mm). Несколько на одном уровне — первый по имени.
+    модели, мм, что угодно — например Id)], уже отфильтрованные
+    (filter_link_views); level_z_mm — отметка уровня вида. Ближайший
+    уровень — не дальше max_gap_mm; несколько видов на нём — первый по
+    имени.
 
     Возвращает (кандидат или None, пояснение или None).
     """
-    name_filter = _str(name_filter).strip().lower()
-    pool = [c for c in candidates if not name_filter or name_filter in _str(c[0]).lower()]
+    pool = list(candidates)
     if not pool:
-        if name_filter:
-            return None, u"нет планов с «{}» в имени".format(name_filter)
-        return None, u"в связи нет подходящих планов"
+        return None, u"нет планов под фильтр"
 
     best_gap = min(abs(c[1] - level_z_mm) for c in pool)
     if best_gap > max_gap_mm:
@@ -328,7 +433,7 @@ def pick_link_view(candidates, level_z_mm, name_filter=u"",
                   key=lambda c: _str(c[0]).lower())
     note = None
     if len(same) > 1:
-        note = u"на уровне {} планов, взят «{}» — уточните фильтр имени вида".format(
+        note = u"на уровне {} планов, взят «{}»".format(
             len(same), same[0][0])
     elif best_gap >= 1.0:
         note = u"уровень плана связи отличается на {:.0f} мм".format(float(best_gap))
