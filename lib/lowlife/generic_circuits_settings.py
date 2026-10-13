@@ -50,7 +50,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
-from lowlife import settings_core, settings_transfer
+from lowlife import param_autocomplete, settings_core, settings_transfer
 from lowlife.scs_settings import list_wire_catalog_items, WireTypeOption, _type_display_name
 
 SETTINGS_FILE_NAME = "LowLifeGeneric_settings.json"
@@ -499,6 +499,9 @@ def show_settings_form(doc, values):
     outer.Children.Add(scroll)
 
     win.Content = outer
+    # подсказка имён параметров модели в полях имён параметров
+    param_autocomplete.attach_by_keys(boxes, param_autocomplete.NameSource(doc))
+
     win.ShowDialog()
 
     return result["values"]

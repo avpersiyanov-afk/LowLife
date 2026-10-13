@@ -26,7 +26,7 @@ clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
-from lowlife import settings_core, settings_transfer
+from lowlife import param_autocomplete, settings_core, settings_transfer
 
 from System.Collections.Generic import List
 
@@ -167,6 +167,7 @@ def show_settings_form(doc, values):
     param_box = TextBox()
     param_box.Text = values.get(PARAM_KEY, u"")
     param_box.Padding = Thickness(4)
+    param_autocomplete.attach(param_box, param_autocomplete.NameSource(doc))
     header.Children.Add(param_box)
 
     levels_section = TextBlock()
