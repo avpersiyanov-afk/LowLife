@@ -247,7 +247,10 @@ def show(doc, templates, levels, settings, level_template):
         value_box.MinHeight = 24
         value_box.MaxHeight = 160
         value_box.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        value_box.Text = saved_values.get(name, name)
+        # Без предзаполнения: пусто, пока не вписано. Сохранённое значение,
+        # равное имени шаблона, — прежнее предзаполнение, тоже не показывается.
+        saved = saved_values.get(name, u"")
+        value_box.Text = u"" if saved == name else saved
         _place(grid, value_box, i + 1, 2)
         rows.append(_Row(template, check, value_box))
 
