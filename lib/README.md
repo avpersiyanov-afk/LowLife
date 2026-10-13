@@ -2375,7 +2375,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `level_views.align_ranges(doc, results, level_template)` | Выравнивает секущий диапазон созданных/обновлённых видов → `ViewResult.range_note` |
 | `level_views.list_plan_templates` / `document_levels` / `level_values` | Шаблоны планов, уровни по отметке, подстановки уровня |
 | `level_views_settings` | `LowLifeLevelViews_settings.json`: маска, значения по шаблонам, отмеченные шаблоны, галочка диапазона (`load`/`save`); `view_range_configured()` — сохранён ли шаблон уровня у «Секущего диапазона»; `level_template()` — шаблон имени уровня из настроек «Секущего диапазона» |
-| `level_views_dialog.show(doc, templates, levels, settings, level_template)` | Окно: маска, список шаблонов (галочка + значение), предпросмотр имён на первом уровне → `(маска, items, values)` или `None` |
+| `level_views_dialog.show(doc, templates, levels, settings, level_template, store)` | Окно: маска, список шаблонов (галочка + группы), предпросмотр имён на первом уровне; кнопки «Сохранить» (без создания видов), «Выгрузить/Загрузить настройки…» (`settings_transfer`, перед выгрузкой сохраняется то, что в окне) → `{"action": "run"/"save", mask, items, values, checked, align}`, `settings_transfer.RELOAD` или `None` |
 
 ## link_trays.py
 Кабельные лотки из связанных моделей, видимые на активном виде, — кнопка

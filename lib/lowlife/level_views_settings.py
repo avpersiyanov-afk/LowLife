@@ -16,6 +16,9 @@ from lowlife import level_views_core as core
 SETTINGS_FILE_NAME = "LowLifeLevelViews_settings.json"
 
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, label=u"видов по уровням")
+# Весь файл как есть — для выгрузки/загрузки настроек (settings_transfer).
+read_all = _STORE.read
+write_all = _STORE.write
 
 
 def load():
