@@ -113,8 +113,8 @@ class _Row(object):
 
 def show(doc, templates, levels, settings, level_template):
     """
-    Окно. Возвращает (маска, [(шаблон, значение)], {шаблон: значение})
-    или None при отмене.
+    Окно. Возвращает (маска, [(шаблон, значение)], {шаблон: значение},
+    выравнивать ли секущий диапазон) или None при отмене.
     """
     saved_values = settings[core.VALUES_KEY]
     checked = set(settings[core.CHECKED_KEY])
@@ -167,6 +167,16 @@ def show(doc, templates, levels, settings, level_template):
     preview = TextBlock()
     preview.TextWrapping = TextWrapping.Wrap
     bottom.Children.Add(preview)
+
+    align_cb = CheckBox()
+    align_cb.Content = u"Выровнять секущий диапазон (как кнопка «Секущий диапазон»)"
+    align_cb.IsChecked = bool(settings[core.ALIGN_RANGE_KEY])
+    align_cb.Margin = Thickness(0, 12, 0, 0)
+    bottom.Children.Add(align_cb)
+    _hint(bottom, u"Низ и глубина — уровень вида; секущая плоскость +1200 мм (низкий этаж — "
+                  u"+900); верх — следующий этаж −200 мм. Если настройка «Секущего "
+                  u"диапазона» ещё не заполнена — она откроется перед созданием видов. "
+                  u"Планы потолков и виды, чей диапазон задаёт шаблон, не меняются.")
 
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -314,7 +324,8 @@ def show(doc, templates, levels, settings, level_template):
             forms.alert(u"Отметьте хотя бы один шаблон вида.", title=TITLE)
             return
         values = dict((r.name, core.join_values(r.values())) for r in rows)
-        result["value"] = (mask, [(r.template, v) for r, v in pairs(picked)], values)
+        result["value"] = (mask, [(r.template, v) for r, v in pairs(picked)], values,
+                           bool(align_cb.IsChecked))
         win.Close()
 
     _button(buttons, u"Отмена", lambda s, a: win.Close())

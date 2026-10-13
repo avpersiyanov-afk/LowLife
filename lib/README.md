@@ -2340,7 +2340,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 видов планов (этажа, потолка, несущих), у каждого — «Группы вида и назначения» (по одной на строке, на каждую — свой вид), и задаётся
 маска имени; для каждого отмеченного шаблона на каждом уровне модели создаётся
 план (`ViewPlan.Create`, первый по имени тип того же вида, что шаблон) с этим
-шаблоном. Диапазон, связи и видимость задаёт сам шаблон. План с тем же именем на
+шаблоном. С галочкой «Выровнять секущий диапазон» (`align_view_range`, по умолчанию включена) диапазон ставится `view_range.align_view_range` (как у «Секущего диапазона»; не заполнена его настройка — перед созданием открывается её окно; планы потолков и виды, чей диапазон задаёт шаблон, — с пояснением в отчёте); связи и видимость задаёт сам шаблон. План с тем же именем на
 том же уровне не создаётся заново — ему назначается шаблон; имя, занятое видом
 другого уровня или уже выданное в этом запуске, — ошибка в отчёте.
 
@@ -2348,8 +2348,9 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 |---|---|
 | `level_views_core` | Чистая логика (`tests/test_level_views_core.py`): подстановки `{Уровень}`, `{Группа вида и назначение}` (прежнее `{Значение}` тоже понимается), `{Шаблон}`, `{Отметка}` («+3.300»), `{Этаж}`/`{Корпус}`/`{Комментарий}` (по шаблону имени уровня); `build_view_name(mask, level_values, template_name, value)`, `split_values`/`join_values` (группы по строкам), `validate_mask`, `mask_warning(mask, pairs)` (совпадающие имена), `normalize_settings` |
 | `level_views.build_views(doc, levels, items, mask, level_template)` | Создаёт виды (внутри транзакции), `items` — `[(шаблон, значение)]` → `[ViewResult]` (`name`, `action`, `error`) |
+| `level_views.align_ranges(doc, results, level_template)` | Выравнивает секущий диапазон созданных/обновлённых видов → `ViewResult.range_note` |
 | `level_views.list_plan_templates` / `document_levels` / `level_values` | Шаблоны планов, уровни по отметке, подстановки уровня |
-| `level_views_settings` | `LowLifeLevelViews_settings.json`: маска, значения по шаблонам, отмеченные шаблоны (`load`/`save`); `level_template()` — шаблон имени уровня из настроек «Секущего диапазона» |
+| `level_views_settings` | `LowLifeLevelViews_settings.json`: маска, значения по шаблонам, отмеченные шаблоны, галочка диапазона (`load`/`save`); `view_range_configured()` — сохранён ли шаблон уровня у «Секущего диапазона»; `level_template()` — шаблон имени уровня из настроек «Секущего диапазона» |
 | `level_views_dialog.show(doc, templates, levels, settings, level_template)` | Окно: маска, список шаблонов (галочка + значение), предпросмотр имён на первом уровне → `(маска, items, values)` или `None` |
 
 ## link_trays.py

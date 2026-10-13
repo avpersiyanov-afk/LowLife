@@ -48,6 +48,7 @@ _OLD_DEFAULT_MASK = u"{Уровень}_{Значение}"
 MASK_KEY = "name_mask"
 VALUES_KEY = "template_values"    # {имя шаблона: значение}
 CHECKED_KEY = "checked_templates"  # [имена шаблонов, отмеченных в прошлый раз]
+ALIGN_RANGE_KEY = "align_view_range"  # выравнивать секущий диапазон (как «Секущий диапазон»)
 
 _TOKEN_RE = re.compile(u"\\{([^{}]*)\\}", re.UNICODE)
 
@@ -74,6 +75,7 @@ def normalize_settings(saved):
         VALUES_KEY: dict((_str(k), _str(v)) for k, v in values.items()
                          if isinstance(v, (_text, str))),
         CHECKED_KEY: [_str(n) for n in checked if isinstance(n, (_text, str))],
+        ALIGN_RANGE_KEY: bool(saved.get(ALIGN_RANGE_KEY, True)),
     }
 
 

@@ -70,7 +70,9 @@ def test_split_and_join_values():
 
 def test_normalize_settings():
     s = core.normalize_settings(None)
-    assert s == {core.MASK_KEY: core.DEFAULT_MASK, core.VALUES_KEY: {}, core.CHECKED_KEY: []}
+    assert s == {core.MASK_KEY: core.DEFAULT_MASK, core.VALUES_KEY: {}, core.CHECKED_KEY: [],
+                 core.ALIGN_RANGE_KEY: True}
+    assert core.normalize_settings({core.ALIGN_RANGE_KEY: False})[core.ALIGN_RANGE_KEY] is False
     s = core.normalize_settings({core.MASK_KEY: u"{Марка}", core.VALUES_KEY: {u"T": u"v", u"X": 5},
                                  core.CHECKED_KEY: [u"T", 3]})
     assert s[core.MASK_KEY] == core.DEFAULT_MASK

@@ -27,3 +27,16 @@ def test_save_and_load(appdata):
 def test_level_template_default(appdata):
     tpl = lvs.level_template()
     assert tpl.error is None
+
+
+def test_align_range_saved(appdata):
+    lvs.save(core.DEFAULT_MASK, {}, [], align_range=False)
+    assert lvs.load()[core.ALIGN_RANGE_KEY] is False
+
+
+def test_view_range_configured(appdata):
+    from lowlife import view_range_settings as vrs
+    assert lvs.view_range_configured() is False
+    vrs.save_values({vrs.LEVEL_TEMPLATE_KEY: u"Этаж {Этаж}"})
+    assert lvs.view_range_configured() is True
+    assert lvs.level_template().template == u"Этаж {Этаж}"

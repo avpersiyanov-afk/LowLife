@@ -83,8 +83,10 @@ class ViewResult(object):
         self.level = level
         self.template = template
         self.name = name
+        self.view = None
         self.action = None
         self.error = None
+        self.range_note = None  # секущий диапазон не выровнен — почему
 
 
 def build_views(doc, levels, items, mask, level_template):
@@ -153,7 +155,31 @@ def _build_one(doc, level, template, vft, view_type, name, existing, taken, resu
         existing[key] = view
         result.action = u"создан"
 
+    result.view = view
     try:
         view.ViewTemplateId = template.Id
     except Exception as ex:
         result.error = u"вид {}, но шаблон не назначен: {}".format(result.action, ex)
+
+
+def align_ranges(doc, results, level_template):
+    """
+    Секущий диапазон созданных/обновлённых видов — как у кнопки «Секущий
+    диапазон» (view_range.align_view_range, внутри транзакции). Почему не
+    выровнен — в result.range_note (планы потолков, диапазон задаёт шаблон,
+    Revit не принял).
+    """
+    from lowlife import view_range
+
+    for result in results:
+        view = result.view
+        if view is None:
+            continue
+        if not view_range.is_plan(view):
+            result.range_note = u"план потолка — диапазон не выравнивается"
+            continue
+        try:
+            aligned = view_range.align_view_range(doc, view, level_template)
+            result.range_note = aligned.error
+        except Exception as ex:
+            result.range_note = u"{}".format(ex)
