@@ -83,6 +83,10 @@ def _range_controlled_by_template(doc, view):
         return u"?"
 
 
+# Публичное имя для других кнопок («Виды по уровням»).
+range_controlled_by_template = _range_controlled_by_template
+
+
 def align_view_range(doc, view, level_template=None):
     """
     Выставляет диапазон вида (внутри транзакции). Возвращает RangeResult;

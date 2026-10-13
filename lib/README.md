@@ -2335,6 +2335,32 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `get_settings_silent()` / `get_settings_interactive()` | Сохранённые значения / окно (Shift+клик) |
 | `LevelTemplateField` | `TextField` с проверкой шаблона при сохранении и при загрузке |
 
+## level_views.py / level_views_core.py / level_views_settings.py / level_views_dialog.py
+Кнопка `Tools.panel/LevelViews` («Виды по уровням»): для каждого выбранного
+уровня — по плану на каждую выбранную группу видов. Группа (`level_views_core.GROUP_DEFAULTS`)
+— тип вида (подпись «План этажа: Имя», хранится по имени), маска имени
+(`{Уровень}`, `{Этаж}`, `{Корпус}`, `{Комментарий}` — по шаблону имени уровня,
+`{Отметка}` — «+3.300», `{Группа}`), шаблон вида (по имени), секущий диапазон
+(`top_mm` — от следующего этажа через `family_section.level_above`, выше нет —
+«Неограниченно»; `cut_mm`/`bottom_mm`/`depth_mm` — от уровня вида; `None` —
+плоскость не трогается, глубина без значения = низ) и связи «По связанному виду»
+(`View.SetLinkOverrides` с `LinkVisibility.ByLinkView`, Revit 2024+; в каждой
+связи, чьё имя содержит фильтр, берётся план того же `ViewType` на уровне,
+ближайшем по отметке, не дальше `MAX_LINK_LEVEL_GAP_MM`, с необязательным
+фильтром имени вида с подстановками уровня). Уже существующий план с тем же
+именем на том же уровне не создаётся заново — ему заново назначаются шаблон,
+диапазон и связи; имя, занятое видом другого уровня, — ошибка в отчёте. Если
+диапазон задаёт шаблон вида (`view_range.range_controlled_by_template`) —
+диапазон не меняется, с пояснением.
+
+| Модуль / функция | Что делает |
+|---|---|
+| `level_views_core` | Чистая логика (покрыта `tests/test_level_views_core.py`): `normalize_group(s)`, `group_from_form` (поля окна → группа + ошибки), `validate_mask`/`validate_groups`, `level_tokens`/`build_view_name`/`format_elevation`, `range_plan`/`range_problem`, `split_filters`/`name_matches_any`, `pick_link_view(candidates, level_z_mm, name_filter)` |
+| `level_views.build_views(doc, levels, groups, level_template)` | Создаёт/обновляет виды (внутри транзакции) → `[ViewResult]` (`name`, `action`, `error`, `notes`, `links`) |
+| `level_views.list_plan_types` / `list_plan_templates` / `list_links` | Справочники: типы планов (этажа/потолка/несущих), шаблоны планов, загруженные связи (`LinkInfo.plans(view_type)` — планы связи с отметкой уровня в координатах основной модели) |
+| `level_views_settings` | `LowLifeLevelViews_settings.json`: `groups`, `level_name_template` (пока пусто — из «Секущего диапазона»), `last_levels`/`last_groups` (что было отмечено в прошлый раз); `get_settings_silent()` / `get_settings_interactive(doc)` |
+| `level_views_dialog.show_settings_form` | Окно (Shift+клик): список групп (добавить/копия/удалить/выше/ниже) и поля выбранной группы |
+
 ## link_trays.py
 Кабельные лотки из связанных моделей, видимые на активном виде, — кнопка
 `Tools.panel/LinkTraysToExcel` («Лотки связи в Эксель»). В Revit 2024+ видимость
