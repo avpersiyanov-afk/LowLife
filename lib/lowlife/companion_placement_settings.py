@@ -441,6 +441,8 @@ def show_settings_form(doc, values):
     wire_line_filter_box.HorizontalAlignment = HorizontalAlignment.Left
     wire_line_filter_box.Padding = Thickness(4, 2, 4, 2)
     wire_line_filter_box.Margin = Thickness(0, 0, 0, 6)
+    param_autocomplete.attach(wire_line_filter_box, param_autocomplete.source_for_rule(
+        param_autocomplete.rule_for_key("wire_line_family_filter"), param_names))
     root.Children.Add(wire_line_filter_box)
 
     wire_mark_label = TextBlock()

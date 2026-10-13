@@ -502,9 +502,9 @@ _write_all = _STORE.write
 «Задачи из почты» с выбором способа подключения ИИ и стандартным промптом из
 файла) пока остаются в своих модулях и берут отсюда только `JsonStore`.
 
-У `TextField` есть атрибут класса `param_spec` — подсказка имён параметров
-модели под полем (см. `param_autocomplete.py`): `"auto"` (по умолчанию) —
-по имени ключа, `None` — без подсказки (так у `NumberField`), иначе — свой
+У `TextField` есть атрибут класса `param_spec` — подсказка под полем (см.
+`param_autocomplete.py`): `"auto"` (по умолчанию) — по имени ключа
+(`rule_for_key`), `None` — без подсказки (так у `NumberField`), иначе — свой
 `spec` (например, у `ss1_easy_settings.LetterParamsField` — `(u";", u"=")`,
 имя после «=» в каждой паре).
 
@@ -525,6 +525,24 @@ _write_all = _STORE.write
 компаньонов (в том числе пары «Источник=Приёмник»), двери СКУД (параметр
 номера помещения), настройки «Обновление/проверка семейств».
 
+Кроме имён параметров, по ключу поля (`EXTRA_RULES`) подсказываются:
+- маска помещения `room_mask` («Имя (Номер)») — имена параметров, по имени
+  под кареткой между `,`/`(`/`)`;
+- `schematic_view_name` — имена видов; `view_name_prefixes` — начала имён
+  видов («20» из «20_План», список через запятую);
+- `family_filter`, `wire_line_family_filter` — имена семейств (фильтр по
+  части имени — лишнее можно стереть);
+- `circuit_system_type` — типы электрических цепей Revit;
+- `cabinet_category_name` — строки поля «Категории устройств схемы» того же
+  окна (а если его в окне нет — из сохранённых настроек), чтобы имя точно
+  совпало;
+- `route_param_value`/`route_param_value_riser` — значения в модели
+  параметра из поля `route_param_name`; `device_cable_type_value` и
+  `install_*_key` — значения параметра из `cable_param_name`.
+
+Ключевые слова (рабочих наборов, изоляторов, стояков, типов цепей) и маска
+маркировки из букв («A.B.C») подсказки не получают.
+
 | Имя | Сигнатура | Что делает |
 |---|---|---|
 | `spec_for_key` | `spec_for_key(key)` | `SINGLE` (всё поле — одно имя) для `*_param`/`*_param_name`, `LIST` (через `,`/`;`/строки) для `*_params`/`*_param_names`/`*param_names_text`, иначе `None` |
@@ -532,9 +550,15 @@ _write_all = _STORE.write
 | `token_span` / `current_token` | `(text, caret, spec=SINGLE)` | Границы/текст имени под кареткой; `spec = (разделители, символ-начало или None)`: `(u";", u"=")` — только часть после «=»; `None` — каретка не на имени |
 | `replace_token` | `(text, caret, name, spec=SINGLE)` | Подставляет имя вместо имени под кареткой → `(текст, каретка)`; после `,`/`;` добавляет пробел |
 | `collect_parameter_names` | `collect_parameter_names(doc, budget_ms=4000, include_links=True)` | Имена параметров модели и загруженных связей: все `ParameterElement` и привязки параметров проекта + параметры экземпляра и типа с одного элемента на пару категория+тип, пока не истечёт `budget_ms` (на больших моделях список может быть неполным, но окно не зависает) |
-| `NameSource` | `NameSource(doc=None, names=None)` | Имена для одного окна, собираются один раз при первой подсказке (курсор-ожидание), а не при открытии окна; `doc=None` — активный документ (`pyrevit.revit.doc`) |
-| `attach` | `attach(box, source, spec=SINGLE)` | Подключает подсказку к `TextBox` (`Popup` с `ListBox` под полем; ничто в нём не берёт фокус). Ошибка подключения не ломает окно. Пустая подсказка `ToolTip` поля заполняется `HINT` |
-| `attach_by_keys` | `attach_by_keys(boxes, source, overrides=None)` | Для словаря `{ключ: TextBox}` — `attach` к полям, чей `spec_for_key` не `None`; `overrides = {ключ: spec или None}` |
+| `NameSource` | `NameSource(doc=None, names=None, collect=None, hint=HINT)` | Имена для одного окна, собираются `collect(doc)` (по умолчанию `collect_parameter_names`) один раз при первой подсказке (курсор-ожидание), а не при открытии окна; `doc=None` — активный документ (`pyrevit.revit.doc`); `hint` — `ToolTip` поля |
+| `DependentSource` | `DependentSource(get_text, collect, doc=None, hint=HINT, wait=True)` | Имена, зависящие от текста другого поля: `collect(doc, get_text())`, запоминается для каждого текста |
+| `rule_for_key` / `EXTRA_RULES` | `rule_for_key(key)` | `(что подсказывать, spec, ключ поля-зависимости)` или `None`: `EXTRA_RULES`, иначе имена параметров по `spec_for_key` |
+| `source_for_rule` | `source_for_rule(rule, params_source, boxes=None, values=None)` | Источник для правила: имена параметров — общий `params_source` окна, остальное — новый `NameSource`/`DependentSource` на его `doc`; поле-зависимость — из `boxes`, иначе из `values` |
+| `collect_family_names` / `collect_view_names` / `collect_view_name_prefixes` / `collect_system_type_names` | `(doc)` | Имена семейств, видов (без шаблонов), начал имён видов (`view_name_prefix`), типов `ElectricalSystemType` |
+| `collect_param_values` | `collect_param_values(doc, param_name, budget_ms=3000)` | Разные непустые значения параметра у экземпляров (или их типов), пока не истечёт `budget_ms` |
+| `text_lines` / `view_name_prefix` | `(text)` / `(name)` | Непустые строки без повторов; начало имени вида до пробела/`_`/`-`/`.` |
+| `attach` | `attach(box, source, spec=SINGLE)` | Подключает подсказку к `TextBox` (`Popup` с `ListBox` под полем; ничто в нём не берёт фокус); `source` — что угодно с `.names()`. Ошибка подключения не ломает окно. Пустая подсказка `ToolTip` поля заполняется `source.hint` |
+| `attach_by_keys` | `attach_by_keys(boxes, source, overrides=None, values=None)` | Для словаря `{ключ: TextBox}` — `attach` к полям, для которых есть `rule_for_key`; `overrides = {ключ: spec имён параметров или None}`; `values` — сохранённые настройки для полей-зависимостей, которых нет в окне |
 
 ## settings_transfer.py
 Общий для **всех** окон настроек (`scs_settings` / `skud_settings` /

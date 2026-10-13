@@ -296,10 +296,11 @@ class TextField(object):
                ключи передаёт кнопка (у одной настройки разные кнопки могут
                требовать разное).
 
-    param_spec — подсказка имён параметров модели под полем (см.
-               param_autocomplete): "auto" — по имени ключа (*_param,
-               *_param_name — одно имя; *_params, *_param_names — список),
-               None — без подсказки, иначе — spec для token_span.
+    param_spec — подсказка под полем (см. param_autocomplete): "auto" — по
+               имени ключа (rule_for_key: *_param, *_param_name — имя
+               параметра; *_params — список имён; room_mask, имена видов
+               и т. п. — своё правило), None — без подсказки, иначе — spec
+               имён параметров для token_span.
     """
 
     param_spec = "auto"
@@ -311,12 +312,6 @@ class TextField(object):
         self.hint = hint
         self.default = default
         self.required = required
-
-    def completion_spec(self):
-        from lowlife import param_autocomplete
-        if self.param_spec == "auto":
-            return param_autocomplete.spec_for_key(self.key)
-        return self.param_spec
 
     def title(self):
         """Как поле называется в сообщениях (require, ошибки ввода)."""
@@ -553,9 +548,6 @@ class TextSettings(object):
             box.Padding = Thickness(4)
             root.Children.Add(box)
             boxes[field.key] = box
-            spec = field.completion_spec()
-            if spec is not None:
-                param_autocomplete.attach(box, param_names, spec)
 
             if field.hint:
                 field_hint = TextBlock()
@@ -565,6 +557,15 @@ class TextSettings(object):
                 field_hint.TextWrapping = TextWrapping.Wrap
                 field_hint.Margin = Thickness(0, 2, 0, 0)
                 root.Children.Add(field_hint)
+
+        # подсказки: имена параметров, виды, значения… — по ключу поля
+        # (param_autocomplete.rule_for_key) или по param_spec поля
+        param_autocomplete.attach_by_keys(
+            boxes, param_names,
+            overrides=dict((f.key, f.param_spec) for f in self.fields
+                           if f.param_spec != "auto"),
+            values=values,
+        )
 
         if any(f.required for f in self.fields):
             required_hint = TextBlock()
