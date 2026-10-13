@@ -22,8 +22,11 @@ def load():
     return core.normalize_settings(_STORE.read())
 
 
-def save(mask, values, checked):
-    """values — {шаблон: значение} (дописываются к старым), checked — [шаблоны]."""
+def save(mask, values, checked, align_range=True):
+    """
+    values — {шаблон: значение} (дописываются к старым), checked — [шаблоны],
+    align_range — галочка «Выровнять секущий диапазон».
+    """
     saved = load()
     all_values = dict(saved[core.VALUES_KEY])
     all_values.update(values)
@@ -31,7 +34,18 @@ def save(mask, values, checked):
         core.MASK_KEY: mask,
         core.VALUES_KEY: all_values,
         core.CHECKED_KEY: list(checked),
+        core.ALIGN_RANGE_KEY: bool(align_range),
     })
+
+
+def view_range_configured():
+    """
+    Сохранён ли шаблон имени уровня в настройках кнопки «Секущий диапазон»
+    (по нему ищется следующий этаж — верх диапазона).
+    """
+    from lowlife import view_range_settings
+    saved = view_range_settings.SETTINGS.store.read()
+    return bool((saved.get(view_range_settings.LEVEL_TEMPLATE_KEY) or u"").strip())
 
 
 def level_template():

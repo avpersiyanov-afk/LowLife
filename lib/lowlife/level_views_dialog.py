@@ -59,6 +59,43 @@ def _button(parent, text, handler, bold=False):
     return b
 
 
+# Подстановки маски: (подстановка, что в неё попадёт).
+_TOKEN_HELP = (
+    (u"{Группа вида и назначение}", u"то, что вписано у шаблона в списке ниже"),
+    (u"{Уровень}", u"имя уровня целиком"),
+    (u"{Корпус}, {Этаж}, {Комментарий}",
+     u"части имени уровня — как их выделять, задаёт шаблон имени уровня в настройках "
+     u"кнопки «Секущий диапазон» (Shift+клик); не подходит под шаблон — пусто"),
+    (u"{Отметка}", u"отметка уровня, например «+3.300»"),
+    (u"{Шаблон}", u"имя шаблона вида"),
+)
+
+
+def _tokens_table(parent):
+    """Подстановки маски — по одной на строке: слева подстановка, справа пояснение."""
+    grid = Grid()
+    grid.Margin = Thickness(8, 2, 0, 0)
+    for width in (GridLength(1, GridUnitType.Auto), GridLength(1, GridUnitType.Star)):
+        col = ColumnDefinition()
+        col.Width = width
+        grid.ColumnDefinitions.Add(col)
+    for i, (token, text) in enumerate(_TOKEN_HELP):
+        grid.RowDefinitions.Add(RowDefinition())
+        name = TextBlock()
+        name.Text = token
+        name.FontSize = 11
+        name.Margin = Thickness(0, 1, 12, 1)
+        _place(grid, name, i, 0)
+        desc = TextBlock()
+        desc.Text = text
+        desc.FontSize = 11
+        desc.Foreground = Brushes.Gray
+        desc.TextWrapping = TextWrapping.Wrap
+        desc.Margin = Thickness(0, 1, 0, 1)
+        _place(grid, desc, i, 1)
+    parent.Children.Add(grid)
+
+
 class _Row(object):
     def __init__(self, template, check, value_box):
         self.template = template
@@ -69,14 +106,15 @@ class _Row(object):
     def checked(self):
         return bool(self.check.IsChecked)
 
-    def value(self):
-        return unicode(self.value_box.Text or u"").strip()
+    def values(self):
+        """Группы вида и назначения — по одной на строке."""
+        return core.split_values(self.value_box.Text)
 
 
 def show(doc, templates, levels, settings, level_template):
     """
-    Окно. Возвращает (маска, [(шаблон, значение)], {шаблон: значение})
-    или None при отмене.
+    Окно. Возвращает (маска, [(шаблон, значение)], {шаблон: значение},
+    выравнивать ли секущий диапазон) или None при отмене.
     """
     saved_values = settings[core.VALUES_KEY]
     checked = set(settings[core.CHECKED_KEY])
@@ -86,7 +124,7 @@ def show(doc, templates, levels, settings, level_template):
     win = Window()
     win.Title = TITLE
     win.Width = 760
-    win.Height = 720
+    win.Height = 800
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
     outer = DockPanel()
@@ -113,12 +151,10 @@ def show(doc, templates, levels, settings, level_template):
     mask_box.Padding = Thickness(4)
     mask_box.Text = settings[core.MASK_KEY]
     header.Children.Add(mask_box)
-    _hint(header, u"Подстановки: {Уровень} — имя уровня; {Группа вида и назначение} — "
-                  u"вписанное у шаблона в списке ниже; {Шаблон} — имя шаблона; {Отметка} — «+3.300»; {Этаж}, "
-                  u"{Корпус}, {Комментарий} — части имени уровня по шаблону из настроек "
-                  u"«Секущего диапазона». По умолчанию «{Группа вида и назначение}_"
-                  u"{Корпус}_{Этаж}_{Отметка}», другой пример — «{Этаж} этаж. {Группа вида "
-                  u"и назначение}».")
+    _hint(header, u"По умолчанию: «{}». Другой пример: «{{Этаж}} этаж. {{Группа вида и "
+                  u"назначение}}».".format(core.DEFAULT_MASK), top=4)
+    _hint(header, u"Подстановки:", top=6)
+    _tokens_table(header)
     outer.Children.Add(header)
 
     # --- низ: предпросмотр и кнопки -----------------------------------------------
@@ -131,6 +167,16 @@ def show(doc, templates, levels, settings, level_template):
     preview = TextBlock()
     preview.TextWrapping = TextWrapping.Wrap
     bottom.Children.Add(preview)
+
+    align_cb = CheckBox()
+    align_cb.Content = u"Выровнять секущий диапазон (как кнопка «Секущий диапазон»)"
+    align_cb.IsChecked = bool(settings[core.ALIGN_RANGE_KEY])
+    align_cb.Margin = Thickness(0, 12, 0, 0)
+    bottom.Children.Add(align_cb)
+    _hint(bottom, u"Низ и глубина — уровень вида; секущая плоскость +1200 мм (низкий этаж — "
+                  u"+900); верх — следующий этаж −200 мм. Если настройка «Секущего "
+                  u"диапазона» ещё не заполнена — она откроется перед созданием видов. "
+                  u"Планы потолков и виды, чей диапазон задаёт шаблон, не меняются.")
 
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -146,7 +192,7 @@ def show(doc, templates, levels, settings, level_template):
     list_head = DockPanel()
     DockPanel.SetDock(list_head, Dock.Top)
     list_title = TextBlock()
-    list_title.Text = u"Шаблоны видов: группа вида и назначение"
+    list_title.Text = u"Шаблоны видов"
     list_title.FontWeight = FontWeights.Bold
     list_title.VerticalAlignment = VerticalAlignment.Center
     list_head.Children.Add(list_title)
@@ -155,6 +201,15 @@ def show(doc, templates, levels, settings, level_template):
     select_buttons.HorizontalAlignment = HorizontalAlignment.Right
     list_head.Children.Add(select_buttons)
     middle.Children.Add(list_head)
+    multi_hint = TextBlock()
+    multi_hint.Text = (u"У шаблона может быть несколько групп вида и назначения — по одной на "
+                       u"строке (Enter); на каждую создаётся свой вид на каждом уровне.")
+    multi_hint.FontSize = 11
+    multi_hint.Foreground = Brushes.Gray
+    multi_hint.TextWrapping = TextWrapping.Wrap
+    multi_hint.Margin = Thickness(0, 2, 0, 0)
+    DockPanel.SetDock(multi_hint, Dock.Top)
+    middle.Children.Add(multi_hint)
 
     scroll = ScrollViewer()
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
@@ -185,24 +240,36 @@ def show(doc, templates, levels, settings, level_template):
         check = CheckBox()
         check.Content = name
         check.IsChecked = name in checked
-        check.VerticalAlignment = VerticalAlignment.Center
-        check.Margin = Thickness(0, 3, 8, 3)
+        check.VerticalAlignment = VerticalAlignment.Top
+        check.Margin = Thickness(0, 6, 8, 3)
         _place(grid, check, i + 1, 0)
         kind = TextBlock()
         kind.Text = level_views.KIND_LABELS.get(template.ViewType, u"")
         kind.Foreground = Brushes.Gray
-        kind.VerticalAlignment = VerticalAlignment.Center
-        kind.Margin = Thickness(0, 3, 8, 3)
+        kind.VerticalAlignment = VerticalAlignment.Top
+        kind.Margin = Thickness(0, 6, 8, 3)
         _place(grid, kind, i + 1, 1)
         value_box = TextBox()
         value_box.Padding = Thickness(3)
         value_box.Margin = Thickness(0, 3, 0, 3)
-        value_box.Text = saved_values.get(name, name)
+        value_box.AcceptsReturn = True
+        value_box.TextWrapping = TextWrapping.Wrap
+        value_box.MinHeight = 24
+        value_box.MaxHeight = 160
+        value_box.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        # Без предзаполнения: пусто, пока не вписано. Сохранённое значение,
+        # равное имени шаблона, — прежнее предзаполнение, тоже не показывается.
+        saved = saved_values.get(name, u"")
+        value_box.Text = u"" if saved == name else saved
         _place(grid, value_box, i + 1, 2)
         rows.append(_Row(template, check, value_box))
 
     def chosen():
         return [r for r in rows if r.checked()]
+
+    def pairs(picked):
+        """[(строка, группа вида и назначение)] — по виду на уровень."""
+        return [(r, v) for r in picked for v in r.values()]
 
     def update_preview(*_args):
         mask = mask_box.Text
@@ -218,14 +285,15 @@ def show(doc, templates, levels, settings, level_template):
             preview_title.Text = u"Отметьте шаблоны, для которых создавать виды."
             preview.Text = u""
             return
-        preview_title.Text = u"Будет видов: {} ({} шабл. × {} ур.). Имена на уровне «{}»:".format(
-            len(picked) * len(levels), len(picked), len(levels),
+        items = pairs(picked)
+        preview_title.Text = u"Будет видов: {} ({} на уровень × {} ур.). Имена на уровне «{}»:".format(
+            len(items) * len(levels), len(items), len(levels),
             first_values.get(core.TOKEN_LEVEL, u""))
-        lines = [u"• " + core.build_view_name(mask, first_values, r.name, r.value())
-                 for r in picked[:_PREVIEW_MAX]]
-        if len(picked) > _PREVIEW_MAX:
-            lines.append(u"… и ещё {}".format(len(picked) - _PREVIEW_MAX))
-        warning = core.mask_warning(mask, len(picked))
+        lines = [u"• " + core.build_view_name(mask, first_values, r.name, v)
+                 for r, v in items[:_PREVIEW_MAX]]
+        if len(items) > _PREVIEW_MAX:
+            lines.append(u"… и ещё {}".format(len(items) - _PREVIEW_MAX))
+        warning = core.mask_warning(mask, [(r.name, v) for r, v in items])
         if warning:
             lines.append(u"Внимание: " + warning)
         preview.Text = u"\n".join(lines)
@@ -255,8 +323,9 @@ def show(doc, templates, levels, settings, level_template):
         if not picked:
             forms.alert(u"Отметьте хотя бы один шаблон вида.", title=TITLE)
             return
-        values = dict((r.name, r.value()) for r in rows)
-        result["value"] = (mask, [(r.template, r.value()) for r in picked], values)
+        values = dict((r.name, core.join_values(r.values())) for r in rows)
+        result["value"] = (mask, [(r.template, v) for r, v in pairs(picked)], values,
+                           bool(align_cb.IsChecked))
         win.Close()
 
     _button(buttons, u"Отмена", lambda s, a: win.Close())

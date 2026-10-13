@@ -48,6 +48,7 @@ _OLD_DEFAULT_MASK = u"{Уровень}_{Значение}"
 MASK_KEY = "name_mask"
 VALUES_KEY = "template_values"    # {имя шаблона: значение}
 CHECKED_KEY = "checked_templates"  # [имена шаблонов, отмеченных в прошлый раз]
+ALIGN_RANGE_KEY = "align_view_range"  # выравнивать секущий диапазон (как «Секущий диапазон»)
 
 _TOKEN_RE = re.compile(u"\\{([^{}]*)\\}", re.UNICODE)
 
@@ -74,6 +75,7 @@ def normalize_settings(saved):
         VALUES_KEY: dict((_str(k), _str(v)) for k, v in values.items()
                          if isinstance(v, (_text, str))),
         CHECKED_KEY: [_str(n) for n in checked if isinstance(n, (_text, str))],
+        ALIGN_RANGE_KEY: bool(saved.get(ALIGN_RANGE_KEY, True)),
     }
 
 
@@ -98,18 +100,36 @@ def validate_mask(mask):
     return None
 
 
-def mask_warning(mask, templates_count):
+def split_values(text):
     """
-    Предупреждение (не ошибка): без {Уровень}/{Этаж}/{Отметка} у видов
-    разных уровней будут одинаковые имена; несколько шаблонов без
-    {Шаблон}/{Группа вида и назначение} — одинаковые имена у видов одного уровня.
+    Группы вида и назначения шаблона — по одной на строке (пустые строки
+    отбрасываются). Ничего не вписано — [""]: один вид без этой части имени.
+    """
+    lines = [l.strip() for l in _str(text).replace(u"\r", u"\n").split(u"\n")]
+    return [l for l in lines if l] or [u""]
+
+
+def join_values(values):
+    """Список групп → текст для поля ввода и файла настроек."""
+    return u"\n".join(v for v in values if v)
+
+
+def mask_warning(mask, pairs):
+    """
+    Предупреждение (не ошибка) о совпадающих именах: без {Уровень}/{Этаж}/
+    {Отметка} — у видов разных уровней; одинаковые имена у видов одного
+    уровня — у пар (имя шаблона, группа вида и назначение) из pairs.
     """
     tokens = set(m.group(1).strip() for m in _TOKEN_RE.finditer(_str(mask)))
     if not tokens & set((TOKEN_LEVEL, TOKEN_FLOOR, TOKEN_ELEVATION)):
         return u"в маске нет {Уровень} — у видов разных уровней совпадут имена"
-    if templates_count > 1 and not tokens & set((TOKEN_TEMPLATE, TOKEN_VALUE, TOKEN_VALUE_OLD)):
-        return (u"в маске нет {Группа вида и назначение} или {Шаблон} — у видов разных шаблонов "
-                u"на одном уровне совпадут имена")
+    stub = dict((t, u"x") for t in (TOKEN_LEVEL, TOKEN_FLOOR, TOKEN_BUILDING,
+                                    TOKEN_COMMENT, TOKEN_ELEVATION))
+    names = [build_view_name(mask, stub, t, v) for t, v in pairs]
+    if len(set(names)) < len(names):
+        return (u"у некоторых видов одного уровня совпадут имена — проверьте, что в маске "
+                u"есть {Группа вида и назначение} (и {Шаблон}, если группы у шаблонов "
+                u"повторяются), а группы у шаблона не повторяются")
     return None
 
 
