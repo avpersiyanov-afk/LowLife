@@ -147,18 +147,22 @@ def _is_axis_element(element):
     return line is not None and plan_angle(_xyz_tuple(line.Direction)) is not None
 
 
-def make_pick_filter(doc):
-    """ISelectionFilter для PickObject(ObjectType.LinkedElement): прямые
-    невертикальные линейные элементы модели и связанных файлов."""
+def make_pick_filter(doc, linked=False):
+    """ISelectionFilter для PickObject: прямые невертикальные линейные
+    элементы. linked=False — элементы модели (ObjectType.Element), True —
+    элементы связанных файлов (ObjectType.LinkedElement: в этом режиме Revit
+    даёт выбирать только содержимое связей)."""
     from Autodesk.Revit.DB import ElementId, RevitLinkInstance
     from Autodesk.Revit.UI.Selection import ISelectionFilter
 
     class AxisFilter(ISelectionFilter):
         def AllowElement(self, element):
-            return isinstance(element, RevitLinkInstance) or _is_axis_element(element)
+            if linked:
+                return isinstance(element, RevitLinkInstance)
+            return _is_axis_element(element)
 
         def AllowReference(self, reference, position):
-            if reference.LinkedElementId == ElementId.InvalidElementId:
+            if not linked or reference.LinkedElementId == ElementId.InvalidElementId:
                 return True
             try:
                 link = doc.GetElement(reference.ElementId)
