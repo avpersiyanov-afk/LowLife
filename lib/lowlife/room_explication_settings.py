@@ -60,6 +60,12 @@ def room_params(settings):
                 for key in ("number", "name", "area", "category"))
 
 
+def kind(settings):
+    """Вид новой экспликации: room_explication.KIND_KEY или KIND_HEADER."""
+    from lowlife.room_explication import KIND_HEADER, KIND_KEY
+    return KIND_KEY if _num(settings.get("kind")) == 2 else KIND_HEADER
+
+
 def title(settings):
     return (settings.get("title") or u"").strip() or TITLE
 
@@ -76,8 +82,21 @@ SETTINGS = settings_core.TextSettings(
     heading=u"Экспликация фрагмента: столбцы таблицы",
     transfer_label=u"экспликации фрагмента",
     fields=[
+        settings_core.NumberField(
+            "kind", u"Таблица", u"Вид таблицы: 1 — таблица в шапке, 2 — ключевая спецификация",
+            hint=(u"1 — свободная таблица в шапке спецификации: без параметров в "
+                  u"модели, высота строк задаётся точно, на листе на части не "
+                  u"делится. 2 — ключевая спецификация: делится на части на "
+                  u"листе, но Revit требует параметры столбцов — кнопка заведёт "
+                  u"помещениям 4 текстовых параметра LL_Экспликация_*, а Revit "
+                  u"добавит по ключевому параметру на каждую экспликацию; высоту "
+                  u"строк тела Revit может не принять. Вид уже созданной "
+                  u"экспликации не меняется — чтобы сменить, удалите её и "
+                  u"создайте заново."),
+            default=1, minimum=1, integer=True,
+        ),
         settings_core.TextField(
-            "title", u"Таблица", u"Название над таблицей",
+            "title", u"", u"Название над таблицей",
             hint=u"Пусто — «{}».".format(TITLE),
             default=TITLE, required=False,
         ),
@@ -128,7 +147,7 @@ SETTINGS = settings_core.TextSettings(
     ],
     migrate=_migrate,
     reset_button=True,
-    width=720, height=820,
+    width=760, height=860,
 )
 
 load_saved_values = SETTINGS.load_saved_values

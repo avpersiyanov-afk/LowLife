@@ -4,7 +4,7 @@
 
 Столбцы, их заголовки и ширины по умолчанию (форма 2 «Экспликация
 помещений» ГОСТ 21.501), сортировка номеров «по-человечески», формат
-площади, имена спецификации/ключевого параметра. Покрыто
+площади, имена спецификации/ключевого параметра, ключевые имена строк. Покрыто
 `tests/test_room_explication_core.py`; идёт и под Python 3.
 """
 
@@ -45,6 +45,18 @@ def clean_name(text):
 def schedule_name(view_name):
     """Имя спецификации для фрагмента (занятое — дополняется unique_name)."""
     return clean_name(u"Экспликация - {}".format(view_name))
+
+
+def key_param_name(schedule_name_text):
+    """Имя ключевого параметра помещений, который Revit заводит под ключевую
+    спецификацию (вид таблицы «ключевая спецификация»)."""
+    return clean_name(u"Ключ - {}".format(schedule_name_text))
+
+
+def key_names(count):
+    """Ключевые имена строк ключевой спецификации: 001, 002, … — по ним сортировка."""
+    width = max(3, len(str(count)))
+    return [str(i + 1).zfill(width) for i in range(count)]
 
 
 def unique_name(name, existing):
