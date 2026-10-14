@@ -119,6 +119,23 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 (режим + суффикс с предпросмотром имени); последний выбор — в
 `LowLifeCropView_settings.json`.
 
+## view_rotate.py / view_rotate_dialog.py
+Поворот 3D вида вокруг оси (`Tools.panel/Rotate3DView`, «Повернуть 3D вид»).
+Чистая часть (покрыта `tests/test_view_rotate.py`): `parse_angle(text)` —
+градусы из текста («12,5°»), приведение к (−360, 360), `ValueError` для
+нуля/не числа; `rotate_vector`/`rotate_point` — поворот по правилу правой
+руки (формула Родрига) на кортежах; `rotate_orientation(eye, up, forward,
+origin, axis, model_angle_deg)` — камера поворачивается на противоположный
+угол, чтобы модель в кадре повернулась на `model_angle_deg` против часовой
+(если смотреть с конца оси); `AXES` — X/Y/Z модели и ось сетки. Revit-часть:
+`list_3d_views(doc)`, `list_grids(doc)` (только прямые оси),
+`unsupported_reason(view)` (шаблон, заблокированный вид), `model_pivot(view)`
+— центр рамки 3D вида, иначе центр `CropBox`; `axis_line(view, axis, grid)`;
+`rotate_view(view, axis, angle, grid)` — `SetOrientation` в открытой
+транзакции. `view_rotate_dialog.show(views, grids, active_view_id, apply)` —
+модальное WPF-окно, которое не закрывается после «Повернуть» (поворот по
+шагам); последний выбор — в `LowLifeRotate3DView_settings.json`.
+
 ## dxf_text.py / dwg_transfer.py / dwg_transfer_settings.py
 Кнопка `Tools.panel/DwgToDrafting` («DWG → чертёжный»): DWG-подложка →
 линии детализации + текстовые примечания, в новый чертёжный вид или на тот же вид.

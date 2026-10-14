@@ -439,6 +439,26 @@ def fop_parameters(c):
     c.polygon([(70, 72), (63, 66), (63, 78)], fill=ORANGE)
 
 
+def rotate_3d_view(c):
+    """«Повернуть 3D вид»: изометрический куб на вертикальной оси (пунктир)
+    и оранжевая стрелка поворота вокруг неё."""
+    c.dashed((48, 6), (48, 90), BLUE, 3, 5, 4)
+    top = [(48, 26), (70, 37), (48, 48), (26, 37)]
+    left = [(26, 37), (48, 48), (48, 72), (26, 61)]
+    right = [(48, 48), (70, 37), (70, 61), (48, 72)]
+    c.polygon(left, WHITE)
+    c.polygon(right, PALE_ORANGE)
+    c.polygon(top, WHITE)
+    for face in (top, left, right):
+        c.line(list(face) + [face[0]], BLUE, 4)
+    box = [10 * K, 62 * K, 86 * K, 88 * K]
+    c.d.arc(box, 200, 340, fill=ORANGE, width=int(5 * K))
+    c.d.arc(box, 20, 140, fill=ORANGE, width=int(5 * K))
+    a = math.radians(140)
+    tip = (48 + 38 * math.cos(a), 75 + 13 * math.sin(a))
+    c.polygon([(tip[0] - 9, tip[1] - 2), (tip[0] + 3, tip[1] - 7), (tip[0] + 2, tip[1] + 6)], ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -457,6 +477,7 @@ ICONS = [
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),
+    ("Tools.panel/Rotate3DView.pushbutton", rotate_3d_view),
     ("Tools.panel/AlignViewRange.pushbutton", align_view_range),
     ("Tools.panel/LevelViews.pushbutton", level_views),
     ("ToolsRooms.panel/FragmentExplication.pushbutton", fragment_explication),
