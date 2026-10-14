@@ -4,7 +4,7 @@ import math
 import pytest
 
 from lowlife.view_rotate import (
-    align_angle, camera_plan_direction, plan_angle, rotate_camera,
+    align_angle, camera_plan_direction, natural_key, plan_angle, rotate_camera,
     rotate_point, rotate_vector,
 )
 
@@ -64,3 +64,8 @@ def test_rotate_camera_keeps_pitch_and_orthogonality():
     assert up[2] == pytest.approx(up0[2])
     assert eye[2] == pytest.approx(5)
     assert abs(sum(u * f for u, f in zip(up, fwd))) < 1e-9
+
+
+def test_natural_key():
+    names = [u"10", u"2", u"б", u"А", u"1", u"А.1"]
+    assert sorted(names, key=natural_key) == [u"1", u"2", u"10", u"А", u"А.1", u"б"]

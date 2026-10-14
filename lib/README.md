@@ -127,8 +127,11 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 идёт вдоль или поперёк `axis`; `rotate_vector`/`rotate_point` (формула
 Родрига); `camera_plan_direction(up, forward)` — forward, а для вида строго
 сверху/снизу — up; `rotate_camera(eye, up, forward, origin, angle)` —
-поворот камеры вокруг вертикали. Revit-часть: `unsupported_reason(view)`
-(не 3D вид, шаблон, заблокирован); `element_line(element)` — прямая линия
+поворот камеры вокруг вертикали; `natural_key(name)` — сортировка имён
+осей («2» раньше «10»). Revit-часть: `unsupported_reason(view)`
+(не 3D вид, шаблон, заблокирован); `list_grid_axes(doc)` — прямые оси сетки модели и загруженных связей
+(подпись + направление с трансформацией связи, сортировка `natural_key`);
+`element_line(element)` — прямая линия
 оси сетки, линии модели или линейной `LocationCurve`;
 `make_pick_filter(doc)` — фильтр для `PickObject(ObjectType.LinkedElement)`
 (модель и связи); `picked_direction(doc, reference)` — направление оси в

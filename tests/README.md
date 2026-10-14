@@ -127,7 +127,7 @@
   `MODES`; Revit API импортируется лениво.
 - `view_rotate.py` (частично) — `align_angle` (ближайший из четырёх
   поворотов под ось, отказ для вертикали), `plan_angle`,
-  `camera_plan_direction`, `rotate_camera` (наклон и ортогональность
+  `camera_plan_direction`, `rotate_camera`, `natural_key` (наклон и ортогональность
   сохраняются); Revit API импортируется лениво.
 - `ribbon_catalog.py` — списки панелей/кнопок по папкам расширения (окна
   «Обратная связь» и «Поиск»): подписи и порядок `layout:`, стеки, выпадающие

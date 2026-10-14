@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """Поворот 3D вида под ось (`Tools.panel/Rotate3DView`).
 
-В открытом 3D виде пользователь кликает ось сетки (или любой прямой
-линейный элемент — стену, линию модели, лоток…, в том числе в связанном
-файле), и вид поворачивается вокруг вертикали так, чтобы смотреть вдоль
+В открытом 3D виде пользователь выбирает ось сетки из списка (оси модели и
+загруженных связей — в 3D видах Revit оси обычно не показывает) или кликает
+на виде прямой линейный элемент (стену, линию модели, лоток…, в том числе в
+связанном файле), и вид поворачивается вокруг вертикали так, чтобы смотреть вдоль
 или поперёк этой оси: камера доворачивается на ближайший из четырёх углов
 (ось / перпендикуляр к ней, в обе стороны), наклон камеры не меняется.
 Включённая рамка 3D вида поворачивается так же — её стороны становятся
@@ -13,11 +14,12 @@
 центр области подрезки вида, чтобы модель оставалась в кадре.
 
 Чистая часть (`align_angle`, `rotate_vector`, `rotate_point`,
-`rotate_camera`) работает на кортежах и покрыта
+`rotate_camera`, `natural_key`) работает на кортежах и покрыта
 `tests/test_view_rotate.py`; Revit API импортируется лениво.
 """
 
 import math
+import re
 
 Z_AXIS = (0.0, 0.0, 1.0)
 
@@ -58,6 +60,13 @@ def align_angle(current, axis):
     elif delta <= -quarter / 2:
         delta += quarter
     return delta
+
+
+def natural_key(text):
+    """Ключ сортировки имён осей «по-человечески»: «2» раньше «10», буквы без
+    учёта регистра."""
+    parts = re.split(r"(\d+)", text or u"")
+    return [(0, int(p), u"") if p.isdigit() else (1, 0, p.lower()) for p in parts if p]
 
 
 def rotate_vector(v, axis, angle_rad):
@@ -183,6 +192,31 @@ def picked_direction(doc, reference):
     except Exception:
         name = u""
     return direction, name
+
+
+def list_grid_axes(doc):
+    """[(подпись, направление XYZ в координатах модели)] — прямые оси сетки
+    модели и загруженных связей (подпись связи — в скобках), по имени."""
+    from Autodesk.Revit.DB import Element, FilteredElementCollector, Grid, RevitLinkInstance
+
+    def grids(source):
+        for g in FilteredElementCollector(source).OfClass(Grid):
+            line = element_line(g)
+            if line is None or plan_angle(_xyz_tuple(line.Direction)) is None:
+                continue
+            yield Element.Name.GetValue(g), line.Direction
+
+    items = [(name, name, d) for name, d in grids(doc)]
+    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        link_doc = link.GetLinkDocument()
+        if link_doc is None:
+            continue
+        transform = link.GetTotalTransform()
+        link_name = Element.Name.GetValue(link).split(u" : ")[0]
+        for name, d in grids(link_doc):
+            items.append((name, u"{}  (связь: {})".format(name, link_name), transform.OfVector(d)))
+    items.sort(key=lambda it: (natural_key(it[0]), it[1]))
+    return [(label, d) for _name, label, d in items]
 
 
 def _box_center(box):
