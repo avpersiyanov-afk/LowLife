@@ -185,11 +185,8 @@ def _room_data(room, params):
         "area_m2": _area_value(room, params.get("area")),
         "category": _text_param(room, name=category) if category else u"",
     }
-    # Группировка и сортировка внутри группы (room_explication_core.build_table).
-    if params.get("group"):
-        data["group"] = _text_param(room, name=params["group"])
-    if params.get("sort"):
-        data["sort"] = _text_param(room, name=params["sort"])
+    # Значения уровней сортировки/группировки (room_explication_core.build_table).
+    data["keys"] = [_text_param(room, name=p) for p in params.get("levels") or []]
     return data
 
 
@@ -513,7 +510,7 @@ def fill_table(doc, schedule, title, columns, rows, heights):
     """
     Пересобирает таблицу в шапке: строка названия, строка заголовков граф
     (высота heights[0] мм), затем строки rows (heights[1] мм) — таблица из
-    room_explication_core.build_table: ("group", заголовок группы) —
+    room_explication_core.build_table: ("group", (уровень, заголовок)) —
     объединённая на всю ширину строка, ("row", строка) — помещение. Ширины
     граф — у полей тела и у столбцов шапки. Вызывать в транзакции.
     """
@@ -557,7 +554,7 @@ def fill_table(doc, schedule, title, columns, rows, heights):
                 header.SetMergedCell(r, col0, TableMergedCell(r, col0, r, col0 + ncols - 1))
             except Exception:
                 pass
-            header.SetCellText(r, col0, values)
+            header.SetCellText(r, col0, values[1])
             _set_style(header, r, col0, center=True, bold=True)
             continue
         for j, text in enumerate(values):
@@ -584,13 +581,14 @@ def kind_of(schedule):
 
 
 def build_explication(doc, view, sources, title, columns, rows, heights,
-                      schedule=None, kind=KIND_HEADER, app=None):
+                      schedule=None, kind=KIND_HEADER, app=None, header_orders=()):
     """
     Создаёт (schedule=None, вид kind) или пересобирает экспликацию плана
     view; у существующей вид не меняется (kind_of). sources — выбранные
     источники ([] = все), запоминаются в метке. app — Application (нужен
-    ключевой спецификации для параметров). Вызывать в транзакции.
-    Возвращает (спецификация, [замечания]).
+    ключевой спецификации для параметров). rows — таблица build_table;
+    header_orders — «по убыванию» уровней с заголовком (для ключевой
+    спецификации). Вызывать в транзакции. Возвращает (спецификация, [замечания]).
     """
     from lowlife import room_explication_key as rkey
     if schedule is None:
@@ -601,7 +599,8 @@ def build_explication(doc, view, sources, title, columns, rows, heights,
             schedule = _create_blank(doc, view.Name)
             doc.Regenerate()
     if kind_of(schedule) == KIND_KEY:
-        notes = rkey.fill(doc, app, schedule, title, columns, rows, heights)
+        notes = rkey.fill(doc, app, schedule, title, columns, rows, heights,
+                          header_orders)
     else:
         fill_table(doc, schedule, title, columns, rows, heights)
         notes = []
@@ -667,12 +666,14 @@ def rebuild(doc, view, sources, settings, schedule=None, app=None):
     from lowlife import room_explication_settings as rs
     params = rs.room_params(settings)
     by_source, skipped, _stats = collect_fragment_rooms(doc, view, params)
+    levels = rs.sort_levels(settings)
     table = core.build_table(pick_rooms(by_source, sources),
                              settings.get("area_decimals", 2),
-                             grouped=bool(params.get("group")))
+                             [(desc, header) for _name, desc, header in levels])
     schedule, notes = build_explication(
         doc, view, sources, rs.title(settings), rs.columns(settings), table,
-        rs.heights(settings), schedule, rs.kind(settings), app)
+        rs.heights(settings), schedule, rs.kind(settings), app,
+        [desc for _name, desc, header in levels if header])
     return schedule, len(core.table_rows(table)), skipped, notes
 
 
