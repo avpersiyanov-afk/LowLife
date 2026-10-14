@@ -1,0 +1,129 @@
+# -*- coding: utf-8 -*-
+"""Тесты для lowlife.fop_catalog — каталог параметров кнопки «Параметры в ФОП»."""
+
+import io
+import os
+
+from lowlife import fop_catalog as fc
+
+
+LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib", "lowlife")
+
+SETTINGS_MODULES = {
+    "SCS": "scs_settings.py",
+    "SKUD": "skud_settings.py",
+    "SPS": "fire_alarm_settings.py",
+    "SOUE": "fire_alarm_settings.py",
+    "SPA": "fire_alarm_settings.py",
+    "SOT": "sot_settings.py",
+}
+
+
+def _source(name):
+    with io.open(os.path.join(LIB, name), encoding="utf-8") as f:
+        return f.read()
+
+
+def _row(rows, key):
+    return [r for r in rows if r.key == key][0]
+
+
+def test_every_key_is_a_settings_field_of_its_systems():
+    for spec in fc.CATALOG:
+        assert spec.categories, spec.key
+        for system in spec.categories:
+            assert system in fc.SYSTEM_IDS
+            src = _source(SETTINGS_MODULES[system])
+            assert u'("{}",'.format(spec.key) in src, (spec.key, system)
+
+
+def test_catalog_is_consistent():
+    keys = [s.key for s in fc.CATALOG]
+    assert len(keys) == len(set(keys))
+    examples = [s.example.lower() for s in fc.CATALOG]
+    assert len(examples) == len(set(examples))
+    for spec in fc.CATALOG:
+        assert spec.data_type in fc.DATA_TYPE_TITLES
+        assert spec.kind in fc.KIND_TITLES
+        assert fc.name_error(fc.example_name(spec, fc.DEFAULT_PREFIX)) is None
+        for cats in spec.categories.values():
+            assert cats
+            for c in cats:
+                assert c in fc.CATEGORY_TITLES
+
+
+def test_rows_only_for_chosen_systems_with_merged_categories():
+    rows = fc.build_rows(["SOT"])
+    assert {r.key for r in rows} == {s.key for s in fc.CATALOG if "SOT" in s.categories}
+
+    row = _row(fc.build_rows(["SCS", "SPS"]), "device_address_param")
+    assert row.systems == ["SCS", "SPS"]
+    assert row.categories == fc.LV_DEVICES + [fc.FIRE_DEVICES, fc.EQUIPMENT]
+
+    assert fc.build_rows([]) == []
+
+
+def test_names_from_settings_then_shared_then_example():
+    settings = {"SKUD": {"addr_param_name": u"Мой адрес"}, "SCS": {"addr_param_name": u"  "}}
+    rows = fc.build_rows(["SCS", "SKUD"], settings, {"route_param_name": u"Общий тип"}, u"PR_")
+    assert _row(rows, "addr_param_name").Name == u"Мой адрес"
+    assert _row(rows, "route_param_name").Name == u"Общий тип"
+    assert _row(rows, "segment_loads_param").Name == u"PR_Цепи узла"
+    assert _row(rows, "segment_loads_param").Example == u"PR_Цепи узла"
+
+
+def test_list_setting_uses_first_name():
+    rows = fc.build_rows(["SCS"], {"SCS": {"offset_param_names": u"Отм1, Отм2"}})
+    assert _row(rows, "offset_param_names").Name == u"Отм1"
+
+
+def test_native_rows_unchecked_without_prefix():
+    row = _row(fc.build_rows(["SCS"]), "load_name_param")
+    assert not row.Checked
+    assert row.Name == u"Имя нагрузки"
+    assert _row(fc.build_rows(["SCS"]), "addr_param_name").Checked
+
+
+def test_change_prefix_keeps_edited_names():
+    rows = fc.build_rows(["SCS"], {"SCS": {"addr_param_name": u"Свой"}})
+    _row(rows, "route_param_name").Name = u"Правка"
+    fc.change_prefix(rows, fc.DEFAULT_PREFIX, u"X_")
+    assert _row(rows, "segment_loads_param").Name == u"X_Цепи узла"
+    assert _row(rows, "route_param_name").Name == u"Правка"
+    assert _row(rows, "addr_param_name").Name == u"Свой"
+    assert _row(rows, "load_name_param").Name == u"Имя нагрузки"
+    assert _row(rows, "route_param_name").Example == u"X_Тип трассы"
+
+
+def test_validate():
+    rows = fc.build_rows(["SCS"])
+    assert fc.validate(rows) == []
+    _row(rows, "addr_param_name").Name = u"  "
+    _row(rows, "route_param_name").Name = u"a:b"
+    _row(rows, "cable_param_name").Name = u"lL_цепи УЗЛА"
+    _row(rows, "segment_loads_param").Name = u"LL_Цепи узла"
+    errors = fc.validate(rows)
+    assert len(errors) == 3
+    assert any(u"пустое имя" in e for e in errors)
+    assert any(u":" in e and u"символы" in e for e in errors)
+    assert any(u"одно и то же имя" in e for e in errors)
+
+    # неотмеченные строки не проверяются
+    for r in rows:
+        r.Checked = False
+    assert fc.validate(rows) == []
+
+
+def test_settings_updates():
+    settings = {"SCS": {"offset_param_names": u"Старая, Новая, Ещё"}}
+    rows = fc.build_rows(["SCS", "SKUD"], settings)
+    _row(rows, "offset_param_names").Name = u"Новая"
+    _row(rows, "addr_param_name").Name = u" Адрес "
+    _row(rows, "route_param_name").Checked = False
+    updates = fc.settings_updates(rows, settings)
+    assert updates["SCS"]["offset_param_names"] == u"Новая, Старая, Ещё"
+    assert updates["SKUD"]["offset_param_names"] == u"Новая"
+    assert updates["SCS"]["addr_param_name"] == u"Адрес"
+    assert updates["SKUD"]["addr_param_name"] == u"Адрес"
+    assert "route_param_name" not in updates["SCS"]
+    assert "load_name_param" not in updates["SCS"]  # штатный, не отмечен

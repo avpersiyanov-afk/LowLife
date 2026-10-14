@@ -421,6 +421,24 @@ def soue_floor(c):
         c.circle((x, 48), 4.5, None, ORANGE)
 
 
+def fop_parameters(c):
+    """«Параметры в ФОП»: файл параметров (строки-параметры, одна новая —
+    оранжевая, с плюсом) и стрелка к категориям (три блока справа)."""
+    c.polygon([(10, 10), (46, 10), (58, 22), (58, 86), (10, 86)], fill=WHITE,
+              outline=BLUE, w=4.5)
+    c.line([(46, 10), (46, 22), (58, 22)], BLUE, 3.5)
+    for y in (32, 44, 56):
+        c.line([(18, y), (48, y)], BLUE, 3.5)
+    c.line([(22, 64), (22, 78)], ORANGE, 4.5)
+    c.line([(15, 71), (29, 71)], ORANGE, 4.5)
+    c.line([(35, 71), (50, 71)], ORANGE, 5)
+    for y in (16, 40, 64):
+        c.rect((70, y, 88, y + 16), BLUE, WHITE, 4, 3)
+    c.rect((70, 64, 88, 80), ORANGE, PALE_ORANGE, 4, 3)
+    c.line([(52, 72), (63, 72)], ORANGE, 4)
+    c.polygon([(70, 72), (63, 66), (63, 78)], fill=ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -446,6 +464,7 @@ ICONS = [
     ("Tools.panel/DwgToDrafting.pushbutton", dwg_to_drafting),
     ("LOI.panel/CheckLOI.pushbutton", check_loi),
     ("SOUE.panel/PlaceTypicalFloor.pushbutton", soue_floor),
+    ("Tools.panel/FopParameters.pushbutton", fop_parameters),
 ]
 
 

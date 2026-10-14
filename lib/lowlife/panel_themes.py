@@ -24,13 +24,15 @@ is cross-discipline (deletes any circuit type), so it is only listed under
 "Circuits", not under a specific discipline theme.
 
 SetupParameters buttons across all disciplines are grouped under their own
-"Settings" theme rather than staying always-visible.
+"Settings" theme rather than staying always-visible; Tools.panel/FopParameters
+(creates the parameters in the shared-parameter file and binds them) is
+listed there too, as well as under "General".
 
 The discipline-agnostic tools are split across several small panels for
 readability instead of one jumbled Tools.panel: Tools.panel ("Tools" —
 DimensionGrids/GenericModelLength/ZoomToElement/FamilySection/AlignViewRange/
 LevelViews/
-Hello/SpellCheck/DwgToDrafting), ToolsRooms.panel
+Hello/SpellCheck/DwgToDrafting/FopParameters), ToolsRooms.panel
 ("Помещения"), ToolsSchedules.panel ("Спецификации"),
 ToolsFamilies.panel ("Семейства") and LOI.panel ("Заполнение LOI" —
 FillLOI, CheckLOI). Every button on all five is listed under the single "General"
@@ -140,6 +142,7 @@ THEMES = {
     u"Settings": [
         (u"SCS", u"SetupParameters"),
         (u"SKUD", u"SetupParameters"),
+        (u"Tools", u"FopParameters"),
     ],
     u"General": [
         (u"Tools", u"DimensionGrids"),
@@ -152,6 +155,7 @@ THEMES = {
         (u"Tools", u"Hello"),
         (u"Tools", u"SpellCheck"),
         (u"Tools", u"DwgToDrafting"),
+        (u"Tools", u"FopParameters"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),
