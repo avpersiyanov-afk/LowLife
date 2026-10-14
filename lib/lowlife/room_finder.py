@@ -26,6 +26,7 @@ from Autodesk.Revit.DB import (
 )
 
 from lowlife.params import get_param_any
+from lowlife.room_finder_core import same_level
 
 _CACHE = {}
 
@@ -208,8 +209,8 @@ def filter_for_view(records, doc, view):
     (_host_visible_room_ids: уровень/View Range/обрезка/фаза — всё, что
     знает про это сам Revit). Для помещений из связей такой проверки нет
     (элементы связи не входят в FilteredElementCollector(doc, view.Id)),
-    поэтому для них — по совпадению имени уровня с уровнем активного вида;
-    грубее, но обычно ровно то, что нужно: «помещения этого этажа».
+    поэтому для них — по совпадению имени уровня с уровнем активного вида
+    (room_finder_core.same_level: код корпуса «ПЧ» = «0» = «00»); грубее, но обычно ровно то, что нужно: «помещения этого этажа».
 
     Возвращает (filtered, narrowed). narrowed=False и filtered=records
     (без изменений), если сузить нечем (вид без уровня, например 3D/лист)
@@ -230,7 +231,7 @@ def filter_for_view(records, doc, view):
             if r.room_id in host_ids:
                 filtered.append(r)
             continue
-        if view_level_name is not None and r.level_name == view_level_name:
+        if view_level_name is not None and same_level(r.level_name, view_level_name):
             filtered.append(r)
 
     if not filtered:
@@ -290,7 +291,7 @@ def level_mismatch_hint(record, view, number_display=None):
 
     if not active_level_name or not record.level_name:
         return None
-    if record.level_name == active_level_name:
+    if same_level(record.level_name, active_level_name):
         return None
 
     if number_display is None:
