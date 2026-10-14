@@ -40,3 +40,12 @@ def test_view_range_configured(appdata):
     vrs.save_values({vrs.LEVEL_TEMPLATE_KEY: u"Этаж {Этаж}"})
     assert lvs.view_range_configured() is True
     assert lvs.level_template().template == u"Этаж {Этаж}"
+
+
+def test_remember_template_levels(appdata):
+    lvs.save(core.DEFAULT_MASK, {}, [u"A"], True, True)
+    lvs.remember_template_levels({u"A": [u"Э1", u"Э2"]})
+    lvs.remember_template_levels({u"B": [u"Э3"]})
+    s = lvs.load()
+    assert s[core.PICK_LEVELS_KEY] is True
+    assert s[core.TEMPLATE_LEVELS_KEY] == {u"A": [u"Э1", u"Э2"], u"B": [u"Э3"]}

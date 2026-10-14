@@ -52,6 +52,8 @@ def _report(results, align_range=False):
 
 def main():
     from lowlife import level_views, level_views_dialog, level_views_settings as lvs
+    from lowlife import level_views_core as core
+    from lowlife.geometry import level_name
 
     templates = level_views.list_plan_templates(doc)
     if not templates:
@@ -75,7 +77,21 @@ def main():
         forms.alert(u"Настройки сохранены.", title=TITLE)
         return
     mask, items, align_range = state["mask"], state["items"], state["align"]
-    lvs.save(mask, state["values"], state["checked"], align_range)
+    lvs.save(mask, state["values"], state["checked"], align_range, state["pick_levels"])
+
+    # Уровни для каждого шаблона — по списку, если включено.
+    levels_by_template = None
+    if state["pick_levels"]:
+        remembered = lvs.load()[core.TEMPLATE_LEVELS_KEY]
+        levels_by_template = {}
+        for name in state["checked"]:
+            chosen = level_views_dialog.pick_levels(name, levels, remembered.get(name))
+            if chosen is None:
+                forms.alert(u"Отменено — виды не созданы.", title=TITLE)
+                return
+            levels_by_template[name] = chosen
+        lvs.remember_template_levels(dict(
+            (n, [level_name(l) for l in ls]) for n, ls in levels_by_template.items()))
 
     if align_range and not lvs.view_range_configured():
         from lowlife import view_range_settings
@@ -88,7 +104,8 @@ def main():
         level_template = lvs.level_template()
 
     with revit.Transaction(TITLE):
-        results = level_views.build_views(doc, levels, items, mask, level_template)
+        results = level_views.build_views(doc, levels, items, mask, level_template,
+                                          levels_by_template)
         if align_range:
             level_views.align_ranges(doc, results, level_template)
     _report(results, align_range)

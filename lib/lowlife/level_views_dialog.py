@@ -12,7 +12,7 @@ clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
-from lowlife import level_views, level_views_core as core, settings_transfer
+from lowlife import geometry, level_views, level_views_core as core, settings_transfer
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -118,7 +118,7 @@ def show(doc, templates, levels, settings, level_template, store):
 
     Возвращает словарь {"action": "run" | "save", "mask", "items" —
     [(шаблон, значение)], "values" — {шаблон: текст групп}, "checked" —
-    [имена отмеченных шаблонов], "align"}, settings_transfer.RELOAD после
+    [имена отмеченных шаблонов], "align", "pick_levels"}, settings_transfer.RELOAD после
     загрузки настроек из файла (окно открыть заново) или None при отмене.
     """
     saved_values = settings[core.VALUES_KEY]
@@ -178,6 +178,14 @@ def show(doc, templates, levels, settings, level_template, store):
     align_cb.IsChecked = bool(settings[core.ALIGN_RANGE_KEY])
     align_cb.Margin = Thickness(0, 12, 0, 0)
     bottom.Children.Add(align_cb)
+    pick_cb = CheckBox()
+    pick_cb.Content = u"Выбирать уровни для каждого шаблона"
+    pick_cb.IsChecked = bool(settings[core.PICK_LEVELS_KEY])
+    pick_cb.Margin = Thickness(0, 6, 0, 0)
+    bottom.Children.Add(pick_cb)
+    _hint(bottom, u"После «Создать виды» для каждого отмеченного шаблона по очереди откроется "
+                  u"список уровней модели — отметьте, для каких уровней создавать его виды. "
+                  u"Выбор запоминается для каждого шаблона. Без галочки — все уровни.")
     _hint(bottom, u"Низ и глубина — уровень вида; секущая плоскость +1200 мм (низкий этаж — "
                   u"+900); верх — следующий этаж −200 мм. Если настройка «Секущего "
                   u"диапазона» ещё не заполнена — она откроется перед созданием видов. "
@@ -291,8 +299,9 @@ def show(doc, templates, levels, settings, level_template, store):
             preview.Text = u""
             return
         items = pairs(picked)
-        preview_title.Text = u"Будет видов: {} ({} на уровень × {} ур.). Имена на уровне «{}»:".format(
-            len(items) * len(levels), len(items), len(levels),
+        preview_title.Text = u"Будет видов: {}{} ({} на уровень × {} ур.{}). Имена на уровне «{}»:".format(
+            u"до " if pick_cb.IsChecked else u"", len(items) * len(levels), len(items),
+            len(levels), u", уровни выберете дальше" if pick_cb.IsChecked else u"",
             first_values.get(core.TOKEN_LEVEL, u""))
         lines = [u"• " + core.build_view_name(mask, first_values, r.name, v)
                  for r, v in items[:_PREVIEW_MAX]]
@@ -304,6 +313,8 @@ def show(doc, templates, levels, settings, level_template, store):
         preview.Text = u"\n".join(lines)
 
     mask_box.TextChanged += update_preview
+    pick_cb.Checked += update_preview
+    pick_cb.Unchecked += update_preview
     for r in rows:
         r.check.Checked += update_preview
         r.check.Unchecked += update_preview
@@ -333,10 +344,12 @@ def show(doc, templates, levels, settings, level_template, store):
             "values": dict((r.name, core.join_values(r.values())) for r in rows),
             "checked": [r.name for r in picked],
             "align": bool(align_cb.IsChecked),
+            "pick_levels": bool(pick_cb.IsChecked),
         }
 
     def save_state(state):
-        return store.save(state["mask"], state["values"], state["checked"], state["align"])
+        return store.save(state["mask"], state["values"], state["checked"], state["align"],
+                          state["pick_levels"])
 
     def on_run(sender, args):
         state = form_state("run")
@@ -376,3 +389,31 @@ def show(doc, templates, levels, settings, level_template, store):
     win.Content = outer
     win.ShowDialog()
     return result["value"]
+
+
+class _LevelOption(object):
+    def __init__(self, level):
+        self.level = level
+        self.label = geometry.level_name(level)
+
+
+def pick_levels(template_name, levels, remembered):
+    """
+    Список уровней модели для одного шаблона (SelectFromList, несколько).
+    remembered — имена уровней, выбранных для него в прошлый раз (None —
+    ещё не спрашивали: отмечены все). Возвращает [уровни], [] — ни одного,
+    None — окно закрыли (отмена).
+    """
+    names = [geometry.level_name(l) for l in levels]
+    checked = set(core.preselected_levels(names, remembered))
+    items = [forms.TemplateListItem(_LevelOption(l), checked=(geometry.level_name(l) in checked),
+                                    name_attr="label")
+             for l in levels]
+    chosen = forms.SelectFromList.show(
+        items,
+        title=u"Выберите уровни в модели, для которых создавать виды для шаблона «{}»".format(
+            template_name),
+        button_name=u"Далее", multiselect=True, width=600, height=600)
+    if chosen is None:
+        return None
+    return [o.level for o in chosen]

@@ -49,6 +49,8 @@ MASK_KEY = "name_mask"
 VALUES_KEY = "template_values"    # {имя шаблона: значение}
 CHECKED_KEY = "checked_templates"  # [имена шаблонов, отмеченных в прошлый раз]
 ALIGN_RANGE_KEY = "align_view_range"  # выравнивать секущий диапазон (как «Секущий диапазон»)
+PICK_LEVELS_KEY = "pick_levels"        # спрашивать уровни для каждого шаблона
+TEMPLATE_LEVELS_KEY = "template_levels"  # {имя шаблона: [имена уровней, выбранных в прошлый раз]}
 
 _TOKEN_RE = re.compile(u"\\{([^{}]*)\\}", re.UNICODE)
 
@@ -76,7 +78,31 @@ def normalize_settings(saved):
                          if isinstance(v, (_text, str))),
         CHECKED_KEY: [_str(n) for n in checked if isinstance(n, (_text, str))],
         ALIGN_RANGE_KEY: bool(saved.get(ALIGN_RANGE_KEY, True)),
+        PICK_LEVELS_KEY: bool(saved.get(PICK_LEVELS_KEY, False)),
+        TEMPLATE_LEVELS_KEY: _template_levels(saved.get(TEMPLATE_LEVELS_KEY)),
     }
+
+
+def _template_levels(value):
+    """{шаблон: [уровни]} из файла — битые части отбрасываются."""
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for name, levels in value.items():
+        if isinstance(levels, (list, tuple)):
+            result[_str(name)] = [_str(l) for l in levels if isinstance(l, (_text, str))]
+    return result
+
+
+def preselected_levels(all_names, remembered):
+    """
+    Какие уровни отметить в списке выбора: выбранные в прошлый раз (если
+    шаблон уже спрашивали), иначе все.
+    """
+    if remembered is None:
+        return list(all_names)
+    remembered = set(remembered)
+    return [n for n in all_names if n in remembered]
 
 
 def upgrade_mask(mask):

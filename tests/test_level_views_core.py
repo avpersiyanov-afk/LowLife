@@ -71,7 +71,8 @@ def test_split_and_join_values():
 def test_normalize_settings():
     s = core.normalize_settings(None)
     assert s == {core.MASK_KEY: core.DEFAULT_MASK, core.VALUES_KEY: {}, core.CHECKED_KEY: [],
-                 core.ALIGN_RANGE_KEY: True}
+                 core.ALIGN_RANGE_KEY: True, core.PICK_LEVELS_KEY: False,
+                 core.TEMPLATE_LEVELS_KEY: {}}
     assert core.normalize_settings({core.ALIGN_RANGE_KEY: False})[core.ALIGN_RANGE_KEY] is False
     s = core.normalize_settings({core.MASK_KEY: u"{Марка}", core.VALUES_KEY: {u"T": u"v", u"X": 5},
                                  core.CHECKED_KEY: [u"T", 3]})
@@ -94,3 +95,19 @@ def test_old_value_token_still_works():
     values = core.level_tokens(u"Этаж 02", 0.0, None)
     assert core.validate_mask(u"{Значение}_{Уровень}") is None
     assert core.build_view_name(u"{Значение}_{Уровень}", values, u"T", u"Свет") == u"Свет_Этаж 02"
+
+
+def test_pick_levels_settings():
+    s = core.normalize_settings({})
+    assert s[core.PICK_LEVELS_KEY] is False and s[core.TEMPLATE_LEVELS_KEY] == {}
+    s = core.normalize_settings({core.PICK_LEVELS_KEY: True,
+                                 core.TEMPLATE_LEVELS_KEY: {u"T": [u"Э1", 5], u"X": u"bad"}})
+    assert s[core.PICK_LEVELS_KEY] is True
+    assert s[core.TEMPLATE_LEVELS_KEY] == {u"T": [u"Э1"]}
+
+
+def test_preselected_levels():
+    names = [u"Э1", u"Э2", u"Э3"]
+    assert core.preselected_levels(names, None) == names
+    assert core.preselected_levels(names, [u"Э3", u"Э1", u"старый"]) == [u"Э1", u"Э3"]
+    assert core.preselected_levels(names, []) == []
