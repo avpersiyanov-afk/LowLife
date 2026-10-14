@@ -157,6 +157,8 @@ def test_match_fop_fills_examples_only():
     assert _row(rows, "route_param_name").Name == u"Своё"           # правка
     assert u"похожий" in _row(rows, "wire_length_param").FopStatus
     assert u"есть" in _row(rows, "addr_prev_param_name").FopStatus
+    assert u"не создаётся" in _row(rows, "tray_length_param").FopStatus
+    fc.update_status(rows, defs, write_fop=True)
     assert u"будет создан" in _row(rows, "tray_length_param").FopStatus
 
     # другой ФОП: подставленное из старого — обратно к примеру

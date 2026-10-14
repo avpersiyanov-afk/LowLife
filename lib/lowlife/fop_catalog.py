@@ -550,12 +550,16 @@ def match_fop(rows, fop_defs):
             row.set_auto(row.Example, SOURCE_EXAMPLE)
 
 
-def update_status(rows, fop_defs):
-    """Столбец «В ФОП»: есть ли там параметр с текущим именем строки."""
+def update_status(rows, fop_defs, write_fop=False):
+    """
+    Столбец «В ФОП»: есть ли там параметр с текущим именем строки. Нет —
+    при write_fop будет создан, иначе строка пропускается (если параметра
+    нет и в проекте).
+    """
     for row in rows:
         d = find_exact(fop_defs, row.Name)
         if d is None:
-            row.FopStatus = u"нет — будет создан"
+            row.FopStatus = u"нет — будет создан" if write_fop else u"нет — не создаётся"
             continue
         status = u"есть, группа «{}»".format(d.group)
         if row.source == SOURCE_FOP and not row.edited():

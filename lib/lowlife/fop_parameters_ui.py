@@ -15,6 +15,8 @@ show_dialog(app) → dict или None (отмена):
     sp_path        — путь к ФОП (подключить, если отличается от текущего)
     create_file    — True, если файл по sp_path нужно сначала создать
     group          — группа в ФОП для новых определений
+    write_fop      — создавать в ФОП параметры, которых там нет (иначе только
+                     привязка уже существующих)
     write_settings — вписать имена в настройки кнопок систем
     systems        — id выбранных систем
 """
@@ -258,6 +260,11 @@ def show_dialog(app):
 
     group_box = add_field(u"Группа в ФОП для новых параметров:", fop_catalog.DEFAULT_GROUP, 180)
     prefix_box = add_field(u"Префикс имён-примеров:", fop_catalog.DEFAULT_PREFIX, 100)
+    write_fop_box = CheckBox()
+    write_fop_box.Content = u"Записывать в ФОП недостающие параметры"
+    write_fop_box.IsChecked = False
+    write_fop_box.Margin = Thickness(0, 4, 20, 0)
+    opts.Children.Add(write_fop_box)
     write_box = CheckBox()
     write_box.Content = u"Вписать имена в настройки кнопок выбранных систем"
     write_box.IsChecked = True
@@ -268,8 +275,9 @@ def show_dialog(app):
         u"Имена, уже введённые в настройках кнопок, подставлены как есть. Если в ФОП "
         u"есть похожий параметр (например «Длина проводника» с префиксом проекта), он "
         u"подставлен вместо примера — столбец «В ФОП». Параметр, который уже есть в ФОП "
-        u"(в любой группе), берётся оттуда, новый не создаётся. Префикс меняет только "
-        u"примеры, которые вы не правили.",
+        u"(в любой группе), берётся оттуда. Параметры, которых нет ни в ФОП, ни в "
+        u"проекте, создаются в ФОП только при включённом «Записывать в ФОП», иначе "
+        u"пропускаются. Префикс меняет только примеры, которые вы не правили.",
         gray=True, margin=Thickness(0, 4, 0, 6)))
 
     # --- таблица ---
@@ -303,6 +311,9 @@ def show_dialog(app):
         except Exception:
             pass
 
+    def write_fop():
+        return bool(write_fop_box.IsChecked)
+
     def selected_systems():
         return [s for s in fop_catalog.SYSTEM_IDS if system_boxes[s].IsChecked]
 
@@ -319,7 +330,7 @@ def show_dialog(app):
                 r.Checked = prev.Checked
         state["rows"] = rows
         fop_catalog.match_fop(rows, state["fop_defs"])
-        fop_catalog.update_status(rows, state["fop_defs"])
+        fop_catalog.update_status(rows, state["fop_defs"], write_fop())
         data = List[object]()
         for r in rows:
             data.Add(r)
@@ -334,11 +345,11 @@ def show_dialog(app):
     def refresh_fop():
         commit()
         fop_catalog.match_fop(state["rows"], state["fop_defs"])
-        fop_catalog.update_status(state["rows"], state["fop_defs"])
+        fop_catalog.update_status(state["rows"], state["fop_defs"], write_fop())
         refresh_grid()
 
     def after_edit():
-        fop_catalog.update_status(state["rows"], state["fop_defs"])
+        fop_catalog.update_status(state["rows"], state["fop_defs"], write_fop())
         refresh_grid()
 
     # Обновить «В ФОП» после правки имени — уже после выхода ячейки из
@@ -354,10 +365,12 @@ def show_dialog(app):
         new_prefix = prefix_box.Text or u""
         fop_catalog.change_prefix(state["rows"], state["prefix"], new_prefix)
         state["prefix"] = new_prefix
-        fop_catalog.update_status(state["rows"], state["fop_defs"])
+        fop_catalog.update_status(state["rows"], state["fop_defs"], write_fop())
         refresh_grid()
 
     prefix_box.TextChanged += on_prefix_changed
+    write_fop_box.Checked += lambda s, a: after_edit()
+    write_fop_box.Unchecked += lambda s, a: after_edit()
 
     rebuild()
 
@@ -399,10 +412,10 @@ def show_dialog(app):
         commit()
         rows = state["rows"]
         problems = []
-        if not state["sp_path"]:
-            problems.append(u"Не выбран файл ФОП.")
+        if write_fop() and not state["sp_path"]:
+            problems.append(u"Не выбран файл ФОП, куда записывать параметры.")
         group = (group_box.Text or u"").strip()
-        if not group:
+        if write_fop() and not group:
             problems.append(u"Не задана группа в ФОП.")
         if not any(r.Checked for r in rows):
             problems.append(u"Не отмечено ни одного параметра.")
@@ -415,6 +428,7 @@ def show_dialog(app):
             "sp_path": state["sp_path"],
             "create_file": state["create_file"],
             "group": group,
+            "write_fop": write_fop(),
             "write_settings": bool(write_box.IsChecked),
             "systems": selected_systems(),
         }

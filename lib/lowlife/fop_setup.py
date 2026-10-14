@@ -336,14 +336,19 @@ class Report(object):
         self.reused = []        # определения уже были в ФОП
         self.bound = []         # добавлены привязки
         self.already = []       # всё уже было привязано
+        self.skipped = []       # нет ни в ФОП, ни в проекте, запись в ФОП выключена
+        self.skipped_keys = set()
         self.warnings = []
         self.errors = []
 
 
-def add_and_bind(doc, app, sp_file, group_name, rows):
+def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
     """
-    Создаёт недостающие определения в ФОП и привязывает параметры отмеченных
-    строк к их категориям. Возвращает Report.
+    Привязывает параметры отмеченных строк к их категориям. Определение
+    берётся из ФОП или из проекта; если его нет нигде — при write_fop
+    создаётся в ФОП (группа group_name), иначе строка пропускается
+    (Report.skipped). sp_file может быть None (ФОП не подключён). Возвращает
+    Report.
     """
     report = Report()
     todo = []
@@ -377,6 +382,10 @@ def add_and_bind(doc, app, sp_file, group_name, rows):
                 report.warnings.append(
                     u"{}: в ФОП тип данных не «{}» — параметр привязан как есть, "
                     u"проверьте, подходит ли он".format(label, row.DataType))
+        elif not write_fop or sp_file is None:
+            report.skipped.append(label)
+            report.skipped_keys.add(row.key)
+            continue
         else:
             try:
                 definition = create_definition(sp_file, group_name, name,
