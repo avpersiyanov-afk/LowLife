@@ -5,10 +5,11 @@ __doc__ = (
     u"Экспликация помещений по обрезанному плану (фрагменту). Берёт "
     u"помещения модели и видимых связей, чья точка размещения попадает в "
     u"рамку подрезки активного плана, и создаёт спецификацию-таблицу: "
-    u"номер, наименование, площадь, категория. Таблица свободная — без "
-    u"параметров в модели и без фильтров. Если у плана экспликация уже "
+    u"номер, наименование, площадь, категория — без фильтров. Вид таблицы "
+    u"(настройка): свободная таблица в шапке спецификации без параметров или "
+    u"ключевая спецификация. Если у плана экспликация уже "
     u"есть — она обновляется (то же делает кнопка «Обновить экспликацию»).\n\n"
-    u"Shift+клик — настройки: название, заголовки и ширины граф, высота "
+    u"Shift+клик — настройки: вид таблицы, название, заголовки и ширины граф, высота "
     u"строк (по умолчанию — форма 2 ГОСТ 21.501: 15/80/20/10 мм, шапка 20, "
     u"строка 8), параметры номера/имени/площади/категории помещения, "
     u"знаки площади."
@@ -48,9 +49,9 @@ if reason:
 legacy_schedules, legacy_params = rexp.find_legacy(doc)
 if legacy_schedules or legacy_params:
     if forms.alert(
-            u"В проекте осталось от прежней версии кнопки: ключевых "
-            u"спецификаций — {}, параметров LL_Экспликация_* — {}. Теперь "
-            u"экспликация делается без параметров.\n\nУдалить их?".format(
+            u"В проекте осталось от первой версии кнопки: ключевых "
+            u"спецификаций без привязки к плану — {}, неиспользуемых "
+            u"параметров LL_Экспликация_* — {}.\n\nУдалить их?".format(
                 len(legacy_schedules), len(legacy_params)),
             title=TITLE, yes=True, no=True):
         with revit.Transaction(u"Удалить старую экспликацию"):
@@ -85,7 +86,8 @@ else:
 
 try:
     with revit.Transaction(TITLE):
-        schedule, count, skipped = rexp.rebuild(doc, view, sources, settings, schedule)
+        schedule, count, skipped, notes = rexp.rebuild(
+            doc, view, sources, settings, schedule, __revit__.Application)
 except Exception:
     forms.alert(u"Не удалось построить экспликацию.\n\n" + traceback.format_exc(),
                 title=TITLE, exitscript=True)
@@ -93,8 +95,12 @@ except Exception:
 lines = [u"{} «{}»: {} пом.".format(
     u"Обновлена экспликация" if existing else u"Создана экспликация",
     rexp.element_name(schedule), count)]
+if existing and rexp.kind_of(schedule) != room_explication_settings.kind(settings):
+    lines.append(u"Вид таблицы у неё прежний: настройка «Вид таблицы» действует "
+                 u"на новые экспликации (чтобы сменить — удалите эту и создайте заново).")
 if skipped:
     lines.append(u"Пропущено неразмещённых/незамкнутых помещений (площадь 0): {}.".format(skipped))
+lines.extend(notes)
 if not (settings.get("category_param") or u"").strip():
     lines.append(u"Графа «Категория» пустая: параметр категории не задан "
                  u"(Shift+клик по кнопке).")

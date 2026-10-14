@@ -68,9 +68,11 @@ with revit.Transaction(TITLE):
         sub = SubTransaction(doc)
         sub.Start()
         try:
-            _s, count, _skipped = rexp.rebuild(doc, view, sources, settings, schedule)
+            _s, count, _skipped, notes = rexp.rebuild(
+                doc, view, sources, settings, schedule, __revit__.Application)
             sub.Commit()
-            done.append(u"{} — {} пом.".format(name, count))
+            done.append(u"{} — {} пом.{}".format(
+                name, count, u"".join(u" " + n for n in notes)))
         except Exception:
             sub.RollBack()
             failed.append(u"{}:\n{}".format(name, traceback.format_exc()))

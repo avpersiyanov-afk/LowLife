@@ -38,6 +38,12 @@ def test_names_are_clean():
     assert core.schedule_name(u"План 1: [фрагмент]") == u"Экспликация - План 1 фрагмент"
 
 
+def test_key_names_and_key_param_name():
+    assert core.key_names(3) == [u"001", u"002", u"003"]
+    assert core.key_names(1200)[-1] == u"1200"
+    assert core.key_param_name(u"Экспликация - A{B}") == u"Ключ - Экспликация - AB"
+
+
 def test_unique_name():
     assert core.unique_name(u"Э", set()) == u"Э"
     assert core.unique_name(u"Э", {u"Э", u"Э (2)"}) == u"Э (3)"

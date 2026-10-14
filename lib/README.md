@@ -2213,7 +2213,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `boxes_for_floor` | `boxes_for_floor(rows)` | Боксы этажа: по одному на каждую различную подпись, в порядке первого появления |
 | `build_boxes` | `build_boxes(level_order, rows_by_level)` | `OrderedDict(level_name -> [box, ...])` для `room_schematic.rebuild`, только непустые этажи |
 
-## room_explication.py / room_explication_core.py / room_explication_settings.py
+## room_explication.py / room_explication_key.py / room_explication_core.py / room_explication_settings.py
 Кнопки «Экспликация фрагмента» и «Обновить экспликацию»
 (`ToolsRooms.panel/FragmentExplication`, `UpdateExplication`). Таблица
 свободная — без параметров в модели.
@@ -2253,8 +2253,18 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
     schedule)` — общий сценарий обеих кнопок.
   - `find_legacy`/`delete_legacy` — уборка за первой версией кнопки
     (ключевые спецификации и параметры `LL_Экспликация_*` по их GUID).
+- `room_explication_key.py` — вид таблицы «ключевая спецификация»: строки
+  свободные, но столбцы в Revit обязаны быть параметрами, поэтому
+  `ensure_params` заводит помещениям четыре текстовых общих параметра
+  `LL_Экспликация_*` с фиксированными GUID (`PARAMS`) через временный ФОП;
+  `create(doc, name)` — `ViewSchedule.CreateKeySchedule`, `fill(...)` —
+  поля/заголовки/ширины, строки (`InsertRow` в тело, «Ключевое имя» 001, 002…
+  скрыто, по нему сортировка), высота строк через `SetRowHeight` (если Revit
+  не принял — замечание в отчёт); `uses_params(schedule)`. Какой вид у
+  экспликации — `room_explication.kind_of` (по `IsKeySchedule`), вид новой —
+  настройка `kind`.
 - `room_explication_settings.py` — `TextSettings` (Shift+клик по «Экспликации
-  фрагмента»): название таблицы, заголовки и ширины граф, высота шапки и
+  фрагмента»): вид таблицы (`kind`), название таблицы, заголовки и ширины граф, высота шапки и
   строк, параметры номера/имени/площади (пусто — встроенные) и категории,
   знаки площади; `room_params`, `title`, `columns`, `heights`;
   настройки со старыми умолчаниями ширин (60/15) переводятся на 80/10.

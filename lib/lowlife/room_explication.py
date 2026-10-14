@@ -2,7 +2,7 @@
 """Экспликация фрагмента — Revit API (`ToolsRooms.panel/FragmentExplication`,
 `ToolsRooms.panel/UpdateExplication`).
 
-Свободная таблица без параметров:
+Вид «таблица в шапке» (по умолчанию) — свободная таблица без параметров:
 
 1. Помещения фрагмента — помещения модели и видимых связей, чья точка
    размещения попадает в рамку подрезки плана и в его секущий диапазон.
@@ -16,8 +16,12 @@
    метка ExtensibleStorage на самой спецификации; по ней «Обновить»
    находит экспликации и пересобирает строки.
 
+Вид таблицы «ключевая спецификация» (настройка kind) — room_explication_key;
+вид уже созданной экспликации определяется по ней самой (kind_of).
+
 `find_legacy`/`delete_legacy` — убрать то, что оставила первая версия
-кнопки (ключевые спецификации и параметры `LL_Экспликация_*`).
+кнопки (ключевые спецификации без метки и, если не используются,
+параметры `LL_Экспликация_*`).
 """
 
 from Autodesk.Revit.DB import (
@@ -547,18 +551,42 @@ def fill_table(doc, schedule, title, columns, rows, heights):
             _set_style(header, r, col0 + j, center=(i == 0 or columns[j][0] != "name"))
 
 
-def build_explication(doc, view, sources, title, columns, rows, heights, schedule=None):
+KIND_HEADER = "header"  # таблица текстом в шапке, без параметров
+KIND_KEY = "key"        # ключевая спецификация (room_explication_key)
+
+
+def kind_of(schedule):
+    """Вид уже созданной экспликации — по самой спецификации."""
+    try:
+        return KIND_KEY if schedule.Definition.IsKeySchedule else KIND_HEADER
+    except Exception:
+        return KIND_HEADER
+
+
+def build_explication(doc, view, sources, title, columns, rows, heights,
+                      schedule=None, kind=KIND_HEADER, app=None):
     """
-    Создаёт (schedule=None) или пересобирает экспликацию плана view.
-    sources — выбранные источники ([] = все), запоминаются в метке.
-    Вызывать в транзакции. Возвращает спецификацию.
+    Создаёт (schedule=None, вид kind) или пересобирает экспликацию плана
+    view; у существующей вид не меняется (kind_of). sources — выбранные
+    источники ([] = все), запоминаются в метке. app — Application (нужен
+    ключевой спецификации для параметров). Вызывать в транзакции.
+    Возвращает (спецификация, [замечания]).
     """
+    from lowlife import room_explication_key as rkey
     if schedule is None:
-        schedule = _create_blank(doc, view.Name)
-        doc.Regenerate()
-    fill_table(doc, schedule, title, columns, rows, heights)
+        if kind == KIND_KEY:
+            name = core.unique_name(core.schedule_name(view.Name), _schedule_names(doc))
+            schedule = rkey.create(doc, name)
+        else:
+            schedule = _create_blank(doc, view.Name)
+            doc.Regenerate()
+    if kind_of(schedule) == KIND_KEY:
+        notes = rkey.fill(doc, app, schedule, title, columns, rows, heights)
+    else:
+        fill_table(doc, schedule, title, columns, rows, heights)
+        notes = []
     _write_mark(schedule, view, sources)
-    return schedule
+    return schedule, notes
 
 
 # ---------------------------------------------------------------------------
@@ -566,25 +594,32 @@ def build_explication(doc, view, sources, title, columns, rows, heights, schedul
 # ---------------------------------------------------------------------------
 
 def find_legacy(doc):
-    """(ключевые спецификации первой версии, параметры LL_Экспликация_*)."""
-    params = []
-    for guid in LEGACY_PARAM_GUIDS:
-        el = SharedParameterElement.Lookup(doc, Guid(guid))
-        if el is not None:
-            params.append(el)
-    param_ids = set(str(p.Id) for p in params)
+    """
+    То, что осталось от первой версии кнопки: ключевые спецификации с
+    параметрами LL_Экспликация_* БЕЗ метки экспликации (с меткой — это
+    экспликации вида «ключевая спецификация», их не трогаем). Параметры
+    предлагаются к удалению, только если ни одна помеченная экспликация их
+    не использует. Возвращает (спецификации, параметры).
+    """
+    from lowlife import room_explication_key as rkey
     schedules = []
-    if param_ids:
-        for v in FilteredElementCollector(doc).OfClass(ViewSchedule):
-            try:
-                d = v.Definition
-                if not d.IsKeySchedule:
-                    continue
-                if any(str(d.GetField(fid).ParameterId) in param_ids
-                       for fid in d.GetFieldOrder()):
-                    schedules.append(v)
-            except Exception:
+    in_use = False
+    for v in FilteredElementCollector(doc).OfClass(ViewSchedule):
+        try:
+            if v.IsTemplate or not rkey.uses_params(v):
                 continue
+        except Exception:
+            continue
+        if read_mark(v) is None:
+            schedules.append(v)
+        else:
+            in_use = True
+    params = []
+    if not in_use:
+        for guid in LEGACY_PARAM_GUIDS:
+            el = SharedParameterElement.Lookup(doc, Guid(guid))
+            if el is not None:
+                params.append(el)
     return schedules, params
 
 
@@ -601,20 +636,22 @@ def delete_legacy(doc, schedules, params):
 # Общий сценарий кнопок
 # ---------------------------------------------------------------------------
 
-def rebuild(doc, view, sources, settings, schedule=None):
+def rebuild(doc, view, sources, settings, schedule=None, app=None):
     """
     Собирает помещения фрагмента view (источники sources, [] = все) и
-    создаёт/пересобирает экспликацию по настройкам кнопки. Вызывать в
-    транзакции. Возвращает (спецификация, число строк, пропущено с площадью 0).
+    создаёт/пересобирает экспликацию по настройкам кнопки (новая — вида из
+    настроек, существующая — своего вида). app — Application. Вызывать в
+    транзакции. Возвращает (спецификация, число строк, пропущено с
+    площадью 0, [замечания]).
     """
     from lowlife import room_explication_settings as rs
     by_source, skipped, _stats = collect_fragment_rooms(doc, view, rs.room_params(settings))
     rows = core.build_rows(pick_rooms(by_source, sources),
                            settings.get("area_decimals", 2))
-    schedule = build_explication(doc, view, sources, rs.title(settings),
-                                 rs.columns(settings), rows, rs.heights(settings),
-                                 schedule)
-    return schedule, len(rows), skipped
+    schedule, notes = build_explication(
+        doc, view, sources, rs.title(settings), rs.columns(settings), rows,
+        rs.heights(settings), schedule, rs.kind(settings), app)
+    return schedule, len(rows), skipped, notes
 
 
 def explications_to_update(doc, uidoc):
