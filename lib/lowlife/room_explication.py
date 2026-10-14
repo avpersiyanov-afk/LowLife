@@ -177,7 +177,7 @@ def _room_data(room, params):
     number = params.get("number")
     name = params.get("name")
     category = params.get("category")
-    return {
+    data = {
         "number": (_text_param(room, name=number) if number
                    else _text_param(room, BuiltInParameter.ROOM_NUMBER)),
         "name": (_text_param(room, name=name) if name
@@ -185,6 +185,12 @@ def _room_data(room, params):
         "area_m2": _area_value(room, params.get("area")),
         "category": _text_param(room, name=category) if category else u"",
     }
+    # Группировка и сортировка внутри группы (room_explication_core.build_table).
+    if params.get("group"):
+        data["group"] = _text_param(room, name=params["group"])
+    if params.get("sort"):
+        data["sort"] = _text_param(room, name=params["sort"])
+    return data
 
 
 def _visible_room_ids(doc, view, link=None):
@@ -506,7 +512,9 @@ def _header_report(section, row, count):
 def fill_table(doc, schedule, title, columns, rows, heights):
     """
     Пересобирает таблицу в шапке: строка названия, строка заголовков граф
-    (высота heights[0] мм), по строке на помещение (heights[1] мм). Ширины
+    (высота heights[0] мм), затем строки rows (heights[1] мм) — таблица из
+    room_explication_core.build_table: ("group", заголовок группы) —
+    объединённая на всю ширину строка, ("row", строка) — помещение. Ширины
     граф — у полей тела и у столбцов шапки. Вызывать в транзакции.
     """
     fields = _visible_fields(schedule)
@@ -534,12 +542,24 @@ def fill_table(doc, schedule, title, columns, rows, heights):
 
     header_mm, row_mm = heights
     col0 = header.FirstColumnNumber
-    table = [[c[1] for c in columns]] + [list(r) for r in rows]
-    for i, values in enumerate(table):
+    ncols = len(columns)
+    lines = [("heading", [c[1] for c in columns])] + [
+        (kind, item) for kind, item in rows]
+    for i, (line_kind, values) in enumerate(lines):
         r = first + 1 + i
         header.InsertRow(r)
         header.SetRowHeight(r, (header_mm if i == 0 else row_mm) / core.MM_IN_FOOT)
-        _unmerge_row(header, r, col0, len(values))
+        _unmerge_row(header, r, col0, ncols)
+        if line_kind == "group":
+            # Заголовок группы — одна ячейка на всю ширину таблицы.
+            try:
+                from Autodesk.Revit.DB import TableMergedCell
+                header.SetMergedCell(r, col0, TableMergedCell(r, col0, r, col0 + ncols - 1))
+            except Exception:
+                pass
+            header.SetCellText(r, col0, values)
+            _set_style(header, r, col0, center=True, bold=True)
+            continue
         for j, text in enumerate(values):
             try:
                 header.SetCellText(r, col0 + j, text)
@@ -645,13 +665,15 @@ def rebuild(doc, view, sources, settings, schedule=None, app=None):
     площадью 0, [замечания]).
     """
     from lowlife import room_explication_settings as rs
-    by_source, skipped, _stats = collect_fragment_rooms(doc, view, rs.room_params(settings))
-    rows = core.build_rows(pick_rooms(by_source, sources),
-                           settings.get("area_decimals", 2))
+    params = rs.room_params(settings)
+    by_source, skipped, _stats = collect_fragment_rooms(doc, view, params)
+    table = core.build_table(pick_rooms(by_source, sources),
+                             settings.get("area_decimals", 2),
+                             grouped=bool(params.get("group")))
     schedule, notes = build_explication(
-        doc, view, sources, rs.title(settings), rs.columns(settings), rows,
+        doc, view, sources, rs.title(settings), rs.columns(settings), table,
         rs.heights(settings), schedule, rs.kind(settings), app)
-    return schedule, len(rows), skipped, notes
+    return schedule, len(core.table_rows(table)), skipped, notes
 
 
 def explications_to_update(doc, uidoc):

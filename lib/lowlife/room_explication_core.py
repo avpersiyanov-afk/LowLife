@@ -100,17 +100,28 @@ def area_text(value, decimals=2):
         return text
 
 
+# Заголовок группы для помещений, у которых параметр группы пустой.
+NO_GROUP = u"Без группы"
+
+
+def _row_sort_key(r):
+    """Внутри группы: по параметру сортировки (если задан), затем по номеру."""
+    sort_value = r.get("sort")
+    return (natural_key(sort_value if sort_value is not None else r.get("number")),
+            natural_key(r.get("number")), natural_key(r.get("name")))
+
+
 def build_rows(rooms, decimals=2):
     """
-    rooms — список dict {number, name, area_m2, category}; area_m2 — число
-    в м² или текст из параметра площади (см. area_text). Возвращает
-    список строк таблицы (кортежи текстов в порядке COLUMNS), по номеру
-    помещения; одинаковые строки (помещение пришло дважды) — один раз.
+    rooms — список dict {number, name, area_m2, category[, sort]}; area_m2 —
+    число в м² или текст из параметра площади (см. area_text); sort —
+    значение параметра сортировки (нет — сортировка по номеру). Возвращает
+    список строк таблицы (кортежи текстов в порядке COLUMNS);
+    одинаковые строки (помещение пришло дважды) — один раз.
     """
     rows = []
     seen = set()
-    for r in sorted(rooms, key=lambda r: (natural_key(r.get("number")),
-                                          natural_key(r.get("name")))):
+    for r in sorted(rooms, key=_row_sort_key):
         row = (
             (r.get("number") or u"").strip(),
             (r.get("name") or u"").strip(),
@@ -122,6 +133,35 @@ def build_rows(rooms, decimals=2):
         seen.add(row)
         rows.append(row)
     return rows
+
+
+def build_table(rooms, decimals=2, grouped=False):
+    """
+    Таблица экспликации: список ("group", заголовок) и ("row", строка).
+    grouped — помещения группируются по значению "group" (dict помещения):
+    группы по возрастанию (числа внутри — как числа), пустое значение —
+    группа NO_GROUP в конце; внутри группы — как build_rows. Без группировки —
+    только строки.
+    """
+    if not grouped:
+        return [("row", row) for row in build_rows(rooms, decimals)]
+    groups = {}
+    for r in rooms:
+        title = (r.get("group") or u"").strip()
+        groups.setdefault(title, []).append(r)
+    order = sorted((t for t in groups if t), key=natural_key)
+    if u"" in groups:
+        order.append(u"")
+    table = []
+    for title in order:
+        table.append(("group", title or NO_GROUP))
+        table.extend(("row", row) for row in build_rows(groups[title], decimals))
+    return table
+
+
+def table_rows(table):
+    """Только строки помещений из build_table."""
+    return [item for kind, item in table if kind == "row"]
 
 
 def in_rect(x, y, rect):
