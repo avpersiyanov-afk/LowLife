@@ -76,6 +76,13 @@ def _plan_types(doc):
                 for f, items in found.items())
 
 
+def _id_int(eid):
+    try:
+        return eid.Value  # Revit 2024+
+    except Exception:
+        return eid.IntegerValue
+
+
 class ViewResult(object):
     """Итог по одному виду: action — «создан»/«обновлён», error — причина сбоя."""
 
@@ -89,9 +96,11 @@ class ViewResult(object):
         self.range_note = None  # секущий диапазон не выровнен — почему
 
 
-def build_views(doc, levels, items, mask, level_template):
+def build_views(doc, levels, items, mask, level_template, levels_by_template=None):
     """
     Создаёт виды (внутри транзакции). items — [(шаблон вида, значение)].
+    levels_by_template — {имя шаблона: [уровни]}, если уровни выбраны для
+    каждого шаблона отдельно (нет шаблона в словаре — все levels).
     Возвращает [ViewResult]: шаблоны по порядку, уровни снизу вверх.
     """
     plan_types = _plan_types(doc)
@@ -110,7 +119,12 @@ def build_views(doc, levels, items, mask, level_template):
     for template, value in items:
         view_type = template.ViewType
         vft = plan_types.get(_FAMILY_BY_VIEW_TYPE.get(view_type))
+        wanted = None
+        if levels_by_template is not None and safe_name(template) in levels_by_template:
+            wanted = set(_id_int(l.Id) for l in levels_by_template[safe_name(template)])
         for level, values in values_by_level:
+            if wanted is not None and _id_int(level.Id) not in wanted:
+                continue
             name = core.build_view_name(mask, values, safe_name(template), value)
             result = ViewResult(level, template, name)
             results.append(result)

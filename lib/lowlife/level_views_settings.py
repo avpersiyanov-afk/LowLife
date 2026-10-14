@@ -25,10 +25,11 @@ def load():
     return core.normalize_settings(_STORE.read())
 
 
-def save(mask, values, checked, align_range=True):
+def save(mask, values, checked, align_range=True, pick_levels=False):
     """
     values — {шаблон: значение} (дописываются к старым), checked — [шаблоны],
-    align_range — галочка «Выровнять секущий диапазон».
+    align_range — галочка «Выровнять секущий диапазон», pick_levels —
+    «Выбирать уровни для каждого шаблона».
     """
     saved = load()
     all_values = dict(saved[core.VALUES_KEY])
@@ -38,7 +39,15 @@ def save(mask, values, checked, align_range=True):
         core.VALUES_KEY: all_values,
         core.CHECKED_KEY: list(checked),
         core.ALIGN_RANGE_KEY: bool(align_range),
+        core.PICK_LEVELS_KEY: bool(pick_levels),
     })
+
+
+def remember_template_levels(levels_by_template):
+    """{шаблон: [имена уровней]} — выбор уровней, дописывается к прежнему."""
+    saved = load()[core.TEMPLATE_LEVELS_KEY]
+    saved.update(levels_by_template)
+    return _STORE.update({core.TEMPLATE_LEVELS_KEY: saved})
 
 
 def view_range_configured():
