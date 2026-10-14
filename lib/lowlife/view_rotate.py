@@ -1,67 +1,63 @@
 # -*- coding: utf-8 -*-
-"""Поворот 3D вида вокруг оси (`Tools.panel/Rotate3DView`).
+"""Поворот 3D вида под ось (`Tools.panel/Rotate3DView`).
 
-Revit умеет вращать 3D вид только мышью/видовым кубом — без точного угла и
-без выбора оси. Кнопка поворачивает камеру 3D вида (ViewOrientation3D:
-точка глаза, направления «вперёд» и «вверх») вокруг оси модели X/Y/Z или
-вокруг оси сетки (Grid) на заданный угол. Модель в кадре поворачивается на
-этот угол против часовой стрелки, если смотреть с конца оси на начало
-(отрицательный угол — по часовой); для этого камера поворачивается на
-противоположный угол.
+В открытом 3D виде пользователь кликает ось сетки (или любой прямой
+линейный элемент — стену, линию модели, лоток…, в том числе в связанном
+файле), и вид поворачивается вокруг вертикали так, чтобы смотреть вдоль
+или поперёк этой оси: камера доворачивается на ближайший из четырёх углов
+(ось / перпендикуляр к ней, в обе стороны), наклон камеры не меняется.
+Включённая рамка 3D вида поворачивается так же — её стороны становятся
+параллельны и перпендикулярны оси.
 
-Оси X/Y/Z проходят через центр рамки 3D вида (если она включена), иначе —
-через центр области подрезки вида; ось сетки — по самой линии сетки.
+Поворот — вокруг вертикали через центр рамки 3D вида, без рамки — через
+центр области подрезки вида, чтобы модель оставалась в кадре.
 
-Чистая часть (`parse_angle`, `rotate_vector`, `rotate_point`,
-`rotate_orientation`, `AXES`) работает на кортежах и покрыта
+Чистая часть (`align_angle`, `rotate_vector`, `rotate_point`,
+`rotate_camera`) работает на кортежах и покрыта
 `tests/test_view_rotate.py`; Revit API импортируется лениво.
 """
 
 import math
 
-AXIS_GRID = "grid"
+Z_AXIS = (0.0, 0.0, 1.0)
 
-# (ключ, подпись в окне).
-AXES = (
-    ("x", u"X модели"),
-    ("y", u"Y модели"),
-    ("z", u"Z модели (вертикаль)"),
-    (AXIS_GRID, u"Ось сетки"),
-)
-DEFAULT_AXIS = "z"
-DEFAULT_ANGLE = 90.0
-
-AXIS_VECTORS = {
-    "x": (1.0, 0.0, 0.0),
-    "y": (0.0, 1.0, 0.0),
-    "z": (0.0, 0.0, 1.0),
-}
-
-
-def parse_angle(text):
-    """Текст угла в градусах («90», «-45», «12,5», «30°») -> float.
-
-    Угол приводится к (-360, 360). ValueError — если не число или поворот
-    нулевой (на полный оборот тоже).
-    """
-    raw = (text or u"").strip().replace(u",", u".").replace(u"°", u"").strip()
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ValueError(u"Угол поворота должен быть числом в градусах, например 90 или -45.")
-    if math.isnan(value) or math.isinf(value):
-        raise ValueError(u"Угол поворота должен быть числом в градусах, например 90 или -45.")
-    value = math.fmod(value, 360.0)
-    if abs(value) < 1e-9:
-        raise ValueError(u"Угол поворота не должен быть нулевым (или кратным 360°).")
-    return value
+# Направление в плане короче этого (после проекции на XY) считаем
+# вертикальным — вдоль такой оси вид не повернуть.
+MIN_PLAN_LENGTH = 1e-6
 
 
 def _norm(v):
-    length = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    length = math.sqrt(sum(c * c for c in v))
     if length < 1e-12:
-        raise ValueError(u"Нулевое направление оси.")
-    return (v[0] / length, v[1] / length, v[2] / length)
+        raise ValueError(u"Нулевое направление.")
+    return tuple(c / length for c in v)
+
+
+def plan_angle(v):
+    """Угол направления v в плане (рад) или None, если v почти вертикален."""
+    if math.hypot(v[0], v[1]) < MIN_PLAN_LENGTH:
+        return None
+    return math.atan2(v[1], v[0])
+
+
+def align_angle(current, axis):
+    """Наименьший поворот вокруг вертикали (рад, (-π/4, π/4]), после которого
+    направление `current` в плане идёт вдоль `axis` или перпендикулярно ей.
+
+    current/axis — векторы (x, y[, z]); ValueError, если какой-то из них
+    вертикален (нет направления в плане).
+    """
+    a = plan_angle(current)
+    b = plan_angle(axis)
+    if a is None or b is None:
+        raise ValueError(u"Направление вертикально — в плане его нет.")
+    quarter = math.pi / 2
+    delta = math.fmod(b - a, quarter)
+    if delta > quarter / 2:
+        delta -= quarter
+    elif delta <= -quarter / 2:
+        delta += quarter
+    return delta
 
 
 def rotate_vector(v, axis, angle_rad):
@@ -83,109 +79,152 @@ def rotate_point(p, origin, axis, angle_rad):
     return (r[0] + origin[0], r[1] + origin[1], r[2] + origin[2])
 
 
-def rotate_orientation(eye, up, forward, origin, axis, model_angle_deg):
-    """Новая (eye, up, forward) камеры, при которой модель в кадре повёрнута
-    на model_angle_deg вокруг прямой (origin, axis) против часовой стрелки
-    (если смотреть с конца оси). Камера поворачивается на противоположный
-    угол, взаимная перпендикулярность up/forward сохраняется."""
-    a = -math.radians(model_angle_deg)
-    return (rotate_point(eye, origin, axis, a),
-            _norm(rotate_vector(up, axis, a)),
-            _norm(rotate_vector(forward, axis, a)))
+def camera_plan_direction(up, forward):
+    """Направление взгляда камеры в плане: forward, а если камера смотрит
+    строго вверх/вниз — up (он тогда горизонтален)."""
+    if plan_angle(forward) is not None:
+        return forward
+    return up
+
+
+def rotate_camera(eye, up, forward, origin, angle_rad):
+    """(eye, up, forward) камеры, повёрнутой вокруг вертикали через origin."""
+    return (rotate_point(eye, origin, Z_AXIS, angle_rad),
+            _norm(rotate_vector(up, Z_AXIS, angle_rad)),
+            _norm(rotate_vector(forward, Z_AXIS, angle_rad)))
 
 
 # --- Revit API --------------------------------------------------------------
-
-def _name(el):
-    from Autodesk.Revit.DB import Element
-    return Element.Name.GetValue(el)
-
-
-def list_3d_views(doc):
-    """[(имя, View3D)] — 3D виды проекта без шаблонов, по имени."""
-    from Autodesk.Revit.DB import FilteredElementCollector, View3D
-    views = [v for v in FilteredElementCollector(doc).OfClass(View3D) if not v.IsTemplate]
-    items = [(_name(v), v) for v in views]
-    items.sort(key=lambda it: it[0].lower())
-    return items
-
-
-def list_grids(doc):
-    """[(имя, Grid)] — прямые оси сетки проекта (дуговые не годятся как ось
-    поворота), по имени."""
-    from Autodesk.Revit.DB import FilteredElementCollector, Grid, Line
-    items = []
-    for g in FilteredElementCollector(doc).OfClass(Grid):
-        try:
-            if g.IsCurved or not isinstance(g.Curve, Line):
-                continue
-        except Exception:
-            continue
-        items.append((_name(g), g))
-    items.sort(key=lambda it: it[0].lower())
-    return items
-
-
-def unsupported_reason(view):
-    """Текст причины, почему вид не повернуть, или None."""
-    if view.IsTemplate:
-        return u"«{}» — шаблон вида.".format(_name(view))
-    try:
-        if view.IsLocked:
-            return (u"Вид «{}» заблокирован (ориентация сохранена). Разблокируйте "
-                    u"его на видовом кубе или панели вида и повторите.".format(_name(view)))
-    except Exception:
-        pass
-    return None
-
 
 def _xyz_tuple(p):
     return (p.X, p.Y, p.Z)
 
 
+def unsupported_reason(view):
+    """Текст причины, почему активный вид не повернуть, или None."""
+    from Autodesk.Revit.DB import View3D
+    if not isinstance(view, View3D) or view.IsTemplate:
+        return u"Откройте 3D вид, который нужно повернуть, и запустите кнопку на нём."
+    try:
+        if view.IsLocked:
+            return (u"3D вид заблокирован (ориентация сохранена). Разблокируйте "
+                    u"его на панели вида и повторите.")
+    except Exception:
+        pass
+    return None
+
+
+def element_line(element):
+    """Прямая линия элемента (Line) или None: ось сетки, линия модели/
+    детализации, элемент с линейной LocationCurve (стена, лоток, балка…)."""
+    from Autodesk.Revit.DB import CurveElement, Grid, Line, LocationCurve
+    curve = None
+    try:
+        if isinstance(element, Grid):
+            curve = element.Curve
+        elif isinstance(element, CurveElement):
+            curve = element.GeometryCurve
+        else:
+            loc = element.Location
+            if isinstance(loc, LocationCurve):
+                curve = loc.Curve
+    except Exception:
+        return None
+    return curve if isinstance(curve, Line) else None
+
+
+def _is_axis_element(element):
+    line = element_line(element)
+    return line is not None and plan_angle(_xyz_tuple(line.Direction)) is not None
+
+
+def make_pick_filter(doc):
+    """ISelectionFilter для PickObject(ObjectType.LinkedElement): прямые
+    невертикальные линейные элементы модели и связанных файлов."""
+    from Autodesk.Revit.DB import ElementId, RevitLinkInstance
+    from Autodesk.Revit.UI.Selection import ISelectionFilter
+
+    class AxisFilter(ISelectionFilter):
+        def AllowElement(self, element):
+            return isinstance(element, RevitLinkInstance) or _is_axis_element(element)
+
+        def AllowReference(self, reference, position):
+            if reference.LinkedElementId == ElementId.InvalidElementId:
+                return True
+            try:
+                link = doc.GetElement(reference.ElementId)
+                return _is_axis_element(link.GetLinkDocument().GetElement(reference.LinkedElementId))
+            except Exception:
+                return False
+
+    return AxisFilter()
+
+
+def picked_direction(doc, reference):
+    """(направление оси в координатах модели, имя элемента) по выбранной
+    ссылке, или ValueError с пояснением."""
+    from Autodesk.Revit.DB import Element, ElementId, RevitLinkInstance
+    element = doc.GetElement(reference.ElementId)
+    transform = None
+    if isinstance(element, RevitLinkInstance) and reference.LinkedElementId != ElementId.InvalidElementId:
+        transform = element.GetTotalTransform()
+        element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
+    line = element_line(element) if element is not None else None
+    if line is None:
+        raise ValueError(u"Выбранный элемент — не прямая ось: выберите ось сетки, "
+                         u"линию или прямую стену/лоток.")
+    direction = line.Direction
+    if transform is not None:
+        direction = transform.OfVector(direction)
+    if plan_angle(_xyz_tuple(direction)) is None:
+        raise ValueError(u"Выбранная линия вертикальна — под неё вид в плане не повернуть.")
+    try:
+        name = Element.Name.GetValue(element)
+    except Exception:
+        name = u""
+    return direction, name
+
+
 def _box_center(box):
-    mid = box.Min.Add(box.Max).Multiply(0.5)
-    return box.Transform.OfPoint(mid)
+    return box.Transform.OfPoint(box.Min.Add(box.Max).Multiply(0.5))
 
 
-def model_pivot(view):
-    """Точка, через которую идут оси X/Y/Z: центр рамки 3D вида, если она
-    включена, иначе центр области подрезки вида, иначе точка глаза."""
+def view_pivot(view):
+    """Центр рамки 3D вида, если она включена, иначе центр области подрезки,
+    иначе точка глаза."""
     try:
         if view.IsSectionBoxActive:
             return _box_center(view.GetSectionBox())
     except Exception:
         pass
     try:
-        crop = view.CropBox
-        if crop is not None:
-            return _box_center(crop)
+        return _box_center(view.CropBox)
     except Exception:
-        pass
-    return view.GetOrientation().EyePosition
+        return view.GetOrientation().EyePosition
 
 
-def axis_line(view, axis_key, grid=None):
-    """(точка, направление) оси поворота в координатах модели (XYZ)."""
-    from Autodesk.Revit.DB import XYZ
-    if axis_key == AXIS_GRID:
-        if grid is None:
-            raise ValueError(u"Не выбрана ось сетки.")
-        line = grid.Curve
-        return line.GetEndPoint(0), line.Direction
-    vec = AXIS_VECTORS.get(axis_key)
-    if vec is None:
-        raise ValueError(u"Неизвестная ось: {}".format(axis_key))
-    return model_pivot(view), XYZ(*vec)
+def align_view(view, direction):
+    """Поворачивает камеру (и рамку 3D вида, если включена) под направление
+    оси. В открытой транзакции. Возвращает (угол камеры, угол рамки или None)
+    в градусах."""
+    from Autodesk.Revit.DB import Transform, ViewOrientation3D, XYZ
+    axis = _xyz_tuple(direction)
 
+    box_deg = None
+    if view.IsSectionBoxActive:
+        box = view.GetSectionBox()
+        angle = align_angle(_xyz_tuple(box.Transform.BasisX), axis)
+        if abs(angle) > 1e-9:
+            rot = Transform.CreateRotationAtPoint(XYZ.BasisZ, angle, _box_center(box))
+            box.Transform = rot.Multiply(box.Transform)
+            view.SetSectionBox(box)
+        box_deg = math.degrees(angle)
 
-def rotate_view(view, axis_key, angle_deg, grid=None):
-    """Поворачивает камеру 3D вида (в открытой транзакции)."""
-    from Autodesk.Revit.DB import XYZ, ViewOrientation3D
-    origin, direction = axis_line(view, axis_key, grid)
+    pivot = _xyz_tuple(view_pivot(view))
     ori = view.GetOrientation()
-    eye, up, fwd = rotate_orientation(
-        _xyz_tuple(ori.EyePosition), _xyz_tuple(ori.UpDirection),
-        _xyz_tuple(ori.ForwardDirection), _xyz_tuple(origin),
-        _xyz_tuple(direction), angle_deg)
-    view.SetOrientation(ViewOrientation3D(XYZ(*eye), XYZ(*up), XYZ(*fwd)))
+    up, fwd = _xyz_tuple(ori.UpDirection), _xyz_tuple(ori.ForwardDirection)
+    angle = align_angle(camera_plan_direction(up, fwd), axis)
+    if abs(angle) > 1e-9:
+        eye, up, fwd = rotate_camera(_xyz_tuple(ori.EyePosition), up, fwd, pivot, angle)
+        view.SetOrientation(ViewOrientation3D(XYZ(*eye), XYZ(*up), XYZ(*fwd)))
+    return math.degrees(angle), box_deg

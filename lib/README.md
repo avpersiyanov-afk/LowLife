@@ -119,22 +119,22 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 (режим + суффикс с предпросмотром имени); последний выбор — в
 `LowLifeCropView_settings.json`.
 
-## view_rotate.py / view_rotate_dialog.py
-Поворот 3D вида вокруг оси (`Tools.panel/Rotate3DView`, «Повернуть 3D вид»).
-Чистая часть (покрыта `tests/test_view_rotate.py`): `parse_angle(text)` —
-градусы из текста («12,5°»), приведение к (−360, 360), `ValueError` для
-нуля/не числа; `rotate_vector`/`rotate_point` — поворот по правилу правой
-руки (формула Родрига) на кортежах; `rotate_orientation(eye, up, forward,
-origin, axis, model_angle_deg)` — камера поворачивается на противоположный
-угол, чтобы модель в кадре повернулась на `model_angle_deg` против часовой
-(если смотреть с конца оси); `AXES` — X/Y/Z модели и ось сетки. Revit-часть:
-`list_3d_views(doc)`, `list_grids(doc)` (только прямые оси),
-`unsupported_reason(view)` (шаблон, заблокированный вид), `model_pivot(view)`
-— центр рамки 3D вида, иначе центр `CropBox`; `axis_line(view, axis, grid)`;
-`rotate_view(view, axis, angle, grid)` — `SetOrientation` в открытой
-транзакции. `view_rotate_dialog.show(views, grids, active_view_id, apply)` —
-модальное WPF-окно, которое не закрывается после «Повернуть» (поворот по
-шагам); последний выбор — в `LowLifeRotate3DView_settings.json`.
+## view_rotate.py
+Поворот 3D вида под ось (`Tools.panel/Rotate3DView`, «Повернуть 3D вид»).
+Чистая часть (покрыта `tests/test_view_rotate.py`): `plan_angle(v)` — угол
+направления в плане (None для вертикали); `align_angle(current, axis)` —
+наименьший поворот вокруг вертикали ((−45°, 45°]), после которого `current`
+идёт вдоль или поперёк `axis`; `rotate_vector`/`rotate_point` (формула
+Родрига); `camera_plan_direction(up, forward)` — forward, а для вида строго
+сверху/снизу — up; `rotate_camera(eye, up, forward, origin, angle)` —
+поворот камеры вокруг вертикали. Revit-часть: `unsupported_reason(view)`
+(не 3D вид, шаблон, заблокирован); `element_line(element)` — прямая линия
+оси сетки, линии модели или линейной `LocationCurve`;
+`make_pick_filter(doc)` — фильтр для `PickObject(ObjectType.LinkedElement)`
+(модель и связи); `picked_direction(doc, reference)` — направление оси в
+координатах модели (с трансформацией связи); `view_pivot(view)` — центр
+рамки 3D вида или `CropBox`; `align_view(view, direction)` — поворачивает
+рамку 3D вида (стороны параллельно оси) и камеру, в открытой транзакции.
 
 ## dxf_text.py / dwg_transfer.py / dwg_transfer_settings.py
 Кнопка `Tools.panel/DwgToDrafting` («DWG → чертёжный»): DWG-подложка →
