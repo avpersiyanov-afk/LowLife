@@ -75,35 +75,52 @@ def test_old_default_widths_migrate_to_gost():
     assert custom == {"width_name": 70.0, "width_category": 15.0}
 
 
-def _room(number, group=None, sort=None, name=u"П"):
-    r = {"number": number, "name": name, "area_m2": 1.0, "category": u""}
-    if group is not None:
-        r["group"] = group
-    if sort is not None:
-        r["sort"] = sort
-    return r
+def _room(number, *keys):
+    return {"number": number, "name": u"П", "area_m2": 1.0, "category": u"",
+            "keys": list(keys)}
 
 
-def test_build_table_groups_with_headers_and_number_order_inside():
+def _shape(table):
+    return [(k, v[1] if k == "group" else v[0]) for k, v in table]
+
+
+def test_one_level_with_header_numbers_inside():
     rooms = [_room(u"2.10", u"Секция 2"), _room(u"1.2", u"Секция 1"),
-             _room(u"2.9", u"Секция 2"), _room(u"5", u""), _room(u"1.10", u"Секция 1")]
-    table = core.build_table(rooms, grouped=True)
-    assert [(k, v if k == "group" else v[0]) for k, v in table] == [
+             _room(u"2.9", u"Секция 2"), _room(u"5", u""), _room(u"1.10", u"Секция 1"),
+             _room(u"10.1", u"Секция 10")]
+    table = core.build_table(rooms, levels=[(False, True)])
+    assert _shape(table) == [
         ("group", u"Секция 1"), ("row", u"1.2"), ("row", u"1.10"),
         ("group", u"Секция 2"), ("row", u"2.9"), ("row", u"2.10"),
+        ("group", u"Секция 10"), ("row", u"10.1"),
         ("group", core.NO_GROUP), ("row", u"5"),
     ]
-    assert len(core.table_rows(table)) == 5
+    assert len(core.table_rows(table)) == 6
 
 
-def test_build_table_without_grouping_is_rows_only():
-    table = core.build_table([_room(u"2"), _room(u"1")])
-    assert [k for k, _ in table] == ["row", "row"]
-    assert core.table_rows(table)[0][0] == u"1"
+def test_descending_keeps_empty_last_and_no_header():
+    rooms = [_room(u"1", u"А"), _room(u"2", u""), _room(u"3", u"Б")]
+    table = core.build_table(rooms, levels=[(True, False)])
+    assert _shape(table) == [("row", u"3"), ("row", u"1"), ("row", u"2")]
 
 
-def test_sort_parameter_inside_group_then_number():
-    rooms = [_room(u"1", u"А", sort=u"б"), _room(u"2", u"А", sort=u"а"),
-             _room(u"3", u"А", sort=u"а")]
-    rows = core.table_rows(core.build_table(rooms, grouped=True))
-    assert [r[0] for r in rows] == [u"2", u"3", u"1"]
+def test_nested_levels_headers_and_then_by():
+    rooms = [_room(u"1", u"Этаж 1", u"Б", u"x"), _room(u"2", u"Этаж 1", u"А", u"y"),
+             _room(u"3", u"Этаж 2", u"А", u"x"), _room(u"4", u"Этаж 1", u"А", u"x")]
+    levels = [(False, True), (False, True), (True, False)]
+    assert _shape(core.build_table(rooms, levels=levels)) == [
+        ("group", u"Этаж 1"), ("group", u"А"), ("row", u"2"), ("row", u"4"),
+        ("group", u"Б"), ("row", u"1"),
+        ("group", u"Этаж 2"), ("group", u"А"), ("row", u"3"),
+    ]
+
+
+def test_without_levels_rows_by_number():
+    table = core.build_table([_room(u"10"), _room(u"2")])
+    assert _shape(table) == [("row", u"2"), ("row", u"10")]
+
+
+def test_group_entries_carry_header_depth():
+    rooms = [_room(u"1", u"Э1", u"x", u"А")]
+    table = core.build_table(rooms, levels=[(False, True), (False, False), (False, True)])
+    assert table[:2] == [("group", (0, u"Э1")), ("group", (1, u"А"))]

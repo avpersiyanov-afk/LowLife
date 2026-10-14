@@ -100,62 +100,84 @@ def area_text(value, decimals=2):
         return text
 
 
-# Заголовок группы для помещений, у которых параметр группы пустой.
+# Заголовок группы для помещений, у которых значение параметра пустое.
 NO_GROUP = u"Без группы"
 
+# Уровней сортировки/группировки: «Сортировать по» и до трёх «Затем по».
+SORT_LEVELS = 4
 
-def _row_sort_key(r):
-    """Внутри группы: по параметру сортировки (если задан), затем по номеру."""
-    sort_value = r.get("sort")
-    return (natural_key(sort_value if sort_value is not None else r.get("number")),
-            natural_key(r.get("number")), natural_key(r.get("name")))
+
+def _row(r, decimals):
+    return (
+        (r.get("number") or u"").strip(),
+        (r.get("name") or u"").strip(),
+        area_text(r.get("area_m2"), decimals),
+        (r.get("category") or u"").strip(),
+    )
+
+
+def _level_value(r, i):
+    keys = r.get("keys") or []
+    return (keys[i] if i < len(keys) else u"") or u""
 
 
 def build_rows(rooms, decimals=2):
     """
-    rooms — список dict {number, name, area_m2, category[, sort]}; area_m2 —
-    число в м² или текст из параметра площади (см. area_text); sort —
-    значение параметра сортировки (нет — сортировка по номеру). Возвращает
-    список строк таблицы (кортежи текстов в порядке COLUMNS);
+    rooms — список dict {number, name, area_m2, category}; area_m2 — число
+    в м² или текст из параметра площади (см. area_text). Возвращает строки
+    таблицы (кортежи текстов в порядке COLUMNS) по номеру помещения;
     одинаковые строки (помещение пришло дважды) — один раз.
     """
-    rows = []
+    return table_rows(build_table(rooms, decimals))
+
+
+def build_table(rooms, decimals=2, levels=None):
+    """
+    Таблица экспликации, как сортировка/группировка спецификации Revit:
+    список ("group", (уровень, заголовок)) и ("row", строка); уровень —
+    номер заголовка среди уровней с заголовком (0 — самый внешний).
+
+    levels — [(по убыванию, показывать заголовок), ...] — уровни «Сортировать
+    по», «Затем по»…; значения уровней — в r["keys"] (по порядку). Пустое
+    значение уровня всегда идёт после заполненных (заголовок — NO_GROUP).
+    Числа внутри значений сравниваются как числа. Последний ключ — номер
+    помещения по возрастанию. Заголовок уровня с show_header ставится перед
+    первой строкой каждой новой группы этого уровня (вложенные — по порядку).
+    Одинаковые строки (помещение пришло дважды) — один раз.
+    """
+    levels = list(levels or [])
+    unique = []
     seen = set()
-    for r in sorted(rooms, key=_row_sort_key):
-        row = (
-            (r.get("number") or u"").strip(),
-            (r.get("name") or u"").strip(),
-            area_text(r.get("area_m2"), decimals),
-            (r.get("category") or u"").strip(),
-        )
-        if row in seen:
-            continue
-        seen.add(row)
-        rows.append(row)
-    return rows
-
-
-def build_table(rooms, decimals=2, grouped=False):
-    """
-    Таблица экспликации: список ("group", заголовок) и ("row", строка).
-    grouped — помещения группируются по значению "group" (dict помещения):
-    группы по возрастанию (числа внутри — как числа), пустое значение —
-    группа NO_GROUP в конце; внутри группы — как build_rows. Без группировки —
-    только строки.
-    """
-    if not grouped:
-        return [("row", row) for row in build_rows(rooms, decimals)]
-    groups = {}
     for r in rooms:
-        title = (r.get("group") or u"").strip()
-        groups.setdefault(title, []).append(r)
-    order = sorted((t for t in groups if t), key=natural_key)
-    if u"" in groups:
-        order.append(u"")
+        key = (_row(r, decimals), tuple(_level_value(r, i) for i in range(len(levels))))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(r)
+
+    # Устойчивая сортировка: от последнего ключа к первому.
+    ordered = sorted(unique, key=lambda r: (natural_key(r.get("number")),
+                                            natural_key(r.get("name"))))
+    for i in range(len(levels) - 1, -1, -1):
+        descending = levels[i][0]
+        ordered = sorted(ordered, key=lambda r: natural_key(_level_value(r, i).strip()),
+                         reverse=descending)
+        ordered = sorted(ordered, key=lambda r: not _level_value(r, i).strip())
+
     table = []
-    for title in order:
-        table.append(("group", title or NO_GROUP))
-        table.extend(("row", row) for row in build_rows(groups[title], decimals))
+    previous = None
+    for r in ordered:
+        values = [_level_value(r, i).strip() for i in range(len(levels))]
+        depth = -1
+        for i, (_descending, show_header) in enumerate(levels):
+            if show_header:
+                depth += 1
+            if previous is not None and previous[:i + 1] == values[:i + 1]:
+                continue
+            if show_header:
+                table.append(("group", (depth, values[i] or NO_GROUP)))
+        previous = values
+        table.append(("row", _row(r, decimals)))
     return table
 
 

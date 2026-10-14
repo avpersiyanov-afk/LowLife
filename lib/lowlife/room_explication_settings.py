@@ -2,7 +2,8 @@
 """
 Настройки кнопок «Экспликация фрагмента» / «Обновить экспликацию»
 (ToolsRooms.panel): название таблицы, заголовки и ширины граф, высота строк,
-параметры помещения (номер, имя, площадь, категория), знаки площади.
+параметры помещения (номер, имя, площадь, категория), сортировка/группировка
+(до 4 уровней, как в спецификации Revit), знаки площади.
 
 Хранятся в %APPDATA%\\pyRevit\\LowLifeRoomExplication_settings.json через
 settings_core.TextSettings (Shift+клик по кнопке). Умолчания заголовков и
@@ -12,7 +13,10 @@ settings_core.TextSettings (Shift+клик по кнопке). Умолчани�
 from lowlife import settings_core
 from lowlife.room_explication_core import (
     COLUMNS, HEADER_HEIGHT_MM, KIND_HEADER, KIND_KEY, OLD_DEFAULT_WIDTHS,
-    ROW_HEIGHT_MM, TITLE)
+    ROW_HEIGHT_MM, SORT_LEVELS, TITLE)
+
+ORDER_ASC = "asc"
+ORDER_DESC = "desc"
 
 _LABELS = {
     "number": u"Номер помещения",
@@ -39,13 +43,58 @@ def _column_fields():
     return fields
 
 
+def _sort_fields():
+    """Как «Сортировка/группировка» спецификации Revit: «Сортировать по» и
+    до трёх «Затем по» — параметр, порядок, заголовок группы."""
+    fields = []
+    for n in range(1, SORT_LEVELS + 1):
+        first = n == 1
+        fields.append(settings_core.TextField(
+            "room_sort{}_param".format(n),
+            u"⑥ Сортировка/группировка" if first else u"",
+            u"Сортировать по" if first else u"Затем по",
+            hint=(u"Имя параметра помещения. Пусто — уровень не используется; "
+                  u"если пусты все — по номеру помещения. Последним ключом "
+                  u"всегда идёт номер помещения по возрастанию."
+                  if first else u""),
+            default=u"", required=False,
+        ))
+        fields.append(settings_core.ChoiceField(
+            "room_sort{}_order".format(n), u"", u"",
+            [(ORDER_ASC, u"По возрастанию"), (ORDER_DESC, u"По убыванию")],
+            default=ORDER_ASC,
+        ))
+        fields.append(settings_core.ChoiceField(
+            "room_sort{}_header".format(n), u"", u"",
+            [("no", u"Без заголовка"), ("yes", u"Заголовок группы")],
+            hint=(u"Заголовок группы — строка на всю ширину таблицы перед "
+                  u"помещениями с новым значением параметра (пустое значение — "
+                  u"«Без группы», такие помещения — в конце)."
+                  if first else u""),
+            default="no",
+        ))
+    return fields
+
+
 def _migrate(saved, values):
-    """Ширины, сохранённые со старыми умолчаниями (60/15), — на форму ГОСТ."""
+    """Ширины, сохранённые со старыми умолчаниями (60/15), — на форму ГОСТ.
+    Прежние «Группировать по» / «Сортировать внутри группы» — в уровни 1/2."""
     old = all(_num(saved.get("width_" + k)) == w for k, w in OLD_DEFAULT_WIDTHS.items())
     if old:
         for key, _heading, width in COLUMNS:
             if key in OLD_DEFAULT_WIDTHS:
                 values["width_" + key] = width
+    if not any((saved.get("room_sort{}_param".format(n)) or u"").strip()
+               for n in range(1, SORT_LEVELS + 1)):
+        group = (saved.get("room_group_param") or u"").strip()
+        inner = (saved.get("room_sort_param") or u"").strip()
+        level = 1
+        if group:
+            values["room_sort1_param"] = group
+            values["room_sort1_header"] = "yes"
+            level = 2
+        if inner:
+            values["room_sort{}_param".format(level)] = inner
 
 
 def _num(value):
@@ -55,14 +104,25 @@ def _num(value):
         return None
 
 
+def sort_levels(settings):
+    """Заполненные уровни сортировки по порядку: [(имя параметра, по
+    убыванию, показывать заголовок)]."""
+    levels = []
+    for n in range(1, SORT_LEVELS + 1):
+        name = (settings.get("room_sort{}_param".format(n)) or u"").strip()
+        if name:
+            levels.append((name,
+                           settings.get("room_sort{}_order".format(n)) == ORDER_DESC,
+                           settings.get("room_sort{}_header".format(n)) == "yes"))
+    return levels
+
+
 def room_params(settings):
-    """{"number", "name", "area", "category", "group", "sort": имя параметра
-    или ""}: столбцы, группировка (с заголовком группы) и сортировка внутри
-    группы (пусто — по номеру помещения)."""
+    """{"number", "name", "area", "category": имя параметра или "",
+    "levels": [имена параметров уровней сортировки]}."""
     params = dict((key, (settings.get(key + "_param") or u"").strip())
                   for key in ("number", "name", "area", "category"))
-    params["group"] = (settings.get("room_group_param") or u"").strip()
-    params["sort"] = (settings.get("room_sort_param") or u"").strip()
+    params["levels"] = [name for name, _d, _h in sort_levels(settings)]
     return params
 
 
@@ -142,24 +202,7 @@ SETTINGS = settings_core.TextSettings(
             ),
             default=u"", required=False,
         ),
-        settings_core.TextField(
-            "room_group_param", u"⑥ Группировка и сортировка",
-            u"Группировать по параметру",
-            hint=(u"Имя параметра помещения (например, секция, этаж, "
-                  u"назначение). Помещения с одинаковым значением идут вместе "
-                  u"под строкой-заголовком с этим значением; группы — по "
-                  u"возрастанию, помещения без значения — в конце, в группе "
-                  u"«Без группы». Пусто — без группировки. В ключевой "
-                  u"спецификации для этого заводится ещё скрытый параметр "
-                  u"LL_Экспликация_Группа."),
-            default=u"", required=False,
-        ),
-        settings_core.TextField(
-            "room_sort_param", u"", u"Сортировать внутри группы по параметру",
-            hint=(u"Имя параметра помещения. Пусто — по номеру помещения. "
-                  u"При одинаковом значении — по номеру помещения."),
-            default=u"", required=False,
-        ),
+    ] + _sort_fields() + [
         settings_core.NumberField(
             "area_decimals", u"⑦ Площадь", u"Знаков после запятой в площади",
             hint=u"По умолчанию 2 (12,35).",
@@ -172,13 +215,13 @@ SETTINGS = settings_core.TextSettings(
         ),
         settings_core.NumberField(
             "row_height", u"", u"Строка помещения, мм",
-            hint=u"По умолчанию 8 мм (форма 2 ГОСТ 21.501). Строка-заголовок группы — той же высоты.",
+            hint=u"По умолчанию 8 мм (форма 2 ГОСТ 21.501). Заголовок группы — той же высоты.",
             default=ROW_HEIGHT_MM, minimum=3.0,
         ),
     ],
     migrate=_migrate,
     reset_button=True,
-    width=760, height=900,
+    width=760, height=920,
 )
 
 load_saved_values = SETTINGS.load_saved_values

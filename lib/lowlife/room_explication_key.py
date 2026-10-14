@@ -39,10 +39,15 @@ PARAMS = (
 )
 GROUP_NAME = u"LowLife"
 
-# Скрытый параметр-группа (настройка «Группировать по параметру»): по нему
-# спецификация группирует строки с заголовком группы. Заводится, только
-# когда группировка включена.
-GROUP_PARAM = ("group", u"LL_Экспликация_Группа", "643c9ce8-c6fe-475d-9365-17294eb51678")
+# Скрытые параметры заголовков групп — по одному на уровень сортировки с
+# заголовком (настройка «Сортировка/группировка»). По ним спецификация
+# группирует строки с заголовком; заводятся, только когда уровень нужен.
+GROUP_PARAMS = (
+    (0, u"LL_Экспликация_Группа", "643c9ce8-c6fe-475d-9365-17294eb51678"),
+    (1, u"LL_Экспликация_Группа2", "6cb0de87-ddae-4349-88a2-2f575d0b7d8d"),
+    (2, u"LL_Экспликация_Группа3", "ab1afc58-7c78-424a-af96-e3e91bce88d9"),
+    (3, u"LL_Экспликация_Группа4", "2123db5e-e20b-4e59-81b2-7110ea0ff5f9"),
+)
 
 
 def _text_spec():
@@ -169,11 +174,11 @@ def _fields_by_param(definition):
     return result
 
 
-def _setup_fields(doc, schedule, param_ids, columns, group_param_id=None):
+def _setup_fields(doc, schedule, param_ids, columns, group_levels=()):
     """Поля в порядке столбцов, заголовки, ширины; «Ключевое имя» скрыто и по
-    нему сортировка. group_param_id — параметр группы: скрытое поле, по
-    которому строки группируются с заголовком группы (до сортировки по
-    ключевому имени); None — без группировки."""
+    нему сортировка. group_levels — [(ElementId параметра, по убыванию)] —
+    уровни с заголовком: скрытые поля, по которым строки группируются с
+    заголовком (до сортировки по ключевому имени)."""
     d = schedule.Definition
     existing = _fields_by_param(d)
     schedulable = dict((str(sf.ParameterId), sf) for sf in d.GetSchedulableFields())
@@ -205,9 +210,9 @@ def _setup_fields(doc, schedule, param_ids, columns, group_param_id=None):
     except Exception:
         pass
 
-    group_field = None
-    if group_param_id is not None:
-        gid = str(group_param_id)
+    group_fields = []
+    for param_id, descending in group_levels:
+        gid = str(param_id)
         group_field = existing.get(gid)
         if group_field is None:
             sf = schedulable.get(gid)
@@ -216,13 +221,17 @@ def _setup_fields(doc, schedule, param_ids, columns, group_param_id=None):
                                    u"спецификации помещений.")
             group_field = d.AddField(sf)
         group_field.IsHidden = True
+        group_fields.append((group_field, descending))
 
     try:
         d.ClearSortGroupFields()
     except Exception:
         pass
-    if group_field is not None:
-        by_group = ScheduleSortGroupField(group_field.FieldId)
+    from Autodesk.Revit.DB import ScheduleSortOrder
+    for group_field, descending in group_fields:
+        by_group = ScheduleSortGroupField(
+            group_field.FieldId,
+            ScheduleSortOrder.Descending if descending else ScheduleSortOrder.Ascending)
         by_group.ShowHeader = True
         by_group.ShowFooter = False
         by_group.ShowBlankLine = False
@@ -286,29 +295,35 @@ def create(doc, name):
     return schedule
 
 
-def fill(doc, app, schedule, title, columns, table, heights):
+def fill(doc, app, schedule, title, columns, table, heights, header_orders=()):
     """
     Поля/заголовки/ширины, строки помещений, название, высота строк.
     table — room_explication_core.build_table: строки ("row", ...) идут в
     тело в этом порядке (ключевые имена 001, 002, …), заголовки групп
-    ("group", ...) — в скрытый параметр группы, по которому спецификация
-    группирует строки с заголовком. Вызывать в транзакции. Возвращает
-    список замечаний (пустой — всё задано).
+    ("group", (уровень, текст)) — в скрытые параметры групп по уровням, по
+    которым спецификация группирует строки с заголовками. header_orders —
+    «по убыванию» для каждого уровня с заголовком. Вызывать в транзакции.
+    Возвращает список замечаний (пустой — всё задано).
     """
-    rows, groups, title_of = [], [], None
+    depth_count = len(header_orders)
+    rows, groups = [], []
+    current = [u""] * depth_count
     for kind, item in table:
         if kind == "group":
-            title_of = item
+            depth, text = item
+            if depth < depth_count:
+                current[depth] = text
         else:
             rows.append(item)
-            groups.append(title_of)
-    grouped = any(g is not None for g in groups)
+            groups.append(list(current))
+    specs = GROUP_PARAMS[:depth_count]
 
     param_ids = ensure_params(doc, app)
-    group_id = None
-    if grouped:
-        group_id = ensure_params(doc, app, (GROUP_PARAM,))["group"]
-    _setup_fields(doc, schedule, param_ids, columns, group_id)
+    group_levels = []
+    if specs:
+        group_ids = ensure_params(doc, app, specs)
+        group_levels = [(group_ids[depth], header_orders[depth]) for depth, _n, _g in specs]
+    _setup_fields(doc, schedule, param_ids, columns, group_levels)
 
     old = _schedule_rows(doc, schedule)
     if old:
@@ -328,14 +343,14 @@ def fill(doc, app, schedule, title, columns, table, heights):
         row_el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME).Set(
             u"tmp-{}".format(row_el.UniqueId))
     guids = [(i, Guid(guid)) for i, (_key, _name, guid) in enumerate(PARAMS)]
-    group_guid = Guid(GROUP_PARAM[2])
+    group_guids = [Guid(g) for _d, _n, g in specs]
     for row_el, key_name, values, group in zip(
             new_rows, core.key_names(len(rows)), rows, groups):
         row_el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME).Set(key_name)
         for i, guid in guids:
             row_el.get_Parameter(guid).Set(values[i])
-        if grouped:
-            row_el.get_Parameter(group_guid).Set(group or u"")
+        for guid, text in zip(group_guids, group):
+            row_el.get_Parameter(guid).Set(text)
 
     try:
         header = schedule.GetTableData().GetSectionData(SectionType.Header)
