@@ -152,6 +152,7 @@ THEMES = {
         (u"Tools", u"FamilySection"),
         (u"Tools", u"AlignViewRange"),
         (u"Tools", u"LevelViews"),
+        (u"Tools", u"Rotate3DView"),
         (u"Tools", u"Hello"),
         (u"Tools", u"SpellCheck"),
         (u"Tools", u"DwgToDrafting"),
