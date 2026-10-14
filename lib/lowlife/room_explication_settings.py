@@ -11,7 +11,8 @@ settings_core.TextSettings (Shift+клик по кнопке). Умолчани�
 
 from lowlife import settings_core
 from lowlife.room_explication_core import (
-    COLUMNS, HEADER_HEIGHT_MM, OLD_DEFAULT_WIDTHS, ROW_HEIGHT_MM, TITLE)
+    COLUMNS, HEADER_HEIGHT_MM, KIND_HEADER, KIND_KEY, OLD_DEFAULT_WIDTHS,
+    ROW_HEIGHT_MM, TITLE)
 
 _LABELS = {
     "number": u"Номер помещения",
@@ -61,9 +62,8 @@ def room_params(settings):
 
 
 def kind(settings):
-    """Вид новой экспликации: room_explication.KIND_KEY или KIND_HEADER."""
-    from lowlife.room_explication import KIND_HEADER, KIND_KEY
-    return KIND_KEY if _num(settings.get("kind")) == 2 else KIND_HEADER
+    """Вид новой экспликации: KIND_KEY или KIND_HEADER."""
+    return KIND_KEY if settings.get("kind") == KIND_KEY else KIND_HEADER
 
 
 def title(settings):
@@ -82,21 +82,28 @@ SETTINGS = settings_core.TextSettings(
     heading=u"Экспликация фрагмента: столбцы таблицы",
     transfer_label=u"экспликации фрагмента",
     fields=[
-        settings_core.NumberField(
-            "kind", u"Таблица", u"Вид таблицы: 1 — таблица в шапке, 2 — ключевая спецификация",
-            hint=(u"1 — свободная таблица в шапке спецификации: без параметров в "
-                  u"модели, высота строк задаётся точно, на листе на части не "
-                  u"делится. 2 — ключевая спецификация: делится на части на "
-                  u"листе, но Revit требует параметры столбцов — кнопка заведёт "
-                  u"помещениям 4 текстовых параметра LL_Экспликация_*, а Revit "
-                  u"добавит по ключевому параметру на каждую экспликацию; высоту "
-                  u"строк тела Revit может не принять. Вид уже созданной "
-                  u"экспликации не меняется — чтобы сменить, удалите её и "
-                  u"создайте заново."),
-            default=1, minimum=1, integer=True,
+        settings_core.ChoiceField(
+            "kind", u"Вид таблицы", u"",
+            [(KIND_HEADER, u"Таблица в шапке спецификации"),
+             (KIND_KEY, u"Ключевая спецификация")],
+            hint=(
+                u"Таблица в шапке спецификации — свободная таблица: в модели не "
+                u"появляется никаких параметров, высота строк задаётся точно; "
+                u"на листе её нельзя разделить на части.\n"
+                u"Ключевая спецификация — делится на части на листе. Но столбцы "
+                u"ключевой спецификации в Revit — всегда параметры: кнопка "
+                u"заведёт помещениям 4 текстовых параметра LL_Экспликация_*, а "
+                u"Revit добавит помещениям ключевой параметр на каждую такую "
+                u"экспликацию. Высоту строк помещений Revit может не принять — "
+                u"тогда она идёт от размера текста.\n"
+                u"Действует на новые экспликации; чтобы сменить вид у готовой, "
+                u"удалите её и создайте заново."
+            ),
+            default=KIND_HEADER,
+            legacy={1: KIND_HEADER, 2: KIND_KEY},
         ),
         settings_core.TextField(
-            "title", u"", u"Название над таблицей",
+            "title", u"Таблица", u"Название над таблицей",
             hint=u"Пусто — «{}».".format(TITLE),
             default=TITLE, required=False,
         ),

@@ -551,8 +551,8 @@ def fill_table(doc, schedule, title, columns, rows, heights):
             _set_style(header, r, col0 + j, center=(i == 0 or columns[j][0] != "name"))
 
 
-KIND_HEADER = "header"  # таблица текстом в шапке, без параметров
-KIND_KEY = "key"        # ключевая спецификация (room_explication_key)
+KIND_HEADER = core.KIND_HEADER
+KIND_KEY = core.KIND_KEY
 
 
 def kind_of(schedule):

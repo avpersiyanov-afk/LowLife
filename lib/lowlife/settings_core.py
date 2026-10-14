@@ -42,7 +42,7 @@ pyrevit.script.get_config() (тот не гарантированно делил
 полей (имена параметров, маски, префиксы, отступы), всё остальное —
 загрузка с умолчаниями, require(), окно с проверкой чисел, «Выгрузить/
 Загрузить настройки…», Shift+клик/тихий режим — делает TextSettings по
-описанию полей (TextField, NumberField):
+описанию полей (TextField, NumberField, ChoiceField):
 
     SETTINGS = settings_core.TextSettings(
         file_name="LowLifeRoomLots_settings.json",
@@ -372,9 +372,60 @@ class NumberField(TextField):
         return self.default if number is None else number
 
 
+class ChoiceField(TextField):
+    """
+    Выбор одного варианта из списка: в окне — выпадающий список с
+    подписями, в файле и в настройках кнопки — значение варианта.
+
+    choices — [(значение, подпись), ...] в порядке показа. Сохранённое
+    значение, которого нет среди вариантов, при загрузке проходит через
+    legacy (словарь {старое значение: новое}, например {1: "header"}), а
+    иначе заменяется умолчанием.
+    """
+
+    param_spec = None
+
+    def __init__(self, key, section, label, choices, hint=u"", default=None,
+                 required=False, legacy=None):
+        if default is None:
+            default = choices[0][0]
+        TextField.__init__(self, key, section, label, hint, default, required)
+        self.choices = list(choices)
+        self.legacy = dict(legacy or {})
+
+    def labels(self):
+        return [label for _value, label in self.choices]
+
+    def display(self, value):
+        value = self.coerce(value)
+        for v, label in self.choices:
+            if v == value:
+                return label
+        return self.choices[0][1]
+
+    def parse(self, text):
+        for v, label in self.choices:
+            if label == text:
+                return v, None
+        return None, u"{} — выберите вариант из списка".format(self.title())
+
+    def coerce(self, value):
+        values = [v for v, _label in self.choices]
+        if value in values:
+            return value
+        for old in (value, _text(value).strip()):
+            try:
+                if old in self.legacy:
+                    return self.legacy[old]
+            except TypeError:
+                pass
+        return self.default
+
+
 class TextSettings(object):
     """
-    Настройки кнопки из простых полей (TextField/NumberField): хранение + окно.
+    Настройки кнопки из простых полей (TextField/NumberField/ChoiceField —
+    выпадающий список): хранение + окно.
 
     file_name      — имя JSON-файла в %APPDATA%\\pyRevit.
     button_name    — название кнопки на ленте (заголовок окна, подсказка
@@ -483,7 +534,7 @@ class TextSettings(object):
         )
         from System.Windows.Controls import (
             StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock,
-            ScrollViewer, ScrollBarVisibility
+            ScrollViewer, ScrollBarVisibility, ComboBox
         )
         from System.Windows.Media import Brushes
 
@@ -522,7 +573,8 @@ class TextSettings(object):
         hint.Margin = Thickness(0, 0, 0, 10)
         root.Children.Add(hint)
 
-        boxes = {}
+        boxes = {}    # текстовые поля (к ним цепляются подсказки)
+        combos = {}   # ChoiceField — выпадающие списки
 
         for field in self.fields:
             star = u" *" if field.required else u""
@@ -543,11 +595,21 @@ class TextSettings(object):
                 label.TextWrapping = TextWrapping.Wrap
                 root.Children.Add(label)
 
-            box = TextBox()
-            box.Text = field.display(values.get(field.key))
-            box.Padding = Thickness(4)
-            root.Children.Add(box)
-            boxes[field.key] = box
+            if isinstance(field, ChoiceField):
+                combo = ComboBox()
+                for label_text in field.labels():
+                    combo.Items.Add(label_text)
+                combo.SelectedIndex = field.labels().index(
+                    field.display(values.get(field.key)))
+                combo.Padding = Thickness(4)
+                root.Children.Add(combo)
+                combos[field.key] = (field, combo)
+            else:
+                box = TextBox()
+                box.Text = field.display(values.get(field.key))
+                box.Padding = Thickness(4)
+                root.Children.Add(box)
+                boxes[field.key] = box
 
             if field.hint:
                 field_hint = TextBlock()
@@ -592,9 +654,10 @@ class TextSettings(object):
         ok_btn.FontWeight = FontWeights.Bold
 
         def on_ok(sender, args):
-            parsed, errors = self.parse_form(
-                dict((key, box.Text) for key, box in boxes.items())
-            )
+            texts = dict((key, box.Text) for key, box in boxes.items())
+            for key, (_field, combo) in combos.items():
+                texts[key] = combo.SelectedItem or u""
+            parsed, errors = self.parse_form(texts)
             if errors:
                 forms.alert(u"Проверьте значения:\n\n" + u"\n".join(errors))
                 return
@@ -615,7 +678,12 @@ class TextSettings(object):
 
             def on_reset(sender, args):
                 for field in self.fields:
-                    boxes[field.key].Text = field.display(field.default)
+                    if field.key in combos:
+                        combo = combos[field.key][1]
+                        combo.SelectedIndex = field.labels().index(
+                            field.display(field.default))
+                    else:
+                        boxes[field.key].Text = field.display(field.default)
 
             reset_btn.Click += on_reset
             buttons.Children.Add(reset_btn)

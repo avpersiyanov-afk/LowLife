@@ -488,6 +488,7 @@ _write_all = _STORE.write
 |---|---|---|
 | `TextField` | `TextField(key, section, label, hint=u"", default=u"", required=False)` | Поле: жирный заголовок раздела, подпись (у обязательных « *»), поле ввода, серое пояснение. Пустой `section` — поле продолжает предыдущий раздел; пустой `label` — подписью служит `section` |
 | `NumberField` | `NumberField(key, section, label, hint=u"", default=0.0, required=False, minimum=None, integer=False)` | Числовое поле: в окне текст (запятая или точка), в файле и настройках — `float`/`int`. Нечисло или меньше `minimum` — «Сохранить» не закрывает окно; битое сохранённое значение при загрузке → `default` |
+| `ChoiceField` | `ChoiceField(key, section, label, choices, hint=u"", default=None, required=False, legacy=None)` | Выбор из списка: в окне — выпадающий список подписей `choices` (`[(значение, подпись), ...]`), в файле и настройках — значение. Неизвестное сохранённое значение — через `legacy` (`{старое: новое}`), иначе `default` (по умолчанию — первый вариант) |
 | `TextSettings` | `TextSettings(file_name, button_name, heading, transfer_label, fields, migrate=None, intro=None, reset_button=False, width=720, height=440)` | `button_name` — заголовок окна и подсказка «Shift+клик по кнопке …» в `require`; `transfer_label` — для «Выгрузить/Загрузить настройки…» и текста `require` («настройки <transfer_label>»); `migrate(saved, values)` — перенос старых ключей в новые после подстановки умолчаний; `intro` — серый текст под заголовком; `reset_button` — кнопка «Сбросить» (умолчания в окне, сохраняется по «Сохранить») |
 | `.load_saved_values` / `.get_settings_silent` | `()` | Значения из файла, иначе умолчания полей (числа — числами, + `migrate`) |
 | `.parse_form` | `(texts)` | `{ключ: текст из окна}` → `(значения, ошибки)` — проверка перед закрытием окна |
@@ -2264,7 +2265,8 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   экспликации — `room_explication.kind_of` (по `IsKeySchedule`), вид новой —
   настройка `kind`.
 - `room_explication_settings.py` — `TextSettings` (Shift+клик по «Экспликации
-  фрагмента»): вид таблицы (`kind`), название таблицы, заголовки и ширины граф, высота шапки и
+  фрагмента»): вид таблицы (`kind`, `ChoiceField`: таблица в шапке /
+  ключевая спецификация; старые 1/2 переводятся), название таблицы, заголовки и ширины граф, высота шапки и
   строк, параметры номера/имени/площади (пусто — встроенные) и категории,
   знаки площади; `room_params`, `title`, `columns`, `heights`;
   настройки со старыми умолчаниями ширин (60/15) переводятся на 80/10.
