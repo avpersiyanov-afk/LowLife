@@ -11,7 +11,7 @@ import os
 import pytest
 
 from lowlife import settings_core
-from lowlife.settings_core import JsonStore, NumberField, TextField, TextSettings
+from lowlife.settings_core import ChoiceField, JsonStore, NumberField, TextField, TextSettings
 
 
 @pytest.fixture
@@ -304,3 +304,20 @@ def test_store_without_share_ignores_shared_values(appdata):
     assert plain.read().get("wire_mark_param") is None
     plain.write({"wire_mark_param": u"Другое"})
     assert settings_core.read_shared()["wire_mark_param"] == u"Марка"
+
+
+def test_choice_field_labels_values_and_legacy():
+    f = ChoiceField("kind", u"Вид", u"", [("a", u"Первый"), ("b", u"Второй")],
+                    legacy={2: "b", u"2": "b", 1: "a"})
+    assert f.default == "a"
+    assert f.labels() == [u"Первый", u"Второй"]
+    assert f.display("b") == u"Второй"
+    assert f.parse(u"Второй") == ("b", None)
+    value, error = f.parse(u"нет такого")
+    assert value is None and error
+    assert f.coerce("b") == "b"
+    assert f.coerce(2) == "b"            # старое числовое значение
+    assert f.coerce(2.0) == "b"
+    assert f.coerce(u"2") == "b"
+    assert f.coerce(u"мусор") == "a"     # битое — умолчание
+    assert f.display(None) == u"Первый"
