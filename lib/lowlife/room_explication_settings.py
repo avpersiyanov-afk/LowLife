@@ -56,9 +56,14 @@ def _num(value):
 
 
 def room_params(settings):
-    """{"number", "name", "area", "category": имя параметра или ""}."""
-    return dict((key, (settings.get(key + "_param") or u"").strip())
-                for key in ("number", "name", "area", "category"))
+    """{"number", "name", "area", "category", "group", "sort": имя параметра
+    или ""}: столбцы, группировка (с заголовком группы) и сортировка внутри
+    группы (пусто — по номеру помещения)."""
+    params = dict((key, (settings.get(key + "_param") or u"").strip())
+                  for key in ("number", "name", "area", "category"))
+    params["group"] = (settings.get("room_group_param") or u"").strip()
+    params["sort"] = (settings.get("room_sort_param") or u"").strip()
+    return params
 
 
 def kind(settings):
@@ -137,25 +142,43 @@ SETTINGS = settings_core.TextSettings(
             ),
             default=u"", required=False,
         ),
+        settings_core.TextField(
+            "room_group_param", u"⑥ Группировка и сортировка",
+            u"Группировать по параметру",
+            hint=(u"Имя параметра помещения (например, секция, этаж, "
+                  u"назначение). Помещения с одинаковым значением идут вместе "
+                  u"под строкой-заголовком с этим значением; группы — по "
+                  u"возрастанию, помещения без значения — в конце, в группе "
+                  u"«Без группы». Пусто — без группировки. В ключевой "
+                  u"спецификации для этого заводится ещё скрытый параметр "
+                  u"LL_Экспликация_Группа."),
+            default=u"", required=False,
+        ),
+        settings_core.TextField(
+            "room_sort_param", u"", u"Сортировать внутри группы по параметру",
+            hint=(u"Имя параметра помещения. Пусто — по номеру помещения. "
+                  u"При одинаковом значении — по номеру помещения."),
+            default=u"", required=False,
+        ),
         settings_core.NumberField(
-            "area_decimals", u"", u"Знаков после запятой в площади",
+            "area_decimals", u"⑦ Площадь", u"Знаков после запятой в площади",
             hint=u"По умолчанию 2 (12,35).",
             default=2, minimum=0, integer=True,
         ),
         settings_core.NumberField(
-            "header_height", u"⑥ Высота строк", u"Шапка таблицы, мм",
+            "header_height", u"⑧ Высота строк", u"Шапка таблицы, мм",
             hint=u"По умолчанию 20 мм (форма 2 ГОСТ 21.501).",
             default=HEADER_HEIGHT_MM, minimum=3.0,
         ),
         settings_core.NumberField(
             "row_height", u"", u"Строка помещения, мм",
-            hint=u"По умолчанию 8 мм (форма 2 ГОСТ 21.501).",
+            hint=u"По умолчанию 8 мм (форма 2 ГОСТ 21.501). Строка-заголовок группы — той же высоты.",
             default=ROW_HEIGHT_MM, minimum=3.0,
         ),
     ],
     migrate=_migrate,
     reset_button=True,
-    width=760, height=860,
+    width=760, height=900,
 )
 
 load_saved_values = SETTINGS.load_saved_values

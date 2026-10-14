@@ -73,3 +73,37 @@ def test_old_default_widths_migrate_to_gost():
     custom = {"width_name": 70.0, "width_category": 15.0}
     rs._migrate({"width_name": 70, "width_category": 15}, custom)
     assert custom == {"width_name": 70.0, "width_category": 15.0}
+
+
+def _room(number, group=None, sort=None, name=u"П"):
+    r = {"number": number, "name": name, "area_m2": 1.0, "category": u""}
+    if group is not None:
+        r["group"] = group
+    if sort is not None:
+        r["sort"] = sort
+    return r
+
+
+def test_build_table_groups_with_headers_and_number_order_inside():
+    rooms = [_room(u"2.10", u"Секция 2"), _room(u"1.2", u"Секция 1"),
+             _room(u"2.9", u"Секция 2"), _room(u"5", u""), _room(u"1.10", u"Секция 1")]
+    table = core.build_table(rooms, grouped=True)
+    assert [(k, v if k == "group" else v[0]) for k, v in table] == [
+        ("group", u"Секция 1"), ("row", u"1.2"), ("row", u"1.10"),
+        ("group", u"Секция 2"), ("row", u"2.9"), ("row", u"2.10"),
+        ("group", core.NO_GROUP), ("row", u"5"),
+    ]
+    assert len(core.table_rows(table)) == 5
+
+
+def test_build_table_without_grouping_is_rows_only():
+    table = core.build_table([_room(u"2"), _room(u"1")])
+    assert [k for k, _ in table] == ["row", "row"]
+    assert core.table_rows(table)[0][0] == u"1"
+
+
+def test_sort_parameter_inside_group_then_number():
+    rooms = [_room(u"1", u"А", sort=u"б"), _room(u"2", u"А", sort=u"а"),
+             _room(u"3", u"А", sort=u"а")]
+    rows = core.table_rows(core.build_table(rooms, grouped=True))
+    assert [r[0] for r in rows] == [u"2", u"3", u"1"]

@@ -39,6 +39,11 @@ PARAMS = (
 )
 GROUP_NAME = u"LowLife"
 
+# Скрытый параметр-группа (настройка «Группировать по параметру»): по нему
+# спецификация группирует строки с заголовком группы. Заводится, только
+# когда группировка включена.
+GROUP_PARAM = ("group", u"LL_Экспликация_Группа", "643c9ce8-c6fe-475d-9365-17294eb51678")
+
 
 def _text_spec():
     try:
@@ -102,14 +107,15 @@ def _create_definitions(app, missing):
     return result
 
 
-def ensure_params(doc, app):
+def ensure_params(doc, app, specs=PARAMS):
     """
-    Четыре параметра столбцов привязаны к помещениям (экземпляр). Вызывать
-    в транзакции. Возвращает {ключ: ElementId параметра}.
+    Параметры specs ((ключ, имя, GUID), по умолчанию четыре столбца)
+    привязаны к помещениям (экземпляр). Вызывать в транзакции. Возвращает
+    {ключ: ElementId параметра}.
     """
     rooms_cat = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Rooms)
     missing = []
-    for key, name, guid in PARAMS:
+    for key, name, guid in specs:
         definition, binding = _find_binding(doc, Guid(guid))
         if definition is None:
             missing.append((key, name, guid))
@@ -129,7 +135,7 @@ def ensure_params(doc, app):
                 raise RuntimeError(u"Не удалось привязать параметр «{}» к помещениям.".format(name))
 
     ids = {}
-    for key, name, guid in PARAMS:
+    for key, name, guid in specs:
         shared = SharedParameterElement.Lookup(doc, Guid(guid))
         if shared is None:
             raise RuntimeError(u"Параметр «{}» не найден после создания.".format(name))
@@ -163,9 +169,11 @@ def _fields_by_param(definition):
     return result
 
 
-def _setup_fields(doc, schedule, param_ids, columns):
+def _setup_fields(doc, schedule, param_ids, columns, group_param_id=None):
     """Поля в порядке столбцов, заголовки, ширины; «Ключевое имя» скрыто и по
-    нему сортировка."""
+    нему сортировка. group_param_id — параметр группы: скрытое поле, по
+    которому строки группируются с заголовком группы (до сортировки по
+    ключевому имени); None — без группировки."""
     d = schedule.Definition
     existing = _fields_by_param(d)
     schedulable = dict((str(sf.ParameterId), sf) for sf in d.GetSchedulableFields())
@@ -197,10 +205,31 @@ def _setup_fields(doc, schedule, param_ids, columns):
     except Exception:
         pass
 
+    group_field = None
+    if group_param_id is not None:
+        gid = str(group_param_id)
+        group_field = existing.get(gid)
+        if group_field is None:
+            sf = schedulable.get(gid)
+            if sf is None:
+                raise RuntimeError(u"Параметр группы недоступен в ключевой "
+                                   u"спецификации помещений.")
+            group_field = d.AddField(sf)
+        group_field.IsHidden = True
+
+    try:
+        d.ClearSortGroupFields()
+    except Exception:
+        pass
+    if group_field is not None:
+        by_group = ScheduleSortGroupField(group_field.FieldId)
+        by_group.ShowHeader = True
+        by_group.ShowFooter = False
+        by_group.ShowBlankLine = False
+        d.AddSortGroupField(by_group)
     if key_field is not None:
         key_field.IsHidden = True
         try:
-            d.ClearSortGroupFields()
             d.AddSortGroupField(ScheduleSortGroupField(key_field.FieldId))
         except Exception:
             pass
@@ -257,13 +286,29 @@ def create(doc, name):
     return schedule
 
 
-def fill(doc, app, schedule, title, columns, rows, heights):
+def fill(doc, app, schedule, title, columns, table, heights):
     """
     Поля/заголовки/ширины, строки помещений, название, высота строк.
-    Вызывать в транзакции. Возвращает список замечаний (пустой — всё задано).
+    table — room_explication_core.build_table: строки ("row", ...) идут в
+    тело в этом порядке (ключевые имена 001, 002, …), заголовки групп
+    ("group", ...) — в скрытый параметр группы, по которому спецификация
+    группирует строки с заголовком. Вызывать в транзакции. Возвращает
+    список замечаний (пустой — всё задано).
     """
+    rows, groups, title_of = [], [], None
+    for kind, item in table:
+        if kind == "group":
+            title_of = item
+        else:
+            rows.append(item)
+            groups.append(title_of)
+    grouped = any(g is not None for g in groups)
+
     param_ids = ensure_params(doc, app)
-    _setup_fields(doc, schedule, param_ids, columns)
+    group_id = None
+    if grouped:
+        group_id = ensure_params(doc, app, (GROUP_PARAM,))["group"]
+    _setup_fields(doc, schedule, param_ids, columns, group_id)
 
     old = _schedule_rows(doc, schedule)
     if old:
@@ -283,10 +328,14 @@ def fill(doc, app, schedule, title, columns, rows, heights):
         row_el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME).Set(
             u"tmp-{}".format(row_el.UniqueId))
     guids = [(i, Guid(guid)) for i, (_key, _name, guid) in enumerate(PARAMS)]
-    for row_el, key_name, values in zip(new_rows, core.key_names(len(rows)), rows):
+    group_guid = Guid(GROUP_PARAM[2])
+    for row_el, key_name, values, group in zip(
+            new_rows, core.key_names(len(rows)), rows, groups):
         row_el.get_Parameter(BuiltInParameter.REF_TABLE_ELEM_NAME).Set(key_name)
         for i, guid in guids:
             row_el.get_Parameter(guid).Set(values[i])
+        if grouped:
+            row_el.get_Parameter(group_guid).Set(group or u"")
 
     try:
         header = schedule.GetTableData().GetSectionData(SectionType.Header)
