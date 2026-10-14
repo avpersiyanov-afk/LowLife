@@ -2265,7 +2265,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   экспликации — `room_explication.kind_of` (по `IsKeySchedule`), вид новой —
   настройка `kind`.
 - `room_explication_settings.py` — `TextSettings` (Shift+клик по «Экспликации
-  фрагмента»): вид таблицы (`kind`, `ChoiceField`: таблица в шапке /
+  фрагмента»): вид таблицы (`kind`, `ChoiceField`: «Ручная спецификация» (таблица в шапке) /
   ключевая спецификация; старые 1/2 переводятся), название таблицы, заголовки и ширины граф, высота шапки и
   строк, параметры номера/имени/площади (пусто — встроенные) и категории,
   знаки площади; `room_params`, `title`, `columns`, `heights`;
