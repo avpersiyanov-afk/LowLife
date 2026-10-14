@@ -133,8 +133,9 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 (подпись + направление с трансформацией связи, сортировка `natural_key`);
 `element_line(element)` — прямая линия
 оси сетки, линии модели или линейной `LocationCurve`;
-`make_pick_filter(doc)` — фильтр для `PickObject(ObjectType.LinkedElement)`
-(модель и связи); `picked_direction(doc, reference)` — направление оси в
+`make_pick_filter(doc, linked)` — фильтр для `PickObject`: элементы модели
+(`ObjectType.Element`) или связей (`ObjectType.LinkedElement`, где Revit
+даёт выбирать только содержимое связей); `picked_direction(doc, reference)` — направление оси в
 координатах модели (с трансформацией связи); `view_pivot(view)` — центр
 рамки 3D вида или `CropBox`; `align_view(view, direction)` — поворачивает
 рамку 3D вида (стороны параллельно оси) и камеру, в открытой транзакции.

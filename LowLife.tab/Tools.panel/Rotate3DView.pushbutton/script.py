@@ -43,10 +43,11 @@ def align(direction):
     uidoc.RefreshActiveView()
 
 
-FROM_LIST = u"Ось сетки из списка"
-ON_VIEW = u"Кликнуть линию на виде (стена, лоток, линия…)"
+FROM_LIST = u"Ось сетки из списка (модель и связи)"
+IN_MODEL = u"Кликнуть линию в модели (ось, стена, лоток, линия…)"
+IN_LINK = u"Кликнуть линию в связанном файле"
 mode = forms.CommandSwitchWindow.show(
-    [FROM_LIST, ON_VIEW], message=u"Под какую ось повернуть 3D вид?")
+    [FROM_LIST, IN_MODEL, IN_LINK], message=u"Под какую ось повернуть 3D вид?")
 if not mode:
     script.exit()
 
@@ -61,21 +62,21 @@ if mode == FROM_LIST:
         button_name=u"Повернуть", multiselect=False)
     if not picked:
         script.exit()
-    align(by_label[picked])
-    script.exit()
-
-pick_filter = view_rotate.make_pick_filter(doc)
-while True:
+    direction = by_label[picked]
+else:
+    # Один выбор — и сразу поворот: выбор после поворота (и Esc в нём)
+    # возвращал виду прежнюю ориентацию.
+    linked = mode == IN_LINK
     try:
         ref = uidoc.Selection.PickObject(
-            ObjectType.LinkedElement, pick_filter,
-            u"Повернуть 3D вид: выберите прямую линию (Esc — выход)")
+            ObjectType.LinkedElement if linked else ObjectType.Element,
+            view_rotate.make_pick_filter(doc, linked),
+            u"Повернуть 3D вид: выберите прямую линию (Esc — отмена)")
     except OperationCanceledException:
         script.exit()
-
     try:
         direction, _name = view_rotate.picked_direction(doc, ref)
     except ValueError as err:
-        forms.alert(unicode(err), title=TITLE)
-        continue
-    align(direction)
+        forms.alert(unicode(err), title=TITLE, exitscript=True)
+
+align(direction)
