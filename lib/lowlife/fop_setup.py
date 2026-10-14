@@ -117,15 +117,6 @@ def find_definition(sp_file, name):
     return None, None
 
 
-def definition_names(sp_file):
-    """{имя в нижнем регистре: имя группы} — все определения ФОП."""
-    result = {}
-    if sp_file is None:
-        return result
-    for group in sp_file.Groups:
-        for definition in group.Definitions:
-            result[definition.Name.lower()] = group.Name
-    return result
 
 
 # --- типы данных -------------------------------------------------------------------
@@ -193,6 +184,48 @@ def create_definition(sp_file, group_name, name, data_type, description=u""):
         except Exception:
             pass
     return group.Definitions.Create(options)
+
+
+def data_type_of(definition):
+    """fop_catalog.TEXT/LENGTH/NUMBER — тип определения; None — другой или не узнать."""
+    for data_type in (fop_catalog.TEXT, fop_catalog.LENGTH, fop_catalog.NUMBER):
+        if type_matches(definition, data_type):
+            return data_type
+    return None
+
+
+def definitions(sp_file):
+    """Все определения файла ФОП — список fop_catalog.FopDef."""
+    result = []
+    if sp_file is None:
+        return result
+    for group in sp_file.Groups:
+        for definition in group.Definitions:
+            result.append(fop_catalog.FopDef(definition.Name, group.Name, data_type_of(definition)))
+    return result
+
+
+def read_definitions(app, path):
+    """
+    Определения ФОП по пути path (для окна — до того, как файл подключён).
+    Revit открывает только подключённый ФОП, поэтому на время чтения
+    подключение переключается и возвращается обратно. [] — не прочитался.
+    """
+    if not path:
+        return []
+    old = connected_path(app)
+    if path == old:
+        return definitions(connected_file(app)[1])
+    try:
+        app.SharedParametersFilename = path
+        return definitions(app.OpenSharedParameterFile())
+    except Exception:
+        return []
+    finally:
+        try:
+            app.SharedParametersFilename = old
+        except Exception:
+            pass
 
 
 # --- привязки ----------------------------------------------------------------------

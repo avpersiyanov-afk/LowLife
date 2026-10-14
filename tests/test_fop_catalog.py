@@ -77,11 +77,9 @@ def test_list_setting_uses_first_name():
     assert _row(rows, "offset_param_names").Name == u"Отм1"
 
 
-def test_native_rows_unchecked_without_prefix():
-    row = _row(fc.build_rows(["SCS"]), "load_name_param")
-    assert not row.Checked
-    assert row.Name == u"Имя нагрузки"
-    assert _row(fc.build_rows(["SCS"]), "addr_param_name").Checked
+def test_builtin_revit_params_are_not_in_catalog():
+    keys = {s.key for s in fc.CATALOG}
+    assert not keys & {"circuit_panel_param", "load_name_param", "cable_type_param"}
 
 
 def test_change_prefix_keeps_edited_names():
@@ -91,7 +89,6 @@ def test_change_prefix_keeps_edited_names():
     assert _row(rows, "segment_loads_param").Name == u"X_Цепи узла"
     assert _row(rows, "route_param_name").Name == u"Правка"
     assert _row(rows, "addr_param_name").Name == u"Свой"
-    assert _row(rows, "load_name_param").Name == u"Имя нагрузки"
     assert _row(rows, "route_param_name").Example == u"X_Тип трассы"
 
 
@@ -126,4 +123,57 @@ def test_settings_updates():
     assert updates["SCS"]["addr_param_name"] == u"Адрес"
     assert updates["SKUD"]["addr_param_name"] == u"Адрес"
     assert "route_param_name" not in updates["SCS"]
-    assert "load_name_param" not in updates["SCS"]  # штатный, не отмечен
+
+
+def _defs(*items):
+    return [fc.FopDef(name, u"Группа", dtype) for name, dtype in items]
+
+
+def test_similarity():
+    spec = dict((s.key, s) for s in fc.CATALOG)
+    assert fc.similarity(spec["wire_length_param"], u"ADSK_Длина проводника") == 1
+    assert fc.similarity(spec["wire_length_param"], u"Длина кабеля") == 0
+    # лишнее слово, отличающее другую роль, — не похоже
+    assert fc.similarity(spec["wire_length_param"], u"Длина проводника в лотке") is None
+    assert fc.similarity(spec["tray_length_param"], u"ADSK_Длина проводника в лотке") == 1
+    assert fc.similarity(spec["designation_param"], u"Обозначение типа") is None
+    assert fc.similarity(spec["device_address_param"], u"Адрес устройства на схеме") is None
+    assert fc.similarity(spec["addr_param_name"], u"Номер цепи") is None
+
+
+def test_match_fop_fills_examples_only():
+    defs = _defs((u"ADSK_Длина проводника", fc.NUMBER), (u"ADSK_Длина проводника в трубе", fc.NUMBER),
+                 (u"Адрес узла", fc.TEXT), (u"ПР_Отметка", fc.LENGTH), (u"Мой адрес", fc.TEXT))
+    rows = fc.build_rows(["SCS"], {"SCS": {"addr_prev_param_name": u"Мой адрес"}})
+    _row(rows, "route_param_name").Name = u"Своё"
+    fc.match_fop(rows, defs)
+    fc.update_status(rows, defs)
+    assert _row(rows, "wire_length_param").Name == u"ADSK_Длина проводника"
+    assert _row(rows, "pipe_length_param").Name == u"ADSK_Длина проводника в трубе"
+    assert _row(rows, "tray_length_param").Name == u"LL_Длина в лотке"
+    assert _row(rows, "addr_param_name").Name == u"Адрес узла"
+    assert _row(rows, "offset_param_names").Name == u"ПР_Отметка"
+    assert _row(rows, "addr_prev_param_name").Name == u"Мой адрес"  # из настроек
+    assert _row(rows, "route_param_name").Name == u"Своё"           # правка
+    assert u"похожий" in _row(rows, "wire_length_param").FopStatus
+    assert u"есть" in _row(rows, "addr_prev_param_name").FopStatus
+    assert u"будет создан" in _row(rows, "tray_length_param").FopStatus
+
+    # другой ФОП: подставленное из старого — обратно к примеру
+    fc.match_fop(rows, [])
+    assert _row(rows, "wire_length_param").Name == u"LL_Длина проводника"
+
+
+def test_match_fop_one_definition_per_row_prefers_type():
+    defs = _defs((u"Длина проводника", fc.LENGTH), (u"Длина кабеля", fc.NUMBER))
+    rows = fc.build_rows(["SCS"])
+    fc.match_fop(rows, defs)
+    fc.update_status(rows, defs)
+    assert _row(rows, "wire_length_param").Name == u"Длина кабеля"
+
+
+def test_status_warns_on_other_type():
+    defs = _defs((u"LL_Длина проводника", fc.LENGTH))
+    rows = fc.build_rows(["SCS"])
+    fc.update_status(rows, defs)
+    assert u"тип в ФОП не «Число»" in _row(rows, "wire_length_param").FopStatus

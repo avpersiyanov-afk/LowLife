@@ -20,6 +20,8 @@
 модуль покрыт tests/test_fop_catalog.py.
 """
 
+import re
+
 try:
     _text = unicode  # noqa: F821 — IronPython/Python 2
     _string_types = basestring  # noqa: F821
@@ -116,23 +118,22 @@ class ParamSpec(object):
     data_type  — TEXT/LENGTH/NUMBER (тип нового определения в ФОП).
     kind       — INSTANCE/TYPE.
     categories — {id системы: [имена BuiltInCategory]}.
-    native     — обычно это штатный параметр Revit (не из ФОП): в окне
-                 строка по умолчанию не отмечена, пример — имя штатного
-                 параметра, без префикса.
+    aliases    — другие частые названия того же параметра (без префикса) —
+                 для поиска похожего параметра в ФОП (match_fop).
     is_list    — в настройках список имён через запятую (своё имя ставится
                  первым, остальные сохраняются).
     note       — пояснение (необязательность и т. п.).
     """
 
     def __init__(self, key, label, example, data_type, kind, categories,
-                 native=False, is_list=False, note=u""):
+                 aliases=(), is_list=False, note=u""):
         self.key = key
         self.label = label
         self.example = example
         self.data_type = data_type
         self.kind = kind
         self.categories = categories
-        self.native = native
+        self.aliases = list(aliases)
         self.is_list = is_list
         self.note = note
 
@@ -155,6 +156,7 @@ CATALOG = [
               TEXT, INSTANCE, {"SCS": [GENERIC], "SKUD": [GENERIC]}),
     ParamSpec("offset_param_names", u"Отметка (узлы, устройства, панели)", u"Отметка",
               LENGTH, INSTANCE, {"SCS": [GENERIC] + LV_AND_PANELS, "SKUD": [GENERIC] + LV_AND_PANELS},
+              aliases=[u"Смещение", u"Высота установки"],
               is_list=True, note=u"Если в семействах уже есть свой параметр отметки — впишите его имя"),
     ParamSpec("nearest_segment_param", u"Ближайший узел маршрута (у панели/устройства)",
               u"Ближайший узел", TEXT, INSTANCE, {"SCS": LV_AND_PANELS, "SKUD": LV_AND_PANELS}),
@@ -187,24 +189,18 @@ CATALOG = [
               TEXT, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items()))),
     ParamSpec("wire_length_param", u"Длина проводника, м", u"Длина проводника",
               NUMBER, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items())),
+              aliases=[u"Длина кабеля"],
               note=u"Число, не «Длина»: кнопки пишут метры"),
     ParamSpec("tray_length_param", u"Длина проводника в лотке, м", u"Длина в лотке",
               NUMBER, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items())),
+              aliases=[u"Длина проводника в лотке", u"Длина кабеля в лотке"],
               note=u"Число, не «Длина»: кнопки пишут метры"),
     ParamSpec("pipe_length_param", u"Длина проводника в трубе, м", u"Длина в трубе",
               NUMBER, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items())),
+              aliases=[u"Длина проводника в трубе", u"Длина кабеля в трубе"],
               note=u"Число, не «Длина»: кнопки пишут метры"),
     ParamSpec("route_method_param", u"Способ прокладки", u"Способ прокладки",
               TEXT, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items()))),
-    ParamSpec("circuit_panel_param", u"Панель цепи", u"Панель",
-              TEXT, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items())),
-              native=True, note=u"Обычно штатный параметр Revit «Панель»"),
-    ParamSpec("load_name_param", u"Имя нагрузки цепи", u"Имя нагрузки",
-              TEXT, INSTANCE, dict([("SCS", [CIRCUITS]), ("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items())),
-              native=True, note=u"Обычно штатный параметр Revit «Имя нагрузки»"),
-    ParamSpec("cable_type_param", u"Проводник (тип кабеля цепи)", u"Проводник",
-              TEXT, INSTANCE, dict([("SKUD", [CIRCUITS])] + list(_fire([CIRCUITS]).items())),
-              native=True, note=u"Обычно штатный параметр Revit «Проводник»"),
 
     # --- линии проводки (СПС/СОУЭ/СПА) ---
     ParamSpec("wire_mark_param", u"Марка линии проводки", u"Марка линии",
@@ -220,9 +216,11 @@ CATALOG = [
               TEXT, INSTANCE, {"SOT": SOT_SOURCES + [DETAIL]}),
     ParamSpec("level_param_name", u"Уровень (этаж) на устройстве", u"Этаж",
               TEXT, INSTANCE, dict([("SOT", SOT_SOURCES)] + list(_fire([FIRE_DEVICES]).items())),
+              aliases=[u"Уровень"],
               note=u"Необязателен: пусто — уровень элемента в Revit"),
     ParamSpec("building_param_name", u"Корпус на устройстве", u"Корпус",
               TEXT, INSTANCE, dict([("SOT", SOT_SOURCES)] + list(_fire([FIRE_DEVICES]).items())),
+              aliases=[u"Здание"],
               note=u"Необязателен"),
     ParamSpec("section_param_name", u"Секция на устройстве", u"Секция",
               TEXT, INSTANCE, {"SOT": SOT_SOURCES}, note=u"Необязателен"),
@@ -255,12 +253,17 @@ class Row(object):
     заглавной буквы — для привязки WPF (DataGrid).
     """
 
-    def __init__(self, spec, systems, categories, example, name, checked):
+    def __init__(self, spec, systems, categories, example, name, source):
         self.spec = spec
         self.key = spec.key
         self.systems = systems
         self.categories = categories
-        self.Checked = checked
+        # Откуда имя: SOURCE_SETTINGS/SOURCE_FOP/SOURCE_EXAMPLE; auto_name —
+        # последнее подставленное автоматически (Name != auto_name — правил
+        # пользователь, такое имя больше не трогаем).
+        self.source = source
+        self.auto_name = name
+        self.Checked = True
         self.Label = spec.label
         self.Example = example
         self.Name = name
@@ -269,12 +272,23 @@ class Row(object):
         self.Categories = u", ".join(CATEGORY_TITLES.get(c, c) for c in categories)
         self.Systems = u", ".join(SYSTEM_TITLES.get(s, s) for s in systems)
         self.Note = spec.note
+        self.FopStatus = u""
+
+    def edited(self):
+        return _text(self.Name or u"").strip() != _text(self.auto_name or u"").strip()
+
+    def set_auto(self, name, source):
+        self.Name = name
+        self.auto_name = name
+        self.source = source
+
+
+SOURCE_SETTINGS = "settings"
+SOURCE_FOP = "fop"
+SOURCE_EXAMPLE = "example"
 
 
 def example_name(spec, prefix):
-    """Пример имени: у штатных параметров Revit — без префикса."""
-    if spec.native:
-        return spec.example
     return (prefix or u"") + spec.example
 
 
@@ -329,9 +343,10 @@ def build_rows(system_ids, settings_by_system=None, shared=None, prefix=DEFAULT_
         if not systems:
             continue
         example = example_name(spec, prefix)
-        name = saved_name(spec, systems, settings_by_system, shared) or example
-        rows.append(Row(spec, systems, spec_categories(spec, systems), example, name,
-                        checked=not spec.native))
+        name = saved_name(spec, systems, settings_by_system, shared)
+        source = SOURCE_SETTINGS if name else SOURCE_EXAMPLE
+        rows.append(Row(spec, systems, spec_categories(spec, systems), example,
+                        name or example, source))
     return rows
 
 
@@ -341,10 +356,9 @@ def change_prefix(rows, old_prefix, new_prefix):
     (имя = прежний пример). Свои имена и имена из настроек не меняет.
     """
     for row in rows:
-        old_example = example_name(row.spec, old_prefix)
         new_example = example_name(row.spec, new_prefix)
-        if _text(row.Name or u"").strip() == old_example:
-            row.Name = new_example
+        if row.source == SOURCE_EXAMPLE and not row.edited():
+            row.set_auto(new_example, SOURCE_EXAMPLE)
         row.Example = new_example
 
 
@@ -401,3 +415,151 @@ def settings_updates(rows, settings_by_system=None):
                 value = u", ".join([name] + [n for n in old if n.lower() != name.lower()])
             updates.setdefault(s, {})[row.key] = value
     return updates
+
+
+# --- поиск в ФОП ---------------------------------------------------------------------
+
+class FopDef(object):
+    """Определение из файла ФОП: имя, группа, тип данных (TEXT/LENGTH/NUMBER или None — другой)."""
+
+    def __init__(self, name, group, data_type=None):
+        self.name = name
+        self.group = group
+        self.data_type = data_type
+
+
+def _tokens(name):
+    """Слова имени в нижнем регистре (ё = е), без однобуквенных."""
+    text = _text(name or u"").lower().replace(u"ё", u"е")
+    return [t for t in re.split(u"[^0-9a-zа-я]+", text) if len(t) > 1]
+
+
+def _stem(token):
+    """Грубая основа слова: без двух последних букв у длинных слов."""
+    return token if len(token) <= 4 else token[:max(len(token) - 2, 3)]
+
+
+def _same_word(a, b):
+    """Одно слово в разных формах («проводника»/«проводник»); короткие — только точно."""
+    if a == b:
+        return True
+    sa, sb = _stem(a), _stem(b)
+    if min(len(sa), len(sb)) < 3:
+        return False
+    return sa.startswith(sb) or sb.startswith(sa)
+
+
+def _patterns(spec):
+    return [_tokens(spec.example)] + [_tokens(a) for a in spec.aliases]
+
+
+def _spec_words(spec):
+    words = []
+    for pattern in _patterns(spec):
+        words.extend(pattern)
+    return words
+
+
+def _other_words(spec):
+    """Слова примеров других ролей, которых нет у этой — по ним роли различаются."""
+    own = _spec_words(spec)
+    result = []
+    for other in CATALOG:
+        if other is spec:
+            continue
+        for w in _spec_words(other):
+            if not any(_same_word(w, o) for o in own):
+                result.append(w)
+    return result
+
+
+def similarity(spec, name):
+    """
+    Насколько имя name из ФОП похоже на роль spec: None — не похоже, иначе
+    число лишних слов (меньше — лучше). Похоже — все слова примера (или
+    одного из aliases) есть в имени, а лишних слов, отличающих другую роль
+    («лотке», «схеме», «типа»…), нет; префикс проекта («ADSK_») — просто
+    лишнее слово.
+    """
+    words = _tokens(name)
+    if not words:
+        return None
+    others = _other_words(spec)
+    best = None
+    for pattern in _patterns(spec):
+        if not pattern:
+            continue
+        if not all(any(_same_word(p, w) for w in words) for p in pattern):
+            continue
+        extras = [w for w in words if not any(_same_word(w, p) for p in pattern)]
+        if any(any(_same_word(e, o) for o in others) for e in extras):
+            continue
+        if best is None or len(extras) < best:
+            best = len(extras)
+    return best
+
+
+def find_exact(fop_defs, name):
+    lower = _text(name or u"").strip().lower()
+    for d in fop_defs:
+        if d.name.lower() == lower:
+            return d
+    return None
+
+
+def match_fop(rows, fop_defs):
+    """
+    Подставляет в строки похожие параметры из ФОП. Не трогает имена из
+    настроек кнопок и правленые пользователем (их имена, если они есть в
+    ФОП, другим строкам не достаются). Каждое определение ФОП — не больше
+    чем в одну строку; сначала самые похожие с подходящим типом данных.
+    Строка без похожего — снова с примером.
+    """
+    taken = set()
+    free = []
+    for row in rows:
+        if row.source == SOURCE_SETTINGS or row.edited():
+            exact = find_exact(fop_defs, row.Name)
+            if exact is not None:
+                taken.add(exact.name.lower())
+            continue
+        free.append(row)
+
+    candidates = []
+    for row in free:
+        for d in fop_defs:
+            score = similarity(row.spec, d.name)
+            if score is None:
+                continue
+            type_penalty = 0 if d.data_type in (None, row.spec.data_type) else 1
+            candidates.append(((type_penalty, score), row, d))
+    candidates.sort(key=lambda c: c[0])
+
+    matched = {}
+    for _score, row, d in candidates:
+        if row.key in matched or d.name.lower() in taken:
+            continue
+        matched[row.key] = d
+        taken.add(d.name.lower())
+
+    for row in free:
+        d = matched.get(row.key)
+        if d is not None:
+            row.set_auto(d.name, SOURCE_FOP)
+        elif row.source == SOURCE_FOP:
+            row.set_auto(row.Example, SOURCE_EXAMPLE)
+
+
+def update_status(rows, fop_defs):
+    """Столбец «В ФОП»: есть ли там параметр с текущим именем строки."""
+    for row in rows:
+        d = find_exact(fop_defs, row.Name)
+        if d is None:
+            row.FopStatus = u"нет — будет создан"
+            continue
+        status = u"есть, группа «{}»".format(d.group)
+        if row.source == SOURCE_FOP and not row.edited():
+            status = u"найден похожий, группа «{}»".format(d.group)
+        if d.data_type != row.spec.data_type:
+            status += u"; тип в ФОП не «{}»".format(DATA_TYPE_TITLES[row.spec.data_type])
+        row.FopStatus = status

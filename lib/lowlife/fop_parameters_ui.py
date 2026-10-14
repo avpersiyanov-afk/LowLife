@@ -4,8 +4,11 @@
 
 Показывает параметры, нужные кнопкам выбранных систем (fop_catalog), —
 с примером имени, типом данных, экземпляр/тип и категориями привязки;
-пользователь правит имена прямо в таблице. Сверху — системы, файл ФОП
-(подключённый к Revit, другой или новый), группа в ФОП и префикс примеров.
+пользователь правит имена прямо в таблице. Если в выбранном ФОП есть
+похожий параметр (fop_catalog.match_fop), он подставляется вместо примера;
+столбец «В ФОП» показывает, есть ли там параметр с текущим именем. Сверху —
+системы, файл ФОП (подключённый к Revit, другой или новый), группа в ФОП и
+префикс примеров.
 
 show_dialog(app) → dict или None (отмена):
     rows           — все строки (fop_catalog.Row; работать с отмеченными)
@@ -16,12 +19,15 @@ show_dialog(app) → dict или None (отмена):
     systems        — id выбранных систем
 """
 
+import os
+
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
 from pyrevit import forms
 
+from System import Action
 from System.Collections.Generic import List
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -138,6 +144,7 @@ def show_dialog(app):
         "sp_path": fop_setup.connected_path(app),
         "create_file": False,
         "rows": [],
+        "fop_defs": fop_setup.read_definitions(app, fop_setup.connected_path(app)),
     }
 
     win = Window()
@@ -217,15 +224,20 @@ def show_dialog(app):
         if path:
             state["sp_path"] = path
             state["create_file"] = False
+            state["fop_defs"] = fop_setup.read_definitions(app, path)
             refresh_fop_text()
+            refresh_fop()
 
     def on_new(sender, args):
         path = _file_dialog(forms.save_file, file_ext="txt", default_name=u"LowLife_ФОП",
                             title=u"Новый файл общих параметров")
         if path:
+            exists = os.path.isfile(path)
             state["sp_path"] = path
-            state["create_file"] = True
+            state["create_file"] = not exists
+            state["fop_defs"] = fop_setup.read_definitions(app, path) if exists else []
             refresh_fop_text()
+            refresh_fop()
 
     pick_btn.Click += on_pick
     new_btn.Click += on_new
@@ -253,10 +265,11 @@ def show_dialog(app):
     opts.Children.Add(write_box)
     header.Children.Add(opts)
     header.Children.Add(_label(
-        u"Префикс меняет только примеры (и имена, которые вы не правили). Имена, уже "
-        u"введённые в настройках кнопок, подставлены как есть. Параметр с таким же именем, "
-        u"который уже есть в ФОП, берётся оттуда (в любой группе), новый не создаётся. "
-        u"Строки «обычно штатный параметр Revit» по умолчанию не отмечены.",
+        u"Имена, уже введённые в настройках кнопок, подставлены как есть. Если в ФОП "
+        u"есть похожий параметр (например «Длина проводника» с префиксом проекта), он "
+        u"подставлен вместо примера — столбец «В ФОП». Параметр, который уже есть в ФОП "
+        u"(в любой группе), берётся оттуда, новый не создаётся. Префикс меняет только "
+        u"примеры, которые вы не правили.",
         gray=True, margin=Thickness(0, 4, 0, 6)))
 
     # --- таблица ---
@@ -275,6 +288,7 @@ def show_dialog(app):
     name_col = _text_col(u"Имя параметра", "Name", _star(1.6), read_only=False)
     name_col.FontWeight = FontWeights.Bold
     grid.Columns.Add(name_col)
+    grid.Columns.Add(_text_col(u"В ФОП", "FopStatus", _star(1.4), wrap=True))
     grid.Columns.Add(_text_col(u"Пример", "Example", _star(1.2)))
     grid.Columns.Add(_text_col(u"Тип данных", "DataType", DataGridLength.Auto))
     grid.Columns.Add(_text_col(u"Экз./тип", "Kind", DataGridLength.Auto))
@@ -300,12 +314,36 @@ def show_dialog(app):
             prev = old.get(r.key)
             if prev is not None:
                 r.Name = prev.Name
+                r.auto_name = prev.auto_name
+                r.source = prev.source
                 r.Checked = prev.Checked
         state["rows"] = rows
+        fop_catalog.match_fop(rows, state["fop_defs"])
+        fop_catalog.update_status(rows, state["fop_defs"])
         data = List[object]()
         for r in rows:
             data.Add(r)
         grid.ItemsSource = data
+
+    def refresh_grid():
+        try:
+            grid.Items.Refresh()
+        except Exception:
+            pass
+
+    def refresh_fop():
+        commit()
+        fop_catalog.match_fop(state["rows"], state["fop_defs"])
+        fop_catalog.update_status(state["rows"], state["fop_defs"])
+        refresh_grid()
+
+    def after_edit():
+        fop_catalog.update_status(state["rows"], state["fop_defs"])
+        refresh_grid()
+
+    # Обновить «В ФОП» после правки имени — уже после выхода ячейки из
+    # редактирования (во время него Items.Refresh запрещён).
+    grid.CellEditEnding += lambda s, a: grid.Dispatcher.BeginInvoke(Action(after_edit))
 
     for cb in system_boxes.values():
         cb.Checked += rebuild
@@ -316,10 +354,8 @@ def show_dialog(app):
         new_prefix = prefix_box.Text or u""
         fop_catalog.change_prefix(state["rows"], state["prefix"], new_prefix)
         state["prefix"] = new_prefix
-        try:
-            grid.Items.Refresh()
-        except Exception:
-            pass
+        fop_catalog.update_status(state["rows"], state["fop_defs"])
+        refresh_grid()
 
     prefix_box.TextChanged += on_prefix_changed
 
