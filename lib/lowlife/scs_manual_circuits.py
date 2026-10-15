@@ -29,7 +29,7 @@ ElectricalSystem.Create падал с electComponents для устройств 
 
 После создания каждой цепи заполняется и параметр «Имя нагрузки» (его имя
 берётся из настроек, load_name_param) — из параметра типа устройства
-«Обозначение» (type_code_param) и параметра экземпляра «Адрес устройства»
+«Обозначение» (designation_param) и параметра экземпляра «Адрес устройства»
 (device_address_param), см. scs_circuits.make_load_name. Те же настройки
 уже используются кнопкой «Расчёт длины цепи» (SyncCircuitsAndLengths).
 
@@ -110,7 +110,7 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
 
     Возвращает (created_count, errors).
     """
-    type_code_param = settings.get("type_code_param")
+    type_code_param = settings.get("designation_param")
     device_address_param = settings.get("device_address_param")
     load_name_param = settings.get("load_name_param")
 

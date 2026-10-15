@@ -74,7 +74,7 @@ TEXT_FIELDS = [
         u"читают остальные кнопки СКУД (длины, маркировка, структурная схема). У контроллера в этот же "
         u"параметр адрес вписывается вручную заранее, до запуска кнопок.",
         u"", False, True, False),
-    ("type_code_param", u"[Контроллеры] Параметр типа устройства «Обозначение»",
+    ("designation_param", u"[Контроллеры] Параметр типа устройства «Обозначение»",
         u"Параметр ТИПА устройства (не экземпляра) с коротким кодом модели — вместе с адресом "
         u"устройства складывается в «Имя нагрузки» цепи вида «Обозначение.Адрес».",
         u"", False, True, False),
@@ -376,6 +376,7 @@ def _type_display_name(doc, id_str):
 RENAMES = {
     "manifest_param_name": "layout_param_name",
     "schematic_source_uid_param": "device_uid_param_name",
+    "type_code_param": "designation_param",
 }
 
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКУД", renames=RENAMES)

@@ -57,7 +57,7 @@ PARAM_SPECS = [
         False, CAT_DEVICES_AND_PANELS, INSTANCE, TEXT, FOP, True),
     ("device_address_param", u"Адрес устройства",
         False, CAT_DEVICES_ONLY, INSTANCE, TEXT, FOP, True),
-    ("type_code_param", u"Обозначение (тип устройства)",
+    ("designation_param", u"Обозначение (тип устройства)",
         False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP, True),
     ("circuit_name_type_param", u"Наименование (цепь)",
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
