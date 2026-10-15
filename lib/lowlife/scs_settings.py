@@ -164,7 +164,7 @@ TEXT_FIELDS = [
         u"устройства, чтобы у каждой цепи было понятное человекочитаемое имя "
         u"нагрузки, а не просто номер.",
         u"", False, True, False),
-    ("type_code_param", u"[Цепи] Параметр типа устройства «Обозначение»",
+    ("designation_param", u"[Цепи] Параметр типа устройства «Обозначение»",
         u"Параметр типа устройства (в некоторых проектах — параметр экземпляра, "
         u"тогда программа при пустом результате на типе читает то же имя прямо с "
         u"устройства) с кратким буквенным обозначением — например «Р» для "
@@ -647,7 +647,10 @@ def list_used_symbols_by_categories(doc, builtin_categories):
     return symbols
 
 
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКС")
+# Переименованные ключи (одна роль — один ключ во всех кнопках).
+RENAMES = {"type_code_param": "designation_param"}
+
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКС", renames=RENAMES)
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
 _write_all = _STORE.write

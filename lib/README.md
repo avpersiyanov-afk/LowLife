@@ -320,7 +320,7 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 
 После создания каждой цепи также заполняется параметр «Имя нагрузки»
 (`settings["load_name_param"]`) — из параметра типа устройства
-«Обозначение» (`settings["type_code_param"]`) и параметра экземпляра
+«Обозначение» (`settings["designation_param"]`) и параметра экземпляра
 «Адрес устройства» (`settings["device_address_param"]`), см.
 `scs_circuits.make_load_name`. Те же три настройки уже использует
 SyncCircuitsAndLengths.
@@ -328,7 +328,7 @@ SyncCircuitsAndLengths.
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `get_conductor_id` | `get_conductor_id(doc, settings)` | `ElementId` проводника из `settings["conductor_type_id"]`; останавливает скрипт, если в настройках ничего не выбрано или элемент больше не существует в проекте |
-| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)` | Создаёт по цепи на каждое устройство (тип — по `detect_electrical_system_type(dev)`, запасной `CIRCUIT_SYSTEM_TYPE`), проставляет «Проводник» и (если `type_code_param`/`device_address_param`/`load_name_param` заданы) «Имя нагрузки»; `(created_count, errors)` |
+| `build_scs_manual_circuits` | `build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)` | Создаёт по цепи на каждое устройство (тип — по `detect_electrical_system_type(dev)`, запасной `CIRCUIT_SYSTEM_TYPE`), проставляет «Проводник» и (если `designation_param`/`device_address_param`/`load_name_param` заданы) «Имя нагрузки»; `(created_count, errors)` |
 
 ## scs.py
 Константы и логика, специфичные для СКС / телекоммуникационных трасс
@@ -397,7 +397,7 @@ SetupParameters): выбор **типа для вставки** — не тол�
 
 Кнопка «Цепи СКС» на `CircuitsSCS.panel` тоже читает эти настройки (через
 `get_settings_silent()`, без показа окна) — ей нужны `conductor_type_id`
-(проводник), `type_code_param`, `device_address_param` и `load_name_param`
+(проводник), `designation_param`, `device_address_param` и `load_name_param`
 (для «Имя нагрузки»), см. `scs_manual_circuits.py`.
 
 **Форму (`get_settings_interactive`) показывает только кнопка

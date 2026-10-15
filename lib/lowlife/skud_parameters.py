@@ -33,7 +33,7 @@ CAT_CIRCUITS = [BuiltInCategory.OST_ElectricalCircuit]
 PARAM_SPECS = [
     ("device_address_param", u"Адрес устройства",
         False, CAT_DEVICES_AND_CONTROLLERS, INSTANCE, TEXT, FOP),
-    ("type_code_param", u"Обозначение (тип устройства)",
+    ("designation_param", u"Обозначение (тип устройства)",
         False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP),
     ("controller_marking_param", u"Маркировка контроллера",
         False, CAT_CONTROLLERS, INSTANCE, TEXT, FOP),

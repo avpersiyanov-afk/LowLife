@@ -106,6 +106,13 @@ def test_list_setting_uses_first_name():
     assert _row(rows, "offset_param_names").Name == u"Отм1"
 
 
+def test_designation_is_one_type_param_for_all_systems():
+    spec = dict((s.key, s) for s in fc.CATALOG)["designation_param"]
+    assert spec.kind == fc.TYPE
+    assert set(spec.categories) == {"SCS", "SKUD", "SPS", "SOUE", "SPA"}
+    assert "type_code_param" not in {s.key for s in fc.CATALOG}
+
+
 def test_builtin_revit_params_are_not_in_catalog():
     keys = {s.key for s in fc.CATALOG}
     assert not keys & {"circuit_panel_param", "load_name_param", "cable_type_param"}
@@ -165,7 +172,9 @@ def test_similarity():
     # лишнее слово, отличающее другую роль, — не похоже
     assert fc.similarity(spec["wire_length_param"], u"Длина проводника в лотке") is None
     assert fc.similarity(spec["tray_length_param"], u"ADSK_Длина проводника в лотке") == 1
-    assert fc.similarity(spec["designation_param"], u"Обозначение типа") is None
+    assert fc.similarity(spec["designation_param"], u"ADSK_Обозначение") == 1
+    assert fc.similarity(spec["designation_param"], u"Обозначение типа") == 0
+    assert fc.similarity(spec["designation_param"], u"Тип прокладки") is None
     assert fc.similarity(spec["device_address_param"], u"Адрес устройства на схеме") is None
     assert fc.similarity(spec["addr_param_name"], u"Номер цепи") is None
 

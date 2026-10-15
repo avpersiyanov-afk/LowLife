@@ -33,7 +33,7 @@ def _open_settings():
     edited = get_settings_interactive(doc, keys=[
         "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
         "excluded_device_keywords", "circuit_panel_param", "device_address_param",
-        "type_code_param", "load_name_param", "controller_marking_param",
+        "designation_param", "load_name_param", "controller_marking_param",
         "cable_type_param", "schematic_device_categories_text", "wire_catalog_marker_param"
     ])
     forms.alert(
@@ -61,7 +61,7 @@ settings = get_settings_silent()
 skud_settings.require(settings, [
     "controller_workset_keyword", "controller_type_keyword",
     "workset_param_name", "circuit_panel_param",
-    "device_address_param", "type_code_param", "load_name_param",
+    "device_address_param", "designation_param", "load_name_param",
     "controller_marking_param", "cable_type_param", "schematic_device_categories_text"
 ])
 
@@ -73,7 +73,7 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 CIRCUIT_NAME_TYPE_PARAM = settings.get("circuit_name_type_param")
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
-TYPE_CODE_PARAM = settings["type_code_param"]
+TYPE_CODE_PARAM = settings["designation_param"]
 LOAD_NAME_PARAM = settings["load_name_param"]
 CONTROLLER_MARKING_PARAM = settings["controller_marking_param"]
 CABLE_TYPE_PARAM = settings["cable_type_param"]

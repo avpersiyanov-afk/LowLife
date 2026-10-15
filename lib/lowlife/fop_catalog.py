@@ -178,10 +178,11 @@ CATALOG = [
               dict([("SCS", LV_DEVICES), ("SKUD", LV_AND_PANELS + [DETAIL]),
                     ("SOT", SOT_SOURCES + [DETAIL])] + list(_fire(FIRE_AND_PANELS).items())),
               system_keys={"SKUD": ["device_address_param", "schematic_address_param"]}),
-    ParamSpec("type_code_param", u"Обозначение типа устройства", u"Обозначение типа",
-              TEXT, TYPE, {"SCS": LV_DEVICES, "SKUD": LV_DEVICES}),
+    # «Обозначение» — краткий код модели, всегда параметр типа.
     ParamSpec("designation_param", u"Обозначение (у панели и устройств)", u"Обозначение",
-              TEXT, INSTANCE, _fire(FIRE_AND_PANELS)),
+              TEXT, TYPE,
+              dict([("SCS", LV_DEVICES), ("SKUD", LV_DEVICES)] + list(_fire(FIRE_AND_PANELS).items())),
+              aliases=[u"Обозначение типа"]),
     # СКУД: «Маркировка контроллера» и «Марка устройства» — одна роль (копия
     # адреса для плана/спецификации) на контроллере, устройстве и значке схемы.
     ParamSpec("device_marking_param", u"Марка (копия адреса) устройства/контроллера", u"Марка устройства",

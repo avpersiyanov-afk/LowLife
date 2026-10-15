@@ -40,7 +40,7 @@ def _open_settings():
         "circuit_key_utp", "circuit_key_power", "horiz_tray_coef", "horiz_pipe_coef",
         "vertical_coef", "addr_param_name", "addr_prev_param_name", "cable_param_name",
         "workset_param_name", "excluded_device_keywords", "circuit_panel_param",
-        "nearest_segment_param", "device_address_param", "type_code_param",
+        "nearest_segment_param", "device_address_param", "designation_param",
         "circuit_name_type_param", "circuit_number_param", "circuit_route_param",
         "wire_length_param", "tray_length_param", "pipe_length_param",
         "route_method_param", "load_name_param", "segment_loads_param"
@@ -78,7 +78,7 @@ scs_settings.require(settings, [
 ])
 # Имена параметров (addr_param_name, cable_param_name, workset_param_name,
 # circuit_panel_param, nearest_segment_param, device_address_param,
-# type_code_param, circuit_name_type_param, circuit_number_param,
+# designation_param, circuit_name_type_param, circuit_number_param,
 # circuit_route_param, *_length_param, route_method_param,
 # load_name_param, segment_loads_param) здесь не проверяются — их
 # наличие/привязку в проекте проверяет и чинит кнопка «Параметры СКС»
@@ -98,7 +98,7 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
-TYPE_CODE_PARAM = settings["type_code_param"]
+TYPE_CODE_PARAM = settings["designation_param"]
 CIRCUIT_NAME_TYPE_PARAM = settings["circuit_name_type_param"]
 CIRCUIT_NUMBER_PARAM = settings["circuit_number_param"]
 CIRCUIT_ROUTE_PARAM = settings["circuit_route_param"]
@@ -421,13 +421,6 @@ with revit.Transaction("Sync Circuits And Lengths"):
                     pass
 
                 type_code = clean_text_value(get_string_param(type_el, TYPE_CODE_PARAM)) if type_el else None
-                if not type_code:
-                    # «Обозначение» обычно параметр типа, но в части проектов
-                    # заведён как параметр экземпляра — на типе его тогда не
-                    # найти (LookupParameter не видит параметры экземпляра на
-                    # type_el), поэтому при пустом результате пробуем прочитать
-                    # то же имя параметра прямо с устройства.
-                    type_code = clean_text_value(get_string_param(dev, TYPE_CODE_PARAM))
                 device_address = clean_text_value(get_string_param(dev, DEVICE_ADDRESS_PARAM))
                 load_name = make_load_name(type_code, device_address)
 
