@@ -47,6 +47,12 @@ room_info_settings).
 Транзакцию открывает скрипт кнопки, не этот модуль.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import re
 import math
 

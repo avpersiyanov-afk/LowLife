@@ -32,6 +32,12 @@ VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида,
 «Скрыть элементы» нет — скрытие тысяч элементов по одному роняло Revit.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import (
     BuiltInParameter, CategoryType, ElementId, FilteredElementCollector,
     ScheduleFieldType, ScheduleSortGroupField, ScheduleSortOrder,

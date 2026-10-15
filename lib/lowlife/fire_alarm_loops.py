@@ -35,6 +35,12 @@ risers_by_floor (fire_alarm_circuits.find_risers/group_risers_by_floor) —
 Работает с обычными dict-записями, без Revit API — как scs_addressing.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 FT_TO_M = 0.3048
 
 

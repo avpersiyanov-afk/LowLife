@@ -43,6 +43,22 @@
 «Да/Нет» — да/нет.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+try:
+    basestring  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    basestring = str
+
+try:
+    long  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    long = int
+
+
 import datetime
 import io
 import json

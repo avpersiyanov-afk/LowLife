@@ -13,6 +13,12 @@ ProgID «Outlook.Application» не зарегистрирован или объ
 и read_inbox бросает OutlookError с понятным текстом.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import datetime
 
 import clr

@@ -14,6 +14,12 @@
 по строкам, где источник выбран (не пропущена).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')

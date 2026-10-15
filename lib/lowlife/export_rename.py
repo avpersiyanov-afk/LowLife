@@ -35,6 +35,12 @@ ModPlus/Revit собирает имя файла из «номер листа + 
 что у ``scs_settings.py`` (не ``pyrevit.script.get_config()``).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import os
 
 from lowlife import settings_core

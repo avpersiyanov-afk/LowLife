@@ -25,6 +25,12 @@ BuiltInParameter.REF_TABLE_ELEM_NAME + наличию параметра-при�
    (ElementOwnerViewFilter), с «Ключевым именем».
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, ElementId, ElementOwnerViewFilter,
     FilteredElementCollector, SectionType, StorageType, ViewSchedule,

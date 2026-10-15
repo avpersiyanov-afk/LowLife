@@ -17,6 +17,12 @@
 правили, не трогается; правка поверх перемещения в модели — конфликт.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import math
 from collections import OrderedDict
 

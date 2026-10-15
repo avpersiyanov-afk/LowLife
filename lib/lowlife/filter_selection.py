@@ -17,6 +17,12 @@ export_rename.configure()/RenameExportFiles.pushbutton.
 не гарантированно совпадает между документами, а имя обычно стабильно.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import ElementId
 from System.Collections.Generic import List
 

@@ -20,6 +20,12 @@ filter_selection.py: Id не гарантированно совпадает м�
 пересоздания уровня, а имя обычно стабильно.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')

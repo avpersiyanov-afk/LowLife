@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
 __title__ = u"Адреса\nузлов"
 __doc__ = (
     u"Нумерует адреса узлов маршрута по этажу, начиная от панелей/стояков.\n\n"

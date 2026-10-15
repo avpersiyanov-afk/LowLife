@@ -29,6 +29,12 @@ Revit API импортируется лениво (внутри функций),
 pick_level_by_elevation тестируется вне Revit (tests/test_level_assign.py).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import math
 
 # Допуск по высоте, футы (~3 мм): элемент, стоящий ровно на отметке уровня,

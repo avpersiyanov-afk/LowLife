@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 __title__ = u"Загрузить\nсправочник"
 __doc__ = u"Загрузка справочника кабелей из .xlsx: обновление по ключевому имени и добавление новых строк."
 __author__ = "Pipers"

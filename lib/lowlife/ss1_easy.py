@@ -46,6 +46,12 @@ Z точки = смещению от уровня (отметка уровня �
 работало в исходном скрипте пользователя на его семействах.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import math
 
 from Autodesk.Revit.DB import (

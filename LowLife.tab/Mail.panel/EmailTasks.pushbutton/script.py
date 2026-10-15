@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
 __title__ = u"Задачи\nиз почты"
 __doc__ = (
     u"Разбирает «Входящие» классического Outlook за последние N дней и "

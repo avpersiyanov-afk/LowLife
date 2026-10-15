@@ -15,6 +15,12 @@
                                                     панель 3, шлейф 1, №2
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from lowlife.scs import classify_element
 
 # Ключевое слово изолятора/ответвителя в имени семейства — от такого

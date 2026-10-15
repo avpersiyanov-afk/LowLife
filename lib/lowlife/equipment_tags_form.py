@@ -15,6 +15,12 @@
 значения в каждой строке (тот же приём, что skud_door_rooms_form.py).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
