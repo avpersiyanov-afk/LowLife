@@ -1894,6 +1894,12 @@ values, shared_note)` — блок окна настроек «Подключе�
 system_prompt=...)`: системный промпт передаётся параметром (по умолчанию —
 разбор писем).
 
+## greeting.py
+Кнопка «Приветствие» (`Tools.panel/Greeting`). `part_of_day(hour)` — «Доброе
+утро/день/вечер», «Доброй ночи» по часу; `greeting_lines(hour, name)` — две
+строки окна в верхнем регистре (приветствие и имя, без имени — одна строка
+с «!»). Чистая логика, тесты — `tests/test_greeting.py`.
+
 ## spellcheck_core.py / spellcheck.py / spellcheck_settings.py
 Кнопка «Проверка орфографии» (`Tools.panel/SpellCheck`), подробности —
 `docs/spellcheck.md`.

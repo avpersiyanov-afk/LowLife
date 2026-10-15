@@ -32,7 +32,7 @@ The discipline-agnostic tools are split across several small panels for
 readability instead of one jumbled Tools.panel: Tools.panel ("Tools" —
 DimensionGrids/GenericModelLength/ZoomToElement/FamilySection/AlignViewRange/
 LevelViews/
-Hello/SpellCheck/DwgToDrafting/FopParameters), ToolsRooms.panel
+Hello/Greeting/SpellCheck/DwgToDrafting/FopParameters), ToolsRooms.panel
 ("Помещения"), ToolsSchedules.panel ("Спецификации"),
 ToolsFamilies.panel ("Семейства") and LOI.panel ("Заполнение LOI" —
 FillLOI, CheckLOI). Every button on all five is listed under the single "General"
@@ -154,6 +154,7 @@ THEMES = {
         (u"Tools", u"LevelViews"),
         (u"Tools", u"Rotate3DView"),
         (u"Tools", u"Hello"),
+        (u"Tools", u"Greeting"),
         (u"Tools", u"SpellCheck"),
         (u"Tools", u"DwgToDrafting"),
         (u"Tools", u"FopParameters"),
