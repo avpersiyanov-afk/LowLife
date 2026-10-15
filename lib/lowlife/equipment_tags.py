@@ -16,16 +16,25 @@ v — ``UpDirection``, начало — ``view.Origin``), там же раскл
 разрезах/фасадах.
 
 Выноска начинается от УГО, а не от семейства. УГО — это то, что
-элемент реально рисует на ЭТОМ виде: геометрия ``get_Geometry`` с
-``Options.View = view`` (вложенные аннотации, символьные линии —
-отдельные кривые, не рёбра тела). Её габарит — «прямоугольник элемента»
-для раскладки (на него не кладутся марки), центр — точка, куда смотрит
-выноска, а конец выноски ставится на край этого габарита. Точка
+элемент реально рисует на ЭТОМ виде. Его габарит — «прямоугольник
+элемента» для раскладки (на него не кладутся марки), центр — точка, куда
+смотрит выноска, а конец выноски ставится на край этого габарита. Точка
 вставки/габарит семейства целиком не годятся: УГО часто смещено от
-точки вставки (к стене, к потолку) и меньше/больше 3D-тела.
+точки вставки (к стене, к потолку) и меньше/больше 3D-тела. Два вида УГО:
 
-Если на виде у элемента нет отдельных кривых (УГО нет), марка ставится к
-самому семейству, как это делает Revit: прямоугольник элемента —
+  - символьные линии — отдельные кривые в ``get_Geometry`` с
+    ``Options.View = view`` (не рёбра тела), габарит — по ним;
+  - вложенная аннотация (типовая аннотация в семействе — так сделаны УГО
+    большинства приборов). В геометрию она НЕ попадает (проверено на
+    модели: ни одной кривой), а ``get_BoundingBox(view)`` даёт её габарит
+    вместе с 3D-телом — у модулей тело заметно шире УГО. Отделяем по
+    масштабу (:func:`probe_annotation_rects`): аннотация растёт с
+    масштабом вида, тело — нет. Во временной копии вида (подтранзакция,
+    откатывается) меряем габарит при двух крупных масштабах и продолжаем
+    стороны до масштаба вида (``tag_layout.extrapolate_rect``).
+
+Если у элемента на виде нет ни того, ни другого (УГО нет), марка ставится
+к самому семейству, как это делает Revit: прямоугольник элемента —
 габарит семейства на виде (``get_BoundingBox(view)``, при его
 отсутствии — видимое тело), выноска смотрит в точку вставки
 (:func:`family_anchor`), а конец выноски привязан к элементу
@@ -44,8 +53,10 @@ v — ``UpDirection``, начало — ``view.Origin``), там же раскл
 
 У элементов с УГО конец выноски свободный (``LeaderEndCondition.Free``)
 — только так он встаёт точно на край УГО, а излом — ровно по вертикали/горизонтали.
-Минус: если потом подвинуть оборудование, конец выноски за ним не
-поедет — перезапустите кнопку на этих элементах.
+Чтобы конец всё равно ездил за прибором, его положение относительно
+прибора запоминается в марке, а updater ``tag_leader_follow`` переносит
+его при сдвиге/повороте прибора (Revit привязать выноску к вложенному
+УГО не умеет — подробности там).
 
 Совместимость с версиями Revit: API выносок марок поменялся в 2022
 (много ссылок на одну марку — ``GetTaggedReferences``/``SetLeaderEnd``/
@@ -59,13 +70,13 @@ from Autodesk.Revit.DB import (
     FamilyInstance, FamilySymbol, FilteredElementCollector, IndependentTag,
     LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewType,
     XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point,
-    LocationPoint
+    LocationPoint, SubTransaction, ViewDuplicateOption
 )
 from Autodesk.Revit.UI.Selection import ISelectionFilter
 
 import System
 
-from lowlife import tag_layout
+from lowlife import tag_layout, tag_leader_follow
 
 MM_TO_FT = 1.0 / 304.8
 
@@ -120,11 +131,21 @@ def is_equipment(el):
         return False
 
 
-class EquipmentOrTagFilter(ISelectionFilter):
-    """Выбор рамкой: оборудование и уже стоящие марки (марка = её элемент)."""
+class EquipmentFilter(ISelectionFilter):
+    """Выбор рамкой в режиме «Поставить марки»: только оборудование."""
 
     def AllowElement(self, elem):
-        return is_equipment(elem) or isinstance(elem, IndependentTag)
+        return is_equipment(elem)
+
+    def AllowReference(self, reference, position):
+        return True
+
+
+class TagFilter(ISelectionFilter):
+    """Выбор рамкой в режиме «Разложить марки»: только марки."""
+
+    def AllowElement(self, elem):
+        return isinstance(elem, IndependentTag)
 
     def AllowReference(self, reference, position):
         return True
@@ -165,13 +186,54 @@ def resolve_elements(doc, picked):
     return result
 
 
-def existing_tags_by_element(doc, view):
-    """{id элемента: первая марка на этом виде, которая на него смотрит}."""
+def tags_by_element(doc, view):
+    """{id элемента: [марки на этом виде, которые на него смотрят]}."""
     result = {}
     for tag in FilteredElementCollector(doc, view.Id).OfClass(IndependentTag):
         for i in tagged_local_ids(tag):
-            result.setdefault(i, tag)
+            result.setdefault(i, []).append(tag)
     return result
+
+
+def resolve_tag_pairs(doc, view, picked):
+    """
+    Режим «Разложить марки»: выбранное → [(элемент, марка)]. Выбранная
+    марка — она сама (если смотрит на одно оборудование); выбранное
+    оборудование — все его марки на этом виде. Новые марки не создаются.
+    """
+    by_element = None
+    result = []
+    seen = set()
+
+    def add(el, tag):
+        if el is None or not is_equipment(el):
+            return
+        k = id_int(tag.Id)
+        if k not in seen:
+            seen.add(k)
+            result.append((el, tag))
+
+    for item in picked:
+        if isinstance(item, IndependentTag):
+            ids = tagged_local_ids(item)
+            if len(ids) == 1:  # марка сразу на несколько элементов — не трогаем
+                add(doc.GetElement(ElementId(ids[0])), item)
+        elif is_equipment(item):
+            if by_element is None:
+                by_element = tags_by_element(doc, view)
+            for tag in by_element.get(id_int(item.Id), []):
+                add(item, tag)
+    return result
+
+
+def family_group(el):
+    """(категория, семейство) — строка таблицы «что и какой маркой»."""
+    fam = u""
+    try:
+        fam = el.Symbol.FamilyName
+    except Exception:
+        pass
+    return (el.Category.Name, fam)
 
 
 # ------------------------------------------------------------
@@ -326,17 +388,98 @@ def _walk_geometry(geom, curve_pts, body_pts):
             continue
 
 
-def symbol_rect(el, view, frame):
+def symbol_rect(el, view, frame, scaled=None):
     """Габарит УГО элемента на виде (u0, v0, u1, v1) или None."""
-    return symbol_info(el, view, frame)[0]
+    return symbol_info(el, view, frame, scaled)[0]
 
 
-def symbol_info(el, view, frame):
+# Масштабы замера аннотаций: много крупнее вида, чтобы стороны габарита
+# задавала аннотация, а не тело; не крупнее предела Revit (1:24000)
+_PROBE_MIN_SCALE = 1000
+_PROBE_MAX_SCALE = 24000
+
+
+def _probe_scales(scale):
+    k1 = min(max(_PROBE_MIN_SCALE, 10 * int(scale)), _PROBE_MAX_SCALE // 2)
+    return k1, 2 * k1
+
+
+def _probe_view(doc, view):
+    """Вид, на котором можно менять масштаб внутри подтранзакции: копия
+    вида без шаблона (шаблон обычно держит масштаб), либо сам вид, если
+    у него нет шаблона, а копию сделать нельзя. None — никак."""
+    try:
+        if view.CanViewBeDuplicated(ViewDuplicateOption.Duplicate):
+            dup = doc.GetElement(view.Duplicate(ViewDuplicateOption.Duplicate))
+            dup.ViewTemplateId = ElementId.InvalidElementId
+            return dup
+    except Exception:
+        pass
+    try:
+        if view.ViewTemplateId == ElementId.InvalidElementId:
+            return view
+    except Exception:
+        pass
+    return None
+
+
+def probe_annotation_rects(doc, view, frame, elements):
     """
-    (габарит, есть ли УГО). УГО — отдельные кривые элемента на виде; их
-    габарит. Нет кривых — УГО нет: габарит семейства на виде
-    (``get_BoundingBox(view)``, при его отсутствии — видимое тело) и
-    False — такую марку ставим к самому семейству (см. :func:`run`).
+    {id элемента: габарит вложенной аннотации (УГО) на view} — только для
+    элементов, у которых она есть. Вызывать внутри транзакции: копия вида
+    и смена масштаба делаются в подтранзакции и откатываются, в модели
+    ничего не остаётся. Почему так — в докстринге модуля.
+    """
+    elements = list(elements)
+    if not elements:
+        return {}
+    k0 = int(view.Scale or 1)
+    k1, k2 = _probe_scales(k0)
+    measured = {}
+    st = SubTransaction(doc)
+    st.Start()
+    try:
+        target = _probe_view(doc, view)
+        if target is not None:
+            for k in (k1, k2):
+                target.Scale = k
+                doc.Regenerate()
+                for el in elements:
+                    try:
+                        r = frame.rect(el.get_BoundingBox(target))
+                    except Exception:
+                        r = None
+                    measured.setdefault(id_int(el.Id), []).append(r)
+    except Exception:
+        measured = {}
+    finally:
+        st.RollBack()
+
+    result = {}
+    for el in elements:
+        rs = measured.get(id_int(el.Id))
+        if not rs or len(rs) != 2:
+            continue
+        rect = tag_layout.extrapolate_rect(rs[0], k1, rs[1], k2, k0)
+        if rect is None:
+            continue
+        # аннотация не может выйти за то, что элемент занимает на виде
+        shown = frame.rect(el.get_BoundingBox(view))
+        if shown is not None:
+            rect = tag_layout.rect_intersection(rect, tag_layout.rect_inflate(shown, 1e-3))
+        if rect is not None:
+            result[id_int(el.Id)] = rect
+    return result
+
+
+def symbol_info(el, view, frame, scaled=None):
+    """
+    (габарит, есть ли УГО). УГО — отдельные кривые элемента на виде (их
+    габарит), иначе вложенная аннотация — её габарит из scaled
+    (:func:`probe_annotation_rects`). Ни того, ни другого — УГО нет:
+    габарит семейства на виде (``get_BoundingBox(view)``, при его
+    отсутствии — видимое тело) и False — такую марку ставим к самому
+    семейству (см. :func:`run`).
     """
     curve_pts, body_pts = [], []
     try:
@@ -350,6 +493,10 @@ def symbol_info(el, view, frame):
     rect = frame.rect_of_points(curve_pts)
     if rect is not None:
         return rect, True
+    if scaled:
+        rect = scaled.get(id_int(el.Id))
+        if rect is not None:
+            return rect, True
     rect = frame.rect(el.get_BoundingBox(view))
     if rect is None:
         rect = frame.rect_of_points(body_pts)
@@ -453,16 +600,23 @@ def _create_tag(doc, view, el, type_id, point):
 # ПРЕПЯТСТВИЯ
 # ------------------------------------------------------------
 
-def _obstacle_rects(doc, view, frame, own_ids, category_ids):
-    """Прочее оборудование тех же категорий на виде + чужие марки и
-    тексты — на них новые марки стараются не ставить."""
-    rects = []
+def _other_equipment(doc, view, own_ids, category_ids):
+    """Прочее оборудование тех же категорий на виде."""
+    result = []
     for el in FilteredElementCollector(doc, view.Id).OfClass(FamilyInstance):
         if id_int(el.Id) in own_ids or el.Category is None:
             continue
-        if id_int(el.Category.Id) not in category_ids:
-            continue
-        r = symbol_rect(el, view, frame)
+        if id_int(el.Category.Id) in category_ids:
+            result.append(el)
+    return result
+
+
+def _obstacle_rects(doc, view, frame, own_ids, others, scaled):
+    """Прочее оборудование (others) + чужие марки и тексты — на них
+    марки стараются не ставить."""
+    rects = []
+    for el in others:
+        r = symbol_rect(el, view, frame, scaled)
         if r is not None:
             rects.append(r)
     for cls in (IndependentTag, TextNote):
@@ -479,15 +633,18 @@ def _obstacle_rects(doc, view, frame, own_ids, category_ids):
 # ОСНОВНОЙ ПРОХОД
 # ------------------------------------------------------------
 
-def run(doc, view, elements, settings, type_by_category):
+def run(doc, view, entries, settings):
     """
-    Ставит недостающие марки и раскладывает все марки элементов elements
-    на view. type_by_category — {id категории элемента: ElementId типа
-    марки или None («по категории», как Revit)}. Вызывать внутри
-    транзакции. Возвращает словарь статистики.
+    Ставит и раскладывает марки на view. entries — [(элемент, марка или
+    None, ElementId типа марки или None)]: марка None — создать новую (тип
+    None — «по категории», как Revit). Двигаются ровно эти марки, прочие
+    марки на виде — препятствия. У элемента может быть несколько марок,
+    поэтому ключ раскладки — id марки. Вызывать внутри транзакции.
+    Возвращает словарь статистики.
     """
     stats = {"created": 0, "moved": 0, "no_bbox": 0, "failed": 0,
-             "overlaps": 0, "crossings": 0, "upper_floor": 0, "no_symbol": 0}
+             "overlaps": 0, "crossings": 0, "upper_floor": 0, "no_symbol": 0,
+             "following": 0}
 
     scale = float(view.Scale or 1)
     k = MM_TO_FT * scale
@@ -497,41 +654,53 @@ def run(doc, view, elements, settings, type_by_category):
     cluster_dist = settings["cluster_mm"] * k
 
     frame = ViewFrame(view)
-    existing = existing_tags_by_element(doc, view)
 
-    # 1. элементы с габаритом на виде; недостающие марки
-    entries = []  # (el, tag, elem_rect, anchor)
-    attached = set()  # id элементов без УГО — марка к самому семейству
+    # 0. УГО-аннотации — один замер на все элементы, свои и соседние
+    elements = []
+    own_ids = set()
+    for el, _tag, _type in entries:
+        if id_int(el.Id) not in own_ids:
+            own_ids.add(id_int(el.Id))
+            elements.append(el)
+    category_ids = set(id_int(el.Category.Id) for el in elements)
+    others = _other_equipment(doc, view, own_ids, category_ids)
+    scaled = probe_annotation_rects(doc, view, frame, elements + others)
+
+    # 1. УГО элементов: {id: (габарит, точка выноски, марка к семейству)}
+    symbols = {}
     for el in elements:
-        rect, has_symbol = symbol_info(el, view, frame)
+        rect, has_symbol = symbol_info(el, view, frame, scaled)
         if rect is None:
             stats["no_bbox"] += 1
-            continue
-        if has_symbol:
-            anchor = tag_layout.rect_center(rect)
+        elif has_symbol:
+            symbols[id_int(el.Id)] = (rect, tag_layout.rect_center(rect), False)
         else:
-            anchor = family_anchor(el, frame, rect)
-            attached.add(id_int(el.Id))
+            symbols[id_int(el.Id)] = (rect, family_anchor(el, frame, rect), True)
             stats["no_symbol"] += 1
-        tag = existing.get(id_int(el.Id))
+
+    # недостающие марки
+    work = []  # (el, tag, rect, anchor, attached)
+    for el, tag, type_id in entries:
+        sym = symbols.get(id_int(el.Id))
+        if sym is None:
+            continue
+        rect, anchor, attached = sym
         if tag is None:
             try:
                 bb = el.get_BoundingBox(view)
                 depth = frame.depth(bb.Min) if bb is not None else 0.0
-                tag = _create_tag(doc, view, el,
-                                  type_by_category.get(id_int(el.Category.Id)),
-                                  frame.xyz(anchor, depth))
+                tag = _create_tag(doc, view, el, type_id, frame.xyz(anchor, depth))
                 stats["created"] += 1
             except Exception:
                 stats["failed"] += 1
                 continue
-        entries.append((el, tag, rect, anchor))
+        work.append((el, tag, rect, anchor, attached))
 
-    if not entries:
+    if not work:
         return stats
 
     # 2. габарит марок без выноски
-    for _el, tag, _r, _a in entries:
+    for _el, tag, _r, _a, _at in work:
         try:
             tag.HasLeader = False
         except Exception:
@@ -541,32 +710,33 @@ def run(doc, view, elements, settings, type_by_category):
     items = []
     info = {}
     two_floor_cache = {}
-    for el, tag, rect, anchor in entries:
+    for el, tag, rect, anchor, attached in work:
         trect = frame.rect(tag.get_BoundingBox(view))
         if trect is None:
             stats["failed"] += 1
             continue
+        # Revit подводит выноску к середине ПОЛНОЙ высоты марки
+        attach_v = (trect[1] + trect[3]) * 0.5
         if upper_floor_only(doc, tag, two_floor_cache):
-            # раскладываем только верхний этаж; смещение головы ниже
-            # считается от его центра, так что запись позиции не меняется
-            trect = (trect[0], (trect[1] + trect[3]) * 0.5, trect[2], trect[3])
+            # раскладываем только верхний этаж (выноска — к его нижнему
+            # краю, черте между этажами); смещение головы ниже считается
+            # от центра этой половины, так что запись позиции не меняется
+            trect = (trect[0], attach_v, trect[2], trect[3])
             stats["upper_floor"] += 1
         head = tag.TagHeadPosition
         hu, hv = frame.uv(head)
         cu, cv = tag_layout.rect_center(trect)
-        key = id_int(el.Id)
-        info[key] = (el, tag, (hu - cu, hv - cv), frame.depth(head))
+        key = id_int(tag.Id)
+        info[key] = (el, tag, (hu - cu, hv - cv), frame.depth(head), attached)
         items.append(tag_layout.TagItem(
             key, anchor, rect,
-            (tag_layout.rect_w(trect), tag_layout.rect_h(trect))
+            (tag_layout.rect_w(trect), tag_layout.rect_h(trect)),
+            attach_dv=attach_v - cv
         ))
 
     # 3. раскладка
-    own_ids = set(info.keys())
-    for _k, (_el, tag, _o, _d) in info.items():
-        own_ids.add(id_int(tag.Id))
-    category_ids = set(id_int(el.Category.Id) for el, _t, _r, _a in entries)
-    obstacles = _obstacle_rects(doc, view, frame, own_ids, category_ids)
+    own_ids.update(info.keys())
+    obstacles = _obstacle_rects(doc, view, frame, own_ids, others, scaled)
 
     placements = tag_layout.layout(items, obstacles, offset=offset, gap=gap,
                                    shelf=shelf, cluster_dist=cluster_dist)
@@ -574,15 +744,26 @@ def run(doc, view, elements, settings, type_by_category):
 
     # 4. запись
     for p in placements:
-        el, tag, (ou, ov), depth = info[p.key]
+        el, tag, (ou, ov), depth, attached = info[p.key]
         cu, cv = tag_layout.rect_center(p.tag_rect)
         try:
             tag.TagHeadPosition = frame.xyz((cu + ou, cv + ov), depth)
             _set_leader(tag, _tag_reference(tag, el),
                         frame.xyz(p.end, depth), frame.xyz(p.elbow, depth),
-                        attached=p.key in attached)
+                        attached=attached)
             stats["moved"] += 1
         except Exception:
             stats["failed"] += 1
+            continue
+        # конец выноски у УГО свободный — следить за прибором будет updater
+        # (tag_leader_follow); присоединённый Revit ведёт сам
+        try:
+            if attached:
+                tag_leader_follow.forget(tag)
+            else:
+                tag_leader_follow.remember(tag, el, frame.xyz(p.end, depth))
+                stats["following"] += 1
+        except Exception:
+            pass
 
     return stats

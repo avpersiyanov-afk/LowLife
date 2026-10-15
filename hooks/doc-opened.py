@@ -103,3 +103,13 @@ try:
     _pnotes_ui.run_open_reminders(_EXEC_PARAMS.event_args.Document)
 except Exception:
     pass
+
+
+# «Марки оборудования»: updater слежения выноски за УГО — запасной путь,
+# если app-init.py не отработал (регистрирует, только если его ещё нет).
+try:
+    from pyrevit import HOST_APP as _HOST_APP
+    from lowlife import tag_leader_follow as _tag_leader_follow
+    _tag_leader_follow.install(_HOST_APP.uiapp)
+except Exception:
+    pass

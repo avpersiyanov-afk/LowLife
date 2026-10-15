@@ -2529,9 +2529,14 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 
 - `tag_layout.py` — чистая 2D-раскладка, **без Revit API** (покрыта
   `tests/test_tag_layout.py`). `layout(items, obstacles, offset, gap, shelf,
-  cluster_dist)` принимает `TagItem(key, anchor, elem_rect, size)` в
-  координатах вида и возвращает `Placement` (габарит марки, излом и конец
-  выноски, точка подхода к марке). Кучки оборудования ближе `cluster_dist`
+  cluster_dist)` принимает `TagItem(key, anchor, elem_rect, size,
+  attach_dv)` в координатах вида и возвращает `Placement` (габарит марки,
+  излом и конец выноски, точка подхода к марке). `attach_dv` — высота
+  точки, где Revit подводит выноску к марке, относительно центра
+  раскладываемого габарита (у марки с одним верхним этажом — черта между
+  этажами): полка выноски ставится на неё, без излома у марки.
+  `extrapolate_rect` — габарит вложенного УГО по габаритам элемента при
+  двух крупных масштабах (аннотация растёт с масштабом, тело — нет). Кучки оборудования ближе `cluster_dist`
   раскладываются блоком: «столбик» — колонкой сбоку на одном отступе
   (плотный столбик — двумя колонками по обе стороны, без «веера» выносок),
   «рядом по горизонтали»/одиночное — стопкой сверху/снизу с прямоугольной
@@ -2542,18 +2547,35 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   пересечения и наложения выносок, наклонные выноски и круче 45°).
   `count_conflicts` — для отчёта.
 - `equipment_tags.py` — Revit-часть: `ViewFrame` (XYZ ↔ 2D вида),
-  `resolve_elements` (выбор → оборудование, марки → их элементы),
-  `existing_tags_by_element`, `tag_types_for_category`/`default_tag_type_id`
-  (типы марок категории + мультикатегорийные), `run(doc, view, elements,
-  settings, type_by_category)` — создать недостающие марки, измерить,
-  разложить, записать голову/конец/излом выноски (API выносок 2022+ и
-  старый, через AttributeError). `symbol_info` — габарит УГО на виде и
-  есть ли оно; у элемента без УГО марка ставится к самому семейству:
+  `resolve_elements` (выбор → оборудование, марки → их элементы; режим
+  «Поставить марки»), `resolve_tag_pairs` (выбор → пары элемент–марка;
+  режим «Разложить марки», новые марки не создаются), `tags_by_element`,
+  `family_group`, `tag_types_for_category`/
+  `default_tag_type_id` (типы марок категории + мультикатегорийные),
+  `run(doc, view, entries, settings)` — entries `[(элемент, марка или None,
+  тип марки)]`: создать недостающие, измерить, разложить ровно эти марки
+  (ключ — id марки), записать голову/конец/излом выноски (API выносок
+  2022+ и старый, через AttributeError). `symbol_info` — габарит УГО на
+  виде и есть ли оно: символьные линии из геометрии либо вложенная
+  аннотация из `probe_annotation_rects` (в геометрию она не попадает;
+  копия вида без шаблона в подтранзакции, масштабы 1:1000/1:2000,
+  откат); у элемента без УГО марка ставится к самому семейству:
   габарит семейства на виде, выноска к точке вставки (`family_anchor`),
   конец выноски привязан к элементу (`Attached`).
 - `equipment_tags_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeEquipmentTags_settings.json`:
   `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm` (мм на листе);
   `load_settings()`, `get_settings_interactive()` (Shift+клик).
+- `tag_leader_follow.py` — свободный конец выноски у УГО следует за
+  прибором: `remember(tag, el, end)` пишет конец в координатах прибора в
+  Extensible Storage марки (`forget` — убрать), `LeaderFollowUpdater` (DMU,
+  необязательный) при изменении геометрии `FamilyInstance` ставит конец в
+  `GetTransform().OfPoint(local)`, при ручной правке марки — перезаписывает
+  `local`. `install(app, force)` — регистрация: `hooks/app-init.py`
+  (force), запасной путь — `hooks/doc-opened.py` и сама кнопка.
+- `equipment_tags_form.py` — окно режима «Поставить марки»: строка на
+  семейство (`TagGroup`), выпадающий список типов марок категории или
+  «— не маркировать —»; выбор по семействам запоминается в
+  `%APPDATA%\pyRevit\LowLifeEquipmentTags_types.json` (`load_saved`/`save_choice`).
 
 ## pnotes/ (отдельный пакет рядом с `lowlife/`) — «Заметки по проекту»
 Панель `Notes.panel` (кнопки «Заметка», «Сводка», «Настройка») и напоминания
