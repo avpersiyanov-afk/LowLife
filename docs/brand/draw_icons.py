@@ -459,6 +459,15 @@ def rotate_3d_view(c):
     c.polygon([(tip[0] - 9, tip[1] - 2), (tip[0] + 3, tip[1] - 7), (tip[0] + 2, tip[1] + 6)], ORANGE)
 
 
+def greeting(c):
+    """«Приветствие»: крупная буква «П» (начало «Привет») и оранжевый «!»
+    на табличке — приветствие большими буквами."""
+    c.rect((10, 14, 86, 82), BLUE, WHITE, 5, 12)
+    c.line([(24, 68), (24, 28), (56, 28), (56, 68)], BLUE, 9)
+    c.line([(72, 28), (72, 54)], ORANGE, 9)
+    c.circle((72, 66), 5, None, ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -486,6 +495,7 @@ ICONS = [
     ("LOI.panel/CheckLOI.pushbutton", check_loi),
     ("SOUE.panel/PlaceTypicalFloor.pushbutton", soue_floor),
     ("Tools.panel/FopParameters.pushbutton", fop_parameters),
+    ("Tools.panel/Greeting.pushbutton", greeting),
 ]
 
 
