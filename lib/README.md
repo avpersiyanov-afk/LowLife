@@ -1028,7 +1028,12 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
   префикса, тип данных `TEXT`/`LENGTH`/`NUMBER`, `INSTANCE`/`TYPE`, категории
   строками `BuiltInCategory` **по системам** `SYSTEMS` — СКС, СКУД, СПС, СОУЭ, СПА,
   СОТ, у каждой свой файл настроек; `aliases` — другие частые названия для поиска
-  в ФОП; `is_list` — список имён через запятую). Штатных параметров Revit
+  в ФОП; `is_list` — список имён через запятую; `system_keys` — если в системе та
+  же роль лежит под другим ключом или под несколькими: адрес устройства у СОТ —
+  `address_param_name`, у СКУД ещё и `schematic_address_param` на значке схемы;
+  марка СКУД — `device_marking_param` + `controller_marking_param`; служебные
+  параметры схемы СКУД — `manifest_param_name`/`schematic_source_uid_param`. Такая
+  роль — одна строка окна, имя пишется во все её ключи, `keys_for(system)`). Штатных параметров Revit
   («Панель», «Имя нагрузки», «Проводник» цепи) в каталоге нет — их не создают и
   не пишут в настройки.
   `build_rows(system_ids, settings_by_system, shared, prefix)` → `Row` для окна:
