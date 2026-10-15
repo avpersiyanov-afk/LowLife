@@ -30,3 +30,14 @@ try:
     export_watcher.install(app)
 except Exception:
     pass
+
+
+# «Марки оборудования»: конец выноски следует за УГО прибора — updater
+# (lib/lowlife/tag_leader_follow.py). force — после перезагрузки pyRevit
+# заменить updater старого движка свежим кодом. Отдельный try.
+try:
+    from pyrevit import HOST_APP as _HOST_APP
+    from lowlife import tag_leader_follow as _tag_leader_follow
+    _tag_leader_follow.install(_HOST_APP.uiapp, force=True)
+except Exception:
+    pass

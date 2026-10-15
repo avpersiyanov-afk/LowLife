@@ -137,6 +137,36 @@ def exit_point(p, q, r):
     return (p[0] + dx * t, p[1] + dy * t)
 
 
+def extrapolate_rect(r1, k1, r2, k2, k0, tol=1e-4):
+    """
+    Габарит вложенной аннотации (УГО) элемента на виде масштаба k0 по
+    габаритам элемента на том же виде при масштабах k1 и k2 (k1 < k2,
+    оба много крупнее k0). Аннотация растёт с масштабом линейно, а 3D-тело
+    семейства — нет, поэтому каждая сторона габарита — линейная функция
+    масштаба, пока при k1/k2 её задаёт аннотация; продолжаем её до k0.
+    Сторона, которая между k1 и k2 не сдвинулась (аннотация в эту сторону
+    от своей точки не выходит), остаётся как есть. Ни одна сторона не
+    сдвинулась — аннотации нет: None. Вырожденный результат — тоже None.
+    """
+    if r1 is None or r2 is None or k2 == k1:
+        return None
+    if all(abs(b - a) <= tol for a, b in zip(r1, r2)):
+        return None
+    t = float(k0 - k1) / (k2 - k1)
+    r = tuple(a + (b - a) * t for a, b in zip(r1, r2))
+    if r[2] - r[0] <= tol or r[3] - r[1] <= tol:
+        return None
+    return r
+
+
+def rect_intersection(a, b):
+    """Общая часть прямоугольников или None."""
+    r = (max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3]))
+    if r[2] <= r[0] or r[3] <= r[1]:
+        return None
+    return r
+
+
 def _cross(o, a, b):
     return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
@@ -181,14 +211,22 @@ class TagItem(object):
     key       — что угодно, по чему вызывающий потом найдёт свою марку;
     anchor    — (u, v) точка, куда смотрит выноска (центр/точка вставки);
     elem_rect — габарит элемента на виде (u0, v0, u1, v1);
-    size      — (w, h) габарит самой марки без выноски.
+    size      — (w, h) габарит самой марки без выноски;
+    attach_dv — на сколько по высоте точка, где Revit подводит выноску к
+                марке, выше (+) или ниже (−) центра этого габарита. Revit
+                подводит выноску к середине ПОЛНОЙ высоты марки, а у
+                двухэтажной марки с одним верхним этажом в раскладку идёт
+                только верхняя половина — выноска подходит к её нижнему
+                краю (к черте между этажами). Полка выноски ставится на эту
+                высоту, иначе у марки получается «излом» перед полкой.
     """
 
-    def __init__(self, key, anchor, elem_rect, size):
+    def __init__(self, key, anchor, elem_rect, size, attach_dv=0.0):
         self.key = key
         self.anchor = anchor
         self.elem_rect = elem_rect
         self.size = size
+        self.attach_dv = attach_dv
 
 
 class Placement(object):
@@ -352,7 +390,8 @@ def _layout_side(cluster, side, off, gap, shelf, box=None):
     items = sorted(cluster, key=lambda it: it.anchor[1])
     if box is None:
         box = rect_union(it.elem_rect for it in cluster)
-    desired = [it.anchor[1] for it in items]
+    # марка напротив элемента — полкой выноски (а не центром) на его уровне
+    desired = [it.anchor[1] - it.attach_dv for it in items]
     shelf = min(shelf, off)
     elbow_x = box[2] + off - shelf if side == "right" else box[0] - off + shelf
 
@@ -371,8 +410,8 @@ def _layout_side(cluster, side, off, gap, shelf, box=None):
         swapped = False
         for i in range(len(items)):
             for j in range(i + 1, len(items)):
-                if segments_cross(items[i].anchor, (elbow_x, centers[i]),
-                                  items[j].anchor, (elbow_x, centers[j])):
+                if segments_cross(items[i].anchor, (elbow_x, centers[i] + items[i].attach_dv),
+                                  items[j].anchor, (elbow_x, centers[j] + items[j].attach_dv)):
                     items[i], items[j] = items[j], items[i]
                     swapped = True
                     if not same_size:
@@ -384,16 +423,17 @@ def _layout_side(cluster, side, off, gap, shelf, box=None):
     result = []
     for it, cy in zip(items, centers):
         w, h = it.size
+        ly = cy + it.attach_dv
         if side == "right":
             x0 = box[2] + off
             rect = (x0, cy - h * 0.5, x0 + w, cy + h * 0.5)
-            attach = (x0, cy)
-            elbow = (x0 - shelf, cy)
+            attach = (x0, ly)
+            elbow = (x0 - shelf, ly)
         else:
             x1 = box[0] - off
             rect = (x1 - w, cy - h * 0.5, x1, cy + h * 0.5)
-            attach = (x1, cy)
-            elbow = (x1 + shelf, cy)
+            attach = (x1, ly)
+            elbow = (x1 + shelf, ly)
         result.append(Placement(it.key, rect, elbow, it.anchor, attach))
     return result
 
@@ -451,14 +491,13 @@ def _layout_stack(cluster, vdir, hdir, off, gap, shelf, box=None):
         else:
             y0, y1 = cursor - h, cursor
             cursor = y0 - gap
-        cy = (y0 + y1) * 0.5
+        ly = (y0 + y1) * 0.5 + it.attach_dv
         if hdir == "right":
             rect = (col_x, y0, col_x + w, y1)
-            attach = (col_x, cy)
         else:
             rect = (col_x - w, y0, col_x, y1)
-            attach = (col_x, cy)
-        elbow = (it.anchor[0], cy)
+        attach = (col_x, ly)
+        elbow = (it.anchor[0], ly)
         result.append(Placement(it.key, rect, elbow, it.anchor, attach))
     return result
 
