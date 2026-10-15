@@ -2606,6 +2606,14 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   напоминаний), `AnswerWindow` (ответ / решение), `SetupWindow` (разметка в `pnotes/xaml/*.xaml`) и точки входа
   кнопок/хука: `run_new_note(uidoc)`, `run_summary(uidoc)`, `run_setup(doc)`,
   `run_open_reminders(doc)` (раз за сеанс Revit на проект, без сети — молча выходит).
+- `pnotes/usage.py` — статистика запусков кнопок: `install(uiapp)` (из `hooks/app-init.py`) подписывается
+  на `ComponentManager.ItemExecuted` (одна подписка на процесс, ключ в AppDomain; после перезагрузки pyRevit
+  заменяется) и дописывает запуск кнопки LowLife в `%APPDATA%\pyRevit\LowLifeUsage\queue.json`;
+  `record_entry(uiapp, entry)` — запуск из «Поиска» (PostCommand клика по ленте не даёт).
+  Накопленное уходит пачками в фоне (`send_detached`/`flush_queue`, действие `usage` веб-приложения
+  обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «Обратная связь».
+  Чистая логика — `lowlife/usage_core.py` (`parse_item_id`, `find_entry`, `new_event`, `should_flush`,
+  `batch_id`, `trim_queue`, `is_duplicate`; тесты `tests/test_usage_core.py`).
 - `pnotes/feedback.py` — кнопка «Обратная связь» (`_Themes.panel/Feedback`):
   `FeedbackWindow` (панель → кнопка из `lowlife.ribbon_catalog` → проблема/предложение →
   описание, разметка `xaml/feedback.xaml`), `run(uiapp)`. Отправка — `core._post` на

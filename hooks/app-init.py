@@ -60,3 +60,12 @@ try:
     greeting_window.show_on_startup(_greet_app)
 except Exception:
     pass
+
+# Статистика запусков кнопок (lib/pnotes/usage.py): подписка на клики по
+# ленте и отправка накопленного — отдельный try, ничего выше не задевает.
+try:
+    from pyrevit import HOST_APP as _usage_host
+    from pnotes import usage as _usage
+    _usage.install(_usage_host.uiapp)
+except Exception:
+    pass
