@@ -4,6 +4,9 @@
  * Таблица принадлежит автору расширения. Веб-приложение умеет только ДОПИСЫВАТЬ
  * строки на лист «Обратная связь» — прочитать отзывы через него нельзя, их видит
  * только владелец таблицы. Установка — docs/feedback-panel.md.
+ *
+ * Действие `usage` — статистика запусков кнопок (lib/pnotes/usage.py): пачки запусков
+ * дописываются на лист «Запуски», лист «Статистика» считает их формулами.
  */
 
 const SHEET = 'Обратная связь';
@@ -40,8 +43,10 @@ const STATUSES = ['Новое', 'В работе', 'Сделано', 'Не бу�
 
 
 function setup() {
-  ensureSheet_(SpreadsheetApp.getActive());
-  const msg = 'Лист «' + SHEET + '» готов.\n\nДальше: «Развернуть → Новое развертывание», тип «Веб-приложение», ' +
+  const ss = SpreadsheetApp.getActive();
+  ensureSheet_(ss);
+  ensureUsageSheets_(ss);
+  const msg = 'Листы «' + SHEET + '», «' + USAGE_SHEET + '» и «' + STATS_SHEET + '» готовы.\n\nДальше: «Развернуть → Новое развертывание», тип «Веб-приложение», ' +
     'запуск от имени «Я», доступ «Все». Адрес на /exec впишите в FEEDBACK_URL в lib/pnotes/feedback.py.';
   Logger.log(msg);
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { /* запуск из редактора — смотрите журнал */ }
@@ -77,11 +82,10 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: 'Некорректный запрос' });
   }
-  if (req.action !== 'feedback' || !req.feedback) {
-    return json_({ ok: false, error: 'Неизвестное действие' });
-  }
   try {
-    return json_(addFeedback_(req.feedback));
+    if (req.action === 'feedback' && req.feedback) return json_(addFeedback_(req.feedback));
+    if (req.action === 'usage' && req.usage) return json_(addUsage_(req.usage));
+    return json_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return json_({ ok: false, error: String((err && err.message) || err) });
   }
@@ -139,4 +143,94 @@ function addFeedback_(item) {
     } catch (e) { /* письмо — не главное, строка уже записана */ }
   }
   return { ok: true };
+}
+
+
+// ---------------------------------------------------------------- статистика запусков
+
+const USAGE_SHEET = 'Запуски';
+const STATS_SHEET = 'Статистика';
+const MAX_EVENTS = 500;            // запусков в одной пачке
+const MAX_USAGE_PER_MINUTE = 60;   // пачек в минуту от всех пользователей
+
+// [ключ в запросе, заголовок столбца, ширина столбца]; время — первым (по нему фильтры статистики)
+const USAGE_FIELDS = [
+  ['time', 'Время', 140],
+  ['user', 'Пользователь Revit', 140],
+  ['windows_user', 'Пользователь Windows', 140],
+  ['panel', 'Панель', 150],
+  ['button', 'Кнопка', 220],
+  ['source', 'Откуда', 70],
+  ['model', 'Модель', 200],
+  ['version', 'Версия LowLife', 130],
+  ['revit', 'Revit', 150],
+  ['button_id', 'ID кнопки', 220],
+];
+
+function ensureUsageSheets_(ss) {
+  let sh = ss.getSheetByName(USAGE_SHEET);
+  if (!sh) sh = ss.insertSheet(USAGE_SHEET);
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(USAGE_FIELDS.map(f => f[1]));
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, USAGE_FIELDS.length).setFontWeight('bold').setBackground('#F2F5F9');
+    USAGE_FIELDS.forEach((f, i) => sh.setColumnWidth(i + 1, f[2]));
+    sh.getRange(2, 2, sh.getMaxRows() - 1, USAGE_FIELDS.length - 1).setNumberFormat('@');
+    sh.getRange(2, 1, sh.getMaxRows() - 1, 1).setNumberFormat('dd.MM.yyyy HH:mm:ss');
+  }
+  if (!ss.getSheetByName(STATS_SHEET)) {
+    const st = ss.insertSheet(STATS_SHEET);
+    const src = "'" + USAGE_SHEET + "'!A:J";
+    const blocks = [
+      // [столбец, заголовок, запрос]
+      [1, 'Кнопки — за всё время', "select D, E, count(A) where A is not null group by D, E order by count(A) desc label D 'Панель', E 'Кнопка', count(A) 'Запусков'"],
+      [5, 'Кнопки — последние 30 дней', null],
+      [9, 'Пользователи — за всё время', "select B, count(A), max(A) where A is not null group by B order by count(A) desc label B 'Пользователь', count(A) 'Запусков', max(A) 'Последний запуск'"],
+      [13, 'По месяцам', "select year(A), month(A)+1, count(A) where A is not null group by year(A), month(A)+1 order by year(A) desc, month(A)+1 desc label year(A) 'Год', month(A)+1 'Месяц', count(A) 'Запусков'"],
+    ];
+    blocks.forEach(b => {
+      st.getRange(1, b[0]).setValue(b[1]).setFontWeight('bold');
+      const formula = b[2]
+        ? '=QUERY(' + src + ', "' + b[2] + '", 1)'
+        : `=QUERY(${src}, "select D, E, count(A) where A >= date '"&TEXT(TODAY()-30,"yyyy-mm-dd")&"' ` +
+          `group by D, E order by count(A) desc label D 'Панель', E 'Кнопка', count(A) 'Запусков'", 1)`;
+      st.getRange(2, b[0]).setFormula(formula);
+    });
+    [1, 5].forEach(c => { st.setColumnWidth(c, 150); st.setColumnWidth(c + 1, 220); });
+    st.setColumnWidth(9, 160);
+    st.setColumnWidth(11, 140);
+    st.setFrozenRows(2);
+  }
+  return sh;
+}
+
+function parseTime_(text) {
+  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(text || ''));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : new Date();
+}
+
+function addUsage_(usage) {
+  const events = Array.isArray(usage.events) ? usage.events.slice(0, MAX_EVENTS) : [];
+  if (!events.length) return { ok: true, added: 0 };
+  const batch = clip_(usage.batch, 80);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const cache = CacheService.getScriptCache();
+    // повторная отправка той же пачки (ответ потерялся в сети) не должна дублировать строки
+    if (batch && cache.get('usage_' + batch)) return { ok: true, duplicate: true };
+    const count = Number(cache.get('usage_rate') || 0);
+    if (count >= MAX_USAGE_PER_MINUTE) return { ok: false, error: 'Слишком много запросов, попробуйте через минуту' };
+    cache.put('usage_rate', String(count + 1), 60);
+
+    const sh = ensureUsageSheets_(SpreadsheetApp.getActive());
+    const rows = events.map(ev => USAGE_FIELDS.map(f =>
+      f[0] === 'time' ? parseTime_(ev.time) : clip_(ev[f[0]], MAX_FIELD)));
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, USAGE_FIELDS.length).setValues(rows);
+    if (batch) cache.put('usage_' + batch, '1', 21600);
+    return { ok: true, added: rows.length };
+  } finally {
+    lock.releaseLock();
+  }
 }

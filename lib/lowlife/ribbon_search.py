@@ -210,6 +210,15 @@ def _command_id(entry, chain):
     return ids
 
 
+def _record_usage(uiapp, entry):
+    """Запуск через PostCommand клика по ленте не даёт — записываем его в статистику сами."""
+    try:
+        from pnotes import usage
+        usage.record_entry(uiapp, entry)
+    except Exception:
+        pass
+
+
 def run_button(uiapp, entry):
     """Запускает кнопку как клик по ленте (после завершения этого скрипта). Возвращает текст ошибки или None."""
     from Autodesk.Revit.UI import RevitCommandId
@@ -220,6 +229,7 @@ def run_button(uiapp, entry):
         cmd = RevitCommandId.LookupCommandId(cmd_id)
         if cmd is not None and uiapp.CanPostCommand(cmd):
             uiapp.PostCommand(cmd)
+            _record_usage(uiapp, entry)
             return None
     return (u"Revit не даёт запустить «{}» отсюда (возможно, кнопка недоступна без открытой модели) — "
             u"она подсвечена на ленте.".format(entry[u"title"]))

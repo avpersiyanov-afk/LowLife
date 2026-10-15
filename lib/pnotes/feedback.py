@@ -12,6 +12,7 @@ import traceback
 import datetime
 
 from pyrevit import forms
+from System.Windows import Visibility
 from System.Windows.Input import Key, Keyboard, ModifierKeys
 
 from pnotes import core
@@ -181,6 +182,7 @@ class FeedbackWindow(forms.WPFWindow):
         self.cmbPanel.SelectionChanged += self.on_panel
         self.cmbPanel.SelectedIndex = names.index(state['panel']) if state.get('panel') in names else 0
         self.txtContact.Text = state.get('contact') or u''
+        self._init_usage()
 
         if not feedback_url():
             self.txtStatus.Text = (u'Адрес таблицы обратной связи ещё не задан — сообщение сохранится '
@@ -198,6 +200,26 @@ class FeedbackWindow(forms.WPFWindow):
         self.btnCancel.Click += lambda s, e: self.Close()
         self.PreviewKeyDown += self.on_key
         self.Loaded += lambda s, e: self.cmbPanel.Focus()
+
+    def _init_usage(self):
+        try:
+            from pnotes import usage
+            self.chkUsage.IsChecked = usage.is_enabled()
+        except Exception:
+            self.chkUsage.Visibility = Visibility.Collapsed
+            return
+        # сразу, без «Отправить»: выключить статистику можно и не отправляя сообщение
+        self.chkUsage.Checked += lambda s, e: self._set_usage(True)
+        self.chkUsage.Unchecked += lambda s, e: self._set_usage(False)
+
+    def _set_usage(self, value):
+        try:
+            from pnotes import usage
+            usage.set_enabled(value)
+            self.txtStatus.Text = (u'Статистика запусков включена.' if value
+                                   else u'Статистика запусков выключена.')
+        except Exception as ex:
+            self.txtStatus.Text = u'Не удалось сохранить настройку статистики: ' + core.err_text(ex)
 
     def on_panel(self, sender, e):
         panel = self.cmbPanel.SelectedItem
