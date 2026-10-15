@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 __title__ = u"Разбить\nспецификацию"
 __doc__ = u"Разбивает выбранную спецификацию на листе на участки и раскладывает их в ряд"
 __author__ = "Pipers"

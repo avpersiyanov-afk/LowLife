@@ -44,6 +44,12 @@ u"""
     читаются при любом масштабе вида и на видах с разным масштабом.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import math
 
 from Autodesk.Revit.DB import (

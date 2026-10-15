@@ -11,6 +11,12 @@
   оранжевой заливкой (Adorner в слое украшений ленты, если его нет — прозрачный Popup того же
   размера; не нашли кнопку на экране — штатная отметка `HighlightMode.New`).
 """
+
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
 import traceback
 
 from pyrevit import forms

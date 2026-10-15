@@ -27,6 +27,12 @@ facing_direction). Разрез сразу обрезан:
 Min.Z — дальняя граница подрезки.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import re
 
 from System.Collections.Generic import List

@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 __title__ = u"ID\nэлемента"
 __doc__ = (
     u"Показывает и копирует в буфер обмена ID выбранного элемента — в том "

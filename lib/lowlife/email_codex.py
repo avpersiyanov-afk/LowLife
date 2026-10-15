@@ -10,6 +10,12 @@ email_ai_core.codex_arguments. Модель работает в песочниц
 чтения во временной папке, где ничего нет.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import os
 import io
 import uuid

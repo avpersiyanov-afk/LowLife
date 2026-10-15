@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 """Общие хелперы чтения/записи параметров элементов Revit."""
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import StorageType, ElementId
 
 

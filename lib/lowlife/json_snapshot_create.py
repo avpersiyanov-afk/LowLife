@@ -31,6 +31,17 @@ DEDUPE_RADIUS_MM от точки уже стоит экземпляр того �
 запись пропускается (попадает в отчёт как «уже есть»).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+try:
+    basestring  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    basestring = str
+
+
 from collections import OrderedDict
 
 from Autodesk.Revit.DB import (

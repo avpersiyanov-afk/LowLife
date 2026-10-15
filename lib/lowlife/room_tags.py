@@ -42,6 +42,12 @@
 нет. Транзакцию открывает вызывающий скрипт кнопки.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import (
     FilteredElementCollector, BuiltInCategory, RevitLinkInstance,
     LinkElementId, ElementId, UV, LocationPoint, Element, Family,

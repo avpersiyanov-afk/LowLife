@@ -6,6 +6,12 @@
 настроек (см. fire_alarm_settings.set_system), поэтому логика здесь одна.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import (
     FilteredElementCollector, BuiltInCategory
 )

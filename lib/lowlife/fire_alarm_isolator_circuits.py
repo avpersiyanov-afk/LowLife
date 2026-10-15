@@ -29,6 +29,12 @@
 линию идёт именно он), поэтому подпись — имя элемента цепи в Revit.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import BuiltInCategory
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException

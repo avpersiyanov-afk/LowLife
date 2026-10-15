@@ -20,6 +20,12 @@ family_section.level_above по шаблону имени уровня (тот �
 не даст изменить диапазон такого вида.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 from Autodesk.Revit.DB import (
     BuiltInParameter, ElementId, PlanViewPlane, PlanViewRange, ViewPlan,
     ViewType

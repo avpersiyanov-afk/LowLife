@@ -13,6 +13,12 @@
 каждый по отдельности).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import re
 
 from Autodesk.Revit.DB import (

@@ -43,6 +43,17 @@ Document.LoadFamily управляет собственной транзакци
 revit.Transaction (см. write_stamp).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+try:
+    basestring  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    basestring = str
+
+
 import os
 import io
 import shutil

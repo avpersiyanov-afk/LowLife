@@ -8,6 +8,12 @@ json_snapshot_geometry / json_snapshot_rooms / json_snapshot_create):
 json_snapshot (он сам их импортирует — был бы циклический импорт).
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import hashlib
 
 from Autodesk.Revit.DB import Element, ElementId, XYZ

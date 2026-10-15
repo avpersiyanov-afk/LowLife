@@ -15,6 +15,12 @@ DataTable без Python-классов со свойствами. Имена с�
 wire_catalog.apply_entries; окно закрывается, итог показывает кнопка.
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 import clr
 clr.AddReference('System.Data')
 clr.AddReference('PresentationFramework')

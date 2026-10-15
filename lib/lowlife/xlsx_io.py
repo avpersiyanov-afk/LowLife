@@ -11,6 +11,22 @@ sharedStrings (так Excel пересохраняет файл после пр�
 сценария «выгрузил параметры — поправил в Excel — загрузил обратно».
 """
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+try:
+    long  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    long = int
+
+try:
+    unichr  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unichr = chr
+
+
 import re
 
 import clr

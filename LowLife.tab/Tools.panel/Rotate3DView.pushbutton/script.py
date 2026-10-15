@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 
+try:
+    unicode  # noqa: F821 — IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
+
 __title__ = u"Повернуть\n3D вид"
 __doc__ = (
     u"Поворачивает открытый 3D вид под ось: выберите ось сетки из списка "
