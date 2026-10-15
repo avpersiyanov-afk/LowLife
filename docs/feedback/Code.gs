@@ -194,7 +194,7 @@ function ensureUsageSheets_(ss) {
         ? '=QUERY(' + src + ', "' + b[2] + '", 1)'
         : `=QUERY(${src}, "select D, E, count(A) where A >= date '"&TEXT(TODAY()-30,"yyyy-mm-dd")&"' ` +
           `group by D, E order by count(A) desc label D 'Панель', E 'Кнопка', count(A) 'Запусков'", 1)`;
-      st.getRange(2, b[0]).setFormula(formula);
+      setFormulaInLocale_(st.getRange(2, b[0]), formula);
     });
     [1, 5].forEach(c => { st.setColumnWidth(c, 150); st.setColumnWidth(c + 1, 220); });
     st.setColumnWidth(9, 160);
@@ -202,6 +202,16 @@ function ensureUsageSheets_(ss) {
     st.setFrozenRows(2);
   }
   return sh;
+}
+
+// Формулы пишутся с запятыми между аргументами, а в таблице с русской (и многими другими)
+// локалью разделитель — «;»: тогда формула даёт #ERROR!, и запятые вне строк в кавычках меняются.
+function setFormulaInLocale_(range, formula) {
+  range.setFormula(formula);
+  SpreadsheetApp.flush();
+  if (range.getDisplayValue() === '#ERROR!') {
+    range.setFormula(formula.replace(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/g, ';'));
+  }
 }
 
 function parseTime_(text) {
