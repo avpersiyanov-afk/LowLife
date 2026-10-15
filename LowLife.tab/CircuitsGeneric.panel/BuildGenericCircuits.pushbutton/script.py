@@ -54,7 +54,7 @@ if config_mode:
 settings = get_settings_silent()
 
 generic_circuits_settings.require(settings, [
-    "circuit_system_type", "conductor_param_name", "load_name_param"
+    "circuit_system_type", "cable_type_param", "load_name_param"
 ])
 
 conductor_id = get_conductor_id(doc, settings)

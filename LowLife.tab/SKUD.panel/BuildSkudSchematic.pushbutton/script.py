@@ -53,8 +53,8 @@ def _open_settings():
         "excluded_device_keywords", "circuit_panel_param", "device_address_param",
         "passage_point_param", "device_marking_param", "schematic_address_param",
         "schematic_layout_gap_m", "schematic_layout_step_mm",
-        "schematic_device_categories_text", "schematic_view_name", "manifest_param_name",
-        "schematic_source_uid_param", "passage_point_group_ids"
+        "schematic_device_categories_text", "schematic_view_name", "layout_param_name",
+        "device_uid_param_name", "passage_point_group_ids"
     ])
     forms.alert(
         u"Отменено, настройки не изменены." if edited is None
@@ -83,7 +83,7 @@ skud_settings.require(settings, [
     "circuit_panel_param", "device_address_param",
     "schematic_address_param", "schematic_layout_gap_m", "schematic_layout_step_mm",
     "schematic_device_categories_text",
-    "schematic_view_name", "manifest_param_name", "schematic_source_uid_param",
+    "schematic_view_name", "layout_param_name", "device_uid_param_name",
 ])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
@@ -95,9 +95,9 @@ DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
 DEVICE_MARKING_PARAM = settings.get("device_marking_param") or u""
 SCHEMATIC_ADDRESS_PARAM = settings["schematic_address_param"]
-SCHEMATIC_SOURCE_UID_PARAM = settings["schematic_source_uid_param"]
+SCHEMATIC_SOURCE_UID_PARAM = settings["device_uid_param_name"]
 SCHEMATIC_VIEW_NAME = settings["schematic_view_name"]
-MANIFEST_PARAM_NAME = settings["manifest_param_name"]
+MANIFEST_PARAM_NAME = settings["layout_param_name"]
 
 LAYOUT_GAP_FT = float(settings["schematic_layout_gap_m"]) * M_TO_FT
 FALLBACK_STEP_FT = float(settings["schematic_layout_step_mm"]) * MM_TO_FT   # для no-match

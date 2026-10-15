@@ -37,7 +37,7 @@ if config_mode:
 settings = room_lots_settings.get_settings_silent()
 room_lots_settings.require(settings, ["lot_param_name"])
 lot_param = settings["lot_param_name"].strip()
-section_param = (settings.get("section_param_name") or u"").strip()
+section_param = (settings.get("room_section_param") or u"").strip()
 
 sources = room_lots.get_link_sources(doc)
 if not sources:

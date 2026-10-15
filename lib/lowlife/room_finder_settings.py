@@ -24,7 +24,7 @@ SETTINGS = settings_core.TextSettings(
     transfer_label=u"поиска помещений",
     fields=[
         settings_core.TextField(
-            "room_number_param_name",
+            "room_number_param",
             u"① Номер помещения — по какому параметру искать/сортировать",
             u"Параметр номера (в связи АР)",
             hint=(
@@ -50,6 +50,7 @@ SETTINGS = settings_core.TextSettings(
         ),
     ],
     width=720, height=480,
+    renames={"room_number_param_name": "room_number_param"},
 )
 
 load_saved_values = SETTINGS.load_saved_values

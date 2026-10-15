@@ -518,9 +518,9 @@ def build_companion_circuits(doc, view, companion_el, member_elements, pair):
     базовому объекту нужны сразу две цепи разной категории, например
     силовая + сигнальная). pair — {"circuits": [{"system_type",
     "conductor_type_id"}, ...], "circuit_panel_param",
-    "circuit_conductor_param", "wire_line_family_filter", "wire_mark_param"}
+    "cable_type_param", "wire_line_family_filter", "wire_mark_param"}
     (см. companion_placement_settings) — все, кроме "circuits", опциональны
-    и общие для всех слотов: "circuit_panel_param"/"circuit_conductor_param"
+    и общие для всех слотов: "circuit_panel_param"/"cable_type_param"
     пишут имя компаньона (аналог «Панель» = имя изолятора у «Цепи
     изолятор-устройства») и, если у слота выбран кабель, ссылку на строку
     справочника кабелей; "wire_line_family_filter"/"wire_mark_param" — как
@@ -539,7 +539,7 @@ def build_companion_circuits(doc, view, companion_el, member_elements, pair):
     (например «создана, но не подключена к панели»).
     """
     panel_param = pair.get("circuit_panel_param")
-    conductor_param = pair.get("circuit_conductor_param")
+    conductor_param = pair.get("cable_type_param")
     wire_family_filter = pair.get("wire_line_family_filter")
     wire_mark_param = pair.get("wire_mark_param")
 
@@ -558,7 +558,7 @@ def place_companions_for_pair(doc, view, base_elements, pair, sorted_levels):
     объектов. pair — {"companion_symbol", "param_map", "offset_forward_mm",
     "offset_side_mm", "offset_up_mm", "group_enabled", "group_companion_symbol",
     "group_radius_mm", "circuit_enabled", "circuits", "circuit_panel_param",
-    "circuit_conductor_param", "wire_line_family_filter", "wire_mark_param"}
+    "cable_type_param", "wire_line_family_filter", "wire_mark_param"}
     (см. companion_placement_settings). view — активный вид, нужен только
     для подписи линий проводки (mark_wire_lines ищет их на view).
 

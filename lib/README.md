@@ -473,7 +473,8 @@ _write_all = _STORE.write
 | Имя | Сигнатура | Что делает |
 |---|---|---|
 | `settings_folder` | `settings_folder()` | `%APPDATA%\pyRevit`, создаётся при необходимости |
-| `JsonStore` | `JsonStore(file_name, label=None, share=True)` | `file_name` и `label` — строка или функция без аргументов (вычисляется при каждом обращении: у `fire_alarm_settings` файл зависит от текущей системы). `label` вставляется в сообщение об ошибке записи; `share` — участвовать в общих значениях между кнопками (ниже) |
+| `JsonStore` | `JsonStore(file_name, label=None, share=True, renames=None)` | `file_name` и `label` — строка или функция без аргументов (вычисляется при каждом обращении: у `fire_alarm_settings` файл зависит от текущей системы). `label` вставляется в сообщение об ошибке записи; `share` — участвовать в общих значениях между кнопками (ниже); `renames` — `{старый ключ: новый}`: `read`/`write` переносят значение (`rename_keys`), чтобы старые файлы настроек и выгрузки читались после переименования ключа |
+| `rename_keys` | `rename_keys(data, renames)` | Переносит значения старых ключей в новые (непустой новый важнее), старые удаляет; на месте |
 | `JsonStore.path` | `path()` | Полный путь к файлу |
 | `JsonStore.read` | `read()` | Весь словарь (`SavedSettings`); пустой — файла нет, он пуст, битый или не JSON-объект |
 | `JsonStore.write` | `write(data)` | Перезаписывает файл; `True`, иначе `forms.alert` (если pyrevit доступен) и `False`. Изменённые общие ключи запоминает в общем файле |
@@ -1028,7 +1029,11 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
   префикса, тип данных `TEXT`/`LENGTH`/`NUMBER`, `INSTANCE`/`TYPE`, категории
   строками `BuiltInCategory` **по системам** `SYSTEMS` — СКС, СКУД, СПС, СОУЭ, СПА,
   СОТ, у каждой свой файл настроек; `aliases` — другие частые названия для поиска
-  в ФОП; `is_list` — список имён через запятую). Штатных параметров Revit
+  в ФОП; `is_list` — список имён через запятую; `system_keys` — если в системе
+  одна роль лежит под несколькими ключами (на разных элементах): адрес у СКУД —
+  `device_address_param` + `schematic_address_param` на значке схемы, марка СКУД —
+  `device_marking_param` + `controller_marking_param`. Такая роль — одна строка
+  окна, имя пишется во все её ключи, `keys_for(system)`). Штатных параметров Revit
   («Панель», «Имя нагрузки», «Проводник» цепи) в каталоге нет — их не создают и
   не пишут в настройки.
   `build_rows(system_ids, settings_by_system, shared, prefix)` → `Row` для окна:
@@ -1383,9 +1388,9 @@ Shift+клик меняет папку. Обе кнопки принимают *
 Текстовое поле `passage_point_param` («Номер точки прохода») —
 необязательное: пусто у устройства → одна точка прохода на контроллер.
 Поля `schematic_view_name` (имя чертёжного вида схемы, дефолт
-«Структурная схема СКУД»), `manifest_param_name` (служебный текстовый
+«Структурная схема СКУД»), `layout_param_name` (служебный текстовый
 параметр вида для JSON-состояния схемы — привязать к категории «Виды») и
-`schematic_source_uid_param` (служебный текстовый параметр схемных
+`device_uid_param_name` (служебный текстовый параметр схемных
 Detail-семейств для `UniqueId` исходного устройства) — по образцу
 `schematic_view_name` / `layout_param_name` / `device_uid_param_name` в
 `sot_settings.py`.
@@ -1456,7 +1461,7 @@ pp_removed/controllers_created/controllers_removed/stale_refs` + список
 
 ## skud_schematic_manifest.py
 JSON-состояние (v2) структурной схемы СКУД в текстовом параметре
-чертёжного вида (`manifest_param_name` из настроек), а не в файле — тот
+чертёжного вида (`layout_param_name` из настроек), а не в файле — тот
 же приём, что `sot_layout_state.py` для СОТ/СПС. Вид ищется по имени
 (`schematic_view_name`). Ключи по `UniqueId` контроллеров/устройств,
 внутри дублируются `IntegerValue` id для быстрого резолва.

@@ -35,7 +35,7 @@ SETTINGS = settings_core.TextSettings(
             default=u"", required=True,
         ),
         settings_core.TextField(
-            "section_param_name",
+            "room_section_param",
             u"② Номер секции",
             u"Параметр помещения (в связи АР)",
             hint=(
@@ -47,6 +47,7 @@ SETTINGS = settings_core.TextSettings(
         ),
     ],
     width=720, height=440,
+    renames={"section_param_name": "room_section_param"},
 )
 
 load_saved_values = SETTINGS.load_saved_values

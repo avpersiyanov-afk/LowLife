@@ -92,7 +92,7 @@ if config_mode:
 settings = get_settings_silent()
 
 sot_settings.require(settings, [
-    "room_param_name", "room_mask", "address_param_name",
+    "room_param_name", "room_mask", "device_address_param",
     "node_label_offset_mm", "schematic_view_name", "layout_param_name", "device_uid_param_name",
     "schematic_device_categories_text"
 ])
@@ -100,7 +100,7 @@ sot_settings.require(settings, [
 LEVEL_PARAM_NAME = settings["level_param_name"]
 ROOM_PARAM_NAME = settings["room_param_name"]
 ROOM_MASK = settings["room_mask"]
-ADDRESS_PARAM_NAME = settings["address_param_name"]
+ADDRESS_PARAM_NAME = settings["device_address_param"]
 BUILDING_PARAM_NAME = (settings.get("building_param_name") or u"").strip()
 SECTION_PARAM_NAME = (settings.get("section_param_name") or u"").strip()
 BUILDING_FILTER_VALUE = settings["building_filter_value"].strip()

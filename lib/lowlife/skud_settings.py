@@ -266,12 +266,12 @@ TEXT_FIELDS = [
         u"При первом запуске кнопка создаёт чертёжный вид с этим именем, при повторных — находит его "
         u"по имени и обновляет. Для второй, независимой схемы нужно указать другое имя.",
         u"Структурная схема СКУД", False, True, False),
-    ("manifest_param_name", u"[Схема] Служебный параметр вида для хранения манифеста схемы",
+    ("layout_param_name", u"[Схема] Служебный параметр вида для хранения манифеста схемы",
         u"Текстовый параметр категории «Виды» — в него кнопка пишет JSON со всем состоянием схемы "
         u"(что где стоит), чтобы при повторном запуске понять, что изменилось. Вручную не "
         u"редактируется; параметр должен быть доступен для записи на самом виде.",
         u"", False, True, False),
-    ("schematic_source_uid_param", u"[Схема] Служебный параметр схемного семейства для UniqueId устройства",
+    ("device_uid_param_name", u"[Схема] Служебный параметр схемного семейства для UniqueId устройства",
         u"Текстовый параметр на схемных семействах (Detail Items) — в него пишется UniqueId исходного "
         u"устройства модели. По нему при повторном запуске программа узнаёт «то же самое устройство» "
         u"и не перерисовывает уже готовую точку прохода заново.",
@@ -372,7 +372,13 @@ def _type_display_name(doc, id_str):
     return type_name or id_str
 
 
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКУД")
+# Переименованные ключи (одна роль — один ключ во всех кнопках).
+RENAMES = {
+    "manifest_param_name": "layout_param_name",
+    "schematic_source_uid_param": "device_uid_param_name",
+}
+
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, u"СКУД", renames=RENAMES)
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
 _write_all = _STORE.write

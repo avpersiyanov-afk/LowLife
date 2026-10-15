@@ -931,7 +931,7 @@ def run(doc, levels, tasks, settings, apartment_symbol, speakers, table, progres
     else:
         existing = existing_points(doc, unique, levels)
 
-    room_param = (settings.get("room_target_param") or u"").strip()
+    room_param = (settings.get("room_param_name") or u"").strip()
     probe = CeilingProbe(doc)
     try:
         for index, task in enumerate(tasks):

@@ -33,7 +33,7 @@ Room (`Room.IsPointInRoom`), а если его нет — ближайший Ro
 
 Три поля, сохраняются в `%APPDATA%\pyRevit\LowLifeRoomInfo_settings.json`:
 
-1. **Параметр элемента** (`target_param_name`) — куда писать результат в
+1. **Параметр элемента** (`room_param_name`) — куда писать результат в
    активной модели. Общий параметр в ваших семействах.
 2. **Маска записи параметров из смежной модели** (`room_mask`) — шаблон
    из имён параметров помещения (Room) связи, разделённых запятой и/или
@@ -96,7 +96,7 @@ Room (`Room.IsPointInRoom`), а если его нет — ближайший Ro
   `fire_alarm_settings`), используется, если параметр помещения на
   устройстве ещё пуст;
 - **СКУД «Помещение точек прохода»** (`AssignSkudRooms` →
-  `lowlife.skud_room_info`) — берёт `target_param_name` и `room_mask` из
+  `lowlife.skud_room_info`) — берёт `room_param_name` и `room_mask` из
   тех же настроек «Запись номера помещения».
 
 `find_room_param_value` (одно конкретное значение параметра Room, без

@@ -10,7 +10,7 @@
     определяется по коннектору устройства (detect_electrical_system_type),
     запасной вариант — FALLBACK_SYSTEM_TYPE ("Data");
   * кабель (строка справочника) и параметр цепи, куда он пишется, — из
-    настроек (conductor_type_id / conductor_param_name); кабель
+    настроек (conductor_type_id / cable_type_param); кабель
     необязателен — если не выбран, «Проводник» просто не проставляется;
   * «Имя нагрузки» цепи собирается из параметров подключаемого устройства
     по списку имён (load_name_source_params) через разделитель
@@ -111,7 +111,7 @@ def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
     по устройствам/цепям, которые не удалось создать или подключить.
     """
     configured_type = (settings.get("circuit_system_type") or u"").strip()
-    conductor_param = (settings.get("conductor_param_name") or u"").strip()
+    conductor_param = (settings.get("cable_type_param") or u"").strip()
     load_name_param = (settings.get("load_name_param") or u"").strip()
     source_params = settings.get("load_name_source_params") or []
     separator = settings.get("load_name_separator", u"")

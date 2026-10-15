@@ -117,10 +117,22 @@ def sort_levels(settings):
     return levels
 
 
+# Ключ настройки на каждое поле помещения. Номер — room_number_param, как у
+# других кнопок, читающих номер помещения (поиск помещения, двери СКУД).
+ROOM_PARAM_KEYS = {
+    "number": "room_number_param",
+    "name": "name_param",
+    "area": "area_param",
+    "category": "category_param",
+}
+
+RENAMES = {"number_param": "room_number_param"}
+
+
 def room_params(settings):
     """{"number", "name", "area", "category": имя параметра или "",
     "levels": [имена параметров уровней сортировки]}."""
-    params = dict((key, (settings.get(key + "_param") or u"").strip())
+    params = dict((key, (settings.get(ROOM_PARAM_KEYS[key]) or u"").strip())
                   for key in ("number", "name", "area", "category"))
     params["levels"] = [name for name, _d, _h in sort_levels(settings)]
     return params
@@ -175,7 +187,7 @@ SETTINGS = settings_core.TextSettings(
         ),
     ] + _column_fields() + [
         settings_core.TextField(
-            "number_param", u"⑤ Параметры помещения (в модели или связи АР)",
+            "room_number_param", u"⑤ Параметры помещения (в модели или связи АР)",
             u"Номер помещения",
             hint=u"Имя параметра с номером. Пусто — встроенный «Номер».",
             default=u"", required=False,
@@ -222,6 +234,7 @@ SETTINGS = settings_core.TextSettings(
     migrate=_migrate,
     reset_button=True,
     width=760, height=920,
+    renames=RENAMES,
 )
 
 load_saved_values = SETTINGS.load_saved_values

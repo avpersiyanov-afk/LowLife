@@ -378,7 +378,7 @@ class Result(object):
 def place_crosses(doc, shafts, levels, settings, symbol, result):
     tol = mm_to_ft(settings.get("level_tolerance_mm") or 0.0)
     heights = [settings.get("cross_height_1_mm"), settings.get("cross_height_2_mm")]
-    room_param = (settings.get("room_target_param") or u"").strip()
+    room_param = (settings.get("room_param_name") or u"").strip()
     niche_text = settings.get("niche_text") or u""
     seen = set()
 
@@ -632,7 +632,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
     target_name = settings.get("target_room_name") or u""
     neighbors = core.split_names(settings.get("neighbor_room_names"))
     lot_param = (settings.get("lot_param_name") or u"").strip()
-    room_param = (settings.get("room_target_param") or u"").strip()
+    room_param = (settings.get("room_param_name") or u"").strip()
     section_param = (settings.get("room_section_param") or u"").strip()
     address_params, _ = core.parse_letter_params(settings.get("address_letters"))
     inset_ft = mm_to_ft(settings.get("feed_wall_inset_mm") or 0.0)
@@ -845,7 +845,7 @@ def fill_addresses(doc, settings, result):
     настройках, core.parse_letter_params); значение — у самого подвода
     (после LOI), иначе — у прихожей в связи.
     """
-    address_param = (settings.get("address_param") or u"").strip()
+    address_param = (settings.get("device_address_param") or u"").strip()
     if not address_param:
         return
     mask = settings.get("address_mask") or u""

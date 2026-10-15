@@ -66,7 +66,7 @@ class ViewOption(object):
 
 
 def run_by_views(settings):
-    room_info_settings.require(settings, ["target_param_name", "room_mask"])
+    room_info_settings.require(settings, ["room_param_name", "room_mask"])
 
     prefixes = parse_name_prefixes(settings.get("view_name_prefixes"))
     views = views_with_name_prefix(doc, prefixes)
@@ -99,11 +99,11 @@ def run_by_views(settings):
 
     with revit.Transaction(u"Запись номера помещения (по видам)"):
         results = apply_room_info(
-            doc, elements, settings["target_param_name"], settings["room_mask"]
+            doc, elements, settings["room_param_name"], settings["room_mask"]
         )
 
     report(
-        results, settings["target_param_name"],
+        results, settings["room_param_name"],
         head=u"Видов: {}. Элементов обработано: {}\n\n".format(len(picked), len(elements))
     )
 
@@ -126,7 +126,7 @@ if config_mode:
 
 
 settings = room_info_settings.get_settings_silent()
-room_info_settings.require(settings, ["target_param_name", "room_mask"])
+room_info_settings.require(settings, ["room_param_name", "room_mask"])
 
 elements = pick_model_elements(
     uidoc, doc,
@@ -139,8 +139,8 @@ elements = pick_model_elements(
 with revit.Transaction(u"Запись номера помещения"):
     results = apply_room_info(
         doc, elements,
-        settings["target_param_name"],
+        settings["room_param_name"],
         settings["room_mask"]
     )
 
-report(results, settings["target_param_name"])
+report(results, settings["room_param_name"])

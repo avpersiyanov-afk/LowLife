@@ -34,7 +34,36 @@ def test_every_key_is_a_settings_field_of_its_systems():
         for system in spec.categories:
             assert system in fc.SYSTEM_IDS
             src = _source(SETTINGS_MODULES[system])
-            assert u'("{}",'.format(spec.key) in src, (spec.key, system)
+            for key in spec.keys_for(system):
+                assert u'("{}",'.format(key) in src, (key, system)
+        for system in spec.system_keys:
+            assert system in spec.categories, (spec.key, system)
+
+
+def test_each_settings_key_belongs_to_one_role():
+    seen = {}
+    for spec in fc.CATALOG:
+        for system in spec.categories:
+            for key in spec.keys_for(system):
+                assert (system, key) not in seen, (system, key, seen.get((system, key)))
+                seen[(system, key)] = spec.key
+
+
+def test_same_role_under_other_keys_shares_one_name():
+    settings = {"SKUD": {"schematic_address_param": u"Адрес на значке"}}
+    rows = fc.build_rows(["SCS", "SKUD", "SOT"], settings)
+    assert _row(rows, "device_address_param").Name == u"Адрес на значке"
+    keys = {r.key for r in rows}
+    assert not keys & {"schematic_address_param", "controller_marking_param"}
+
+    _row(rows, "device_address_param").Name = u"Адрес"
+    _row(rows, "device_marking_param").Name = u"Марка"
+    updates = fc.settings_updates(rows, settings)
+    assert updates["SOT"]["device_address_param"] == u"Адрес"
+    assert updates["SKUD"]["device_address_param"] == u"Адрес"
+    assert updates["SKUD"]["schematic_address_param"] == u"Адрес"
+    assert updates["SKUD"]["device_marking_param"] == u"Марка"
+    assert updates["SKUD"]["controller_marking_param"] == u"Марка"
 
 
 def test_catalog_is_consistent():

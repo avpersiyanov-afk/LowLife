@@ -113,6 +113,10 @@ class ParamSpec(object):
     Одна роль параметра.
 
     key        — ключ в файлах настроек кнопок.
+    system_keys — {id системы: [ключи]} — если в какой-то системе та же роль
+                 записана под другим ключом (или под несколькими — одно и то
+                 же значение на устройстве и на значке схемы); без записи —
+                 [key]. Имя параметра пишется во все ключи.
     label      — что это за параметр (подпись в окне).
     example    — пример имени без префикса (окно добавляет префикс).
     data_type  — TEXT/LENGTH/NUMBER (тип нового определения в ФОП).
@@ -126,8 +130,9 @@ class ParamSpec(object):
     """
 
     def __init__(self, key, label, example, data_type, kind, categories,
-                 aliases=(), is_list=False, note=u""):
+                 aliases=(), is_list=False, note=u"", system_keys=None):
         self.key = key
+        self.system_keys = dict(system_keys or {})
         self.label = label
         self.example = example
         self.data_type = data_type
@@ -136,6 +141,10 @@ class ParamSpec(object):
         self.aliases = list(aliases)
         self.is_list = is_list
         self.note = note
+
+    def keys_for(self, system):
+        """Ключи настроек роли в файле системы."""
+        return list(self.system_keys.get(system) or [self.key])
 
 
 _OPTIONAL_SCHEMATIC = u"Нужен только для структурной схемы"
@@ -162,20 +171,24 @@ CATALOG = [
               u"Ближайший узел", TEXT, INSTANCE, {"SCS": LV_AND_PANELS, "SKUD": LV_AND_PANELS}),
 
     # --- устройства ---
-    ParamSpec("device_address_param", u"Адрес устройства", u"Адрес устройства",
+    # СКУД копирует адрес на значок схемы в schematic_address_param — один
+    # параметр на устройстве и на значке (СОТ/СПС делают так же одним ключом).
+    ParamSpec("device_address_param", u"Адрес устройства (и его значка на схеме)", u"Адрес устройства",
               TEXT, INSTANCE,
-              dict([("SCS", LV_DEVICES), ("SKUD", LV_AND_PANELS)] + list(_fire(FIRE_AND_PANELS).items()))),
+              dict([("SCS", LV_DEVICES), ("SKUD", LV_AND_PANELS + [DETAIL]),
+                    ("SOT", SOT_SOURCES + [DETAIL])] + list(_fire(FIRE_AND_PANELS).items())),
+              system_keys={"SKUD": ["device_address_param", "schematic_address_param"]}),
     ParamSpec("type_code_param", u"Обозначение типа устройства", u"Обозначение типа",
               TEXT, TYPE, {"SCS": LV_DEVICES, "SKUD": LV_DEVICES}),
     ParamSpec("designation_param", u"Обозначение (у панели и устройств)", u"Обозначение",
               TEXT, INSTANCE, _fire(FIRE_AND_PANELS)),
-    ParamSpec("controller_marking_param", u"Маркировка контроллера", u"Маркировка контроллера",
-              TEXT, INSTANCE, {"SKUD": [EQUIPMENT]}),
-    ParamSpec("device_marking_param", u"Марка устройства", u"Марка устройства",
-              TEXT, INSTANCE, dict([("SKUD", LV_DEVICES)] + list(_fire([FIRE_DEVICES]).items())),
+    # СКУД: «Маркировка контроллера» и «Марка устройства» — одна роль (копия
+    # адреса для плана/спецификации) на контроллере, устройстве и значке схемы.
+    ParamSpec("device_marking_param", u"Марка (копия адреса) устройства/контроллера", u"Марка устройства",
+              TEXT, INSTANCE,
+              dict([("SKUD", LV_AND_PANELS + [DETAIL])] + list(_fire([FIRE_DEVICES]).items())),
+              system_keys={"SKUD": ["device_marking_param", "controller_marking_param"]},
               note=u"У СПС/СОУЭ/СПА необязателен"),
-    ParamSpec("schematic_address_param", u"Адрес устройства на схеме", u"Адрес на схеме",
-              TEXT, INSTANCE, {"SKUD": [GENERIC]}),
     ParamSpec("passage_point_param", u"Номер точки прохода (устройство)", u"Точка прохода",
               TEXT, INSTANCE, {"SKUD": LV_DEVICES},
               note=u"Необязателен: пусто — точка прохода №1"),
@@ -212,8 +225,6 @@ CATALOG = [
               dict([("SCS", LV_AND_PANELS), ("SOT", SOT_SOURCES + [DETAIL])]
                    + list(_fire(FIRE_AND_PANELS + [DETAIL]).items())),
               note=_OPTIONAL_SCHEMATIC),
-    ParamSpec("address_param_name", u"Адрес камеры/устройства СОТ", u"Адрес СОТ",
-              TEXT, INSTANCE, {"SOT": SOT_SOURCES + [DETAIL]}),
     ParamSpec("level_param_name", u"Уровень (этаж) на устройстве", u"Этаж",
               TEXT, INSTANCE, dict([("SOT", SOT_SOURCES)] + list(_fire([FIRE_DEVICES]).items())),
               aliases=[u"Уровень"],
@@ -224,17 +235,15 @@ CATALOG = [
               note=u"Необязателен"),
     ParamSpec("section_param_name", u"Секция на устройстве", u"Секция",
               TEXT, INSTANCE, {"SOT": SOT_SOURCES}, note=u"Необязателен"),
-    ParamSpec("layout_param_name", u"Служебный: раскладка схемы (вид)", u"Раскладка схемы",
-              TEXT, INSTANCE, dict([("SCS", [VIEWS]), ("SOT", [VIEWS])] + list(_fire([VIEWS]).items())),
+    # Каждая схема пишет только в свой вид и свои значки, поэтому один
+    # параметр на все системы.
+    ParamSpec("layout_param_name", u"Служебный: состояние схемы (вид)", u"Раскладка схемы",
+              TEXT, INSTANCE,
+              dict([("SCS", [VIEWS]), ("SKUD", [VIEWS]), ("SOT", [VIEWS])] + list(_fire([VIEWS]).items())),
               note=_OPTIONAL_SCHEMATIC),
     ParamSpec("device_uid_param_name", u"Служебный: UniqueId устройства (значок схемы)",
               u"UID устройства", TEXT, INSTANCE,
-              dict([("SCS", [DETAIL]), ("SOT", [DETAIL])] + list(_fire([DETAIL]).items())),
-              note=_OPTIONAL_SCHEMATIC),
-    ParamSpec("manifest_param_name", u"Служебный: манифест схемы СКУД (вид)", u"Манифест схемы",
-              TEXT, INSTANCE, {"SKUD": [VIEWS]}, note=_OPTIONAL_SCHEMATIC),
-    ParamSpec("schematic_source_uid_param", u"Служебный: UniqueId устройства (значок схемы СКУД)",
-              u"UID устройства СКУД", TEXT, INSTANCE, {"SKUD": [DETAIL]},
+              dict([("SCS", [DETAIL]), ("SKUD", [DETAIL]), ("SOT", [DETAIL])] + list(_fire([DETAIL]).items())),
               note=_OPTIONAL_SCHEMATIC),
 ]
 
@@ -327,11 +336,18 @@ def saved_name(spec, systems, settings_by_system, shared=None):
     """
     for s in systems:
         data = settings_by_system.get(s) or {}
-        names = split_names(dict.get(data, spec.key) if isinstance(data, dict) else None)
+        if not isinstance(data, dict):
+            continue
+        for key in spec.keys_for(s):
+            names = split_names(dict.get(data, key))
+            if names:
+                return names[0]
+    shared = shared or {}
+    for key in [spec.key] + [k for s in systems for k in spec.keys_for(s)]:
+        names = split_names(shared.get(key))
         if names:
             return names[0]
-    names = split_names((shared or {}).get(spec.key))
-    return names[0] if names else u""
+    return u""
 
 
 def build_rows(system_ids, settings_by_system=None, shared=None, prefix=DEFAULT_PREFIX):
@@ -408,12 +424,13 @@ def settings_updates(rows, settings_by_system=None):
         if not name:
             continue
         for s in row.systems:
-            value = name
-            if row.spec.is_list:
-                data = settings_by_system.get(s) or {}
-                old = split_names(dict.get(data, row.key) if isinstance(data, dict) else None)
-                value = u", ".join([name] + [n for n in old if n.lower() != name.lower()])
-            updates.setdefault(s, {})[row.key] = value
+            for key in row.spec.keys_for(s):
+                value = name
+                if row.spec.is_list:
+                    data = settings_by_system.get(s) or {}
+                    old = split_names(dict.get(data, key) if isinstance(data, dict) else None)
+                    value = u", ".join([name] + [n for n in old if n.lower() != name.lower()])
+                updates.setdefault(s, {})[key] = value
     return updates
 
 

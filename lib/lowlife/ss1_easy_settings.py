@@ -105,7 +105,7 @@ SETTINGS = settings_core.TextSettings(
             default=u"",
         ),
         settings_core.TextField(
-            "room_target_param",
+            "room_param_name",
             u"② Запись в оборудование",
             u"Параметр экземпляра «Помещение» у кросса и подвода",
             hint=(
@@ -161,7 +161,7 @@ SETTINGS = settings_core.TextSettings(
             default=100.0, minimum=0,
         ),
         settings_core.TextField(
-            "address_param",
+            "device_address_param",
             u"④ Маркировка (адрес устройства) кабельного подвода",
             u"Параметр подвода, куда записать маркировку",
             hint=u"Пусто — маркировка не заполняется.",
@@ -198,6 +198,7 @@ SETTINGS = settings_core.TextSettings(
     ),
     migrate=_migrate,
     width=760, height=700,
+    renames={"room_target_param": "room_param_name", "address_param": "device_address_param"},
 )
 
 REQUIRED_KEYS = ["target_room_name", "neighbor_room_names", "lot_param_name"]

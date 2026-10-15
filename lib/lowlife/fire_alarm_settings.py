@@ -303,7 +303,7 @@ TEXT_FIELDS = [
         u"ряда изолятора, на этом расстоянии в мм. Пусто или 0 — используется значение по "
         u"умолчанию (40 мм).",
         u"", False, False),
-    ("branch_lot_room_param_name", u"[Структурная схема] Параметр «Имя лота» на помещении в связанной модели",
+    ("lot_param_name", u"[Структурная схема] Параметр «Имя лота» на помещении в связанной модели",
         u"Только для устройств на ответвлении изолятора. Если у помещения связанной модели, "
         u"в которое попадает точка устройства, этот параметр заполнен — его значение "
         u"принудительно записывается в параметр помещения устройства (см. выше) вместо "
@@ -405,7 +405,11 @@ for _key, _label, _hint, _default, _is_list, _required in TEXT_FIELDS:
 
 # Файл зависит от текущей системы (СПС/СОУЭ/СПА, см. set_system) — имя и
 # подпись вычисляются при каждом обращении, а не один раз при импорте.
-_STORE = settings_core.JsonStore(lambda: SYSTEMS[_current_system]["file"], current_title)
+# Переименованные ключи (одна роль — один ключ во всех кнопках).
+RENAMES = {"branch_lot_room_param_name": "lot_param_name"}
+
+_STORE = settings_core.JsonStore(lambda: SYSTEMS[_current_system]["file"], current_title,
+                                 renames=RENAMES)
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
 _write_all = _STORE.write
