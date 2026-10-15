@@ -140,7 +140,7 @@ def build_line_graph(segments):
 
 
 def collect_marked_points(doc, view, node_points, classify_rules,
-                          workset_param_name=None, workset_filter_key=None):
+                          workset_filter_key=None):
     """
     Панели/стояки на виде — распознаются по ключевым словам, а если задан
     workset_filter_key, дополнительно фильтруются по рабочему набору.
@@ -168,7 +168,7 @@ def collect_marked_points(doc, view, node_points, classify_rules,
             continue
 
         if workset_filter_key:
-            ws = get_workset_name(el, workset_param_name)
+            ws = get_workset_name(el)
             if not ws or workset_filter_key.lower() not in ws.lower():
                 continue
 
@@ -363,7 +363,7 @@ def place_route_nodes(doc, view, config, symbols_by_category, document_levels):
     route_param_value, route_param_value_riser, endpoint_cable_type_value,
     cable_param_name, offset_param_names, panel_keywords,
     panel_exclude_keywords, riser_keywords, riser_exclude_keywords,
-    workset_param_name, workset_filter_key.
+    workset_filter_key.
 
     Возвращает dict со сводкой; сам транзакцию НЕ открывает — вызывающий
     оборачивает вызов в revit.Transaction.
@@ -383,7 +383,7 @@ def place_route_nodes(doc, view, config, symbols_by_category, document_levels):
 
     marked_points = collect_marked_points(
         doc, view, node_points, classify_rules,
-        config.get("workset_param_name"), config.get("workset_filter_key")
+        config.get("workset_filter_key")
     )
 
     placed_type_ids = set(s.Id.IntegerValue for s in symbols_by_category.values())

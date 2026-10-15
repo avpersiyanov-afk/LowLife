@@ -407,6 +407,13 @@ def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
     t.Start()
     try:
         for row, label, definition in todo:
+            if not row.categories:
+                # «Запись помещения», «Заполнение этажа» — элементы любых
+                # категорий, которые выбирает сам пользователь.
+                report.warnings.append(
+                    u"{}: категории не заданы — привяжите параметр к нужным "
+                    u"категориям вручную (Управление → Параметры проекта)".format(label))
+                continue
             result = bind(doc, app, definition, row.categories, row.spec.kind)
             if result["error"]:
                 report.errors.append(u"{}: {}".format(label, result["error"]))

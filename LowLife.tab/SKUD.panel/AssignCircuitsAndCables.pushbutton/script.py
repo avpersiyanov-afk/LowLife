@@ -17,6 +17,7 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.params import get_string_param, set_param_any, set_element_id_param
+from lowlife.circuit_builtins import circuit_panel_name, set_circuit_load_name, set_circuit_wire_type
 from lowlife.scs import is_excluded_device
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.skud import is_controller, category_by_type_id
@@ -31,10 +32,10 @@ doc = revit.doc
 
 def _open_settings():
     edited = get_settings_interactive(doc, keys=[
-        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-        "excluded_device_keywords", "circuit_panel_param", "device_address_param",
-        "designation_param", "load_name_param", "controller_marking_param",
-        "cable_type_param", "schematic_device_categories_text", "wire_catalog_marker_param"
+        "controller_workset_keyword", "controller_type_keyword",
+        "excluded_device_keywords", "device_address_param",
+        "designation_param", "controller_marking_param",
+        "schematic_device_categories_text", "wire_catalog_marker_param"
     ])
     forms.alert(
         u"Отменено, настройки не изменены." if edited is None
@@ -60,23 +61,17 @@ settings = get_settings_silent()
 
 skud_settings.require(settings, [
     "controller_workset_keyword", "controller_type_keyword",
-    "workset_param_name", "circuit_panel_param",
-    "device_address_param", "designation_param", "load_name_param",
-    "controller_marking_param", "cable_type_param", "schematic_device_categories_text"
+    "device_address_param", "designation_param",
+    "controller_marking_param", "schematic_device_categories_text"
 ])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
-CIRCUIT_NAME_TYPE_PARAM = settings.get("circuit_name_type_param")
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 TYPE_CODE_PARAM = settings["designation_param"]
-LOAD_NAME_PARAM = settings["load_name_param"]
 CONTROLLER_MARKING_PARAM = settings["controller_marking_param"]
-CABLE_TYPE_PARAM = settings["cable_type_param"]
 
 CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
 CATEGORY_WIRE_TYPE_IDS = get_schematic_category_wire_type_elem_ids(doc, settings)
@@ -102,7 +97,7 @@ all_equipment = FilteredElementCollector(doc) \
 
 controllers = [
     e for e in all_equipment
-    if is_controller(e, WORKSET_PARAM_NAME, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
+    if is_controller(e, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
 ]
 
 if not controllers:
@@ -119,7 +114,7 @@ all_circuits = FilteredElementCollector(doc) \
 
 circuits_by_controller_name = {}
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     if panel_name:
         circuits_by_controller_name.setdefault(panel_name, []).append(c)
 
@@ -188,14 +183,14 @@ with revit.Transaction("Assign SKUD Circuits And Cables"):
             type_code = clean_text_value(get_string_param(type_el, TYPE_CODE_PARAM)) if type_el else None
             load_name = make_load_name(type_code, device_addr)
 
-            if load_name and set_param_any(c, LOAD_NAME_PARAM, load_name):
+            if load_name and set_circuit_load_name(c, load_name):
                 load_names_written += 1
 
             device_category = category_by_type_id(dev, CATEGORY_DEVICE_TYPE_IDS)
             wire_type_id = CATEGORY_WIRE_TYPE_IDS.get(device_category) if device_category else None
 
             if wire_type_id is not None:
-                if set_element_id_param(c, CABLE_TYPE_PARAM, wire_type_id):
+                if set_circuit_wire_type(doc, c, wire_type_id):
                     cables_written += 1
             else:
                 no_cable_match.append(

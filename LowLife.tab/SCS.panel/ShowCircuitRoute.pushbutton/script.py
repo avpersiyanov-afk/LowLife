@@ -26,6 +26,7 @@ from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, Element
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
+from lowlife.circuit_builtins import circuit_panel_name
 from lowlife.params import get_string_param
 from lowlife.scs import is_excluded_device
 from lowlife import scs_settings
@@ -48,7 +49,7 @@ if view.ViewType == ViewType.ThreeD:
 
 def _open_settings():
     edited = scs_settings.get_settings_interactive(doc, keys=[
-        "route_type_id", "riser_type_id", "circuit_panel_param",
+        "route_type_id", "riser_type_id",
         "circuit_route_param", "addr_param_name", "excluded_device_keywords"
     ])
     forms.alert(
@@ -75,7 +76,7 @@ if config_mode:
 settings = get_settings_silent()
 
 scs_settings.require(settings, [
-    "route_type_id", "riser_type_id", "circuit_panel_param", "circuit_route_param"
+    "route_type_id", "riser_type_id", "circuit_route_param"
 ])
 # addr_param_name здесь не проверяется отдельно — её наличие/привязку в
 # проекте проверяет и чинит кнопка «Параметры СКС» (SetupParameters).
@@ -83,7 +84,6 @@ scs_settings.require(settings, [
 ADDR_PARAM = settings["addr_param_name"]
 ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
 RISER_TYPE_ID = ElementId(int(settings["riser_type_id"]))
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 CIRCUIT_ROUTE_PARAM = settings["circuit_route_param"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 
@@ -93,7 +93,7 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 # ------------------------------------------------------------
 
 picked, circuit = pick_circuit(
-    uidoc, doc, u"Выберите устройство, входящее в интересующую цепь СКС", CIRCUIT_PANEL_PARAM
+    uidoc, doc, u"Выберите устройство, входящее в интересующую цепь СКС"
 )
 
 
@@ -111,7 +111,7 @@ if not route_text:
 
 route_addrs = parse_route_path(route_text)
 
-panel_name = norm(get_string_param(circuit, CIRCUIT_PANEL_PARAM))
+panel_name = norm(circuit_panel_name(circuit))
 
 panel_el = None
 if panel_name:

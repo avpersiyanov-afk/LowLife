@@ -18,6 +18,7 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
+from lowlife.circuit_builtins import circuit_panel_name
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import clear_stray_address_params, is_excluded_device, get_workset_name
 from lowlife.scs_circuits import (
@@ -37,8 +38,8 @@ M_TO_FT = 1.0 / FT_TO_M
 
 def _open_settings():
     edited = get_settings_interactive(doc, keys=[
-        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-        "circuit_panel_param", "route_type_id", "riser_type_id",
+        "controller_workset_keyword", "controller_type_keyword",
+        "route_type_id", "riser_type_id",
         "near_controller_threshold_m", "hypotenuse_coef", "horiz_tray_coef",
         "horiz_pipe_coef", "vertical_coef", "install_tray_key", "install_pipe_key",
         "install_pipe_open_key", "wire_length_param", "tray_length_param",
@@ -71,8 +72,7 @@ if config_mode:
 settings = get_settings_silent()
 
 skud_settings.require(settings, [
-    "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-    "circuit_panel_param",
+    "controller_workset_keyword", "controller_type_keyword",
     "route_type_id", "riser_type_id",
     "near_controller_threshold_m", "hypotenuse_coef",
     "horiz_tray_coef", "horiz_pipe_coef", "vertical_coef",
@@ -89,10 +89,8 @@ CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 # различить — разделение идёт по рабочему набору.
 NODE_WORKSET_FILTER_KEY = settings.get("workset_filter_key")
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 
 ADDR_PARAM = settings["addr_param_name"]
 ADDR_PREV_PARAM = settings["addr_prev_param_name"]
@@ -136,7 +134,6 @@ SEGMENT_LOADS_PARAM = settings["segment_loads_param"]
 with revit.Transaction("Clear stray SKUD route addresses"):
     stray_cleared = clear_stray_address_params(
         doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID]),
-        workset_param_name=WORKSET_PARAM_NAME,
         workset_filter_key=NODE_WORKSET_FILTER_KEY
     )
 
@@ -165,7 +162,7 @@ for e in all_generic:
     # Без этой проверки узел СКС с тем же адресом (F1.3 и там, и там)
     # попал бы в граф СКУД, и путь пошёл бы через чужую трассу.
     if NODE_WORKSET_FILTER_KEY:
-        node_workset = get_workset_name(e, WORKSET_PARAM_NAME)
+        node_workset = get_workset_name(e)
         if not node_workset or NODE_WORKSET_FILTER_KEY.lower() not in node_workset.lower():
             foreign_workset_nodes += 1
             continue
@@ -209,7 +206,7 @@ all_equipment = FilteredElementCollector(doc) \
 
 controllers = [
     e for e in all_equipment
-    if is_controller(e, WORKSET_PARAM_NAME, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
+    if is_controller(e, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
 ]
 
 if not controllers:
@@ -226,7 +223,7 @@ all_circuits = FilteredElementCollector(doc) \
 
 circuits_by_controller_name = {}
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     if panel_name:
         circuits_by_controller_name.setdefault(panel_name, []).append(c)
 

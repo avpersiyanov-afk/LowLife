@@ -18,6 +18,7 @@ from Autodesk.Revit.UI.Selection import ObjectType
 from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 
 from lowlife.params import get_string_param
+from lowlife.circuit_builtins import circuit_panel_name
 from lowlife.scs import is_excluded_device, safe_element_name
 from lowlife.scs_circuits import norm, clean_text_value
 from lowlife.skud_schematic import (
@@ -37,7 +38,7 @@ output = pyrevit_script.get_output()
 
 def _open_settings():
     edited = get_settings_interactive(doc, keys=[
-        "circuit_panel_param", "device_address_param", "excluded_device_keywords",
+        "device_address_param", "excluded_device_keywords",
         "passage_point_param", "schematic_device_categories_text"
     ])
     forms.alert(
@@ -59,11 +60,10 @@ if config_mode:
 settings = get_settings_silent()
 
 skud_settings.require(settings, [
-    "circuit_panel_param", "device_address_param"
+    "device_address_param"
 ])
 
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
 
@@ -93,12 +93,12 @@ all_circuits = FilteredElementCollector(doc) \
 
 matching_circuits = []
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     if panel_name == controller_name:
         matching_circuits.append(c)
 
-output.print_md(u"### Цепей с параметром «{}» = «{}»: {}".format(
-    CIRCUIT_PANEL_PARAM, controller_name, len(matching_circuits)
+output.print_md(u"### Цепей с «Панель» = «{}»: {}".format(
+    controller_name, len(matching_circuits)
 ))
 
 all_device_ids_flat = []

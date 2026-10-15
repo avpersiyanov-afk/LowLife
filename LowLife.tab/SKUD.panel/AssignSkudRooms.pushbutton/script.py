@@ -32,8 +32,8 @@ output = pyrevit_script.get_output()
 
 def _open_settings():
     edited = get_settings_interactive(doc, keys=[
-        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-        "excluded_device_keywords", "circuit_panel_param", "device_address_param",
+        "controller_workset_keyword", "controller_type_keyword",
+        "excluded_device_keywords", "device_address_param",
         "passage_point_param"
     ])
     forms.alert(
@@ -55,8 +55,8 @@ if config_mode:
 settings = get_settings_silent()
 
 skud_settings.require(settings, [
-    "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-    "circuit_panel_param", "device_address_param",
+    "controller_workset_keyword", "controller_type_keyword",
+    "device_address_param",
 ])
 
 room_settings = room_info_settings.load_saved_values()
@@ -64,9 +64,7 @@ room_info_settings.require(room_settings, ["room_param_name", "room_mask"])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
 
@@ -79,8 +77,8 @@ ROOM_MASK = room_settings["room_mask"]
 # ------------------------------------------------------------
 
 controller_devices = collect_controller_devices(
-    doc, WORKSET_PARAM_NAME, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD,
-    CIRCUIT_PANEL_PARAM, EXCLUDED_DEVICE_KEYWORDS
+    doc, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD,
+    EXCLUDED_DEVICE_KEYWORDS
 )
 
 if not controller_devices:

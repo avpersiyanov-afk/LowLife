@@ -22,6 +22,7 @@ from System.Collections.Generic import List
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point, get_document_levels
+from lowlife.circuit_builtins import circuit_panel_name
 from lowlife.params import get_string_param, set_string_param, set_param_any
 from lowlife.scs import (
     classify_element, clear_stray_address_params,
@@ -57,9 +58,9 @@ ROOT_SEARCH_MARGIN = ROOT_SEARCH_MARGIN_MM / MM_IN_FOOT
 def _open_settings():
     edited = scs_settings.get_settings_interactive(doc, keys=[
         "route_type_id", "riser_type_id", "panel_type_id", "workset_filter_key",
-        "circuit_panel_param", "nearest_segment_param", "addr_param_name",
+        "nearest_segment_param", "addr_param_name",
         "addr_prev_param_name", "cable_param_name", "panel_keywords",
-        "panel_exclude_keywords", "workset_param_name", "excluded_device_keywords"
+        "panel_exclude_keywords", "excluded_device_keywords"
     ])
     forms.alert(
         u"Отменено, настройки не изменены." if edited is None
@@ -86,7 +87,7 @@ settings = get_settings_silent()
 
 scs_settings.require(settings, [
     "route_type_id", "riser_type_id", "panel_type_id",
-    "workset_filter_key", "circuit_panel_param", "nearest_segment_param"
+    "workset_filter_key", "nearest_segment_param"
 ])
 # Имена параметров (addr_param_name, addr_prev_param_name) здесь не
 # проверяются — их наличие/привязку в проекте проверяет и чинит кнопка
@@ -102,10 +103,8 @@ ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
 RISER_TYPE_ID = ElementId(int(settings["riser_type_id"]))
 PANEL_TYPE_ID = ElementId(int(settings["panel_type_id"]))
 
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 WORKSET_FILTER_KEY = settings["workset_filter_key"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
 
 
@@ -126,7 +125,6 @@ NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
 with revit.Transaction("Clear stray route addresses"):
     stray_cleared = clear_stray_address_params(
         doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID, PANEL_TYPE_ID]),
-        workset_param_name=WORKSET_PARAM_NAME,
         workset_filter_key=WORKSET_FILTER_KEY
     )
 
@@ -474,7 +472,7 @@ visible_on_view_ids = set(
 )
 
 # Критерий "эта цепь — наша" (панель проходит panel_matches, по имени
-# в CIRCUIT_PANEL_PARAM) — по ВСЕМУ документу, не по активному виду:
+# в штатной «Панель» цепи) — по ВСЕМУ документу, не по активному виду:
 # панель устройства может физически стоять на СОВСЕМ ДРУГОМ этаже
 # (типовая топология "этаж со стояком -> стояк -> магистраль -> панель
 # в серверной на другом этаже") — устройство при этом абсолютно законно
@@ -490,7 +488,7 @@ all_panels_doc = FilteredElementCollector(doc) \
 
 target_panels_by_name = {}
 for p in all_panels_doc:
-    if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm):
+    if panel_matches(p, WORKSET_FILTER_KEY, norm):
         pname = norm(p.Name)
         if pname:
             target_panels_by_name.setdefault(pname, p)
@@ -515,7 +513,7 @@ devices_by_id = {}
 devices_excluded_device_not_on_view = []
 
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     panel_el = target_panels_by_name.get(panel_name)
 
     if panel_el is None:

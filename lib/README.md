@@ -93,6 +93,16 @@ LowLife как пара WPF-`GeometryGroup` (обычные буквы, акце
 | `param_to_text` | `param_to_text(p)` | Значение `Parameter` текстом «как видно в Revit» (`AsValueString` для чисел, имя для ссылки на элемент); пусто — `u""`. Пара к `set_param_text`, общая для обмена с Excel (`schedule_excel`) и JSON (`json_snapshot`) |
 | `set_param_text` | `set_param_text(p, text)` | Пишет текст в `Parameter`: строка — `Set`, число с единицами — `SetValueString` (точка/запятая), целое/«Да-Нет» — да/нет/1/0; `ElementId` не пишет. `True`, если записалось |
 
+## circuit_builtins.py
+Штатные параметры электрической цепи, которые раньше спрашивались в
+настройках по имени (их имена зависят от языка Revit и одинаковы во всех
+проектах): `circuit_panel_name(circuit)` — «Панель»
+(`RBS_ELEC_CIRCUIT_PANEL_PARAM`, запасной — `BaseEquipment`; задаётся
+подключением цепи к панели, писать не нужно); `set_circuit_load_name(circuit,
+value)` — «Имя нагрузки» (`RBS_ELEC_CIRCUIT_NAME`); `set_circuit_wire_type(doc,
+circuit, row_id)` — «Проводник»: параметр = ключевой параметр спецификации
+строки справочника кабелей (`KeyScheduleParameterName`, обычно «Проводник»).
+
 ## selection.py
 Работа с выделением элементов в Revit UI.
 
@@ -306,9 +316,9 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 `Communication`/`Telephone` у розеток связи) — хотя вручную через Revit UI
 цепь с той же панелью создаётся нормально, т.к. Revit сам берёт тип с
 коннектора. Параметр «Проводник» (встроенный параметр
-электрической цепи Revit, ссылка на строку ключевой спецификации) — имя
-`CONDUCTOR_PARAM_NAME = u"Проводник"` зашито в код, а не в настройки СКС:
-это не project-specific параметр. Но само ЗНАЧЕНИЕ (какую строку
+электрической цепи Revit, ссылка на строку ключевой спецификации) пишется
+через `circuit_builtins.set_circuit_wire_type` — его имя не спрашивается
+в настройках: это не project-specific параметр. Но само ЗНАЧЕНИЕ (какую строку
 справочника кабелей проставлять) выбирается один раз в окне настроек
 («Параметры СКС», раздел «Проводник для цепей СКС», использует
 `scs_settings.list_wire_catalog_items`/`WireTypeOption`) и читается из
@@ -318,8 +328,8 @@ CircuitsSCS/CircuitsSKUD/CircuitsSPA и цепи «изолятор-устрой
 разбивки по категориям: у СКС один проводник на все цепи, создаваемые за
 один запуск кнопки.
 
-После создания каждой цепи также заполняется параметр «Имя нагрузки»
-(`settings["load_name_param"]`) — из параметра типа устройства
+После создания каждой цепи также заполняется штатное «Имя нагрузки»
+(`circuit_builtins.set_circuit_load_name`) — из параметра типа устройства
 «Обозначение» (`settings["designation_param"]`) и параметра экземпляра
 «Адрес устройства» (`settings["device_address_param"]`), см.
 `scs_circuits.make_load_name`. Те же три настройки уже использует
@@ -361,11 +371,11 @@ SyncCircuitsAndLengths.
 | `classify_element` | `classify_element(el, categories)` | `categories` — список `(name, keywords, exclude_keywords)`, проверяется по порядку; возвращает `name` первой подошедшей или `None` |
 | `resolve_category` | `resolve_category(categories, priority=CATEGORY_PRIORITY)` | Из списка категорий объединённого узла выбирает одну по приоритету (riser > panel > route) |
 | `merge_nodes` | `merge_nodes(nodes, tol, points_close_fn, existing_points=None)` | Объединяет узлы трассы ближе `tol` друг к другу в один, суммируя `categories`, `segment_ids`, `device`; `points_close_fn` обычно — `geometry.points_close`. Итоговая точка кластера выбирается **детерминированно** (не зависит от порядка обхода узлов, который может отличаться между запусками), по приоритету: (1) точка уже существующего на виде маркера из `existing_points`, если хоть один член кластера физически рядом с ним — иначе появление нового узла графа рядом с уже вставленным маркером (например, от только что добавленного сегмента) могло "утянуть" итоговую точку на новую координату, и дедуп в PlaceRouteNodes не находил старый маркер, создавая дубль рядом с ним; (2) точка помеченного узла (панель/стояк), если такая есть в кластере; (3) иначе — точка с наименьшими координатами (X, Y, Z) |
-| `clear_stray_address_params` | `clear_stray_address_params(doc, param_names, allowed_type_ids, workset_param_name=None, workset_filter_key=None)` | Ищет элементы (Обобщённые модели + категории устройств/панелей), у которых заполнен один из `param_names`, но тип не входит в `allowed_type_ids`, и очищает эти параметры. Нужно вызывать в RenumberAddresses/SyncCircuitsAndLengths перед сбором узлов — иначе застрявший адрес на устройстве (с прежних запусков или ручного ввода) может быть спутан с адресом реального узла маршрута. `workset_*` ограничивают очистку одним рабочим набором: СКС и СКУД делят одни и те же имена параметров адреса (параметры сегмента), и без этого запуск одной дисциплины стирал бы адреса другой. Вызывать внутри `revit.Transaction` |
+| `clear_stray_address_params` | `clear_stray_address_params(doc, param_names, allowed_type_ids, workset_filter_key=None)` | Ищет элементы (Обобщённые модели + категории устройств/панелей), у которых заполнен один из `param_names`, но тип не входит в `allowed_type_ids`, и очищает эти параметры. Нужно вызывать в RenumberAddresses/SyncCircuitsAndLengths перед сбором узлов — иначе застрявший адрес на устройстве (с прежних запусков или ручного ввода) может быть спутан с адресом реального узла маршрута. `workset_*` ограничивают очистку одним рабочим набором: СКС и СКУД делят одни и те же имена параметров адреса (параметры сегмента), и без этого запуск одной дисциплины стирал бы адреса другой. Вызывать внутри `revit.Transaction` |
 | `is_excluded_device` | `is_excluded_device(el, excluded_keywords)` | Резервный (исключаемый из расчёта) порт — по ключевым словам в имени семейства. Общая для RenumberAddresses и SyncCircuitsAndLengths (обе ищут устройства через цепи целевых панелей) |
-| `get_workset_name` | `get_workset_name(el, workset_param_name)` | Имя рабочего набора элемента: сперва по имени параметра (на случай, если рабочий набор продублирован в обычный параметр), иначе через `BuiltInParameter.ELEM_PARTITION_PARAM` |
-| `panel_matches` | `panel_matches(panel, workset_param_name, workset_filter_key, norm_fn)` | Целевая панель — по ключевому слову в имени её рабочего набора (`norm_fn` — обычно `scs_circuits.norm`) |
-| `collect_target_panel_devices` | `collect_target_panel_devices(doc, workset_param_name, workset_filter_key, circuit_panel_param, excluded_device_keywords, norm_fn)` | `(panel_devices, trunk_links)`. `panel_devices` — `[(panel_element, [device_element, ...]), ...]` — те же целевые панели и то же правило «устройство цепи» (первое неисключённое, кроме самой панели), что и в `SyncCircuitsAndLengths.pushbutton` — вынесено сюда, чтобы `BuildScsSchematic` (структурная схема) не дублировало этот поиск заново; панели без ни одного обычного устройства сюда не попадают. `trunk_links` — `[(panel_a, panel_b), ...]` — цепи, у которых вместо устройства оказалась **другая целевая панель** (например магистральная/оптическая линия шкаф-шкаф) — в `panel_devices` такая цепь не попадает, каждая пара панелей — не больше раза. `SyncCircuitsAndLengths` сам не переведён на эту функцию — рабочий код, трогать без необходимости не стали |
+| `get_workset_name` | `get_workset_name(el)` | Имя рабочего набора элемента (штатный `ELEM_PARTITION_PARAM`) |
+| `panel_matches` | `panel_matches(panel, workset_filter_key, norm_fn)` | Целевая панель — по ключевому слову в имени её рабочего набора (`norm_fn` — обычно `scs_circuits.norm`) |
+| `collect_target_panel_devices` | `collect_target_panel_devices(doc, workset_filter_key, excluded_device_keywords, norm_fn)` | `(panel_devices, trunk_links)`. `panel_devices` — `[(panel_element, [device_element, ...]), ...]` — те же целевые панели и то же правило «устройство цепи» (первое неисключённое, кроме самой панели), что и в `SyncCircuitsAndLengths.pushbutton` — вынесено сюда, чтобы `BuildScsSchematic` (структурная схема) не дублировало этот поиск заново; панели без ни одного обычного устройства сюда не попадают. `trunk_links` — `[(panel_a, panel_b), ...]` — цепи, у которых вместо устройства оказалась **другая целевая панель** (например магистральная/оптическая линия шкаф-шкаф) — в `panel_devices` такая цепь не попадает, каждая пара панелей — не больше раза. `SyncCircuitsAndLengths` сам не переведён на эту функцию — рабочий код, трогать без необходимости не стали |
 
 ## scs_settings.py
 **Одно общее окно настроек на все пять кнопок `SCS.panel`** (PlaceRouteNodes /
@@ -397,8 +407,8 @@ SetupParameters): выбор **типа для вставки** — не тол�
 
 Кнопка «Цепи СКС» на `CircuitsSCS.panel` тоже читает эти настройки (через
 `get_settings_silent()`, без показа окна) — ей нужны `conductor_type_id`
-(проводник), `designation_param`, `device_address_param` и `load_name_param`
-(для «Имя нагрузки»), см. `scs_manual_circuits.py`.
+(проводник), `designation_param` и `device_address_param`
+(для штатного «Имя нагрузки»), см. `scs_manual_circuits.py`.
 
 **Форму (`get_settings_interactive`) показывает только кнопка
 «Параметры СКС» (SetupParameters)** — она единственное место, где
@@ -1077,7 +1087,7 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 | `place_route_nodes` | `place_route_nodes(doc, view, config, symbols_by_category, document_levels)` | Полный проход: сбор сегментов, граф линий, панели/стояки, слияние, вставка/обновление маркеров. Транзакцию НЕ открывает — вызывающий оборачивает сам |
 | `collect_segments` | `collect_segments(doc, view, family_filter)` | Линейные элементы-сегменты трассы на виде |
 | `build_line_graph` | `build_line_graph(segments)` | `(node_points, graph, segment_ids_by_node)` — линии режутся на участки в точках примыкания других линий |
-| `collect_marked_points` | `collect_marked_points(doc, view, node_points, classify_rules, workset_param_name, workset_filter_key)` | Панели/стояки по ключевым словам **и** (если задан) по рабочему набору — то, чем дисциплины отличаются на одном плане |
+| `collect_marked_points` | `collect_marked_points(doc, view, node_points, classify_rules, workset_filter_key)` | Панели/стояки по ключевым словам **и** (если задан) по рабочему набору — то, чем дисциплины отличаются на одном плане |
 | `build_insert_nodes` | `build_insert_nodes(node_points, segment_ids_by_node, marked_points)` | Узлы для вставки: точки графа + помеченные точки, слитые по допуску |
 | `find_existing_markers` | `find_existing_markers(generic, placed_type_ids)` | Уже вставленные маркеры по ключу точки — чтобы повторный запуск обновлял, а не плодил копии |
 | `resolve_node_values` | `resolve_node_values(doc, node, segments_by_id, marked_points, config, document_levels)` | Значения параметров и уровень для одного узла |
@@ -1324,10 +1334,10 @@ Shift+клик меняет папку. Обе кнопки принимают *
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
-| `is_controller` | `is_controller(el, workset_param_name, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
+| `is_controller` | `is_controller(el, workset_keyword, type_keyword)` | Контроллер — рабочий набор содержит `workset_keyword` **и** имя типа (`Symbol.Name`) содержит `type_keyword` |
 | `parse_category_names` | `parse_category_names(text)` | Текст вида `"контроллер\nсчитыватель\nзамок"` → список имён категорий устройств (по одной на строку) — общие категории для схемы (BuildSkudSchematic) и подбора проводника (AssignCircuitsAndCables) |
 | `category_by_type_id` | `category_by_type_id(el, category_type_ids)` | Категория реального устройства по точному совпадению `ElementId` его типа с одним из `category_type_ids` (`{имя: set(int)}` из настроек) — заменяет сопоставление по ключевым словам |
-| `collect_controller_devices` | `collect_controller_devices(doc, workset_param, workset_kw, type_kw, circuit_panel_param, excluded_kw)` | `[(контроллер, [устройства])]` — единая точка сбора «устройств контроллера» (по всем его цепям, без самого контроллера и исключённых, дедуп по `ElementId`) для `BuildSkudSchematic`/`AssignSkudRooms` |
+| `collect_controller_devices` | `collect_controller_devices(doc, workset_kw, type_kw, excluded_kw)` | `[(контроллер, [устройства])]` — единая точка сбора «устройств контроллера» (по всем его цепям, без самого контроллера и исключённых, дедуп по `ElementId`) для `BuildSkudSchematic`/`AssignSkudRooms` |
 | `hypotenuse_length_ft` | `hypotenuse_length_ft(pt_a, pt_b)` | `|dx|+|dy|+|dz|` между двумя точками (в футах) — длина "по катетам" для устройств рядом с контроллером |
 | `is_near_controller` | `is_near_controller(controller_pt, device_pt, threshold_ft)` | `True`, если прямое 3D-расстояние между контроллером и устройством меньше порога |
 
@@ -1358,7 +1368,7 @@ Shift+клик меняет папку. Обе кнопки принимают *
 группы, резервная раскладка (no-match) ставит устройства простым
 столбиком с шагом `schematic_layout_step_mm`.
 
-Параметр цепи «Проводник» (`cable_type_param`) хранится как
+Параметр цепи «Проводник» (штатный, `circuit_builtins.set_circuit_wire_type`) хранится как
 `StorageType.ElementId`, но ссылается НЕ на
 `Autodesk.Revit.DB.Electrical.WireType`, а на строку ключевой
 спецификации — справочник кабельной продукции проекта (в наблюдаемом

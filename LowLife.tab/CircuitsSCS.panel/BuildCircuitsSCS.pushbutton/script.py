@@ -35,7 +35,7 @@ uidoc = revit.uidoc
 def _open_settings():
     edited = scs_settings.get_settings_interactive(doc, keys=[
         "conductor_type_id", "designation_param", "device_address_param",
-        "load_name_param", "wire_catalog_marker_param"
+        "wire_catalog_marker_param"
     ])
     forms.alert(
         u"Отменено, настройки не изменены." if edited is None
@@ -57,7 +57,7 @@ if config_mode:
 settings = get_settings_silent()
 
 scs_settings.require(settings, [
-    "conductor_type_id", "designation_param", "device_address_param", "load_name_param"
+    "conductor_type_id", "designation_param", "device_address_param"
 ])
 
 conductor_id = get_conductor_id(doc, settings)

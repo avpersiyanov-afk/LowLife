@@ -16,6 +16,7 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.params import get_string_param
+from lowlife.circuit_builtins import circuit_panel_name
 from lowlife.scs import clear_stray_address_params, is_excluded_device
 from lowlife.scs_circuits import norm
 from lowlife.skud import is_controller
@@ -31,8 +32,8 @@ view = doc.ActiveView
 
 def _open_settings():
     edited = get_settings_interactive(doc, keys=[
-        "route_type_id", "riser_type_id", "workset_filter_key", "workset_param_name",
-        "controller_workset_keyword", "controller_type_keyword", "circuit_panel_param",
+        "route_type_id", "riser_type_id", "workset_filter_key",
+        "controller_workset_keyword", "controller_type_keyword",
         "nearest_segment_param", "addr_param_name", "addr_prev_param_name",
         "excluded_device_keywords", "cable_param_name", "panel_keywords",
         "panel_exclude_keywords"
@@ -61,9 +62,9 @@ settings = get_settings_silent()
 
 skud_settings.require(settings, [
     "route_type_id", "riser_type_id",
-    "workset_filter_key", "workset_param_name",
+    "workset_filter_key",
     "controller_workset_keyword", "controller_type_keyword",
-    "circuit_panel_param", "nearest_segment_param"
+    "nearest_segment_param"
 ])
 
 ROUTE_TYPE_ID = ElementId(int(settings["route_type_id"]))
@@ -74,9 +75,7 @@ ADDR_PREV_PARAM = settings["addr_prev_param_name"]
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 
 config = {
     "route_type_id": ROUTE_TYPE_ID,
@@ -87,7 +86,6 @@ config = {
     "nearest_segment_param": settings["nearest_segment_param"],
     "panel_keywords": settings["panel_keywords"],
     "panel_exclude_keywords": settings["panel_exclude_keywords"],
-    "workset_param_name": WORKSET_PARAM_NAME,
     "workset_filter_key": settings["workset_filter_key"],
 }
 
@@ -133,7 +131,7 @@ all_equipment = FilteredElementCollector(doc) \
 
 controllers = [
     e for e in all_equipment
-    if is_controller(e, WORKSET_PARAM_NAME, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
+    if is_controller(e, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD)
 ]
 
 controllers_by_name = {}
@@ -149,7 +147,7 @@ all_circuits = FilteredElementCollector(doc) \
 
 devices_by_id = {}
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     controller_el = controllers_by_name.get(panel_name)
     if controller_el is None:
         continue

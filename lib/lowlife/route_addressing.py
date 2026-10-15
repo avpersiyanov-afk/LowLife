@@ -62,7 +62,6 @@ def collect_lines_and_points(doc, view, config):
     route_type_id = config["route_type_id"]
     riser_type_id = config["riser_type_id"]
     addr_param = config["addr_param_name"]
-    workset_param_name = config.get("workset_param_name")
     workset_filter_key = config.get("workset_filter_key")
 
     lines = []
@@ -93,7 +92,7 @@ def collect_lines_and_points(doc, view, config):
         ) == "panel"
 
         if is_panel and workset_filter_key:
-            ws = get_workset_name(el, workset_param_name)
+            ws = get_workset_name(el)
             if not ws or workset_filter_key.lower() not in ws.lower():
                 is_panel = False
 

@@ -40,6 +40,11 @@ SYSTEMS = [
     ("SOUE", u"СОУЭ", "LowLifeSOUE_settings.json"),
     ("SPA", u"СПА", "LowLifeSPA_settings.json"),
     ("SOT", u"СОТ", "LowLifeSOT_settings.json"),
+    ("SOUE_FLOOR", u"СОУЭ «Типовой этаж»", "LowLifeSOUEFloor_settings.json"),
+    ("SS1", u"СС1", "LowLifeSS1Easy_settings.json"),
+    ("COMPANION", u"РМ, АМ, МДУ", "LowLifeCompanionPlacement_settings.json"),
+    ("ROOM_INFO", u"Запись помещения", "LowLifeRoomInfo_settings.json"),
+    ("FLOOR", u"Заполнение этажа", "LowLifeFloor_settings.json"),
 ]
 
 SYSTEM_IDS = [s[0] for s in SYSTEMS]
@@ -47,6 +52,12 @@ SYSTEM_TITLES = dict((s[0], s[1]) for s in SYSTEMS)
 SYSTEM_FILES = dict((s[0], s[2]) for s in SYSTEMS)
 
 FIRE = ("SPS", "SOUE", "SPA")
+
+# Кнопки, которые пишут в элементы любых категорий, выбранных пользователем
+# («Запись помещения», «Заполнение этажа»): у их ролей категорий нет — окно
+# создаёт параметр в ФОП и вписывает имя в настройки, а привязать его к
+# нужным категориям нужно вручную.
+MANUAL_BINDING = u"— привяжите вручную"
 
 
 # --- типы данных и привязка ------------------------------------------------------
@@ -100,6 +111,7 @@ LV_DEVICES = [COMM, FIXTURES, DATA]          # слаботочные устро
 LV_AND_PANELS = LV_DEVICES + [EQUIPMENT]
 FIRE_AND_PANELS = [FIRE_DEVICES, EQUIPMENT]
 SOT_SOURCES = [SECURITY, EQUIPMENT, DATA]    # как sot_settings.SOURCE_CATEGORIES
+SS1_ELEMENTS = [COMM, DATA, GENERIC]         # кроссы и кабельные подводы СС1
 
 
 def _fire(categories):
@@ -176,7 +188,8 @@ CATALOG = [
     ParamSpec("device_address_param", u"Адрес устройства (и его значка на схеме)", u"Адрес устройства",
               TEXT, INSTANCE,
               dict([("SCS", LV_DEVICES), ("SKUD", LV_AND_PANELS + [DETAIL]),
-                    ("SOT", SOT_SOURCES + [DETAIL])] + list(_fire(FIRE_AND_PANELS).items())),
+                    ("SOT", SOT_SOURCES + [DETAIL]), ("SS1", SS1_ELEMENTS)]
+                   + list(_fire(FIRE_AND_PANELS).items())),
               system_keys={"SKUD": ["device_address_param", "schematic_address_param"]}),
     # «Обозначение» — краткий код модели, всегда параметр типа.
     ParamSpec("designation_param", u"Обозначение (у панели и устройств)", u"Обозначение",
@@ -218,18 +231,22 @@ CATALOG = [
 
     # --- линии проводки (СПС/СОУЭ/СПА) ---
     ParamSpec("wire_mark_param", u"Марка линии проводки", u"Марка линии",
-              TEXT, INSTANCE, _fire([GENERIC]), note=u"Необязателен"),
+              TEXT, INSTANCE, dict([("COMPANION", [GENERIC])] + list(_fire([GENERIC]).items())),
+              note=u"Необязателен"),
 
     # --- структурные схемы ---
     ParamSpec("room_param_name", u"Помещение (устройство и его значок на схеме)", u"Помещение",
               TEXT, INSTANCE,
-              dict([("SCS", LV_AND_PANELS), ("SOT", SOT_SOURCES + [DETAIL])]
+              dict([("SCS", LV_AND_PANELS), ("SOT", SOT_SOURCES + [DETAIL]),
+                    ("SOUE_FLOOR", [FIRE_DEVICES, COMM]), ("SS1", SS1_ELEMENTS), ("ROOM_INFO", [])]
                    + list(_fire(FIRE_AND_PANELS + [DETAIL]).items())),
-              note=_OPTIONAL_SCHEMATIC),
-    ParamSpec("level_param_name", u"Уровень (этаж) на устройстве", u"Этаж",
+              note=u"Для структурных схем, «Типового этажа», СС1, «Записи помещения»"),
+    ParamSpec("level_param_name", u"Уровень на устройстве (для схем)", u"Уровень",
               TEXT, INSTANCE, dict([("SOT", SOT_SOURCES)] + list(_fire([FIRE_DEVICES]).items())),
-              aliases=[u"Уровень"],
               note=u"Необязателен: пусто — уровень элемента в Revit"),
+    ParamSpec("floor_param_name", u"Этаж элемента («Заполнение этажа», «Проверка LOI»)", u"Этаж",
+              TEXT, INSTANCE, {"FLOOR": []},
+              note=u"Элементы любых категорий — привяжите к нужным вручную"),
     ParamSpec("building_param_name", u"Корпус на устройстве", u"Корпус",
               TEXT, INSTANCE, dict([("SOT", SOT_SOURCES)] + list(_fire([FIRE_DEVICES]).items())),
               aliases=[u"Здание"],
@@ -279,7 +296,8 @@ class Row(object):
         self.Name = name
         self.DataType = DATA_TYPE_TITLES.get(spec.data_type, spec.data_type)
         self.Kind = KIND_TITLES.get(spec.kind, spec.kind)
-        self.Categories = u", ".join(CATEGORY_TITLES.get(c, c) for c in categories)
+        self.Categories = (u", ".join(CATEGORY_TITLES.get(c, c) for c in categories)
+                           or MANUAL_BINDING)
         self.Systems = u", ".join(SYSTEM_TITLES.get(s, s) for s in systems)
         self.Note = spec.note
         self.FopStatus = u""

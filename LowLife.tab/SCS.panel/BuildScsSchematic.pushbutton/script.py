@@ -72,7 +72,7 @@ output = pyrevit_script.get_output()
 
 def _open_settings():
     edited = scs_settings.get_settings_interactive(doc, keys=[
-        "workset_param_name", "workset_filter_key", "circuit_panel_param",
+        "workset_filter_key",
         "excluded_device_keywords", "device_address_param", "room_param_name",
         "room_mask", "schematic_view_name", "layout_param_name",
         "device_uid_param_name", "node_label_offset_mm",
@@ -103,7 +103,7 @@ if config_mode:
 settings = get_settings_silent()
 
 scs_settings.require(settings, [
-    "workset_param_name", "workset_filter_key", "circuit_panel_param",
+    "workset_filter_key",
     "excluded_device_keywords", "device_address_param",
     "room_param_name", "room_mask",
     "schematic_view_name", "layout_param_name", "device_uid_param_name",
@@ -113,9 +113,7 @@ scs_settings.require(settings, [
 # нужны — структурная схема не смотрит на узлы трассы вообще, только на
 # устройства и их панели (см. __doc__ выше).
 
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 WORKSET_FILTER_KEY = settings["workset_filter_key"]
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 
@@ -189,7 +187,7 @@ def category_for_device(el):
 # ------------------------------------------------------------
 
 panel_devices, trunk_links = collect_target_panel_devices(
-    doc, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, CIRCUIT_PANEL_PARAM,
+    doc, WORKSET_FILTER_KEY,
     EXCLUDED_DEVICE_KEYWORDS, norm
 )
 

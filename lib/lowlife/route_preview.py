@@ -22,7 +22,7 @@ from System.Collections.Generic import List
 
 from pyrevit import forms
 
-from lowlife.params import get_string_param
+from lowlife.circuit_builtins import circuit_panel_name
 
 # Сколько секунд держать линию предпросмотра маршрута на виде, прежде чем
 # она удалит себя сама (см. schedule_preview_cleanup) — достаточно, чтобы
@@ -57,7 +57,7 @@ def find_old_preview_line_ids(doc, view):
     return ids
 
 
-def pick_circuit(uidoc, doc, prompt, circuit_panel_param):
+def pick_circuit(uidoc, doc, prompt):
     """
     Просит выбрать элемент, входящий в интересующую электрическую цепь.
     Если у элемента несколько цепей — предлагает выбрать нужную из списка
@@ -99,7 +99,7 @@ def pick_circuit(uidoc, doc, prompt, circuit_panel_param):
     by_label = {}
     for s in systems:
         label = u"{} — {} (ID {})".format(
-            get_string_param(s, circuit_panel_param) or u"без панели",
+            circuit_panel_name(s) or u"без панели",
             (s.Name or u"?"),
             s.Id.IntegerValue
         )

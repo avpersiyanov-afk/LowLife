@@ -49,8 +49,8 @@ MM_TO_FT = M_TO_FT / 1000.0
 
 def _open_settings():
     edited = get_settings_interactive(doc, keys=[
-        "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-        "excluded_device_keywords", "circuit_panel_param", "device_address_param",
+        "controller_workset_keyword", "controller_type_keyword",
+        "excluded_device_keywords", "device_address_param",
         "passage_point_param", "device_marking_param", "schematic_address_param",
         "schematic_layout_gap_m", "schematic_layout_step_mm",
         "schematic_device_categories_text", "schematic_view_name", "layout_param_name",
@@ -79,8 +79,8 @@ if config_mode:
 settings = get_settings_silent()
 
 skud_settings.require(settings, [
-    "controller_workset_keyword", "controller_type_keyword", "workset_param_name",
-    "circuit_panel_param", "device_address_param",
+    "controller_workset_keyword", "controller_type_keyword",
+    "device_address_param",
     "schematic_address_param", "schematic_layout_gap_m", "schematic_layout_step_mm",
     "schematic_device_categories_text",
     "schematic_view_name", "layout_param_name", "device_uid_param_name",
@@ -88,9 +88,7 @@ skud_settings.require(settings, [
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
 DEVICE_MARKING_PARAM = settings.get("device_marking_param") or u""
@@ -189,8 +187,8 @@ controllers_without_address = []
 desired_controllers = []
 
 for controller, devices in collect_controller_devices(
-    doc, WORKSET_PARAM_NAME, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD,
-    CIRCUIT_PANEL_PARAM, EXCLUDED_DEVICE_KEYWORDS
+    doc, CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD,
+    EXCLUDED_DEVICE_KEYWORDS
 ):
     addr = clean_text_value(get_string_param(controller, DEVICE_ADDRESS_PARAM))
     if not addr:
