@@ -66,6 +66,12 @@ except Exception:
 try:
     from pyrevit import HOST_APP as _usage_host
     from pnotes import usage as _usage
-    _usage.install(_usage_host.uiapp)
+    _usage_app = _usage_host.uiapp
+    if _usage_app is None:
+        try:
+            _usage_app = __revit__  # noqa: F821 — UIControlledApplication; usage достанет UIApplication сам
+        except Exception:
+            _usage_app = None
+    _usage.install(_usage_app)
 except Exception:
     pass

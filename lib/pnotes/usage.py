@@ -55,7 +55,33 @@ def _entries():
     return _cache['entries']
 
 
-def _context(uiapp):
+def _ui_application(host):
+    """UIApplication из того, что дали: кнопка передаёт UIApplication, а хук запуска Revit
+    (hooks/app-init.py) — UIControlledApplication или Application, у которых нет ни имени
+    пользователя, ни активной модели. Поэтому определяется в момент клика, а не при подписке."""
+    from Autodesk.Revit.UI import UIApplication
+    if isinstance(host, UIApplication):
+        return host
+    try:
+        from pyrevit import HOST_APP
+        if HOST_APP.uiapp is not None:
+            return HOST_APP.uiapp
+    except Exception:
+        pass
+    if host is None:
+        return None
+    try:
+        if hasattr(host, 'ControlledApplication'):  # UIControlledApplication: UIApplication — в закрытом поле
+            from System.Reflection import BindingFlags
+            field = host.GetType().GetField('m_uiapplication', BindingFlags.NonPublic | BindingFlags.Instance)
+            return field.GetValue(host) if field is not None else None
+        return UIApplication(host)  # Application
+    except Exception:
+        return None
+
+
+def _context(host):
+    uiapp = _ui_application(host)
     if 'static' not in _cache:
         ctx = {'user': u'', 'windows_user': os.environ.get('USERNAME') or u'',
                'version': about.version_text(), 'revit': u''}
@@ -65,8 +91,11 @@ def _context(uiapp):
             ctx['revit'] = u'{} ({})'.format(app.VersionName, app.VersionBuild)
         except Exception:
             pass
-        _cache['static'] = ctx
-    ctx = dict(_cache['static'])
+        if ctx['user']:  # не запоминать пустое — вдруг Revit отдаст пользователя при следующем клике
+            _cache['static'] = ctx
+    else:
+        ctx = _cache['static']
+    ctx = dict(ctx)
     ctx['model'] = u''
     try:
         uidoc = uiapp.ActiveUIDocument
