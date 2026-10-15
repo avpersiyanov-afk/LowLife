@@ -2,7 +2,8 @@
 """Тесты для lowlife.tag_layout — раскладка марок оборудования без
 пересечений (кнопка «Марки оборудования», Tools.panel/TagEquipment)."""
 
-from lowlife.tag_layout import TagItem, layout, count_conflicts, rect_overlap_area, exit_point
+from lowlife.tag_layout import (TagItem, layout, count_conflicts, rect_overlap_area, exit_point,
+                                extrapolate_rect)
 
 
 def _box(key, x, y, s=1.0, tw=4.0, th=1.2):
@@ -89,3 +90,28 @@ def test_dense_grid_has_no_conflicts_and_square_outer_rows():
             assert abs(p.elbow[1] - p.attach[1]) < 1e-9
         for a, b in p.leader_segments():
             assert abs(b[1] - a[1]) <= abs(b[0] - a[0]) + 1e-9 or abs(b[0] - a[0]) < 1e-9
+
+
+def test_annotation_rect_extrapolated_from_two_scales():
+    # замер на модели: релейный модуль, УГО 5×5 мм над точкой вставки,
+    # 3D-тело правее; при 1:1000 и 1:2000 габарит задаёт аннотация
+    r1 = (369.224, 40.551, 385.628, 56.955)
+    r2 = (361.022, 40.551, 393.830, 73.360)
+    r = extrapolate_rect(r1, 1000, r2, 2000, 100)
+    for got, want in zip(r, (376.606, 40.551, 378.246, 42.191)):
+        assert abs(got - want) < 2e-3
+    # габарит не растёт с масштабом — аннотации нет
+    assert extrapolate_rect(r1, 1000, r1, 2000, 100) is None
+
+
+def test_shelf_is_level_with_tag_leader_point():
+    # марка с одним верхним этажом: выноска подходит к нижнему краю
+    # раскладываемой половины (к черте) — полка ровно на этой высоте
+    def item(key, x, y):
+        return TagItem(key, (x, y), (x - 0.5, y - 0.5, x + 0.5, y + 0.5), (4.0, 1.2),
+                       attach_dv=-0.6)
+    for items in ([item(i, 0, i * 1.6) for i in range(5)],    # колонка сбоку
+                  [item(1, 0, 0), item(2, 1.6, 0)]):          # стопка над
+        for p in _clean(items):
+            assert abs(p.elbow[1] - p.attach[1]) < 1e-9
+            assert abs(p.attach[1] - p.tag_rect[1]) < 1e-9
