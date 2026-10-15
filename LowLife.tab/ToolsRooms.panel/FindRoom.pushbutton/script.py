@@ -93,7 +93,7 @@ if config_mode:
 
 
 settings = room_finder_settings.get_settings_silent()
-number_param_name = settings.get("room_number_param_name", u"")
+number_param_name = settings.get("room_number_param", u"")
 type_param_name = settings.get("room_type_param_name", u"")
 
 view = doc.ActiveView

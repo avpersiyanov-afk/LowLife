@@ -17,7 +17,7 @@
                                выбора ниже — то же соглашение, что в СКС);
     conductor_type_id         — выбранная строка справочника кабелей
                                (ElementId строкой), необязательно;
-    conductor_param_name      — параметр цепи, куда пишется кабель
+    cable_type_param          — параметр цепи, куда пишется кабель
                                (по умолчанию «Проводник»);
     load_name_param           — параметр цепи «Имя нагрузки»;
     load_name_source_params   — список параметров подключаемого устройства
@@ -74,7 +74,7 @@ TEXT_FIELDS = [
         u"вашего справочника кабелей — по нему программа отличает их от "
         u"остальных элементов проекта, когда предлагает выбрать кабель ниже.",
         u"", False, False, False),
-    ("conductor_param_name", u"Параметр цепи «Проводник»",
+    ("cable_type_param", u"Параметр цепи «Проводник»",
         u"В какой параметр электрической цепи записывать кабель, выбранный "
         u"в разделе «Кабель для цепей» ниже.",
         u"Проводник", False, True, False),
@@ -121,7 +121,10 @@ for _key, _label, _hint in CONDUCTOR_FIELDS:
     PLAIN_LABELS[_key] = _label
 
 
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
+# Переименованные ключи (одна роль — один ключ во всех кнопках).
+RENAMES = {"conductor_param_name": "cable_type_param"}
+
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, renames=RENAMES)
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
 _write_all = _STORE.write

@@ -60,7 +60,7 @@ skud_settings.require(settings, [
 ])
 
 room_settings = room_info_settings.load_saved_values()
-room_info_settings.require(room_settings, ["target_param_name", "room_mask"])
+room_info_settings.require(room_settings, ["room_param_name", "room_mask"])
 
 CONTROLLER_WORKSET_KEYWORD = settings["controller_workset_keyword"]
 CONTROLLER_TYPE_KEYWORD = settings["controller_type_keyword"]
@@ -70,7 +70,7 @@ CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 PASSAGE_POINT_PARAM = settings.get("passage_point_param") or u""
 
-TARGET_PARAM = room_settings["target_param_name"]
+TARGET_PARAM = room_settings["room_param_name"]
 ROOM_MASK = room_settings["room_mask"]
 
 

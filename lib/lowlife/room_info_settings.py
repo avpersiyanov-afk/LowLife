@@ -36,7 +36,7 @@ SETTINGS = settings_core.TextSettings(
     transfer_label=u"помещений",
     fields=[
         settings_core.TextField(
-            "target_param_name",
+            "room_param_name",
             u"① Куда записывать — в этой модели",
             u"Параметр элемента",
             hint=(
@@ -75,6 +75,7 @@ SETTINGS = settings_core.TextSettings(
     ],
     migrate=_migrate,
     width=780, height=520,
+    renames={"target_param_name": "room_param_name"},
 )
 
 load_saved_values = SETTINGS.load_saved_values

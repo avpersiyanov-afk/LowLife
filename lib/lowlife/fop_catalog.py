@@ -171,15 +171,13 @@ CATALOG = [
               u"Ближайший узел", TEXT, INSTANCE, {"SCS": LV_AND_PANELS, "SKUD": LV_AND_PANELS}),
 
     # --- устройства ---
-    # СОТ хранит ту же роль под ключом address_param_name, СКУД копирует
-    # адрес на значок схемы в schematic_address_param — один параметр на
-    # устройстве и на значке.
+    # СКУД копирует адрес на значок схемы в schematic_address_param — один
+    # параметр на устройстве и на значке (СОТ/СПС делают так же одним ключом).
     ParamSpec("device_address_param", u"Адрес устройства (и его значка на схеме)", u"Адрес устройства",
               TEXT, INSTANCE,
               dict([("SCS", LV_DEVICES), ("SKUD", LV_AND_PANELS + [DETAIL]),
                     ("SOT", SOT_SOURCES + [DETAIL])] + list(_fire(FIRE_AND_PANELS).items())),
-              system_keys={"SKUD": ["device_address_param", "schematic_address_param"],
-                           "SOT": ["address_param_name"]}),
+              system_keys={"SKUD": ["device_address_param", "schematic_address_param"]}),
     ParamSpec("type_code_param", u"Обозначение типа устройства", u"Обозначение типа",
               TEXT, TYPE, {"SCS": LV_DEVICES, "SKUD": LV_DEVICES}),
     ParamSpec("designation_param", u"Обозначение (у панели и устройств)", u"Обозначение",
@@ -237,17 +235,16 @@ CATALOG = [
               note=u"Необязателен"),
     ParamSpec("section_param_name", u"Секция на устройстве", u"Секция",
               TEXT, INSTANCE, {"SOT": SOT_SOURCES}, note=u"Необязателен"),
-    # У СКУД те же служебные роли под ключами manifest_param_name /
-    # schematic_source_uid_param; каждая схема пишет только в свой вид и свои
-    # значки, поэтому один параметр на все системы.
+    # Каждая схема пишет только в свой вид и свои значки, поэтому один
+    # параметр на все системы.
     ParamSpec("layout_param_name", u"Служебный: состояние схемы (вид)", u"Раскладка схемы",
               TEXT, INSTANCE,
               dict([("SCS", [VIEWS]), ("SKUD", [VIEWS]), ("SOT", [VIEWS])] + list(_fire([VIEWS]).items())),
-              system_keys={"SKUD": ["manifest_param_name"]}, note=_OPTIONAL_SCHEMATIC),
+              note=_OPTIONAL_SCHEMATIC),
     ParamSpec("device_uid_param_name", u"Служебный: UniqueId устройства (значок схемы)",
               u"UID устройства", TEXT, INSTANCE,
               dict([("SCS", [DETAIL]), ("SKUD", [DETAIL]), ("SOT", [DETAIL])] + list(_fire([DETAIL]).items())),
-              system_keys={"SKUD": ["schematic_source_uid_param"]}, note=_OPTIONAL_SCHEMATIC),
+              note=_OPTIONAL_SCHEMATIC),
 ]
 
 DEFAULT_PREFIX = u"LL_"

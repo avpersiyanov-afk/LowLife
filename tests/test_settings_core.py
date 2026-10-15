@@ -246,7 +246,31 @@ def test_shared_key_rule():
     assert settings_core.is_shared_key("level_param_name")
     assert not settings_core.is_shared_key("schematic_view_name")
     assert not settings_core.is_shared_key("route_type_id")
-    assert not settings_core.is_shared_key("target_param_name")
+    assert not settings_core.is_shared_key("room_number_param_name")
+
+
+# --- переименованные ключи -------------------------------------------------------
+
+def test_rename_keys_moves_old_value_unless_new_is_filled():
+    data = {"old_a": u"A", "old_b": u"B", "new_b": u"Своё", "old_c": u"", "x": 1}
+    renames = {"old_a": "new_a", "old_b": "new_b", "old_c": "new_c", "old_d": "new_d"}
+    assert settings_core.rename_keys(data, renames) is data
+    assert data == {"new_a": u"A", "new_b": u"Своё", "x": 1}
+
+
+def test_store_reads_and_writes_renamed_keys(appdata):
+    _write_raw(appdata, "LowLifeR_settings.json",
+               u'{"address_param_name": "Адрес", "keep": "1"}')
+    store = JsonStore("LowLifeR_settings.json",
+                      renames={"address_param_name": "device_address_param"})
+    saved = store.read()
+    assert dict(saved) == {"device_address_param": u"Адрес", "keep": u"1"}
+
+    # запись (например, импорт старого выгруженного файла) — тоже по новым ключам
+    store.write({"address_param_name": u"Другой"})
+    assert dict(store.read()) == {"device_address_param": u"Другой"}
+    # и в общую память попадает новый ключ
+    assert settings_core.read_shared().get("device_address_param") == u"Другой"
 
 
 def test_param_entered_in_one_button_is_default_in_another(appdata):

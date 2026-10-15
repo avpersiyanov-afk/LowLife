@@ -114,6 +114,10 @@ PLAIN_LABELS = {
 }
 
 
+# Переименованные ключи настроек пары (одна роль — один ключ во всех
+# кнопках): «Проводник» цепи — cable_type_param, как у СКУД/СПС/общих цепей.
+PAIR_RENAMES = {"circuit_conductor_param": "cable_type_param"}
+
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
@@ -159,7 +163,7 @@ def _default_pair_values():
         "group_radius_mm": u"2000",
         "circuit_enabled": False,
         "circuit_panel_param": u"",
-        "circuit_conductor_param": u"",
+        "cable_type_param": u"",
         "circuit_1_system_type": u"",
         "circuit_1_conductor_type_id": u"",
         "circuit_2_system_type": u"",
@@ -183,7 +187,7 @@ def load_saved_values():
     pairs = {}
     for name, raw in (saved.get("pairs") or {}).items():
         pair = _default_pair_values()
-        pair.update(raw or {})
+        pair.update(settings_core.rename_keys(dict(raw or {}), PAIR_RENAMES))
         pairs[name] = pair
     values["pairs"] = pairs
 
@@ -293,7 +297,7 @@ def to_runtime_settings(doc, values):
             "group_radius_mm": _to_float("group_radius_mm", 2000.0),
             "circuit_enabled": bool(raw.get("circuit_enabled")),
             "circuit_panel_param": (raw.get("circuit_panel_param") or u"").strip(),
-            "circuit_conductor_param": (raw.get("circuit_conductor_param") or u"").strip(),
+            "cable_type_param": (raw.get("cable_type_param") or u"").strip(),
             "circuits": circuits,
             "wire_line_family_filter": wire_line_family_filter,
             "wire_mark_param": wire_mark_param,
@@ -918,14 +922,14 @@ def show_settings_form(doc, values):
         container.Children.Add(circuit_conductor_param_label)
 
         circuit_conductor_param_box = TextBox()
-        circuit_conductor_param_box.Text = pair_values.get("circuit_conductor_param", u"")
+        circuit_conductor_param_box.Text = pair_values.get("cable_type_param", u"")
         circuit_conductor_param_box.Width = 360
         circuit_conductor_param_box.HorizontalAlignment = HorizontalAlignment.Left
         circuit_conductor_param_box.Padding = Thickness(4, 2, 4, 2)
 
         def on_circuit_conductor_param_changed(sender, args, pair_values=pair_values,
                                                 circuit_conductor_param_box=circuit_conductor_param_box):
-            pair_values["circuit_conductor_param"] = circuit_conductor_param_box.Text
+            pair_values["cable_type_param"] = circuit_conductor_param_box.Text
 
         circuit_conductor_param_box.TextChanged += on_circuit_conductor_param_changed
         container.Children.Add(circuit_conductor_param_box)

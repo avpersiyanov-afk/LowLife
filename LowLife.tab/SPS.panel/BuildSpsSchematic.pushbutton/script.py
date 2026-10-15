@@ -146,7 +146,7 @@ def _open_settings():
         "level_param_name", "building_param_name", "building_filter_value",
         "cabinet_category_name", "draw_loop_lines", "draw_tags",
         "max_row_width_mm", "same_room_branch_offset_mm",
-        "branch_lot_room_param_name", "branch_lot_filter_word",
+        "lot_param_name", "branch_lot_filter_word",
         "isolator_keyword", "node_annotation_type_id", "view_template_id",
     ])
     forms.alert(
@@ -211,7 +211,7 @@ except (ValueError, AttributeError):
 if SAME_ROOM_BRANCH_OFFSET_MM < 0.0:
     SAME_ROOM_BRANCH_OFFSET_MM = 0.0
 
-BRANCH_LOT_ROOM_PARAM_NAME = settings.get("branch_lot_room_param_name") or u""
+BRANCH_LOT_ROOM_PARAM_NAME = settings.get("lot_param_name") or u""
 BRANCH_LOT_FILTER_WORD = settings.get("branch_lot_filter_word") or u""
 
 # Марки (IndependentTag) — штатный вызов Revit API, который на некоторых

@@ -8,7 +8,7 @@
 pyrevit.script.get_config()).
 
 Две настройки:
-  - target_param_name — имя параметра, в который пишется значение этажа
+  - floor_param_name — имя параметра, в который пишется значение этажа
     (например «Этаж»). Один параметр для всех уровней.
   - level_values — {имя уровня: значение для его элементов} (по одному на
     строке таблицы «Уровень / Значение», см. show_settings_form). Значения
@@ -50,12 +50,15 @@ from System.Windows.Media import Brushes
 
 SETTINGS_FILE_NAME = "LowLifeFloor_settings.json"
 
-PARAM_KEY = "target_param_name"
+PARAM_KEY = "floor_param_name"
 PARAM_LABEL = u"Параметр «Этаж»"
 LEVEL_VALUES_KEY = "level_values"
 
 
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
+# Переименованные ключи (одна роль — один ключ во всех кнопках).
+RENAMES = {"target_param_name": "floor_param_name"}
+
+_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME, renames=RENAMES)
 _settings_file_path = _STORE.path
 _read_all = _STORE.read
 _write_all = _STORE.write

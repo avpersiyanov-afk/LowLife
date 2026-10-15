@@ -111,9 +111,11 @@ SHARED_KEY_SUFFIXES = ("_param", "_param_name")
 
 # Ключи имён параметров, которые в разных кнопках значат разное (или
 # участвуют в миграции старых настроек) — их не делим.
+# (Одинаковые по смыслу параметры под разными ключами переименованы в один
+# ключ — см. JsonStore(renames=...); бывшие target_param_name/
+# section_param_name с двумя смыслами стали floor_param_name/room_param_name
+# и room_section_param, поэтому исключений почти не осталось.)
 SHARED_EXCLUDED_KEYS = frozenset([
-    "target_param_name",       # «Этаж» у уровней vs параметр помещения у элементов
-    "section_param_name",      # секция у помещения АР vs секция у устройства СОТ
     "room_number_param_name",  # старый ключ, переносится в room_mask
 ])
 
@@ -220,6 +222,21 @@ def remember_shared(old, new):
     _write_file(shared_settings_path(), shared)
 
 
+def rename_keys(data, renames):
+    """
+    Переносит значения старых ключей в новые (renames: {старый: новый}) —
+    на месте, возвращает data. Непустой новый ключ важнее старого; старый
+    ключ удаляется в любом случае.
+    """
+    for old, new in renames.items():
+        if old not in data:
+            continue
+        value = data.pop(old)
+        if _blank(data.get(new)) and not _blank(value):
+            data[new] = value
+    return data
+
+
 class JsonStore(object):
     """
     Один JSON-файл настроек в %APPDATA%\\pyRevit.
@@ -231,12 +248,18 @@ class JsonStore(object):
                 «Не удалось сохранить настройки в файл».
     share     — участвовать в общих значениях между кнопками (см. начало
                 модуля): read подставляет, write запоминает.
+    renames   — {старый ключ: новый} — ключи, переименованные, чтобы одна
+                роль называлась одинаково во всех кнопках: read и write
+                переносят значение старого ключа в новый (если новый пуст)
+                и убирают старый, так что сохранённые раньше настройки и
+                выгруженные файлы читаются как прежде.
     """
 
-    def __init__(self, file_name, label=None, share=True):
+    def __init__(self, file_name, label=None, share=True, renames=None):
         self._file_name = file_name
         self._label = label
         self._share = share
+        self._renames = dict(renames or {})
 
     def _resolve(self, value):
         return value() if callable(value) else value
@@ -250,13 +273,14 @@ class JsonStore(object):
         пуст или битый. get() незаполненных общих ключей подставляет
         значения из других кнопок.
         """
-        data = _read_file(self.path())
+        data = rename_keys(_read_file(self.path()), self._renames)
         return SavedSettings(data, read_shared() if self._share else None)
 
     def write(self, data):
         """Перезаписывает файл целиком. True — записано; иначе alert и False."""
         path = self.path()
-        old = _read_file(path) if self._share else None
+        data = rename_keys(dict(data), self._renames)
+        old = rename_keys(_read_file(path), self._renames) if self._share else None
 
         if not _write_file(path, data):
             label = self._resolve(self._label)
@@ -434,6 +458,7 @@ class TextSettings(object):
     transfer_label — для «Выгрузить/Загрузить настройки…» и сообщения
                      require: «настройки <transfer_label>».
     fields         — список полей, в порядке показа.
+    renames        — {старый ключ: новый} для JsonStore (переименованные ключи).
     migrate        — необязательная функция (saved, values) → None, правит
                      values на месте после подстановки умолчаний: перенос
                      старых ключей в новые.
@@ -445,8 +470,9 @@ class TextSettings(object):
     """
 
     def __init__(self, file_name, button_name, heading, transfer_label, fields,
-                 migrate=None, intro=None, reset_button=False, width=720, height=440):
-        self.store = JsonStore(file_name)
+                 migrate=None, intro=None, reset_button=False, width=720, height=440,
+                 renames=None):
+        self.store = JsonStore(file_name, renames=renames)
         self.button_name = button_name
         self.heading = heading
         self.transfer_label = transfer_label

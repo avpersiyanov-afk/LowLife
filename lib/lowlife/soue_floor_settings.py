@@ -108,7 +108,7 @@ SETTINGS = settings_core.TextSettings(
             default=100.0, minimum=0,
         ),
         settings_core.TextField(
-            "room_target_param",
+            "room_param_name",
             u"④ Запись в оборудование",
             u"Параметр экземпляра «Помещение»",
             hint=u"В квартирах пишется имя лота, в остальных — имя помещения. Пусто — ничего не пишется.",
@@ -116,6 +116,7 @@ SETTINGS = settings_core.TextSettings(
         ),
     ],
     width=760, height=640,
+    renames={"room_target_param": "room_param_name"},
 )
 
 REQUIRED_KEYS = ["apartment_room_names", "lot_param_name"]

@@ -50,25 +50,20 @@ def test_each_settings_key_belongs_to_one_role():
 
 
 def test_same_role_under_other_keys_shares_one_name():
-    settings = {"SOT": {"address_param_name": u"Адрес из СОТ"},
-                "SKUD": {"manifest_param_name": u"Манифест"}}
+    settings = {"SKUD": {"schematic_address_param": u"Адрес на значке"}}
     rows = fc.build_rows(["SCS", "SKUD", "SOT"], settings)
-    assert _row(rows, "device_address_param").Name == u"Адрес из СОТ"
-    assert _row(rows, "layout_param_name").Name == u"Манифест"
+    assert _row(rows, "device_address_param").Name == u"Адрес на значке"
     keys = {r.key for r in rows}
-    assert not keys & {"address_param_name", "schematic_address_param", "controller_marking_param",
-                       "manifest_param_name", "schematic_source_uid_param"}
+    assert not keys & {"schematic_address_param", "controller_marking_param"}
 
     _row(rows, "device_address_param").Name = u"Адрес"
     _row(rows, "device_marking_param").Name = u"Марка"
     updates = fc.settings_updates(rows, settings)
-    assert updates["SOT"]["address_param_name"] == u"Адрес"
-    assert "device_address_param" not in updates["SOT"]
+    assert updates["SOT"]["device_address_param"] == u"Адрес"
     assert updates["SKUD"]["device_address_param"] == u"Адрес"
     assert updates["SKUD"]["schematic_address_param"] == u"Адрес"
     assert updates["SKUD"]["device_marking_param"] == u"Марка"
     assert updates["SKUD"]["controller_marking_param"] == u"Марка"
-    assert updates["SKUD"]["schematic_source_uid_param"] == _row(rows, "device_uid_param_name").Name
 
 
 def test_catalog_is_consistent():
