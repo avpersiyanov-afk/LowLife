@@ -33,7 +33,7 @@ doc = revit.doc
 
 def _open_settings():
     edited = fire_alarm_settings.get_settings_interactive(doc, keys=[
-        "workset_param_name", "workset_filter_key",
+        "workset_filter_key",
         "designation_param", "device_address_param", "panel_designation_key",
         "excluded_device_keywords",
         "circuit_number_param", "circuit_number_format",
@@ -63,7 +63,7 @@ if config_mode:
 settings = fire_alarm_settings.get_settings_silent()
 
 fire_alarm_settings.require(settings, [
-    "workset_param_name", "workset_filter_key",
+    "workset_filter_key",
     "designation_param", "device_address_param", "panel_designation_key",
     "circuit_number_param", "circuit_number_format",
     "length_coef", "wire_length_param",

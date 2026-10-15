@@ -26,6 +26,7 @@ from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory, ViewTyp
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
+from lowlife.circuit_builtins import circuit_panel_name
 from lowlife.params import get_string_param
 from lowlife.scs_circuits import norm, clean_text_value
 from lowlife import fire_alarm_settings
@@ -41,8 +42,8 @@ fire_alarm_settings.set_system("SPS")
 
 def _open_settings():
     edited = fire_alarm_settings.get_settings_interactive(doc, keys=[
-        "workset_param_name", "workset_filter_key",
-        "device_address_param", "circuit_panel_param", "circuit_route_param",
+        "workset_filter_key",
+        "device_address_param", "circuit_route_param",
         "excluded_device_keywords",
     ])
     forms.alert(
@@ -79,11 +80,10 @@ if view.ViewType == ViewType.ThreeD:
 settings = fire_alarm_settings.get_settings_silent()
 
 fire_alarm_settings.require(settings, [
-    "workset_param_name", "workset_filter_key",
-    "device_address_param", "circuit_panel_param", "circuit_route_param"
+    "workset_filter_key",
+    "device_address_param", "circuit_route_param"
 ])
 
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 CIRCUIT_ROUTE_PARAM = settings["circuit_route_param"]
 
 
@@ -92,7 +92,7 @@ CIRCUIT_ROUTE_PARAM = settings["circuit_route_param"]
 # ------------------------------------------------------------
 
 picked, circuit = pick_circuit(
-    uidoc, doc, u"Выберите устройство, входящее в интересующий шлейф СПС", CIRCUIT_PANEL_PARAM
+    uidoc, doc, u"Выберите устройство, входящее в интересующий шлейф СПС"
 )
 
 
@@ -110,7 +110,7 @@ if not route_text:
 
 edges = parse_route_edges(route_text)
 
-panel_name = norm(get_string_param(circuit, CIRCUIT_PANEL_PARAM))
+panel_name = norm(circuit_panel_name(circuit))
 
 panel_el = None
 if panel_name:

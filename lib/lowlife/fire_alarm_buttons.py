@@ -10,7 +10,8 @@
 from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.geometry import get_point
-from lowlife.params import get_string_param, get_type_string_param, set_param_any, set_element_id_param
+from lowlife.params import get_string_param, get_type_string_param, set_param_any
+from lowlife.circuit_builtins import set_circuit_load_name, set_circuit_wire_type
 from lowlife.scs_circuits import norm, clean_text_value, make_load_name
 from lowlife.sot_levels import get_level_display_name
 from lowlife.fire_alarm import make_full_mark, group_devices_by_loop, is_isolator
@@ -85,10 +86,7 @@ def build_loop_circuits(doc, settings):
     existing = existing_circuits_by_number(doc, config)
     membership = circuit_membership_map(doc, config["circuit_number_param"])
 
-    category_wire_type_ids = (
-        fire_alarm_settings.get_category_wire_type_elem_ids(doc)
-        if config.get("cable_type_param") else {}
-    )
+    category_wire_type_ids = fire_alarm_settings.get_category_wire_type_elem_ids(doc)
 
     isolator_keyword = config.get("isolator_keyword")
 
@@ -196,7 +194,6 @@ def build_loop_circuits(doc, settings):
                 continue
 
             set_param_any(circuit, config["circuit_number_param"], circuit_number)
-            set_param_any(circuit, config["circuit_panel_param"], norm(panel_el.Name))
 
             first = trunk_devices[0]
             designation = clean_text_value(get_type_string_param(doc, first, config["designation_param"]))
@@ -204,13 +201,13 @@ def build_loop_circuits(doc, settings):
                 designation, address_text_by_id.get(first.Id.IntegerValue)
             )
             if load_name:
-                set_param_any(circuit, config["load_name_param"], load_name)
+                set_circuit_load_name(circuit, load_name)
 
             if category_wire_type_ids:
                 cat_id = device_category_id(first)
                 wire_type_id = category_wire_type_ids.get(cat_id) if cat_id is not None else None
                 if wire_type_id is not None:
-                    set_element_id_param(circuit, config["cable_type_param"], wire_type_id)
+                    set_circuit_wire_type(doc, circuit, wire_type_id)
 
             # Режим траектории Revit «Все устройства» + «Длина проводника»/
             # «Способ прокладки» по получившейся Length — тем же способом,

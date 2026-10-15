@@ -114,9 +114,10 @@ PLAIN_LABELS = {
 }
 
 
-# Переименованные ключи настроек пары (одна роль — один ключ во всех
-# кнопках): «Проводник» цепи — cable_type_param, как у СКУД/СПС/общих цепей.
-PAIR_RENAMES = {"circuit_conductor_param": "cable_type_param"}
+# Ключи пары, которых больше нет: «Панель» и «Проводник» цепи — штатные
+# параметры Revit (circuit_builtins), имена не спрашиваются. Убираются при
+# чтении, чтобы не висели в файле настроек.
+OBSOLETE_PAIR_KEYS = ("circuit_panel_param", "cable_type_param", "circuit_conductor_param")
 
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
 _settings_file_path = _STORE.path
@@ -162,8 +163,6 @@ def _default_pair_values():
         "group_companion_symbol_id": "",
         "group_radius_mm": u"2000",
         "circuit_enabled": False,
-        "circuit_panel_param": u"",
-        "cable_type_param": u"",
         "circuit_1_system_type": u"",
         "circuit_1_conductor_type_id": u"",
         "circuit_2_system_type": u"",
@@ -187,7 +186,10 @@ def load_saved_values():
     pairs = {}
     for name, raw in (saved.get("pairs") or {}).items():
         pair = _default_pair_values()
-        pair.update(settings_core.rename_keys(dict(raw or {}), PAIR_RENAMES))
+        raw = dict(raw or {})
+        for key in OBSOLETE_PAIR_KEYS:
+            raw.pop(key, None)
+        pair.update(raw)
         pairs[name] = pair
     values["pairs"] = pairs
 
@@ -296,8 +298,6 @@ def to_runtime_settings(doc, values):
             "group_companion_symbol": group_companion_symbol,
             "group_radius_mm": _to_float("group_radius_mm", 2000.0),
             "circuit_enabled": bool(raw.get("circuit_enabled")),
-            "circuit_panel_param": (raw.get("circuit_panel_param") or u"").strip(),
-            "cable_type_param": (raw.get("cable_type_param") or u"").strip(),
             "circuits": circuits,
             "wire_line_family_filter": wire_line_family_filter,
             "wire_mark_param": wire_mark_param,
@@ -891,48 +891,6 @@ def show_settings_form(doc, values):
 
         add_circuit_slot(1, u" (обязательна, если галочка выше включена)")
         add_circuit_slot(2, u" (необязательно — вторая цепь другой категории к тому же базовому объекту)")
-
-        circuit_panel_label = TextBlock()
-        circuit_panel_label.Text = (
-            u"Параметр цепи «Панель» — необязательно, общий для обеих цепей; "
-            u"если задан, туда пишется имя компаньона"
-        )
-        circuit_panel_label.TextWrapping = TextWrapping.Wrap
-        circuit_panel_label.Margin = Thickness(0, 8, 0, 2)
-        container.Children.Add(circuit_panel_label)
-
-        circuit_panel_box = TextBox()
-        circuit_panel_box.Text = pair_values.get("circuit_panel_param", u"")
-        circuit_panel_box.Width = 360
-        circuit_panel_box.HorizontalAlignment = HorizontalAlignment.Left
-        circuit_panel_box.Padding = Thickness(4, 2, 4, 2)
-
-        def on_circuit_panel_changed(sender, args, pair_values=pair_values, circuit_panel_box=circuit_panel_box):
-            pair_values["circuit_panel_param"] = circuit_panel_box.Text
-
-        circuit_panel_box.TextChanged += on_circuit_panel_changed
-        container.Children.Add(circuit_panel_box)
-
-        circuit_conductor_param_label = TextBlock()
-        circuit_conductor_param_label.Text = (
-            u"Параметр цепи для кабеля (например «Проводник») — необязательно, общий для обеих цепей"
-        )
-        circuit_conductor_param_label.TextWrapping = TextWrapping.Wrap
-        circuit_conductor_param_label.Margin = Thickness(0, 4, 0, 2)
-        container.Children.Add(circuit_conductor_param_label)
-
-        circuit_conductor_param_box = TextBox()
-        circuit_conductor_param_box.Text = pair_values.get("cable_type_param", u"")
-        circuit_conductor_param_box.Width = 360
-        circuit_conductor_param_box.HorizontalAlignment = HorizontalAlignment.Left
-        circuit_conductor_param_box.Padding = Thickness(4, 2, 4, 2)
-
-        def on_circuit_conductor_param_changed(sender, args, pair_values=pair_values,
-                                                circuit_conductor_param_box=circuit_conductor_param_box):
-            pair_values["cable_type_param"] = circuit_conductor_param_box.Text
-
-        circuit_conductor_param_box.TextChanged += on_circuit_conductor_param_changed
-        container.Children.Add(circuit_conductor_param_box)
 
     refresh_btn.Click += rebuild_pairs_panel
     root.Children.Add(pairs_panel)

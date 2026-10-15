@@ -73,8 +73,6 @@ PARAM_SPECS = [
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
     ("route_method_param", u"Способ прокладки",
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
-    ("load_name_param", u"Имя нагрузки",
-        False, CAT_CIRCUITS, INSTANCE, TEXT, NATIVE, True),
 
     # --- структурная схема (BuildScsSchematic) — необязательные для
     # остальных кнопок СКС, не должны блокировать "Параметры СКС" ---

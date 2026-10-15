@@ -16,7 +16,15 @@ SETTINGS_MODULES = {
     "SOUE": "fire_alarm_settings.py",
     "SPA": "fire_alarm_settings.py",
     "SOT": "sot_settings.py",
+    "SOUE_FLOOR": "soue_floor_settings.py",
+    "SS1": "ss1_easy_settings.py",
+    "COMPANION": "companion_placement_settings.py",
+    "ROOM_INFO": "room_info_settings.py",
+    "FLOOR": "floor_settings.py",
 }
+
+# Кнопки с элементами любых категорий — привязка вручную.
+MANUAL_SYSTEMS = {"ROOM_INFO", "FLOOR"}
 
 
 def _source(name):
@@ -35,7 +43,7 @@ def test_every_key_is_a_settings_field_of_its_systems():
             assert system in fc.SYSTEM_IDS
             src = _source(SETTINGS_MODULES[system])
             for key in spec.keys_for(system):
-                assert u'("{}",'.format(key) in src, (key, system)
+                assert u'"{}"'.format(key) in src, (key, system)
         for system in spec.system_keys:
             assert system in spec.categories, (spec.key, system)
 
@@ -75,8 +83,8 @@ def test_catalog_is_consistent():
         assert spec.data_type in fc.DATA_TYPE_TITLES
         assert spec.kind in fc.KIND_TITLES
         assert fc.name_error(fc.example_name(spec, fc.DEFAULT_PREFIX)) is None
-        for cats in spec.categories.values():
-            assert cats
+        for system, cats in spec.categories.items():
+            assert bool(cats) != (system in MANUAL_SYSTEMS), (spec.key, system)
             for c in cats:
                 assert c in fc.CATEGORY_TITLES
 
@@ -217,3 +225,22 @@ def test_status_warns_on_other_type():
     rows = fc.build_rows(["SCS"])
     fc.update_status(rows, defs)
     assert u"тип в ФОП не «Число»" in _row(rows, "wire_length_param").FopStatus
+
+
+def test_every_system_has_a_settings_module():
+    assert set(fc.SYSTEM_IDS) == set(SETTINGS_MODULES)
+
+
+def test_manual_binding_rows_and_new_systems():
+    rows = fc.build_rows(["FLOOR", "ROOM_INFO", "SS1", "COMPANION", "SOUE_FLOOR"])
+    floor = _row(rows, "floor_param_name")
+    assert floor.categories == [] and floor.Categories == fc.MANUAL_BINDING
+    room = _row(rows, "room_param_name")
+    assert room.systems == ["SOUE_FLOOR", "SS1", "ROOM_INFO"]
+    assert fc.FIRE_DEVICES in room.categories and fc.GENERIC in room.categories
+    assert _row(rows, "device_address_param").systems == ["SS1"]
+    assert _row(rows, "wire_mark_param").systems == ["COMPANION"]
+
+    updates = fc.settings_updates(rows)
+    assert set(updates["ROOM_INFO"]) == {"room_param_name"}
+    assert updates["FLOOR"] == {"floor_param_name": u"LL_Этаж"}

@@ -16,6 +16,7 @@ from Autodesk.Revit.DB import *
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife.geometry import get_point
+from lowlife.circuit_builtins import circuit_panel_name, set_circuit_load_name
 from lowlife.params import get_string_param, set_param_any
 from lowlife.scs import (
     clear_stray_address_params, is_excluded_device, panel_matches
@@ -39,11 +40,11 @@ def _open_settings():
         "route_label_tray_format", "route_label_pipe_open_format", "circuit_key_fo",
         "circuit_key_utp", "circuit_key_power", "horiz_tray_coef", "horiz_pipe_coef",
         "vertical_coef", "addr_param_name", "addr_prev_param_name", "cable_param_name",
-        "workset_param_name", "excluded_device_keywords", "circuit_panel_param",
+        "excluded_device_keywords",
         "nearest_segment_param", "device_address_param", "designation_param",
         "circuit_name_type_param", "circuit_number_param", "circuit_route_param",
         "wire_length_param", "tray_length_param", "pipe_length_param",
-        "route_method_param", "load_name_param", "segment_loads_param"
+        "route_method_param", "segment_loads_param"
     ])
     forms.alert(
         u"Отменено, настройки не изменены." if edited is None
@@ -76,11 +77,11 @@ scs_settings.require(settings, [
     "circuit_key_fo", "circuit_key_utp", "circuit_key_power",
     "horiz_tray_coef", "horiz_pipe_coef", "vertical_coef"
 ])
-# Имена параметров (addr_param_name, cable_param_name, workset_param_name,
-# circuit_panel_param, nearest_segment_param, device_address_param,
+# Имена параметров (addr_param_name, cable_param_name,
+# nearest_segment_param, device_address_param,
 # designation_param, circuit_name_type_param, circuit_number_param,
 # circuit_route_param, *_length_param, route_method_param,
-# load_name_param, segment_loads_param) здесь не проверяются — их
+# segment_loads_param) здесь не проверяются — их
 # наличие/привязку в проекте проверяет и чинит кнопка «Параметры СКС»
 # (SetupParameters).
 
@@ -91,11 +92,9 @@ ADDR_PARAM = settings["addr_param_name"]
 ADDR_PREV_PARAM = settings["addr_prev_param_name"]
 CABLE_PARAM_NAME = settings["cable_param_name"]
 
-WORKSET_PARAM_NAME = settings["workset_param_name"]
 WORKSET_FILTER_KEY = settings["workset_filter_key"]
 EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 
-CIRCUIT_PANEL_PARAM = settings["circuit_panel_param"]
 NEAREST_SEGMENT_PARAM = settings["nearest_segment_param"]
 DEVICE_ADDRESS_PARAM = settings["device_address_param"]
 TYPE_CODE_PARAM = settings["designation_param"]
@@ -106,7 +105,6 @@ WIRE_LENGTH_PARAM = settings["wire_length_param"]
 TRAY_LENGTH_PARAM = settings["tray_length_param"]
 PIPE_LENGTH_PARAM = settings["pipe_length_param"]
 ROUTE_METHOD_PARAM = settings["route_method_param"]
-LOAD_NAME_PARAM = settings["load_name_param"]
 SEGMENT_LOADS_PARAM = settings["segment_loads_param"]
 
 INSTALL_TRAY_KEY = settings["install_tray_key"]
@@ -139,7 +137,6 @@ VERTICAL_COEF = float(settings["vertical_coef"])
 with revit.Transaction("Clear stray route addresses"):
     stray_cleared = clear_stray_address_params(
         doc, [ADDR_PARAM, ADDR_PREV_PARAM], set([ROUTE_TYPE_ID, RISER_TYPE_ID]),
-        workset_param_name=WORKSET_PARAM_NAME,
         workset_filter_key=WORKSET_FILTER_KEY
     )
 
@@ -207,7 +204,7 @@ all_panels = FilteredElementCollector(doc) \
     .WhereElementIsNotElementType() \
     .ToElements()
 
-target_panels = [p for p in all_panels if panel_matches(p, WORKSET_PARAM_NAME, WORKSET_FILTER_KEY, norm)]
+target_panels = [p for p in all_panels if panel_matches(p, WORKSET_FILTER_KEY, norm)]
 target_panel_names = set(norm(p.Name) for p in target_panels if norm(p.Name))
 
 if not target_panels:
@@ -223,7 +220,7 @@ all_circuits = FilteredElementCollector(doc) \
 
 circuits_by_panel_name = {}
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     if panel_name:
         circuits_by_panel_name.setdefault(panel_name, []).append(c)
 
@@ -236,7 +233,7 @@ fo_circuits = []
 power_circuits = []
 
 for c in all_circuits:
-    panel_name = norm(get_string_param(c, CIRCUIT_PANEL_PARAM))
+    panel_name = norm(circuit_panel_name(c))
     if panel_name not in target_panel_names:
         continue
 
@@ -248,8 +245,8 @@ for c in all_circuits:
     elif circuit_class == "POWER":
         power_circuits.append(c)
 
-fo_circuits.sort(key=lambda x: (norm(get_string_param(x, CIRCUIT_PANEL_PARAM)) or u"", norm(x.Name) or u"", x.Id.IntegerValue))
-power_circuits.sort(key=lambda x: (norm(get_string_param(x, CIRCUIT_PANEL_PARAM)) or u"", norm(x.Name) or u"", x.Id.IntegerValue))
+fo_circuits.sort(key=lambda x: (norm(circuit_panel_name(x)) or u"", norm(x.Name) or u"", x.Id.IntegerValue))
+power_circuits.sort(key=lambda x: (norm(circuit_panel_name(x)) or u"", norm(x.Name) or u"", x.Id.IntegerValue))
 
 fo_number_written = 0
 power_number_written = 0
@@ -425,7 +422,7 @@ with revit.Transaction("Sync Circuits And Lengths"):
                 load_name = make_load_name(type_code, device_address)
 
                 if load_name:
-                    set_param_any(c, LOAD_NAME_PARAM, load_name)
+                    set_circuit_load_name(c, load_name)
 
             segment_list_name = clean_text_value(get_string_param(c, CIRCUIT_NUMBER_PARAM))
             if not segment_list_name:

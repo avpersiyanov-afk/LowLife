@@ -177,18 +177,10 @@ def is_excluded_device(el, excluded_keywords):
     return any(w.lower() in (fam_name or u"").lower() for w in excluded_keywords if w)
 
 
-def get_workset_name(el, workset_param_name):
-    """
-    Имя рабочего набора элемента: сперва по имени параметра
-    (workset_param_name — на случай проектов, где рабочий набор продублирован
-    в обычный параметр), иначе — через нативный BuiltInParameter.ELEM_PARTITION_PARAM.
-    """
+def get_workset_name(el):
+    """Имя рабочего набора элемента (штатный BuiltInParameter.ELEM_PARTITION_PARAM)."""
     from Autodesk.Revit.DB import BuiltInParameter
-    from lowlife.params import get_param_any
 
-    val = get_param_any(el, workset_param_name)
-    if val:
-        return val
     try:
         p = el.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
         if p and p.HasValue:
@@ -200,16 +192,15 @@ def get_workset_name(el, workset_param_name):
     return None
 
 
-def panel_matches(panel, workset_param_name, workset_filter_key, norm_fn):
+def panel_matches(panel, workset_filter_key, norm_fn):
     """Целевая панель — по ключевому слову в имени её рабочего набора."""
-    ws = norm_fn(get_workset_name(panel, workset_param_name))
+    ws = norm_fn(get_workset_name(panel))
     if not ws:
         return False
     return workset_filter_key.lower() in ws.lower()
 
 
-def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
-                                  circuit_panel_param, excluded_device_keywords, norm_fn):
+def collect_target_panel_devices(doc, workset_filter_key, excluded_device_keywords, norm_fn):
     """
     (panel_devices, trunk_links):
     - panel_devices — [(panel_element, [device_element, ...]), ...] — те же
@@ -234,7 +225,7 @@ def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
         .WhereElementIsNotElementType() \
         .ToElements()
 
-    target_panels = [p for p in all_panels if panel_matches(p, workset_param_name, workset_filter_key, norm_fn)]
+    target_panels = [p for p in all_panels if panel_matches(p, workset_filter_key, norm_fn)]
     target_panel_ids = set(p.Id.IntegerValue for p in target_panels)
 
     all_circuits = FilteredElementCollector(doc) \
@@ -242,11 +233,11 @@ def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
         .WhereElementIsNotElementType() \
         .ToElements()
 
-    from lowlife.params import get_string_param
+    from lowlife.circuit_builtins import circuit_panel_name
 
     circuits_by_panel_name = {}
     for c in all_circuits:
-        panel_name = norm_fn(get_string_param(c, circuit_panel_param))
+        panel_name = norm_fn(circuit_panel_name(c))
         if panel_name:
             circuits_by_panel_name.setdefault(panel_name, []).append(c)
 
@@ -286,7 +277,7 @@ def collect_target_panel_devices(doc, workset_param_name, workset_filter_key,
 
 
 def clear_stray_address_params(doc, param_names, allowed_type_ids,
-                                workset_param_name=None, workset_filter_key=None):
+                                workset_filter_key=None):
     """
     Находит элементы категорий, где могут стоять маркеры/устройства СКС
     (Обобщённые модели, коммуникационные/электротехнические устройства,
@@ -299,7 +290,7 @@ def clear_stray_address_params(doc, param_names, allowed_type_ids,
     такое значение до разделения на отдельные семейства панель/устройство/
     маршрут, или было введено вручную).
 
-    workset_param_name/workset_filter_key — ограничить очистку одним
+    workset_filter_key — ограничить очистку одним
     рабочим набором. Нужно, когда несколько дисциплин делят одни и те же
     имена параметров адреса (например СКС и СКУД на общем параметре сегмента):
     без этого очистка одной дисциплины стёрла бы адреса другой. Если не
@@ -333,7 +324,7 @@ def clear_stray_address_params(doc, param_names, allowed_type_ids,
                 continue
 
             if workset_filter_key:
-                ws = get_workset_name(el, workset_param_name)
+                ws = get_workset_name(el)
                 if not ws or workset_filter_key.lower() not in ws.lower():
                     continue
 

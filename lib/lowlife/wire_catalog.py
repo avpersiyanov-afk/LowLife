@@ -41,9 +41,9 @@ from lowlife.schedule_excel import _param_to_text, _set_param_text
 # Заголовок столбца ключевого имени в выгрузке/окне правки.
 KEY_COLUMN = u"Ключевое имя"
 
-# Имя параметра цепи, ссылающегося на строку справочника (то же, что
-# scs_manual_circuits.CONDUCTOR_PARAM_NAME; в СКУД/СПС — настройка
-# cable_type_param, по умолчанию тоже «Проводник»).
+# Имя параметра цепи, ссылающегося на строку справочника, — если у ключевой
+# спецификации не удалось прочитать её ключевой параметр (обычно он и есть
+# «Проводник», см. circuit_builtins.set_circuit_wire_type).
 DEFAULT_KEY_PARAM_NAME = u"Проводник"
 
 

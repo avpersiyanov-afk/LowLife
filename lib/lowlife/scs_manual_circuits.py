@@ -19,16 +19,17 @@ ElectricalSystem.Create падал с electComponents для устройств 
 Проводник (кабель) для параметра цепи «Проводник» — это встроенный
 параметр электрической цепи Revit (выпадающий список — ссылка на строку
 ключевой спецификации), а не project-specific параметр, поэтому его
-имя зашито в код (CONDUCTOR_PARAM_NAME), а не берётся из настроек СКС (там
-ему не место). Но САМО значение — какую строку справочника кабелей
+имя не спрашивается в настройках: пишется через
+circuit_builtins.set_circuit_wire_type (ключевой параметр спецификации
+выбранной строки). Но САМО значение — какую строку справочника кабелей
 проставлять — выбирается один раз в окне настроек («Параметры СКС», раздел
 «Проводник для цепей СКС», см. scs_settings.py) и оттуда читается при
 каждом запуске кнопки, а не запрашивается заново, аналогично тому, как это
 сделано для типа проводника по категории устройства в СПС
 (fire_alarm_settings.get_category_wire_type_elem_ids).
 
-После создания каждой цепи заполняется и параметр «Имя нагрузки» (его имя
-берётся из настроек, load_name_param) — из параметра типа устройства
+После создания каждой цепи заполняется и штатное «Имя нагрузки» — из
+параметра типа устройства
 «Обозначение» (designation_param) и параметра экземпляра «Адрес устройства»
 (device_address_param), см. scs_circuits.make_load_name. Те же настройки
 уже используются кнопкой «Расчёт длины цепи» (SyncCircuitsAndLengths).
@@ -45,13 +46,13 @@ from Autodesk.Revit.DB import ElementId
 from pyrevit import revit, forms
 
 from lowlife.electrical_circuits import create_circuit, detect_electrical_system_type, count_electrical_connectors
-from lowlife.params import set_element_id_param, get_type_string_param, get_string_param, set_param_any
+from lowlife.params import get_type_string_param, get_string_param
+from lowlife.circuit_builtins import set_circuit_load_name, set_circuit_wire_type
 from lowlife.scs_circuits import clean_text_value, make_load_name
 
 # Запасной тип цепи — только если у устройства не нашлось электрического
 # коннектора для detect_electrical_system_type (обычный случай — Data).
 CIRCUIT_SYSTEM_TYPE = "Data"
-CONDUCTOR_PARAM_NAME = u"Проводник"
 
 
 def get_conductor_id(doc, settings):
@@ -112,7 +113,6 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
     """
     type_code_param = settings.get("designation_param")
     device_address_param = settings.get("device_address_param")
-    load_name_param = settings.get("load_name_param")
 
     created = 0
     errors = []
@@ -123,7 +123,7 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
             connector_count = max(1, count_electrical_connectors(dev))
 
             base_load_name = None
-            if type_code_param and device_address_param and load_name_param:
+            if type_code_param and device_address_param:
                 type_code = clean_text_value(get_type_string_param(doc, dev, type_code_param))
                 device_address = clean_text_value(get_string_param(dev, device_address_param))
                 base_load_name = make_load_name(type_code, device_address)
@@ -145,10 +145,10 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
                 if error:
                     errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
 
-                set_element_id_param(circuit, CONDUCTOR_PARAM_NAME, conductor_id)
+                set_circuit_wire_type(doc, circuit, conductor_id)
 
                 if base_load_name:
                     load_name = base_load_name if connector_count <= 1 else u"{}-{}".format(base_load_name, i + 1)
-                    set_param_any(circuit, load_name_param, load_name)
+                    set_circuit_load_name(circuit, load_name)
 
     return created, errors

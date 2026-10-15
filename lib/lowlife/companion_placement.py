@@ -61,9 +61,9 @@ from Autodesk.Revit.DB import XYZ, LocationPoint, FilteredElementCollector, Doma
 from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife.geometry import get_point, get_element_level, find_level_for_elevation
-from lowlife.params import get_param_any, set_param_any, set_element_id_param
+from lowlife.params import get_param_any, set_param_any
+from lowlife.circuit_builtins import set_circuit_wire_type
 from lowlife import level_assign
-from lowlife.scs import safe_element_name
 from lowlife.electrical_circuits import create_circuit
 from lowlife.fire_alarm_wire_marks import collect_member_points, mark_wire_lines
 
@@ -463,7 +463,7 @@ def _mark_wires_for_existing_companion(doc, view, companion_el, member_elements,
 
 
 def _build_one_circuit(doc, view, companion_el, member_elements, circuit_spec,
-                        panel_param, conductor_param, wire_family_filter, wire_mark_param):
+                        wire_family_filter, wire_mark_param):
     """
     Строит одну электрическую цепь по одному слоту circuit_spec —
     {"system_type", "conductor_type_id"}. Возвращает (цепь, текст ошибки,
@@ -474,14 +474,11 @@ def _build_one_circuit(doc, view, companion_el, member_elements, circuit_spec,
     if circuit is None:
         return None, error, 0
 
-    if panel_param:
-        panel_name = safe_element_name(companion_el)
-        if panel_name:
-            set_param_any(circuit, panel_param, panel_name)
-
+    # «Панель» — штатная, её задаёт подключение к компаньону (create_circuit →
+    # SelectPanel); «Проводник» — штатный, по выбранной строке справочника.
     conductor_type_id = circuit_spec.get("conductor_type_id")
-    if conductor_param and conductor_type_id is not None:
-        set_element_id_param(circuit, conductor_param, conductor_type_id)
+    if conductor_type_id is not None:
+        set_circuit_wire_type(doc, circuit, conductor_type_id)
 
     try:
         path_mode_type = type(circuit.CircuitPathMode)
@@ -517,13 +514,11 @@ def build_companion_circuits(doc, view, companion_el, member_elements, pair):
     штуки — второй слот нужен компаньонам, которым к одному и тому же
     базовому объекту нужны сразу две цепи разной категории, например
     силовая + сигнальная). pair — {"circuits": [{"system_type",
-    "conductor_type_id"}, ...], "circuit_panel_param",
-    "cable_type_param", "wire_line_family_filter", "wire_mark_param"}
+    "conductor_type_id"}, ...], "wire_line_family_filter", "wire_mark_param"}
     (см. companion_placement_settings) — все, кроме "circuits", опциональны
-    и общие для всех слотов: "circuit_panel_param"/"cable_type_param"
-    пишут имя компаньона (аналог «Панель» = имя изолятора у «Цепи
-    изолятор-устройства») и, если у слота выбран кабель, ссылку на строку
-    справочника кабелей; "wire_line_family_filter"/"wire_mark_param" — как
+    и общие для всех слотов. «Панель» цепи — сам компаньон (подключение),
+    «Проводник» — выбранная у слота строка справочника кабелей (штатные
+    параметры, см. circuit_builtins); "wire_line_family_filter"/"wire_mark_param" — как
     у СПС, подписывают уже нарисованные вручную линии проводки рядом с
     компаньоном/базовым объектом собственным именем построенной цепи в
     Revit (circuit.Name), тем же способом, что и «Цепи изолятор-устройства»
@@ -538,15 +533,13 @@ def build_companion_circuits(doc, view, companion_el, member_elements, pair):
     одному на слот; цепь может быть не None даже при непустом error
     (например «создана, но не подключена к панели»).
     """
-    panel_param = pair.get("circuit_panel_param")
-    conductor_param = pair.get("cable_type_param")
     wire_family_filter = pair.get("wire_line_family_filter")
     wire_mark_param = pair.get("wire_mark_param")
 
     return [
         _build_one_circuit(
             doc, view, companion_el, member_elements, circuit_spec,
-            panel_param, conductor_param, wire_family_filter, wire_mark_param
+            wire_family_filter, wire_mark_param
         )
         for circuit_spec in (pair.get("circuits") or [])
     ]
@@ -557,8 +550,8 @@ def place_companions_for_pair(doc, view, base_elements, pair, sorted_levels):
     Обрабатывает одну настроенную пару для уже собранного списка базовых
     объектов. pair — {"companion_symbol", "param_map", "offset_forward_mm",
     "offset_side_mm", "offset_up_mm", "group_enabled", "group_companion_symbol",
-    "group_radius_mm", "circuit_enabled", "circuits", "circuit_panel_param",
-    "cable_type_param", "wire_line_family_filter", "wire_mark_param"}
+    "group_radius_mm", "circuit_enabled", "circuits",
+    "wire_line_family_filter", "wire_mark_param"}
     (см. companion_placement_settings). view — активный вид, нужен только
     для подписи линий проводки (mark_wire_lines ищет их на view).
 

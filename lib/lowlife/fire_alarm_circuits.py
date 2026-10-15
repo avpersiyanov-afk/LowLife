@@ -115,10 +115,10 @@ def device_category_id(el):
     return cat_id if cat_id in CATEGORY_TITLE_BY_ID else None
 
 
-def in_workset(el, workset_param_name, workset_filter_key):
+def in_workset(el, workset_filter_key):
     if not workset_filter_key:
         return True
-    ws = get_workset_name(el, workset_param_name)
+    ws = get_workset_name(el)
     return bool(ws) and workset_filter_key.lower() in ws.lower()
 
 
@@ -142,7 +142,7 @@ def find_panels(doc, config):
         .ToElements()
 
     for el in equipment:
-        if not in_workset(el, config["workset_param_name"], config["workset_filter_key"]):
+        if not in_workset(el, config["workset_filter_key"]):
             continue
 
         designation = clean_text_value(get_type_string_param(doc, el, designation_param))
@@ -187,7 +187,7 @@ def find_devices(doc, config):
             continue
 
         for el in found:
-            if not in_workset(el, config["workset_param_name"], config["workset_filter_key"]):
+            if not in_workset(el, config["workset_filter_key"]):
                 continue
 
             if is_excluded_device(el, excluded):
@@ -249,7 +249,7 @@ def find_risers(doc, config):
             if eid in seen_ids:
                 continue
 
-            if not in_workset(el, config["workset_param_name"], config["workset_filter_key"]):
+            if not in_workset(el, config["workset_filter_key"]):
                 continue
 
             if not is_riser(el, riser_keyword):

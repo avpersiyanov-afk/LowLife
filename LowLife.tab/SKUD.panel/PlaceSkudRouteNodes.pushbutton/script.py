@@ -29,7 +29,7 @@ def _open_settings():
     edited = get_settings_interactive(doc, keys=[
         "panel_type_id", "route_type_id", "riser_type_id", "family_filter",
         "route_param_value", "route_param_value_riser", "device_cable_type_value",
-        "workset_filter_key", "workset_param_name", "cable_param_name",
+        "workset_filter_key", "cable_param_name",
         "route_param_name", "offset_param_names", "panel_keywords",
         "panel_exclude_keywords", "riser_keywords", "riser_exclude_keywords"
     ])
@@ -58,7 +58,7 @@ settings = get_settings_silent()
 skud_settings.require(settings, [
     "panel_type_id", "route_type_id", "riser_type_id",
     "family_filter", "route_param_value", "route_param_value_riser",
-    "device_cable_type_value", "workset_filter_key", "workset_param_name"
+    "device_cable_type_value", "workset_filter_key"
 ])
 # Имена параметров (cable_param_name, route_param_name, offset_param_names)
 # здесь не проверяются — их наличие/привязку проверяет «Параметры СКУД».
@@ -92,7 +92,6 @@ config = {
     "panel_exclude_keywords": settings["panel_exclude_keywords"],
     "riser_keywords": settings["riser_keywords"],
     "riser_exclude_keywords": settings["riser_exclude_keywords"],
-    "workset_param_name": settings["workset_param_name"],
     "workset_filter_key": settings["workset_filter_key"],
 }
 

@@ -30,8 +30,8 @@ uidoc = revit.uidoc
 def _open_settings():
     edited = fire_alarm_settings.get_settings_interactive(doc, keys=[
         "designation_param", "device_address_param",
-        "circuit_panel_param", "load_name_param", "circuit_system_type",
-        "cable_type_param", "wire_length_param", "length_coef",
+        "circuit_system_type",
+        "wire_length_param", "length_coef",
         "route_method_param", "route_label_pipe_format",
         "wire_mark_param", "wire_line_family_filter",
         "wire_catalog_marker_param", "category_wire_type_ids",
@@ -56,7 +56,7 @@ settings = fire_alarm_settings.get_settings_silent()
 
 fire_alarm_settings.require(settings, [
     "designation_param", "device_address_param",
-    "circuit_panel_param", "load_name_param", "circuit_system_type",
+    "circuit_system_type",
 ])
 
 all_created = []

@@ -14,9 +14,9 @@ CONTROLLER_WORKSET_KEYWORD = u""
 CONTROLLER_TYPE_KEYWORD = u""
 
 
-def is_controller(el, workset_param_name, workset_keyword, type_keyword):
+def is_controller(el, workset_keyword, type_keyword):
     """Контроллер — рабочий набор содержит workset_keyword И имя типа содержит type_keyword."""
-    ws = get_workset_name(el, workset_param_name)
+    ws = get_workset_name(el)
     if not ws or workset_keyword.lower() not in ws.lower():
         return False
 
@@ -69,12 +69,11 @@ def category_by_type_id(el, category_type_ids):
     return None
 
 
-def collect_controller_devices(doc, workset_param, workset_keyword, type_keyword,
-                               circuit_panel_param, excluded_keywords):
+def collect_controller_devices(doc, workset_keyword, type_keyword, excluded_keywords):
     """
     [(контроллер, [устройства])] — контроллеры СКУД и их подключённые
-    устройства: по всем цепям контроллера (параметр цепи
-    circuit_panel_param == Name контроллера), без самого контроллера и
+    устройства: по всем цепям контроллера (штатная «Панель» цепи
+    == Name контроллера), без самого контроллера и
     без исключённых по ключевому слову, с дедупликацией по ElementId.
 
     Единая точка сбора для BuildSkudSchematic / AssignSkudRooms /
@@ -84,7 +83,7 @@ def collect_controller_devices(doc, workset_param, workset_keyword, type_keyword
     from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
     from lowlife.scs import is_excluded_device
     from lowlife.scs_circuits import norm
-    from lowlife.params import get_string_param
+    from lowlife.circuit_builtins import circuit_panel_name
 
     equipment = FilteredElementCollector(doc) \
         .OfCategory(BuiltInCategory.OST_ElectricalEquipment) \
@@ -92,7 +91,7 @@ def collect_controller_devices(doc, workset_param, workset_keyword, type_keyword
 
     controllers = [
         e for e in equipment
-        if is_controller(e, workset_param, workset_keyword, type_keyword)
+        if is_controller(e, workset_keyword, type_keyword)
     ]
 
     circuits = FilteredElementCollector(doc) \
@@ -101,7 +100,7 @@ def collect_controller_devices(doc, workset_param, workset_keyword, type_keyword
 
     circuits_by_name = {}
     for c in circuits:
-        name = norm(get_string_param(c, circuit_panel_param))
+        name = norm(circuit_panel_name(c))
         if name:
             circuits_by_name.setdefault(name, []).append(c)
 

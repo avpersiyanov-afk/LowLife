@@ -9,8 +9,8 @@
   * тип цепи — из настроек (circuit_system_type); если там пусто,
     определяется по коннектору устройства (detect_electrical_system_type),
     запасной вариант — FALLBACK_SYSTEM_TYPE ("Data");
-  * кабель (строка справочника) и параметр цепи, куда он пишется, — из
-    настроек (conductor_type_id / cable_type_param); кабель
+  * кабель (строка справочника) — из настроек (conductor_type_id), пишется
+    в штатный «Проводник» цепи (circuit_builtins); кабель
     необязателен — если не выбран, «Проводник» просто не проставляется;
   * «Имя нагрузки» цепи собирается из параметров подключаемого устройства
     по списку имён (load_name_source_params) через разделитель
@@ -35,8 +35,9 @@ from pyrevit import revit
 
 from lowlife.electrical_circuits import create_circuit, detect_electrical_system_type
 from lowlife.params import (
-    get_param_any, get_type_string_param, set_element_id_param, set_param_any
+    get_param_any, get_type_string_param
 )
+from lowlife.circuit_builtins import set_circuit_load_name, set_circuit_wire_type
 from lowlife.scs_circuits import clean_text_value
 
 # Запасной тип цепи — только если circuit_system_type не задан в настройках
@@ -98,9 +99,9 @@ def _resolve_system_type(dev, configured_type):
     return detect_electrical_system_type(dev) or FALLBACK_SYSTEM_TYPE
 
 
-def _apply_conductor(circuit, conductor_id, conductor_param):
-    if conductor_id is not None and conductor_param:
-        set_element_id_param(circuit, conductor_param, conductor_id)
+def _apply_conductor(doc, circuit, conductor_id):
+    if conductor_id is not None:
+        set_circuit_wire_type(doc, circuit, conductor_id)
 
 
 def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
@@ -111,8 +112,6 @@ def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
     по устройствам/цепям, которые не удалось создать или подключить.
     """
     configured_type = (settings.get("circuit_system_type") or u"").strip()
-    conductor_param = (settings.get("cable_type_param") or u"").strip()
-    load_name_param = (settings.get("load_name_param") or u"").strip()
     source_params = settings.get("load_name_source_params") or []
     separator = settings.get("load_name_separator", u"")
     mode = settings.get("circuit_mode") or "per_device"
@@ -136,7 +135,7 @@ def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
                 created += 1
                 if error:
                     errors.append(u"Общая цепь: {}".format(error))
-                _apply_conductor(circuit, conductor_id, conductor_param)
+                _apply_conductor(doc, circuit, conductor_id)
 
         else:
             for dev in device_els:
@@ -153,11 +152,11 @@ def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
                 if error:
                     errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
 
-                _apply_conductor(circuit, conductor_id, conductor_param)
+                _apply_conductor(doc, circuit, conductor_id)
 
-                if load_name_param and source_params:
+                if source_params:
                     load_name = build_load_name(doc, dev, source_params, separator)
                     if load_name:
-                        set_param_any(circuit, load_name_param, load_name)
+                        set_circuit_load_name(circuit, load_name)
 
     return created, errors

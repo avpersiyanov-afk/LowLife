@@ -43,7 +43,8 @@ from pyrevit import revit, forms, script as pyrevit_script
 
 from lowlife.scs import safe_element_name, classify_element
 from lowlife.scs_circuits import clean_text_value, make_load_name
-from lowlife.params import get_type_string_param, get_string_param, set_param_any, set_element_id_param
+from lowlife.params import get_type_string_param, get_string_param, set_param_any
+from lowlife.circuit_builtins import set_circuit_load_name, set_circuit_wire_type
 from lowlife.electrical_circuits import create_circuit
 from lowlife.fire_alarm_circuits import device_category_id
 from lowlife.fire_alarm_loops import FT_TO_M
@@ -172,26 +173,22 @@ def _pick_load_device(device_els, address_param):
 
 
 def _apply_circuit_labels(doc, circuit, member_devices, isolator_el, config):
-    """Проставляет цепи «Панель», «Имя нагрузки» и (если задан) «Проводник» по категории."""
-    set_param_any(
-        circuit, config["circuit_panel_param"],
-        clean_text_value(safe_element_name(isolator_el)) or u""
-    )
-
+    """Проставляет цепи «Имя нагрузки» и «Проводник» по категории (если для неё
+    выбран кабель); «Панель» — штатная, её задаёт подключение к изолятору."""
     load_device = _pick_load_device(member_devices, config["device_address_param"])
     if load_device is not None:
         designation = clean_text_value(get_type_string_param(doc, load_device, config["designation_param"]))
         address = clean_text_value(get_string_param(load_device, config["device_address_param"]))
         load_name = make_load_name(designation, address)
         if load_name:
-            set_param_any(circuit, config["load_name_param"], load_name)
+            set_circuit_load_name(circuit, load_name)
 
-    if config.get("cable_type_param") and member_devices:
+    if member_devices:
         category_wire_type_ids = fire_alarm_settings.get_category_wire_type_elem_ids(doc)
         cat_id = device_category_id(member_devices[0])
         wire_type_id = category_wire_type_ids.get(cat_id) if cat_id is not None else None
         if wire_type_id is not None:
-            set_element_id_param(circuit, config["cable_type_param"], wire_type_id)
+            set_circuit_wire_type(doc, circuit, wire_type_id)
 
 
 def _apply_circuit_length(doc, circuit, config):
