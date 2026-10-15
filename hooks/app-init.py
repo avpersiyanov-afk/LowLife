@@ -30,3 +30,23 @@ try:
     export_watcher.install(app)
 except Exception:
     pass
+
+# Приветствие (кнопка Tools.panel/Greeting) при каждом запуске Revit —
+# отдельный try, чтобы не мешать авто-режиму выгрузки выше.
+try:
+    from lowlife import greeting_window
+
+    _greet_app = None
+    try:
+        from pyrevit import HOST_APP
+        _greet_app = HOST_APP.uiapp
+    except Exception:
+        _greet_app = None
+    if _greet_app is None:
+        try:
+            _greet_app = __revit__  # noqa: F821
+        except Exception:
+            _greet_app = None
+    greeting_window.show_on_startup(_greet_app)
+except Exception:
+    pass

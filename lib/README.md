@@ -1900,6 +1900,11 @@ system_prompt=...)`: системный промпт передаётся пар
 строки окна в верхнем регистре (приветствие и имя, без имени — одна строка
 с «!»). Чистая логика, тесты — `tests/test_greeting.py`.
 
+`greeting_window.py` — само окно: `show(uiapp)` (кнопка) и
+`show_on_startup(uiapp)` из `hooks/app-init.py` — приветствие при каждом
+запуске Revit, на первом `Idling`, один раз за сеанс (флаг в `AppDomain`,
+перезагрузка pyRevit его не повторяет).
+
 ## spellcheck_core.py / spellcheck.py / spellcheck_settings.py
 Кнопка «Проверка орфографии» (`Tools.panel/SpellCheck`), подробности —
 `docs/spellcheck.md`.
