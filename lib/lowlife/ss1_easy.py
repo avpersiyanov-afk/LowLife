@@ -933,9 +933,9 @@ def ask_levels_and_offset(doc, default_offset_mm):
     window = Window()
     window.Title = u"СС1-8Mile — кроссы и кабельные подводы"
     window.Width = 440
-    window.Height = 590
+    window.Height = 625
     window.MinWidth = 400
-    window.MinHeight = 450
+    window.MinHeight = 485
     window.ResizeMode = ResizeMode.CanResize
     window.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
@@ -968,6 +968,27 @@ def ask_levels_and_offset(doc, default_offset_mm):
         cb.Margin = Thickness(2, 3, 2, 3)
         level_panel.Children.Add(cb)
         checks.append(cb)
+
+    select_row = StackPanel()
+    select_row.Orientation = Orientation.Horizontal
+    select_row.Margin = Thickness(0, 6, 0, 0)
+    root.Children.Add(select_row)
+
+    def add_select_button(text, checked):
+        button = Button()
+        button.Content = text
+        button.Padding = Thickness(10, 2, 10, 2)
+        button.Margin = Thickness(0, 0, 8, 0)
+
+        def on_click(sender, args):
+            for cb in checks:
+                cb.IsChecked = checked
+
+        button.Click += on_click
+        select_row.Children.Add(button)
+
+    add_select_button(u"Отметить все", True)
+    add_select_button(u"Снять все", False)
 
     offset_label = TextBlock()
     offset_label.Text = u"Смещение кабельного подвода от уровня, мм:"
