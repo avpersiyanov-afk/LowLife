@@ -81,7 +81,7 @@ def off_hours_warning(hour, weekday, choice=None):
 MORNING_WISHES = [
     u"Пусть сегодня все цепи сойдутся с первого раза.",
     u"Кофе налит, модель синхронизирована — день будет отличным.",
-    u"Пусть коллизий будет ноль, а комплиментов от ГИПа — много.",
+    u"Пусть коллизий будет ноль, а комплиментов от РГ — много.",
     u"Сегодня ты точно соберёшь самую красивую схему в отделе.",
     u"Пусть Revit не вылетает, а лотки ложатся ровно.",
     u"Хорошего дня! Замечания экспертизы сегодня обойдут тебя стороной.",
@@ -98,7 +98,29 @@ def morning_wish(hour, weekday, choice=None):
     return choice(MORNING_WISHES)
 
 
+# Вечером в будни: рабочий день кончился, а Revit только открывается.
+EVENING_WARNINGS = [
+    u"Рабочий день закончился. Нормальные люди закрывают Revit, а ты открываешь.",
+    u"Все уже ушли домой. Даже сервер центральной модели собирается.",
+    u"Вечер — время ужина, а не синхронизации.",
+    u"Домой пора! Чертежи до утра никуда не денутся.",
+    u"Открыть Revit в конце дня — смело. Закрыть его прямо сейчас — мудро.",
+]
+
+
+def evening_warning(hour, weekday, choice=None):
+    """Шутка «пора домой» вечером (часы «Добрый вечер») в будни, иначе None."""
+    if part_of_day(hour) != u"Добрый вечер" or is_weekend(weekday):
+        return None
+    if choice is None:
+        import random
+        choice = random.choice
+    return choice(EVENING_WARNINGS)
+
+
 def extra_line(hour, weekday, choice=None):
-    """Строка под приветствием: шутка ночью/в выходные, пожелание утром в
-    будни, иначе None."""
-    return off_hours_warning(hour, weekday, choice) or morning_wish(hour, weekday, choice)
+    """Строка под приветствием: шутка ночью/в выходные, «пора домой» вечером
+    в будни, пожелание утром в будни, днём в будни — None."""
+    return (off_hours_warning(hour, weekday, choice)
+            or evening_warning(hour, weekday, choice)
+            or morning_wish(hour, weekday, choice))

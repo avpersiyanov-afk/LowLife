@@ -1921,7 +1921,8 @@ system_prompt=...)`: системный промпт передаётся пар
 запущен ночью (часы «Доброй ночи») или в субботу/воскресенье, иначе `None`
 (`weekday` — как `datetime.weekday()`); `morning_wish(hour, weekday)` —
 пожелание из `MORNING_WISHES` утром в будни; `extra_line` — строка под
-приветствием (шутка важнее пожелания). Чистая логика, тесты —
+приветствием (шутка важнее пожелания); `evening_warning` — «пора домой» из
+`EVENING_WARNINGS` вечером в будни. Чистая логика, тесты —
 `tests/test_greeting.py`.
 
 `greeting_window.py` — само окно: `show(uiapp)` (кнопка) и

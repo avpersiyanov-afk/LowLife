@@ -57,3 +57,12 @@ def test_extra_line_prefers_warning():
     assert greeting.extra_line(8, 6, _first) == greeting.WEEKEND_WARNINGS[0]
     assert greeting.extra_line(3, 2, _first) == greeting.NIGHT_WARNINGS[0]
     assert greeting.extra_line(14, 2, _first) is None
+    assert greeting.extra_line(19, 2, _first) == greeting.EVENING_WARNINGS[0]
+    assert greeting.extra_line(19, 5, _first) == greeting.WEEKEND_WARNINGS[0]
+
+
+def test_evening_warning_on_weekdays_only():
+    assert greeting.evening_warning(17, 3, _first) == greeting.EVENING_WARNINGS[0]
+    assert greeting.evening_warning(16, 3, _first) is None
+    assert greeting.evening_warning(23, 3, _first) is None
+    assert greeting.evening_warning(20, 6, _first) is None
