@@ -1922,7 +1922,8 @@ system_prompt=...)`: системный промпт передаётся пар
 (`weekday` — как `datetime.weekday()`); `morning_wish(hour, weekday)` —
 пожелание из `MORNING_WISHES` утром в будни; `extra_line` — строка под
 приветствием (шутка важнее пожелания); `evening_warning` — «пора домой» из
-`EVENING_WARNINGS` вечером в будни. `shout_for(names)` — персональный
+`EVENING_WARNINGS` вечером в будни; `late_joke` — шутка про опоздание из
+`LATE_JOKES` днём в будни. `shout_for(names)` — персональный
 выкрик из `SHOUTS` (подстрока имени пользователя Revit или Windows без
 учёта регистра), окно выводит его внизу жирным красным. Чистая логика, тесты —
 `tests/test_greeting.py`.

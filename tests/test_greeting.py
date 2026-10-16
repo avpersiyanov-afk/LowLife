@@ -56,7 +56,7 @@ def test_extra_line_prefers_warning():
     assert greeting.extra_line(8, 2, _first) == greeting.MORNING_WISHES[0]
     assert greeting.extra_line(8, 6, _first) == greeting.WEEKEND_WARNINGS[0]
     assert greeting.extra_line(3, 2, _first) == greeting.NIGHT_WARNINGS[0]
-    assert greeting.extra_line(14, 2, _first) is None
+    assert greeting.extra_line(14, 2, _first) == greeting.LATE_JOKES[0]
     assert greeting.extra_line(19, 2, _first) == greeting.EVENING_WARNINGS[0]
     assert greeting.extra_line(19, 5, _first) == greeting.WEEKEND_WARNINGS[0]
 
@@ -66,6 +66,13 @@ def test_evening_warning_on_weekdays_only():
     assert greeting.evening_warning(16, 3, _first) is None
     assert greeting.evening_warning(23, 3, _first) is None
     assert greeting.evening_warning(20, 6, _first) is None
+
+
+def test_late_joke_on_weekday_afternoon_only():
+    assert greeting.late_joke(12, 1, _first) == greeting.LATE_JOKES[0]
+    assert greeting.late_joke(11, 1, _first) is None
+    assert greeting.late_joke(17, 1, _first) is None
+    assert greeting.late_joke(13, 6, _first) is None
 
 
 def test_shout_matches_substring_case_insensitive():
