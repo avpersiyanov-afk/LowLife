@@ -125,11 +125,34 @@ def evening_warning(hour, weekday, choice=None):
     return choice(EVENING_WARNINGS)
 
 
+# Днём в будни: Revit открывается только сейчас — значит, опоздал.
+LATE_JOKES = [
+    u"Уже день, а ты только открываешь Revit. Никто, конечно, не заметил.",
+    u"Опоздание? Какое опоздание? РГ ничего не видел и отчёт никому не отправил.",
+    u"Не переживай, ты не опоздал. Просто остальные пришли слишком рано.",
+    u"Утренняя планёрка прошла без тебя. Говорят, было скучно.",
+    u"Табель уже заполнен. Кем — лучше не спрашивать.",
+    u"Тише, тише… Садись незаметно, все делают вид, что ты был тут с девяти.",
+    u"Пробки, лифт, кот заболел — версию выбери сам, РГ всё равно поверит.",
+]
+
+
+def late_joke(hour, weekday, choice=None):
+    """Шутка про опоздание днём (часы «Добрый день») в будни, иначе None."""
+    if part_of_day(hour) != u"Добрый день" or is_weekend(weekday):
+        return None
+    if choice is None:
+        import random
+        choice = random.choice
+    return choice(LATE_JOKES)
+
+
 def extra_line(hour, weekday, choice=None):
-    """Строка под приветствием: шутка ночью/в выходные, «пора домой» вечером
-    в будни, пожелание утром в будни, днём в будни — None."""
+    """Строка под приветствием: шутка ночью/в выходные; в будни — пожелание
+    утром, шутка про опоздание днём, «пора домой» вечером."""
     return (off_hours_warning(hour, weekday, choice)
             or evening_warning(hour, weekday, choice)
+            or late_joke(hour, weekday, choice)
             or morning_wish(hour, weekday, choice))
 
 
