@@ -131,4 +131,7 @@
 [scs-panel.md](scs-panel.md), [skud-panel.md](skud-panel.md),
 [skud-schematic-setup.md](skud-schematic-setup.md),
 [fire-alarm-panels.md](fire-alarm-panels.md), [camera-fov.md](camera-fov.md),
-[room-info.md](room-info.md), [companion-placement.md](companion-placement.md).
+[room-info.md](room-info.md), [companion-placement.md](companion-placement.md),
+[schematics.md](schematics.md), [soue-typical-floor.md](soue-typical-floor.md),
+[ss1.md](ss1.md), [loi-panel.md](loi-panel.md), [cable-catalog.md](cable-catalog.md),
+[rooms-panel.md](rooms-panel.md).
