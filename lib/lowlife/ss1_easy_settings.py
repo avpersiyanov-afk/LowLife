@@ -18,6 +18,8 @@ pyrevit.script.get_config(), см. CLAUDE.md).
     типа или экземпляра: «СС»; у шахт других систем отмечены «СБ»,
     «СПЗ»…);
   - кросс и кабельный подвод: семейство → тип;
+  - тип электрической цепи кросс №1 → подвод (ElectricalSystemType,
+    по умолчанию Data — «данные»);
 и кнопка, открывающая типовое окно остальных полей
 (settings_core.TextSettings: помещения, параметры, высоты). Шахта и
 типоразмеры хранятся в том же файле под ключами SHAFT_KEYS/SYMBOL_KEYS.
@@ -220,6 +222,11 @@ SYMBOL_KEYS = [
     ("feed", "feed_family", "feed_type", u"Кабельный подвод"),
 ]
 
+# Тип электрической цепи кросс №1 → подвод (имя ElectricalSystemType Revit;
+# в окне — выпадающий список с русскими пояснениями).
+CIRCUIT_SYSTEM_TYPE_KEY = "circuit_system_type"
+DEFAULT_CIRCUIT_SYSTEM_TYPE = u"Data"
+
 load_saved_values = SETTINGS.load_saved_values
 require = SETTINGS.require
 
@@ -237,6 +244,8 @@ def load_all():
     for _, family_key, type_key, _ in SYMBOL_KEYS:
         values[family_key] = saved.get(family_key) or u""
         values[type_key] = saved.get(type_key) or u""
+    values[CIRCUIT_SYSTEM_TYPE_KEY] = (saved.get(CIRCUIT_SYSTEM_TYPE_KEY)
+                                       or DEFAULT_CIRCUIT_SYSTEM_TYPE)
     return values
 
 
@@ -555,6 +564,22 @@ def show_settings_window(doc):
         family_combo.SelectionChanged += on_family
         symbol_combos[role] = (family_combo, type_combo)
 
+    # --- тип цепи -------------------------------------------------------------
+    from lowlife.generic_circuits_settings import SYSTEM_TYPE_RU, _available_system_type_names
+
+    add_text(u"Тип электрической цепи", bold=True, top=12)
+    add_text(u"Какой цепью соединять кросс №1 шахты с каждым подводом.", gray=True)
+    system_names = _available_system_type_names()
+    saved_system = values.get(CIRCUIT_SYSTEM_TYPE_KEY) or DEFAULT_CIRCUIT_SYSTEM_TYPE
+    if saved_system not in system_names:
+        system_names.append(saved_system)
+    system_combo = ComboBox()
+    for name in system_names:
+        ru = SYSTEM_TYPE_RU.get(name)
+        system_combo.Items.Add(u"{} ({})".format(name, ru) if ru else name)
+    system_combo.SelectedIndex = system_names.index(saved_system)
+    root.Children.Add(system_combo)
+
     # --- остальное ----------------------------------------------------------
     other_btn = Button()
     other_btn.Content = u"Помещения, параметры и высоты…"
@@ -595,6 +620,9 @@ def show_settings_window(doc):
         update = {
             "shaft_family_name": shaft_family.SelectedItem or u"",
             "shaft_param": shaft_param.SelectedItem or u"",
+            CIRCUIT_SYSTEM_TYPE_KEY: (system_names[system_combo.SelectedIndex]
+                                      if system_combo.SelectedIndex >= 0
+                                      else DEFAULT_CIRCUIT_SYSTEM_TYPE),
         }
         for role, family_key, type_key, label in SYMBOL_KEYS:
             family_combo, type_combo = symbol_combos[role]
