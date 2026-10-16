@@ -66,3 +66,12 @@ def test_evening_warning_on_weekdays_only():
     assert greeting.evening_warning(16, 3, _first) is None
     assert greeting.evening_warning(23, 3, _first) is None
     assert greeting.evening_warning(20, 6, _first) is None
+
+
+def test_shout_matches_substring_case_insensitive():
+    assert greeting.shout_for([u"A.Nikandrov"]) == u"Диииинааасстия!"
+    assert greeting.shout_for([None, u"NIKANDROV"]) == u"Диииинааасстия!"
+
+
+def test_no_shout_for_others():
+    assert greeting.shout_for([u"ivanov", None, u""]) is None

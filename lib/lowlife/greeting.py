@@ -124,3 +124,22 @@ def extra_line(hour, weekday, choice=None):
     return (off_hours_warning(hour, weekday, choice)
             or evening_warning(hour, weekday, choice)
             or morning_wish(hour, weekday, choice))
+
+
+# Персональные выкрики: подстрока имени пользователя (без учёта регистра) →
+# строка, которую окно добавляет внизу жирным красным.
+SHOUTS = [
+    (u"nikandrov", u"Диииинааасстия!"),
+]
+
+
+def shout_for(names):
+    """Выкрик для пользователя или None. names — имена, под которыми он может
+    быть известен (пользователь Revit, учётная запись Windows); совпадение —
+    подстрока без учёта регистра, так что «a.nikandrov» и «Nikandrov» подходят."""
+    for name in names:
+        low = (name or u"").lower()
+        for key, text in SHOUTS:
+            if key in low:
+                return text
+    return None

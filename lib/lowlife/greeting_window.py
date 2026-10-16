@@ -26,6 +26,7 @@ from System.Windows.Media import Brushes, Color, FontFamily, SolidColorBrush
 from lowlife import greeting
 
 ORANGE = SolidColorBrush(Color.FromRgb(0xF0, 0x8C, 0x28))
+RED = SolidColorBrush(Color.FromRgb(0xE5, 0x1C, 0x23))
 
 _STARTUP_KEY = "lowlife_greeting_shown"
 
@@ -67,6 +68,12 @@ def show(uiapp=None):
         note.MaxWidth = 720
         note.Margin = Thickness(0, 28, 0, 0)
         stack.Children.Add(note)
+    shout = greeting.shout_for([_user_name(uiapp), Environment.UserName])
+    if shout:
+        line = _text(shout, 80, RED)
+        line.FontWeight = FontWeights.Black
+        line.Margin = Thickness(0, 24, 0, 0)
+        stack.Children.Add(line)
 
     border = Border()
     border.Background = Brushes.Black
