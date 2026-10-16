@@ -23,3 +23,55 @@ def greeting_lines(hour, name=None):
     if not name:
         return u"{}!".format(part_of_day(hour)).upper(), u""
     return u"{},".format(part_of_day(hour)).upper(), u"{}!".format(name).upper()
+
+
+# Шуточные предупреждения, если Revit запущен ночью или в выходной.
+NIGHT_WARNINGS = [
+    u"Ночью нормальные люди спят, а не двигают стены.",
+    u"Revit в такой час? Даже лотки уже легли спать.",
+    u"Цепи подождут до утра. Кабель от этого длиннее не станет.",
+    u"Тёмная тема Revit — не повод работать в темноте. Иди спать.",
+    u"Утром ты всё равно всё переделаешь. Ложись.",
+]
+WEEKEND_WARNINGS = [
+    u"Выходные придуманы не для синхронизации с центральной моделью.",
+    u"Сегодня выходной. Проект не убежит, а вот шашлык — может.",
+    u"ГИП не узнает, что ты здесь. Но мы-то знаем.",
+    u"В выходные даже стояки отдыхают.",
+    u"Закрой Revit, пока не поздно. Сходи погулять.",
+]
+NIGHT_WEEKEND_WARNINGS = [
+    u"Ночь. Выходной. Revit. Кажется, пора поговорить о балансе работы и жизни.",
+    u"Ночью в выходной открывают Revit только те, у кого сдача в понедельник. Сочувствуем.",
+]
+
+
+def is_night(hour):
+    """Ночь — те же часы, что и «Доброй ночи»: 23:00–4:59."""
+    return part_of_day(hour) == u"Доброй ночи"
+
+
+def is_weekend(weekday):
+    """weekday как у datetime.weekday(): понедельник 0 … воскресенье 6."""
+    return weekday in (5, 6)
+
+
+def off_hours_warning(hour, weekday, choice=None):
+    """Шуточное предупреждение для ночи/выходного или None в рабочее время.
+
+    choice(list) выбирает одну фразу — по умолчанию random.choice;
+    тесты подставляют свой, чтобы результат был предсказуем.
+    """
+    night, weekend = is_night(hour), is_weekend(weekday)
+    if night and weekend:
+        pool = NIGHT_WEEKEND_WARNINGS
+    elif night:
+        pool = NIGHT_WARNINGS
+    elif weekend:
+        pool = WEEKEND_WARNINGS
+    else:
+        return None
+    if choice is None:
+        import random
+        choice = random.choice
+    return choice(pool)

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Окно «Приветствие» (Tools.panel/Greeting): приветствие большими буквами
-по времени суток и имени пользователя Revit. Текст — greeting.greeting_lines.
+по времени суток и имени пользователя Revit, а ночью и в выходные — ещё и
+шуточное предупреждение, что так делать не стоит. Текст — greeting.greeting_lines
+и greeting.off_hours_warning.
 
 show(uiapp) — показать сейчас (кнопка). show_on_startup(uiapp) — показать
 при запуске Revit (hooks/app-init.py): на первом Idling, когда интерфейс
@@ -14,7 +16,7 @@ clr.AddReference('PresentationCore')
 clr.AddReference('WindowsBase')
 
 from System import DateTime, Environment
-from System.Windows import (CornerRadius, FontWeights, HorizontalAlignment, SizeToContent,
+from System.Windows import (CornerRadius, TextWrapping, FontWeights, HorizontalAlignment, SizeToContent,
                             TextAlignment, Thickness, Window, WindowStartupLocation,
                             WindowStyle)
 from System.Windows.Controls import Border, StackPanel, TextBlock
@@ -49,12 +51,22 @@ def _text(value, size, brush):
 
 
 def show(uiapp=None):
-    head, tail = greeting.greeting_lines(DateTime.Now.Hour, _user_name(uiapp))
+    now = DateTime.Now
+    head, tail = greeting.greeting_lines(now.Hour, _user_name(uiapp))
+    # .NET DayOfWeek: воскресенье 0 … суббота 6 → как datetime.weekday().
+    warning = greeting.off_hours_warning(now.Hour, (int(now.DayOfWeek) + 6) % 7)
 
     stack = StackPanel()
     stack.Children.Add(_text(head, 72, Brushes.White))
     if tail:
         stack.Children.Add(_text(tail, 96, ORANGE))
+    if warning:
+        note = _text(warning, 28, Brushes.White)
+        note.FontWeight = FontWeights.Normal
+        note.TextWrapping = TextWrapping.Wrap
+        note.MaxWidth = 720
+        note.Margin = Thickness(0, 28, 0, 0)
+        stack.Children.Add(note)
 
     border = Border()
     border.Background = Brushes.Black

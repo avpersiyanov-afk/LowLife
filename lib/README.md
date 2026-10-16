@@ -1916,7 +1916,11 @@ system_prompt=...)`: системный промпт передаётся пар
 Кнопка «Приветствие» (`Tools.panel/Greeting`). `part_of_day(hour)` — «Доброе
 утро/день/вечер», «Доброй ночи» по часу; `greeting_lines(hour, name)` — две
 строки окна в верхнем регистре (приветствие и имя, без имени — одна строка
-с «!»). Чистая логика, тесты — `tests/test_greeting.py`.
+с «!»). `off_hours_warning(hour, weekday)` — случайная шутка из
+`NIGHT_WARNINGS`/`WEEKEND_WARNINGS`/`NIGHT_WEEKEND_WARNINGS`, если Revit
+запущен ночью (часы «Доброй ночи») или в субботу/воскресенье, иначе `None`
+(`weekday` — как `datetime.weekday()`). Чистая логика, тесты —
+`tests/test_greeting.py`.
 
 `greeting_window.py` — само окно: `show(uiapp)` (кнопка) и
 `show_on_startup(uiapp)` из `hooks/app-init.py` — приветствие при каждом
