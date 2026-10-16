@@ -75,3 +75,30 @@ def off_hours_warning(hour, weekday, choice=None):
         import random
         choice = random.choice
     return choice(pool)
+
+
+# Приятное пожелание утром в будни (утро выходного — WEEKEND_WARNINGS).
+MORNING_WISHES = [
+    u"Пусть сегодня все цепи сойдутся с первого раза.",
+    u"Кофе налит, модель синхронизирована — день будет отличным.",
+    u"Пусть коллизий будет ноль, а комплиментов от ГИПа — много.",
+    u"Сегодня ты точно соберёшь самую красивую схему в отделе.",
+    u"Пусть Revit не вылетает, а лотки ложатся ровно.",
+    u"Хорошего дня! Замечания экспертизы сегодня обойдут тебя стороной.",
+]
+
+
+def morning_wish(hour, weekday, choice=None):
+    """Приятное пожелание утром (часы «Доброе утро») в будни, иначе None."""
+    if part_of_day(hour) != u"Доброе утро" or is_weekend(weekday):
+        return None
+    if choice is None:
+        import random
+        choice = random.choice
+    return choice(MORNING_WISHES)
+
+
+def extra_line(hour, weekday, choice=None):
+    """Строка под приветствием: шутка ночью/в выходные, пожелание утром в
+    будни, иначе None."""
+    return off_hours_warning(hour, weekday, choice) or morning_wish(hour, weekday, choice)

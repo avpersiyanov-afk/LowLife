@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Окно «Приветствие» (Tools.panel/Greeting): приветствие большими буквами
 по времени суток и имени пользователя Revit, а ночью и в выходные — ещё и
-шуточное предупреждение, что так делать не стоит. Текст — greeting.greeting_lines
-и greeting.off_hours_warning.
+шуточное предупреждение, что так делать не стоит, а утром в будни — приятное
+пожелание. Текст — greeting.greeting_lines и greeting.extra_line.
 
 show(uiapp) — показать сейчас (кнопка). show_on_startup(uiapp) — показать
 при запуске Revit (hooks/app-init.py): на первом Idling, когда интерфейс
@@ -54,7 +54,7 @@ def show(uiapp=None):
     now = DateTime.Now
     head, tail = greeting.greeting_lines(now.Hour, _user_name(uiapp))
     # .NET DayOfWeek: воскресенье 0 … суббота 6 → как datetime.weekday().
-    warning = greeting.off_hours_warning(now.Hour, (int(now.DayOfWeek) + 6) % 7)
+    warning = greeting.extra_line(now.Hour, (int(now.DayOfWeek) + 6) % 7)
 
     stack = StackPanel()
     stack.Children.Add(_text(head, 72, Brushes.White))

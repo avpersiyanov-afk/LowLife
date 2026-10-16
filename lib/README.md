@@ -1919,7 +1919,9 @@ system_prompt=...)`: системный промпт передаётся пар
 с «!»). `off_hours_warning(hour, weekday)` — случайная шутка из
 `NIGHT_WARNINGS`/`WEEKEND_WARNINGS`/`NIGHT_WEEKEND_WARNINGS`, если Revit
 запущен ночью (часы «Доброй ночи») или в субботу/воскресенье, иначе `None`
-(`weekday` — как `datetime.weekday()`). Чистая логика, тесты —
+(`weekday` — как `datetime.weekday()`); `morning_wish(hour, weekday)` —
+пожелание из `MORNING_WISHES` утром в будни; `extra_line` — строка под
+приветствием (шутка важнее пожелания). Чистая логика, тесты —
 `tests/test_greeting.py`.
 
 `greeting_window.py` — само окно: `show(uiapp)` (кнопка) и
