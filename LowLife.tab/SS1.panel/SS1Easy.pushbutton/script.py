@@ -74,6 +74,7 @@ output.print_md(u"- установлено подводов: {}".format(result.f
 if result.feeds_unoriented:
     output.print_md(u"- без определённой стороны квартиры: {}".format(result.feeds_unoriented))
 output.print_md(u"### Цепи кросс №1 → подвод")
+output.print_md(u"- тип цепи: {}".format(settings.get("circuit_system_type")))
 output.print_md(u"- создано: {}".format(result.circuits))
 output.print_md(u"- не создано: {}".format(result.circuits_failed))
 output.print_md(u"### LOI и адрес")

@@ -32,7 +32,7 @@
   4. Цепи: по электрической цепи на каждый подвод от кросса №1 шахты СС
      того же уровня и той же секции (ближайшей из них; параметры секции
      помещения и шахты — в настройках, без них — ближайшая шахта уровня),
-     тип системы — по коннектору подвода (иначе Data).
+     тип цепи — из настроек (выпадающий список, по умолчанию Data).
   5. LOI: поставленным кроссам и подводам копируются параметры из «Форм»
      (корпус, секция, этаж…) — по настройкам кнопки «Заполнение LOI»
      (loi_settings/loi_fill), как если бы её запустили для этих элементов.
@@ -63,7 +63,7 @@ from Autodesk.Revit.DB import (
 from Autodesk.Revit.DB.Structure import StructuralType
 
 from lowlife import ss1_easy_core as core
-from lowlife.electrical_circuits import create_circuit, detect_electrical_system_type
+from lowlife.electrical_circuits import create_circuit
 from lowlife.scs import safe_element_name
 
 MM_TO_FT = 1.0 / 304.8
@@ -83,8 +83,8 @@ ROOM_PROBE_HEIGHT_MM = 1000.0
 # от грани стены внутрь.
 ROOM_CHECK_MM = 50.0
 
-# Тип системы цепи, если у коннектора подвода его определить не удалось.
-FALLBACK_SYSTEM_TYPE = u"Data"
+# Тип цепи, если в настройках его ещё не выбирали.
+DEFAULT_SYSTEM_TYPE = u"Data"
 
 
 def mm_to_ft(value_mm):
@@ -778,7 +778,7 @@ def build_circuits(doc, settings, result):
             continue
 
         cross = crosses[index][0]
-        system_type = detect_electrical_system_type(feed) or FALLBACK_SYSTEM_TYPE
+        system_type = settings.get("circuit_system_type") or DEFAULT_SYSTEM_TYPE
         try:
             circuit, error = create_circuit(doc, cross, [feed], system_type)
         except Exception as ex:
