@@ -123,9 +123,19 @@ def show_on_startup(uiapp):
         show(None)
         return
 
+    # Показать ровно один раз. Отписка `sender.Idling -= функция` на новых
+    # движках (Revit 2027 / pyRevit 7) не срабатывает: функция каждый раз
+    # заворачивается в новый делегат, и отписывается не тот — окно
+    # открывалось заново на каждом Idling (щелчок «менял шутку»). Поэтому
+    # отписываем тот же объект делегата, а флаг страхует, если и это не выйдет.
+    state = {"done": False, "handler": None}
+
     def _on_idling(sender, args):
+        if state["done"]:
+            return
+        state["done"] = True
         try:
-            sender.Idling -= _on_idling
+            sender.Idling -= state["handler"]
         except Exception:
             pass
         try:
@@ -134,6 +144,13 @@ def show_on_startup(uiapp):
             pass
 
     try:
-        uiapp.Idling += _on_idling
+        from System import EventHandler
+        from Autodesk.Revit.UI.Events import IdlingEventArgs
+        state["handler"] = EventHandler[IdlingEventArgs](_on_idling)
     except Exception:
+        state["handler"] = _on_idling
+    try:
+        uiapp.Idling += state["handler"]
+    except Exception:
+        state["done"] = True
         show(uiapp)
