@@ -98,6 +98,7 @@ THEMES = {
         (u"SPS", u"InspectConnectors"),
         (u"SPS", u"BuildSpsSchematic"),
         (u"SPS", u"DetectorsToSlab"),
+        (u"SPS", u"DetectorAccess"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
     ],
     u"SPA": [

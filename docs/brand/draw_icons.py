@@ -488,6 +488,28 @@ def detectors_to_slab(c):
     c.polygon([(32, 52), (44, 52), (38, 60)], fill=WHITE, outline=BLUE, w=2.5)
 
 
+def detector_access(c):
+    """«Доступ к извещателям»: разрез — под перекрытием извещатель, под ним
+    воздуховод перекрывает зону доступа (пунктир от пола); стрелка переноса
+    к извещателю на новом месте со свободной зоной."""
+    # перекрытие и пол
+    c.rect((6, 10, 90, 20), outline=BLUE, fill=WHITE, w=4, r=1)
+    c.line([(8, 86), (88, 86)], BLUE, 5)
+    # старое место: извещатель, зона доступа пунктиром, воздуховод поперёк
+    c.polygon([(18, 20), (34, 20), (31, 27), (21, 27)], fill=BLUE)
+    for x in (13, 39):
+        c.dashed((x, 30), (x, 84), BLUE, w=3)
+    c.rect((8, 38, 44, 52), outline=BLUE, fill=WHITE, w=4, r=2)
+    c.line([(14, 41), (38, 49)], BLUE, 3)
+    c.line([(14, 49), (38, 41)], BLUE, 3)
+    # новое место: извещатель, свободная зона, стрелка переноса
+    c.polygon([(62, 20), (78, 20), (75, 27), (65, 27)], fill=ORANGE)
+    for x in (57, 83):
+        c.dashed((x, 30), (x, 84), ORANGE, w=3)
+    c.line([(30, 62), (60, 62)], ORANGE, 5)
+    c.polygon([(58, 55), (58, 69), (68, 62)], fill=ORANGE)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -517,6 +539,7 @@ ICONS = [
     ("Tools.panel/FopParameters.pushbutton", fop_parameters),
     ("Tools.panel/Greeting.pushbutton", greeting),
     ("SPS.panel/DetectorsToSlab.pushbutton", detectors_to_slab),
+    ("SPS.panel/DetectorAccess.pushbutton", detector_access),
 ]
 
 

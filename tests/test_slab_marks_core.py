@@ -159,3 +159,10 @@ def test_replace_slab():
     # потолок выше плиты вокруг отверстия — это потолок другого этажа
     high = core.probe(1500.0, [(5000.0, core.CEILING), (8000.0, core.SLAB)], [], 0.0)
     assert core.replace_slab(high, 3300.0).ceiling_mm is None
+
+
+def test_probe_floor_found_flag():
+    assert core.probe(1500.0, [(1800.0, core.SLAB)], [(1550.0, core.SLAB)], 0.0).floor_found
+    found = core.probe(1500.0, [(1800.0, core.SLAB)], [], 0.0)
+    assert not found.floor_found
+    assert not core.replace_slab(found, 3000.0).floor_found

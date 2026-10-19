@@ -32,6 +32,8 @@ class Probe(object):
         self.slab_z_mm = slab_z_mm
         # над точкой отверстие: slab_z_mm — перекрытие вокруг него (replace_slab)
         self.through_opening = False
+        # пол найден лучом вниз (False — луч ничего не встретил, floor_z_mm — уровень)
+        self.floor_found = True
 
     @property
     def ceiling_z_mm(self):
@@ -69,7 +71,9 @@ def probe(origin_z_mm, up_hits, down_hits, level_z_mm):
     ceiling_mm = None
     if ceiling_up is not None and ceiling_up < slab_up:
         ceiling_mm = origin_z_mm + ceiling_up - floor_z
-    return Probe(slab_z - floor_z, ceiling_mm, floor_z, slab_z)
+    result = Probe(slab_z - floor_z, ceiling_mm, floor_z, slab_z)
+    result.floor_found = floor_down is not None
+    return result
 
 
 def round_to(value_mm, step_mm):
@@ -345,4 +349,5 @@ def replace_slab(found, slab_z_mm):
         ceiling_mm = None
     result = Probe(slab_z_mm - found.floor_z_mm, ceiling_mm, found.floor_z_mm, slab_z_mm)
     result.through_opening = True
+    result.floor_found = found.floor_found
     return result

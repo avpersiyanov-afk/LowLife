@@ -449,15 +449,15 @@ def is_plan(view):
         return False
 
 
-def text_type(doc):
-    """Тип текста подписей (TEXT_TYPE_NAME), создаётся копией типа по умолчанию."""
+def text_type(doc, name=TEXT_TYPE_NAME):
+    """Тип текста подписей (по умолчанию TEXT_TYPE_NAME), создаётся копией типа по умолчанию."""
     for candidate in FilteredElementCollector(doc).OfClass(TextNoteType):
-        if safe_element_name(candidate) == TEXT_TYPE_NAME:
+        if safe_element_name(candidate) == name:
             return candidate
     base = doc.GetElement(doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType))
     if base is None:
         base = FilteredElementCollector(doc).OfClass(TextNoteType).FirstElement()
-    return base.Duplicate(TEXT_TYPE_NAME)
+    return base.Duplicate(name)
 
 
 def region_type(doc, name):
@@ -486,20 +486,26 @@ def _comment(element):
 
 
 def step_line_style(doc, weight):
-    """GraphicsStyle линий перепада (STEP_LINE_STYLE): создаётся при отсутствии,
-    цвет и толщина выставляются на каждом запуске. None — не удалось."""
+    """GraphicsStyle линий перепада (STEP_LINE_STYLE) — см. line_style."""
+    return line_style(doc, STEP_LINE_STYLE, STEP_LINE_COLOR, weight)
+
+
+def line_style(doc, name, color, weight):
+    """GraphicsStyle стиля линий name (подкатегория «Линии»): создаётся при
+    отсутствии, цвет (r, g, b) и толщина выставляются на каждом запуске.
+    None — не удалось."""
     try:
         categories = doc.Settings.Categories
         lines = categories.get_Item(BuiltInCategory.OST_Lines)
         sub = None
         for candidate in lines.SubCategories:
-            if candidate.Name == STEP_LINE_STYLE:
+            if candidate.Name == name:
                 sub = candidate
                 break
         if sub is None:
-            sub = categories.NewSubcategory(lines, STEP_LINE_STYLE)
+            sub = categories.NewSubcategory(lines, name)
         try:
-            sub.LineColor = Color(*STEP_LINE_COLOR)
+            sub.LineColor = Color(*color)
             sub.SetLineWeight(int(weight), GraphicsStyleType.Projection)
         except Exception:
             pass
@@ -640,7 +646,7 @@ def _filled_region(doc, view, region_type_id, room, transform, z):
 # Перепады плиты
 # ------------------------------------------------------------
 
-def _model_sources(doc):
+def model_sources(doc):
     """{Id связи или -1: (документ, преобразование в координаты модели)}."""
     sources = {-1: (doc, Transform.Identity)}
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
@@ -679,7 +685,7 @@ def slab_bottom_edges(doc, element_keys, bottom_z):
     """
     options = Options()
     options.DetailLevel = ViewDetailLevel.Fine
-    sources = _model_sources(doc)
+    sources = model_sources(doc)
     edges = []
     for source_key, element_id in sorted(element_keys):
         if source_key not in sources:
