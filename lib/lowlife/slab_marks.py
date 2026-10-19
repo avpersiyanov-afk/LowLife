@@ -97,8 +97,14 @@ class SlabProbe(object):
         int(BuiltInCategory.OST_Ceilings): core.CEILING,
     }
 
-    def __init__(self, doc):
+    def __init__(self, doc, opening_size_mm=0.0):
         self.doc = doc
+        # Отверстия в перекрытии (шахты, проёмы): луч проходит насквозь до
+        # плиты следующих этажей. Если найденная плита выше следующего уровня,
+        # проверяются 4 точки на этом расстоянии вокруг (см. _check_opening).
+        # 0 — не проверять.
+        self.opening_ft = ft(opening_size_mm or 0.0)
+        self._levels = None
         self.view = None
         self.intersector = None
         self.error = None
@@ -107,6 +113,7 @@ class SlabProbe(object):
         # уровню, от которого шёл луч: {отметка уровня, мм: {(Id связи или -1
         # для модели, Id элемента)}} — по ним ищутся перепады (slabs_above).
         self.slab_elements = {}
+        self.openings = 0  # точек над отверстиями в перекрытии (для отчёта)
 
     def _hide_other_categories(self):
         from Autodesk.Revit.DB import CategoryType
@@ -184,25 +191,66 @@ class SlabProbe(object):
                 result.update(keys)
         return result
 
-    def probe(self, x, y, origin_z, level_z):
-        """core.Probe для точки (x, y) с началом лучей на высоте origin_z (футы) или None."""
-        if self.error is not None:
-            return None
+    def _raw(self, x, y, origin_z, level_z):
+        """(core.Probe или None, лучи вверх) без проверки отверстия; кэшируется."""
         key = (round(x, 3), round(y, 3), round(origin_z, 3), round(level_z, 3))
         if key in self._cache:
             return self._cache[key]
+        if self.intersector is None:
+            self._open()
+        origin = XYZ(x, y, origin_z)
+        up = self._hits(origin, XYZ.BasisZ)
+        down = self._hits(origin, XYZ.BasisZ.Negate())
+        found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
+        self._cache[key] = (found, up)
+        return found, up
+
+    def _next_level_z(self, level_z):
+        if self._levels is None:
+            self._levels = [z for _level, z in plan_levels(self.doc)]
+        for z in self._levels:
+            if z > level_z + ft(1000.0):
+                return z
+        return None
+
+    def _check_opening(self, found, x, y, origin_z, level_z):
+        """
+        Над точкой отверстие (шахта, проём)? Только если найденная плита выше
+        следующего уровня — луч мог пройти сквозь перекрытие этого этажа.
+        Тогда 4 точки вокруг на opening_ft: если везде плита ниже — отверстие,
+        возвращается Probe с плитой вокруг него; иначе None (высокая зона).
+        """
+        if self.opening_ft <= 0 or found is None:
+            return None
+        next_z = self._next_level_z(level_z)
+        if next_z is None or found.slab_z_mm <= mm(next_z):
+            return None
+        d = self.opening_ft
+        around = []
+        for dx, dy in ((d, 0), (-d, 0), (0, d), (0, -d)):
+            neighbor, _up = self._raw(x + dx, y + dy, origin_z, level_z)
+            around.append(None if neighbor is None else neighbor.slab_z_mm)
+        slab_z = core.opening_slab_z(found.slab_z_mm, around)
+        return None if slab_z is None else core.replace_slab(found, slab_z)
+
+    def probe(self, x, y, origin_z, level_z):
+        """
+        core.Probe для точки (x, y) с началом лучей на высоте origin_z (футы)
+        или None. Над отверстием — перекрытие вокруг отверстия
+        (through_opening=True), плита сверху в поиск перепадов не идёт.
+        """
+        if self.error is not None:
+            return None
         try:
-            if self.intersector is None:
-                self._open()
-            origin = XYZ(x, y, origin_z)
-            up = self._hits(origin, XYZ.BasisZ)
-            down = self._hits(origin, XYZ.BasisZ.Negate())
+            found, up = self._raw(x, y, origin_z, level_z)
+            opening = self._check_opening(found, x, y, origin_z, level_z)
         except Exception as ex:
             self.error = ex
             return None
+        if opening is not None:
+            self.openings += 1
+            return opening
         self._remember_slab(up, level_z)
-        found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
-        self._cache[key] = found
         return found
 
     def close(self):

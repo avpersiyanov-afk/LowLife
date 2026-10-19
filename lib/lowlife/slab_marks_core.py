@@ -30,6 +30,8 @@ class Probe(object):
         self.ceiling_mm = ceiling_mm
         self.floor_z_mm = floor_z_mm
         self.slab_z_mm = slab_z_mm
+        # над точкой отверстие: slab_z_mm — перекрытие вокруг него (replace_slab)
+        self.through_opening = False
 
     @property
     def ceiling_z_mm(self):
@@ -316,3 +318,31 @@ def mount_surface(found, ceiling_mount):
     if found.ceiling_z_mm is None:
         return None, u"встраиваемый, но подвесного потолка над ним нет"
     return found.ceiling_z_mm, None
+
+
+def opening_slab_z(found_slab_z_mm, neighbor_slab_z_mm, step_mm=20.0):
+    """
+    Луч прошёл в отверстие перекрытия? found_slab_z_mm — найденный низ
+    перекрытия над точкой, neighbor_slab_z_mm — то же в точках вокруг неё
+    (None — там перекрытия нет: за пределами здания). Отверстие — если хотя
+    бы в двух точках вокруг перекрытие найдено и везде, где найдено, оно
+    ниже найденного над точкой (точка окружена плитой). Возвращает низ
+    перекрытия вокруг отверстия (самый высокий из более низких) или None,
+    если это не отверстие (высокая зона, край перекрытия).
+    """
+    found = [z for z in neighbor_slab_z_mm if z is not None]
+    if len(found) < 2:
+        return None
+    if any(z > found_slab_z_mm - step_mm for z in found):
+        return None
+    return max(found)
+
+
+def replace_slab(found, slab_z_mm):
+    """Тот же Probe, но с низом перекрытия slab_z_mm (потолок выше него отбрасывается)."""
+    ceiling_mm = found.ceiling_mm
+    if ceiling_mm is not None and found.floor_z_mm + ceiling_mm >= slab_z_mm:
+        ceiling_mm = None
+    result = Probe(slab_z_mm - found.floor_z_mm, ceiling_mm, found.floor_z_mm, slab_z_mm)
+    result.through_opening = True
+    return result
