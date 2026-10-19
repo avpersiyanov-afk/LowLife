@@ -78,7 +78,18 @@ class SlabProbe(object):
     с элементами связей): перекрытия («Перекрытия», «Крыши») и подвесные
     потолки («Потолки»). Вид создаётся при первом запросе; close() удаляет
     его в той же транзакции.
+
+    Скорость: на виде скрыты все категории модели, кроме перекрытий, крыш,
+    потолков и связей, — луч иначе собирает попадания во всё подряд
+    (мебель, трубы, воздуховоды, оборудование во всех связях), и на сотнях
+    точек это основное время. Результаты кэшируются по точке (повторные
+    запросы той же точки — подпись помещения, проверка перепада).
     """
+
+    _VISIBLE = (
+        BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs,
+        BuiltInCategory.OST_Ceilings, BuiltInCategory.OST_RvtLinks,
+    )
 
     _KINDS = {
         int(BuiltInCategory.OST_Floors): core.SLAB,
@@ -91,6 +102,21 @@ class SlabProbe(object):
         self.view = None
         self.intersector = None
         self.error = None
+        self._cache = {}
+
+    def _hide_other_categories(self):
+        from Autodesk.Revit.DB import CategoryType
+        keep = set(int(c) for c in self._VISIBLE)
+        for category in self.doc.Settings.Categories:
+            try:
+                if category.CategoryType != CategoryType.Model:
+                    continue
+                if category.Id.IntegerValue in keep:
+                    continue
+                if self.view.CanCategoryBeHidden(category.Id):
+                    self.view.SetCategoryHidden(category.Id, True)
+            except Exception:
+                pass
 
     def _open(self):
         from Autodesk.Revit.DB import (
@@ -108,6 +134,7 @@ class SlabProbe(object):
             self.view.ViewTemplateId = ElementId.InvalidElementId
         except Exception:
             pass
+        self._hide_other_categories()
         self.doc.Regenerate()
         self.intersector = ReferenceIntersector(self.view)
         self.intersector.TargetType = FindReferenceTarget.Face
@@ -137,6 +164,9 @@ class SlabProbe(object):
         """core.Probe для точки (x, y) с началом лучей на высоте origin_z (футы) или None."""
         if self.error is not None:
             return None
+        key = (round(x, 3), round(y, 3), round(origin_z, 3), round(level_z, 3))
+        if key in self._cache:
+            return self._cache[key]
         try:
             if self.intersector is None:
                 self._open()
@@ -146,7 +176,9 @@ class SlabProbe(object):
         except Exception as ex:
             self.error = ex
             return None
-        return core.probe(mm(origin_z), up, down, mm(level_z))
+        found = core.probe(mm(origin_z), up, down, mm(level_z))
+        self._cache[key] = found
+        return found
 
     def close(self):
         if self.view is not None:

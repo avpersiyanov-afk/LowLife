@@ -11,6 +11,8 @@ __doc__ = (
 )
 __author__ = "Pipers"
 
+import time
+
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife import slab_marks, slab_marks_settings
@@ -68,6 +70,7 @@ if action != MARK:
 
 move_result = None
 view_results = []
+timings = []  # (этап, секунды) — для отчёта: где уходит время
 with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=False) as bar:
     def progress(index, total):
         if index % 10 == 0:
@@ -77,14 +80,19 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
         probe = slab_marks.SlabProbe(doc)
         try:
             if detectors:
+                started = time.time()
                 move_result = slab_marks.move_detectors(doc, detectors, settings, probe, progress)
+                timings.append((u"перенос извещателей ({})".format(len(detectors)),
+                                time.time() - started))
             if action != MOVE:
                 note_type = slab_marks.text_type(doc)
                 fill_type = slab_marks.region_type(doc, settings.get("filled_region_type_name"))
                 step_style = slab_marks.step_line_style(doc, settings.get("step_line_weight") or 10)
                 for view in views:
+                    started = time.time()
                     view_results.append(slab_marks.annotate_view(
                         doc, view, settings, probe, note_type, fill_type, step_style, progress))
+                    timings.append((u"план «{}»".format(view.Name), time.time() - started))
         finally:
             probe.close()
 
@@ -129,5 +137,10 @@ for result in view_results:
         output.print_md(u"- без перекрытия над ними: " + u", ".join(result.no_slab))
     for error in result.errors:
         output.print_md(u"- ошибка: " + error)
+
+if timings:
+    output.print_md(u"### Время")
+    for stage, seconds in timings:
+        output.print_md(u"- {}: {:.1f} с".format(stage, float(seconds)))
 
 forms.alert(u"Готово.\n\n" + u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE)
