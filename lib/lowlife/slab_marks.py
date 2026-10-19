@@ -730,12 +730,30 @@ def _slab_mm_at(probe, x, y, level_z, probe_ft):
     return None if found is None else found.slab_z_mm
 
 
-def draw_steps(doc, view, settings, probe, style):
+# Наибольшее число проверок лучами на план (каждая — 2 точки по сторонам
+# линии, ~0,1 с): дальше — только самые длинные линии, остальные в отчёт.
+STEP_CHECK_BUDGET = 1500
+
+
+def _confirmed(probe, piece, side, level_z, probe_ft):
+    x1, y1, x2, y2, _dz = piece
+    length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+    nx, ny = -(y2 - y1) / length * side, (x2 - x1) / length * side
+    mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    left = _slab_mm_at(probe, ft(mx + nx), ft(my + ny), level_z, probe_ft)
+    right = _slab_mm_at(probe, ft(mx - nx), ft(my - ny), level_z, probe_ft)
+    return left is not None and right is not None and abs(left - right) >= STEP_MIN_DZ_MM
+
+
+def draw_steps(doc, view, settings, probe, style, progress=None):
     """
     Красные линии перепада плиты на плане: по краям нижних граней перекрытий
     над уровнем вида (slab_marks_core.step_segments); каждый кандидат
     проверяется лучами по обе стороны линии — там должны быть перекрытия
-    с разной отметкой. Возвращает StepStats.
+    с разной отметкой. Куски одной линии сначала склеиваются
+    (merge_collinear), длинная линия проверяется частями по ~3 м
+    (split_segment) — рисуются только подтверждённые части. Проверок не
+    больше STEP_CHECK_BUDGET. Возвращает StepStats.
     """
     stats = StepStats()
     level_z = view.GenLevel.ProjectElevation
@@ -747,15 +765,27 @@ def draw_steps(doc, view, settings, probe, style):
     stats.edges = len(edges)
     candidates = core.step_segments(edges, tol_mm, STEP_MIN_DZ_MM, STEP_MIN_LEN_MM)
     stats.candidates = len(candidates)
+    lines = core.merge_collinear(candidates, tol_mm=100.0)
+    lines.sort(key=lambda s: -((s[2] - s[0]) ** 2 + (s[3] - s[1]) ** 2))
+    stats.lines = len(lines)
+    if len(lines) > STEP_CHECK_BUDGET:
+        stats.skipped = len(lines) - STEP_CHECK_BUDGET
+        lines = lines[:STEP_CHECK_BUDGET]
+    pieces = [core.split_segment(line) for line in lines]
+    if sum(len(p) for p in pieces) > STEP_CHECK_BUDGET:
+        pieces = [[line] for line in lines]   # не укладываемся — по одной проверке на линию
     side = tol_mm + 150.0
-    for x1, y1, x2, y2, _dz in candidates:
-        length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-        nx, ny = -(y2 - y1) / length * side, (x2 - x1) / length * side
-        mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-        left = _slab_mm_at(probe, ft(mx + nx), ft(my + ny), level_z, probe_ft)
-        right = _slab_mm_at(probe, ft(mx - nx), ft(my - ny), level_z, probe_ft)
-        if left is None or right is None or abs(left - right) < STEP_MIN_DZ_MM:
-            stats.rejected += 1
+    confirmed = []
+    for index, line_pieces in enumerate(pieces):
+        if progress is not None:
+            progress(index, len(pieces))
+        for piece in line_pieces:
+            if _confirmed(probe, piece, side, level_z, probe_ft):
+                confirmed.append(piece)
+            else:
+                stats.rejected += 1
+    for x1, y1, x2, y2, _dz in core.merge_collinear(confirmed, tol_mm=100.0):
+        if ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 < STEP_MIN_LEN_MM:
             continue
         try:
             line = Line.CreateBound(XYZ(ft(x1), ft(y1), level_z), XYZ(ft(x2), ft(y2), level_z))
@@ -775,7 +805,9 @@ class StepStats(object):
         self.slabs = 0        # плит, в которые упёрлись лучи с уровня
         self.edges = 0        # краёв их нижних граней
         self.candidates = 0   # пар краёв с разной отметкой рядом в плане
-        self.rejected = 0     # кандидатов, не подтверждённых лучами по сторонам
+        self.lines = 0        # линий после склейки кусков
+        self.skipped = 0      # линий сверх STEP_CHECK_BUDGET (не проверены)
+        self.rejected = 0     # частей линий, не подтверждённых лучами по сторонам
         self.drawn = 0
         self.errors = []
 
@@ -862,9 +894,10 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
                 param.Set(u"{} {}".format(REGION_TAG, mark.name))
             result.ceiling_rooms += 1
     try:
-        result.step_stats = draw_steps(doc, view, settings, probe, step_style)
-        result.steps = result.step_stats.drawn
-        result.errors.extend(result.step_stats.errors)
+        if (settings.get("draw_steps") or "yes") != "no":
+            result.step_stats = draw_steps(doc, view, settings, probe, step_style, progress)
+            result.steps = result.step_stats.drawn
+            result.errors.extend(result.step_stats.errors)
     except Exception as ex:
         result.errors.append(u"перепады плиты — {}".format(ex))
     if probe.error is not None:

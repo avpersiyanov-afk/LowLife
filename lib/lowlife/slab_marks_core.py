@@ -351,3 +351,66 @@ def replace_slab(found, slab_z_mm):
     result.through_opening = True
     result.floor_found = found.floor_found
     return result
+
+
+def merge_collinear(segments, tol_mm=50.0, angle_deg=1.0):
+    """
+    Склеить куски одной линии: [(x1, y1, x2, y2, dz)] → то же, где
+    параллельные (до angle_deg) отрезки на одной прямой (смещение до
+    tol_mm) с перекрытием или зазором до tol_mm — один отрезок. dz —
+    наибольший по модулю. Кандидаты перепада от step_segments — это
+    часто десятки кусков одной линии (каждая пара краёв даёт свой), а
+    каждый кандидат потом проверяется лучами — без склейки это часы.
+    """
+    import math
+    step = max(0.1, float(angle_deg))
+    groups = {}
+    for x1, y1, x2, y2, dz in segments:
+        angle = math.degrees(math.atan2(y2 - y1, x2 - x1)) % 180.0
+        a_key = int(round(angle / step)) % int(round(180.0 / step))
+        rep = math.radians(a_key * step)
+        ux, uy = math.cos(rep), math.sin(rep)
+        c = -uy * (x1 + x2) / 2.0 + ux * (y1 + y2) / 2.0
+        key = (a_key, int(round(c / max(1.0, tol_mm))))
+        t1, t2 = x1 * ux + y1 * uy, x2 * ux + y2 * uy
+        groups.setdefault(key, []).append((min(t1, t2), max(t1, t2), c, dz))
+    result = []
+    for (a_key, _c_key), items in sorted(groups.items()):
+        rep = math.radians(a_key * step)
+        ux, uy = math.cos(rep), math.sin(rep)
+        items.sort()
+        run = None
+        for t0, t1, c, dz in items:
+            if run is not None and t0 <= run[1] + tol_mm:
+                run[1] = max(run[1], t1)
+                run[2].append(c)
+                if abs(dz) > abs(run[3]):
+                    run[3] = dz
+                continue
+            if run is not None:
+                result.append(_run_segment(run, ux, uy))
+            run = [t0, t1, [c], dz]
+        if run is not None:
+            result.append(_run_segment(run, ux, uy))
+    return result
+
+
+def _run_segment(run, ux, uy):
+    t0, t1, cs, dz = run
+    c = sum(cs) / float(len(cs))
+    nx, ny = -uy, ux
+    return (ux * t0 + nx * c, uy * t0 + ny * c, ux * t1 + nx * c, uy * t1 + ny * c, dz)
+
+
+def split_segment(segment, piece_mm=3000.0, max_pieces=8):
+    """Отрезок → до max_pieces равных частей не короче ~piece_mm (для проверки по частям)."""
+    import math
+    x1, y1, x2, y2, dz = segment
+    length = math.hypot(x2 - x1, y2 - y1)
+    count = max(1, min(int(max_pieces), int(length // max(1.0, piece_mm))))
+    pieces = []
+    for i in range(count):
+        a, b = float(i) / count, float(i + 1) / count
+        pieces.append((x1 + (x2 - x1) * a, y1 + (y2 - y1) * a,
+                       x1 + (x2 - x1) * b, y1 + (y2 - y1) * b, dz))
+    return pieces
