@@ -4,7 +4,7 @@ __doc__ = (
     u"Переносит пожарные извещатели на низ перекрытия над ними (с учётом разных "
     u"отметок перекрытий, включая связи АР/КР) и подписывает на выбранных планах "
     u"высоту перекрытия от пола в каждом помещении, на сколько она отличается от "
-    u"типовой, а помещения с подвесным потолком обводит областью заливки с "
+    u"типовой, перепады плиты — толстыми красными линиями, а помещения с подвесным потолком обводит областью заливки с "
     u"подписью «ПП» и высотой потолка от пола.\n\n"
     u"Если перед запуском выделены извещатели — переносятся только они.\n\n"
     u"Shift+клик — настройки этой кнопки."
@@ -81,9 +81,10 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
             if action != MOVE:
                 note_type = slab_marks.text_type(doc)
                 fill_type = slab_marks.region_type(doc, settings.get("filled_region_type_name"))
+                step_style = slab_marks.step_line_style(doc, settings.get("step_line_weight") or 10)
                 for view in views:
                     view_results.append(slab_marks.annotate_view(
-                        doc, view, settings, probe, note_type, fill_type, progress))
+                        doc, view, settings, probe, note_type, fill_type, step_style, progress))
         finally:
             probe.close()
 
@@ -114,9 +115,10 @@ for result in view_results:
     if result.typical_mm is not None:
         output.print_md(u"- типовая высота перекрытия от пола: {}".format(
             slab_marks.core.format_height(result.typical_mm)))
-    output.print_md(u"- подписано помещений: {}, с подвесным потолком (ПП): {}".format(
-        result.rooms, result.ceiling_rooms))
-    lines.append(u"«{}»: помещений {}, ПП {}".format(result.view.Name, result.rooms, result.ceiling_rooms))
+    output.print_md(u"- подписано помещений: {}, с подвесным потолком (ПП): {}, линий перепада плиты: {}".format(
+        result.rooms, result.ceiling_rooms, result.steps))
+    lines.append(u"«{}»: помещений {}, ПП {}, перепадов {}".format(
+        result.view.Name, result.rooms, result.ceiling_rooms, result.steps))
     if result.changed:
         output.print_md(u"- перекрытие отличается от типового:")
         for name, height in sorted(result.changed, key=lambda item: item[1]):

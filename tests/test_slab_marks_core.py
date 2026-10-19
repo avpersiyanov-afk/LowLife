@@ -77,3 +77,30 @@ def test_move_delta_and_grid():
     assert core.grid_steps(2000) == 1
     assert core.grid_steps(7000) == 3
     assert core.grid_steps(50000) == 3
+
+
+def test_step_segments_adjacent_slabs():
+    # плита A (низ 3300) до x=5000, плита B (низ 3750) от x=5000; края граней совпадают
+    edges = [
+        (0, 0, 5000, 0, 3300), (5000, 0, 5000, 4000, 3300),
+        (5000, 4000, 0, 4000, 3300), (0, 4000, 0, 0, 3300),
+        (5000, 1000, 9000, 1000, 3750), (9000, 1000, 9000, 6000, 3750),
+        (9000, 6000, 5000, 6000, 3750), (5000, 6000, 5000, 1000, 3750),
+    ]
+    steps = core.step_segments(edges, 300, 20)
+    assert len(steps) == 1
+    x1, y1, x2, y2, dz = steps[0]
+    assert abs(x1 - 5000) < 1e-6 and abs(x2 - 5000) < 1e-6
+    assert sorted([y1, y2]) == [1000, 4000]
+    assert abs(dz) == 450
+
+
+def test_step_segments_gap_midline_and_filters():
+    # края на расстоянии 200 мм (стена между плитами) — линия посередине
+    steps = core.step_segments([(0, 0, 0, 3000, 3300), (200, 3000, 200, 0, 3600)], 300, 20)
+    assert len(steps) == 1
+    assert abs(steps[0][0] - 100) < 1e-6 and abs(steps[0][2] - 100) < 1e-6
+    # одинаковая отметка, слишком далеко, не параллельны — не перепад
+    assert core.step_segments([(0, 0, 0, 3000, 3300), (100, 0, 100, 3000, 3305)], 300, 20) == []
+    assert core.step_segments([(0, 0, 0, 3000, 3300), (500, 0, 500, 3000, 3600)], 300, 20) == []
+    assert core.step_segments([(0, 0, 0, 3000, 3300), (0, 0, 3000, 3000, 3600)], 300, 20) == []

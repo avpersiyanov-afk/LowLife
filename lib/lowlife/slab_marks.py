@@ -15,7 +15,9 @@
      перекрытие под точкой), «Δ» — на сколько перекрытие выше/ниже типового
      для этого вида, а в помещениях с подвесным потолком — область заливки
      по контуру помещения и подпись «ПП» с высотой потолка от пола.
-     Повторный запуск заменяет подписи и области прошлого запуска на виде.
+     Перепады плиты — толстые красные линии детализации (draw_steps) там,
+     где сходятся края нижних граней перекрытий с разной отметкой.
+     Повторный запуск заменяет подписи, области и линии прошлого запуска на виде.
 
 Вызывать внутри одной открытой транзакции (временный 3D-вид создаётся и
 удаляется в ней же — SlabProbe.close()).
@@ -25,7 +27,8 @@ from Autodesk.Revit.DB import (
     XYZ, Line, CurveLoop, ElementId, FilteredElementCollector, BuiltInCategory,
     BuiltInParameter, FamilyInstance, LocationPoint, Level, ViewPlan, TextNote, TextNoteType,
     FilledRegion, FilledRegionType, ElementTypeGroup, ElementTransformUtils,
-    SpatialElementBoundaryOptions
+    SpatialElementBoundaryOptions, CurveElement, GraphicsStyleType, Color, Options,
+    ViewDetailLevel, Solid, GeometryInstance, PlanarFace, RevitLinkInstance, Transform
 )
 
 from lowlife import slab_marks_core as core
@@ -40,6 +43,15 @@ TEXT_TYPE_NAME = u"LowLife — отметки перекрытий"
 
 # Метка в «Комментариях» областей заливки подвесного потолка.
 REGION_TAG = u"LowLife ПП"
+
+# Стиль линий перепада плиты (подкатегория «Линии», красная, толстая). По нему
+# повторный запуск находит и удаляет линии прошлого запуска на виде.
+STEP_LINE_STYLE = u"LowLife — перепад плиты"
+STEP_LINE_COLOR = (255, 0, 0)
+
+# Перепад плиты: отметки, различающиеся меньше, — одна плита; края короче — не линия.
+STEP_MIN_DZ_MM = 20.0
+STEP_MIN_LEN_MM = 100.0
 
 # Расхождение после перемещения, при котором извещатель считается не сдвинутым.
 MOVE_TOLERANCE_MM = 5.0
@@ -354,13 +366,47 @@ def _comment(element):
         return None
 
 
+def step_line_style(doc, weight):
+    """GraphicsStyle линий перепада (STEP_LINE_STYLE): создаётся при отсутствии,
+    цвет и толщина выставляются на каждом запуске. None — не удалось."""
+    try:
+        categories = doc.Settings.Categories
+        lines = categories.get_Item(BuiltInCategory.OST_Lines)
+        sub = None
+        for candidate in lines.SubCategories:
+            if candidate.Name == STEP_LINE_STYLE:
+                sub = candidate
+                break
+        if sub is None:
+            sub = categories.NewSubcategory(lines, STEP_LINE_STYLE)
+        try:
+            sub.LineColor = Color(*STEP_LINE_COLOR)
+            sub.SetLineWeight(int(weight), GraphicsStyleType.Projection)
+        except Exception:
+            pass
+        return sub.GetGraphicsStyle(GraphicsStyleType.Projection)
+    except Exception:
+        return None
+
+
+def _line_style_name(curve_element):
+    try:
+        style = curve_element.LineStyle
+        return safe_element_name(style) if style is not None else None
+    except Exception:
+        return None
+
+
 def clear_view(doc, view, note_type):
-    """Удалить с вида подписи и области заливки прошлого запуска. Возвращает число удалённых."""
+    """Удалить с вида подписи, области заливки и линии перепада прошлого запуска."""
     from System.Collections.Generic import List
     ids = List[ElementId]()
     for note in FilteredElementCollector(doc, view.Id).OfClass(TextNote):
         if note.GetTypeId() == note_type.Id:
             ids.Add(note.Id)
+    for curve in FilteredElementCollector(doc, view.Id).OfClass(CurveElement):
+        if _line_style_name(curve) == STEP_LINE_STYLE:
+            ids.Add(curve.Id)
     for region in FilteredElementCollector(doc, view.Id).OfClass(FilledRegion):
         if (_comment(region) or u"").startswith(REGION_TAG):
             ids.Add(region.Id)
@@ -471,18 +517,140 @@ def _filled_region(doc, view, region_type_id, room, transform, z):
     return None, u"{}".format(last_error)
 
 
+# ------------------------------------------------------------
+# Перепады плиты
+# ------------------------------------------------------------
+
+def _model_sources(doc):
+    """[(документ, преобразование в координаты модели)]: сама модель и загруженные связи."""
+    sources = [(doc, Transform.Identity)]
+    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        try:
+            link_doc = link.GetLinkDocument()
+        except Exception:
+            link_doc = None
+        if link_doc is not None:
+            sources.append((link_doc, link.GetTotalTransform()))
+    return sources
+
+
+def _solids(geometry, transform):
+    """(Solid, преобразование в координаты модели) из геометрии элемента."""
+    for item in geometry or []:
+        if isinstance(item, Solid):
+            if item.Faces.Size:
+                yield item, transform
+        elif isinstance(item, GeometryInstance):
+            for nested in _solids(item.GetSymbolGeometry(),
+                                  transform.Multiply(item.Transform)):
+                yield nested
+
+
+def slab_bottom_edges(doc, bottom_z, top_z):
+    """
+    Края нижних горизонтальных граней перекрытий/крыш модели и связей,
+    чья отметка между bottom_z и top_z (футы, координаты модели):
+    [(x1, y1, x2, y2, z)] в мм.
+    """
+    options = Options()
+    options.DetailLevel = ViewDetailLevel.Fine
+    edges = []
+    for source_doc, transform in _model_sources(doc):
+        for category in (BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs):
+            collector = (FilteredElementCollector(source_doc).OfCategory(category)
+                         .WhereElementIsNotElementType())
+            for element in collector:
+                try:
+                    bbox = element.get_BoundingBox(None)
+                    z0 = transform.OfPoint(bbox.Min).Z
+                    z1 = transform.OfPoint(bbox.Max).Z
+                except Exception:
+                    continue
+                if max(z0, z1) < bottom_z or min(z0, z1) > top_z:
+                    continue
+                try:
+                    geometry = element.get_Geometry(options)
+                except Exception:
+                    continue
+                for solid, solid_transform in _solids(geometry, transform):
+                    for face in solid.Faces:
+                        if not isinstance(face, PlanarFace):
+                            continue
+                        normal = solid_transform.OfVector(face.FaceNormal)
+                        if normal.Z > -0.99:
+                            continue
+                        z = solid_transform.OfPoint(face.Origin).Z
+                        if z < bottom_z or z > top_z:
+                            continue
+                        for loop in face.EdgeLoops:
+                            for edge in loop:
+                                points = [solid_transform.OfPoint(p)
+                                          for p in edge.AsCurve().Tessellate()]
+                                for a, b in zip(points, points[1:]):
+                                    edges.append((mm(a.X), mm(a.Y), mm(b.X), mm(b.Y), mm(z)))
+    return edges
+
+
+def _next_level_z(doc, level_z):
+    for _level, z in plan_levels(doc):
+        if z > level_z + ft(1000.0):
+            return z
+    return level_z + ft(6000.0)
+
+
+def _slab_mm_at(probe, x, y, level_z, probe_ft):
+    found = probe.probe(x, y, level_z + probe_ft, level_z)
+    return None if found is None else found.slab_z_mm
+
+
+def draw_steps(doc, view, settings, probe, style):
+    """
+    Красные линии перепада плиты на плане: по краям нижних граней перекрытий
+    над уровнем вида (slab_marks_core.step_segments); каждый кандидат
+    проверяется лучами по обе стороны линии — там должны быть перекрытия
+    с разной отметкой. Возвращает (число линий, [ошибки]).
+    """
+    level_z = view.GenLevel.ProjectElevation
+    probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
+    tol_mm = settings.get("step_search_mm") or 300.0
+    edges = slab_bottom_edges(doc, level_z + probe_ft, _next_level_z(doc, level_z) + probe_ft)
+    candidates = core.step_segments(edges, tol_mm, STEP_MIN_DZ_MM, STEP_MIN_LEN_MM)
+    count = 0
+    errors = []
+    side = tol_mm + 150.0
+    for x1, y1, x2, y2, _dz in candidates:
+        length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        nx, ny = -(y2 - y1) / length * side, (x2 - x1) / length * side
+        mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        left = _slab_mm_at(probe, ft(mx + nx), ft(my + ny), level_z, probe_ft)
+        right = _slab_mm_at(probe, ft(mx - nx), ft(my - ny), level_z, probe_ft)
+        if left is None or right is None or abs(left - right) < STEP_MIN_DZ_MM:
+            continue
+        try:
+            line = Line.CreateBound(XYZ(ft(x1), ft(y1), level_z), XYZ(ft(x2), ft(y2), level_z))
+            curve = doc.Create.NewDetailCurve(view, line)
+            if style is not None:
+                curve.LineStyle = style
+            count += 1
+        except Exception as ex:
+            errors.append(u"линия перепада плиты — {}".format(ex))
+    return count, errors
+
+
 class ViewResult(object):
     def __init__(self, view):
         self.view = view
         self.rooms = 0
         self.ceiling_rooms = 0
+        self.steps = 0
         self.typical_mm = None
         self.changed = []      # (помещение, основная высота мм)
         self.no_slab = []      # имена помещений без перекрытия над ними
         self.errors = []
 
 
-def annotate_view(doc, view, settings, probe, note_type, fill_type, progress=None):
+def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=None,
+                  progress=None):
     """Подписи высот перекрытий и подвесных потолков в помещениях уровня вида. ViewResult."""
     result = ViewResult(view)
     clear_view(doc, view, note_type)
@@ -549,6 +717,11 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, progress=Non
             if _writable(param):
                 param.Set(u"{} {}".format(REGION_TAG, mark.name))
             result.ceiling_rooms += 1
+    try:
+        result.steps, errors = draw_steps(doc, view, settings, probe, step_style)
+        result.errors.extend(errors)
+    except Exception as ex:
+        result.errors.append(u"перепады плиты — {}".format(ex))
     if probe.error is not None:
         result.errors.append(u"луч к перекрытию: {}".format(probe.error))
     return result

@@ -91,6 +91,27 @@ SETTINGS = settings_core.TextSettings(
             u"Подпись подвесного потолка ({h} — отметка от пола)",
             default=u"ПП {h}",
         ),
+        settings_core.NumberField(
+            "step_line_weight",
+            u"④ Перепад плиты",
+            u"Толщина красной линии перепада (1–16)",
+            hint=(
+                u"Линия рисуется стилем «LowLife — перепад плиты» (красный); толщина "
+                u"обновляется на каждом запуске."
+            ),
+            default=10, minimum=1, integer=True,
+        ),
+        settings_core.NumberField(
+            "step_search_mm",
+            u"",
+            u"Наибольший зазор в плане между краями соседних плит, мм",
+            hint=(
+                u"Края нижних граней плит с разной отметкой, лежащие не дальше этого друг "
+                u"от друга, считаются перепадом (линия — посередине). Больше — найдутся "
+                u"плиты, разделённые стеной или балкой."
+            ),
+            default=300.0, minimum=1.0,
+        ),
         settings_core.TextField(
             "filled_region_type_name",
             u"",
@@ -99,7 +120,7 @@ SETTINGS = settings_core.TextSettings(
             default=u"",
         ),
     ],
-    width=760, height=640,
+    width=760, height=700,
 )
 
 load_saved_values = SETTINGS.load_saved_values

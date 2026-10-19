@@ -189,3 +189,70 @@ def grid_steps(size_mm, max_count=3, min_cell_mm=3000.0):
     """
     count = int(float(size_mm) // float(min_cell_mm)) + 1
     return max(1, min(max_count, count))
+
+
+# ------------------------------------------------------------
+# Перепады плиты: края нижних граней перекрытий с разной отметкой
+# ------------------------------------------------------------
+
+def _offset_and_param(ax, ay, ux, uy, px, py):
+    """(параметр вдоль прямой a+t·u, знаковое расстояние от неё) для точки p."""
+    dx, dy = px - ax, py - ay
+    return dx * ux + dy * uy, ux * dy - uy * dx
+
+
+def step_segments(edges, plan_tol_mm, z_step_mm, min_len_mm=100.0, angle_deg=2.0):
+    """
+    Линии перепада плиты в плане. edges — края нижних граней перекрытий
+    [(x1, y1, x2, y2, z)] в мм. Перепад — два почти параллельных края
+    с отметками, различающимися не меньше z_step_mm, лежащие в плане не
+    дальше plan_tol_mm друг от друга и перекрывающиеся на min_len_mm и
+    больше. Возвращает [(x1, y1, x2, y2, dz)] — средняя линия общего
+    участка, dz — разница отметок (вторая минус первая).
+    """
+    import math
+    sin_tol = math.sin(math.radians(angle_deg))
+    prepared = []
+    for x1, y1, x2, y2, z in edges:
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length < min_len_mm:
+            continue
+        prepared.append((min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2),
+                         x1, y1, x2, y2, z, length))
+    prepared.sort(key=lambda e: e[0])
+
+    result = []
+    seen = set()
+    for i, a in enumerate(prepared):
+        ax0, ax1, ay0, ay1, x1, y1, x2, y2, za, la = a
+        ux, uy = (x2 - x1) / la, (y2 - y1) / la
+        for b in prepared[i + 1:]:
+            if b[0] > ax1 + plan_tol_mm:
+                break
+            bx0, bx1, by0, by1, bx1_, by1_, bx2_, by2_, zb, lb = b
+            if by0 > ay1 + plan_tol_mm or by1 < ay0 - plan_tol_mm:
+                continue
+            if abs(zb - za) < z_step_mm:
+                continue
+            vx, vy = (bx2_ - bx1_) / lb, (by2_ - by1_) / lb
+            if abs(ux * vy - uy * vx) > sin_tol:
+                continue
+            t1, d1 = _offset_and_param(x1, y1, ux, uy, bx1_, by1_)
+            t2, d2 = _offset_and_param(x1, y1, ux, uy, bx2_, by2_)
+            if abs(d1) > plan_tol_mm or abs(d2) > plan_tol_mm:
+                continue
+            t_start = max(0.0, min(t1, t2))
+            t_end = min(la, max(t1, t2))
+            if t_end - t_start < min_len_mm:
+                continue
+            shift = (d1 + d2) / 4.0   # половина среднего смещения — средняя линия
+            nx, ny = -uy * shift, ux * shift
+            p = (x1 + ux * t_start + nx, y1 + uy * t_start + ny)
+            q = (x1 + ux * t_end + nx, y1 + uy * t_end + ny)
+            key = tuple(sorted([(round(p[0] / 10.0), round(p[1] / 10.0)),
+                                (round(q[0] / 10.0), round(q[1] / 10.0))]))
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append((p[0], p[1], q[0], q[1], zb - za))
+    return result
