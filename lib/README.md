@@ -1713,10 +1713,14 @@ room_number_param)` — запись по точкам прохода, возв�
   Лучи (`SlabProbe.probe`) дают пол (`Probe.floor_found`), перекрытие и подвесной
   потолок; помещение — `RoomLocator` (помещения связей и модели, `IsPointInRoom`).
 - **`Check`** — `status` (`detector_access_core.OK/BLOCKED/NO_FLOOR/ABOVE_CEILING/
-  TOO_HIGH/NOT_MOUNTED/NO_SLAB`), `reason`, `zone_blockers`/`detector_blockers`
+  TOO_HIGH/NOT_MOUNTED/NO_SLAB/NEAR_WALL`), `wall_mm`, `reason`, `zone_blockers`/`detector_blockers`
   (`core.Obstacle`), `height_mm`, `room`, `spot` — новое место (футы) для
   `BLOCKED`/`NO_FLOOR`: `core.find_spot` кольцами вокруг, `accept` проверяет то же
-  помещение с отступом от стен, пол и ту же поверхность установки (`core.same_surface`).
+  помещение, пол и ту же поверхность установки (`core.same_surface`); новое место
+  не ближе `min_wall_distance_mm` к границе помещения (`allowed`).
+- **Расстояние до стены** — `_RoomEntry.wall_distance`: до отрезков
+  `GetBoundarySegments` помещения (`core.segments_distance`); ближе
+  `min_wall_distance_mm` — `NEAR_WALL` (у перекрытого — вторая причина в `reason`).
 - **`draw(doc, view, checks, settings, note_type, line_styles)`** — на плане с уровнем:
   круги зоны доступа (стили `ZONE_STYLE`/`BLOCKED_STYLE`), подпись причины, у
   нового места — круг, стрелка (`MOVE_STYLE`) и подпись; стили — через

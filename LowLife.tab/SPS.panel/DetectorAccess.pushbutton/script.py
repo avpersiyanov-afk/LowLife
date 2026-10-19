@@ -2,7 +2,7 @@
 __title__ = u"Доступ к\nизвещателям"
 __doc__ = (
     u"Проверяет доступ к пожарным извещателям с пола: под ними есть пол, они не над "
-    u"подвесным потолком и в зоне доступа от пола до извещателя нет инженерных сетей "
+    u"подвесным потолком, не ближе 500 мм к стене и в зоне доступа от пола до извещателя нет инженерных сетей "
     u"(модели и связей). На планах обводит зону доступа (зелёный — доступен, красный — "
     u"нет), а для недоступных показывает ближайшее свободное место и перенос.\n\n"
     u"Если перед запуском выделены извещатели — проверяются только они.\n\n"
@@ -86,7 +86,7 @@ moves = [check for check in problems if check.spot is not None]
 output.print_md(u"- проверено извещателей: {}, доступны: {}, **нет доступа: {}**, "
                 u"найдено новое место: {}".format(len(checks), ok_count, len(problems), len(moves)))
 
-for status in (core.BLOCKED, core.NO_FLOOR, core.ABOVE_CEILING, core.TOO_HIGH,
+for status in (core.BLOCKED, core.NEAR_WALL, core.NO_FLOOR, core.ABOVE_CEILING, core.TOO_HIGH,
                core.NOT_MOUNTED, core.NO_SLAB):
     group = [check for check in problems if check.status == status]
     if not group:
@@ -99,7 +99,7 @@ for status in (core.BLOCKED, core.NO_FLOOR, core.ABOVE_CEILING, core.TOO_HIGH,
         if check.height_mm is not None:
             parts.append(u"на {} м от пола".format(
                 slab_marks.core.format_height(check.height_mm, signed=False)))
-        if status == core.BLOCKED:
+        if status in (core.BLOCKED, core.NEAR_WALL):
             parts.append(check.reason)
         if check.spot is not None:
             parts.append(u"→ " + core.move_label(

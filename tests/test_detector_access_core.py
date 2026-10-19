@@ -119,3 +119,28 @@ def test_texts():
     assert core.blocked_label(u"Нет доступа: {r}", u"x") == u"Нет доступа: x"
     assert core.move_label(u"Перенести ПИ на {d} мм", 300, 400) == u"Перенести ПИ на 500 мм"
     assert core.move_label(u"битый {шаблон", 300, 400).startswith(u"битый {шаблон")
+
+
+def test_near_wall_status_and_reason():
+    walls = [(0, 0, 4000, 0), (4000, 0, 4000, 3000)]
+    assert core.segments_distance(1000, 300, walls) == 300
+    assert core.segments_distance(0, 0, []) is None
+    assert core.near_wall(300, 500)
+    assert not core.near_wall(None, 500)        # не в помещении — не проверяется
+    assert not core.near_wall(300, 0)
+    assert core.classify(True, "slab", 3300, 0, [], 300, 500) == core.NEAR_WALL
+    assert core.classify(True, "slab", 3300, 0, [], 600, 500) == core.OK
+    assert core.NEAR_WALL in core.MOVABLE
+    pipe = core.Obstacle(u"Трубы", _square(0, 0, 10), 0, 1)
+    assert core.classify(True, "slab", 3300, 0, [pipe], 300, 500) == core.BLOCKED
+    assert core.reason_text(core.BLOCKED, [pipe], [], 300, 500) == u"зона доступа: Трубы; до стены 300 мм"
+    assert core.reason_text(core.NEAR_WALL, [], [], 304, 500) == u"до стены 300 мм"
+
+
+def test_find_spot_allowed_filter():
+    # стена по y = 0, извещатель в 200 мм от неё; новое место — не ближе 500
+    walls = [(-5000, 0, 5000, 0)]
+    spot = core.find_spot(0, 200, [], 300, 20, 3150, 100, 2000,
+                          allowed=lambda x, y: core.segments_distance(x, y, walls) >= 500)
+    assert spot is not None and spot[1] >= 500
+    assert math.hypot(spot[0], spot[1] - 200) <= 400 + 1e-6    # ближайшее кольцо, где можно

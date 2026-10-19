@@ -72,6 +72,17 @@ SETTINGS = settings_core.TextSettings(
             default=u"",
         ),
         settings_core.NumberField(
+            "min_wall_distance_mm",
+            u"",
+            u"Наименьшее расстояние от извещателя до стены, мм (0 — не проверять)",
+            hint=(
+                u"Расстояние в плане до границы помещения (стены, разделители помещений "
+                u"связи АР или модели). Ближе — извещатель недоступен, ищется новое место "
+                u"не ближе этого к стенам. Извещатели вне помещений не проверяются."
+            ),
+            default=500.0, minimum=0.0,
+        ),
+        settings_core.NumberField(
             "max_height_mm",
             u"",
             u"Наибольшая высота извещателя от пола, мм (0 — не проверять)",
@@ -100,13 +111,6 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Шаг поиска, мм",
             default=100.0, minimum=10.0,
-        ),
-        settings_core.NumberField(
-            "wall_offset_mm",
-            u"",
-            u"Новое место — не ближе к стенам помещения, мм",
-            hint=u"Новое место ищется в том же помещении, что и извещатель (если он в помещении).",
-            default=300.0, minimum=0.0,
         ),
         settings_core.TextField(
             "blocked_text_format",

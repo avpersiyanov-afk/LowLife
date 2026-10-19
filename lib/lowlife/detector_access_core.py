@@ -26,6 +26,7 @@ ABOVE_CEILING = "above"      # над подвесным потолком — с
 TOO_HIGH = "too_high"        # выше, чем достаёт стремянка (настройка)
 NO_SLAB = "no_slab"          # над ним не найдено ни перекрытия, ни потолка
 NOT_MOUNTED = "not_mounted"  # стоит у пола — ещё не поднят на перекрытие/потолок
+NEAR_WALL = "near_wall"      # ближе допустимого к стене (границе помещения)
 
 STATUS_TEXT = {
     OK: u"доступен",
@@ -35,10 +36,11 @@ STATUS_TEXT = {
     TOO_HIGH: u"слишком высоко от пола",
     NO_SLAB: u"над ним нет перекрытия/потолка",
     NOT_MOUNTED: u"стоит у пола — сначала «Извещатели на перекрытие»",
+    NEAR_WALL: u"слишком близко к стене",
 }
 
 # Для этих состояний ищется ближайшее место, куда перенести извещатель.
-MOVABLE = (BLOCKED, NO_FLOOR)
+MOVABLE = (BLOCKED, NO_FLOOR, NEAR_WALL)
 
 # Радиус «самого извещателя» в плане: препятствие в этом круге под ним —
 # извещатель перекрыт (а не только занята зона доступа вокруг него).
@@ -207,6 +209,16 @@ class ObstacleIndex(object):
         return len(self.items)
 
 
+def segments_distance(x, y, segments):
+    """Расстояние от точки до ближайшего отрезка [(x1, y1, x2, y2)] (нет отрезков — None)."""
+    best = None
+    for x1, y1, x2, y2 in segments:
+        d = _segment_distance(x, y, x1, y1, x2, y2)
+        if best is None or d < best:
+            best = d
+    return best
+
+
 def blockers(obstacles, x, y, radius, z0, z1):
     """Препятствия из obstacles, которые заходят в цилиндр (x, y, radius) × [z0, z1]."""
     if z1 <= z0:
@@ -257,8 +269,14 @@ def column_band(floor_z_mm, detector_z_mm, top_gap_mm):
     return floor_z_mm + FLOOR_GAP_MM, detector_z_mm - float(top_gap_mm or 0.0)
 
 
-def classify(floor_ok, kind, height_mm, max_height_mm, zone_blockers):
-    """Состояние извещателя (OK/BLOCKED/NO_FLOOR/ABOVE_CEILING/TOO_HIGH/NOT_MOUNTED)."""
+def near_wall(wall_mm, min_wall_mm):
+    """Извещатель ближе min_wall_mm к стене (wall_mm None — помещение не найдено, не проверяется)."""
+    return bool(min_wall_mm) and wall_mm is not None and wall_mm < min_wall_mm
+
+
+def classify(floor_ok, kind, height_mm, max_height_mm, zone_blockers,
+             wall_mm=None, min_wall_mm=0.0):
+    """Состояние извещателя (OK/BLOCKED/NEAR_WALL/NO_FLOOR/ABOVE_CEILING/TOO_HIGH/NOT_MOUNTED)."""
     if kind == "above":
         return ABOVE_CEILING
     if not floor_ok:
@@ -267,6 +285,8 @@ def classify(floor_ok, kind, height_mm, max_height_mm, zone_blockers):
         return NOT_MOUNTED
     if zone_blockers:
         return BLOCKED
+    if near_wall(wall_mm, min_wall_mm):
+        return NEAR_WALL
     if max_height_mm and height_mm is not None and height_mm > max_height_mm:
         return TOO_HIGH
     return OK
@@ -300,10 +320,11 @@ def ring_offsets(step_mm, max_radius_mm):
 
 
 def find_spot(x, y, obstacles, zone_radius_mm, z0, z1, step_mm, max_radius_mm,
-              accept=None, max_checks=60):
+              accept=None, max_checks=60, allowed=None):
     """
     Ближайшая к (x, y) точка, где зона доступа (круг zone_radius_mm в плане,
-    высоты z0..z1) свободна от obstacles и которую принимает accept(x, y)
+    высоты z0..z1) свободна от obstacles, которую пропускает дешёвая
+    проверка allowed(x, y) (отступ от стен) и принимает accept(x, y)
     (проверки по модели: внутри помещения, есть пол и та же поверхность
     установки). accept вызывается не больше max_checks раз — он дорогой.
     Возвращает (x, y) или None.
@@ -311,6 +332,8 @@ def find_spot(x, y, obstacles, zone_radius_mm, z0, z1, step_mm, max_radius_mm,
     checks = 0
     for dx, dy in ring_offsets(step_mm, max_radius_mm):
         cx, cy = x + dx, y + dy
+        if allowed is not None and not allowed(cx, cy):
+            continue
         if blockers(obstacles, cx, cy, zone_radius_mm, z0, z1):
             continue
         if accept is not None:
@@ -353,12 +376,27 @@ def obstacle_names(obstacles, limit=3):
     return u", ".join(parts)
 
 
-def reason_text(status, zone_blockers, detector_blockers):
-    """Почему нет доступа: «перекрыт: Воздуховоды» / «зона доступа: Трубы» / состояние."""
+def wall_text(wall_mm):
+    """«до стены 300 мм»."""
+    return u"до стены {} мм".format(int(round(float(wall_mm) / 10.0) * 10))
+
+
+def reason_text(status, zone_blockers, detector_blockers, wall_mm=None, min_wall_mm=0.0):
+    """
+    Почему нет доступа: «перекрыт: Воздуховоды» / «зона доступа: Трубы» /
+    «до стены 300 мм» / состояние. У перекрытого, который ещё и у стены, —
+    обе причины.
+    """
     if status == BLOCKED:
         if detector_blockers:
-            return u"перекрыт: " + obstacle_names(detector_blockers)
-        return u"зона доступа: " + obstacle_names(zone_blockers)
+            text = u"перекрыт: " + obstacle_names(detector_blockers)
+        else:
+            text = u"зона доступа: " + obstacle_names(zone_blockers)
+        if near_wall(wall_mm, min_wall_mm):
+            text += u"; " + wall_text(wall_mm)
+        return text
+    if status == NEAR_WALL:
+        return wall_text(wall_mm)
     return STATUS_TEXT.get(status, u"")
 
 

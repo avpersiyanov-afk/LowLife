@@ -28,7 +28,7 @@ import math
 from Autodesk.Revit.DB import (
     XYZ, Line, Arc, ElementId, FilteredElementCollector, BuiltInCategory, BuiltInParameter,
     LocationCurve, MEPCurve, Outline, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
-    TextNote, CurveElement, Category
+    TextNote, CurveElement, Category, SpatialElementBoundaryOptions
 )
 
 from lowlife import detector_access_core as core
@@ -233,24 +233,41 @@ class _RoomEntry(object):
         self.level_z = level_z      # отметка уровня помещения в его документе
         self.host_level_z = host_level_z
         self.name = room_name(room)
+        self._segments = None
 
-    def contains(self, x, y, offset_ft=0.0):
-        """Точка модели (x, y) — и 4 точки вокруг на offset_ft — внутри помещения."""
-        z = self.level_z + ft(ROOM_TEST_HEIGHT_MM)
-        offsets = [(0.0, 0.0)]
-        if offset_ft > 0:
-            offsets += [(offset_ft, 0.0), (-offset_ft, 0.0), (0.0, offset_ft), (0.0, -offset_ft)]
-        for dx, dy in offsets:
-            p = self.inverse.OfPoint(XYZ(x + dx, y + dy, 0.0))
-            x0, y0, x1, y1 = self.box
-            if not (x0 <= p.X <= x1 and y0 <= p.Y <= y1):
-                return False
+    def contains(self, x, y):
+        """Точка модели (x, y) внутри помещения."""
+        p = self.inverse.OfPoint(XYZ(x, y, 0.0))
+        x0, y0, x1, y1 = self.box
+        if not (x0 <= p.X <= x1 and y0 <= p.Y <= y1):
+            return False
+        try:
+            return self.room.IsPointInRoom(XYZ(p.X, p.Y, self.level_z + ft(ROOM_TEST_HEIGHT_MM)))
+        except Exception:
+            return False
+
+    def segments(self):
+        """Границы помещения (стены, разделители) в плане модели: [(x1, y1, x2, y2)] в мм."""
+        if self._segments is None:
+            self._segments = []
             try:
-                if not self.room.IsPointInRoom(XYZ(p.X, p.Y, z)):
-                    return False
+                loops = self.room.GetBoundarySegments(SpatialElementBoundaryOptions())
             except Exception:
-                return False
-        return True
+                loops = None
+            transform = self.source.transform
+            for loop in loops or []:
+                for segment in loop:
+                    try:
+                        points = [transform.OfPoint(p) for p in segment.GetCurve().Tessellate()]
+                    except Exception:
+                        continue
+                    for a, b in zip(points, points[1:]):
+                        self._segments.append((mm(a.X), mm(a.Y), mm(b.X), mm(b.Y)))
+        return self._segments
+
+    def wall_distance(self, x_mm, y_mm):
+        """Расстояние от точки (мм, координаты модели) до границы помещения или None."""
+        return core.segments_distance(x_mm, y_mm, self.segments())
 
 
 class RoomLocator(object):
@@ -300,6 +317,7 @@ class Check(object):
         self.detector_blockers = []   # ... прямо под извещателем
         self.height_mm = None         # от пола до точки извещателя
         self.room = None              # имя помещения или None
+        self.wall_mm = None           # расстояние до стены (границы помещения), мм
         self.spot = None              # (x, y) нового места, футы
         self.search_note = u""        # почему новое место не найдено
 
@@ -335,7 +353,7 @@ def assess(doc, detectors, settings, probe, progress=None):
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     search = settings.get("search_radius_mm") or 0.0
     step = settings.get("search_step_mm") or 100.0
-    wall_ft = ft(settings.get("wall_offset_mm") or 0.0)
+    min_wall = settings.get("min_wall_distance_mm") or 0.0
 
     names, unknown = obstacle_categories(doc, settings.get("extra_obstacle_categories"))
     rooms = RoomLocator(doc)
@@ -354,18 +372,20 @@ def assess(doc, detectors, settings, probe, progress=None):
             if progress is not None:
                 progress(len(checks), total)
             checks.append(_check(detector, point, level_z, index, rooms, probe, probe_ft,
-                                 radius, top_gap, max_height, search, step, wall_ft))
+                                 radius, top_gap, max_height, search, step, min_wall))
     if probe.error is not None:
         failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
     return checks, failed, unknown
 
 
 def _check(detector, point, level_z, index, rooms, probe, probe_ft,
-           radius, top_gap, max_height, search, step, wall_ft):
+           radius, top_gap, max_height, search, step, min_wall):
     check = Check(detector, point, level_z)
     x, y, det_z = mm(point.X), mm(point.Y), mm(point.Z)
     room = rooms.find(point.X, point.Y, level_z)
     check.room = room.name if room is not None else None
+    if room is not None:
+        check.wall_mm = room.wall_distance(x, y)
 
     found = probe.probe(point.X, point.Y, level_z + probe_ft, level_z)
     if found is None:
@@ -380,8 +400,10 @@ def _check(detector, point, level_z, index, rooms, probe, probe_ft,
     near = index.near(x, y, search + radius)
     check.zone_blockers = core.blockers(near, x, y, radius, z0, z1)
     check.detector_blockers = core.blockers(check.zone_blockers, x, y, core.DETECTOR_RADIUS_MM, z0, z1)
-    check.status = core.classify(floor_ok, kind, check.height_mm, max_height, check.zone_blockers)
-    check.reason = core.reason_text(check.status, check.zone_blockers, check.detector_blockers)
+    check.status = core.classify(floor_ok, kind, check.height_mm, max_height, check.zone_blockers,
+                                 check.wall_mm, min_wall)
+    check.reason = core.reason_text(check.status, check.zone_blockers, check.detector_blockers,
+                                    check.wall_mm, min_wall)
     if check.status not in core.MOVABLE:
         return check
     if search <= 0:
@@ -389,8 +411,13 @@ def _check(detector, point, level_z, index, rooms, probe, probe_ft,
 
     surface_z = core.mount_z(kind, found.slab_z_mm, found.ceiling_z_mm)
 
+    def allowed(cx, cy):
+        if room is None or not min_wall:
+            return True
+        return not core.near_wall(room.wall_distance(cx, cy), min_wall)
+
     def accept(cx, cy):
-        if room is not None and not room.contains(ft(cx), ft(cy), wall_ft):
+        if room is not None and not room.contains(ft(cx), ft(cy)):
             return False
         candidate = probe.probe(ft(cx), ft(cy), level_z + probe_ft, level_z)
         if candidate is None:
@@ -401,7 +428,7 @@ def _check(detector, point, level_z, index, rooms, probe, probe_ft,
             return False
         return core.same_surface(kind, surface_z, candidate.slab_z_mm, candidate.ceiling_z_mm)
 
-    spot = core.find_spot(x, y, near, radius, z0, z1, step, search, accept)
+    spot = core.find_spot(x, y, near, radius, z0, z1, step, search, accept, allowed=allowed)
     if spot is None:
         check.search_note = u"свободного места в радиусе {} мм не найдено".format(int(search))
     else:
