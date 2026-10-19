@@ -392,6 +392,7 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     offset_mm = settings.get("mount_offset_mm") or 0.0
     ceiling_words = core.split_words(settings.get("ceiling_mount_words"))
+    shifts = []    # (извещатель, сдвиг мм, отметка до сдвига мм)
     targets = []
     for index, detector in enumerate(detectors):
         if progress is not None:
@@ -419,13 +420,18 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         if abs(delta_mm) < MOVE_TOLERANCE_MM:
             result.already += 1
             continue
+        shifts.append((detector, delta_mm, mm(point.Z)))
+    if probe.error is not None:
+        result.failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
+    # Сдвиги — только после всех лучей: любое изменение модели заставляет
+    # Revit пересобрать временный 3D-вид (со всеми связями) перед следующим
+    # лучом, и чередование «луч — сдвиг» на сотнях извещателей — это минуты.
+    for detector, delta_mm, z_mm in shifts:
         error = _shift(doc, detector, ft(delta_mm))
         if error:
             result.failed.append((detector, error))
         else:
-            targets.append((detector, mm(point.Z) + delta_mm))
-    if probe.error is not None:
-        result.failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
+            targets.append((detector, z_mm + delta_mm))
     if targets:
         doc.Regenerate()
     for detector, target_mm in targets:
@@ -784,6 +790,8 @@ def draw_steps(doc, view, settings, probe, style, progress=None):
                 confirmed.append(piece)
             else:
                 stats.rejected += 1
+    # Линии рисуются только после всех проверок: изменение модели между
+    # лучами заставляет Revit пересобирать временный 3D-вид (см. move_detectors).
     for x1, y1, x2, y2, _dz in core.merge_collinear(confirmed, tol_mm=100.0):
         if ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 < STEP_MIN_LEN_MM:
             continue
@@ -836,23 +844,30 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     step = settings.get("round_mm") or 10.0
 
-    marks = []
+    rooms = []
     for source in room_sources(doc):
         for room in source.rooms():
             room_z = _room_level_z(source, room)
-            if room_z is None or abs(room_z - level_z) > tolerance + 1e-6:
-                continue
-            link_level_z = source.doc.GetElement(room.LevelId).ProjectElevation
-            mark = RoomMark(source, room, room_name(room))
-            for point in _room_points(room, link_level_z, probe_ft):
-                host = source.transform.OfPoint(point)
-                found = probe.probe(host.X, host.Y, room_z + probe_ft, room_z)
-                if mark.anchor is None:
-                    mark.anchor = XYZ(host.X, host.Y, level_z)
-                if found is not None:
-                    mark.probes.append(found)
-            if mark.anchor is not None:
-                marks.append(mark)
+            if room_z is not None and abs(room_z - level_z) <= tolerance + 1e-6:
+                rooms.append((source, room, room_z))
+
+    # Все лучи — до создания подписей/областей (см. move_detectors: изменение
+    # модели между лучами пересобирает временный 3D-вид).
+    marks = []
+    for index, (source, room, room_z) in enumerate(rooms):
+        if progress is not None:
+            progress(index, len(rooms))
+        link_level_z = source.doc.GetElement(room.LevelId).ProjectElevation
+        mark = RoomMark(source, room, room_name(room))
+        for point in _room_points(room, link_level_z, probe_ft):
+            host = source.transform.OfPoint(point)
+            found = probe.probe(host.X, host.Y, room_z + probe_ft, room_z)
+            if mark.anchor is None:
+                mark.anchor = XYZ(host.X, host.Y, level_z)
+            if found is not None:
+                mark.probes.append(found)
+        if mark.anchor is not None:
+            marks.append(mark)
 
     result.typical_mm = core.typical_height(
         [core.main_height(m.slab_values(), step) for m in marks], step)
