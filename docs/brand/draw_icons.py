@@ -468,6 +468,26 @@ def greeting(c):
     c.circle((72, 66), 5, None, ORANGE)
 
 
+def detectors_to_slab(c):
+    """«Извещатели на перекрытие»: перекрытие с перепадом отметки, под ним
+    извещатель с оранжевой стрелкой вверх и отметка высоты от пола."""
+    # перекрытие: слева ниже, справа выше (перепад)
+    c.polygon([(8, 26), (46, 26), (46, 14), (88, 14), (88, 24), (54, 24), (54, 36), (8, 36)],
+              fill=WHITE, outline=BLUE, w=4)
+    # пол
+    c.line([(8, 84), (88, 84)], BLUE, 5)
+    # извещатель на низу перекрытия (правая часть) и стрелка подъёма
+    c.polygon([(62, 25), (80, 25), (77, 33), (65, 33)], fill=ORANGE)
+    c.line([(71, 66), (71, 44)], ORANGE, 5)
+    c.polygon([(64, 46), (78, 46), (71, 37)], fill=ORANGE)
+    # отметка высоты от пола слева: размерная линия и треугольник
+    c.line([(22, 40), (22, 80)], BLUE, 3)
+    c.polygon([(15, 40), (29, 40), (22, 47)], fill=BLUE)
+    c.polygon([(15, 80), (29, 80), (22, 73)], fill=BLUE)
+    c.line([(32, 60), (48, 60)], BLUE, 3)
+    c.polygon([(32, 52), (44, 52), (38, 60)], fill=WHITE, outline=BLUE, w=2.5)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -496,6 +516,7 @@ ICONS = [
     ("SOUE.panel/PlaceTypicalFloor.pushbutton", soue_floor),
     ("Tools.panel/FopParameters.pushbutton", fop_parameters),
     ("Tools.panel/Greeting.pushbutton", greeting),
+    ("SPS.panel/DetectorsToSlab.pushbutton", detectors_to_slab),
 ]
 
 
