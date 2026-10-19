@@ -133,8 +133,12 @@ for result in view_results:
     if stats is not None:
         output.print_md(
             u"- поиск перепадов: плит под лучами {}, краёв нижних граней {}, кандидатов {}, "
-            u"не подтверждено лучами {}, нарисовано {}".format(
-                stats.slabs, stats.edges, stats.candidates, stats.rejected, stats.drawn))
+            u"линий после склейки {}, не подтверждено лучами частей {}, нарисовано {}".format(
+                stats.slabs, stats.edges, stats.candidates, stats.lines, stats.rejected, stats.drawn))
+        if stats.skipped:
+            output.print_md(
+                u"- **не проверено линий перепада: {}** (слишком много — проверены самые длинные; "
+                u"уменьшите «Наибольший зазор между краями соседних плит»)".format(stats.skipped))
     if result.changed:
         output.print_md(u"- перекрытие отличается от типового (помещений: {}):".format(len(result.changed)))
         for height, names in slab_marks.core.group_by_height(result.changed):

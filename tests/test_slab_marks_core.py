@@ -166,3 +166,21 @@ def test_probe_floor_found_flag():
     found = core.probe(1500.0, [(1800.0, core.SLAB)], [], 0.0)
     assert not found.floor_found
     assert not core.replace_slab(found, 3000.0).floor_found
+
+
+def test_merge_collinear():
+    pieces = [(0, 0, 1000, 0, 450), (900, 5, 2500, 5, -450), (2520, 0, 4000, 0, 450),
+              (0, 3000, 1000, 3000, 450), (0, 0, 0, 1000, 450)]
+    merged = core.merge_collinear(pieces)
+    assert len(merged) == 3
+    long_line = [m for m in merged if abs(m[1]) < 10 and abs(m[3]) < 10 and abs(m[2] - m[0]) > 3000][0]
+    assert abs(min(long_line[0], long_line[2])) < 1e-6
+    assert abs(max(long_line[0], long_line[2]) - 4000) < 1e-6
+    assert abs(long_line[4]) == 450
+
+
+def test_split_segment():
+    assert len(core.split_segment((0, 0, 1000, 0, 1))) == 1
+    parts = core.split_segment((0, 0, 9000, 0, 1))
+    assert len(parts) == 3 and parts[0][2] == 3000 and parts[-1][2] == 9000
+    assert len(core.split_segment((0, 0, 100000, 0, 1))) == 8
