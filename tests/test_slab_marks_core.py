@@ -126,3 +126,16 @@ def test_group_by_height():
         (3600, [(u"ГРЩ", 1)]),
         (7010, [(u"Кладовая", 2), (u"Помещение", 1)]),
     ]
+
+
+def test_mount_surface():
+    with_ceiling = core.probe(1500.0, [(1200.0, core.CEILING), (1800.0, core.SLAB)], [(1550.0, core.SLAB)], 0.0)
+    assert with_ceiling.ceiling_z_mm == 2700.0
+    assert core.mount_surface(with_ceiling, False) == (3300.0, None)
+    assert core.mount_surface(with_ceiling, True) == (2700.0, None)
+    no_ceiling = core.probe(1500.0, [(1800.0, core.SLAB)], [], 0.0)
+    surface, reason = core.mount_surface(no_ceiling, True)
+    assert surface is None and u"потолка" in reason
+    words = core.split_words(u"встраив")
+    assert core.is_detector([u"ИП 212", u"Дымовой встраиваемый"], words, [])
+    assert not core.is_detector([u"ИП 212", u"Дымовой"], words, [])

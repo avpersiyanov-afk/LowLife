@@ -106,6 +106,8 @@ if move_result is not None:
         move_result.moved, move_result.already))
     output.print_md(u"- перенесено на низ перекрытия: {}".format(move_result.moved))
     output.print_md(u"- уже были на перекрытии: {}".format(move_result.already))
+    if move_result.to_ceiling:
+        output.print_md(u"- встраиваемых — на подвесной потолок: {}".format(move_result.to_ceiling))
     if move_result.under_ceiling:
         output.print_md(u"- из них над подвесным потолком: {}".format(move_result.under_ceiling))
     if move_result.no_slab:

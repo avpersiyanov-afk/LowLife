@@ -295,6 +295,7 @@ class MoveResult(object):
         self.no_slab = []      # извещатели без перекрытия над ними
         self.failed = []       # (извещатель, причина)
         self.under_ceiling = 0  # извещателей над подвесным потолком (для отчёта)
+        self.to_ceiling = 0     # встраиваемых, поставленных на подвесной потолок
 
 
 def _writable(param):
@@ -333,11 +334,16 @@ def _shift(doc, instance, delta_ft):
 
 
 def move_detectors(doc, detectors, settings, probe, progress=None):
-    """Поднять/опустить извещатели на низ перекрытия над ними. Возвращает MoveResult."""
+    """
+    Поднять/опустить извещатели на низ перекрытия над ними; встраиваемые
+    (слово из ceiling_mount_words в имени семейства/типа) — на низ
+    подвесного потолка. Возвращает MoveResult.
+    """
     result = MoveResult()
     levels = plan_levels(doc)
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     offset_mm = settings.get("mount_offset_mm") or 0.0
+    ceiling_words = core.split_words(settings.get("ceiling_mount_words"))
     targets = []
     for index, detector in enumerate(detectors):
         if progress is not None:
@@ -351,9 +357,17 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         if found is None:
             result.no_slab.append(detector)
             continue
-        if found.ceiling_mm is not None:
+        ceiling_mount = bool(ceiling_words) and core.is_detector(_names(detector), ceiling_words, [])
+        surface_mm, skip = core.mount_surface(found, ceiling_mount)
+        if skip:
+            result.failed.append((detector, skip))
+            continue
+        if ceiling_mount:
+            result.to_ceiling += 1
+        elif found.ceiling_mm is not None:
             result.under_ceiling += 1
-        delta_mm = core.move_delta(mm(point.Z), found.slab_z_mm, offset_mm)
+        # встраиваемый — точка вставки ровно в плоскости потолка, без отступа
+        delta_mm = core.move_delta(mm(point.Z), surface_mm, 0.0 if ceiling_mount else offset_mm)
         if abs(delta_mm) < MOVE_TOLERANCE_MM:
             result.already += 1
             continue

@@ -31,6 +31,13 @@ class Probe(object):
         self.floor_z_mm = floor_z_mm
         self.slab_z_mm = slab_z_mm
 
+    @property
+    def ceiling_z_mm(self):
+        """Отметка низа подвесного потолка в координатах модели или None."""
+        if self.ceiling_mm is None:
+            return None
+        return self.floor_z_mm + self.ceiling_mm
+
 
 def nearest(hits, kind):
     """Наименьшее расстояние среди попаданий [(расстояние, вид)] нужного вида или None."""
@@ -295,3 +302,17 @@ def group_by_height(changed):
         names = sorted(groups[height].items(), key=lambda item: (-item[1], item[0]))
         result.append((height, names))
     return result
+
+
+def mount_surface(found, ceiling_mount):
+    """
+    Куда ставить извещатель: (отметка поверхности в мм или None, причина
+    пропуска или None). Обычный — на низ перекрытия; встраиваемый
+    (ceiling_mount) — на низ подвесного потолка, а без потолка над ним не
+    переносится (встраиваемый на плиту не ставят).
+    """
+    if not ceiling_mount:
+        return found.slab_z_mm, None
+    if found.ceiling_z_mm is None:
+        return None, u"встраиваемый, но подвесного потолка над ним нет"
+    return found.ceiling_z_mm, None
