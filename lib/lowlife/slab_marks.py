@@ -392,6 +392,7 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     offset_mm = settings.get("mount_offset_mm") or 0.0
     ceiling_words = core.split_words(settings.get("ceiling_mount_words"))
+    shifts = []    # (извещатель, сдвиг мм, отметка до сдвига мм)
     targets = []
     for index, detector in enumerate(detectors):
         if progress is not None:
@@ -419,13 +420,18 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         if abs(delta_mm) < MOVE_TOLERANCE_MM:
             result.already += 1
             continue
+        shifts.append((detector, delta_mm, mm(point.Z)))
+    if probe.error is not None:
+        result.failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
+    # Сдвиги — только после всех лучей: любое изменение модели заставляет
+    # Revit пересобрать временный 3D-вид (со всеми связями) перед следующим
+    # лучом, и чередование «луч — сдвиг» на сотнях извещателей — это минуты.
+    for detector, delta_mm, z_mm in shifts:
         error = _shift(doc, detector, ft(delta_mm))
         if error:
             result.failed.append((detector, error))
         else:
-            targets.append((detector, mm(point.Z) + delta_mm))
-    if probe.error is not None:
-        result.failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
+            targets.append((detector, z_mm + delta_mm))
     if targets:
         doc.Regenerate()
     for detector, target_mm in targets:
@@ -533,7 +539,8 @@ def clear_view(doc, view, note_type):
         if _line_style_name(curve) == STEP_LINE_STYLE:
             ids.Add(curve.Id)
     for region in FilteredElementCollector(doc, view.Id).OfClass(FilledRegion):
-        if (_comment(region) or u"").startswith(REGION_TAG):
+        comment = _comment(region) or u""
+        if comment.startswith(REGION_TAG) or comment.startswith(SLAB_REGION_TAG):
             ids.Add(region.Id)
     if ids.Count:
         doc.Delete(ids)
@@ -567,8 +574,11 @@ def _room_level_z(source, room):
     return source.transform.OfPoint(XYZ(0, 0, z)).Z
 
 
-def _room_points(room, level_z_link, probe_ft):
-    """Точки внутри помещения (координаты его документа): точка помещения + сетка до 3×3."""
+def _room_points(room, level_z_link, probe_ft, max_grid=3, max_points=None):
+    """
+    Точки внутри помещения (координаты его документа): точка помещения +
+    сетка до max_grid×max_grid; не больше max_points (точка помещения — первой).
+    """
     test_z = level_z_link + min(probe_ft, ft(1000.0))
     points = []
     try:
@@ -580,8 +590,8 @@ def _room_points(room, level_z_link, probe_ft):
     bbox = room.get_BoundingBox(None)
     if bbox is None:
         return points
-    nx = core.grid_steps(mm(bbox.Max.X - bbox.Min.X))
-    ny = core.grid_steps(mm(bbox.Max.Y - bbox.Min.Y))
+    nx = core.grid_steps(mm(bbox.Max.X - bbox.Min.X), max_grid)
+    ny = core.grid_steps(mm(bbox.Max.Y - bbox.Min.Y), max_grid)
     for i in range(nx):
         for j in range(ny):
             x = bbox.Min.X + (bbox.Max.X - bbox.Min.X) * (i + 0.5) / nx
@@ -592,7 +602,7 @@ def _room_points(room, level_z_link, probe_ft):
                     points.append(point)
             except Exception:
                 pass
-    return points
+    return points if max_points is None else points[:max_points]
 
 
 def _boundary_loops(room, transform, z):
@@ -745,23 +755,21 @@ def _confirmed(probe, piece, side, level_z, probe_ft):
     return left is not None and right is not None and abs(left - right) >= STEP_MIN_DZ_MM
 
 
-def draw_steps(doc, view, settings, probe, style, progress=None):
+def find_steps(view, settings, probe, edges, progress=None):
     """
-    Красные линии перепада плиты на плане: по краям нижних граней перекрытий
-    над уровнем вида (slab_marks_core.step_segments); каждый кандидат
-    проверяется лучами по обе стороны линии — там должны быть перекрытия
-    с разной отметкой. Куски одной линии сначала склеиваются
-    (merge_collinear), длинная линия проверяется частями по ~3 м
-    (split_segment) — рисуются только подтверждённые части. Проверок не
-    больше STEP_CHECK_BUDGET. Возвращает StepStats.
+    Линии перепада плиты на плане (без изменений модели — только лучи):
+    по краям нижних граней перекрытий edges (slab_marks_core.step_segments);
+    каждый кандидат проверяется лучами по обе стороны линии — там должны
+    быть перекрытия с разной отметкой. Куски одной линии сначала
+    склеиваются (merge_collinear), длинная линия проверяется частями по
+    ~3 м (split_segment) — остаются только подтверждённые части. Проверок
+    не больше STEP_CHECK_BUDGET. Возвращает (отрезки в мм, StepStats);
+    рисует draw_step_lines.
     """
     stats = StepStats()
     level_z = view.GenLevel.ProjectElevation
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
-    tol_mm = settings.get("step_search_mm") or 300.0
-    slabs = probe.slabs_above(level_z, ft(settings.get("level_tolerance_mm") or 0.0))
-    stats.slabs = len(slabs)
-    edges = slab_bottom_edges(doc, slabs, level_z + probe_ft)
+    tol_mm = settings.get("step_search_mm") or 600.0
     stats.edges = len(edges)
     candidates = core.step_segments(edges, tol_mm, STEP_MIN_DZ_MM, STEP_MIN_LEN_MM)
     stats.candidates = len(candidates)
@@ -784,9 +792,14 @@ def draw_steps(doc, view, settings, probe, style, progress=None):
                 confirmed.append(piece)
             else:
                 stats.rejected += 1
-    for x1, y1, x2, y2, _dz in core.merge_collinear(confirmed, tol_mm=100.0):
-        if ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 < STEP_MIN_LEN_MM:
-            continue
+    segments = [s for s in core.merge_collinear(confirmed, tol_mm=100.0)
+                if ((s[2] - s[0]) ** 2 + (s[3] - s[1]) ** 2) ** 0.5 >= STEP_MIN_LEN_MM]
+    return segments, stats
+
+
+def draw_step_lines(doc, view, segments, style, stats):
+    level_z = view.GenLevel.ProjectElevation
+    for x1, y1, x2, y2, _dz in segments:
         try:
             line = Line.CreateBound(XYZ(ft(x1), ft(y1), level_z), XYZ(ft(x2), ft(y2), level_z))
             curve = doc.Create.NewDetailCurve(view, line)
@@ -795,6 +808,17 @@ def draw_steps(doc, view, settings, probe, style, progress=None):
             stats.drawn += 1
         except Exception as ex:
             stats.errors.append(u"линия перепада плиты — {}".format(ex))
+
+
+def draw_steps(doc, view, settings, probe, style, progress=None):
+    """find_steps + draw_step_lines по всем плитам, найденным лучами с уровня вида."""
+    level_z = view.GenLevel.ProjectElevation
+    probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
+    slabs = probe.slabs_above(level_z, ft(settings.get("level_tolerance_mm") or 0.0))
+    edges = slab_bottom_edges(doc, slabs, level_z + probe_ft)
+    segments, stats = find_steps(view, settings, probe, edges, progress)
+    stats.slabs = len(slabs)
+    draw_step_lines(doc, view, segments, style, stats)
     return stats
 
 
@@ -812,14 +836,178 @@ class StepStats(object):
         self.errors = []
 
 
+# ------------------------------------------------------------
+# Заливки плит
+# ------------------------------------------------------------
+
+# Метка в «Комментариях» заливок плит; типы заливки — «LowLife пер. +4,400».
+SLAB_REGION_TAG = u"LowLife пер."
+SLAB_TYPE_PREFIX = u"LowLife пер. "
+
+# Грани меньше этой площади (опоры, капители, мелкие ниши) не заливаются.
+MIN_FILL_AREA_MM2 = 0.5e6
+
+# Отметка грани и перекрытия под лучом в точке подписи расходятся больше —
+# грань закрыта более низкой плитой, не заливается.
+FACE_MATCH_MM = 30.0
+
+# Точек проверки на помещение, когда в помещениях подписываются только ПП.
+ROOM_POINTS_CEILING_ONLY = 3
+
+# Цвета штриховки по отметкам (красный — у линий перепада).
+FILL_COLORS = [
+    (0, 114, 189), (60, 160, 60), (240, 140, 40), (126, 47, 142), (0, 170, 200),
+    (150, 150, 0), (200, 0, 160), (140, 90, 40), (40, 40, 160), (0, 128, 128),
+]
+
+
+class SlabFace(object):
+    """Нижняя грань перекрытия: отметка, контур и отверстия (мм, координаты модели)."""
+
+    def __init__(self, z_mm, outer, holes):
+        self.z_mm = z_mm
+        self.outer = outer
+        self.holes = holes
+        self.area = core.region_area(outer, holes)
+        self.point = None       # точка подписи (мм)
+        self.height_mm = None   # высота от пола по лучу в точке подписи
+
+    def loops(self):
+        return [self.outer] + list(self.holes)
+
+
+def _loop_points(face, loop, transform):
+    points = []
+    for edge in loop:
+        try:
+            curve = edge.AsCurveFollowingFace(face)
+        except Exception:
+            curve = edge.AsCurve()
+        for p in curve.Tessellate():
+            p = transform.OfPoint(p)
+            xy = (mm(p.X), mm(p.Y))
+            if not points or abs(points[-1][0] - xy[0]) + abs(points[-1][1] - xy[1]) > 3.0:
+                points.append(xy)
+    if len(points) >= 2 and abs(points[0][0] - points[-1][0]) + abs(points[0][1] - points[-1][1]) <= 3.0:
+        points.pop()
+    return points
+
+
+def slab_bottom_faces(doc, element_keys, bottom_z):
+    """
+    Нижние горизонтальные грани перекрытий из element_keys (как
+    slab_bottom_edges) выше bottom_z: [SlabFace].
+    """
+    options = Options()
+    options.DetailLevel = ViewDetailLevel.Fine
+    sources = model_sources(doc)
+    faces = []
+    for source_key, element_id in sorted(element_keys):
+        if source_key not in sources:
+            continue
+        source_doc, transform = sources[source_key]
+        element = source_doc.GetElement(ElementId(element_id))
+        if element is None:
+            continue
+        try:
+            bbox = element.get_BoundingBox(None)
+            if max(transform.OfPoint(bbox.Min).Z, transform.OfPoint(bbox.Max).Z) < bottom_z:
+                continue
+            geometry = element.get_Geometry(options)
+        except Exception:
+            continue
+        for solid, solid_transform in _solids(geometry, transform):
+            for face in solid.Faces:
+                if not isinstance(face, PlanarFace):
+                    continue
+                if solid_transform.OfVector(face.FaceNormal).Z > -0.99:
+                    continue
+                z = solid_transform.OfPoint(face.Origin).Z
+                if z < bottom_z:
+                    continue
+                loops = [_loop_points(face, loop, solid_transform) for loop in face.EdgeLoops]
+                outer, holes = core.split_outer(loops)
+                if outer is not None:
+                    faces.append(SlabFace(mm(z), outer, holes))
+    return faces
+
+
+def _hatch_pattern(doc):
+    """Штриховка для заливок плит: «диагональная», иначе первая не сплошная чертёжная."""
+    from Autodesk.Revit.DB import FillPatternElement, FillPatternTarget
+    fallback = None
+    for pattern_element in FilteredElementCollector(doc).OfClass(FillPatternElement):
+        try:
+            pattern = pattern_element.GetFillPattern()
+            if pattern.Target != FillPatternTarget.Drafting or pattern.IsSolidFill:
+                continue
+        except Exception:
+            continue
+        name = (safe_element_name(pattern_element) or u"").lower()
+        if u"диагон" in name or u"diagonal" in name:
+            return pattern_element
+        if fallback is None:
+            fallback = pattern_element
+    return fallback
+
+
+def slab_fill_type(doc, height_mm, color, base_type, pattern):
+    """Тип заливки «LowLife пер. +4,400»: создаётся копией base_type, штриховка и цвет — на каждом запуске."""
+    name = SLAB_TYPE_PREFIX + core.format_height(height_mm)
+    found = None
+    for candidate in FilteredElementCollector(doc).OfClass(FilledRegionType):
+        if safe_element_name(candidate) == name:
+            found = candidate
+            break
+    if found is None:
+        found = base_type.Duplicate(name)
+    try:
+        if pattern is not None:
+            found.ForegroundPatternId = pattern.Id
+        found.ForegroundPatternColor = Color(*color)
+        found.BackgroundPatternId = ElementId.InvalidElementId
+    except Exception:
+        pass
+    return found
+
+
+def _curve_loops(polygons, z):
+    loops = []
+    for polygon in polygons:
+        points = [XYZ(ft(x), ft(y), z) for x, y in polygon]
+        loop = CurveLoop()
+        try:
+            for i in range(len(points)):
+                a, b = points[i], points[(i + 1) % len(points)]
+                if a.DistanceTo(b) > _MIN_SEG_FT:
+                    loop.Append(Line.CreateBound(a, b))
+        except Exception:
+            continue
+        loops.append(loop)
+    return loops
+
+
+def _tag(element, text):
+    param = element.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
+    if _writable(param):
+        param.Set(text)
+
+
+# ------------------------------------------------------------
+# План целиком
+# ------------------------------------------------------------
+
 class ViewResult(object):
     def __init__(self, view):
         self.view = view
         self.rooms = 0
+        self.excluded_rooms = 0
         self.ceiling_rooms = 0
         self.steps = 0
         self.step_stats = None
         self.typical_mm = None
+        self.slab_heights = []  # (высота мм, площадь м²) — заливки плит
+        self.fills = 0
         self.changed = []      # (помещение, основная высота мм)
         self.no_slab = []      # имена помещений без перекрытия над ними
         self.errors = []
@@ -827,7 +1015,13 @@ class ViewResult(object):
 
 def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=None,
                   progress=None):
-    """Подписи высот перекрытий и подвесных потолков в помещениях уровня вида. ViewResult."""
+    """
+    Всё по плану: заливки плит над уровнем вида по отметкам с подписями,
+    подвесные потолки (ПП) и подписи в помещениях, линии перепада.
+    Сначала все лучи (помещения, точки подписей плит, проверка перепадов),
+    потом все изменения модели — иначе Revit пересобирает временный 3D-вид
+    перед каждым лучом (см. move_detectors). ViewResult.
+    """
     result = ViewResult(view)
     clear_view(doc, view, note_type)
 
@@ -835,52 +1029,129 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     tolerance = ft(settings.get("level_tolerance_mm") or 0.0)
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     step = settings.get("round_mm") or 10.0
+    mode = settings.get("room_labels") or "ceiling"
+    excluded = core.split_words(settings.get("excluded_room_words"))
+    slab_format = settings.get("slab_text_format") or u"{h}"
+    delta_format = settings.get("delta_text_format") or u"Δ {d}"
+    ceiling_format = settings.get("ceiling_text_format") or u"ПП {h}"
 
+    # --- 1. лучи: помещения ---
+    rooms = []
+    if mode != "none":
+        for source in room_sources(doc):
+            for room in source.rooms():
+                room_z = _room_level_z(source, room)
+                if room_z is None or abs(room_z - level_z) > tolerance + 1e-6:
+                    continue
+                if excluded and core.has_word(room_name(room), excluded):
+                    result.excluded_rooms += 1
+                    continue
+                rooms.append((source, room, room_z))
+    # Для одних ПП хватает 1–3 точек (точка помещения + сетка 2×2 в больших),
+    # для подписей перекрытия во всех помещениях — до 10 (сетка 3×3).
+    grid, limit = (3, None) if mode == "all" else (2, ROOM_POINTS_CEILING_ONLY)
     marks = []
-    for source in room_sources(doc):
-        for room in source.rooms():
-            room_z = _room_level_z(source, room)
-            if room_z is None or abs(room_z - level_z) > tolerance + 1e-6:
-                continue
-            link_level_z = source.doc.GetElement(room.LevelId).ProjectElevation
-            mark = RoomMark(source, room, room_name(room))
-            for point in _room_points(room, link_level_z, probe_ft):
-                host = source.transform.OfPoint(point)
-                found = probe.probe(host.X, host.Y, room_z + probe_ft, room_z)
-                if mark.anchor is None:
-                    mark.anchor = XYZ(host.X, host.Y, level_z)
-                if found is not None:
-                    mark.probes.append(found)
-            if mark.anchor is not None:
-                marks.append(mark)
+    for index, (source, room, room_z) in enumerate(rooms):
+        if progress is not None:
+            progress(index, len(rooms))
+        link_level_z = source.doc.GetElement(room.LevelId).ProjectElevation
+        mark = RoomMark(source, room, room_name(room))
+        for point in _room_points(room, link_level_z, probe_ft, grid, limit):
+            host = source.transform.OfPoint(point)
+            found = probe.probe(host.X, host.Y, room_z + probe_ft, room_z)
+            if mark.anchor is None:
+                mark.anchor = XYZ(host.X, host.Y, level_z)
+            if found is not None:
+                mark.probes.append(found)
+        if mark.anchor is not None:
+            marks.append(mark)
 
-    result.typical_mm = core.typical_height(
-        [core.main_height(m.slab_values(), step) for m in marks], step)
+    # --- 2. плиты над уровнем: грани и лучи в точках подписей ---
+    slabs = probe.slabs_above(level_z, tolerance)
+    faces = slab_bottom_faces(doc, slabs, level_z + probe_ft) if slabs else []
+    fills = []
+    if (settings.get("draw_slab_fills") or "yes") != "no":
+        big = [f for f in faces if f.area >= MIN_FILL_AREA_MM2]
+        for index, face in enumerate(big):
+            if progress is not None:
+                progress(index, len(big))
+            point = core.interior_point(face.outer, face.holes)
+            if point is None:
+                continue
+            found = probe.probe(ft(point[0]), ft(point[1]), level_z + probe_ft, level_z)
+            if found is None or abs(found.slab_z_mm - face.z_mm) > FACE_MATCH_MM:
+                continue   # грань закрыта более низкой плитой
+            face.point = point
+            face.height_mm = found.slab_mm
+            fills.append(face)
+
+    # --- 3. лучи: проверка перепадов ---
+    step_segments = []
+    if (settings.get("draw_steps") or "yes") != "no":
+        edges = []
+        for face in faces:
+            edges.extend(core.loop_edges(face.loops(), face.z_mm))
+        step_segments, result.step_stats = find_steps(view, settings, probe, edges, progress)
+        result.step_stats.slabs = len(slabs)
+
+    # --- типовая высота: по площади заливок, иначе по помещениям ---
+    if fills:
+        result.typical_mm = core.typical_by_area(
+            [(f.height_mm, f.area / 1e6) for f in fills], step)
+        totals = {}
+        for f in fills:
+            key = core.round_to(f.height_mm, step)
+            totals[key] = totals.get(key, 0.0) + f.area / 1e6
+        result.slab_heights = sorted(totals.items())
+    else:
+        result.typical_mm = core.typical_height(
+            [core.main_height(m.slab_values(), step) for m in marks], step)
+
+    # --- 4. изменения модели ---
+    if fills:
+        base = fill_type or region_type(doc, None)
+        pattern = _hatch_pattern(doc)
+        heights = [h for h, _area in result.slab_heights]
+        types = {}
+        for face in fills:
+            key = core.round_to(face.height_mm, step)
+            try:
+                if key not in types:
+                    color = FILL_COLORS[heights.index(key) % len(FILL_COLORS)]
+                    types[key] = slab_fill_type(doc, key, color, base, pattern)
+                from System.Collections.Generic import List
+                region = FilledRegion.Create(doc, types[key].Id, view.Id,
+                                             List[CurveLoop](_curve_loops(face.loops(), level_z)))
+                _tag(region, u"{} {}".format(SLAB_REGION_TAG, core.format_height(key)))
+                text = core.slab_label(face.height_mm, result.typical_mm, step,
+                                       slab_format, delta_format)
+                TextNote.Create(doc, view.Id, XYZ(ft(face.point[0]), ft(face.point[1]), level_z),
+                                text.replace(u"\n", u"\r"), note_type.Id)
+                result.fills += 1
+            except Exception as ex:
+                result.errors.append(u"заливка плиты {} — {}".format(core.format_height(key), ex))
 
     for index, mark in enumerate(marks):
-        if progress is not None:
-            progress(index, len(marks))
         if not mark.probes:
             result.no_slab.append(mark.name)
             continue
-        text = core.room_label(
-            mark.slab_values(), mark.ceiling_values(), result.typical_mm, step,
-            settings.get("slab_text_format") or u"{h}",
-            settings.get("ceiling_text_format") or u"ПП {h}",
-            settings.get("delta_text_format") or u"Δ {d}",
-        )
-        if not text:
-            continue
-        try:
-            # абзацы текста Revit разделяет «\r»
-            TextNote.Create(doc, view.Id, mark.anchor, text.replace(u"\n", u"\r"), note_type.Id)
-            result.rooms += 1
-        except Exception as ex:
-            result.errors.append(u"{}: подпись — {}".format(mark.name, ex))
-        main = core.main_height(mark.slab_values(), step)
-        if result.typical_mm is not None and main is not None and main != result.typical_mm:
-            result.changed.append((mark.name, main))
-        if core.has_ceiling(mark.ceiling_values()):
+        ceiling = core.has_ceiling(mark.ceiling_values())
+        if mode == "all":
+            text = core.room_label(mark.slab_values(), mark.ceiling_values(), result.typical_mm,
+                                   step, slab_format, ceiling_format, delta_format)
+            main = core.main_height(mark.slab_values(), step)
+            if result.typical_mm is not None and main is not None and main != result.typical_mm:
+                result.changed.append((mark.name, main))
+        else:
+            text = core.ceiling_label(mark.ceiling_values(), step, ceiling_format) if ceiling else u""
+        if text:
+            try:
+                # абзацы текста Revit разделяет «\r»
+                TextNote.Create(doc, view.Id, mark.anchor, text.replace(u"\n", u"\r"), note_type.Id)
+                result.rooms += 1
+            except Exception as ex:
+                result.errors.append(u"{}: подпись — {}".format(mark.name, ex))
+        if ceiling:
             if fill_type is None:
                 result.errors.append(u"{}: в проекте нет типа области заливки".format(mark.name))
                 continue
@@ -889,17 +1160,13 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
             if region is None:
                 result.errors.append(u"{}: область заливки — {}".format(mark.name, error))
                 continue
-            param = region.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
-            if _writable(param):
-                param.Set(u"{} {}".format(REGION_TAG, mark.name))
+            _tag(region, u"{} {}".format(REGION_TAG, mark.name))
             result.ceiling_rooms += 1
-    try:
-        if (settings.get("draw_steps") or "yes") != "no":
-            result.step_stats = draw_steps(doc, view, settings, probe, step_style, progress)
-            result.steps = result.step_stats.drawn
-            result.errors.extend(result.step_stats.errors)
-    except Exception as ex:
-        result.errors.append(u"перепады плиты — {}".format(ex))
+
+    if result.step_stats is not None:
+        draw_step_lines(doc, view, step_segments, step_style, result.step_stats)
+        result.steps = result.step_stats.drawn
+        result.errors.extend(result.step_stats.errors)
     if probe.error is not None:
         result.errors.append(u"луч к перекрытию: {}".format(probe.error))
     return result
