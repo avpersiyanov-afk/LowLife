@@ -103,9 +103,10 @@ class SlabProbe(object):
         self.intersector = None
         self.error = None
         self._cache = {}
-        # Перекрытия, в которые лучи упёрлись как в ближайшие сверху:
-        # {(Id связи или -1 для модели, Id элемента)} — по ним ищутся перепады.
-        self.slab_elements = set()
+        # Перекрытия, в которые лучи упёрлись как в ближайшие сверху, по
+        # уровню, от которого шёл луч: {отметка уровня, мм: {(Id связи или -1
+        # для модели, Id элемента)}} — по ним ищутся перепады (slabs_above).
+        self.slab_elements = {}
 
     def _hide_other_categories(self):
         from Autodesk.Revit.DB import CategoryType
@@ -167,13 +168,21 @@ class SlabProbe(object):
                 hits.append((mm(context.Proximity), kind, key))
         return hits
 
-    def _remember_slab(self, up_hits):
+    def _remember_slab(self, up_hits, level_z):
         best = None
         for distance, kind, key in up_hits:
             if kind == core.SLAB and distance > 0 and (best is None or distance < best[0]):
                 best = (distance, key)
         if best is not None:
-            self.slab_elements.add(best[1])
+            self.slab_elements.setdefault(int(round(mm(level_z))), set()).add(best[1])
+
+    def slabs_above(self, level_z, tolerance):
+        """Перекрытия, найденные лучами от уровней не дальше tolerance (футы) от level_z."""
+        result = set()
+        for level_mm, keys in self.slab_elements.items():
+            if abs(ft(level_mm) - level_z) <= tolerance + ft(1.0):
+                result.update(keys)
+        return result
 
     def probe(self, x, y, origin_z, level_z):
         """core.Probe для точки (x, y) с началом лучей на высоте origin_z (футы) или None."""
@@ -191,7 +200,7 @@ class SlabProbe(object):
         except Exception as ex:
             self.error = ex
             return None
-        self._remember_slab(up)
+        self._remember_slab(up, level_z)
         found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
         self._cache[key] = found
         return found
@@ -286,6 +295,7 @@ class MoveResult(object):
         self.no_slab = []      # извещатели без перекрытия над ними
         self.failed = []       # (извещатель, причина)
         self.under_ceiling = 0  # извещателей над подвесным потолком (для отчёта)
+        self.to_ceiling = 0     # встраиваемых, поставленных на подвесной потолок
 
 
 def _writable(param):
@@ -324,11 +334,16 @@ def _shift(doc, instance, delta_ft):
 
 
 def move_detectors(doc, detectors, settings, probe, progress=None):
-    """Поднять/опустить извещатели на низ перекрытия над ними. Возвращает MoveResult."""
+    """
+    Поднять/опустить извещатели на низ перекрытия над ними; встраиваемые
+    (слово из ceiling_mount_words в имени семейства/типа) — на низ
+    подвесного потолка. Возвращает MoveResult.
+    """
     result = MoveResult()
     levels = plan_levels(doc)
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     offset_mm = settings.get("mount_offset_mm") or 0.0
+    ceiling_words = core.split_words(settings.get("ceiling_mount_words"))
     targets = []
     for index, detector in enumerate(detectors):
         if progress is not None:
@@ -342,9 +357,17 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         if found is None:
             result.no_slab.append(detector)
             continue
-        if found.ceiling_mm is not None:
+        ceiling_mount = bool(ceiling_words) and core.is_detector(_names(detector), ceiling_words, [])
+        surface_mm, skip = core.mount_surface(found, ceiling_mount)
+        if skip:
+            result.failed.append((detector, skip))
+            continue
+        if ceiling_mount:
+            result.to_ceiling += 1
+        elif found.ceiling_mm is not None:
             result.under_ceiling += 1
-        delta_mm = core.move_delta(mm(point.Z), found.slab_z_mm, offset_mm)
+        # встраиваемый — точка вставки ровно в плоскости потолка, без отступа
+        delta_mm = core.move_delta(mm(point.Z), surface_mm, 0.0 if ceiling_mount else offset_mm)
         if abs(delta_mm) < MOVE_TOLERANCE_MM:
             result.already += 1
             continue
@@ -594,15 +617,17 @@ def _solids(geometry, transform):
                 yield nested
 
 
-def slab_bottom_edges(doc, element_keys, bottom_z, top_z):
+def slab_bottom_edges(doc, element_keys, bottom_z):
     """
     Края нижних горизонтальных граней перекрытий из element_keys
-    ({(Id связи или -1, Id элемента)} — SlabProbe.slab_elements: только те
-    плиты, в которые лучи упёрлись как в ближайшее перекрытие сверху), чья
-    отметка между bottom_z и top_z (футы, координаты модели):
-    [(x1, y1, x2, y2, z)] в мм. Все перекрытия связей не перебираются —
-    иначе в кандидаты попадают отделка полов, плиты следующего этажа,
-    пандусы, и поиск перепадов на большой модели длится часами.
+    ({(Id связи или -1, Id элемента)} — SlabProbe.slabs_above: только те
+    плиты, в которые лучи с этого уровня упёрлись как в ближайшее перекрытие
+    сверху), выше bottom_z (футы, координаты модели): [(x1, y1, x2, y2, z)]
+    в мм. Все перекрытия связей не перебираются — иначе в кандидаты попадают
+    отделка полов, плиты следующего этажа, пандусы, и поиск перепадов на
+    большой модели длится часами. Верхней границы нет: плиты уже отобраны
+    лучами, а высокие зоны (двусветные, техпространства) бывают выше
+    следующего уровня.
     """
     options = Options()
     options.DetailLevel = ViewDetailLevel.Fine
@@ -621,7 +646,7 @@ def slab_bottom_edges(doc, element_keys, bottom_z, top_z):
             z1 = transform.OfPoint(bbox.Max).Z
         except Exception:
             continue
-        if max(z0, z1) < bottom_z or min(z0, z1) > top_z:
+        if max(z0, z1) < bottom_z:
             continue
         try:
             geometry = element.get_Geometry(options)
@@ -635,7 +660,7 @@ def slab_bottom_edges(doc, element_keys, bottom_z, top_z):
                 if normal.Z > -0.99:
                     continue
                 z = solid_transform.OfPoint(face.Origin).Z
-                if z < bottom_z or z > top_z:
+                if z < bottom_z:
                     continue
                 for loop in face.EdgeLoops:
                     for edge in loop:
@@ -644,13 +669,6 @@ def slab_bottom_edges(doc, element_keys, bottom_z, top_z):
                         for a, b in zip(points, points[1:]):
                             edges.append((mm(a.X), mm(a.Y), mm(b.X), mm(b.Y), mm(z)))
     return edges
-
-
-def _next_level_z(doc, level_z):
-    for _level, z in plan_levels(doc):
-        if z > level_z + ft(1000.0):
-            return z
-    return level_z + ft(6000.0)
 
 
 def _slab_mm_at(probe, x, y, level_z, probe_ft):
@@ -663,16 +681,18 @@ def draw_steps(doc, view, settings, probe, style):
     Красные линии перепада плиты на плане: по краям нижних граней перекрытий
     над уровнем вида (slab_marks_core.step_segments); каждый кандидат
     проверяется лучами по обе стороны линии — там должны быть перекрытия
-    с разной отметкой. Возвращает (число линий, [ошибки]).
+    с разной отметкой. Возвращает StepStats.
     """
+    stats = StepStats()
     level_z = view.GenLevel.ProjectElevation
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     tol_mm = settings.get("step_search_mm") or 300.0
-    edges = slab_bottom_edges(doc, set(probe.slab_elements),
-                              level_z + probe_ft, _next_level_z(doc, level_z) + probe_ft)
+    slabs = probe.slabs_above(level_z, ft(settings.get("level_tolerance_mm") or 0.0))
+    stats.slabs = len(slabs)
+    edges = slab_bottom_edges(doc, slabs, level_z + probe_ft)
+    stats.edges = len(edges)
     candidates = core.step_segments(edges, tol_mm, STEP_MIN_DZ_MM, STEP_MIN_LEN_MM)
-    count = 0
-    errors = []
+    stats.candidates = len(candidates)
     side = tol_mm + 150.0
     for x1, y1, x2, y2, _dz in candidates:
         length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
@@ -681,16 +701,29 @@ def draw_steps(doc, view, settings, probe, style):
         left = _slab_mm_at(probe, ft(mx + nx), ft(my + ny), level_z, probe_ft)
         right = _slab_mm_at(probe, ft(mx - nx), ft(my - ny), level_z, probe_ft)
         if left is None or right is None or abs(left - right) < STEP_MIN_DZ_MM:
+            stats.rejected += 1
             continue
         try:
             line = Line.CreateBound(XYZ(ft(x1), ft(y1), level_z), XYZ(ft(x2), ft(y2), level_z))
             curve = doc.Create.NewDetailCurve(view, line)
             if style is not None:
                 curve.LineStyle = style
-            count += 1
+            stats.drawn += 1
         except Exception as ex:
-            errors.append(u"линия перепада плиты — {}".format(ex))
-    return count, errors
+            stats.errors.append(u"линия перепада плиты — {}".format(ex))
+    return stats
+
+
+class StepStats(object):
+    """Счётчики поиска перепадов — для отчёта (где отсеялись кандидаты)."""
+
+    def __init__(self):
+        self.slabs = 0        # плит, в которые упёрлись лучи с уровня
+        self.edges = 0        # краёв их нижних граней
+        self.candidates = 0   # пар краёв с разной отметкой рядом в плане
+        self.rejected = 0     # кандидатов, не подтверждённых лучами по сторонам
+        self.drawn = 0
+        self.errors = []
 
 
 class ViewResult(object):
@@ -699,6 +732,7 @@ class ViewResult(object):
         self.rooms = 0
         self.ceiling_rooms = 0
         self.steps = 0
+        self.step_stats = None
         self.typical_mm = None
         self.changed = []      # (помещение, основная высота мм)
         self.no_slab = []      # имена помещений без перекрытия над ними
@@ -774,8 +808,9 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
                 param.Set(u"{} {}".format(REGION_TAG, mark.name))
             result.ceiling_rooms += 1
     try:
-        result.steps, errors = draw_steps(doc, view, settings, probe, step_style)
-        result.errors.extend(errors)
+        result.step_stats = draw_steps(doc, view, settings, probe, step_style)
+        result.steps = result.step_stats.drawn
+        result.errors.extend(result.step_stats.errors)
     except Exception as ex:
         result.errors.append(u"перепады плиты — {}".format(ex))
     if probe.error is not None:

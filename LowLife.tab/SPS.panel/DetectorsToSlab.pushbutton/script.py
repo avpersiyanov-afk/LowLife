@@ -106,6 +106,8 @@ if move_result is not None:
         move_result.moved, move_result.already))
     output.print_md(u"- перенесено на низ перекрытия: {}".format(move_result.moved))
     output.print_md(u"- уже были на перекрытии: {}".format(move_result.already))
+    if move_result.to_ceiling:
+        output.print_md(u"- встраиваемых — на подвесной потолок: {}".format(move_result.to_ceiling))
     if move_result.under_ceiling:
         output.print_md(u"- из них над подвесным потолком: {}".format(move_result.under_ceiling))
     if move_result.no_slab:
@@ -127,6 +129,12 @@ for result in view_results:
         result.rooms, result.ceiling_rooms, result.steps))
     lines.append(u"«{}»: помещений {}, ПП {}, перепадов {}".format(
         result.view.Name, result.rooms, result.ceiling_rooms, result.steps))
+    stats = result.step_stats
+    if stats is not None:
+        output.print_md(
+            u"- поиск перепадов: плит под лучами {}, краёв нижних граней {}, кандидатов {}, "
+            u"не подтверждено лучами {}, нарисовано {}".format(
+                stats.slabs, stats.edges, stats.candidates, stats.rejected, stats.drawn))
     if result.changed:
         output.print_md(u"- перекрытие отличается от типового (помещений: {}):".format(len(result.changed)))
         for height, names in slab_marks.core.group_by_height(result.changed):
