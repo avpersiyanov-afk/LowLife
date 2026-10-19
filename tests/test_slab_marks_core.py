@@ -139,3 +139,23 @@ def test_mount_surface():
     words = core.split_words(u"встраив")
     assert core.is_detector([u"ИП 212", u"Дымовой встраиваемый"], words, [])
     assert not core.is_detector([u"ИП 212", u"Дымовой"], words, [])
+
+
+def test_opening_slab_z():
+    # точка над шахтой: сверху плита через этаж, вокруг — плита этажа
+    assert core.opening_slab_z(9600.0, [3300.0, 3300.0, 3310.0, 3300.0]) == 3310.0
+    # высокая зона: хотя бы с одной стороны та же высота — не отверстие
+    assert core.opening_slab_z(7650.0, [7650.0, 4800.0, 4800.0, 4800.0]) is None
+    # край здания: перекрытие найдено меньше чем в двух точках
+    assert core.opening_slab_z(9600.0, [None, None, None, 3300.0]) is None
+    assert core.opening_slab_z(9600.0, [None, 3300.0, None, 3300.0]) == 3300.0
+
+
+def test_replace_slab():
+    found = core.probe(1500.0, [(1200.0, core.CEILING), (8000.0, core.SLAB)], [], 0.0)
+    fixed = core.replace_slab(found, 3300.0)
+    assert fixed.slab_mm == 3300.0 and fixed.through_opening
+    assert fixed.ceiling_mm == 2700.0
+    # потолок выше плиты вокруг отверстия — это потолок другого этажа
+    high = core.probe(1500.0, [(5000.0, core.CEILING), (8000.0, core.SLAB)], [], 0.0)
+    assert core.replace_slab(high, 3300.0).ceiling_mm is None

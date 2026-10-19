@@ -77,7 +77,7 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
             bar.update_progress(index, total)
 
     with revit.Transaction(TITLE):
-        probe = slab_marks.SlabProbe(doc)
+        probe = slab_marks.SlabProbe(doc, settings.get("opening_size_mm"))
         try:
             if detectors:
                 started = time.time()
@@ -147,6 +147,11 @@ for result in view_results:
         output.print_md(u"- без перекрытия над ними: " + u", ".join(result.no_slab))
     for error in result.errors:
         output.print_md(u"- ошибка: " + error)
+
+if probe.openings:
+    output.print_md(u"### Отверстия в перекрытиях")
+    output.print_md(
+        u"- точек над отверстиями: {} — высота взята по перекрытию вокруг отверстия".format(probe.openings))
 
 if timings:
     output.print_md(u"### Время")
