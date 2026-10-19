@@ -1958,9 +1958,12 @@ system_prompt=...)`: системный промпт передаётся пар
 `tests/test_greeting.py`.
 
 `greeting_window.py` — само окно: `show(uiapp)` (кнопка) и
-`show_on_startup(uiapp)` из `hooks/app-init.py` — приветствие при каждом
-запуске Revit, на первом `Idling`, один раз за сеанс (флаг в `AppDomain`,
-перезагрузка pyRevit его не повторяет).
+`show_on_startup(uiapp)` из `hooks/app-init.py` — приветствие при запуске
+Revit, на первом `Idling`, один раз за сеанс (флаг в `AppDomain`,
+перезагрузка pyRevit его не повторяет), и только если включено галочкой
+«Показывать приветствие при запуске Revit» в окне «О программе»
+(`startup_enabled`/`set_startup_enabled`, ключ `show_on_startup` в
+`LowLifeGreeting_settings.json`; по умолчанию выключено).
 
 ## spellcheck_core.py / spellcheck.py / spellcheck_settings.py
 Кнопка «Проверка орфографии» (`Tools.panel/SpellCheck`), подробности —

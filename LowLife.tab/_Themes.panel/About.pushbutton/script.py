@@ -15,7 +15,7 @@ from System.Diagnostics import Process, ProcessStartInfo
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage
 from pyrevit import forms
 
-from lowlife import about, wordmark_wpf
+from lowlife import about, greeting_window, wordmark_wpf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -64,6 +64,9 @@ class AboutWindow(forms.WPFWindow):
         self.license_run.Text = about.LICENSE_TEXT
         self.license_link.Click += lambda s, e: _open_url(about.LICENSE_URL)
         self.copyright_tb.Text = about.COPYRIGHT
+        self.greeting_cb.IsChecked = greeting_window.startup_enabled()
+        self.greeting_cb.Checked += lambda s, e: greeting_window.set_startup_enabled(True)
+        self.greeting_cb.Unchecked += lambda s, e: greeting_window.set_startup_enabled(False)
         self.close_btn.Click += lambda s, e: self.Close()
 
 

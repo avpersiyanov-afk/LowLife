@@ -5,7 +5,9 @@
 домой, днём в будни — шутка про опоздание, а утром в будни — приятное пожелание. Текст — greeting.greeting_lines и greeting.extra_line.
 
 show(uiapp) — показать сейчас (кнопка). show_on_startup(uiapp) — показать
-при запуске Revit (hooks/app-init.py): на первом Idling, когда интерфейс
+при запуске Revit (hooks/app-init.py), только если включена галочка
+«Показывать приветствие при запуске Revit» в окне «О программе»
+(startup_enabled/set_startup_enabled, по умолчанию выключено): на первом Idling, когда интерфейс
 уже загружен, и один раз за сеанс Revit (флаг в AppDomain — перезагрузка
 pyRevit приветствие не повторяет).
 """
@@ -23,12 +25,29 @@ from System.Windows.Controls import Border, StackPanel, TextBlock
 from System.Windows.Input import Key
 from System.Windows.Media import Brushes, Color, FontFamily, SolidColorBrush
 
-from lowlife import greeting
+from lowlife import greeting, settings_core
 
 ORANGE = SolidColorBrush(Color.FromRgb(0xF0, 0x8C, 0x28))
 RED = SolidColorBrush(Color.FromRgb(0xE5, 0x1C, 0x23))
 
 _STARTUP_KEY = "lowlife_greeting_shown"
+
+_STORE = settings_core.JsonStore("LowLifeGreeting_settings.json", u"приветствия", share=False)
+_ENABLED_KEY = "show_on_startup"
+
+
+def startup_enabled():
+    """Показывать ли приветствие при запуске Revit (по умолчанию — нет)."""
+    try:
+        return bool(_STORE.read().get(_ENABLED_KEY, False))
+    except Exception:
+        return False
+
+
+def set_startup_enabled(value):
+    data = dict(_STORE.read())
+    data[_ENABLED_KEY] = bool(value)
+    return _STORE.write(data)
 
 
 def _user_name(uiapp):
@@ -117,6 +136,8 @@ def _first_time_this_session():
 
 
 def show_on_startup(uiapp):
+    if not startup_enabled():
+        return
     if not _first_time_this_session():
         return
     if uiapp is None:
