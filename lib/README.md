@@ -1697,6 +1697,39 @@ room_number_param)` — запись по точкам прохода, возв�
 
 `slab_marks_core.py` покрыт `tests/test_slab_marks_core.py`.
 
+## detector_access_core.py / detector_access.py / detector_access_settings.py
+
+Кнопка «Доступ к извещателям» (`SPS.panel/DetectorAccess`, инструкция —
+`docs/detector-access.md`). Вызывать внутри одной транзакции (лучи —
+`slab_marks.SlabProbe`, его `close()` удаляет временный 3D-вид).
+
+- **`assess(doc, detectors, settings, probe)`** → `([Check], [(извещатель, причина)],
+  [не найденные категории])`. Извещатели группируются по уровню; на каждый уровень
+  препятствия собираются один раз (`collect_obstacles`: модель и связи,
+  `ElementMulticategoryFilter` категорий `OBSTACLE_CATEGORIES` + имена из
+  `extra_obstacle_categories`, `BoundingBoxIntersectsFilter` по коробке вокруг
+  извещателей уровня). Прямые участки сетей (`MEPCurve` с линией) — прямоугольник
+  вокруг оси шириной сечения + изоляция, остальное — выпуклая оболочка габарита.
+  Лучи (`SlabProbe.probe`) дают пол (`Probe.floor_found`), перекрытие и подвесной
+  потолок; помещение — `RoomLocator` (помещения связей и модели, `IsPointInRoom`).
+- **`Check`** — `status` (`detector_access_core.OK/BLOCKED/NO_FLOOR/ABOVE_CEILING/
+  TOO_HIGH/NOT_MOUNTED/NO_SLAB/NEAR_WALL`), `wall_mm`, `reason`, `zone_blockers`/`detector_blockers`
+  (`core.Obstacle`), `height_mm`, `room`, `spot` — новое место (футы) для
+  `BLOCKED`/`NO_FLOOR`: `core.find_spot` кольцами вокруг, `accept` проверяет то же
+  помещение, пол и ту же поверхность установки (`core.same_surface`); новое место
+  не ближе `min_wall_distance_mm` к границе помещения (`allowed`).
+- **Расстояние до стены** — `_RoomEntry.wall_distance`: до отрезков
+  `GetBoundarySegments` помещения (`core.segments_distance`); ближе
+  `min_wall_distance_mm` — `NEAR_WALL` (у перекрытого — вторая причина в `reason`).
+- **`draw(doc, view, checks, settings, note_type, line_styles)`** — на плане с уровнем:
+  круги зоны доступа (стили `ZONE_STYLE`/`BLOCKED_STYLE`), подпись причины, у
+  нового места — круг, стрелка (`MOVE_STYLE`) и подпись; стили — через
+  `slab_marks.line_style`, тип текста `TEXT_TYPE_NAME` — `slab_marks.text_type`.
+  Повторный запуск удаляет на виде подписи этого типа и линии этих стилей (`clear_view`).
+
+`detector_access_core.py` (многоугольники в плане, `ObstacleIndex`, `blockers`,
+`classify`, `ring_offsets`/`find_spot`, тексты) покрыт `tests/test_detector_access_core.py`.
+
 ## fire_alarm.py
 Константы и разбор адресов для **СПС и СОУЭ** (`SPS.panel`/`SOUE.panel`).
 Отличие от СКС/СКУД: отдельных маркеров узлов нет — узлом шлейфа служит
