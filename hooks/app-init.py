@@ -41,7 +41,8 @@ try:
 except Exception:
     pass
 
-# Приветствие (кнопка Tools.panel/Greeting) при каждом запуске Revit —
+# Приветствие (кнопка Tools.panel/Greeting) при запуске Revit — только если
+# включено галочкой в «О программе» (по умолчанию выключено);
 # отдельный try, чтобы не мешать авто-режиму выгрузки выше.
 try:
     from lowlife import greeting_window
