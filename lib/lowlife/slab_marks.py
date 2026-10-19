@@ -574,8 +574,11 @@ def _room_level_z(source, room):
     return source.transform.OfPoint(XYZ(0, 0, z)).Z
 
 
-def _room_points(room, level_z_link, probe_ft):
-    """Точки внутри помещения (координаты его документа): точка помещения + сетка до 3×3."""
+def _room_points(room, level_z_link, probe_ft, max_grid=3, max_points=None):
+    """
+    Точки внутри помещения (координаты его документа): точка помещения +
+    сетка до max_grid×max_grid; не больше max_points (точка помещения — первой).
+    """
     test_z = level_z_link + min(probe_ft, ft(1000.0))
     points = []
     try:
@@ -587,8 +590,8 @@ def _room_points(room, level_z_link, probe_ft):
     bbox = room.get_BoundingBox(None)
     if bbox is None:
         return points
-    nx = core.grid_steps(mm(bbox.Max.X - bbox.Min.X))
-    ny = core.grid_steps(mm(bbox.Max.Y - bbox.Min.Y))
+    nx = core.grid_steps(mm(bbox.Max.X - bbox.Min.X), max_grid)
+    ny = core.grid_steps(mm(bbox.Max.Y - bbox.Min.Y), max_grid)
     for i in range(nx):
         for j in range(ny):
             x = bbox.Min.X + (bbox.Max.X - bbox.Min.X) * (i + 0.5) / nx
@@ -599,7 +602,7 @@ def _room_points(room, level_z_link, probe_ft):
                     points.append(point)
             except Exception:
                 pass
-    return points
+    return points if max_points is None else points[:max_points]
 
 
 def _boundary_loops(room, transform, z):
@@ -848,6 +851,9 @@ MIN_FILL_AREA_MM2 = 0.5e6
 # грань закрыта более низкой плитой, не заливается.
 FACE_MATCH_MM = 30.0
 
+# Точек проверки на помещение, когда в помещениях подписываются только ПП.
+ROOM_POINTS_CEILING_ONLY = 3
+
 # Цвета штриховки по отметкам (красный — у линий перепада).
 FILL_COLORS = [
     (0, 114, 189), (60, 160, 60), (240, 140, 40), (126, 47, 142), (0, 170, 200),
@@ -1041,13 +1047,16 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
                     result.excluded_rooms += 1
                     continue
                 rooms.append((source, room, room_z))
+    # Для одних ПП хватает 1–3 точек (точка помещения + сетка 2×2 в больших),
+    # для подписей перекрытия во всех помещениях — до 10 (сетка 3×3).
+    grid, limit = (3, None) if mode == "all" else (2, ROOM_POINTS_CEILING_ONLY)
     marks = []
     for index, (source, room, room_z) in enumerate(rooms):
         if progress is not None:
             progress(index, len(rooms))
         link_level_z = source.doc.GetElement(room.LevelId).ProjectElevation
         mark = RoomMark(source, room, room_name(room))
-        for point in _room_points(room, link_level_z, probe_ft):
+        for point in _room_points(room, link_level_z, probe_ft, grid, limit):
             host = source.transform.OfPoint(point)
             found = probe.probe(host.X, host.Y, room_z + probe_ft, room_z)
             if mark.anchor is None:
