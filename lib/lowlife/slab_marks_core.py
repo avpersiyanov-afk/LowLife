@@ -210,6 +210,7 @@ def step_segments(edges, plan_tol_mm, z_step_mm, min_len_mm=100.0, angle_deg=2.0
     больше. Возвращает [(x1, y1, x2, y2, dz)] — средняя линия общего
     участка, dz — разница отметок (вторая минус первая).
     """
+    import bisect
     import math
     sin_tol = math.sin(math.radians(angle_deg))
     prepared = []
@@ -221,14 +222,35 @@ def step_segments(edges, plan_tol_mm, z_step_mm, min_len_mm=100.0, angle_deg=2.0
                          x1, y1, x2, y2, z, length))
     prepared.sort(key=lambda e: e[0])
 
+    # Сравниваются только почти параллельные края: корзины по направлению
+    # (градусы 0–179, края сравниваются со своей и соседними корзинами),
+    # внутри корзины — по возрастанию x (дальше по x — уже не пересекутся).
+    def bucket_of(e):
+        angle = math.degrees(math.atan2(e[7] - e[5], e[6] - e[4])) % 180.0
+        return int(angle // max(1.0, angle_deg)) % int(180.0 // max(1.0, angle_deg))
+
+    bucket_count = int(180.0 // max(1.0, angle_deg))
+    buckets = {}
+    for index, e in enumerate(prepared):
+        buckets.setdefault(bucket_of(e), []).append((e[0], index))
+
     result = []
     seen = set()
     for i, a in enumerate(prepared):
         ax0, ax1, ay0, ay1, x1, y1, x2, y2, za, la = a
         ux, uy = (x2 - x1) / la, (y2 - y1) / la
-        for b in prepared[i + 1:]:
-            if b[0] > ax1 + plan_tol_mm:
-                break
+        own = bucket_of(a)
+        others = []
+        for b_key in set(((own - 1) % bucket_count, own, (own + 1) % bucket_count)):
+            members = buckets.get(b_key, [])
+            start = bisect.bisect_left(members, (ax0, i + 1))
+            for x0, j in members[start:]:
+                if x0 > ax1 + plan_tol_mm:
+                    break
+                if j > i:
+                    others.append(j)
+        for j in sorted(others):
+            b = prepared[j]
             bx0, bx1, by0, by1, bx1_, by1_, bx2_, by2_, zb, lb = b
             if by0 > ay1 + plan_tol_mm or by1 < ay0 - plan_tol_mm:
                 continue
@@ -255,4 +277,21 @@ def step_segments(edges, plan_tol_mm, z_step_mm, min_len_mm=100.0, angle_deg=2.0
                 continue
             seen.add(key)
             result.append((p[0], p[1], q[0], q[1], zb - za))
+    return result
+
+
+def group_by_height(changed):
+    """
+    [(имя помещения, высота мм)] → [(высота, [(имя, сколько)])] по
+    возрастанию высоты, имена — по убыванию количества, затем по алфавиту.
+    Для отчёта: сотни помещений с одной высотой — одна строка.
+    """
+    groups = {}
+    for name, height in changed:
+        names = groups.setdefault(height, {})
+        names[name] = names.get(name, 0) + 1
+    result = []
+    for height in sorted(groups):
+        names = sorted(groups[height].items(), key=lambda item: (-item[1], item[0]))
+        result.append((height, names))
     return result

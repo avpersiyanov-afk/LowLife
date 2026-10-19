@@ -104,3 +104,25 @@ def test_step_segments_gap_midline_and_filters():
     assert core.step_segments([(0, 0, 0, 3000, 3300), (100, 0, 100, 3000, 3305)], 300, 20) == []
     assert core.step_segments([(0, 0, 0, 3000, 3300), (500, 0, 500, 3000, 3600)], 300, 20) == []
     assert core.step_segments([(0, 0, 0, 3000, 3300), (0, 0, 3000, 3000, 3600)], 300, 20) == []
+
+
+def test_step_segments_many_edges_angle_buckets():
+    # сетка параллельных краёв: перепад находится только между соседями с разной отметкой
+    edges = []
+    for i in range(50):
+        z = 3300 if i < 25 else 3750
+        edges.append((i * 1000.0, 0.0, i * 1000.0, 3000.0, z))
+        edges.append((0.0, 10000.0 + i * 1000.0, 3000.0, 10000.0 + i * 1000.0, 3300))
+    # край почти по оси (наклон <1°) рядом с краем другой отметки
+    edges.append((24100.0, 0.0, 24110.0, 3000.0, 3750))
+    steps = core.step_segments(edges, 300, 20)
+    assert len(steps) == 1
+    assert 24000 <= steps[0][0] <= 24110
+
+
+def test_group_by_height():
+    changed = [(u"Кладовая", 7010), (u"Помещение", 7010), (u"Кладовая", 7010), (u"ГРЩ", 3600)]
+    assert core.group_by_height(changed) == [
+        (3600, [(u"ГРЩ", 1)]),
+        (7010, [(u"Кладовая", 2), (u"Помещение", 1)]),
+    ]

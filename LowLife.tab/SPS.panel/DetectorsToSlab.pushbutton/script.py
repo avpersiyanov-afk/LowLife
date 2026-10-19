@@ -128,11 +128,13 @@ for result in view_results:
     lines.append(u"«{}»: помещений {}, ПП {}, перепадов {}".format(
         result.view.Name, result.rooms, result.ceiling_rooms, result.steps))
     if result.changed:
-        output.print_md(u"- перекрытие отличается от типового:")
-        for name, height in sorted(result.changed, key=lambda item: item[1]):
-            output.print_md(u"    - {}: {} (Δ {})".format(
-                name or u"без имени", slab_marks.core.format_height(height),
-                slab_marks.core.format_height(height - result.typical_mm)))
+        output.print_md(u"- перекрытие отличается от типового (помещений: {}):".format(len(result.changed)))
+        for height, names in slab_marks.core.group_by_height(result.changed):
+            output.print_md(u"    - {} (Δ {}): {}".format(
+                slab_marks.core.format_height(height),
+                slab_marks.core.format_height(height - result.typical_mm),
+                u", ".join(u"{} ×{}".format(name or u"без имени", count) if count > 1
+                           else (name or u"без имени") for name, count in names)))
     if result.no_slab:
         output.print_md(u"- без перекрытия над ними: " + u", ".join(result.no_slab))
     for error in result.errors:
