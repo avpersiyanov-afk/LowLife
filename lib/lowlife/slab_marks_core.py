@@ -1,0 +1,191 @@
+# -*- coding: utf-8 -*-
+"""
+Чистая логика кнопки «Извещатели на перекрытие» (SPS.panel/DetectorsToSlab):
+разбор попаданий луча вверх/вниз, высоты от пола, подписи отметок и
+отклонение от типовой высоты этажа. Revit-часть — slab_marks.py, настройки —
+slab_marks_settings.py. Без Revit API, покрыт tests/test_slab_marks_core.py.
+
+Все длины здесь — в миллиметрах.
+"""
+
+try:
+    unicode
+except NameError:
+    unicode = str
+
+
+SLAB = "slab"          # перекрытие/покрытие (категории «Перекрытия», «Крыши»)
+CEILING = "ceiling"    # подвесной потолок (категория «Потолки»)
+
+
+class Probe(object):
+    """
+    Что над/под точкой: высота низа перекрытия от пола (slab_mm), высота
+    подвесного потолка от пола (ceiling_mm — None, если потолка под
+    перекрытием нет) и отметка пола (floor_z_mm — в координатах модели).
+    """
+
+    def __init__(self, slab_mm, ceiling_mm, floor_z_mm, slab_z_mm):
+        self.slab_mm = slab_mm
+        self.ceiling_mm = ceiling_mm
+        self.floor_z_mm = floor_z_mm
+        self.slab_z_mm = slab_z_mm
+
+
+def nearest(hits, kind):
+    """Наименьшее расстояние среди попаданий [(расстояние, вид)] нужного вида или None."""
+    best = None
+    for distance, hit_kind in hits:
+        if hit_kind != kind or distance is None or distance <= 0:
+            continue
+        if best is None or distance < best:
+            best = distance
+    return best
+
+
+def probe(origin_z_mm, up_hits, down_hits, level_z_mm):
+    """
+    Probe по попаданиям лучей из точки на высоте origin_z_mm: up_hits —
+    вверх, down_hits — вниз, [(расстояние в мм, SLAB/CEILING/None)].
+    Пол — ближайшее перекрытие снизу (нет — отметка уровня level_z_mm).
+    Нет перекрытия сверху — None.
+    """
+    slab_up = nearest(up_hits, SLAB)
+    if slab_up is None:
+        return None
+    floor_down = nearest(down_hits, SLAB)
+    floor_z = origin_z_mm - floor_down if floor_down is not None else level_z_mm
+    slab_z = origin_z_mm + slab_up
+    ceiling_up = nearest(up_hits, CEILING)
+    ceiling_mm = None
+    if ceiling_up is not None and ceiling_up < slab_up:
+        ceiling_mm = origin_z_mm + ceiling_up - floor_z
+    return Probe(slab_z - floor_z, ceiling_mm, floor_z, slab_z)
+
+
+def round_to(value_mm, step_mm):
+    """Округление до шага step_mm (не меньше 1 мм)."""
+    step = max(1.0, float(step_mm or 1.0))
+    return round(float(value_mm) / step) * step
+
+
+def format_height(value_mm, signed=True):
+    """3300 → «+3,300» (метры, три знака, запятая — как отметки по ГОСТ 21.101)."""
+    meters = float(value_mm) / 1000.0
+    text = u"{:.3f}".format(abs(meters)).replace(u".", u",")
+    if not signed:
+        return text
+    if abs(meters) < 0.0005:
+        return u"±" + text
+    return (u"+" if meters > 0 else u"-") + text
+
+
+def distinct_heights(values_mm, step_mm):
+    """Разные округлённые высоты по возрастанию (None пропускаются)."""
+    result = set()
+    for value in values_mm:
+        if value is not None:
+            result.add(round_to(value, step_mm))
+    return sorted(result)
+
+
+def height_range_text(values_mm, step_mm):
+    """«+3,300» или «+3,300…+3,750» для набора высот; пусто — нет высот."""
+    heights = distinct_heights(values_mm, step_mm)
+    if not heights:
+        return u""
+    if len(heights) == 1:
+        return format_height(heights[0])
+    return u"{}…{}".format(format_height(heights[0]), format_height(heights[-1]))
+
+
+def main_height(values_mm, step_mm):
+    """Чаще всего встречающаяся округлённая высота (при равенстве — меньшая) или None."""
+    counts = {}
+    for value in values_mm:
+        if value is None:
+            continue
+        key = round_to(value, step_mm)
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return None
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def typical_height(room_heights, step_mm):
+    """
+    Типовая высота перекрытия на виде: самая частая основная высота
+    помещений. room_heights — [основная высота помещения или None].
+    """
+    return main_height(room_heights, step_mm)
+
+
+def _fill(template, **values):
+    try:
+        return unicode(template).format(**values)
+    except Exception:
+        return unicode(template) + u" " + u" ".join(values[k] for k in sorted(values))
+
+
+def room_label(slab_values, ceiling_values, typical_mm, step_mm,
+               slab_format, ceiling_format, delta_format):
+    """
+    Текст подписи помещения (строки через перевод строки) или пусто:
+      «Пер. +3,300» (или диапазон) — высота низа перекрытия от пола;
+      «Δ +0,450» — если основная высота помещения отличается от типовой;
+      «ПП +2,700» — если есть подвесной потолок.
+    """
+    lines = []
+    slab_text = height_range_text(slab_values, step_mm)
+    if slab_text:
+        lines.append(_fill(slab_format, h=slab_text))
+        main = main_height(slab_values, step_mm)
+        if typical_mm is not None and main is not None and main != typical_mm:
+            lines.append(_fill(delta_format, d=format_height(main - typical_mm)))
+    ceiling_text = height_range_text(ceiling_values, step_mm)
+    if ceiling_text:
+        lines.append(_fill(ceiling_format, h=ceiling_text))
+    return u"\n".join(lines)
+
+
+def has_ceiling(ceiling_values):
+    """Подвесной потолок есть хотя бы в одной точке помещения."""
+    return any(value is not None for value in ceiling_values)
+
+
+def split_words(text):
+    """«дым, тепл;пламен» → ['дым', 'тепл', 'пламен'] (нижний регистр, ё → е)."""
+    result = []
+    for chunk in (text or u"").replace(u";", u",").replace(u"\n", u",").split(u","):
+        word = chunk.strip().lower().replace(u"ё", u"е")
+        if word and word not in result:
+            result.append(word)
+    return result
+
+
+def is_detector(names, include_words, exclude_words):
+    """
+    Подходит ли устройство по именам семейства/типа: есть хотя бы одно слово
+    из include_words (пустой список — подходит любое) и нет ни одного из
+    exclude_words. Без учёта регистра.
+    """
+    text = u" ".join(unicode(n or u"") for n in names).lower().replace(u"ё", u"е")
+    if any(word in text for word in exclude_words):
+        return False
+    if not include_words:
+        return True
+    return any(word in text for word in include_words)
+
+
+def move_delta(current_z_mm, slab_z_mm, offset_mm):
+    """Сдвиг по Z, чтобы точка вставки встала на offset_mm ниже низа перекрытия."""
+    return (slab_z_mm - float(offset_mm or 0.0)) - current_z_mm
+
+
+def grid_steps(size_mm, max_count=3, min_cell_mm=3000.0):
+    """
+    Сколько точек проверки брать по одной стороне помещения: 1 для
+    небольших, до max_count для больших (не чаще одной на min_cell_mm).
+    """
+    count = int(float(size_mm) // float(min_cell_mm)) + 1
+    return max(1, min(max_count, count))
