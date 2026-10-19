@@ -103,6 +103,9 @@ class SlabProbe(object):
         self.intersector = None
         self.error = None
         self._cache = {}
+        # Перекрытия, в которые лучи упёрлись как в ближайшие сверху:
+        # {(Id связи или -1 для модели, Id элемента)} — по ним ищутся перепады.
+        self.slab_elements = set()
 
     def _hide_other_categories(self):
         from Autodesk.Revit.DB import CategoryType
@@ -141,24 +144,36 @@ class SlabProbe(object):
         self.intersector.FindReferencesInRevitLinks = True
 
     def _kind(self, reference):
+        """(вид попадания или None, ключ элемента (Id связи или -1, Id элемента))."""
         element = self.doc.GetElement(reference.ElementId)
+        key = (-1, reference.ElementId.IntegerValue)
         if reference.LinkedElementId != ElementId.InvalidElementId:
+            key = (reference.ElementId.IntegerValue, reference.LinkedElementId.IntegerValue)
             try:
                 element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
             except Exception:
-                return None
+                return None, key
         try:
-            return self._KINDS.get(element.Category.Id.IntegerValue)
+            return self._KINDS.get(element.Category.Id.IntegerValue), key
         except Exception:
-            return None
+            return None, key
 
     def _hits(self, origin, direction):
+        """[(расстояние мм, вид, ключ элемента)]."""
         hits = []
         for context in self.intersector.Find(origin, direction):
-            kind = self._kind(context.GetReference())
+            kind, key = self._kind(context.GetReference())
             if kind is not None:
-                hits.append((mm(context.Proximity), kind))
+                hits.append((mm(context.Proximity), kind, key))
         return hits
+
+    def _remember_slab(self, up_hits):
+        best = None
+        for distance, kind, key in up_hits:
+            if kind == core.SLAB and distance > 0 and (best is None or distance < best[0]):
+                best = (distance, key)
+        if best is not None:
+            self.slab_elements.add(best[1])
 
     def probe(self, x, y, origin_z, level_z):
         """core.Probe для точки (x, y) с началом лучей на высоте origin_z (футы) или None."""
@@ -176,7 +191,8 @@ class SlabProbe(object):
         except Exception as ex:
             self.error = ex
             return None
-        found = core.probe(mm(origin_z), up, down, mm(level_z))
+        self._remember_slab(up)
+        found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
         self._cache[key] = found
         return found
 
@@ -554,15 +570,15 @@ def _filled_region(doc, view, region_type_id, room, transform, z):
 # ------------------------------------------------------------
 
 def _model_sources(doc):
-    """[(документ, преобразование в координаты модели)]: сама модель и загруженные связи."""
-    sources = [(doc, Transform.Identity)]
+    """{Id связи или -1: (документ, преобразование в координаты модели)}."""
+    sources = {-1: (doc, Transform.Identity)}
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         try:
             link_doc = link.GetLinkDocument()
         except Exception:
             link_doc = None
         if link_doc is not None:
-            sources.append((link_doc, link.GetTotalTransform()))
+            sources[link.Id.IntegerValue] = (link_doc, link.GetTotalTransform())
     return sources
 
 
@@ -578,48 +594,55 @@ def _solids(geometry, transform):
                 yield nested
 
 
-def slab_bottom_edges(doc, bottom_z, top_z):
+def slab_bottom_edges(doc, element_keys, bottom_z, top_z):
     """
-    Края нижних горизонтальных граней перекрытий/крыш модели и связей,
-    чья отметка между bottom_z и top_z (футы, координаты модели):
-    [(x1, y1, x2, y2, z)] в мм.
+    Края нижних горизонтальных граней перекрытий из element_keys
+    ({(Id связи или -1, Id элемента)} — SlabProbe.slab_elements: только те
+    плиты, в которые лучи упёрлись как в ближайшее перекрытие сверху), чья
+    отметка между bottom_z и top_z (футы, координаты модели):
+    [(x1, y1, x2, y2, z)] в мм. Все перекрытия связей не перебираются —
+    иначе в кандидаты попадают отделка полов, плиты следующего этажа,
+    пандусы, и поиск перепадов на большой модели длится часами.
     """
     options = Options()
     options.DetailLevel = ViewDetailLevel.Fine
+    sources = _model_sources(doc)
     edges = []
-    for source_doc, transform in _model_sources(doc):
-        for category in (BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs):
-            collector = (FilteredElementCollector(source_doc).OfCategory(category)
-                         .WhereElementIsNotElementType())
-            for element in collector:
-                try:
-                    bbox = element.get_BoundingBox(None)
-                    z0 = transform.OfPoint(bbox.Min).Z
-                    z1 = transform.OfPoint(bbox.Max).Z
-                except Exception:
+    for source_key, element_id in sorted(element_keys):
+        if source_key not in sources:
+            continue
+        source_doc, transform = sources[source_key]
+        element = source_doc.GetElement(ElementId(element_id))
+        if element is None:
+            continue
+        try:
+            bbox = element.get_BoundingBox(None)
+            z0 = transform.OfPoint(bbox.Min).Z
+            z1 = transform.OfPoint(bbox.Max).Z
+        except Exception:
+            continue
+        if max(z0, z1) < bottom_z or min(z0, z1) > top_z:
+            continue
+        try:
+            geometry = element.get_Geometry(options)
+        except Exception:
+            continue
+        for solid, solid_transform in _solids(geometry, transform):
+            for face in solid.Faces:
+                if not isinstance(face, PlanarFace):
                     continue
-                if max(z0, z1) < bottom_z or min(z0, z1) > top_z:
+                normal = solid_transform.OfVector(face.FaceNormal)
+                if normal.Z > -0.99:
                     continue
-                try:
-                    geometry = element.get_Geometry(options)
-                except Exception:
+                z = solid_transform.OfPoint(face.Origin).Z
+                if z < bottom_z or z > top_z:
                     continue
-                for solid, solid_transform in _solids(geometry, transform):
-                    for face in solid.Faces:
-                        if not isinstance(face, PlanarFace):
-                            continue
-                        normal = solid_transform.OfVector(face.FaceNormal)
-                        if normal.Z > -0.99:
-                            continue
-                        z = solid_transform.OfPoint(face.Origin).Z
-                        if z < bottom_z or z > top_z:
-                            continue
-                        for loop in face.EdgeLoops:
-                            for edge in loop:
-                                points = [solid_transform.OfPoint(p)
-                                          for p in edge.AsCurve().Tessellate()]
-                                for a, b in zip(points, points[1:]):
-                                    edges.append((mm(a.X), mm(a.Y), mm(b.X), mm(b.Y), mm(z)))
+                for loop in face.EdgeLoops:
+                    for edge in loop:
+                        points = [solid_transform.OfPoint(p)
+                                  for p in edge.AsCurve().Tessellate()]
+                        for a, b in zip(points, points[1:]):
+                            edges.append((mm(a.X), mm(a.Y), mm(b.X), mm(b.Y), mm(z)))
     return edges
 
 
@@ -645,7 +668,8 @@ def draw_steps(doc, view, settings, probe, style):
     level_z = view.GenLevel.ProjectElevation
     probe_ft = ft(settings.get("probe_height_mm") or 1500.0)
     tol_mm = settings.get("step_search_mm") or 300.0
-    edges = slab_bottom_edges(doc, level_z + probe_ft, _next_level_z(doc, level_z) + probe_ft)
+    edges = slab_bottom_edges(doc, set(probe.slab_elements),
+                              level_z + probe_ft, _next_level_z(doc, level_z) + probe_ft)
     candidates = core.step_segments(edges, tol_mm, STEP_MIN_DZ_MM, STEP_MIN_LEN_MM)
     count = 0
     errors = []
