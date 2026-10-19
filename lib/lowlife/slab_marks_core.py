@@ -414,3 +414,132 @@ def split_segment(segment, piece_mm=3000.0, max_pieces=8):
         pieces.append((x1 + (x2 - x1) * a, y1 + (y2 - y1) * a,
                        x1 + (x2 - x1) * b, y1 + (y2 - y1) * b, dz))
     return pieces
+
+
+# ------------------------------------------------------------
+# Заливки плит: многоугольники нижних граней перекрытий
+# ------------------------------------------------------------
+
+def polygon_area(points):
+    """Площадь многоугольника [(x, y)] со знаком (против часовой — плюс)."""
+    area = 0.0
+    n = len(points)
+    for i in range(n):
+        x1, y1 = points[i]
+        x2, y2 = points[(i + 1) % n]
+        area += x1 * y2 - x2 * y1
+    return area / 2.0
+
+
+def point_in_polygon(x, y, points):
+    inside = False
+    n = len(points)
+    j = n - 1
+    for i in range(n):
+        xi, yi = points[i]
+        xj, yj = points[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def split_outer(loops):
+    """[[(x, y)]] → (внешний контур — наибольший по площади, [отверстия])."""
+    loops = [loop for loop in loops if len(loop) >= 3]
+    if not loops:
+        return None, []
+    ordered = sorted(loops, key=lambda loop: -abs(polygon_area(loop)))
+    return ordered[0], ordered[1:]
+
+
+def region_area(outer, holes):
+    """Площадь контура без отверстий (мм²)."""
+    return abs(polygon_area(outer)) - sum(abs(polygon_area(h)) for h in holes)
+
+
+def _inside_region(x, y, outer, holes):
+    return point_in_polygon(x, y, outer) and not any(point_in_polygon(x, y, h) for h in holes)
+
+
+def interior_point(outer, holes, grid=9):
+    """
+    Точка внутри контура (не в отверстии) для подписи и проверки лучом:
+    центр тяжести, если он внутри, иначе ближайший к нему узел сетки
+    grid×grid по габариту. None — не нашлось.
+    """
+    area = polygon_area(outer)
+    if abs(area) > 1e-9:
+        cx = cy = 0.0
+        n = len(outer)
+        for i in range(n):
+            x1, y1 = outer[i]
+            x2, y2 = outer[(i + 1) % n]
+            cross = x1 * y2 - x2 * y1
+            cx += (x1 + x2) * cross
+            cy += (y1 + y2) * cross
+        cx /= 6.0 * area
+        cy /= 6.0 * area
+    else:
+        cx = sum(p[0] for p in outer) / float(len(outer))
+        cy = sum(p[1] for p in outer) / float(len(outer))
+    if _inside_region(cx, cy, outer, holes):
+        return cx, cy
+    xs = [p[0] for p in outer]
+    ys = [p[1] for p in outer]
+    best = None
+    for i in range(grid):
+        for j in range(grid):
+            x = min(xs) + (max(xs) - min(xs)) * (i + 0.5) / grid
+            y = min(ys) + (max(ys) - min(ys)) * (j + 0.5) / grid
+            if _inside_region(x, y, outer, holes):
+                d = (x - cx) ** 2 + (y - cy) ** 2
+                if best is None or d < best[0]:
+                    best = (d, x, y)
+    return None if best is None else (best[1], best[2])
+
+
+def loop_edges(loops, z_mm):
+    """Рёбра контуров [(x1, y1, x2, y2, z)] — для step_segments."""
+    edges = []
+    for loop in loops:
+        n = len(loop)
+        for i in range(n):
+            x1, y1 = loop[i]
+            x2, y2 = loop[(i + 1) % n]
+            edges.append((x1, y1, x2, y2, z_mm))
+    return edges
+
+
+def typical_by_area(heights_areas, step_mm):
+    """Типовая высота — с наибольшей суммарной площадью: [(высота, площадь)] → высота или None."""
+    totals = {}
+    for height, area in heights_areas:
+        if height is None:
+            continue
+        key = round_to(height, step_mm)
+        totals[key] = totals.get(key, 0.0) + area
+    if not totals:
+        return None
+    return sorted(totals.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def slab_label(height_mm, typical_mm, step_mm, slab_format, delta_format):
+    """Подпись заливки плиты: «Пер. +4,400» и, если не типовая, «Δ +0,650»."""
+    height = round_to(height_mm, step_mm)
+    lines = [_fill(slab_format, h=format_height(height))]
+    if typical_mm is not None and height != typical_mm:
+        lines.append(_fill(delta_format, d=format_height(height - typical_mm)))
+    return u"\n".join(lines)
+
+
+def ceiling_label(ceiling_values, step_mm, ceiling_format):
+    """Подпись помещения с подвесным потолком: «ПП +2,700» или пусто."""
+    text = height_range_text(ceiling_values, step_mm)
+    return _fill(ceiling_format, h=text) if text else u""
+
+
+def has_word(text, words):
+    """Есть ли в тексте одно из слов (без учёта регистра, ё = е)."""
+    low = unicode(text or u"").lower().replace(u"ё", u"е")
+    return any(word in low for word in words)

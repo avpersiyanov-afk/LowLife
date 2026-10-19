@@ -184,3 +184,36 @@ def test_split_segment():
     parts = core.split_segment((0, 0, 9000, 0, 1))
     assert len(parts) == 3 and parts[0][2] == 3000 and parts[-1][2] == 9000
     assert len(core.split_segment((0, 0, 100000, 0, 1))) == 8
+
+
+def test_polygons_and_interior_point():
+    square = [(0, 0), (1000, 0), (1000, 1000), (0, 1000)]
+    hole = [(400, 400), (600, 400), (600, 600), (400, 600)]
+    assert core.polygon_area(square) == 1000000
+    outer, holes = core.split_outer([hole, square])
+    assert outer == square and holes == [hole]
+    assert core.region_area(outer, holes) == 1000000 - 40000
+    x, y = core.interior_point(outer, holes)
+    assert core.point_in_polygon(x, y, square) and not core.point_in_polygon(x, y, hole)
+    # Г-образный контур: центр тяжести снаружи — берётся узел сетки внутри
+    l_shape = [(0, 0), (3000, 0), (3000, 300), (300, 300), (300, 3000), (0, 3000)]
+    x, y = core.interior_point(l_shape, [])
+    assert core.point_in_polygon(x, y, l_shape)
+
+
+def test_loop_edges_and_typical_by_area():
+    edges = core.loop_edges([[(0, 0), (10, 0), (10, 10)]], 3300)
+    assert len(edges) == 3 and edges[-1] == (10, 10, 0, 0, 3300)
+    assert core.typical_by_area([(4400, 500.0), (5050, 900.0), (4401, 600.0)], 10) == 4400
+    assert core.typical_by_area([], 10) is None
+
+
+def test_slab_and_ceiling_labels():
+    assert core.slab_label(5050, 4400, 10, u"Пер. {h}", u"Δ {d}") == u"Пер. +5,050\nΔ +0,650"
+    assert core.slab_label(4402, 4400, 10, u"Пер. {h}", u"Δ {d}") == u"Пер. +4,400"
+    assert core.ceiling_label([2700.0, None], 10, u"ПП {h}") == u"ПП +2,700"
+    assert core.ceiling_label([None], 10, u"ПП {h}") == u""
+    words = core.split_words(u"лестнич, машиномест")
+    assert core.has_word(u"Лестничная клетка Л1", words)
+    assert core.has_word(u"Машиноместо 12", words)
+    assert not core.has_word(u"Кладовая", words)
