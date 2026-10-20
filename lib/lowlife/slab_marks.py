@@ -56,6 +56,9 @@ STEP_MIN_LEN_MM = 100.0
 # Расхождение после перемещения, при котором извещатель считается не сдвинутым.
 MOVE_TOLERANCE_MM = 5.0
 
+# Перекрытие тоньше — отделка пола, а не плита (SlabProbe._is_thin).
+THIN_FLOOR_MM = 150.0
+
 # Отрезки контура помещения короче этого не строятся (меньше допуска Revit).
 _MIN_SEG_FT = 0.01
 
@@ -84,16 +87,25 @@ class SlabProbe(object):
     (мебель, трубы, воздуховоды, оборудование во всех связях), и на сотнях
     точек это основное время. Результаты кэшируются по точке (повторные
     запросы той же точки — подпись помещения, проверка перепада).
+
+    «Несущие колонны» тоже видимы и считаются перекрытием: капители обычно
+    в этой категории, а капитель, присоединённая к плите, вырезает в ней
+    полость — без неё луч проходил сквозь полость до низа отделки пола
+    следующего этажа (верха плиты), и под капителью получалось выше, чем
+    рядом. Если всё же ближайшим сверху оказался тонкий слой (отделка
+    пола, а не плита), точка проверяется как отверстие (_check_opening).
     """
 
     _VISIBLE = (
         BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs,
-        BuiltInCategory.OST_Ceilings, BuiltInCategory.OST_RvtLinks,
+        BuiltInCategory.OST_Ceilings, BuiltInCategory.OST_StructuralColumns,
+        BuiltInCategory.OST_RvtLinks,
     )
 
     _KINDS = {
         int(BuiltInCategory.OST_Floors): core.SLAB,
         int(BuiltInCategory.OST_Roofs): core.SLAB,
+        int(BuiltInCategory.OST_StructuralColumns): core.SLAB,
         int(BuiltInCategory.OST_Ceilings): core.CEILING,
     }
 
@@ -114,6 +126,9 @@ class SlabProbe(object):
         # для модели, Id элемента)}} — по ним ищутся перепады (slabs_above).
         self.slab_elements = {}
         self.openings = 0  # точек над отверстиями в перекрытии (для отчёта)
+        self._sources = None
+        self._thin = {}    # {ключ элемента: тонкий ли (отделка пола)}
+        self._solids_cache = {}  # {ключ элемента: [Solid]} — для _refine_nearest_slab
 
     def _hide_other_categories(self):
         from Autodesk.Revit.DB import CategoryType
@@ -175,13 +190,52 @@ class SlabProbe(object):
                 hits.append((mm(context.Proximity), kind, key))
         return hits
 
+    def describe(self, x, y, origin_z, level_z, limit=8):
+        """
+        Диагностика для отчёта: во что упираются лучи из точки — строки
+        «вверх/вниз: расстояние, отметка от уровня, категория, тип, связь» (до
+        limit на направление) и итог probe(). Только для выбранных извещателей.
+        """
+        lines = []
+        if self.intersector is None:
+            self._open()
+        origin = XYZ(x, y, origin_z)
+        for label, direction, sign in ((u"вверх", XYZ.BasisZ, 1), (u"вниз", XYZ.BasisZ.Negate(), -1)):
+            contexts = sorted(self.intersector.Find(origin, direction), key=lambda c: c.Proximity)
+            for context in contexts[:limit]:
+                reference = context.GetReference()
+                element = self.doc.GetElement(reference.ElementId)
+                link = u"модель"
+                if reference.LinkedElementId != ElementId.InvalidElementId:
+                    link = safe_element_name(element) or u"связь"
+                    try:
+                        element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
+                    except Exception:
+                        element = None
+                try:
+                    category = element.Category.Name
+                    type_name = safe_element_name(element.Document.GetElement(element.GetTypeId())) or u""
+                    element_id = element.Id.IntegerValue
+                except Exception:
+                    category, type_name, element_id = u"?", u"", 0
+                distance = mm(context.Proximity)
+                lines.append(u"{} {:.0f} мм (от уровня {:+.0f}): {} «{}» Id {} — {}".format(
+                    label, float(distance), float(mm(origin_z - level_z) + sign * distance),
+                    category, type_name, element_id, link))
+        found = self.probe(x, y, origin_z, level_z)
+        if found is None:
+            lines.append(u"итог: перекрытие не найдено")
+        else:
+            lines.append(u"итог: низ перекрытия {} от пола, пол {:+.0f} мм от уровня{}{}".format(
+                core.format_height(found.slab_mm), float(found.floor_z_mm - mm(level_z)),
+                u", ПП {}".format(core.format_height(found.ceiling_mm)) if found.ceiling_mm is not None else u"",
+                u", над отверстием — по плите вокруг" if found.through_opening else u""))
+        return lines
+
     def _remember_slab(self, up_hits, level_z):
-        best = None
-        for distance, kind, key in up_hits:
-            if kind == core.SLAB and distance > 0 and (best is None or distance < best[0]):
-                best = (distance, key)
-        if best is not None:
-            self.slab_elements.setdefault(int(round(mm(level_z))), set()).add(best[1])
+        key = self._nearest_slab_key(up_hits)
+        if key is not None:
+            self.slab_elements.setdefault(int(round(mm(level_z))), set()).add(key)
 
     def slabs_above(self, level_z, tolerance):
         """Перекрытия, найденные лучами от уровней не дальше tolerance (футы) от level_z."""
@@ -191,6 +245,37 @@ class SlabProbe(object):
                 result.update(keys)
         return result
 
+    def _is_thin(self, key):
+        """Перекрытие тоньше THIN_FLOOR_MM — отделка пола, а не плита (кэш по элементу)."""
+        if key in self._thin:
+            return self._thin[key]
+        thin = False
+        try:
+            if self._sources is None:
+                self._sources = model_sources(self.doc)
+            source_doc, _transform = self._sources[key[0]]
+            element = source_doc.GetElement(ElementId(key[1]))
+            if element.Category.Id.IntegerValue == int(BuiltInCategory.OST_Floors):
+                param = element.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)
+                if param is not None and param.HasValue:
+                    thickness = param.AsDouble()
+                else:
+                    bbox = element.get_BoundingBox(None)
+                    thickness = bbox.Max.Z - bbox.Min.Z
+                thin = 0 < mm(thickness) < THIN_FLOOR_MM
+        except Exception:
+            thin = False
+        self._thin[key] = thin
+        return thin
+
+    @staticmethod
+    def _nearest_slab_key(up_hits):
+        best = None
+        for distance, kind, key in up_hits:
+            if kind == core.SLAB and distance > 0 and (best is None or distance < best[0]):
+                best = (distance, key)
+        return None if best is None else best[1]
+
     def _raw(self, x, y, origin_z, level_z):
         """(core.Probe или None, лучи вверх) без проверки отверстия; кэшируется."""
         key = (round(x, 3), round(y, 3), round(origin_z, 3), round(level_z, 3))
@@ -199,11 +284,74 @@ class SlabProbe(object):
         if self.intersector is None:
             self._open()
         origin = XYZ(x, y, origin_z)
-        up = self._hits(origin, XYZ.BasisZ)
+        up = self._refine_nearest_slab(self._hits(origin, XYZ.BasisZ), x, y, origin_z)
         down = self._hits(origin, XYZ.BasisZ.Negate())
         found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
         self._cache[key] = (found, up)
         return found, up
+
+    def _element_solids(self, key):
+        """Тела элемента в координатах модели (кэш по элементу); [] — не удалось."""
+        if key in self._solids_cache:
+            return self._solids_cache[key]
+        from Autodesk.Revit.DB import SolidUtils
+        solids = []
+        try:
+            if self._sources is None:
+                self._sources = model_sources(self.doc)
+            source_doc, transform = self._sources[key[0]]
+            element = source_doc.GetElement(ElementId(key[1]))
+            options = Options()
+            options.DetailLevel = ViewDetailLevel.Fine
+            for solid, solid_transform in _solids(element.get_Geometry(options), transform):
+                if solid_transform.IsIdentity:
+                    solids.append(solid)
+                else:
+                    solids.append(SolidUtils.CreateTransformed(solid, solid_transform))
+        except Exception:
+            solids = []
+        self._solids_cache[key] = solids
+        return solids
+
+    def _refine_nearest_slab(self, up, x, y, origin_z):
+        """
+        Низ ближайшего перекрытия — по геометрии самого элемента, а не по
+        грани, которую вернул луч. У капителей (перекрытие, присоединённое к
+        плите) ReferenceIntersector бывает отдаёт только верхнюю грань —
+        отметка получалась по верху капители. Вертикаль от точки до
+        попадания пересекается с телом элемента: где она входит в тело
+        снизу — там низ. Не получилось — попадание как есть.
+        """
+        best = None
+        for index, (distance, kind, key) in enumerate(up):
+            if kind == core.SLAB and distance > 0 and (best is None or distance < up[best][0]):
+                best = index
+        if best is None:
+            return up
+        distance, kind, key = up[best]
+        try:
+            from Autodesk.Revit.DB import SolidCurveIntersectionOptions
+            top = origin_z + ft(distance + 10.0)
+            line = Line.CreateBound(XYZ(x, y, origin_z), XYZ(x, y, top))
+            lowest = None
+            for solid in self._element_solids(key):
+                result = solid.IntersectWithCurve(line, SolidCurveIntersectionOptions())
+                for i in range(result.SegmentCount):
+                    segment = result.GetCurveSegment(i)
+                    z = min(segment.GetEndPoint(0).Z, segment.GetEndPoint(1).Z)
+                    if lowest is None or z < lowest:
+                        lowest = z
+        except Exception:
+            return up
+        if lowest is None:
+            return up
+        refined = mm(lowest - origin_z)
+        # точка внутри тела (колонна) или уточнять нечего — попадание как есть
+        if refined <= 50.0 or refined >= distance - 1.0:
+            return up
+        up = list(up)
+        up[best] = (refined, kind, key)
+        return up
 
     def _next_level_z(self, level_z):
         if self._levels is None:
@@ -213,18 +361,23 @@ class SlabProbe(object):
                 return z
         return None
 
-    def _check_opening(self, found, x, y, origin_z, level_z):
+    def _check_opening(self, found, up, x, y, origin_z, level_z):
         """
-        Над точкой отверстие (шахта, проём)? Только если найденная плита выше
-        следующего уровня — луч мог пройти сквозь перекрытие этого этажа.
-        Тогда 4 точки вокруг на opening_ft: если везде плита ниже — отверстие,
-        возвращается Probe с плитой вокруг него; иначе None (высокая зона).
+        Над точкой отверстие (шахта, проём, полость в плите)? Проверяется,
+        только если найденная плита выше следующего уровня (луч мог пройти
+        сквозь перекрытие этого этажа) или это тонкий слой — отделка пола
+        над полостью. Тогда 4 точки вокруг на opening_ft: если везде плита
+        ниже — отверстие, возвращается Probe с плитой вокруг него; иначе
+        None (высокая зона).
         """
         if self.opening_ft <= 0 or found is None:
             return None
         next_z = self._next_level_z(level_z)
-        if next_z is None or found.slab_z_mm <= mm(next_z):
-            return None
+        above_next = next_z is not None and found.slab_z_mm > mm(next_z)
+        if not above_next:
+            key = self._nearest_slab_key(up)
+            if key is None or not self._is_thin(key):
+                return None
         d = self.opening_ft
         around = []
         for dx, dy in ((d, 0), (-d, 0), (0, d), (0, -d)):
@@ -243,7 +396,7 @@ class SlabProbe(object):
             return None
         try:
             found, up = self._raw(x, y, origin_z, level_z)
-            opening = self._check_opening(found, x, y, origin_z, level_z)
+            opening = self._check_opening(found, up, x, y, origin_z, level_z)
         except Exception as ex:
             self.error = ex
             return None
@@ -681,6 +834,13 @@ def _solids(geometry, transform):
                 yield nested
 
 
+def _is_column(element):
+    try:
+        return element.Category.Id.IntegerValue == int(BuiltInCategory.OST_StructuralColumns)
+    except Exception:
+        return False
+
+
 def slab_bottom_edges(doc, element_keys, bottom_z):
     """
     Края нижних горизонтальных граней перекрытий из element_keys
@@ -702,7 +862,7 @@ def slab_bottom_edges(doc, element_keys, bottom_z):
             continue
         source_doc, transform = sources[source_key]
         element = source_doc.GetElement(ElementId(element_id))
-        if element is None:
+        if element is None or _is_column(element):   # контур капители — не перепад плиты
             continue
         try:
             bbox = element.get_BoundingBox(None)
@@ -871,6 +1031,7 @@ class SlabFace(object):
         self.area = core.region_area(outer, holes)
         self.point = None       # точка подписи (мм)
         self.height_mm = None   # высота от пола по лучу в точке подписи
+        self.column = False     # грань колонны/капители — заливается, но не перепад плиты
 
     def loops(self):
         return [self.outer] + list(self.holes)
@@ -928,7 +1089,9 @@ def slab_bottom_faces(doc, element_keys, bottom_z):
                 loops = [_loop_points(face, loop, solid_transform) for loop in face.EdgeLoops]
                 outer, holes = core.split_outer(loops)
                 if outer is not None:
-                    faces.append(SlabFace(mm(z), outer, holes))
+                    face_item = SlabFace(mm(z), outer, holes)
+                    face_item.column = _is_column(element)
+                    faces.append(face_item)
     return faces
 
 
@@ -1090,7 +1253,8 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     if (settings.get("draw_steps") or "yes") != "no":
         edges = []
         for face in faces:
-            edges.extend(core.loop_edges(face.loops(), face.z_mm))
+            if not face.column:   # контур капители — не перепад плиты
+                edges.extend(core.loop_edges(face.loops(), face.z_mm))
         step_segments, result.step_stats = find_steps(view, settings, probe, edges, progress)
         result.step_stats.slabs = len(slabs)
 
