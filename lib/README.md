@@ -1716,25 +1716,29 @@ room_number_param)` — запись по точкам прохода, возв�
 Кнопка «Отметки парковки» (`Tools.panel/ParkingMarks`, инструкция —
 `docs/tools-panel.md#отметки-парковки`). Вызывать внутри одной транзакции.
 
-- **`collect(doc, view, zone_words)`** → `Collected`: элементы категории «Парковка»
+- **`core.GROUPS`** — группы по порядку проверки (зона светильников, проезд,
+  машиноместо) и `core.OTHER`: ключ (префикс ключей настроек `<ключ>_words`,
+  `<ключ>_text_format`, `<ключ>_fill`), слова, шаблон подписи, штриховка, цвет.
+  `core.classify` — первая группа, чьё слово есть в тексте.
+- **`collect(doc, view, settings)`** → `Collected`: элементы категории «Парковка»
   всех загруженных и не скрытых на виде связей (`ParkingItem`: верх/низ в футах
-  модели, грани верха/низа и контура — `HFace`, зона ли — `core.is_zone` по
-  «Комментариям»). Пропускает элементы вне диапазона от глубины просмотра до
-  секущей плоскости (`view_z_range`) и вне подрезки.
-- **`annotate_view(doc, view, items, settings, note_type, spot, zone_fill, ...)`** →
-  `ViewResult`: высотная отметка (`NewSpotElevation` по ссылке на грань связи,
-  `CreateLinkReference`, тип `SPOT_TYPE_NAME` — `spot_type`) верха машиноместа,
-  верха и низа зоны; не принял Revit — `TextNote` типа `TEXT_TYPE_NAME` (отметка от
-  базы `elevation_base`). Зона — `FilledRegion` по контурам самой большой
-  горизонтальной грани (иначе прямоугольник габарита), тип — `fill_type`, метка
-  `REGION_TAG` в «Комментариях». Повторный запуск удаляет отметки/тексты этих
-  типов и помеченные области на виде (`clear_view`).
+  модели по горизонтальным граням — `HFace`, иначе по габариту; группа — по
+  `match_text`: «Комментарии», рабочий набор, семейство и тип). Пропускает
+  элементы вне диапазона от глубины просмотра до верхней секущей плоскости
+  (`view_z_range`) и вне подрезки.
+- **`annotate_view(doc, view, items, settings, note_type)`** → `ViewResult`:
+  `TextNote` типа `TEXT_TYPE_NAME` с отметками от уровня плана (`core.label`,
+  поля `{top}`/`{bottom}`), подписи ближе `MERGE_MM` на листе склеиваются
+  (`core.cluster`); у групп со штриховкой — `FilledRegion` по самой большой
+  горизонтальной грани (иначе прямоугольник габарита), тип «LowLife — <группа>»
+  (`fill_type`), метка `REGION_TAG` в «Комментариях». Повторный запуск удаляет
+  подписи этого типа, помеченные области и высотные отметки типа
+  `SPOT_TYPE_NAME` первой версии кнопки (`clear_view`).
 - Общие с «Извещателями на перекрытие»: `slab_marks.is_plan`, `text_type`,
   `region_type`, `hatch_pattern`.
 
-`parking_marks_core.py` (слова зоны, тексты по шаблону `{h}`, префикс/суффикс
-высотной отметки, отметка от базы, попадание в диапазон) покрыт
-`tests/test_parking_marks_core.py`.
+`parking_marks_core.py` (группы, подписи по шаблону, диапазон, склейка подписей)
+покрыт `tests/test_parking_marks_core.py`.
 
 ## detector_access_core.py / detector_access.py / detector_access_settings.py
 

@@ -4,85 +4,71 @@
 хранение между запусками (%APPDATA%\\pyRevit\\LowLifeParkingMarks_settings.json).
 
 Обвязка (хранение, окно, Shift+клик/тихий режим) — общая,
-settings_core.TextSettings; здесь только описание полей. Имён параметров
-модели кнопка не использует: элементы берутся по категории «Парковка»,
-зоны — по словам в штатном параметре «Комментарии».
+settings_core.TextSettings; здесь только описание полей — по три на
+группу из parking_marks_core.GROUPS (слова, текст, штриховка) и текст
+для прочих элементов. Имён параметров модели кнопка не использует.
 """
 
 from lowlife import settings_core
+from lowlife.parking_marks_core import GROUPS, OTHER
 
+_NUMBERS = [u"①", u"②", u"③", u"④"]
+_FILL_CHOICES = [("no", u"Не штриховать"), ("yes", u"Штриховать по контуру")]
+
+
+def _group_fields(index, group):
+    return [
+        settings_core.TextField(
+            group.key + "_words",
+            u"{} {}".format(_NUMBERS[index], group.name),
+            u"Слова (через запятую)",
+            hint=(
+                u"Ищутся без учёта регистра в «Комментариях», имени рабочего набора и "
+                u"имени семейства/типа элемента. Группы проверяются по порядку — "
+                u"элемент попадает в первую подошедшую. Пусто — группа выключена."
+            ) if index == 0 else u"",
+            default=group.words,
+        ),
+        settings_core.TextField(
+            group.key + "_text_format",
+            u"",
+            u"Текст подписи",
+            hint=(
+                u"{top} — отметка верха, {bottom} — низа, от уровня плана («+2,450»)."
+            ) if index == 0 else u"",
+            default=group.text_format,
+        ),
+        settings_core.ChoiceField(
+            group.key + "_fill",
+            u"",
+            u"Штриховка",
+            _FILL_CHOICES,
+            hint=(
+                u"Тип области заливки «LowLife — {}» создаётся при первом запуске; "
+                u"его штриховку и цвет можно потом поменять в Revit."
+            ).format(group.name.lower()) if index == 0 else u"",
+            default=group.fill,
+        ),
+    ]
+
+
+_FIELDS = []
+for _index, _group in enumerate(GROUPS):
+    _FIELDS.extend(_group_fields(_index, _group))
+_FIELDS.append(settings_core.TextField(
+    OTHER.key + "_text_format",
+    u"{} Остальные элементы «Парковки»".format(_NUMBERS[len(GROUPS)]),
+    u"Текст подписи (пусто — не подписывать)",
+    default=OTHER.text_format,
+))
 
 SETTINGS = settings_core.TextSettings(
     file_name="LowLifeParkingMarks_settings.json",
     button_name=u"Отметки парковки",
-    heading=u"Отметки элементов «Парковка» из связей",
+    heading=u"Отметки зон парковки от уровня плана",
     transfer_label=u"кнопки «Отметки парковки»",
-    fields=[
-        settings_core.TextField(
-            "zone_words",
-            u"① Зоны",
-            u"Слова в «Комментариях» элемента парковки (через запятую)",
-            hint=(
-                u"Если в «Комментариях» элемента есть одно из слов (без учёта регистра), "
-                u"это зона: на плане отмечаются её верх и низ, а контур заливается "
-                u"штриховкой. Остальным элементам ставится только отметка верха."
-            ),
-            default=u"зона",
-        ),
-        settings_core.ChoiceField(
-            "mark_mode",
-            u"② Отметки",
-            u"Чем отмечать",
-            [("spot", u"Высотной отметкой Revit (если не выйдет — текстом)"),
-             ("text", u"Текстом")],
-            hint=(
-                u"Высотная отметка ставится на верхнюю (низ зоны — на нижнюю) грань "
-                u"элемента связи; от чего она считается — задаёт её тип "
-                u"(«LowLife — отметки парковки», копия типа отметки по умолчанию). "
-                u"Где Revit отметку не принял, ставится текст."
-            ),
-            default="spot",
-        ),
-        settings_core.ChoiceField(
-            "elevation_base",
-            u"",
-            u"От чего считать отметку в тексте",
-            [("project", u"От базовой точки проекта"),
-             ("shared", u"Абсолютная (общая система координат)"),
-             ("internal", u"От начала внутренней системы координат")],
-            default="project",
-        ),
-        settings_core.TextField(
-            "top_text_format",
-            u"",
-            u"Текст отметки верха машиноместа",
-            hint=u"{h} — отметка («+3,150»). У высотной отметки текст вокруг {h} — префикс/суффикс.",
-            default=u"{h}",
-        ),
-        settings_core.TextField(
-            "zone_top_text_format",
-            u"",
-            u"Текст отметки верха зоны",
-            default=u"Верх зоны {h}",
-        ),
-        settings_core.TextField(
-            "zone_bottom_text_format",
-            u"",
-            u"Текст отметки низа зоны",
-            default=u"Низ зоны {h}",
-        ),
-        settings_core.TextField(
-            "zone_fill_type_name",
-            u"③ Штриховка зон",
-            u"Тип области заливки",
-            hint=(
-                u"Пусто — тип «LowLife — зона парковки» (создаётся при первом запуске: "
-                u"диагональная штриховка оранжевым; потом его можно поменять в Revit)."
-            ),
-            default=u"",
-        ),
-    ],
-    width=720, height=620,
+    fields=_FIELDS,
+    width=720, height=700,
 )
 
 load_saved_values = SETTINGS.load_saved_values
