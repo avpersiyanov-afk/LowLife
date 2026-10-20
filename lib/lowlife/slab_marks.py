@@ -128,6 +128,7 @@ class SlabProbe(object):
         self.openings = 0  # точек над отверстиями в перекрытии (для отчёта)
         self._sources = None
         self._thin = {}    # {ключ элемента: тонкий ли (отделка пола)}
+        self._solids_cache = {}  # {ключ элемента: [Solid]} — для _refine_nearest_slab
 
     def _hide_other_categories(self):
         from Autodesk.Revit.DB import CategoryType
@@ -283,11 +284,74 @@ class SlabProbe(object):
         if self.intersector is None:
             self._open()
         origin = XYZ(x, y, origin_z)
-        up = self._hits(origin, XYZ.BasisZ)
+        up = self._refine_nearest_slab(self._hits(origin, XYZ.BasisZ), x, y, origin_z)
         down = self._hits(origin, XYZ.BasisZ.Negate())
         found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
         self._cache[key] = (found, up)
         return found, up
+
+    def _element_solids(self, key):
+        """Тела элемента в координатах модели (кэш по элементу); [] — не удалось."""
+        if key in self._solids_cache:
+            return self._solids_cache[key]
+        from Autodesk.Revit.DB import SolidUtils
+        solids = []
+        try:
+            if self._sources is None:
+                self._sources = model_sources(self.doc)
+            source_doc, transform = self._sources[key[0]]
+            element = source_doc.GetElement(ElementId(key[1]))
+            options = Options()
+            options.DetailLevel = ViewDetailLevel.Fine
+            for solid, solid_transform in _solids(element.get_Geometry(options), transform):
+                if solid_transform.IsIdentity:
+                    solids.append(solid)
+                else:
+                    solids.append(SolidUtils.CreateTransformed(solid, solid_transform))
+        except Exception:
+            solids = []
+        self._solids_cache[key] = solids
+        return solids
+
+    def _refine_nearest_slab(self, up, x, y, origin_z):
+        """
+        Низ ближайшего перекрытия — по геометрии самого элемента, а не по
+        грани, которую вернул луч. У капителей (перекрытие, присоединённое к
+        плите) ReferenceIntersector бывает отдаёт только верхнюю грань —
+        отметка получалась по верху капители. Вертикаль от точки до
+        попадания пересекается с телом элемента: где она входит в тело
+        снизу — там низ. Не получилось — попадание как есть.
+        """
+        best = None
+        for index, (distance, kind, key) in enumerate(up):
+            if kind == core.SLAB and distance > 0 and (best is None or distance < up[best][0]):
+                best = index
+        if best is None:
+            return up
+        distance, kind, key = up[best]
+        try:
+            from Autodesk.Revit.DB import SolidCurveIntersectionOptions
+            top = origin_z + ft(distance + 10.0)
+            line = Line.CreateBound(XYZ(x, y, origin_z), XYZ(x, y, top))
+            lowest = None
+            for solid in self._element_solids(key):
+                result = solid.IntersectWithCurve(line, SolidCurveIntersectionOptions())
+                for i in range(result.SegmentCount):
+                    segment = result.GetCurveSegment(i)
+                    z = min(segment.GetEndPoint(0).Z, segment.GetEndPoint(1).Z)
+                    if lowest is None or z < lowest:
+                        lowest = z
+        except Exception:
+            return up
+        if lowest is None:
+            return up
+        refined = mm(lowest - origin_z)
+        # точка внутри тела (колонна) или уточнять нечего — попадание как есть
+        if refined <= 50.0 or refined >= distance - 1.0:
+            return up
+        up = list(up)
+        up[best] = (refined, kind, key)
+        return up
 
     def _next_level_z(self, level_z):
         if self._levels is None:
