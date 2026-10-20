@@ -44,6 +44,7 @@ from Autodesk.Revit.DB import ElementId
 from Autodesk.Revit.DB.Electrical import ElectricalSystemType
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -303,7 +304,7 @@ def show_settings_form(doc, values):
                     forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
                     return
                 options = [SystemTypeOption(n) for n in names]
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Тип электрической цепи (в скобках — пояснение)",
                     button_name=u"Выбрать",
@@ -368,7 +369,7 @@ def show_settings_form(doc, values):
             return
 
         options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
-        selected = forms.SelectFromList.show(
+        selected = select_list.SelectFromList.show(
             options,
             title=conductor_label_text,
             button_name=u"Выбрать",

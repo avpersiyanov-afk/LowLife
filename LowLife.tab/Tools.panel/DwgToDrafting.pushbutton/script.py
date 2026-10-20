@@ -24,6 +24,7 @@ import traceback
 
 from Autodesk.Revit.DB import ViewType
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import dwg_transfer as dt
 from lowlife import dwg_transfer_settings, dxf_text
@@ -63,7 +64,7 @@ if not imports:
 imp = imports[0]
 if len(imports) > 1:
     labels = [u"{} (id {})".format(dt.import_label(doc, i), i.Id.IntegerValue) for i in imports]
-    picked = forms.SelectFromList.show(labels, title=TITLE, button_name=u"Перенести",
+    picked = select_list.SelectFromList.show(labels, title=TITLE, button_name=u"Перенести",
                                        multiselect=False)
     if not picked:
         script.exit()
@@ -91,7 +92,7 @@ if base_text_type is None:
 
 TO_NEW = u"В новый чертёжный вид"
 TO_SAME = u"На этот вид, поверх DWG"
-target_choice = forms.CommandSwitchWindow.show(
+target_choice = select_list.CommandSwitchWindow.show(
     [TO_NEW, TO_SAME], message=u"«{}»: куда перенести линии и текст?".format(label))
 if not target_choice:
     script.exit()
@@ -126,7 +127,7 @@ if dxf_path is None:
                u"сохраните DWG как DXF в AutoCAD).")
     PICK = u"Указать DXF-файл…"
     SKIP = u"Без текста — только линии"
-    text_choice = forms.CommandSwitchWindow.show(
+    text_choice = select_list.CommandSwitchWindow.show(
         [PICK, SKIP],
         message=u"Текст DWG читается из DXF того же чертежа. " + why + where)
     if not text_choice:

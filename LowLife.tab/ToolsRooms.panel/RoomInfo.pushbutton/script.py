@@ -15,6 +15,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import room_info_settings
 from lowlife.room_info import apply_room_info
@@ -79,7 +80,7 @@ def run_by_views(settings):
             exitscript=True
         )
 
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         [ViewOption(v) for v in views],
         title=u"Виды: назначить помещение всем элементам на них",
         button_name=u"Назначить",

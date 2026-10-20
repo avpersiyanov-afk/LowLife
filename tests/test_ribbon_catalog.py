@@ -90,3 +90,14 @@ def test_search_ranking_and_normalization():
     assert titles(u"счет") == [u"Счёт"]
     assert titles(u"wtgb crc") == [u"Цепи СКС"]  # набрано в английской раскладке
     assert titles(u"нет такого") == []
+
+
+def test_search_part_of_word_and_both_layouts():
+    entries = [
+        _entry(u"DWG в чертёжный вид"),
+        _entry(u"Синхронизация цепей"),
+    ]
+    titles = lambda q: [e[u"title"] for e in ribbon_catalog.search(entries, q)]
+    assert titles(u"хрон") == [u"Синхронизация цепей"]  # часть слова
+    assert titles(u"вцп") == [u"DWG в чертёжный вид"]  # «dwg» в русской раскладке
+    assert titles(u"cby[h") == [u"Синхронизация цепей"]  # «синхр» в английской

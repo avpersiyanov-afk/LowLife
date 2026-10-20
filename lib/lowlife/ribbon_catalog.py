@@ -8,6 +8,8 @@ import io
 import os
 import re
 
+from lowlife import text_search
+
 TAB_FOLDER = u"LowLife.tab"
 BUTTON_EXTS = (u".pushbutton", u".pulldown", u".splitbutton", u".splitpushbutton", u".smartbutton",
                u".linkbutton", u".invokebutton", u".urlbutton", u".combobox")
@@ -182,18 +184,13 @@ def list_buttons(root=None):
     return result
 
 
-_EN = u"qwertyuiop[]asdfghjkl;'zxcvbnm,.`"
-_RU = u"йцукенгшщзхъфывапролджэячсмитьбюё"
-_EN_TO_RU = dict(zip(_EN, _RU))
-
-
 def _norm(text):
-    return (text or u"").lower().replace(u"ё", u"е")
+    return text_search.normalize(text)
 
 
 def switch_layout(text):
     """Текст, набранный в английской раскладке вместо русской: «wtgb» → «цепи»."""
-    return u"".join(_EN_TO_RU.get(ch, ch) for ch in _norm(text))
+    return text_search.switch_layout(_norm(text), text_search.EN_TO_RU)
 
 
 _ENDING_CHARS = u"аеиоуыэюяйь"
@@ -222,27 +219,30 @@ def _score(entry, query, tokens):
     return 3  # нашлось только в подсказке
 
 
-def _search(entries, query):
+def _scores(entries, query):
+    """{индекс кнопки: оценка _score} для подходящих под запрос."""
     query = u" ".join(_norm(query).split())
     tokens = [_root(t) for t in query.split()]
-    scored = []
+    result = {}
     for i, entry in enumerate(entries):
         score = _score(entry, query, tokens)
         if score is not None:
-            scored.append((score, i, entry))
-    scored.sort(key=lambda x: (x[0], x[1]))
-    return [entry for _, _, entry in scored]
+            result[i] = score
+    return result
 
 
 def search(entries, query):
-    """Кнопки, где есть все слова запроса (без учёта регистра, ё/е и гласного окончания): сначала совпадения
-    в подписи кнопки, потом в названии панели, потом в подсказке; внутри — порядок ленты.
-    Пустой запрос — все кнопки. Если ничего не нашлось, пробует запрос в русской раскладке."""
-    if not (query or u"").strip():
+    """Кнопки, где есть все слова запроса — хотя бы частью слова (без учёта регистра, ё/е и гласного
+    окончания): сначала совпадения в подписи кнопки, потом в названии панели, потом в подсказке; внутри —
+    порядок ленты. Запрос пробуется и в другой раскладке («wtgb» → «цепи», «вцп» → «dwg»); такое
+    совпадение — сразу после совпадения того же уровня в набранной. Пустой запрос — все кнопки."""
+    variants = text_search.query_variants(query)
+    if not variants:
         return list(entries)
-    found = _search(entries, query)
-    if not found:
-        switched = switch_layout(query)
-        if switched != _norm(query):
-            found = _search(entries, switched)
-    return found
+    best = {}
+    for layout, variant in enumerate(variants):
+        for i, score in _scores(entries, variant).items():
+            key = (score, layout)  # то же место совпадения в набранной раскладке — выше
+            if i not in best or key < best[i]:
+                best[i] = key
+    return [entries[i] for i in sorted(best, key=lambda i: (best[i], i))]

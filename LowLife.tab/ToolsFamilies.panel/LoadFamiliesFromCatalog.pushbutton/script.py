@@ -12,6 +12,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import family_catalog as fc
 
@@ -49,7 +50,7 @@ try:
     # Revit не узнать, не открыв файл, поэтому фильтруем по папкам).
     folders = sorted(set(os.path.dirname(e.rel) or u"." for e in entries))
     if len(folders) > 1:
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             [FolderOption(f) for f in folders],
             title=u"Разделы каталога — можно несколько (Отмена = все)",
             button_name=u"Далее",

@@ -22,6 +22,7 @@ from Autodesk.Revit.DB import Transaction
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from Autodesk.Revit.UI.Selection import ObjectType
 from pyrevit import revit, forms, script
+from lowlife import select_list
 
 from lowlife import view_rotate
 
@@ -52,7 +53,7 @@ def align(direction):
 FROM_LIST = u"Ось сетки из списка (модель и связи)"
 IN_MODEL = u"Кликнуть линию в модели (ось, стена, лоток, линия…)"
 IN_LINK = u"Кликнуть линию в связанном файле"
-mode = forms.CommandSwitchWindow.show(
+mode = select_list.CommandSwitchWindow.show(
     [FROM_LIST, IN_MODEL, IN_LINK], message=u"Под какую ось повернуть 3D вид?")
 if not mode:
     script.exit()
@@ -63,7 +64,7 @@ if mode == FROM_LIST:
         forms.alert(u"В модели и загруженных связях нет прямых осей сетки.",
                     title=TITLE, exitscript=True)
     by_label = dict(axes)
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         [label for label, _d in axes], title=TITLE,
         button_name=u"Повернуть", multiselect=False)
     if not picked:

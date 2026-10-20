@@ -16,6 +16,7 @@ __author__ = "Pipers"
 import traceback
 
 from pyrevit import revit, forms, script
+from lowlife import select_list
 
 from lowlife import json_snapshot
 
@@ -85,7 +86,7 @@ try:
     title = u"Правки для записи: {}".format(len(changes))
     if n_conflicts:
         title += u" (⚠ конфликтов: {} — не отмечены)".format(n_conflicts)
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         items,
         title=title,
         button_name=u"Записать отмеченные",

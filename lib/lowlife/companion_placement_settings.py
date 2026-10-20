@@ -82,6 +82,7 @@ clr.AddReference('RevitAPI')
 from Autodesk.Revit.DB import FilteredElementCollector, Family, ElementId
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -548,7 +549,7 @@ def show_settings_form(doc, values):
                 forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
                 return
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options,
                 title=u"Рядом с чем ставить — пара «{}» (уже выбрано: {})".format(
                     name, _type_names_display(doc, pair_values.get("base_symbol_ids") or [])
@@ -592,7 +593,7 @@ def show_settings_form(doc, values):
                 forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
                 return
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options,
                 title=u"Что ставим — пара «{}»".format(name),
                 button_name=u"Выбрать",
@@ -716,7 +717,7 @@ def show_settings_form(doc, values):
                 forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
                 return
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options,
                 title=u"Компаньон на группу — пара «{}»".format(name),
                 button_name=u"Выбрать",
@@ -811,7 +812,7 @@ def show_settings_form(doc, values):
                     forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
                     return
                 options = [SystemTypeOption(n) for n in type_names]
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Тип электрической цепи {} (в скобках — пояснение) — пара «{}»".format(
                         slot_number, name
@@ -862,7 +863,7 @@ def show_settings_form(doc, values):
                     return
 
                 options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Кабель — цепь {}, пара «{}»".format(slot_number, name),
                     button_name=u"Выбрать",

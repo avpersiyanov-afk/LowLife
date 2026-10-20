@@ -981,6 +981,7 @@ def run(doc, levels, tasks, settings, apartment_symbol, speakers, table, progres
 def ask_levels(doc, title):
     """Выбор уровней (по умолчанию отмечены все). None — отмена."""
     from pyrevit import forms
+    from lowlife import select_list
 
     levels = get_levels(doc)
     if not levels:
@@ -996,7 +997,7 @@ def ask_levels(doc, title):
             except Exception:
                 return level.Name
 
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         [LevelItem(level, checked=True) for level in levels],
         title=u"{}: уровни".format(title),
         button_name=u"Расставить",

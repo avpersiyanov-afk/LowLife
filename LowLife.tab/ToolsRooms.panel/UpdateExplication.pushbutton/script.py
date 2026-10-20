@@ -16,6 +16,7 @@ import traceback
 from Autodesk.Revit.DB import SubTransaction
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import room_explication as rexp
 from lowlife import room_explication_settings
@@ -50,7 +51,7 @@ else:
             if label in by_name:  # одинаковые имена — различаем по Id
                 label = u"{} [{}]".format(label, e[0].Id)
             by_name[label] = e
-        picked = forms.SelectFromList.show(
+        picked = select_list.SelectFromList.show(
             sorted(by_name.keys()), title=u"Какие экспликации обновить",
             button_name=u"Обновить", multiselect=True)
         if not picked:

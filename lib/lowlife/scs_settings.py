@@ -22,6 +22,7 @@ from Autodesk.Revit.DB import (
 )
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -884,7 +885,7 @@ def show_settings_form(doc, values, keys=None):
                 return
 
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options,
                 title=plain_label,
                 button_name=u"Выбрать",
@@ -968,7 +969,7 @@ def show_settings_form(doc, values, keys=None):
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Схемное семейство для категории «{}»".format(name),
                     button_name=u"Выбрать",
@@ -1016,7 +1017,7 @@ def show_settings_form(doc, values, keys=None):
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Типы устройств/панелей для категории «{}»".format(name),
                     button_name=u"Выбрать",
@@ -1165,7 +1166,7 @@ def show_settings_form(doc, values, keys=None):
                 return
 
             options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options,
                 title=conductor_label_text,
                 button_name=u"Выбрать",

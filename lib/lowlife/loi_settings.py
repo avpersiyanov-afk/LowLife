@@ -40,6 +40,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife import param_autocomplete, settings_core, settings_transfer
 
@@ -315,7 +316,7 @@ def show_settings_form(doc, values):
         )
         items = [forms.TemplateListItem(o, checked=(o.key in checked_keys)) for o in options]
 
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             items,
             title=u"Модели, в которых искать элементы «Форма»",
             button_name=u"Сохранить",
@@ -440,7 +441,7 @@ def show_settings_form(doc, values):
         items = [forms.TemplateListItem(o, checked=(o.type_id.IntegerValue in checked_ids))
                  for o in options]
 
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             items,
             title=u"Типы семейств — кандидаты для заполнения LOI",
             button_name=u"Сохранить",

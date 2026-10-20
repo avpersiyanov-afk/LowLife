@@ -42,6 +42,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife import settings_core, settings_transfer
 from lowlife import json_snapshot
@@ -282,7 +283,7 @@ def show_settings_form(doc, values):
         checked = set(_lines(cat_box.Text))
         items = [forms.TemplateListItem(_NameOption(n), checked=(n in checked))
                  for n in names]
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             items,
             title=u"Категории для выгрузки",
             button_name=u"Выбрать",
@@ -315,7 +316,7 @@ def show_settings_form(doc, values):
                 checked=(n in checked))
             for n, writable in pairs
         ]
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             items,
             title=u"Параметры для выгрузки",
             button_name=u"Выбрать",
@@ -361,7 +362,7 @@ def show_settings_form(doc, values):
                 checked=(n in checked))
             for n, kinds in pairs
         ]
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             items,
             title=u"Параметры помещений/пространств",
             button_name=u"Выбрать",

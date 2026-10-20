@@ -33,6 +33,7 @@ clr.AddReference('WindowsBase')
 from System.Collections.Generic import List
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -77,7 +78,7 @@ def _pick_two_subfolders(root):
         return subs
 
     names = [os.path.basename(p) for p in subs]
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         names,
         title=u"В папке больше двух подпапок — выберите ровно две с парными файлами",
         button_name=u"Выбрать",

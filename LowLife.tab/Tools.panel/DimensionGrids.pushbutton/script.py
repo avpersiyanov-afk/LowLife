@@ -10,6 +10,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import *
 from pyrevit import revit, forms
+from lowlife import select_list
 
 
 doc = revit.doc
@@ -106,7 +107,7 @@ def choose_dimension_type():
     options = [DimTypeOption(x) for x in dim_types]
     options = sorted(options, key=lambda x: x.name)
 
-    selected = forms.SelectFromList.show(
+    selected = select_list.SelectFromList.show(
         options,
         title="Выберите стиль размеров",
         button_name="Создать размеры",

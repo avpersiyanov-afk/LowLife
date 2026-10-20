@@ -20,6 +20,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import room_finder, room_finder_settings
 
@@ -119,7 +120,7 @@ while True:
     if narrowed:
         options.insert(0, ToggleScopeOption(show_all, len(records), len(view_records)))
 
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         options,
         title=u"Найти помещение — {} ({})".format(
             u"весь проект" if (show_all or not narrowed) else u"активный вид",

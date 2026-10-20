@@ -25,6 +25,7 @@ clr.AddReference("System.Windows.Forms")
 from System.Windows.Forms import Application
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import spellcheck_core as core
 from lowlife import spellcheck, spellcheck_settings, email_ai
@@ -210,7 +211,7 @@ class FixOption(object):
 
 chosen = []
 if proposals:
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         [forms.TemplateListItem(FixOption(p), checked=True, name_attr="name") for p in proposals],
         title=u"Исправления ИИ — снимите отметку с ненужных",
         button_name=u"Исправить отмеченные",

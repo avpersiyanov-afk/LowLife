@@ -28,6 +28,7 @@ from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
 from pyrevit import revit, forms, script as pyrevit_script
+from lowlife import select_list
 
 from lowlife.electrical_circuits import create_circuit
 
@@ -175,7 +176,7 @@ def pick_system_type(default_name):
     if default_name in available:
         available = [default_name] + [a for a in available if a != default_name]
 
-    selected = forms.SelectFromList.show(
+    selected = select_list.SelectFromList.show(
         available,
         title=u"Тип электрической цепи (по умолчанию для дисциплины — первый в списке)",
         button_name=u"Выбрать",

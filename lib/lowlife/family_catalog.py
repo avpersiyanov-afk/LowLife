@@ -79,6 +79,7 @@ from System import Guid, String
 from System.Collections.Generic import List
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -1220,7 +1221,7 @@ def show_status_form(rows, catalog_root, entries):
         if row is None:
             forms.alert(u"Сначала выделите строку в таблице.")
             return
-        sel = forms.SelectFromList.show(
+        sel = select_list.SelectFromList.show(
             entry_options,
             title=u"Файл каталога для «{}»".format(row.mr.family_name),
             button_name=u"Выбрать",

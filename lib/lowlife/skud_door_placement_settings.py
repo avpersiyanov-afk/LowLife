@@ -51,6 +51,7 @@ clr.AddReference('RevitAPI')
 from Autodesk.Revit.DB import FilteredElementCollector, Family, CategoryType
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
@@ -745,7 +746,7 @@ def show_settings_form(doc, values):
                 items = [forms.TemplateListItem(o, checked=(
                     layout.normalize_family_name(o.family_name) in current_lower))
                     for o in options]
-                chosen = forms.SelectFromList.show(
+                chosen = select_list.SelectFromList.show(
                     items,
                     title=u"Семейства: {} — {}".format(label, side_label.lower()),
                     button_name=u"Выбрать",
@@ -829,7 +830,7 @@ def show_settings_form(doc, values):
                 if not options:
                     forms.alert(u"У выбранных семейств этого места в проекте нет типоразмеров.")
                     return
-                chosen = forms.SelectFromList.show(
+                chosen = select_list.SelectFromList.show(
                     options,
                     title=u"«{}»: {} — {}".format(access_type["name"], label, side_label.lower()),
                     button_name=u"Выбрать",

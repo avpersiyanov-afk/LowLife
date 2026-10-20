@@ -27,6 +27,7 @@ from Autodesk.Revit.DB import ElementId
 from System.Collections.Generic import List
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife.selection import list_view_categories, pick_elements_by_categories
 from lowlife import settings_core
@@ -98,7 +99,7 @@ def configure(doc, view):
     items = [forms.TemplateListItem(o, checked=(o.sort_name in saved_lower))
              for o in options]
 
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         items,
         title=u"Категории для фильтра выбора (можно несколько)",
         button_name=u"Сохранить",
