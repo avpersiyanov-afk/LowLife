@@ -1145,7 +1145,7 @@ def slab_bottom_faces(doc, element_keys, bottom_z):
     return faces
 
 
-def _hatch_pattern(doc):
+def hatch_pattern(doc):
     """Штриховка для заливок плит: «диагональная», иначе первая не сплошная чертёжная."""
     from Autodesk.Revit.DB import FillPatternElement, FillPatternTarget
     fallback = None
@@ -1387,7 +1387,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     # --- 4. изменения модели ---
     if fills:
         base = fill_type or region_type(doc, None)
-        pattern = _hatch_pattern(doc)
+        pattern = hatch_pattern(doc)
         heights = [h for h, _area in result.slab_heights]
         types = {}
         for face in fills:
