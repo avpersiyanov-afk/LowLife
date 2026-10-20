@@ -217,3 +217,19 @@ def test_slab_and_ceiling_labels():
     assert core.has_word(u"Лестничная клетка Л1", words)
     assert core.has_word(u"Машиноместо 12", words)
     assert not core.has_word(u"Кладовая", words)
+
+
+def test_lowest_face_at():
+    slab = [(0, 0), (10000, 0), (10000, 10000), (0, 10000)]
+    capital = [(4000, 4000), (6000, 4000), (6000, 6000), (4000, 6000)]
+    upper = [(8000, 0), (20000, 0), (20000, 5000), (8000, 5000)]
+    regions = [
+        (-1200, slab, [capital], core.polygon_bbox(slab)),   # плита с вырезом под капитель
+        (-1550, capital, [], core.polygon_bbox(capital)),
+        (3000, upper, [], core.polygon_bbox(upper)),          # плита этажом выше
+    ]
+    assert core.lowest_face_at(5000, 5000, regions) == 1
+    assert core.lowest_face_at(1000, 1000, regions) == 0
+    assert core.lowest_face_at(9000, 1000, regions) == 0      # над плитой — нижняя
+    assert core.lowest_face_at(15000, 1000, regions) == 2
+    assert core.lowest_face_at(-5, -5, regions) is None

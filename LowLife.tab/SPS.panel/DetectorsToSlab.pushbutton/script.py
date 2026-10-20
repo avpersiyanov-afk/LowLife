@@ -73,6 +73,7 @@ view_results = []
 timings = []  # (этап, секунды) — для отчёта: где уходит время
 diagnostics = []  # (извещатель, [строки]) — лучи над выделенными извещателями
 DIAGNOSE_LIMIT = 30
+FACE_ROWS_LIMIT = 400  # строк диагностики плит на план
 with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=False) as bar:
     def progress(index, total):
         if index % 10 == 0:
@@ -145,6 +146,23 @@ for result in view_results:
                 slab_marks.core.format_height(height - result.typical_mm))
             output.print_md(u"    - {}: {:.0f} м²{}".format(
                 slab_marks.core.format_height(height), float(area), note))
+    big_faces = [f for f in result.faces if f.area >= slab_marks.MIN_FILL_AREA_MM2]
+    if big_faces:
+        output.print_md(u"- диагностика плит над этажом (граней от {:.1f} м²: {}, мельче — {}):".format(
+            slab_marks.MIN_FILL_AREA_MM2 / 1e6, len(big_faces), len(result.faces) - len(big_faces)))
+        level_mm = slab_marks.mm(result.view.GenLevel.ProjectElevation)
+        rows = []
+        for face in sorted(big_faces, key=lambda f: f.z_mm)[:FACE_ROWS_LIMIT]:
+            rows.append([
+                face.source, u"{}".format(face.key[1] if face.key else u""), face.type_name,
+                slab_marks.core.format_height(face.z_mm - level_mm),
+                slab_marks.core.format_height(face.height_mm) if face.height_mm is not None else u"—",
+                u"{:.1f}".format(float(face.area) / 1e6), face.status or u"—",
+            ])
+        output.print_table(rows, columns=[u"Связь", u"Id", u"Тип", u"Низ от уровня", u"От пола",
+                                          u"Площадь, м²", u"Заливка"])
+        if len(big_faces) > FACE_ROWS_LIMIT:
+            output.print_md(u"- (показаны первые {} по отметке)".format(FACE_ROWS_LIMIT))
     if result.excluded_rooms:
         output.print_md(u"- исключено помещений по имени: {}".format(result.excluded_rooms))
     if result.typical_mm is not None:
