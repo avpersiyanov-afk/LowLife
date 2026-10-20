@@ -76,3 +76,11 @@ try:
     _usage.install(_usage_app)
 except Exception:
     pass
+
+# Ответы автора на «Обратную связь» (lib/pnotes/feedback.py): фоновая проверка
+# (не чаще раза в несколько часов) и уведомление о новом ответе — отдельный try.
+try:
+    from pnotes import feedback as _feedback
+    _feedback.check_replies_detached()
+except Exception:
+    pass

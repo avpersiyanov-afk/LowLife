@@ -5,6 +5,10 @@
  * строки на лист «Обратная связь» — прочитать отзывы через него нельзя, их видит
  * только владелец таблицы. Установка — docs/feedback-panel.md.
  *
+ * Действие `replies` — ответ автора: по ID своих сообщений (случайных, их знает только
+ * отправитель) LowLife получает «Статус» и «Ответ пользователю». Чужие сообщения так
+ * не прочитать — нужно знать их ID.
+ *
  * Действие `usage` — статистика запусков кнопок (lib/pnotes/usage.py): пачки запусков
  * дописываются на лист «Запуски», лист «Статистика» считает их формулами.
  */
@@ -35,10 +39,15 @@ const FIELDS = [
   ['model', 'Модель', 160],
   ['created', 'Создано у пользователя', 130],
   ['id', 'ID', 120],
-  // для себя: статус и ответ заполняются вручную в таблице
+  // заполняются вручную в таблице: статус и ответ видит отправитель, комментарий — только автор
   ['status', 'Статус', 110],
   ['note', 'Комментарий', 260],
+  ['reply', 'Ответ пользователю', 320],
+  ['replied', 'Ответ дан', 120],  // ставится сам при вводе ответа (onEdit)
 ];
+const MANUAL = ['status', 'note', 'reply', 'replied'];
+const MAX_REPLY_IDS = 200;          // ID в одном запросе ответов
+const MAX_REPLIES_PER_MINUTE = 120; // запросов ответов в минуту от всех пользователей
 const STATUSES = ['Новое', 'В работе', 'Сделано', 'Не будет', 'Дубль'];
 
 
@@ -67,7 +76,42 @@ function ensureSheet_(ss) {
       .setVerticalAlignment('top');
     sh.getRange(2, 1, sh.getMaxRows() - 1, 1).setNumberFormat('dd.MM.yyyy HH:mm');
   }
+  addMissingColumns_(sh);
   return sh;
+}
+
+// Таблица, созданная до появления новых столбцов (ответ пользователю): дописать их заголовки
+function addMissingColumns_(sh) {
+  const width = Math.max(sh.getLastColumn(), 1);
+  const head = sh.getRange(1, 1, 1, width).getDisplayValues()[0];
+  FIELDS.forEach((f, i) => {
+    if (head[i] === f[1]) return;
+    if (head[i]) throw new Error('Столбец ' + (i + 1) + ' листа «' + SHEET + '» должен называться «' + f[1] +
+      '», а называется «' + head[i] + '». Верните прежний порядок столбцов.');
+    sh.getRange(1, i + 1).setValue(f[1]).setFontWeight('bold').setBackground('#F2F5F9');
+    sh.setColumnWidth(i + 1, f[2]);
+    sh.getRange(2, i + 1, sh.getMaxRows() - 1, 1).setNumberFormat('@').setWrap(true).setVerticalAlignment('top');
+  });
+}
+
+function col_(key) {
+  return FIELDS.findIndex(f => f[0] === key) + 1;
+}
+
+// Ввели ответ в «Ответ пользователю» — рядом время ответа (по нему отправитель видит, когда ответили)
+function onEdit(e) {
+  try {
+    const sh = e.range.getSheet();
+    if (sh.getName() !== SHEET || e.range.getRow() < 2) return;
+    const replyCol = col_('reply');
+    if (e.range.getColumn() > replyCol || e.range.getLastColumn() < replyCol) return;
+    const tz = e.source.getSpreadsheetTimeZone();
+    const rows = e.range.getNumRows();
+    const replies = sh.getRange(e.range.getRow(), replyCol, rows, 1).getDisplayValues();
+    const now = Utilities.formatDate(new Date(), tz, 'dd.MM.yyyy HH:mm');
+    sh.getRange(e.range.getRow(), col_('replied'), rows, 1)
+      .setValues(replies.map(r => [String(r[0]).trim() ? now : '']));
+  } catch (err) { /* время ответа — не главное */ }
 }
 
 
@@ -85,6 +129,7 @@ function doPost(e) {
   try {
     if (req.action === 'feedback' && req.feedback) return json_(addFeedback_(req.feedback));
     if (req.action === 'usage' && req.usage) return json_(addUsage_(req.usage));
+    if (req.action === 'replies') return json_(getReplies_(req.ids));
     return json_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return json_({ ok: false, error: String((err && err.message) || err) });
@@ -124,7 +169,7 @@ function addFeedback_(item) {
     const row = FIELDS.map(f => {
       if (f[0] === 'received') return new Date();
       if (f[0] === 'status') return 'Новое';
-      if (f[0] === 'note') return '';
+      if (MANUAL.indexOf(f[0]) >= 0) return '';
       return clip_(item[f[0]], f[0] === 'text' ? MAX_TEXT : MAX_FIELD);
     });
     sh.appendRow(row);
@@ -143,6 +188,35 @@ function addFeedback_(item) {
     } catch (e) { /* письмо — не главное, строка уже записана */ }
   }
   return { ok: true };
+}
+
+// Статус и ответ по ID сообщений отправителя. Только чтение; сообщения без ответа тоже
+// возвращаются — по ним пользователь видит, что сообщение дошло, и его статус.
+function getReplies_(ids) {
+  if (!Array.isArray(ids)) return { ok: false, error: 'Нет списка ID' };
+  const want = {};
+  ids.slice(0, MAX_REPLY_IDS).forEach(id => {
+    const s = String(id || '');
+    if (/^[0-9a-f]{8,40}$/.test(s)) want[s] = true;  // ID из LowLife — hex, остальное не ищем
+  });
+  if (!Object.keys(want).length) return { ok: true, replies: [] };
+
+  const cache = CacheService.getScriptCache();
+  const count = Number(cache.get('replies_rate') || 0);
+  if (count >= MAX_REPLIES_PER_MINUTE) return { ok: false, error: 'Слишком много запросов, попробуйте через минуту' };
+  cache.put('replies_rate', String(count + 1), 60);
+
+  const sh = ensureSheet_(SpreadsheetApp.getActive());
+  if (sh.getLastRow() < 2) return { ok: true, replies: [] };
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, FIELDS.length).getDisplayValues();
+  const at = key => col_(key) - 1;
+  const replies = [];
+  rows.forEach(row => {
+    const id = row[at('id')];
+    if (!want[id]) return;
+    replies.push({ id: id, status: row[at('status')], reply: row[at('reply')], replied: row[at('replied')] });
+  });
+  return { ok: true, replies: replies };
 }
 
 

@@ -2755,7 +2755,13 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   описание, разметка `xaml/feedback.xaml`), `run(uiapp)`. Отправка — `core._post` на
   `FEEDBACK_URL` (отдельная таблица автора, `docs/feedback/Code.gs`, только запись;
   личный адрес для проверки — `%APPDATA%\pyRevit\LowLifeFeedback\config.json`),
-  сначала в локальную очередь `queue.json`, потом `flush_queue`. Подробности —
+  сначала в локальную очередь `queue.json`, потом `flush_queue`. Ответы автора: каждое
+  сообщение остаётся в `sent.json`; `fetch_replies()` (действие `replies` по ID своих
+  сообщений) вписывает статус и ответ, вкладка «Мои сообщения» их показывает;
+  `check_replies_detached()` (хуки `app-init`/`doc-opened`, не чаще раза в
+  `feedback_core.CHECK_HOURS` часов) проверяет в фоне и досылает неотправленное,
+  `notify_unread()` — уведомление о непрочитанном ответе (без сети). Чистая логика —
+  `lowlife/feedback_core.py` (тесты `tests/test_feedback_core.py`). Подробности —
   `docs/feedback-panel.md`.
 
 ## Куда добавлять новое
