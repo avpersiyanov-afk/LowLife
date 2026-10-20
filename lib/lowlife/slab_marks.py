@@ -88,24 +88,20 @@ class SlabProbe(object):
     точек это основное время. Результаты кэшируются по точке (повторные
     запросы той же точки — подпись помещения, проверка перепада).
 
-    «Несущие колонны» тоже видимы и считаются перекрытием: капители обычно
-    в этой категории, а капитель, присоединённая к плите, вырезает в ней
-    полость — без неё луч проходил сквозь полость до низа отделки пола
-    следующего этажа (верха плиты), и под капителью получалось выше, чем
-    рядом. Если всё же ближайшим сверху оказался тонкий слой (отделка
-    пола, а не плита), точка проверяется как отверстие (_check_opening).
+    Колонны для луча скрыты: луч вниз из точки над колонной упирался в низ
+    колонны (ниже чистого пола), и высота получалась завышенной. Если
+    ближайшим сверху оказался тонкий слой (отделка пола над полостью, а
+    не плита), точка проверяется как отверстие (_check_opening).
     """
 
     _VISIBLE = (
         BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs,
-        BuiltInCategory.OST_Ceilings, BuiltInCategory.OST_StructuralColumns,
-        BuiltInCategory.OST_RvtLinks,
+        BuiltInCategory.OST_Ceilings, BuiltInCategory.OST_RvtLinks,
     )
 
     _KINDS = {
         int(BuiltInCategory.OST_Floors): core.SLAB,
         int(BuiltInCategory.OST_Roofs): core.SLAB,
-        int(BuiltInCategory.OST_StructuralColumns): core.SLAB,
         int(BuiltInCategory.OST_Ceilings): core.CEILING,
     }
 
@@ -1031,7 +1027,11 @@ class SlabFace(object):
         self.area = core.region_area(outer, holes)
         self.point = None       # точка подписи (мм)
         self.height_mm = None   # высота от пола по лучу в точке подписи
-        self.column = False     # грань колонны/капители — заливается, но не перепад плиты
+        self.column = False     # грань колонны — заливается, но не перепад плиты
+        self.key = None         # (Id связи или -1, Id элемента)
+        self.source = u""       # имя связи или «модель»
+        self.type_name = u""
+        self.status = u""       # для отчёта: залита / почему нет
 
     def loops(self):
         return [self.outer] + list(self.holes)
@@ -1054,6 +1054,43 @@ def _loop_points(face, loop, transform):
     return points
 
 
+def _source_labels(doc):
+    labels = {-1: u"модель"}
+    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        labels[link.Id.IntegerValue] = safe_element_name(link) or u"связь"
+    return labels
+
+
+def structural_floor_keys(doc, bottom_z, top_z):
+    """
+    Несущие перекрытия (толще THIN_FLOOR_MM — не отделка пола) модели и
+    связей, чей габарит по высоте задевает [bottom_z, top_z] (футы):
+    {(Id связи или -1, Id элемента)}. Добавляются к плитам, найденным
+    лучами, — чтобы не пропустить капители и другие плиты, в которые не
+    попал ни один луч; закрытые более низкими гранями отсекаются геометрией
+    (slab_marks_core.lowest_face_at).
+    """
+    keys = set()
+    for source_key, (source_doc, transform) in model_sources(doc).items():
+        collector = (FilteredElementCollector(source_doc).OfCategory(BuiltInCategory.OST_Floors)
+                     .WhereElementIsNotElementType())
+        for element in collector:
+            try:
+                bbox = element.get_BoundingBox(None)
+                z0 = transform.OfPoint(bbox.Min).Z
+                z1 = transform.OfPoint(bbox.Max).Z
+                if max(z0, z1) < bottom_z or min(z0, z1) > top_z:
+                    continue
+                param = element.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)
+                thickness = param.AsDouble() if param is not None and param.HasValue else abs(z1 - z0)
+                if mm(thickness) < THIN_FLOOR_MM:
+                    continue
+            except Exception:
+                continue
+            keys.add((source_key, element.Id.IntegerValue))
+    return keys
+
+
 def slab_bottom_faces(doc, element_keys, bottom_z):
     """
     Нижние горизонтальные грани перекрытий из element_keys (как
@@ -1062,6 +1099,7 @@ def slab_bottom_faces(doc, element_keys, bottom_z):
     options = Options()
     options.DetailLevel = ViewDetailLevel.Fine
     sources = model_sources(doc)
+    labels = _source_labels(doc)
     faces = []
     for source_key, element_id in sorted(element_keys):
         if source_key not in sources:
@@ -1077,6 +1115,10 @@ def slab_bottom_faces(doc, element_keys, bottom_z):
             geometry = element.get_Geometry(options)
         except Exception:
             continue
+        try:
+            type_name = safe_element_name(source_doc.GetElement(element.GetTypeId())) or u""
+        except Exception:
+            type_name = u""
         for solid, solid_transform in _solids(geometry, transform):
             for face in solid.Faces:
                 if not isinstance(face, PlanarFace):
@@ -1091,6 +1133,9 @@ def slab_bottom_faces(doc, element_keys, bottom_z):
                 if outer is not None:
                     face_item = SlabFace(mm(z), outer, holes)
                     face_item.column = _is_column(element)
+                    face_item.key = (source_key, element_id)
+                    face_item.source = labels.get(source_key, u"")
+                    face_item.type_name = type_name
                     faces.append(face_item)
     return faces
 
@@ -1171,6 +1216,7 @@ class ViewResult(object):
         self.typical_mm = None
         self.slab_heights = []  # (высота мм, площадь м²) — заливки плит
         self.fills = 0
+        self.faces = []        # SlabFace плит над этажом — для диагностики в отчёте
         self.changed = []      # (помещение, основная высота мм)
         self.no_slab = []      # имена помещений без перекрытия над ними
         self.errors = []
@@ -1232,20 +1278,41 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     # --- 2. плиты над уровнем: грани и лучи в точках подписей ---
     slabs = probe.slabs_above(level_z, tolerance)
     faces = slab_bottom_faces(doc, slabs, level_z + probe_ft) if slabs else []
+    if faces:
+        # плиты, в которые не попал ни один луч (капители и т. п.): все
+        # несущие перекрытия до самой высокой найденной лучами грани
+        top = ft(max(f.z_mm for f in faces) + FACE_MATCH_MM)
+        extra = structural_floor_keys(doc, level_z + probe_ft, top) - set(slabs)
+        faces += [f for f in slab_bottom_faces(doc, extra, level_z + probe_ft)
+                  if f.z_mm <= mm(top)]
+    result.faces = faces
     fills = []
     if (settings.get("draw_slab_fills") or "yes") != "no":
-        big = [f for f in faces if f.area >= MIN_FILL_AREA_MM2]
-        for index, face in enumerate(big):
+        # Что видно снизу и на какой отметке — по геометрии граней, а не
+        # по лучу вверх (у капителей луч бывает отдаёт верхнюю грань); луч
+        # в точке подписи — только вниз, до пола.
+        regions = [(f.z_mm, f.outer, f.holes, core.polygon_bbox(f.outer)) for f in faces]
+        for index, face in enumerate(faces):
             if progress is not None:
-                progress(index, len(big))
+                progress(index, len(faces))
+            if face.area < MIN_FILL_AREA_MM2:
+                face.status = u"меньше {:.1f} м²".format(MIN_FILL_AREA_MM2 / 1e6)
+                continue
             point = core.interior_point(face.outer, face.holes)
             if point is None:
+                face.status = u"нет точки внутри контура"
+                continue
+            lowest = core.lowest_face_at(point[0], point[1], regions)
+            if lowest is not None and faces[lowest] is not face and \
+                    faces[lowest].z_mm < face.z_mm - FACE_MATCH_MM:
+                face.status = u"закрыта более низкой плитой ({})".format(
+                    core.format_height(faces[lowest].z_mm - mm(level_z), signed=True))
                 continue
             found = probe.probe(ft(point[0]), ft(point[1]), level_z + probe_ft, level_z)
-            if found is None or abs(found.slab_z_mm - face.z_mm) > FACE_MATCH_MM:
-                continue   # грань закрыта более низкой плитой
+            floor_z = found.floor_z_mm if found is not None else mm(level_z)
             face.point = point
-            face.height_mm = found.slab_mm
+            face.height_mm = face.z_mm - floor_z
+            face.status = u"залита"
             fills.append(face)
 
     # --- 3. лучи: проверка перепадов ---

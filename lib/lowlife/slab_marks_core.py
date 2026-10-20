@@ -543,3 +543,26 @@ def has_word(text, words):
     """Есть ли в тексте одно из слов (без учёта регистра, ё = е)."""
     low = unicode(text or u"").lower().replace(u"ё", u"е")
     return any(word in low for word in words)
+
+
+def polygon_bbox(points):
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def lowest_face_at(x, y, regions):
+    """
+    Индекс самой низкой области, в которую попадает точка, или None.
+    regions — [(z, внешний контур, [отверстия], габарит контура)] —
+    нижние грани плит: снизу видна та, что ниже всех в этой точке.
+    """
+    best = None
+    for index, (z, outer, holes, bbox) in enumerate(regions):
+        if not (bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]):
+            continue
+        if best is not None and z >= regions[best][0]:
+            continue
+        if _inside_region(x, y, outer, holes):
+            best = index
+    return best
