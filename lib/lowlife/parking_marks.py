@@ -5,14 +5,15 @@
 
 Что делает на плане:
   1. collect — элементы категории «Парковка» из всех загруженных связей,
-     видимых на виде и попадающих в его секущий диапазон (от глубины
-     просмотра до секущей плоскости) и в подрезку. Верх/низ — по
-     горизонтальным граням геометрии элемента, без граней — по габариту.
-  2. annotate_view — у машиноместа отмечается верх; у зоны (в «Комментариях»
-     есть слово из настроек) — верх и низ, а её контур (самая большая
-     горизонтальная грань) заливается штриховкой. Отметка — высотная отметка
-     Revit на грани элемента связи, где Revit её не принял — текст.
-     Повторный запуск заменяет отметки, тексты и заливки прошлого запуска.
+     видимых на виде и попадающих в его диапазон (от глубины просмотра до
+     верхней секущей плоскости) и в подрезку. Верх/низ — по горизонтальным
+     граням геометрии элемента, без граней — по габариту. Группа (зона
+     светильников, проезд, машиноместо, прочее) — по словам в «Комментариях»,
+     имени рабочего набора и имени семейства/типа (core.classify).
+  2. annotate_view — подпись с отметками верха/низа от уровня плана (текстом,
+     по шаблону группы; подписи, попавшие в одно место, склеиваются в одну),
+     у групп со штриховкой — область заливки по контуру элемента.
+     Повторный запуск заменяет подписи и заливки прошлого запуска.
 
 Вызывать внутри открытой транзакции.
 """
@@ -21,34 +22,34 @@ import math
 
 from Autodesk.Revit.DB import (
     XYZ, Line, CurveLoop, ElementId, FilteredElementCollector, BuiltInCategory,
-    BuiltInParameter, Level, TextNote, FilledRegion, FilledRegionType, ElementTypeGroup,
+    BuiltInParameter, Level, TextNote, FilledRegion, FilledRegionType,
     Options, ViewDetailLevel, Solid, GeometryInstance, PlanarFace, RevitLinkInstance,
-    Transform, SpotDimension, SpotDimensionType, DimensionStyleType, PlanViewPlane,
-    BasePoint, Color, UV
+    Transform, SpotDimension, SpotDimensionType, PlanViewPlane, Color, UV
 )
 
 from lowlife import parking_marks_core as core
 from lowlife import slab_marks
-from lowlife.scs import safe_element_name
+from lowlife.scs import safe_element_name, get_workset_name
 
 FT_TO_MM = 304.8
 
-# Типы текста и высотной отметки (копии типов по умолчанию): по ним повторный
-# запуск находит и удаляет отметки прошлого запуска на виде.
+# Тип текста подписей (копия типа по умолчанию): по нему повторный запуск
+# находит и удаляет подписи прошлого запуска на виде.
 TEXT_TYPE_NAME = u"LowLife — отметки парковки"
+# Высотные отметки этого типа ставила первая версия кнопки — удаляются при запуске.
 SPOT_TYPE_NAME = u"LowLife — отметки парковки"
 
-# Тип заливки зон по умолчанию и метка в «Комментариях» её областей.
-FILL_TYPE_NAME = u"LowLife — зона парковки"
-FILL_COLOR = (240, 140, 40)
+# Типы заливки групп — «LowLife — <имя группы>»; метка в «Комментариях» областей.
+FILL_TYPE_PREFIX = u"LowLife — "
 REGION_TAG = u"LowLife парковка"
 
-# Отметка низа зоны сдвигается от отметки верха на столько мм на листе.
-LABEL_GAP_MM = 6.0
+# Подписи, точки которых ближе этого (мм на листе), склеиваются в одну.
+MERGE_MM = 8.0
 
 # Горизонтальная грань: |нормаль.Z| не меньше; грани верха в пределах допуска — одна отметка.
 _HORIZONTAL = 0.999
 _SAME_Z_FT = 1.0 / FT_TO_MM
+
 
 is_plan = slab_marks.is_plan
 
@@ -162,6 +163,7 @@ def _box_corners(element, transform):
     return corners
 
 
+
 def _comment(element):
     try:
         param = element.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
@@ -170,26 +172,39 @@ def _comment(element):
         return None
 
 
-class ParkingItem(object):
-    """Элемент «Парковка» связи: верх/низ (футы, координаты модели), грани, зона ли."""
+def _family_and_type(element):
+    try:
+        param = element.get_Parameter(BuiltInParameter.ELEM_FAMILY_AND_TYPE_PARAM)
+        return param.AsValueString() if param is not None else None
+    except Exception:
+        return None
 
-    def __init__(self, link, link_name, element, transform, zone):
+
+def match_text(element):
+    """Текст, в котором ищутся слова групп: комментарий, рабочий набор, семейство и тип."""
+    parts = [_comment(element), get_workset_name(element), _family_and_type(element)]
+    return u" | ".join(p for p in parts if p)
+
+
+class ParkingItem(object):
+    """Элемент «Парковка» связи: верх/низ (футы, координаты модели), грани, группа."""
+
+    def __init__(self, link, link_name, element, transform, group):
         self.link = link
         self.link_name = link_name
         self.element = element
         self.transform = transform
-        self.zone = zone
+        self.group = group
         self.top_face = None
-        self.bottom_face = None
         self.outline_face = None
         self.corners = []
         self.top_z = None
         self.bottom_z = None
-        self.anchor = None  # точка отметки верха (x, y модели)
+        self.anchor = None  # точка подписи (координаты модели)
 
     @property
     def label(self):
-        return u"{}: {} (Id {})".format(self.link_name, safe_element_name(self.element) or u"",
+        return u"{}: {} (Id {})".format(self.link_name, _family_and_type(self.element) or u"",
                                        self.element.Id.IntegerValue)
 
     def xy_range(self):
@@ -198,17 +213,16 @@ class ParkingItem(object):
         return min(xs), min(ys), max(xs), max(ys)
 
 
-def make_item(link, link_name, element, transform, zone_words):
+def make_item(link, link_name, element, transform, group):
     """ParkingItem или None — у элемента нет ни геометрии, ни габарита."""
-    item = ParkingItem(link, link_name, element, transform,
-                       core.is_zone(_comment(element), zone_words))
+    item = ParkingItem(link, link_name, element, transform, group)
     try:
         faces = horizontal_faces(element, transform)
     except Exception:
         faces = []
     item.corners = _box_corners(element, transform)
     item.top_face = _extreme([f for f in faces if f.up], True)
-    item.bottom_face = _extreme([f for f in faces if not f.up], False)
+    bottom_face = _extreme([f for f in faces if not f.up], False)
     if faces:
         item.outline_face = max(faces, key=lambda f: f.area)
     if item.corners:
@@ -216,23 +230,20 @@ def make_item(link, link_name, element, transform, zone_words):
         item.bottom_z = min(p.Z for p in item.corners)
     if item.top_face is not None:
         item.top_z = item.top_face.z
-    if item.bottom_face is not None:
-        item.bottom_z = item.bottom_face.z
+    if bottom_face is not None:
+        item.bottom_z = bottom_face.z
     if item.top_z is None or item.bottom_z is None:
         return None
     if not item.corners:
         item.corners = [p for f in faces for p in [f.inner_point()] if p is not None]
         if not item.corners:
             return None
+    x0, y0, x1, y1 = item.xy_range()
     point = None
-    for face in (item.top_face, item.outline_face):
+    for face in (item.outline_face, item.top_face):
         if face is not None and point is None:
-            x0, y0, x1, y1 = item.xy_range()
             point = face.point_at((x0 + x1) / 2.0, (y0 + y1) / 2.0) or face.inner_point()
-    if point is None:
-        x0, y0, x1, y1 = item.xy_range()
-        point = XYZ((x0 + x1) / 2.0, (y0 + y1) / 2.0, item.top_z)
-    item.anchor = point
+    item.anchor = point or XYZ((x0 + x1) / 2.0, (y0 + y1) / 2.0, item.top_z)
     return item
 
 
@@ -241,8 +252,9 @@ def make_item(link, link_name, element, transform, zone_words):
 # ------------------------------------------------------------
 
 def view_z_range(doc, view):
-    """(низ, верх) секущего диапазона плана в футах модели: от глубины
-    просмотра до секущей плоскости; None — без ограничения."""
+    """(низ, верх) диапазона плана в футах модели: от глубины просмотра до
+    верхней секущей плоскости (зона светильников бывает выше секущей
+    плоскости); None — без ограничения."""
     try:
         view_range = view.GetViewRange()
     except Exception:
@@ -257,11 +269,11 @@ def view_z_range(doc, view):
             pass
         return None
 
-    cut = plane_z(PlanViewPlane.CutPlane)
+    top = plane_z(PlanViewPlane.TopClipPlane)
     depth = plane_z(PlanViewPlane.ViewDepthPlane)
-    if cut is None or depth is None:
-        return depth, cut   # план: глубина просмотра ниже секущей плоскости
-    return min(cut, depth), max(cut, depth)
+    if top is None or depth is None:
+        return depth, top   # план: глубина просмотра ниже верха
+    return min(top, depth), max(top, depth)
 
 
 def _in_crop(view, item):
@@ -277,24 +289,34 @@ def _in_crop(view, item):
             min(p.Y for p in local) <= box.Max.Y and max(p.Y for p in local) >= box.Min.Y)
 
 
+def group_words(settings):
+    """[(ключ группы, [слова]), ...] в порядке core.GROUPS."""
+    result = []
+    for group in core.GROUPS:
+        words = settings.get(group.key + "_words")
+        result.append((group.key, core.split_words(group.words if words is None else words)))
+    return result
+
+
 class Collected(object):
     def __init__(self):
         self.items = []
         self.links = []           # имена связей, в которых искали
         self.unloaded = []        # имена выгруженных связей
         self.hidden_links = []    # скрытых на виде
-        self.out_of_range = 0     # вне секущего диапазона
+        self.out_of_range = 0     # вне диапазона вида
         self.out_of_crop = 0      # вне подрезки
         self.no_geometry = []     # подписи элементов без геометрии
         self.category_hidden = False
 
 
-def collect(doc, view, zone_words):
+def collect(doc, view, settings):
     result = Collected()
     try:
         result.category_hidden = view.GetCategoryHidden(ElementId(BuiltInCategory.OST_Parking))
     except Exception:
         pass
+    words = group_words(settings)
     bottom, top = view_z_range(doc, view)
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         name = safe_element_name(link) or u"связь {}".format(link.Id.IntegerValue)
@@ -316,7 +338,8 @@ def collect(doc, view, zone_words):
         elements = (FilteredElementCollector(link_doc).OfCategory(BuiltInCategory.OST_Parking)
                     .WhereElementIsNotElementType())
         for element in elements:
-            item = make_item(link, name, element, transform, zone_words)
+            group = core.classify(match_text(element), words) or core.OTHER.key
+            item = make_item(link, name, element, transform, group)
             if item is None:
                 result.no_geometry.append(u"{}: Id {}".format(name, element.Id.IntegerValue))
                 continue
@@ -338,91 +361,54 @@ def text_type(doc):
     return slab_marks.text_type(doc, TEXT_TYPE_NAME)
 
 
-def spot_type(doc):
-    """Тип высотной отметки SPOT_TYPE_NAME (копия типа по умолчанию) или None."""
-    types = []
-    for candidate in FilteredElementCollector(doc).OfClass(SpotDimensionType):
-        try:
-            if candidate.StyleType != DimensionStyleType.SpotElevation:
-                continue
-        except Exception:
-            continue
-        if safe_element_name(candidate) == SPOT_TYPE_NAME:
-            return candidate
-        types.append(candidate)
-    base = None
-    try:
-        base = doc.GetElement(doc.GetDefaultElementTypeId(ElementTypeGroup.SpotElevationType))
-    except Exception:
-        pass
-    if base is None and types:
-        base = types[0]
-    if base is None:
-        return None
-    try:
-        return base.Duplicate(SPOT_TYPE_NAME)
-    except Exception:
-        return None
-
-
-def fill_type(doc, name):
-    """(тип области заливки, ошибка). Пустое имя — FILL_TYPE_NAME, создаётся
-    при отсутствии копией первого немаскирующего типа с диагональной штриховкой."""
-    name = (name or u"").strip()
-    types = list(FilteredElementCollector(doc).OfClass(FilledRegionType))
-    for candidate in types:
-        if safe_element_name(candidate) == (name or FILL_TYPE_NAME):
+def fill_type(doc, group):
+    """(тип заливки группы «LowLife — <имя>», ошибка): создаётся при отсутствии
+    копией первого немаскирующего типа, штриховка диагональная, цвет группы."""
+    name = FILL_TYPE_PREFIX + group.name.lower()
+    for candidate in FilteredElementCollector(doc).OfClass(FilledRegionType):
+        if safe_element_name(candidate) == name:
             return candidate, None
-    if name:
-        return None, u"в проекте нет типа области заливки «{}»".format(name)
     base = slab_marks.region_type(doc, None)
     if base is None:
         return None, u"в проекте нет ни одного типа области заливки"
-    created = base.Duplicate(FILL_TYPE_NAME)
+    created = base.Duplicate(name)
     try:
         pattern = slab_marks.hatch_pattern(doc)
         if pattern is not None:
             created.ForegroundPatternId = pattern.Id
-        created.ForegroundPatternColor = Color(*FILL_COLOR)
+        created.ForegroundPatternColor = Color(*group.color)
         created.BackgroundPatternId = ElementId.InvalidElementId
     except Exception:
         pass
     return created, None
 
 
-def elevation_base(doc, mode):
-    """(отметка базы в мм внутренних координат, её собственная отметка в мм) для core.elevation_mm."""
-    if mode == "internal":
-        return 0.0, 0.0
-    try:
-        point = BasePoint.GetProjectBasePoint(doc)
-        shared = mm(point.SharedPosition.Z) if mode == "shared" else 0.0
-        return mm(point.Position.Z), shared
-    except Exception:
-        return 0.0, 0.0
+def group_by_key(key):
+    for group in core.GROUPS + [core.OTHER]:
+        if group.key == key:
+            return group
+    return core.OTHER
 
 
 # ------------------------------------------------------------
 # План
 # ------------------------------------------------------------
 
-def _comment_of(element):
-    return _comment(element) or u""
-
-
-def clear_view(doc, view, note_type, spot):
-    """Удалить с вида отметки, тексты и заливки прошлого запуска."""
+def clear_view(doc, view, note_type):
+    """Удалить с вида подписи, заливки и высотные отметки прошлых запусков."""
     from System.Collections.Generic import List
     ids = List[ElementId]()
     for note in FilteredElementCollector(doc, view.Id).OfClass(TextNote):
         if note.GetTypeId() == note_type.Id:
             ids.Add(note.Id)
-    if spot is not None:
+    spot_ids = set(t.Id.IntegerValue for t in FilteredElementCollector(doc).OfClass(SpotDimensionType)
+                   if safe_element_name(t) == SPOT_TYPE_NAME)
+    if spot_ids:
         for dimension in FilteredElementCollector(doc, view.Id).OfClass(SpotDimension):
-            if dimension.GetTypeId() == spot.Id:
+            if dimension.GetTypeId().IntegerValue in spot_ids:
                 ids.Add(dimension.Id)
     for region in FilteredElementCollector(doc, view.Id).OfClass(FilledRegion):
-        if _comment_of(region).startswith(REGION_TAG):
+        if (_comment(region) or u"").startswith(REGION_TAG):
             ids.Add(region.Id)
     if ids.Count:
         doc.Delete(ids)
@@ -432,132 +418,69 @@ def clear_view(doc, view, note_type, spot):
 class ViewResult(object):
     def __init__(self, view):
         self.view = view
-        self.parking = 0
-        self.zones = 0
-        self.spots = 0
+        self.counts = {}          # ключ группы → элементов
         self.texts = 0
         self.fills = 0
-        self.spot_errors = []     # (элемент, причина) — вместо отметки текст
-        self.no_prefix = False    # Revit не дал задать префикс высотной отметке
         self.errors = []
 
 
-def _place_spot(doc, view, item, face, point, spot, template, result):
-    """Высотная отметка на грани элемента связи; False — не вышло (причина в result)."""
-    try:
-        reference = face.face.Reference
-        if reference is None:
-            raise ValueError(u"у грани нет ссылки")
-        reference = reference.CreateLinkReference(item.link)
-        dimension = doc.Create.NewSpotElevation(view, reference, point, point, point, point, False)
-        if dimension is None:
-            raise ValueError(u"Revit не создал отметку")
-    except Exception as ex:
-        result.spot_errors.append((item.label, u"{}".format(ex)))
-        return False
-    try:
-        if spot is not None:
-            dimension.ChangeTypeId(spot.Id)
-    except Exception:
-        pass
-    prefix, suffix = core.split_template(template)
-    try:
-        dimension.Prefix = prefix
-        dimension.Suffix = suffix
-    except Exception:
-        if prefix or suffix:
-            result.no_prefix = True
-    result.spots += 1
-    return True
-
-
-def _place_text(doc, view, point, text, note_type, result, item):
-    try:
-        TextNote.Create(doc, view.Id, point, text.replace(u"\n", u"\r"), note_type.Id)
-        result.texts += 1
-    except Exception as ex:
-        result.errors.append(u"{}: текст — {}".format(item.label, ex))
-
-
-def _bottom_point(item, offset_ft, up):
-    """Точка низа зоны: со сдвигом от отметки верха вниз по листу (иначе вверх, иначе там же)."""
-    face = item.bottom_face
-    x, y = item.anchor.X, item.anchor.Y
-    for sign in (-1.0, 1.0):
-        point = face.point_at(x + up.X * offset_ft * sign, y + up.Y * offset_ft * sign)
-        if point is not None:
-            return point
-    return face.point_at(x, y) or face.inner_point()
-
-
-def annotate_view(doc, view, items, settings, note_type, spot, zone_fill, zone_fill_error=None):
-    """Отметки и заливки зон на плане по элементам collect(); ViewResult."""
+def annotate_view(doc, view, items, settings, note_type):
+    """Подписи отметок от уровня плана и заливки по элементам collect(); ViewResult."""
     result = ViewResult(view)
-    clear_view(doc, view, note_type, spot)
-
+    clear_view(doc, view, note_type)
     level_z = view.GenLevel.ProjectElevation
-    base_z, base_shared = elevation_base(doc, settings.get("elevation_base") or "project")
-    # без своего типа отметки повторный запуск не нашёл бы их — тогда текстом
-    use_spots = spot is not None and (settings.get("mark_mode") or "spot") == "spot"
-    top_format = settings.get("top_text_format") or u"{h}"
-    zone_top_format = settings.get("zone_top_text_format") or u"Верх зоны {h}"
-    zone_bottom_format = settings.get("zone_bottom_text_format") or u"Низ зоны {h}"
     try:
-        up = view.UpDirection
-        offset_ft = ft(LABEL_GAP_MM * view.Scale)
+        merge_ft = ft(MERGE_MM * view.Scale)
     except Exception:
-        up, offset_ft = XYZ(0, 1, 0), ft(LABEL_GAP_MM * 100)
+        merge_ft = ft(MERGE_MM * 100)
 
-    def value(z):
-        return core.elevation_mm(mm(z), base_z, base_shared)
-
-    def text_point(point):
-        return XYZ(point.X, point.Y, level_z)
-
+    labels = []   # (точка, текст)
+    fill_types = {}
     for item in items:
-        anchor = item.anchor
-        if not item.zone:
-            result.parking += 1
-            if not (use_spots and item.top_face is not None and
-                    _place_spot(doc, view, item, item.top_face, anchor, spot, top_format, result)):
-                _place_text(doc, view, text_point(anchor), core.label(top_format, value(item.top_z)),
-                            note_type, result, item)
+        group = group_by_key(item.group)
+        result.counts[group.key] = result.counts.get(group.key, 0) + 1
+        template = settings.get(group.key + "_text_format")
+        if template is None:
+            template = group.text_format
+        if template.strip():
+            labels.append((item.anchor, core.label(template, mm(item.top_z - level_z),
+                                                   mm(item.bottom_z - level_z))))
+        fill = settings.get(group.key + "_fill") or group.fill
+        if group is core.OTHER or fill != "yes":
             continue
-
-        result.zones += 1
-        top_done = bottom_done = False
-        if use_spots and item.top_face is not None and item.bottom_face is not None:
-            top_done = _place_spot(doc, view, item, item.top_face, anchor, spot,
-                                   zone_top_format, result)
-            if top_done:
-                bottom = _bottom_point(item, offset_ft, up)
-                bottom_done = bottom is not None and _place_spot(
-                    doc, view, item, item.bottom_face, bottom, spot, zone_bottom_format, result)
-        if not top_done:
-            _place_text(doc, view, text_point(anchor),
-                        core.zone_label(zone_top_format, zone_bottom_format,
-                                        value(item.top_z), value(item.bottom_z)),
-                        note_type, result, item)
-        elif not bottom_done:
-            shifted = XYZ(anchor.X - up.X * offset_ft, anchor.Y - up.Y * offset_ft, level_z)
-            _place_text(doc, view, shifted, core.label(zone_bottom_format, value(item.bottom_z)),
-                        note_type, result, item)
-
-        if zone_fill is None:
-            if zone_fill_error and zone_fill_error not in result.errors:
-                result.errors.append(u"штриховка зон: " + zone_fill_error)
+        if group.key not in fill_types:
+            fill_types[group.key] = fill_type(doc, group)
+        region_type, error = fill_types[group.key]
+        if region_type is None:
+            if u"штриховка: " + error not in result.errors:
+                result.errors.append(u"штриховка: " + error)
             continue
-        region, error = _zone_region(doc, view, item, zone_fill, level_z)
+        region, error = _region(doc, view, item, region_type, level_z)
         if region is None:
             result.errors.append(u"{}: штриховка — {}".format(item.label, error))
             continue
         try:
             param = region.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
             if param is not None and not param.IsReadOnly:
-                param.Set(u"{} {}".format(REGION_TAG, item.label))
+                param.Set(u"{} {}".format(REGION_TAG, group.name))
         except Exception:
             pass
         result.fills += 1
+
+    # подписи в одном месте (зона светильников над проездом) — одной заметкой,
+    # строки в порядке групп
+    for indexes in core.cluster([(p.X, p.Y) for p, _t in labels], merge_ft):
+        texts = []
+        for index in indexes:
+            if labels[index][1] not in texts:
+                texts.append(labels[index][1])
+        point = labels[indexes[0]][0]
+        try:
+            TextNote.Create(doc, view.Id, XYZ(point.X, point.Y, level_z),
+                            u"\r".join(t.replace(u"\n", u"\r") for t in texts), note_type.Id)
+            result.texts += 1
+        except Exception as ex:
+            result.errors.append(u"подпись — {}".format(ex))
     return result
 
 
@@ -566,8 +489,9 @@ def _box_loop(item, z):
     bottom = sorted(item.corners, key=lambda p: p.Z)[:4]
     if len(bottom) < 4:
         return None
-    center = XYZ(sum(p.X for p in bottom) / 4.0, sum(p.Y for p in bottom) / 4.0, 0)
-    bottom.sort(key=lambda p: math.atan2(p.Y - center.Y, p.X - center.X))
+    cx = sum(p.X for p in bottom) / 4.0
+    cy = sum(p.Y for p in bottom) / 4.0
+    bottom.sort(key=lambda p: math.atan2(p.Y - cy, p.X - cx))
     points = [XYZ(p.X, p.Y, z) for p in bottom]
     loop = CurveLoop()
     for i in range(4):
@@ -575,9 +499,9 @@ def _box_loop(item, z):
     return loop
 
 
-def _zone_region(doc, view, item, region_type, z):
-    """(область заливки по контуру зоны, ошибка): самая большая горизонтальная
-    грань, не вышло — прямоугольник габарита."""
+def _region(doc, view, item, region_type, z):
+    """(область заливки по контуру элемента, ошибка): самая большая
+    горизонтальная грань, не вышло — прямоугольник габарита."""
     from System.Collections.Generic import List
     last_error = None
     attempts = []

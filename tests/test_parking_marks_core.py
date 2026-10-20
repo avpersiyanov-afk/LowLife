@@ -2,35 +2,29 @@
 from lowlife import parking_marks_core as core
 
 
-def test_is_zone():
-    words = core.split_words(u"зона, ЗОНА безопасности")
-    assert core.is_zone(u"Зона проезда", words)
-    assert core.is_zone(u"тех. ЗОНА", words)
-    assert not core.is_zone(u"Машиноместо", words)
-    assert not core.is_zone(None, words)
-    assert not core.is_zone(u"зона", [])
+def _words():
+    return [(g.key, core.split_words(g.words)) for g in core.GROUPS]
+
+
+def test_classify_by_comment_workset_family():
+    words = _words()
+    # зона светильников: в комментарии есть и «проезд» — побеждает первая группа
+    assert core.classify(u"Зона светильников в зоне проезда | 2_Зона прокладки светильников",
+                         words) == "lights"
+    assert core.classify(u"2_Проезды | Парковка: Проезд", words) == "drive"
+    assert core.classify(u"СО | 2_Технологические решения | SMNX_Р_т_Машиноместо: Элит_L",
+                         words) == "parking"
+    assert core.classify(u"Что-то ещё", words) is None
+    assert core.classify(u"проезд", [("lights", []), ("drive", [u"проезд"])]) == "drive"
 
 
 def test_label():
-    assert core.label(u"{h}", 3150.0) == u"+3,150"
-    assert core.label(u"Верх зоны {h}", 0.0) == u"Верх зоны ±0,000"
-    assert core.label(u"Низ", -1200.0) == u"Низ -1,200"
-    assert core.label(u"", 2100.0) == u"+2,100"
-    assert core.zone_label(u"Верх {h}", u"Низ {h}", 2500.0, 0.0) == u"Верх +2,500\nНиз ±0,000"
-
-
-def test_split_template():
-    assert core.split_template(u"Верх зоны {h}") == (u"Верх зоны", u"")
-    assert core.split_template(u"{h} (низ)") == (u"", u"(низ)")
-    assert core.split_template(u"{h}") == (u"", u"")
-    assert core.split_template(u"Низ") == (u"Низ", u"")
-    assert core.split_template(None) == (u"", u"")
-
-
-def test_elevation_mm():
-    assert core.elevation_mm(5000.0, 1000.0) == 4000.0
-    assert core.elevation_mm(5000.0, 1000.0, 150000.0) == 154000.0
-    assert core.elevation_mm(0.0, 0.0, None) == 0.0
+    assert core.label(u"Проезд: верх {top}", 2450.0, 0.0) == u"Проезд: верх +2,450"
+    assert core.label(u"Светильники: низ {bottom}, верх {top}", 3200.0, 2800.0) == \
+        u"Светильники: низ +2,800, верх +3,200"
+    assert core.label(u"{h}", 0.0, -100.0) == u"±0,000"
+    assert core.label(u"Верх", 2100.0, 0.0) == u"Верх +2,100"
+    assert core.label(u"", -1200.0, 0.0) == u"-1,200"
 
 
 def test_overlaps():
@@ -40,3 +34,20 @@ def test_overlaps():
     assert not core.overlaps(0.0, 4.0, 5.0, 20.0)
     assert core.overlaps(0.0, 4.0, None, 20.0)
     assert core.overlaps(25.0, 30.0, 5.0, None)
+
+
+def test_cluster():
+    points = [(0.0, 0.0), (10.0, 0.0), (0.5, 0.0), (10.0, 0.8), (50.0, 50.0)]
+    assert core.cluster(points, 1.0) == [[0, 2], [1, 3], [4]]
+    # цепочка: 0–1 и 1–2 рядом — одна группа
+    assert core.cluster([(0.0, 0.0), (0.9, 0.0), (1.8, 0.0)], 1.0) == [[0, 1, 2]]
+    assert core.cluster([], 1.0) == []
+
+
+def test_settings_fields_per_group():
+    from lowlife import parking_marks_settings as settings
+    keys = [f.key for f in settings.SETTINGS.fields]
+    for group in core.GROUPS:
+        for suffix in ("_words", "_text_format", "_fill"):
+            assert group.key + suffix in keys
+    assert "other_text_format" in keys
