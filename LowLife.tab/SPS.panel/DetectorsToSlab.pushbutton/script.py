@@ -71,6 +71,8 @@ if action != MARK:
 move_result = None
 view_results = []
 timings = []  # (этап, секунды) — для отчёта: где уходит время
+diagnostics = []  # (извещатель, [строки]) — лучи над выделенными извещателями
+DIAGNOSE_LIMIT = 30
 with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=False) as bar:
     def progress(index, total):
         if index % 10 == 0:
@@ -79,6 +81,20 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
     with revit.Transaction(TITLE):
         probe = slab_marks.SlabProbe(doc, settings.get("opening_size_mm"))
         try:
+            # выделены извещатели (немного) — в отчёт: во что упираются лучи над ними
+            if selected and len(selected) <= DIAGNOSE_LIMIT:
+                levels = slab_marks.plan_levels(doc)
+                probe_ft = slab_marks.ft(settings.get("probe_height_mm") or 1500.0)
+                for detector in selected:
+                    point = slab_marks._point(detector)
+                    _level, level_z = slab_marks.level_of(doc, detector, levels)
+                    if point is None or level_z is None:
+                        continue
+                    try:
+                        diagnostics.append((detector, probe.describe(
+                            point.X, point.Y, level_z + probe_ft, level_z)))
+                    except Exception as ex:
+                        diagnostics.append((detector, [u"ошибка: {}".format(ex)]))
             if detectors:
                 started = time.time()
                 move_result = slab_marks.move_detectors(doc, detectors, settings, probe, progress)
@@ -160,6 +176,13 @@ for result in view_results:
         output.print_md(u"- без перекрытия над ними: " + u", ".join(result.no_slab))
     for error in result.errors:
         output.print_md(u"- ошибка: " + error)
+
+if diagnostics:
+    output.print_md(u"### Лучи над выделенными извещателями (до переноса)")
+    for detector, diag_lines in diagnostics:
+        output.print_md(u"- {}".format(output.linkify(detector.Id)))
+        for line in diag_lines:
+            output.print_md(u"    - " + line)
 
 if probe.openings:
     output.print_md(u"### Отверстия в перекрытиях")

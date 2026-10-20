@@ -189,6 +189,48 @@ class SlabProbe(object):
                 hits.append((mm(context.Proximity), kind, key))
         return hits
 
+    def describe(self, x, y, origin_z, level_z, limit=8):
+        """
+        Диагностика для отчёта: во что упираются лучи из точки — строки
+        «вверх/вниз: расстояние, отметка от уровня, категория, тип, связь» (до
+        limit на направление) и итог probe(). Только для выбранных извещателей.
+        """
+        lines = []
+        if self.intersector is None:
+            self._open()
+        origin = XYZ(x, y, origin_z)
+        for label, direction, sign in ((u"вверх", XYZ.BasisZ, 1), (u"вниз", XYZ.BasisZ.Negate(), -1)):
+            contexts = sorted(self.intersector.Find(origin, direction), key=lambda c: c.Proximity)
+            for context in contexts[:limit]:
+                reference = context.GetReference()
+                element = self.doc.GetElement(reference.ElementId)
+                link = u"модель"
+                if reference.LinkedElementId != ElementId.InvalidElementId:
+                    link = safe_element_name(element) or u"связь"
+                    try:
+                        element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
+                    except Exception:
+                        element = None
+                try:
+                    category = element.Category.Name
+                    type_name = safe_element_name(element.Document.GetElement(element.GetTypeId())) or u""
+                    element_id = element.Id.IntegerValue
+                except Exception:
+                    category, type_name, element_id = u"?", u"", 0
+                distance = mm(context.Proximity)
+                lines.append(u"{} {:.0f} мм (от уровня {:+.0f}): {} «{}» Id {} — {}".format(
+                    label, float(distance), float(mm(origin_z - level_z) + sign * distance),
+                    category, type_name, element_id, link))
+        found = self.probe(x, y, origin_z, level_z)
+        if found is None:
+            lines.append(u"итог: перекрытие не найдено")
+        else:
+            lines.append(u"итог: низ перекрытия {} от пола, пол {:+.0f} мм от уровня{}{}".format(
+                core.format_height(found.slab_mm), float(found.floor_z_mm - mm(level_z)),
+                u", ПП {}".format(core.format_height(found.ceiling_mm)) if found.ceiling_mm is not None else u"",
+                u", над отверстием — по плите вокруг" if found.through_opening else u""))
+        return lines
+
     def _remember_slab(self, up_hits, level_z):
         key = self._nearest_slab_key(up_hits)
         if key is not None:
