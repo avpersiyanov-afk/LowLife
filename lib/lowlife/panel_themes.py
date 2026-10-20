@@ -159,6 +159,7 @@ THEMES = {
         (u"Tools", u"SpellCheck"),
         (u"Tools", u"DwgToDrafting"),
         (u"Tools", u"FopParameters"),
+        (u"Tools", u"ParkingMarks"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),

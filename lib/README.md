@@ -1711,6 +1711,31 @@ room_number_param)` — запись по точкам прохода, возв�
 
 `slab_marks_core.py` покрыт `tests/test_slab_marks_core.py`.
 
+## parking_marks_core.py / parking_marks.py / parking_marks_settings.py
+
+Кнопка «Отметки парковки» (`Tools.panel/ParkingMarks`, инструкция —
+`docs/tools-panel.md#отметки-парковки`). Вызывать внутри одной транзакции.
+
+- **`collect(doc, view, zone_words)`** → `Collected`: элементы категории «Парковка»
+  всех загруженных и не скрытых на виде связей (`ParkingItem`: верх/низ в футах
+  модели, грани верха/низа и контура — `HFace`, зона ли — `core.is_zone` по
+  «Комментариям»). Пропускает элементы вне диапазона от глубины просмотра до
+  секущей плоскости (`view_z_range`) и вне подрезки.
+- **`annotate_view(doc, view, items, settings, note_type, spot, zone_fill, ...)`** →
+  `ViewResult`: высотная отметка (`NewSpotElevation` по ссылке на грань связи,
+  `CreateLinkReference`, тип `SPOT_TYPE_NAME` — `spot_type`) верха машиноместа,
+  верха и низа зоны; не принял Revit — `TextNote` типа `TEXT_TYPE_NAME` (отметка от
+  базы `elevation_base`). Зона — `FilledRegion` по контурам самой большой
+  горизонтальной грани (иначе прямоугольник габарита), тип — `fill_type`, метка
+  `REGION_TAG` в «Комментариях». Повторный запуск удаляет отметки/тексты этих
+  типов и помеченные области на виде (`clear_view`).
+- Общие с «Извещателями на перекрытие»: `slab_marks.is_plan`, `text_type`,
+  `region_type`, `hatch_pattern`.
+
+`parking_marks_core.py` (слова зоны, тексты по шаблону `{h}`, префикс/суффикс
+высотной отметки, отметка от базы, попадание в диапазон) покрыт
+`tests/test_parking_marks_core.py`.
+
 ## detector_access_core.py / detector_access.py / detector_access_settings.py
 
 Кнопка «Доступ к извещателям» (`SPS.panel/DetectorAccess`, инструкция —

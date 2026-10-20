@@ -510,6 +510,30 @@ def detector_access(c):
     c.polygon([(58, 55), (58, 69), (68, 62)], fill=ORANGE)
 
 
+def parking_marks(c):
+    """«Отметки парковки»: план — машиноместо с буквой «P», рядом зона с
+    оранжевой штриховкой, над ними высотные отметки (треугольник на полке)."""
+    # зона: диагональная штриховка, обрезанная по прямоугольнику зоны
+    c.rect((50, 40, 88, 88), outline=None, fill=WHITE, r=2)
+    hatch = Image.new("RGBA", c.im.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(hatch)
+    for k in range(-40, 50, 9):
+        draw.line([((50 + k) * K, 88 * K), ((98 + k) * K, 40 * K)], fill=ORANGE, width=int(2.5 * K))
+    mask = Image.new("L", c.im.size, 0)
+    ImageDraw.Draw(mask).rectangle([50 * K, 40 * K, 88 * K, 88 * K], fill=255)
+    c.im.paste(hatch, (0, 0), Image.composite(hatch, Image.new("RGBA", c.im.size), mask))
+    c.rect((50, 40, 88, 88), outline=BLUE, fill=None, w=4, r=2)
+    # машиноместо: контур и «P»
+    c.rect((8, 40, 42, 88), outline=BLUE, fill=WHITE, w=4, r=2)
+    c.line([(20, 78), (20, 52), (28, 52)], BLUE, 5)
+    c.d.arc([22 * K, 52 * K, 34 * K, 66 * K], 270, 90, fill=BLUE, width=int(5 * K))
+    c.line([(20, 66), (28, 66)], BLUE, 5)
+    # высотные отметки над машиноместом и зоной
+    for x, shelf, color in ((25, 16, BLUE), (69, -16, ORANGE)):
+        c.polygon([(x - 7, 22), (x + 7, 22), (x, 30)], fill=color)
+        c.line([(x, 22), (x + shelf, 22)], BLUE, 3)
+        c.line([(x, 30), (x, 36)], BLUE, 3)
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -540,6 +564,7 @@ ICONS = [
     ("Tools.panel/Greeting.pushbutton", greeting),
     ("SPS.panel/DetectorsToSlab.pushbutton", detectors_to_slab),
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
+    ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
 ]
 
 
