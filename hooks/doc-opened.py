@@ -113,3 +113,13 @@ try:
     _tag_leader_follow.install(_HOST_APP.uiapp)
 except Exception:
     pass
+
+
+# Ответы автора на «Обратную связь»: напоминание о непрочитанном ответе (без сети, по
+# локальной истории) и фоновая проверка новых, если давно не проверяли. Отдельный try.
+try:
+    from pnotes import feedback as _feedback
+    _feedback.notify_unread()
+    _feedback.check_replies_detached()
+except Exception:
+    pass
