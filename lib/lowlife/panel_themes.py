@@ -58,6 +58,7 @@ makes the button disappear (safe, obvious) rather than making the whole
 panel permanently visible regardless of the selected theme (the bug this
 replaced: ExportAddressesToExcel and DeleteViewCircuits were missing from
 THEMES, which pinned SCS.panel and Tools.panel visible under every theme).
+tests/test_panel_themes.py checks this for every panel named here.
 """
 
 THEMES = {
@@ -85,6 +86,8 @@ THEMES = {
         (u"SOT", u"BuildSotSchematic"),
         (u"SOT", u"CameraFov"),
         (u"SOT", u"AimCameras"),
+        (u"SOT", u"CameraParamsCheck"),
+        (u"SOT", u"CameraPreviewView"),
     ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
@@ -160,11 +163,17 @@ THEMES = {
         (u"Tools", u"DwgToDrafting"),
         (u"Tools", u"FopParameters"),
         (u"Tools", u"ParkingMarks"),
+        (u"Tools", u"CropView"),
+        (u"Tools", u"LineBypass"),
+        (u"Tools", u"LinkTraysToExcel"),
+        (u"Tools", u"TagEquipment"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),
         (u"ToolsRooms", u"RoomLots"),
         (u"ToolsRooms", u"DiagnoseRoomTag"),
+        (u"ToolsRooms", u"FragmentExplication"),
+        (u"ToolsRooms", u"UpdateExplication"),
         (u"ToolsSchedules", u"SplitScheduleOnSheet"),
         (u"ToolsSchedules", u"ScheduleToExcel"),
         (u"ToolsSchedules", u"ScheduleFromExcel"),
@@ -174,6 +183,8 @@ THEMES = {
         (u"ToolsFamilies", u"UpdateFamiliesFromCatalog"),
         (u"LOI", u"FillLOI"),
         (u"LOI", u"CheckLOI"),
+        (u"LOI", u"FillFloor"),
+        (u"LOI", u"UpdateLevelName"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),
