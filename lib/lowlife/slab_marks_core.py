@@ -566,3 +566,59 @@ def lowest_face_at(x, y, regions):
         if _inside_region(x, y, outer, holes):
             best = index
     return best
+
+
+def interior_points(outer, holes, grid=9, count=5):
+    """
+    До count точек внутри контура (не в отверстиях): сначала interior_point,
+    дальше узлы сетки grid×grid по удалённости от неё. Запасные точки — на
+    случай, если в первой луч до пола проваливается (колонна, отверстие).
+    """
+    first = interior_point(outer, holes, grid)
+    if first is None:
+        return []
+    xs = [p[0] for p in outer]
+    ys = [p[1] for p in outer]
+    nodes = []
+    for i in range(grid):
+        for j in range(grid):
+            x = min(xs) + (max(xs) - min(xs)) * (i + 0.5) / grid
+            y = min(ys) + (max(ys) - min(ys)) * (j + 0.5) / grid
+            if (x, y) != first and _inside_region(x, y, outer, holes):
+                nodes.append(((x - first[0]) ** 2 + (y - first[1]) ** 2, x, y))
+    nodes.sort()
+    # не подряд соседние узлы: берём через один, чтобы точки разошлись
+    spread = nodes[1::2] + nodes[0::2]
+    return [first] + [(x, y) for _d, x, y in spread[:max(0, count - 1)]]
+
+
+def median(values):
+    """Медиана (None пропускаются) или None."""
+    values = sorted(v for v in values if v is not None)
+    if not values:
+        return None
+    middle = len(values) // 2
+    if len(values) % 2:
+        return values[middle]
+    return (values[middle - 1] + values[middle]) / 2.0
+
+
+def duplicate_faces(faces, z_tol=5.0, xy_tol=50.0, area_tol=0.01):
+    """
+    Индексы граней-дублей: та же отметка, габарит и площадь, что у грани
+    раньше в списке (одна и та же плита в АР и КР). faces —
+    [(z, (xmin, ymin, xmax, ymax), площадь)].
+    """
+    kept = []
+    duplicates = set()
+    for index, (z, bbox, area) in enumerate(faces):
+        for other in kept:
+            oz, obox, oarea = faces[other]
+            if abs(z - oz) <= z_tol and \
+                    all(abs(a - b) <= xy_tol for a, b in zip(bbox, obox)) and \
+                    abs(area - oarea) <= area_tol * max(area, oarea, 1.0):
+                duplicates.add(index)
+                break
+        else:
+            kept.append(index)
+    return duplicates

@@ -233,3 +233,18 @@ def test_lowest_face_at():
     assert core.lowest_face_at(9000, 1000, regions) == 0      # над плитой — нижняя
     assert core.lowest_face_at(15000, 1000, regions) == 2
     assert core.lowest_face_at(-5, -5, regions) is None
+
+
+def test_interior_points_median_duplicates():
+    square = [(0, 0), (1000, 0), (1000, 1000), (0, 1000)]
+    points = core.interior_points(square, [], count=5)
+    assert len(points) == 5 and points[0] == (500.0, 500.0)
+    assert len(set(points)) == 5
+    assert all(core.point_in_polygon(x, y, square) for x, y in points)
+    assert core.median([3, None, 1, 2]) == 2
+    assert core.median([1, 2, 3, 10]) == 2.5
+    assert core.median([None]) is None
+    box = (0, 0, 1000, 1000)
+    faces = [(3400, box, 1e6), (3402, (10, 0, 1000, 1000), 1.005e6), (3400, (0, 0, 2000, 1000), 2e6),
+             (3800, box, 1e6)]
+    assert core.duplicate_faces(faces) == {1}

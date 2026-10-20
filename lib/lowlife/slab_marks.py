@@ -1010,6 +1010,10 @@ FACE_MATCH_MM = 30.0
 # Точек проверки на помещение, когда в помещениях подписываются только ПП.
 ROOM_POINTS_CEILING_ONLY = 3
 
+# Пол в точке подписи дальше этого от типового пола плана — луч провалился
+# (отверстие у колонны, приямок): пробуется другая точка грани.
+FLOOR_TOLERANCE_MM = 300.0
+
 # Цвета штриховки по отметкам (красный — у линий перепада).
 FILL_COLORS = [
     (0, 114, 189), (60, 160, 60), (240, 140, 40), (126, 47, 142), (0, 170, 200),
@@ -1032,6 +1036,7 @@ class SlabFace(object):
         self.source = u""       # имя связи или «модель»
         self.type_name = u""
         self.status = u""       # для отчёта: залита / почему нет
+        self.points = []        # точки подписи: основная и запасные (мм)
 
     def loops(self):
         return [self.outer] + list(self.holes)
@@ -1217,6 +1222,7 @@ class ViewResult(object):
         self.slab_heights = []  # (высота мм, площадь м²) — заливки плит
         self.fills = 0
         self.faces = []        # SlabFace плит над этажом — для диагностики в отчёте
+        self.typical_floor_mm = None  # пол плана относительно уровня (медиана по лучам вниз)
         self.changed = []      # (помещение, основная высота мм)
         self.no_slab = []      # имена помещений без перекрытия над ними
         self.errors = []
@@ -1286,41 +1292,81 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         faces += [f for f in slab_bottom_faces(doc, extra, level_z + probe_ft)
                   if f.z_mm <= mm(top)]
     result.faces = faces
+
+    # Что видно снизу и на какой отметке — по геометрии граней, а не по лучу
+    # вверх (у капителей луч бывает отдаёт верхнюю грань). Дубли (одна плита
+    # в АР и в КР) и закрытые более низкими гранями — отбрасываются.
+    regions = [(f.z_mm, f.outer, f.holes, core.polygon_bbox(f.outer)) for f in faces]
+    duplicates = core.duplicate_faces([(f.z_mm, r[3], f.area) for f, r in zip(faces, regions)])
+    visible = []
+    for index, face in enumerate(faces):
+        if face.area < MIN_FILL_AREA_MM2:
+            face.status = u"меньше {:.1f} м²".format(MIN_FILL_AREA_MM2 / 1e6)
+            continue
+        if index in duplicates:
+            face.status = u"дубль (та же плита в другой связи)"
+            continue
+        face.points = core.interior_points(face.outer, face.holes)
+        if not face.points:
+            face.status = u"нет точки внутри контура"
+            continue
+        point = face.points[0]
+        lowest = core.lowest_face_at(point[0], point[1], regions)
+        if lowest is not None and faces[lowest] is not face and \
+                faces[lowest].z_mm < face.z_mm - FACE_MATCH_MM:
+            face.status = u"закрыта более низкой плитой ({})".format(
+                core.format_height(faces[lowest].z_mm - mm(level_z), signed=True))
+            continue
+        visible.append(face)
+
     fills = []
     if (settings.get("draw_slab_fills") or "yes") != "no":
-        # Что видно снизу и на какой отметке — по геометрии граней, а не
-        # по лучу вверх (у капителей луч бывает отдаёт верхнюю грань); луч
-        # в точке подписи — только вниз, до пола.
-        regions = [(f.z_mm, f.outer, f.holes, core.polygon_bbox(f.outer)) for f in faces]
-        for index, face in enumerate(faces):
+        # Высота от пола: луч вниз в точке подписи. Если пол там далеко от
+        # типового пола плана (над колонной в плите пола отверстие — луч
+        # проваливается ниже), пробуются запасные точки грани; не нашлось —
+        # типовой пол.
+        level_mm = mm(level_z)
+        offsets = [p.floor_z_mm - level_mm for m in marks for p in m.probes]
+        if not offsets:
+            for face in visible:
+                found = probe.probe(ft(face.points[0][0]), ft(face.points[0][1]),
+                                    level_z + probe_ft, level_z)
+                if found is not None:
+                    offsets.append(found.floor_z_mm - level_mm)
+        typical_floor = core.median(offsets)
+        result.typical_floor_mm = typical_floor
+        for index, face in enumerate(visible):
             if progress is not None:
-                progress(index, len(faces))
-            if face.area < MIN_FILL_AREA_MM2:
-                face.status = u"меньше {:.1f} м²".format(MIN_FILL_AREA_MM2 / 1e6)
-                continue
-            point = core.interior_point(face.outer, face.holes)
-            if point is None:
-                face.status = u"нет точки внутри контура"
-                continue
-            lowest = core.lowest_face_at(point[0], point[1], regions)
-            if lowest is not None and faces[lowest] is not face and \
-                    faces[lowest].z_mm < face.z_mm - FACE_MATCH_MM:
-                face.status = u"закрыта более низкой плитой ({})".format(
-                    core.format_height(faces[lowest].z_mm - mm(level_z), signed=True))
-                continue
-            found = probe.probe(ft(point[0]), ft(point[1]), level_z + probe_ft, level_z)
-            floor_z = found.floor_z_mm if found is not None else mm(level_z)
-            face.point = point
-            face.height_mm = face.z_mm - floor_z
-            face.status = u"залита"
+                progress(index, len(visible))
+            chosen = None
+            for point in face.points:
+                found = probe.probe(ft(point[0]), ft(point[1]), level_z + probe_ft, level_z)
+                if found is None:
+                    continue
+                offset = found.floor_z_mm - level_mm
+                if typical_floor is None or abs(offset - typical_floor) <= FLOOR_TOLERANCE_MM:
+                    chosen = (point, found.floor_z_mm)
+                    break
+            if chosen is None:
+                chosen = (face.points[0], level_mm + (typical_floor or 0.0))
+                face.status = u"залита (пол — типовой плана)"
+            else:
+                face.status = u"залита"
+            face.point = chosen[0]
+            face.height_mm = face.z_mm - chosen[1]
             fills.append(face)
+    else:
+        for face in visible:
+            face.status = u"заливки выключены"
 
     # --- 3. лучи: проверка перепадов ---
     step_segments = []
     if (settings.get("draw_steps") or "yes") != "no":
+        # Края только видимых снизу граней: закрытые (отделка, стяжки) и
+        # дубли давали тысячи ложных кандидатов.
         edges = []
-        for face in faces:
-            if not face.column:   # контур капители — не перепад плиты
+        for face in visible:
+            if not face.column:   # контур колонны — не перепад плиты
                 edges.extend(core.loop_edges(face.loops(), face.z_mm))
         step_segments, result.step_stats = find_steps(view, settings, probe, edges, progress)
         result.step_stats.slabs = len(slabs)

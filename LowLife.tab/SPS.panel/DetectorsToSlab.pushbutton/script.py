@@ -147,6 +147,9 @@ for result in view_results:
                 slab_marks.core.format_height(height - result.typical_mm))
             output.print_md(u"    - {}: {:.0f} м²{}".format(
                 slab_marks.core.format_height(height), float(area), note))
+    if result.typical_floor_mm is not None:
+        output.print_md(u"- пол плана (медиана по лучам вниз): {} мм от уровня".format(
+            u"{:+.0f}".format(float(result.typical_floor_mm))))
     big_faces = [f for f in result.faces if f.area >= slab_marks.MIN_FILL_AREA_MM2]
     if big_faces:
         output.print_md(u"- диагностика плит над этажом (граней от {:.1f} м²: {}, мельче — {}):".format(
