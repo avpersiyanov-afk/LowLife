@@ -12,6 +12,7 @@ from Autodesk.Revit.DB import XYZ, ViewDrafting
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
 from pyrevit import revit, forms, script as pyrevit_script
+from lowlife import select_list
 
 from lowlife.tray_section import (
     SECTION_GAP_MM, TITLE_BAND_MM, draw_section, draw_table, find_data_sheet, list_sections,
@@ -49,7 +50,7 @@ if not sheet_name:
     if len(sheet_names) == 1:
         sheet_name = sheet_names[0]
     else:
-        sheet_name = forms.SelectFromList.show(
+        sheet_name = select_list.SelectFromList.show(
             sheet_names, title=u"Лист «сводные данные для плагина» не найден — выберите лист",
             button_name=u"Выбрать", multiselect=False
         )
@@ -64,7 +65,7 @@ all_sections = list_sections(cables)
 if not all_sections:
     forms.alert(u"В файле не заполнен ни один участок (столбец «Участок»).", exitscript=True)
 
-chosen = forms.SelectFromList.show(
+chosen = select_list.SelectFromList.show(
     all_sections, title=u"Участки — отметьте, какие вывести (построятся стопкой сверху вниз)",
     button_name=u"Построить", multiselect=True
 )
@@ -75,7 +76,7 @@ if not chosen:
 chosen_set = set(chosen)
 sections = [s for s in all_sections if s in chosen_set]
 
-mode = forms.SelectFromList.show(
+mode = select_list.SelectFromList.show(
     [MODE_BOTH, MODE_SECTION, MODE_TABLE],
     title=u"Что построить на этом виде? "
           u"(сечение и таблицу на разных видах — запустите кнопку дважды)",

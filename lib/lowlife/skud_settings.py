@@ -17,6 +17,7 @@ clr.AddReference('RevitAPI')
 from Autodesk.Revit.DB import ElementId, Element, BuiltInCategory
 
 from pyrevit import forms
+from lowlife import select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -657,7 +658,7 @@ def show_settings_form(doc, values, keys=None):
                 return
 
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options,
                 title=plain_label,
                 button_name=u"Выбрать",
@@ -718,7 +719,7 @@ def show_settings_form(doc, values, keys=None):
                 forms.alert(u"В проекте нет групп деталей.")
                 return
             options = sorted([GroupTypeOption(g) for g in group_types], key=lambda o: o.name)
-            selected = forms.SelectFromList.show(
+            selected = select_list.SelectFromList.show(
                 options, title=u"Узлы точек прохода", button_name=u"Выбрать", multiselect=True
             )
             if selected is not None:
@@ -802,7 +803,7 @@ def show_settings_form(doc, values, keys=None):
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Схемное семейство для категории «{}»".format(name),
                     button_name=u"Выбрать",
@@ -854,7 +855,7 @@ def show_settings_form(doc, values, keys=None):
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
 
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Типы устройств для категории «{}»".format(name),
                     button_name=u"Выбрать",
@@ -911,7 +912,7 @@ def show_settings_form(doc, values, keys=None):
                     return
 
                 options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
-                selected = forms.SelectFromList.show(
+                selected = select_list.SelectFromList.show(
                     options,
                     title=u"Тип проводника для категории «{}»".format(name),
                     button_name=u"Выбрать",

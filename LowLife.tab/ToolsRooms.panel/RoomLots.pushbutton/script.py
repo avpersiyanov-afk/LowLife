@@ -13,6 +13,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import room_lots, room_lots_settings
 from lowlife.xlsx_io import write_xlsx
@@ -48,7 +49,7 @@ if not sources:
     )
 
 if len(sources) > 1:
-    sources = forms.SelectFromList.show(
+    sources = select_list.SelectFromList.show(
         sources,
         title=u"Связи для анализа лотов (можно несколько)",
         button_name=u"Анализировать",

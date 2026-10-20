@@ -13,6 +13,7 @@ clr.AddReference('RevitAPIUI')
 
 from Autodesk.Revit.DB import ViewSchedule
 from pyrevit import revit, forms, script
+from lowlife import select_list
 
 from lowlife.schedule_excel import (
     list_schedules, merge_export, schedule_to_rows, schedule_name,
@@ -39,7 +40,7 @@ def pick_schedule():
     for v in scheds:
         by_name[schedule_name(v)] = v
 
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         sorted(by_name.keys()),
         title=u"Какую спецификацию выгрузить",
         button_name=u"Выгрузить",

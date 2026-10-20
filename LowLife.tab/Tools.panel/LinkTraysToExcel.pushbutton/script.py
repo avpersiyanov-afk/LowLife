@@ -16,6 +16,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from pyrevit import revit, forms, script
+from lowlife import select_list
 
 from lowlife.link_trays import COL_WIDTHS, build_rows, link_label, visible_links
 from lowlife.xlsx_io import write_xlsx
@@ -35,7 +36,7 @@ def pick_links(view):
     by_name = {}
     for link in links:
         by_name[u"{} [{}]".format(link_label(link), link.Id)] = link
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         sorted(by_name.keys()),
         title=u"Из каких связей собрать лотки",
         button_name=u"Собрать",

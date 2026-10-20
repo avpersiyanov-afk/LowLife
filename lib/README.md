@@ -35,9 +35,23 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 `__doc__` скрипта); выпадающие списки раскрываются, `.combobox` пропускается.
 `search(entries, query)` — все слова запроса должны найтись (без регистра, ё = е,
 гласное окончание отбрасывается: «цепи» находит «цепей»); порядок — начало подписи,
-подпись, панель, подсказка, внутри — порядок ленты; если пусто — повтор в русской
-раскладке (`switch_layout`: «wtgb» → «цепи»).
+подпись, панель, подсказка, внутри — порядок ленты; запрос пробуется и в другой
+раскладке (`text_search.query_variants`: «wtgb» → «цепи», «вцп» → «dwg») — такое совпадение
+идёт сразу после совпадения того же уровня в набранной.
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
+
+## text_search.py / select_list.py
+Общий поиск для всех полей «Поиск» LowLife. `text_search` (чистая логика, `tests/test_text_search.py`):
+совпадение по части текста, без регистра, ё = е, несколько слов — все в любом порядке, запрос в
+другой раскладке (QWERTY ↔ ЙЦУКЕН) — тоже. `matches(text, query)`, `score(text, query)` (точное,
+начало, начало слова, вхождение, все слова; другая раскладка — сразу после того же уровня),
+`rank(items, query, key=None, alphabetical=False, limit=None)`, `query_variants`, `normalize`,
+`switch_layout`. Им ищут `ribbon_catalog.search`, `param_autocomplete.rank`, сводка заметок
+(`pnotes/ui.py`), окно помещений дверей СКУД.
+`select_list` — списки pyRevit с этим поиском: `SelectFromList` (подкласс `forms.SelectFromList`,
+регулярные выражения pyRevit — как были), `CommandSwitchWindow`, `select_views(...)` (как
+`forms.select_views`, без `use_selection`). Новые вызовы — `select_list.SelectFromList.show(...)`,
+не `forms.SelectFromList.show(...)`.
 
 ## ribbon_search.py
 Кнопка «Поиск» (`_Themes.panel/Search`): окно (`SearchWindow`, XAML строкой) со

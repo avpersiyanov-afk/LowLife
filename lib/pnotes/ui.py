@@ -20,6 +20,7 @@ from System.Threading import Thread, ThreadStart
 from Autodesk.Revit.DB import ElementId
 
 from pnotes import core
+from lowlife import text_search
 
 
 XAML_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xaml')
@@ -382,7 +383,7 @@ class SummaryWindow(forms.WPFWindow):
         ntype = self.cmbType.SelectedItem
         section = self.cmbSection.SelectedItem
         author = self.cmbAuthor.SelectedItem
-        query = (self.txtSearch.Text or u'').strip().lower()
+        query = self.txtSearch.Text or u''
         mine = bool(self.chkMine.IsChecked)
         result = []
         for n in self.notes:
@@ -397,8 +398,8 @@ class SummaryWindow(forms.WPFWindow):
                 continue
             if mine and not core.is_mine(n, self.ctx['user']):
                 continue
-            if query and query not in u' '.join(
-                    [n.get(k) or u'' for k in ('text', 'answer', 'author', 'assignee', 'view')]).lower():
+            if not text_search.matches(u' '.join(
+                    [n.get(k) or u'' for k in ('text', 'answer', 'author', 'assignee', 'view')]), query):
                 continue
             result.append(n)
         return _sorted(result)

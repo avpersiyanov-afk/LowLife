@@ -39,6 +39,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife import param_autocomplete, settings_core, settings_transfer, loi_check_core as core
 
@@ -146,7 +147,7 @@ def choose_stage(settings):
     last = settings.get(LAST_STAGE_KEY)
     options.sort(key=lambda o: 0 if o.name == last else 1)
 
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         options,
         title=u"Этап проверки LOI (стадия · ПЧ/НЧ · подэтап)",
         button_name=u"Проверить",
@@ -251,7 +252,7 @@ def import_appendix(current=None):
     items = [forms.TemplateListItem(_SectionOption(name, counts.get(name, 0)),
                                     checked=(name in was))
              for name in appendix["sections"]]
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         items,
         title=u"Разделы приложения для проверки (в скобках — число элементов)",
         button_name=u"Загрузить",
@@ -385,7 +386,7 @@ def show_settings_form(doc, values):
         checked = set(n.lower() for n in state["categories"])
         items = [forms.TemplateListItem(o, checked=(o.raw_name.lower() in checked))
                  for o in options]
-        chosen = forms.SelectFromList.show(
+        chosen = select_list.SelectFromList.show(
             items,
             title=u"Категории для проверки LOI (в скобках — число элементов)",
             button_name=u"Сохранить",

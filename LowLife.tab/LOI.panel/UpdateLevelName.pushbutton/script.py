@@ -6,6 +6,7 @@ __author__ = "Pipers"
 import traceback
 
 from pyrevit import revit, forms
+from lowlife import select_list
 
 from System.Collections.Generic import List
 from Autodesk.Revit.DB import ElementId
@@ -33,7 +34,7 @@ def _pick_level():
             by_name[name] = lv
             options.append(name)
 
-    choice = forms.SelectFromList.show(
+    choice = select_list.SelectFromList.show(
         options, title=u"Какой опорный уровень назначить", button_name=u"Назначить"
     )
     if not choice:

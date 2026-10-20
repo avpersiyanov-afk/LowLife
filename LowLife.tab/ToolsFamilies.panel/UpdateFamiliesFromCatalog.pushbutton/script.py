@@ -11,6 +11,7 @@ clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import family_catalog as fc
 
@@ -40,7 +41,7 @@ try:
     if not categories:
         forms.alert(u"В проекте нет загружаемых семейств.", exitscript=True)
 
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         categories,
         title=u"Категории семейств (можно несколько)",
         button_name=u"Далее",

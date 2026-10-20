@@ -39,6 +39,8 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
+from lowlife import text_search
+
 NO_TYPE = u"— не расставлять —"
 
 _COLUMNS = [(u"Имя", None), (u"Уровень", 140), (u"Двери (оснащается / всего)", 150),
@@ -321,9 +323,9 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
         body.Children.Add(empty)
 
     def on_search(sender, args):
-        needle = (search_box.Text or u"").strip().lower()
+        query = search_box.Text or u""
         for _room, row, _combo, text in rows:
-            row.Visibility = Visibility.Visible if (not needle or needle in text) else Visibility.Collapsed
+            row.Visibility = Visibility.Visible if text_search.matches(text, query) else Visibility.Collapsed
 
     def on_bulk(sender, args):
         index = bulk_combo.SelectedIndex

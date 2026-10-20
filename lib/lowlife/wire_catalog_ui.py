@@ -42,6 +42,7 @@ from System.Windows.Controls import (
 from System.Windows.Data import Binding, BindingMode, UpdateSourceTrigger
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife import wire_catalog
 
@@ -69,7 +70,7 @@ def choose_catalog(doc, title):
     by_label = {}
     for ks in catalogs:
         by_label[u"{} ({} строк)".format(ks.name, len(ks.rows))] = ks
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         sorted(by_label.keys()), title=u"Какой справочник кабелей", button_name=u"Выбрать")
     if not picked:
         import sys

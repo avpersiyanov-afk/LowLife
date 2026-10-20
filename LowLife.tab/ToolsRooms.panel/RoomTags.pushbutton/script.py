@@ -20,6 +20,7 @@ import traceback
 
 from Autodesk.Revit.DB import ViewPlan
 from pyrevit import revit, forms, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import room_tags
 
@@ -57,7 +58,7 @@ if pick_views:
     if not plan_views:
         forms.alert(u"В проекте нет планов для простановки марок.", exitscript=True)
 
-    picked = forms.SelectFromList.show(
+    picked = select_list.SelectFromList.show(
         sorted([ViewOption(v) for v in plan_views], key=lambda o: o.name.lower()),
         title=u"Виды для обновления марок помещений (можно несколько)",
         button_name=u"Обновить и расставить",
@@ -87,7 +88,7 @@ if not tag_types:
         exitscript=True
     )
 
-chosen = forms.SelectFromList.show(
+chosen = select_list.SelectFromList.show(
     sorted([TagTypeOption(s) for s in tag_types], key=lambda o: o.name.lower()),
     title=u"Марка помещения",
     button_name=u"Обновить и расставить",

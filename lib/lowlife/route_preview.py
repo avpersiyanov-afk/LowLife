@@ -21,6 +21,7 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from System.Collections.Generic import List
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife.circuit_builtins import circuit_panel_name
 
@@ -106,7 +107,7 @@ def pick_circuit(uidoc, doc, prompt):
         labels.append(label)
         by_label[label] = s
 
-    selected_label = forms.SelectFromList.show(
+    selected_label = select_list.SelectFromList.show(
         labels,
         title=u"У устройства несколько цепей — выберите нужную",
         button_name=u"Показать",

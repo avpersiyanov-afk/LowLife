@@ -11,6 +11,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import detector_access, detector_access_settings, slab_marks
 from lowlife import detector_access_core as core
@@ -36,9 +37,9 @@ settings = detector_access_settings.get_settings_silent()
 selected_ids = list(uidoc.Selection.GetElementIds())
 selected = slab_marks.collect_detectors(doc, settings, selected_ids) if selected_ids else []
 
-views = forms.select_views(
+views = select_list.select_views(
     title=u"Планы, на которых показать зоны доступа",
-    filterfunc=slab_marks.is_plan, multiple=True, use_selection=False)
+    filterfunc=slab_marks.is_plan, multiple=True)
 if not views:
     script.exit()
 

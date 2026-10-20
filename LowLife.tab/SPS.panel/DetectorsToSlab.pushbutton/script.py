@@ -14,6 +14,7 @@ __author__ = "Pipers"
 import time
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import slab_marks, slab_marks_settings
 
@@ -38,7 +39,7 @@ settings = slab_marks_settings.get_settings_silent()
 BOTH = u"Перенести извещатели и подписать отметки"
 MOVE = u"Только перенести извещатели"
 MARK = u"Только подписать отметки на планах"
-action = forms.CommandSwitchWindow.show([BOTH, MOVE, MARK], message=TITLE)
+action = select_list.CommandSwitchWindow.show([BOTH, MOVE, MARK], message=TITLE)
 if not action:
     script.exit()
 
@@ -47,9 +48,9 @@ selected = slab_marks.collect_detectors(doc, settings, selected_ids) if selected
 
 views = []
 if action != MOVE or not selected:
-    views = forms.select_views(
+    views = select_list.select_views(
         title=u"Планы, на уровнях которых работать" + (u" (и подписать)" if action != MOVE else u""),
-        filterfunc=slab_marks.is_plan, multiple=True, use_selection=False)
+        filterfunc=slab_marks.is_plan, multiple=True)
     if not views:
         script.exit()
 

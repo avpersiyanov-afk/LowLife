@@ -19,6 +19,7 @@ __author__ = "Pipers"
 import traceback
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import room_explication as rexp
 from lowlife import room_explication_settings
@@ -76,7 +77,7 @@ else:
     if len(labels) > 1:
         options = [u"{} ({} пом.)".format(s, len(by_source[s])) for s in labels]
         all_option = u"Все источники"
-        choice = forms.CommandSwitchWindow.show(
+        choice = select_list.CommandSwitchWindow.show(
             options + [all_option],
             message=u"Помещения фрагмента найдены в нескольких моделях. Откуда брать?")
         if not choice:

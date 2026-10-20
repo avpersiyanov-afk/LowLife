@@ -11,6 +11,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
 from pyrevit import forms
+from lowlife import select_list
 
 from lowlife import geometry, level_views, level_views_core as core, settings_transfer
 
@@ -409,7 +410,7 @@ def pick_levels(template_name, levels, remembered):
     items = [forms.TemplateListItem(_LevelOption(l), checked=(geometry.level_name(l) in checked),
                                     name_attr="label")
              for l in levels]
-    chosen = forms.SelectFromList.show(
+    chosen = select_list.SelectFromList.show(
         items,
         title=u"Выберите уровни в модели, для которых создавать виды для шаблона «{}»".format(
             template_name),

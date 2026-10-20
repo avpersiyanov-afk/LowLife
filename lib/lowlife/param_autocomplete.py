@@ -22,6 +22,9 @@ WPF, есть тесты. Сбор имён (collect_parameter_names) и окн�
     param_autocomplete.attach(box, names)             # одиночное поле
 """
 
+from lowlife import text_search
+from lowlife.text_search import normalize  # noqa: F401 — реэкспорт, им же сортируются списки
+
 # --- чистая логика ------------------------------------------------------------
 
 # Разбивка по ключу настройки: (разделители элементов списка, символ, после
@@ -112,49 +115,8 @@ def view_name_prefix(name):
     return name
 
 
-def normalize(text):
-    """Для сравнения: нижний регистр, «ё» → «е»."""
-    return (text or u"").lower().replace(u"ё", u"е")
-
-
-_WORD_STARTS = u" _-.([«\"/"
-
-# Одни и те же клавиши в раскладках QWERTY и ЙЦУКЕН: запрос, набранный
-# не в той раскладке («vfhrf» вместо «марка»), тоже находит имя.
-_EN_KEYS = u"`qwertyuiop[]asdfghjkl;'zxcvbnm,./"
-_RU_KEYS = u"ёйцукенгшщзхъфывапролджэячсмитьбю."
-_EN_TO_RU = dict(zip(_EN_KEYS, _RU_KEYS))
-_RU_TO_EN = dict(zip(_RU_KEYS, _EN_KEYS))
-
-
-def switch_layout(text, table):
-    """Текст (уже normalize) так, как те же клавиши дали бы в другой раскладке."""
-    return u"".join(table.get(ch, ch) for ch in text)
-
-
-def _query_variants(query_norm):
-    """Сам запрос, затем он же в другой раскладке (без повторов)."""
-    variants = [query_norm]
-    for table in (_EN_TO_RU, _RU_TO_EN):
-        other = normalize(switch_layout(query_norm, table))
-        if other not in variants:
-            variants.append(other)
-    return variants
-
-
-def _score(name_norm, query_norm, words):
-    if name_norm == query_norm:
-        return 0
-    if name_norm.startswith(query_norm):
-        return 1
-    index = name_norm.find(query_norm)
-    if index > 0 and name_norm[index - 1] in _WORD_STARTS:
-        return 2
-    if index > 0:
-        return 3
-    if len(words) > 1 and all(w in name_norm for w in words):
-        return 4
-    return None
+# Поиск — общий для LowLife (по вхождению, слова в любом порядке, набранное не
+# в той раскладке — тоже): см. text_search.
 
 
 def rank(names, query, limit=300):
@@ -164,28 +126,7 @@ def rank(names, query, limit=300):
     Запрос, набранный не в той раскладке, тоже ищется (чуть ниже в списке).
     Внутри одной группы — по алфавиту. Пустой запрос — все имена по алфавиту.
     """
-    query_norm = normalize(query).strip()
-    variants = [(v, v.split()) for v in _query_variants(query_norm)]
-    scored = []
-    for name in names:
-        name_norm = normalize(name)
-        if not query_norm:
-            scored.append((0, name_norm, name))
-            continue
-        best = None
-        for index, (variant, words) in enumerate(variants):
-            score = _score(name_norm, variant, words)
-            if score is not None:
-                # совпадение в другой раскладке — сразу после того же
-                # вида совпадения в набранной
-                score = score * 2 + (1 if index else 0)
-                if best is None or score < best:
-                    best = score
-        if best is not None:
-            scored.append((best, name_norm, name))
-    scored.sort()
-    result = [item[2] for item in scored]
-    return result[:limit] if limit else result
+    return text_search.rank(names, query, alphabetical=True, limit=limit)
 
 
 def token_span(text, caret, spec=SINGLE):

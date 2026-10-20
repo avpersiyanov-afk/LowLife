@@ -17,6 +17,7 @@ import traceback
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, EXEC_PARAMS
+from lowlife import select_list
 
 from lowlife import equipment_tags, equipment_tags_settings, equipment_tags_form
 from lowlife import tag_leader_follow
@@ -39,7 +40,7 @@ def choose_mode(picked):
     has_equipment = any(equipment_tags.is_equipment(e) for e in picked)
     if has_tags and not has_equipment:
         return MODE_LAYOUT
-    mode = forms.CommandSwitchWindow.show(
+    mode = select_list.CommandSwitchWindow.show(
         [MODE_LAYOUT, MODE_CREATE],
         message=u"Марки оборудования — что сделать?"
     )
