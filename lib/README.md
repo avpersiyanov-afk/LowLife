@@ -1257,6 +1257,34 @@ Dynamo), а точная «гравитационная» упаковка: ка
 | `draw_section` | `draw_section(doc, view, section_name, tray_width_mm, tray_height_mm, placed, insertion_point, show_marks=True, scale=1.0)` | Контур лотка (реальный размер) + подпись + кружки. `insertion_point` — левый нижний угол лотка. **В транзакции** |
 | `draw_table` | `draw_table(doc, view, section_name, tray_width_mm, tray_height_mm, placed, fill_percent, top_left, scale=1.0)` | Сводная таблица («бумажные» размеры × scale); `top_left` — левый верхний угол; возвращает Y нижней нарисованной точки. **В транзакции** |
 
+## tray_hatch.py, tray_hatch_core.py, tray_hatch_settings.py
+Кнопка `ToolsTraySection.panel/TrayHatches` («Лючки на уровнях») — лючки в
+местах, где кабельные лотки проходят через уровни.
+
+`tray_hatch_core` (чистая геометрия, тесты `tests/test_tray_hatch_core.py`):
+`crossings(p0, p1, plane_zs, tol, connected)` — пересечения оси лотка с
+горизонтальными плоскостями (конец на плоскости — только если присоединён;
+лотки положе 30° не учитываются), `footprint(axis, width_dir, height_dir,
+width, height)` — угол и размеры прямоугольника сечения лотка горизонтальной
+плоскостью (у наклонного — описанный вокруг косого сечения), `dedupe`,
+`rotation_delta` (поворот с точностью до 180°), `size_label`.
+
+`tray_hatch`: `find_hatch_symbols(doc, filter)` (типы с текстом в имени типа,
+без регистра), `collect_trays` (выделенные или все лотки модели),
+`collect_levels`, `place_hatches(doc, trays, levels, symbol, width_param,
+length_param, margin, offset)` — внутри транзакции ставит
+`NewFamilyInstance(точка, тип, уровень)` или обновляет уже стоящий рядом на
+том же уровне экземпляр того же семейства; размеры — в параметры экземпляра,
+а если они параметры типа — `SizeWriter` берёт/создаёт тип с этим размером.
+Плоскости — `Level.ProjectElevation` + смещение (координаты модели), высота
+сечения — `CableTray.CurveNormal`. `HatchError` — остановиться с сообщением
+(транзакция откатывается).
+
+`tray_hatch_settings` — `TextSettings`, файл
+`%APPDATA%\pyRevit\LowLifeTrayHatch_settings.json`: `hatch_type_filter`
+(«лючок»), `hatch_width_param`, `hatch_length_param`, `hatch_margin_mm` (50),
+`hatch_offset_mm` (0).
+
 ## family_catalog.py
 Тело двух кнопок `ToolsFamilies.panel`: `UpdateFamiliesFromCatalog`
 («Обновление/проверка семейств» — актуальность + обновление) и

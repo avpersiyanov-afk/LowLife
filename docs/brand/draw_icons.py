@@ -510,6 +510,23 @@ def detector_access(c):
     c.polygon([(58, 55), (58, 69), (68, 62)], fill=ORANGE)
 
 
+def tray_hatches(c):
+    """«Лючки на уровнях»: вертикальный лоток проходит через перекрытие,
+    в месте прохода — оранжевый лючок шире лотка; пунктир — отметка уровня."""
+    # перекрытие с разрывом под лючок
+    c.rect((6, 42, 30, 54), outline=BLUE, fill=WHITE, w=4, r=1)
+    c.rect((66, 42, 90, 54), outline=BLUE, fill=WHITE, w=4, r=1)
+    # лючок — рамка вокруг прохода, шире лотка
+    c.rect((30, 38, 66, 58), outline=ORANGE, fill=PALE_ORANGE, w=5, r=2)
+    # вертикальный лоток: две стенки и перемычки
+    c.line([(38, 8), (38, 88)], BLUE, 5)
+    c.line([(58, 8), (58, 88)], BLUE, 5)
+    for y in (18, 30, 66, 78):
+        c.line([(38, y), (58, y)], BLUE, 3)
+    # отметка уровня
+    c.dashed((6, 48), (24, 48), BLUE, w=2.5)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -540,6 +557,7 @@ ICONS = [
     ("Tools.panel/Greeting.pushbutton", greeting),
     ("SPS.panel/DetectorsToSlab.pushbutton", detectors_to_slab),
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
+    ("ToolsTraySection.panel/TrayHatches.pushbutton", tray_hatches),
 ]
 
 
