@@ -42,6 +42,7 @@ GENERAL_PANEL = u'Общее — LowLife в целом'
 WHOLE_PANEL = u'Вся панель / не знаю'
 
 MAX_TEXT = 5000
+CONSENT_REQUIRED = u'Чтобы отправить сообщение, отметьте согласие на обработку персональных данных.'
 
 
 def feedback_url():
@@ -292,7 +293,7 @@ class FeedbackWindow(forms.WPFWindow):
         self.cmbPanel.SelectionChanged += self.on_panel
         self.cmbPanel.SelectedIndex = names.index(state['panel']) if state.get('panel') in names else 0
         self.txtContact.Text = state.get('contact') or u''
-        self._init_usage()
+        self._init_consent()
 
         if not feedback_url():
             self.txtStatus.Text = (u'Адрес таблицы обратной связи ещё не задан — сообщение сохранится '
@@ -415,25 +416,17 @@ class FeedbackWindow(forms.WPFWindow):
                                 Background=brush('#FFF3E6' if fresh else '#FFF8F0')))
         return border
 
-    def _init_usage(self):
-        try:
-            from pnotes import usage
-            self.chkUsage.IsChecked = usage.is_enabled()
-        except Exception:
-            self.chkUsage.Visibility = Visibility.Collapsed
-            return
-        # сразу, без «Отправить»: выключить статистику можно и не отправляя сообщение
-        self.chkUsage.Checked += lambda s, e: self._set_usage(True)
-        self.chkUsage.Unchecked += lambda s, e: self._set_usage(False)
+    def _init_consent(self):
+        # согласие даётся на каждое сообщение: галочка не запоминается, без неё «Отправить» недоступна
+        self.chkConsent.IsChecked = False
+        self.btnSend.IsEnabled = False
 
-    def _set_usage(self, value):
-        try:
-            from pnotes import usage
-            usage.set_enabled(value)
-            self.txtStatus.Text = (u'Статистика запусков включена.' if value
-                                   else u'Статистика запусков выключена.')
-        except Exception as ex:
-            self.txtStatus.Text = u'Не удалось сохранить настройку статистики: ' + core.err_text(ex)
+        def changed(s, e):
+            self.btnSend.IsEnabled = bool(self.chkConsent.IsChecked)
+            if self.chkConsent.IsChecked and self.txtStatus.Text == CONSENT_REQUIRED:
+                self.txtStatus.Text = u''
+        self.chkConsent.Checked += changed
+        self.chkConsent.Unchecked += changed
 
     def on_panel(self, sender, e):
         panel = self.cmbPanel.SelectedItem
@@ -455,6 +448,11 @@ class FeedbackWindow(forms.WPFWindow):
             self.txtStatus.Text = u'Опишите проблему или предложение.'
             self.tabs.SelectedItem = self.tabNew
             self.txtText.Focus()
+            return
+        if not self.chkConsent.IsChecked:  # Ctrl+Enter работает и при недоступной «Отправить»
+            self.txtStatus.Text = CONSENT_REQUIRED
+            self.tabs.SelectedItem = self.tabNew
+            self.chkConsent.Focus()
             return
         panel = self.cmbPanel.SelectedItem or GENERAL_PANEL
         button = self.cmbButton.SelectedItem if panel != GENERAL_PANEL else u''
