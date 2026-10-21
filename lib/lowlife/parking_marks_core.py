@@ -12,7 +12,7 @@ Revit-часть — parking_marks.py, настройки — parking_marks_sett
 from lowlife.slab_marks_core import split_words, has_word, format_height
 
 __all__ = ["split_words", "has_word", "format_height", "GROUPS", "OTHER", "classify",
-           "label", "overlaps", "cluster", "group_boxes", "outer_boxes"]
+           "label", "overlaps", "cluster", "floor_range", "group_boxes", "outer_boxes"]
 
 
 class Group(object):
@@ -124,3 +124,17 @@ def outer_boxes(boxes):
         if not covered:
             result.append(i)
     return result
+
+
+def floor_range(level_mm, levels_mm, top_clip_mm=None, tolerance_mm=100.0, min_floor_mm=2500.0):
+    """(низ, верх) отметок этажа плана, мм: от уровня плана (+допуск) до
+    следующего этажа (-допуск) — ближайшего уровня не ниже min_floor_mm над
+    планом (ближе — часть того же этажа на другой отметке, антресоль), но не
+    ниже верха секущего диапазона вида top_clip_mm. Верх None — без ограничения."""
+    above = [z for z in levels_mm if z >= level_mm + min_floor_mm]
+    if not above:
+        return level_mm + tolerance_mm, None
+    top = min(above) - tolerance_mm
+    if top_clip_mm is not None:
+        top = max(top, top_clip_mm)
+    return level_mm + tolerance_mm, top
