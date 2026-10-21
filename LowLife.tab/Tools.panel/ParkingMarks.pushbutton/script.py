@@ -39,7 +39,7 @@ else:
 
 collected = [(view, parking_marks.collect(doc, view, settings)) for view in views]
 if not any(found.links for _view, found in collected):
-    forms.alert(u"В модели нет загруженных связей, видимых на плане.", title=TITLE, exitscript=True)
+    forms.alert(u"В модели нет загруженных связей.", title=TITLE, exitscript=True)
 
 results = []
 with revit.Transaction(TITLE):
@@ -57,7 +57,7 @@ for found, result in results:
     if found.unloaded:
         output.print_md(u"- **выгружены** (не проверены): " + u", ".join(found.unloaded))
     if found.hidden_links:
-        output.print_md(u"- скрыты на плане (не проверены): " + u", ".join(found.hidden_links))
+        output.print_md(u"- скрыты на плане (проверены): " + u", ".join(found.hidden_links))
     if found.category_hidden:
         output.print_md(u"- **категория «Парковка» скрыта на плане** — подписи поставлены, "
                         u"но самих элементов не видно")
