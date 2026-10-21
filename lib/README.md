@@ -2695,7 +2695,8 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 - `tag_layout.py` — чистая 2D-раскладка, **без Revit API** (покрыта
   `tests/test_tag_layout.py`). `layout(items, obstacles, offset, gap, shelf,
   cluster_dist)` принимает `TagItem(key, anchor, elem_rect, size,
-  attach_dv)` в координатах вида и возвращает `Placement` (габарит марки,
+  attach_dv, group)` в координатах вида (одинаковый `group` — всегда
+  одна кучка, без разбиения на части) и возвращает `Placement` (габарит марки,
   излом и конец выноски, точка подхода к марке). `attach_dv` — высота
   точки, где Revit подводит выноску к марке, относительно центра
   раскладываемого габарита (у марки с одним верхним этажом — черта между
@@ -2741,6 +2742,28 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   семейство (`TagGroup`), выпадающий список типов марок категории или
   «— не маркировать —»; выбор по семействам запоминается в
   `%APPDATA%\pyRevit\LowLifeEquipmentTags_types.json` (`load_saved`/`save_choice`).
+
+## tray_tags_core.py / tray_tags.py / tray_tags_settings.py
+Марки кабельных лотков (`Tools.panel/TagTrays`, подробно — `docs/tray-tags.md`):
+та же раскладка `tag_layout.layout`, что у «Марок оборудования».
+
+- `tray_tags_core.py` — чистая геометрия, **без Revit API** (покрыта
+  `tests/test_tray_tags_core.py`): `slope_deg`/`is_sloped` (наклон оси),
+  `clip_segment` (обрезка рамкой вида), `anchor_rect` (кусок полосы лотка
+  у точки марки — «прямоугольник элемента»), `strip_pieces` (полоса
+  кусками — препятствия, без одного огромного габарита у косого лотка),
+  `strip_exit` (конец выноски на краю полосы), `stagger_anchors`
+  (параллельные лотки рядом → точки марок лесенкой вдоль трассы и общая
+  `TagItem.group`, чтобы марки встали одним блоком).
+- `tray_tags.py` — Revit-часть: `is_tray` (только `CableTray`, соединительные
+  детали — нет), `TrayFilter`/`TrayTagFilter`, `is_sloped`,
+  `resolve_trays`/`resolve_tag_pairs`, `tray_strip` (ось на виде в рамке
+  подрезки, полуширина — проекция сечения), `run(doc, view, entries,
+  settings)` — как `equipment_tags.run`, конец выноски `Free` на краю лотка.
+- `tray_tags_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeTrayTags_settings.json`:
+  `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm`, `max_slope_deg`;
+  последний выбранный тип марки — `LowLifeTrayTags_types.json`
+  (`load_tag_type_label`/`save_tag_type_label`).
 
 ## pnotes/ (отдельный пакет рядом с `lowlife/`) — «Заметки по проекту»
 Панель `Notes.panel` (кнопки «Заметка», «Сводка», «Настройка») и напоминания

@@ -130,6 +130,7 @@ THEMES = {
         (u"TrayRoof", u"TraySPZp"),
         (u"TrayRoof", u"TraySB"),
         (u"TrayRoof", u"TraySS"),
+        (u"Tools", u"TagTrays"),
     ],
     u"Circuits": [
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
@@ -160,6 +161,7 @@ THEMES = {
         (u"Tools", u"DwgToDrafting"),
         (u"Tools", u"FopParameters"),
         (u"Tools", u"ParkingMarks"),
+        (u"Tools", u"TagTrays"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),

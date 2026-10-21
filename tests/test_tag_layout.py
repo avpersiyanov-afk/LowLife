@@ -115,3 +115,12 @@ def test_shelf_is_level_with_tag_leader_point():
         for p in _clean(items):
             assert abs(p.elbow[1] - p.attach[1]) < 1e-9
             assert abs(p.attach[1] - p.tag_rect[1]) < 1e-9
+
+
+def test_group_is_never_split_into_parts():
+    # «сетка» 2×2 обычно раскладывается по частям; одна группа — одним блоком
+    items = [TagItem(k, (x, y), (x - 0.5, y - 0.5, x + 0.5, y + 0.5), (4.0, 1.2), group=1)
+             for k, (x, y) in enumerate([(0, 0), (3, 0), (0, 3), (3, 3)])]
+    pl = _clean(items)
+    xs = set(round(p.tag_rect[0], 9) for p in pl) | set(round(p.tag_rect[2], 9) for p in pl)
+    assert len(xs) <= 4  # максимум две колонки марок, а не марки вразброс
