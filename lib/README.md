@@ -2747,7 +2747,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   заменяется) и дописывает запуск кнопки LowLife в `%APPDATA%\pyRevit\LowLifeUsage\queue.json`;
   `record_entry(uiapp, entry)` — запуск из «Поиска» (PostCommand клика по ленте не даёт).
   Накопленное уходит пачками в фоне (`send_detached`/`flush_queue`, действие `usage` веб-приложения
-  обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «Обратная связь».
+  обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «О программе».
   Чистая логика — `lowlife/usage_core.py` (`parse_item_id`, `find_entry`, `new_event`, `should_flush`,
   `batch_id`, `trim_queue`, `is_duplicate`; тесты `tests/test_usage_core.py`).
 - `pnotes/feedback.py` — кнопка «Обратная связь» (`_Themes.panel/Feedback`):
