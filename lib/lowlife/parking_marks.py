@@ -259,7 +259,7 @@ def make_items(link, link_name, element, transform, group):
         bodies = []
     if not bodies:
         corners = _box_corners(element, transform)
-        return [_item(link, link_name, element, transform, group, [], [corners])] if corners else []
+        return [_item(link, link_name, element, transform, group, [[]], [corners])] if corners else []
     clusters = core.group_boxes([_xy_box(c) for _f, c in bodies], _SAME_Z_FT)
     items = []
     for index, members in enumerate(clusters):
@@ -285,9 +285,10 @@ def _item(link, link_name, element, transform, group, body_faces, body_corners):
         item.bottom_z = bottom_face.z
     # контур — самая большая горизонтальная грань каждого тела, кроме тел,
     # целиком лежащих в плане внутри другого (машина внутри машиноместа)
+    # (body_faces и body_corners — по элементу на тело; у элемента без тел — [[]] и габарит)
     largest = [max(fs, key=lambda f: f.area) if fs else None for fs in body_faces]
     keep = core.outer_boxes([_xy_box(cs) for cs in body_corners])
-    item.outline_faces = [largest[i] for i in keep if largest[i] is not None]
+    item.outline_faces = [largest[i] for i in keep if i < len(largest) and largest[i] is not None]
     outline = max(item.outline_faces, key=lambda f: f.area) if item.outline_faces else None
     x0, y0, x1, y1 = item.xy_range()
     point = None
