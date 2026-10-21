@@ -194,7 +194,7 @@ if not items:
     linked_elements.select_items(uidoc, items)
 
 # Точки для зума — только по элементам, которые видны на активном виде.
-visibility = linked_elements.Visibility(doc, view)
+visibility = linked_elements.Visibility(doc, view, items)
 points = []
 any_visible = False
 for item in items:
