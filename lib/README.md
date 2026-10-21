@@ -1728,8 +1728,9 @@ room_number_param)` — запись по точкам прохода, возв�
   `SolidUtils.SplitVolumes`), пересекающиеся в плане, — одна зона
   (`core.group_boxes`), штриховка — по самой большой грани каждого тела, кроме
   лежащих в плане внутри другого (`core.outer_boxes`). Берёт элементы
-  между уровнем плана и следующим уровнем (`view_z_range`, допуск
-  `LEVEL_TOLERANCE_MM`; секущий диапазон вида не учитывается) и в подрезке,
+  между уровнем плана и следующим этажом (`view_z_range` → `core.floor_range`:
+  уровни ближе `MIN_FLOOR_MM` — части того же этажа, верх не ниже верха
+  секущего диапазона вида, допуск `LEVEL_TOLERANCE_MM`) и в подрезке,
   остальные — в `Collected.skipped` с отметками от уровня и причиной.
 - **`annotate_view(doc, view, items, settings, note_type)`** → `ViewResult`:
   `TextNote` типа `TEXT_TYPE_NAME` с отметками от уровня плана (`core.label`,

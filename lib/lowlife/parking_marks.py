@@ -24,7 +24,7 @@ from Autodesk.Revit.DB import (
     XYZ, Line, CurveLoop, ElementId, FilteredElementCollector, BuiltInCategory,
     BuiltInParameter, Level, TextNote, FilledRegion, FilledRegionType,
     Options, ViewDetailLevel, Solid, GeometryInstance, PlanarFace, RevitLinkInstance,
-    Transform, SpotDimension, SpotDimensionType, Color, UV, SolidUtils
+    Transform, SpotDimension, SpotDimensionType, PlanViewPlane, Color, UV, SolidUtils
 )
 
 from lowlife import parking_marks_core as core
@@ -45,6 +45,8 @@ REGION_TAG = u"LowLife парковка"
 
 # Элемент берётся, если заходит за уровень плана и не доходит до следующего хотя бы на столько.
 LEVEL_TOLERANCE_MM = 100.0
+# Уровень ближе этого над планом — не следующий этаж, а часть того же этажа на другой отметке.
+MIN_FLOOR_MM = 2500.0
 
 # Подписи, точки которых ближе этого (мм на листе), склеиваются в одну.
 MERGE_MM = 8.0
@@ -304,16 +306,28 @@ def _item(link, link_name, element, transform, group, body_faces, body_corners):
 # ------------------------------------------------------------
 
 def view_z_range(doc, view):
-    """(низ, верх) отметок, в которых ищутся элементы, в футах модели: от
-    уровня плана до следующего уровня выше (None — выше уровней нет). Не по
-    секущему диапазону вида: его верх по умолчанию — уровень +2300, а зона
-    светильников выше. Элементы, только касающиеся этих отметок (зона этажа
-    ниже, верх которой — пол этого), не берутся — допуск LEVEL_TOLERANCE_MM."""
+    """(низ, верх) отметок, в которых ищутся элементы, в футах модели —
+    core.floor_range: от уровня плана до следующего этажа (уровни ближе
+    MIN_FLOOR_MM — часть того же этажа на другой отметке), но не ниже верха
+    секущего диапазона вида. Только по секущему диапазону нельзя: его верх по
+    умолчанию — уровень +2300, а зона светильников выше."""
     level_z = view.GenLevel.ProjectElevation
-    above = [level.ProjectElevation for level in FilteredElementCollector(doc).OfClass(Level)
-             if level.ProjectElevation > level_z + ft(LEVEL_TOLERANCE_MM)]
-    tolerance = ft(LEVEL_TOLERANCE_MM)
-    return level_z + tolerance, (min(above) - tolerance) if above else None
+    levels = [mm(level.ProjectElevation) for level in FilteredElementCollector(doc).OfClass(Level)]
+    bottom, top = core.floor_range(mm(level_z), levels, _top_clip_mm(doc, view),
+                                   LEVEL_TOLERANCE_MM, MIN_FLOOR_MM)
+    return ft(bottom), (ft(top) if top is not None else None)
+
+
+def _top_clip_mm(doc, view):
+    """Верх секущего диапазона вида, мм; None — не задан уровнем (неограниченный)."""
+    try:
+        view_range = view.GetViewRange()
+        level = doc.GetElement(view_range.GetLevelId(PlanViewPlane.TopClipPlane))
+        if isinstance(level, Level):
+            return mm(level.ProjectElevation + view_range.GetOffset(PlanViewPlane.TopClipPlane))
+    except Exception:
+        pass
+    return None
 
 
 def _in_crop(view, item):
