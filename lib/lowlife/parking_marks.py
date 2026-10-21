@@ -294,7 +294,7 @@ class Collected(object):
         self.items = []
         self.links = []           # имена связей, в которых искали
         self.unloaded = []        # имена выгруженных связей
-        self.hidden_links = []    # скрытых на виде
+        self.hidden_links = []    # скрытых на виде (всё равно проверены)
         self.skipped = []         # (группа, подпись, низ мм, верх мм от уровня, причина)
         self.no_geometry = []     # подписи элементов без геометрии
         self.category_hidden = False
@@ -317,10 +317,11 @@ def collect(doc, view, settings):
         if link_doc is None:
             result.unloaded.append(name)
             continue
+        # скрытая на плане связь тоже проверяется: зоны светильников бывают
+        # в модели, которую на плане не показывают
         try:
             if link.IsHidden(view):
                 result.hidden_links.append(name)
-                continue
         except Exception:
             pass
         result.links.append(name)
