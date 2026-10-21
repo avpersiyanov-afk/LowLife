@@ -12,12 +12,13 @@ u"""
 `GetElementIds()` попадает лишь сам экземпляр связи.
 
 Видимость элемента связи на виде — `FilteredElementCollector(doc, view.Id,
-link.Id)` (Revit 2024+); в более старых версиях элемент связи считается
+link.Id)` (Revit 2024+), суженный до проверяемых элементов; в более старых версиях элемент связи считается
 видимым, если не скрыт сам экземпляр связи.
 """
 
 from Autodesk.Revit.DB import (
-    BuiltInParameter, Element, ElementId, FilteredElementCollector, Level,
+    BuiltInParameter, Element, ElementId, ElementIdSetFilter,
+    FilteredElementCollector, Level,
     LocationCurve, LocationPoint, Reference, RevitLinkInstance, Transform, XYZ,
 )
 from System.Collections.Generic import List
@@ -206,37 +207,51 @@ def select_items(uidoc, items):
 
 class Visibility(object):
     u"""
-    Видим ли элемент на виде. Для модели — ID всех элементов, которые Revit
-    реально показывает на виде (FilteredElementCollector по Id вида
-    учитывает видимость категорий, фильтры, диапазон вида, скрытые
-    элементы); для связи — то же через link.Id (Revit 2024+), собирается
-    лениво по одной связи.
+    Видим ли элемент на виде: показывает ли его Revit на этом виде
+    (FilteredElementCollector по Id вида учитывает видимость категорий,
+    фильтры, диапазон вида, скрытые элементы; для связи — через link.Id,
+    Revit 2024+).
+
+    Собираются не все элементы вида, а только проверяемые: сбор сужается
+    ElementIdSetFilter — быстрым фильтром, который Revit применяет до
+    проверки видимости, поэтому на большом виде или большой связи
+    проверка стоит столько же, сколько на маленьких. Элементы группируются
+    по источнику (модель/связь) — по одному сбору на источник.
     """
 
-    def __init__(self, doc, view):
+    def __init__(self, doc, view, items):
         self.doc = doc
         self.view = view
         self._ids = {}
+        by_source = {}
+        for it in items:
+            key = _id_int(it.link.Id) if it.link is not None else None
+            by_source.setdefault(key, (it.link, []))[1].append(it.element.Id)
+        for key, (link, el_ids) in by_source.items():
+            self._ids[key] = self._collect(link, el_ids)
 
-    def _collect(self, link):
-        key = _id_int(link.Id) if link is not None else None
-        if key in self._ids:
-            return self._ids[key]
-        ids = None
+    def _collect(self, link, el_ids):
+        ids = List[ElementId]()
+        for eid in el_ids:
+            ids.Add(eid)
         try:
             if link is None:
                 col = FilteredElementCollector(self.doc, self.view.Id)
             else:
                 col = FilteredElementCollector(self.doc, self.view.Id, link.Id)
-            ids = set(_id_int(x) for x in
-                      col.WhereElementIsNotElementType().ToElementIds())
+            return set(_id_int(x) for x in
+                       col.WherePasses(ElementIdSetFilter(ids)).ToElementIds())
         except Exception:
-            ids = None
-        self._ids[key] = ids
-        return ids
+            return None
+
+    def _visible_ids(self, item):
+        key = _id_int(item.link.Id) if item.link is not None else None
+        if key not in self._ids:
+            self._ids[key] = self._collect(item.link, [item.element.Id])
+        return self._ids[key]
 
     def is_visible(self, item):
-        ids = self._collect(item.link)
+        ids = self._visible_ids(item)
         if ids is not None and _id_int(item.element.Id) in ids:
             return True
         if item.link is None:

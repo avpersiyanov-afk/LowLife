@@ -2654,7 +2654,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 | `selected_items(uidoc)` | Выбранные элементы модели и элементы связей (`Selection.GetReferences()`, Revit 2023+); экземпляр связи, через который выбран её элемент, пропускается |
 | `find_by_id(doc, int_id)` | Все `Item` с этим ID — в модели и в каждой загруженной связи |
 | `select_items(uidoc, items)` | Выделяет элементы; при элементах связей — через `SetReferences` |
-| `Visibility(doc, view).is_visible(item)` | Видим ли элемент на виде: `FilteredElementCollector(doc, view.Id[, link.Id])` (для связей — Revit 2024+, иначе — не скрыт ли сам экземпляр связи) |
+| `Visibility(doc, view, items).is_visible(item)` | Видим ли элемент на виде: `FilteredElementCollector(doc, view.Id[, link.Id])`, суженный `ElementIdSetFilter` до `items` (один сбор на модель/связь, не все элементы вида) (для связей — Revit 2024+, иначе — не скрыт ли сам экземпляр связи) |
 | `target_point(item, view)` | Точка для зума в координатах модели: LocationPoint → середина оси → центр габарита |
 | `level_name(item)` / `elevation_m(item)` | Уровень элемента (в его документе) и отметка середины габарита в координатах модели, м — для подсказки «куда переключиться» |
 
