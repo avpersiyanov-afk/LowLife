@@ -85,6 +85,8 @@ THEMES = {
         (u"SOT", u"BuildSotSchematic"),
         (u"SOT", u"CameraFov"),
         (u"SOT", u"AimCameras"),
+        (u"SOT", u"CameraParamsCheck"),
+        (u"SOT", u"CameraPreviewView"),
     ],
     u"FAS": [
         (u"SOUE", u"BuildLoopCircuits"),
@@ -131,6 +133,7 @@ THEMES = {
         (u"TrayRoof", u"TraySB"),
         (u"TrayRoof", u"TraySS"),
         (u"Tools", u"TagTrays"),
+        (u"Tools", u"LinkTraysToExcel"),
     ],
     u"Circuits": [
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
@@ -162,11 +165,18 @@ THEMES = {
         (u"Tools", u"FopParameters"),
         (u"Tools", u"ParkingMarks"),
         (u"Tools", u"TagTrays"),
+        (u"Tools", u"TagEquipment"),
+        (u"Tools", u"CropView"),
+        (u"Tools", u"LineBypass"),
+        (u"Tools", u"LinkTraysToExcel"),
+        (u"Tools", u"CompareLinkDatums"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),
         (u"ToolsRooms", u"RoomLots"),
         (u"ToolsRooms", u"DiagnoseRoomTag"),
+        (u"ToolsRooms", u"FragmentExplication"),
+        (u"ToolsRooms", u"UpdateExplication"),
         (u"ToolsSchedules", u"SplitScheduleOnSheet"),
         (u"ToolsSchedules", u"ScheduleToExcel"),
         (u"ToolsSchedules", u"ScheduleFromExcel"),
@@ -176,6 +186,8 @@ THEMES = {
         (u"ToolsFamilies", u"UpdateFamiliesFromCatalog"),
         (u"LOI", u"FillLOI"),
         (u"LOI", u"CheckLOI"),
+        (u"LOI", u"FillFloor"),
+        (u"LOI", u"UpdateLevelName"),
         (u"Music", u"PlayPause"),
         (u"Music", u"Previous"),
         (u"Music", u"Next"),
@@ -284,3 +296,117 @@ def apply_theme(selected_theme):
         adwindows_panel = panel.get_adwindows_object()
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
+
+
+# ------------------------------------------------------------
+# ВЫБРАННАЯ ТЕМА МЕЖДУ ЗАПУСКАМИ
+# ------------------------------------------------------------
+#
+# pyRevit при загрузке (запуск Revit, перезагрузка, обновление расширения)
+# заново строит ленту: все кнопки видимы, а событие выбора темы в
+# комбобоксе не приходит — фильтр включался только после ручной смены
+# темы. Поэтому выбранная тема запоминается (save_selected — из
+# обработчика комбобокса), а startup.py расширения (pyRevit выполняет его
+# при каждой загрузке, но до построения ленты) ставит её обратно при
+# первом простое Revit (restore_on_idle): в комбобоксе и на ленте.
+
+THEME_PANEL_TITLE = u"LowLife"  # _Themes.panel — title из bundle.yaml
+
+_STORE = None
+
+
+def _store():
+    global _STORE
+    if _STORE is None:
+        from lowlife import settings_core
+        _STORE = settings_core.JsonStore("LowLifeTheme_settings.json", u"темы ленты",
+                                         share=False)
+    return _STORE
+
+
+def save_selected(theme_name):
+    """Запомнить выбранную тему (id участника комбобокса)."""
+    if theme_name in THEMES:
+        _store().update({"theme": theme_name})
+
+
+def load_selected():
+    """Запомненная тема или None."""
+    name = _store().read().get("theme")
+    return name if name in THEMES else None
+
+
+def _theme_combobox(uiapp):
+    """Revit-комбобокс «Тема» на панели LowLife или None."""
+    from Autodesk.Revit.UI import ComboBox
+    for panel in uiapp.GetRibbonPanels(u"LowLife"):
+        if panel.Name != THEME_PANEL_TITLE and panel.Title != THEME_PANEL_TITLE:
+            continue
+        for item in panel.GetItems():
+            if isinstance(item, ComboBox):
+                return item
+    return None
+
+
+def _combobox_theme(cmb):
+    """Тема, которую показывает комбобокс сейчас, или None."""
+    try:
+        cur = cmb.Current
+        if cur is not None and cur.Name in THEMES:
+            return cur.Name
+    except Exception:
+        pass
+    return None
+
+
+def restore_theme(uiapp, theme_name=None):
+    """
+    Включить тему theme_name (по умолчанию — запомненную, иначе ту, что
+    показывает комбобокс): выбрать её в комбобоксе и применить к ленте.
+    Возвращает применённую тему или None.
+    """
+    cmb = None
+    try:
+        cmb = _theme_combobox(uiapp)
+    except Exception:
+        cmb = None
+    name = theme_name or (_combobox_theme(cmb) if cmb is not None else None)
+    if not name:
+        return None
+    if cmb is not None and _combobox_theme(cmb) != name:
+        try:
+            for member in cmb.GetItems():
+                if member.Name == name:
+                    cmb.Current = member  # обработчик комбобокса тоже применит тему
+                    break
+        except Exception:
+            pass
+    apply_theme(name)
+    return name
+
+
+def restore_on_idle(app):
+    """
+    Из startup.py: при первом простое Revit (лента к этому времени
+    достроена) включить запомненную тему. Тема читается сразу — до того,
+    как комбобокс при построении ленты успеет что-то сохранить. app —
+    UIApplication или UIControlledApplication (у обоих есть Idling).
+    """
+    saved = load_selected()
+    state = {"done": False}
+
+    def on_idle(sender, args):
+        if state["done"]:
+            return
+        state["done"] = True
+        try:
+            app.Idling -= on_idle
+        except Exception:
+            pass
+        try:
+            restore_theme(sender, saved)
+        except Exception:
+            pass
+
+    app.Idling += on_idle
+

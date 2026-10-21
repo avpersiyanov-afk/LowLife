@@ -4,8 +4,17 @@
 (если поддерживает; на всякий случай то же самое делает
 ``hooks/doc-opened.py``).
 
-Единственная задача: включить авто-режим переименования выгрузки —
-``lib/lowlife/export_watcher.install()``. Пишем след в
+Задачи:
+1. включить авто-режим переименования выгрузки —
+   ``lib/lowlife/export_watcher.install()``;
+2. вернуть выбранную тему ленты (``panel_themes.restore_on_idle``): pyRevit
+   выполняет этот файл при каждой загрузке — запуск Revit, перезагрузка,
+   обновление расширения — но ДО построения ленты, а построенная лента
+   показывает все кнопки. Поэтому тема включается при первом простое
+   Revit. (``hooks/app-init.py`` для этого не годится: это событие Revit
+   ApplicationInitialized, при перезагрузке pyRevit его нет.)
+
+По первой задаче пишем след в
 ``%APPDATA%\\pyRevit\\LowLifeExportRename_watcher.log``, чтобы понять,
 запускается ли этот файл вообще.
 """
@@ -52,3 +61,22 @@ try:
         _crumb(u"_app is None — install не вызван")
 except Exception as exc:
     _crumb(u"ОШИБКА: {}".format(exc))
+
+
+# Тема ленты — отдельный try, ничего выше не задевает.
+try:
+    from lowlife import panel_themes as _panel_themes
+
+    _theme_app = None
+    try:
+        _theme_app = __revit__  # noqa: F821 — UIControlledApplication / UIApplication
+    except Exception:
+        _theme_app = None
+    if _theme_app is None:
+        from pyrevit import HOST_APP as _theme_host
+        _theme_app = _theme_host.uiapp
+    if _theme_app is not None:
+        _panel_themes.restore_on_idle(_theme_app)
+except Exception as exc:
+    _crumb(u"тема ленты: {}".format(exc))
+
