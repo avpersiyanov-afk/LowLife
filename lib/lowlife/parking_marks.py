@@ -24,7 +24,7 @@ from Autodesk.Revit.DB import (
     XYZ, Line, CurveLoop, ElementId, FilteredElementCollector, BuiltInCategory,
     BuiltInParameter, Level, TextNote, FilledRegion, FilledRegionType,
     Options, ViewDetailLevel, Solid, GeometryInstance, PlanarFace, RevitLinkInstance,
-    Transform, SpotDimension, SpotDimensionType, Color, UV
+    Transform, SpotDimension, SpotDimensionType, Color, UV, SolidUtils
 )
 
 from lowlife import parking_marks_core as core
@@ -124,21 +124,47 @@ def _solids(geometry, transform):
                 yield nested
 
 
-def horizontal_faces(element, transform):
-    options = Options()
-    options.ComputeReferences = True
-    options.DetailLevel = ViewDetailLevel.Fine
+def solid_faces(solid, solid_transform):
+    """Горизонтальные плоские грани тела (HFace)."""
     faces = []
-    for solid, solid_transform in _solids(element.get_Geometry(options), transform):
-        for face in solid.Faces:
-            if not isinstance(face, PlanarFace):
-                continue
-            normal = solid_transform.OfVector(face.FaceNormal)
-            if abs(normal.Z) < _HORIZONTAL:
-                continue
-            z = solid_transform.OfPoint(face.Origin).Z
-            faces.append(HFace(face, solid_transform, z, normal.Z > 0))
+    for face in solid.Faces:
+        if not isinstance(face, PlanarFace):
+            continue
+        normal = solid_transform.OfVector(face.FaceNormal)
+        if abs(normal.Z) < _HORIZONTAL:
+            continue
+        z = solid_transform.OfPoint(face.Origin).Z
+        faces.append(HFace(face, solid_transform, z, normal.Z > 0))
     return faces
+
+
+def _solid_corners(solid, solid_transform):
+    try:
+        box = solid.GetBoundingBox()
+        to_model = solid_transform.Multiply(box.Transform)
+    except Exception:
+        return []
+    return [to_model.OfPoint(XYZ(x, y, z)) for x in (box.Min.X, box.Max.X)
+            for y in (box.Min.Y, box.Max.Y) for z in (box.Min.Z, box.Max.Z)]
+
+
+def element_bodies(element, transform):
+    """[(горизонтальные грани, углы габарита в координатах модели)] — по
+    одному на тело элемента (модель в контексте бывает из нескольких
+    отдельных зон; составное тело делится SolidUtils.SplitVolumes)."""
+    options = Options()
+    options.DetailLevel = ViewDetailLevel.Fine
+    bodies = []
+    for solid, solid_transform in _solids(element.get_Geometry(options), transform):
+        try:
+            parts = list(SolidUtils.SplitVolumes(solid)) or [solid]
+        except Exception:
+            parts = [solid]
+        for part in parts:
+            corners = _solid_corners(part, solid_transform)
+            if corners:
+                bodies.append((solid_faces(part, solid_transform), corners))
+    return bodies
 
 
 def _extreme(faces, highest):
@@ -199,16 +225,18 @@ class ParkingItem(object):
         self.transform = transform
         self.group = group
         self.top_face = None
-        self.outline_face = None
+        self.outline_faces = []   # грани контура для штриховки (по одной на тело)
         self.corners = []
+        self.part = None          # номер части элемента (из нескольких тел) или None
         self.top_z = None
         self.bottom_z = None
         self.anchor = None  # точка подписи (координаты модели)
 
     @property
     def label(self):
-        return u"{}: {} (Id {})".format(self.link_name, _family_and_type(self.element) or u"",
-                                       self.element.Id.IntegerValue)
+        part = u", часть {}".format(self.part) if self.part else u""
+        return u"{}: {} (Id {}{})".format(self.link_name, _family_and_type(self.element) or u"",
+                                         self.element.Id.IntegerValue, part)
 
     def xy_range(self):
         xs = [p.X for p in self.corners]
@@ -216,34 +244,54 @@ class ParkingItem(object):
         return min(xs), min(ys), max(xs), max(ys)
 
 
-def make_item(link, link_name, element, transform, group):
-    """ParkingItem или None — у элемента нет ни геометрии, ни габарита."""
-    item = ParkingItem(link, link_name, element, transform, group)
+def _xy_box(corners):
+    return (min(p.X for p in corners), min(p.Y for p in corners),
+            max(p.X for p in corners), max(p.Y for p in corners))
+
+
+def make_items(link, link_name, element, transform, group):
+    """ParkingItem на каждую зону элемента: тела, пересекающиеся в плане, —
+    одна зона (машина внутри машиноместа), отдельно стоящие — разные.
+    [] — у элемента нет ни геометрии, ни габарита."""
     try:
-        faces = horizontal_faces(element, transform)
+        bodies = element_bodies(element, transform)
     except Exception:
-        faces = []
-    item.corners = _box_corners(element, transform)
+        bodies = []
+    if not bodies:
+        corners = _box_corners(element, transform)
+        return [_item(link, link_name, element, transform, group, [], [corners])] if corners else []
+    clusters = core.group_boxes([_xy_box(c) for _f, c in bodies], _SAME_Z_FT)
+    items = []
+    for index, members in enumerate(clusters):
+        item = _item(link, link_name, element, transform, group,
+                     [bodies[i][0] for i in members], [bodies[i][1] for i in members])
+        if len(clusters) > 1:
+            item.part = index + 1
+        items.append(item)
+    return items
+
+
+def _item(link, link_name, element, transform, group, body_faces, body_corners):
+    item = ParkingItem(link, link_name, element, transform, group)
+    faces = [f for fs in body_faces for f in fs]
+    item.corners = [p for cs in body_corners for p in cs]
+    item.top_z = max(p.Z for p in item.corners)
+    item.bottom_z = min(p.Z for p in item.corners)
     item.top_face = _extreme([f for f in faces if f.up], True)
     bottom_face = _extreme([f for f in faces if not f.up], False)
-    if faces:
-        item.outline_face = max(faces, key=lambda f: f.area)
-    if item.corners:
-        item.top_z = max(p.Z for p in item.corners)
-        item.bottom_z = min(p.Z for p in item.corners)
     if item.top_face is not None:
         item.top_z = item.top_face.z
     if bottom_face is not None:
         item.bottom_z = bottom_face.z
-    if item.top_z is None or item.bottom_z is None:
-        return None
-    if not item.corners:
-        item.corners = [p for f in faces for p in [f.inner_point()] if p is not None]
-        if not item.corners:
-            return None
+    # контур — самая большая горизонтальная грань каждого тела, кроме тел,
+    # целиком лежащих в плане внутри другого (машина внутри машиноместа)
+    largest = [max(fs, key=lambda f: f.area) if fs else None for fs in body_faces]
+    keep = core.outer_boxes([_xy_box(cs) for cs in body_corners])
+    item.outline_faces = [largest[i] for i in keep if largest[i] is not None]
+    outline = max(item.outline_faces, key=lambda f: f.area) if item.outline_faces else None
     x0, y0, x1, y1 = item.xy_range()
     point = None
-    for face in (item.outline_face, item.top_face):
+    for face in (outline, item.top_face):
         if face is not None and point is None:
             point = face.point_at((x0 + x1) / 2.0, (y0 + y1) / 2.0) or face.inner_point()
     item.anchor = point or XYZ((x0 + x1) / 2.0, (y0 + y1) / 2.0, item.top_z)
@@ -330,21 +378,21 @@ def collect(doc, view, settings):
                     .WhereElementIsNotElementType())
         for element in elements:
             group = core.classify(match_text(element), words) or core.OTHER.key
-            item = make_item(link, name, element, transform, group)
-            if item is None:
+            items = make_items(link, name, element, transform, group)
+            if not items:
                 result.no_geometry.append(u"{}: Id {}".format(name, element.Id.IntegerValue))
-                continue
-            reason = None
-            if not core.overlaps(item.bottom_z, item.top_z, bottom, top):
-                reason = u"не на этом этаже"
-            elif not _in_crop(view, item):
-                reason = u"вне подрезки вида"
-            if reason is not None:
-                level_z = view.GenLevel.ProjectElevation
-                result.skipped.append((group, item.label, mm(item.bottom_z - level_z),
-                                       mm(item.top_z - level_z), reason))
-                continue
-            result.items.append(item)
+            for item in items:
+                reason = None
+                if not core.overlaps(item.bottom_z, item.top_z, bottom, top):
+                    reason = u"не на этом этаже"
+                elif not _in_crop(view, item):
+                    reason = u"вне подрезки вида"
+                if reason is not None:
+                    level_z = view.GenLevel.ProjectElevation
+                    result.skipped.append((group, item.label, mm(item.bottom_z - level_z),
+                                           mm(item.top_z - level_z), reason))
+                    continue
+                result.items.append(item)
     return result
 
 
@@ -450,16 +498,17 @@ def annotate_view(doc, view, items, settings, note_type):
             if u"штриховка: " + error not in result.errors:
                 result.errors.append(u"штриховка: " + error)
             continue
-        region, error = _region(doc, view, item, region_type, level_z)
-        if region is None:
+        regions, error = _regions(doc, view, item, region_type, level_z)
+        if not regions:
             result.errors.append(u"{}: штриховка — {}".format(item.label, error))
             continue
-        try:
-            param = region.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
-            if param is not None and not param.IsReadOnly:
-                param.Set(u"{} {}".format(REGION_TAG, group.name))
-        except Exception:
-            pass
+        for region in regions:
+            try:
+                param = region.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
+                if param is not None and not param.IsReadOnly:
+                    param.Set(u"{} {}".format(REGION_TAG, group.name))
+            except Exception:
+                pass
         result.fills += 1
 
     # подписи в одном месте (зона светильников над проездом) — одной заметкой,
@@ -494,21 +543,24 @@ def _box_loop(item, z):
     return loop
 
 
-def _region(doc, view, item, region_type, z):
-    """(область заливки по контуру элемента, ошибка): самая большая
-    горизонтальная грань, не вышло — прямоугольник габарита."""
+def _regions(doc, view, item, region_type, z):
+    """([области заливки по контурам тел зоны], ошибка): самая большая
+    горизонтальная грань каждого тела, не вышло — прямоугольник габарита."""
     from System.Collections.Generic import List
+    regions = []
     last_error = None
-    attempts = []
-    if item.outline_face is not None:
-        attempts.append(lambda: item.outline_face.loops(z))
-    attempts.append(lambda: [_box_loop(item, z)])
-    for build in attempts:
+    for face in item.outline_faces:
         try:
-            loops = [loop for loop in build() if loop is not None]
-            if not loops:
-                continue
-            return FilledRegion.Create(doc, region_type.Id, view.Id, List[CurveLoop](loops)), None
+            loops = face.loops(z)
+            regions.append(FilledRegion.Create(doc, region_type.Id, view.Id, List[CurveLoop](loops)))
         except Exception as ex:
             last_error = ex
-    return None, u"{}".format(last_error)
+    if regions:
+        return regions, None
+    try:
+        loop = _box_loop(item, z)
+        if loop is not None:
+            return [FilledRegion.Create(doc, region_type.Id, view.Id, List[CurveLoop]([loop]))], None
+    except Exception as ex:
+        last_error = ex
+    return [], u"{}".format(last_error)

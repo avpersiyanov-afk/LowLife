@@ -51,3 +51,19 @@ def test_settings_fields_per_group():
         for suffix in ("_words", "_text_format", "_fill"):
             assert group.key + suffix in keys
     assert "other_text_format" in keys
+
+
+def test_group_boxes():
+    # две отдельные зоны светильников и машина внутри машиноместа
+    boxes = [(0, 0, 10, 2), (20, 0, 30, 2), (40, 0, 45, 5), (41, 1, 44, 4)]
+    assert core.group_boxes(boxes) == [[0], [1], [2, 3]]
+    # Г-образная зона из двух касающихся тел — одна
+    assert core.group_boxes([(0, 0, 10, 2), (10, 0, 12, 8)]) == [[0, 1]]
+    assert core.group_boxes([(0, 0, 1, 1), (1.05, 0, 2, 1)], tol=0.1) == [[0, 1]]
+    assert core.group_boxes([]) == []
+
+
+def test_outer_boxes():
+    assert core.outer_boxes([(40, 0, 45, 5), (41, 1, 44, 4)]) == [0]
+    assert core.outer_boxes([(0, 0, 10, 2), (10, 0, 12, 8)]) == [0, 1]
+    assert core.outer_boxes([(0, 0, 1, 1), (0, 0, 1, 1)]) == [0]
