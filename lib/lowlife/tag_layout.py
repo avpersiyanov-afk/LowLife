@@ -219,14 +219,18 @@ class TagItem(object):
                 только верхняя половина — выноска подходит к её нижнему
                 краю (к черте между этажами). Полка выноски ставится на эту
                 высоту, иначе у марки получается «излом» перед полкой.
+    group     — элементы с одинаковым group (не None) всегда в одной кучке
+                и раскладываются одним блоком, без разбиения «сетки» на
+                части (параллельные лотки одной трассы — «Марки лотков»).
     """
 
-    def __init__(self, key, anchor, elem_rect, size, attach_dv=0.0):
+    def __init__(self, key, anchor, elem_rect, size, attach_dv=0.0, group=None):
         self.key = key
         self.anchor = anchor
         self.elem_rect = elem_rect
         self.size = size
         self.attach_dv = attach_dv
+        self.group = group
 
 
 class Placement(object):
@@ -265,7 +269,8 @@ def find_clusters(items, cluster_dist, split=True):
 
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
-            if rect_gap(items[i].elem_rect, items[j].elem_rect) <= cluster_dist:
+            same_group = items[i].group is not None and items[i].group == items[j].group
+            if same_group or rect_gap(items[i].elem_rect, items[j].elem_rect) <= cluster_dist:
                 ri, rj = find(i), find(j)
                 if ri != rj:
                     parent[ri] = rj
@@ -331,6 +336,16 @@ def _split_options(cluster):
     options.append([[it] for it in cluster])
     options.append([cluster])
     return options
+
+
+def _keeps_groups(parts):
+    """Ни одна группа (:attr:`TagItem.group`) не разрезана по частям."""
+    seen = {}
+    for index, part in enumerate(parts):
+        for it in part:
+            if it.group is not None and seen.setdefault(it.group, index) != index:
+                return False
+    return True
 
 
 def _is_column(cluster):
@@ -736,6 +751,8 @@ def layout(items, obstacles=None, offset=1.0, gap=0.2, shelf=0.5, cluster_dist=1
         # берём разбиение с наименьшим суммарным штрафом
         best = None
         for parts in _split_options(cluster):
+            if not _keeps_groups(parts):
+                continue
             sc, cand = place_parts(parts, placed_rects, placed_leaders,
                                    None if best is None else best[0])
             if cand is not None and (best is None or sc < best[0]):

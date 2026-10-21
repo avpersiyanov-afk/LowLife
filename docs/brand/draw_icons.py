@@ -534,6 +534,21 @@ def parking_marks(c):
         c.line([(x, 22), (x + shelf, 22)], BLUE, 3)
         c.line([(x, 30), (x, 36)], BLUE, 3)
 
+
+def tag_trays(c):
+    """«Марки лотков»: два параллельных лотка, марки стопкой над ними,
+    выноски — вертикаль от края лотка и полка к марке."""
+    for y0 in (54, 74):
+        c.rect((6, y0, 90, y0 + 12), BLUE, WHITE, 4, 1)
+        for x in range(16, 90, 12):
+            c.line([(x, y0 + 2), (x, y0 + 10)], BLUE, 2)
+    for (x, y_tray, y_shelf) in ((18, 74, 19), (32, 54, 39)):
+        c.line([(x, y_tray), (x, y_shelf), (44, y_shelf)], ORANGE, 3)
+        c.circle((x, y_tray), 3, None, ORANGE)
+    for y in (11, 31):
+        c.rect((44, y, 88, y + 16), None, BLUE, 0, 3)
+        c.line([(50, y + 8), (80, y + 8)], WHITE, 3)
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -565,6 +580,7 @@ ICONS = [
     ("SPS.panel/DetectorsToSlab.pushbutton", detectors_to_slab),
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
     ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
+    ("Tools.panel/TagTrays.pushbutton", tag_trays),
 ]
 
 
