@@ -1740,6 +1740,30 @@ room_number_param)` — запись по точкам прохода, возв�
 `parking_marks_core.py` (группы, подписи по шаблону, диапазон, склейка подписей)
 покрыт `tests/test_parking_marks_core.py`.
 
+## link_datums_core.py / link_datums.py / link_datums_settings.py
+
+Кнопка «Оси и уровни КФП» (`Tools.panel/CompareLinkDatums`, инструкция —
+`docs/tools-panel.md#оси-и-уровни-кфп`). Только чтение, без транзакций.
+
+- **`link_datums.compare(doc, link, tolerance_mm)`** → (строки уровней, строки
+  осей): собирает уровни (`ProjectElevation`, отметка от базовой точки проекта
+  модели, мм) и оси (`Grid.Curve` в плане, мм) модели и связи — у связи через
+  `GetTotalTransform()` — и сравнивает в `link_datums_core`.
+  `loaded_links`/`matching_links(links, keyword)` — выбор связи по слову в
+  имени экземпляра или файла.
+- **`link_datums_core.compare_levels`/`compare_grids(model, link, tolerance)`**
+  → `[Row]` (`model`/`link` — словари или None, `status`, `delta` мм, `angle`
+  °, `note`). Пары: то же имя (среди повторяющихся — ближайшие) → имя без
+  регистра/пробелов (`loose_name`) → положение в пределах допуска (статус
+  `RENAMED`); остальные — `MISSING_IN_MODEL`/`MISSING_IN_LINK`. Расхождение
+  прямых осей — наибольшее расстояние от концов одной до прямой другой
+  (`grid_deviation`), дуг — центр + радиус. `problems_first`,
+  `count_by_status`/`summary_text`, `format_mm`/`format_angle` — для отчёта.
+- **`link_datums_settings`** — `TextSettings`: `link_name_filter` (по умолчанию
+  «КФП»), `tolerance_mm` (1 мм).
+
+`link_datums_core.py` покрыт `tests/test_link_datums_core.py`.
+
 ## detector_access_core.py / detector_access.py / detector_access_settings.py
 
 Кнопка «Доступ к извещателям» (`SPS.panel/DetectorAccess`, инструкция —

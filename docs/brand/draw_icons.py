@@ -549,6 +549,25 @@ def tag_trays(c):
         c.rect((44, y, 88, y + 16), None, BLUE, 0, 3)
         c.line([(50, y + 8), (80, y + 8)], WHITE, 3)
 
+
+def compare_link_datums(c):
+    """«Оси и уровни КФП»: оси с марками-кружками и уровень с отметкой
+    (модель — синие), поверх — те же оси/уровень связи оранжевым пунктиром;
+    одна ось связи смещена — расхождение."""
+    # Уровень: модель — сплошной, связь — пунктир чуть выше.
+    c.line([(8, 72), (70, 72)], BLUE, 4)
+    c.dashed((8, 64), (70, 64), ORANGE, 3, 5, 3)
+    c.polygon([(72, 63), (88, 63), (80, 72)], fill=WHITE, outline=BLUE, w=3.5)
+    # Оси модели с марками.
+    for x in (22, 50):
+        c.line([(x, 28), (x, 86)], BLUE, 4)
+        c.circle((x, 18), 10, BLUE, WHITE, 3.5)
+    # Ось связи: первая совпадает, вторая сдвинута.
+    c.dashed((22, 30), (22, 86), ORANGE, 3, 5, 3)
+    c.dashed((58, 30), (58, 86), ORANGE, 3, 5, 3)
+    c.line([(51, 46), (57, 46)], ORANGE, 3)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -581,6 +600,7 @@ ICONS = [
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
     ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
     ("Tools.panel/TagTrays.pushbutton", tag_trays),
+    ("Tools.panel/CompareLinkDatums.pushbutton", compare_link_datums),
 ]
 
 
