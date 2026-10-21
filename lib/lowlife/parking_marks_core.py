@@ -12,7 +12,7 @@ Revit-часть — parking_marks.py, настройки — parking_marks_sett
 from lowlife.slab_marks_core import split_words, has_word, format_height
 
 __all__ = ["split_words", "has_word", "format_height", "GROUPS", "OTHER", "classify",
-           "label", "overlaps", "cluster"]
+           "label", "overlaps", "cluster", "group_boxes", "outer_boxes"]
 
 
 class Group(object):
@@ -34,9 +34,9 @@ GROUPS = [
     Group("lights", u"Зона светильников", u"светильн",
           u"Светильники: низ {bottom}, верх {top}", "yes", (240, 140, 40)),
     Group("drive", u"Проезд", u"проезд",
-          u"Проезд: верх {top}", "no", (60, 150, 220)),
+          u"Проезд: верх {top}", "yes", (60, 150, 220)),
     Group("parking", u"Машиноместо", u"машиномест, машино-мест",
-          u"М/м: верх {top}", "no", (120, 180, 70)),
+          u"М/м: верх {top}", "yes", (120, 180, 70)),
 ]
 OTHER = Group("other", u"Прочее", u"", u"Верх {top}", "no", (150, 150, 150))
 
@@ -83,3 +83,44 @@ def cluster(points, radius):
             groups.remove(g)
         groups.append(sorted(merged))
     return sorted(groups, key=lambda g: g[0])
+
+
+def _touch(a, b, tol):
+    return (a[0] <= b[2] + tol and b[0] <= a[2] + tol and
+            a[1] <= b[3] + tol and b[1] <= a[3] + tol)
+
+
+def group_boxes(boxes, tol=0.0):
+    """Индексы прямоугольников (x0, y0, x1, y1), сгруппированные по
+    пересечению (с допуском tol, транзитивно): тела одной зоны в плане."""
+    groups = []
+    for index, box in enumerate(boxes):
+        joined = [g for g in groups if any(_touch(boxes[j], box, tol) for j in g)]
+        merged = [index]
+        for g in joined:
+            merged = g + merged
+            groups.remove(g)
+        groups.append(sorted(merged))
+    return sorted(groups, key=lambda g: g[0])
+
+
+def _inside(inner, outer, tol=1e-9):
+    return (inner[0] >= outer[0] - tol and inner[1] >= outer[1] - tol and
+            inner[2] <= outer[2] + tol and inner[3] <= outer[3] + tol)
+
+
+def outer_boxes(boxes):
+    """Индексы прямоугольников, не лежащих целиком внутри другого (из равных
+    остаётся первый): контуры штриховки без деталей внутри зоны."""
+    result = []
+    for i, box in enumerate(boxes):
+        covered = False
+        for j, other in enumerate(boxes):
+            if i == j or not _inside(box, other):
+                continue
+            if not _inside(other, box) or j < i:
+                covered = True
+                break
+        if not covered:
+            result.append(i)
+    return result

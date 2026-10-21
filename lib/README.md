@@ -1721,11 +1721,16 @@ room_number_param)` — запись по точкам прохода, возв�
   `<ключ>_text_format`, `<ключ>_fill`), слова, шаблон подписи, штриховка, цвет.
   `core.classify` — первая группа, чьё слово есть в тексте.
 - **`collect(doc, view, settings)`** → `Collected`: элементы категории «Парковка»
-  всех загруженных и не скрытых на виде связей (`ParkingItem`: верх/низ в футах
+  всех загруженных связей, и скрытых на виде тоже (`ParkingItem`: верх/низ в футах
   модели по горизонтальным граням — `HFace`, иначе по габариту; группа — по
-  `match_text`: «Комментарии», рабочий набор, семейство и тип). Пропускает
-  элементы вне диапазона от глубины просмотра до верхней секущей плоскости
-  (`view_z_range`) и вне подрезки.
+  `match_text`: «Комментарии», рабочий набор, семейство и тип). Элемент делится
+  на зоны (`make_items`): тела геометрии (`element_bodies`, составные — через
+  `SolidUtils.SplitVolumes`), пересекающиеся в плане, — одна зона
+  (`core.group_boxes`), штриховка — по самой большой грани каждого тела, кроме
+  лежащих в плане внутри другого (`core.outer_boxes`). Берёт элементы
+  между уровнем плана и следующим уровнем (`view_z_range`, допуск
+  `LEVEL_TOLERANCE_MM`; секущий диапазон вида не учитывается) и в подрезке,
+  остальные — в `Collected.skipped` с отметками от уровня и причиной.
 - **`annotate_view(doc, view, items, settings, note_type)`** → `ViewResult`:
   `TextNote` типа `TEXT_TYPE_NAME` с отметками от уровня плана (`core.label`,
   поля `{top}`/`{bottom}`), подписи ближе `MERGE_MM` на листе склеиваются
@@ -2812,7 +2817,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   заменяется) и дописывает запуск кнопки LowLife в `%APPDATA%\pyRevit\LowLifeUsage\queue.json`;
   `record_entry(uiapp, entry)` — запуск из «Поиска» (PostCommand клика по ленте не даёт).
   Накопленное уходит пачками в фоне (`send_detached`/`flush_queue`, действие `usage` веб-приложения
-  обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «Обратная связь».
+  обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «О программе».
   Чистая логика — `lowlife/usage_core.py` (`parse_item_id`, `find_entry`, `new_event`, `should_flush`,
   `batch_id`, `trim_queue`, `is_duplicate`; тесты `tests/test_usage_core.py`).
 - `pnotes/feedback.py` — кнопка «Обратная связь» (`_Themes.panel/Feedback`):

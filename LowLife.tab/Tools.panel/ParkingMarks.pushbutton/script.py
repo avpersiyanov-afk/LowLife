@@ -2,7 +2,7 @@
 __title__ = u"Отметки\nпарковки"
 __doc__ = (
     u"Подписывает на плане отметки элементов категории «Парковка» из связей от "
-    u"уровня плана: зоны светильников (низ и верх, со штриховкой), проезда и "
+    u"уровня плана и штрихует контуры: зоны светильников (низ и верх), проезда и "
     u"машиномест (верх). Повторный запуск заменяет подписи прошлого запуска.\n\n"
     u"Shift+клик — настройки этой кнопки."
 )
@@ -39,7 +39,7 @@ else:
 
 collected = [(view, parking_marks.collect(doc, view, settings)) for view in views]
 if not any(found.links for _view, found in collected):
-    forms.alert(u"В модели нет загруженных связей, видимых на плане.", title=TITLE, exitscript=True)
+    forms.alert(u"В модели нет загруженных связей.", title=TITLE, exitscript=True)
 
 results = []
 with revit.Transaction(TITLE):
@@ -57,7 +57,7 @@ for found, result in results:
     if found.unloaded:
         output.print_md(u"- **выгружены** (не проверены): " + u", ".join(found.unloaded))
     if found.hidden_links:
-        output.print_md(u"- скрыты на плане (не проверены): " + u", ".join(found.hidden_links))
+        output.print_md(u"- скрыты на плане (проверены): " + u", ".join(found.hidden_links))
     if found.category_hidden:
         output.print_md(u"- **категория «Парковка» скрыта на плане** — подписи поставлены, "
                         u"но самих элементов не видно")
@@ -66,9 +66,19 @@ for found, result in results:
               if result.counts.get(group.key)]
     output.print_md(u"- найдено: " + (u", ".join(counts) or u"ничего"))
     output.print_md(u"- подписей: {}, заштриховано: {}".format(result.texts, result.fills))
-    if found.out_of_range or found.out_of_crop:
-        output.print_md(u"- пропущено: вне диапазона вида {}, вне подрезки {}".format(
-            found.out_of_range, found.out_of_crop))
+    # пропущенные зоны (не машиноместа — их на других этажах сотни) — с отметками,
+    # чтобы было видно, почему зона не попала на план
+    names = dict((g.key, g.name) for g in parking_marks.core.GROUPS + [parking_marks.core.OTHER])
+    skipped_zones = [s for s in found.skipped if s[0] != "parking"]
+    if found.skipped:
+        output.print_md(u"- пропущено элементов: {} (не на этом этаже или вне подрезки)".format(
+            len(found.skipped)))
+    if skipped_zones:
+        rows = [[names.get(group, group), label,
+                 parking_marks.core.format_height(bottom), parking_marks.core.format_height(top), reason]
+                for group, label, bottom, top, reason in skipped_zones[:50]]
+        output.print_table(rows, columns=[u"Группа", u"Элемент", u"Низ от уровня",
+                                          u"Верх от уровня", u"Причина"])
     if found.no_geometry:
         output.print_md(u"- без геометрии и габарита: " + u", ".join(found.no_geometry))
     for error in result.errors:

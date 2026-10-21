@@ -12,6 +12,7 @@ clr.AddReference('WindowsBase')
 
 from System import Uri
 from System.Diagnostics import Process, ProcessStartInfo
+from System.Windows import Visibility
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage
 from pyrevit import forms
 
@@ -67,7 +68,27 @@ class AboutWindow(forms.WPFWindow):
         self.greeting_cb.IsChecked = greeting_window.startup_enabled()
         self.greeting_cb.Checked += lambda s, e: greeting_window.set_startup_enabled(True)
         self.greeting_cb.Unchecked += lambda s, e: greeting_window.set_startup_enabled(False)
+        self._init_usage()
         self.close_btn.Click += lambda s, e: self.Close()
+
+    def _init_usage(self):
+        # статистика запусков (pnotes/usage.py): действует сразу, без перезапуска Revit
+        try:
+            from pnotes import usage
+            self.usage_cb.IsChecked = usage.is_enabled()
+        except Exception:
+            self.usage_cb.Visibility = Visibility.Collapsed
+            return
+        self.usage_cb.Checked += lambda s, e: _set_usage(True)
+        self.usage_cb.Unchecked += lambda s, e: _set_usage(False)
+
+
+def _set_usage(value):
+    try:
+        from pnotes import usage
+        usage.set_enabled(value)
+    except Exception as ex:
+        forms.alert(u'Не удалось сохранить настройку статистики: {}'.format(ex), title=u'LowLife')
 
 
 AboutWindow().ShowDialog()

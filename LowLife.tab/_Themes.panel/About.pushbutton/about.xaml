@@ -55,6 +55,10 @@
             </Grid>
             <CheckBox x:Name="greeting_cb" Content="Показывать приветствие при запуске Revit"
                       Margin="0,14,0,0"/>
+            <CheckBox x:Name="usage_cb" Margin="0,8,0,0">
+                <TextBlock TextWrapping="Wrap"
+                           Text="Отправлять автору статистику запусков кнопок LowLife: какая кнопка, когда, имена пользователя Revit и Windows, имя модели, версии LowLife и Revit. Содержимое моделей не отправляется. Помогает понять, что дорабатывать в первую очередь."/>
+            </CheckBox>
             <TextBlock x:Name="copyright_tb" Foreground="#888888" FontSize="12" Margin="0,14,0,0"/>
             <Button Content="Закрыть" HorizontalAlignment="Right" Padding="18,5" Margin="0,18,0,0"
                     x:Name="close_btn" IsCancel="True" IsDefault="True"/>
