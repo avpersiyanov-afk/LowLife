@@ -24,7 +24,7 @@ from Autodesk.Revit.DB import (
     XYZ, Line, CurveLoop, ElementId, FilteredElementCollector, BuiltInCategory,
     BuiltInParameter, Level, TextNote, FilledRegion, FilledRegionType,
     Options, ViewDetailLevel, Solid, GeometryInstance, PlanarFace, RevitLinkInstance,
-    Transform, SpotDimension, SpotDimensionType, PlanViewPlane, Color, UV
+    Transform, SpotDimension, SpotDimensionType, Color, UV
 )
 
 from lowlife import parking_marks_core as core
@@ -42,6 +42,9 @@ SPOT_TYPE_NAME = u"LowLife — отметки парковки"
 # Типы заливки групп — «LowLife — <имя группы>»; метка в «Комментариях» областей.
 FILL_TYPE_PREFIX = u"LowLife — "
 REGION_TAG = u"LowLife парковка"
+
+# Элемент берётся, если заходит за уровень плана и не доходит до следующего хотя бы на столько.
+LEVEL_TOLERANCE_MM = 100.0
 
 # Подписи, точки которых ближе этого (мм на листе), склеиваются в одну.
 MERGE_MM = 8.0
@@ -252,28 +255,16 @@ def make_item(link, link_name, element, transform, group):
 # ------------------------------------------------------------
 
 def view_z_range(doc, view):
-    """(низ, верх) диапазона плана в футах модели: от глубины просмотра до
-    верхней секущей плоскости (зона светильников бывает выше секущей
-    плоскости); None — без ограничения."""
-    try:
-        view_range = view.GetViewRange()
-    except Exception:
-        return None, None
-
-    def plane_z(plane):
-        try:
-            level = doc.GetElement(view_range.GetLevelId(plane))
-            if isinstance(level, Level):
-                return level.ProjectElevation + view_range.GetOffset(plane)
-        except Exception:
-            pass
-        return None
-
-    top = plane_z(PlanViewPlane.TopClipPlane)
-    depth = plane_z(PlanViewPlane.ViewDepthPlane)
-    if top is None or depth is None:
-        return depth, top   # план: глубина просмотра ниже верха
-    return min(top, depth), max(top, depth)
+    """(низ, верх) отметок, в которых ищутся элементы, в футах модели: от
+    уровня плана до следующего уровня выше (None — выше уровней нет). Не по
+    секущему диапазону вида: его верх по умолчанию — уровень +2300, а зона
+    светильников выше. Элементы, только касающиеся этих отметок (зона этажа
+    ниже, верх которой — пол этого), не берутся — допуск LEVEL_TOLERANCE_MM."""
+    level_z = view.GenLevel.ProjectElevation
+    above = [level.ProjectElevation for level in FilteredElementCollector(doc).OfClass(Level)
+             if level.ProjectElevation > level_z + ft(LEVEL_TOLERANCE_MM)]
+    tolerance = ft(LEVEL_TOLERANCE_MM)
+    return level_z + tolerance, (min(above) - tolerance) if above else None
 
 
 def _in_crop(view, item):
@@ -304,8 +295,7 @@ class Collected(object):
         self.links = []           # имена связей, в которых искали
         self.unloaded = []        # имена выгруженных связей
         self.hidden_links = []    # скрытых на виде
-        self.out_of_range = 0     # вне диапазона вида
-        self.out_of_crop = 0      # вне подрезки
+        self.skipped = []         # (группа, подпись, низ мм, верх мм от уровня, причина)
         self.no_geometry = []     # подписи элементов без геометрии
         self.category_hidden = False
 
@@ -343,11 +333,15 @@ def collect(doc, view, settings):
             if item is None:
                 result.no_geometry.append(u"{}: Id {}".format(name, element.Id.IntegerValue))
                 continue
+            reason = None
             if not core.overlaps(item.bottom_z, item.top_z, bottom, top):
-                result.out_of_range += 1
-                continue
-            if not _in_crop(view, item):
-                result.out_of_crop += 1
+                reason = u"не на этом этаже"
+            elif not _in_crop(view, item):
+                reason = u"вне подрезки вида"
+            if reason is not None:
+                level_z = view.GenLevel.ProjectElevation
+                result.skipped.append((group, item.label, mm(item.bottom_z - level_z),
+                                       mm(item.top_z - level_z), reason))
                 continue
             result.items.append(item)
     return result
