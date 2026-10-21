@@ -3,8 +3,10 @@
 __title__ = u"Зум к\nэлементу"
 __doc__ = (
     u"Приближает вид к элементу. Если элемент уже выбран в модели — просто "
-    u"зумирует к нему (к нескольким выбранным — к их общему габариту). Если "
-    u"ничего не выбрано — спрашивает ID элемента и зумирует к нему. Если "
+    u"зумирует к нему (к нескольким выбранным — к их общему габариту), в том "
+    u"числе к элементам связей, выбранным через Tab. Если "
+    u"ничего не выбрано — спрашивает ID элемента и ищет его в модели и во "
+    u"всех загруженных связях. Если "
     u"элемента не видно на активном виде, подсказывает, на какой уровень "
     u"(план/разрез/3D) переключиться, чтобы он был заметен."
 )
@@ -15,48 +17,24 @@ import clr
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
-from Autodesk.Revit.DB import (
-    BuiltInParameter,
-    ElementId,
-    FilteredElementCollector,
-    Level,
-    LocationCurve,
-    LocationPoint,
-    XYZ,
-)
-from System.Collections.Generic import List
+from Autodesk.Revit.DB import XYZ
 
 from pyrevit import revit, forms
+
+from lowlife import linked_elements, select_list
 
 doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-MM_IN_FOOT = 304.8
-
-# Параметры, в которых у разных категорий лежит ссылка на уровень элемента —
-# перебираем по очереди, если у элемента нет прямого свойства LevelId.
-LEVEL_BIPS = (
-    BuiltInParameter.FAMILY_LEVEL_PARAM,
-    BuiltInParameter.SCHEDULE_LEVEL_PARAM,
-    BuiltInParameter.INSTANCE_SCHEDULE_ONLY_LEVEL_PARAM,
-    BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM,
-    BuiltInParameter.FAMILY_BASE_LEVEL_PARAM,
-    BuiltInParameter.RBS_START_LEVEL_PARAM,
-    BuiltInParameter.LEVEL_PARAM,
-)
-
-
-def get_selected_elements():
-    ids = list(uidoc.Selection.GetElementIds())
-    return [doc.GetElement(eid) for eid in ids if doc.GetElement(eid) is not None]
+TITLE = u"Зум к элементу"
 
 
 def ask_element_by_id():
     raw = forms.ask_for_string(
         default="",
-        prompt=u"Введите ID элемента, к которому нужно приблизить вид:",
-        title=u"Зум к элементу"
+        prompt=u"Введите ID элемента (модели или связи), к которому нужно приблизить вид:",
+        title=TITLE
     )
 
     if raw is None:
@@ -72,149 +50,37 @@ def ask_element_by_id():
     except ValueError:
         forms.alert(u"«{}» — это не число. ID элемента должен быть целым числом.".format(raw), exitscript=True)
 
-    el = doc.GetElement(ElementId(int_id))
-    if el is None:
+    found = linked_elements.find_by_id(doc, int_id)
+    if not found:
         forms.alert(
-            u"Элемент с ID {} не найден в текущем документе. Возможно, он "
-            u"удалён или находится в связанной модели.".format(int_id),
+            u"Элемент с ID {} не найден ни в текущей модели, ни в "
+            u"загруженных связях. Возможно, он удалён или его связь "
+            u"выгружена.".format(int_id),
             exitscript=True
         )
+    if len(found) == 1:
+        return found[0]
 
-    return el
-
-
-def get_level_name(el):
-    """Имя уровня элемента: свойство LevelId -> типовые параметры -> ближайший уровень по Z."""
-    try:
-        lid = el.LevelId
-        if lid is not None and lid != ElementId.InvalidElementId:
-            lvl = doc.GetElement(lid)
-            if lvl is not None:
-                return lvl.Name
-    except:
-        pass
-
-    for bip in LEVEL_BIPS:
-        try:
-            p = el.get_Parameter(bip)
-            if p and p.HasValue:
-                lvl = doc.GetElement(p.AsElementId())
-                if lvl is not None:
-                    return lvl.Name
-        except:
-            pass
-
-    # Ближайший уровень по средней отметке габаритного контейнера элемента.
-    try:
-        bb = el.get_BoundingBox(None)
-        if bb is not None:
-            z = (bb.Min.Z + bb.Max.Z) / 2.0
-            levels = list(FilteredElementCollector(doc).OfClass(Level))
-            if levels:
-                nearest = min(levels, key=lambda L: abs(L.Elevation - z))
-                return nearest.Name
-    except:
-        pass
-
-    return None
-
-
-def get_elevation_m(el):
-    try:
-        bb = el.get_BoundingBox(None)
-        if bb is not None:
-            return (bb.Min.Z + bb.Max.Z) / 2.0 * MM_IN_FOOT / 1000.0
-    except:
-        pass
-    return None
-
-
-def _bbox_world_center(bb):
-    """Центр габаритного контейнера в МИРОВЫХ координатах.
-
-    У BoundingBoxXYZ есть собственный Transform: у большинства элементов он
-    единичный, но у части категорий (импорты, связи, некоторые семейства)
-    Min/Max заданы в локальной системе контейнера, и без применения
-    Transform центр оказывается «влево-вниз» или вообще далеко за краем.
-    Transform аффинный, поэтому достаточно применить его к середине
-    (Min+Max)/2 — это и есть мировой центр.
-    """
-    mid = XYZ((bb.Min.X + bb.Max.X) / 2.0,
-              (bb.Min.Y + bb.Max.Y) / 2.0,
-              (bb.Min.Z + bb.Max.Z) / 2.0)
-    try:
-        return bb.Transform.OfPoint(mid)
-    except:
-        return mid
-
-
-def build_visible_ids():
-    """
-    IntegerValue всех элементов, которые Revit реально показывает на
-    активном виде (FilteredElementCollector по Id вида учитывает видимость
-    категорий, фильтры, диапазон вида, скрытые элементы). Это надёжнее, чем
-    судить о видимости по наличию get_BoundingBox(view): у части семейств
-    (символьных, без 3D-геометрии в плане) габарит на виде None, хотя сам
-    элемент на виде виден.
-    """
-    try:
-        return set(
-            x.IntegerValue
-            for x in FilteredElementCollector(doc, view.Id)
-            .WhereElementIsNotElementType()
-            .ToElementIds()
-        )
-    except:
-        return None
-
-
-VISIBLE_IDS = build_visible_ids()
-
-
-def is_visible(el):
-    try:
-        if VISIBLE_IDS is not None and el.Id.IntegerValue in VISIBLE_IDS:
-            return True
-    except:
-        pass
-    try:
-        return el.get_BoundingBox(view) is not None
-    except:
-        return False
-
-
-def element_target_point(el):
-    """
-    Мировая точка элемента для зума, или None если определить не удалось.
-
-    Приоритет: точка расположения (LocationPoint) -> середина оси
-    (LocationCurve) -> мировой центр габарита (на активном виде, иначе
-    модельного). LocationPoint/ось берём как есть — для подавляющего
-    большинства семейств это и есть их видимое место; проверку «далеко ли
-    от габарита» убрали, потому что у символьных семейств габарит на виде
-    как раз мелкий/смещённый, и из-за той проверки зум уходил в пустоту.
-    """
-    loc = getattr(el, "Location", None)
-    if isinstance(loc, LocationPoint):
-        try:
-            return loc.Point
-        except:
-            pass
-    elif isinstance(loc, LocationCurve):
-        try:
-            return loc.Curve.Evaluate(0.5, True)
-        except:
-            pass
-
-    for v in (view, None):
-        try:
-            bb = el.get_BoundingBox(v)
-        except:
-            bb = None
-        if bb is not None:
-            return _bbox_world_center(bb)
-
-    return None
+    # Один и тот же ID есть в нескольких моделях — спрашиваем, какой нужен.
+    # Подписи уникальны даже для двух экземпляров одной связи.
+    labels = []
+    for it in found:
+        label = it.label()
+        n = 2
+        while label in labels:
+            label = u"{} #{}".format(it.label(), n)
+            n += 1
+        labels.append(label)
+    by_label = dict(zip(labels, found))
+    picked = select_list.SelectFromList.show(
+        labels,
+        title=u"Элемент с ID {} есть в нескольких моделях".format(int_id),
+        button_name=u"Зум",
+        multiselect=False,
+    )
+    if not picked:
+        forms.alert(u"Операция отменена.", exitscript=True)
+    return by_label[picked]
 
 
 def zoom_center_on_points(points, pad_ft=6.0):
@@ -279,37 +145,40 @@ def zoom_center_on_points(points, pad_ft=6.0):
         pass
 
 
-def hint_where_to_look(elements):
-    el = elements[0]
-    level_name = get_level_name(el)
-    elev_m = get_elevation_m(el)
+def hint_where_to_look(items):
+    item = items[0]
+    level_name = linked_elements.level_name(item)
+    elev_m = linked_elements.elevation_m(item)
 
     active_level = getattr(view, "GenLevel", None)
     active_level_name = active_level.Name if active_level is not None else None
 
     elev_line = u"\nОтметка элемента ≈ {:.2f} м.".format(elev_m) if elev_m is not None else u""
+    if item.is_linked:
+        elev_line += u"\nЭлемент из связи «{}».".format(item.link_name)
 
     if level_name and active_level_name and level_name == active_level_name:
         forms.alert(
             u"Элемент относится к уровню активного вида («{}»), но на виде "
-            u"не показан. Проверьте: видимость его категории (VG), фильтры "
-            u"вида, стадию (Phase) и диапазон вида (View Range) — элемент "
-            u"может быть выше/ниже секущей плоскости.{}".format(level_name, elev_line),
-            title=u"Зум к элементу"
+            u"не показан. Проверьте: видимость его категории (VG; для связи — "
+            u"вкладка «Связанные файлы RVT»), фильтры вида, стадию (Phase) и "
+            u"диапазон вида (View Range) — элемент может быть выше/ниже "
+            u"секущей плоскости.{}".format(level_name, elev_line),
+            title=TITLE
         )
     elif level_name:
         forms.alert(
             u"Элемента не видно на активном виде. Похоже, он расположен на "
             u"уровне «{}». Переключитесь на план этого уровня (или на "
             u"подходящий разрез / 3D-вид) и запустите кнопку снова.{}".format(level_name, elev_line),
-            title=u"Зум к элементу"
+            title=TITLE
         )
     else:
         forms.alert(
             u"Элемента не видно на активном виде, и определить его уровень "
             u"не удалось. Откройте 3D-вид или разрез, где элемент виден, и "
             u"запустите кнопку снова.{}".format(elev_line),
-            title=u"Зум к элементу"
+            title=TITLE
         )
 
 
@@ -317,38 +186,33 @@ def hint_where_to_look(elements):
 # ОСНОВНОЙ СЦЕНАРИЙ
 # ------------------------------------------------------------
 
-elements = get_selected_elements()
+items = linked_elements.selected_items(uidoc)
 
-if not elements:
-    el = ask_element_by_id()
-    elements = [el]
+if not items:
+    items = [ask_element_by_id()]
     # Выделяем найденный по ID элемент, чтобы его было видно после зума.
-    sel_ids = List[ElementId]()
-    sel_ids.Add(el.Id)
-    try:
-        uidoc.Selection.SetElementIds(sel_ids)
-    except:
-        pass
+    linked_elements.select_items(uidoc, items)
 
 # Точки для зума — только по элементам, которые видны на активном виде.
+visibility = linked_elements.Visibility(doc, view)
 points = []
 any_visible = False
-for el in elements:
-    if not is_visible(el):
+for item in items:
+    if not visibility.is_visible(item):
         continue
     any_visible = True
-    pt = element_target_point(el)
+    pt = linked_elements.target_point(item, view)
     if pt is not None:
         points.append(pt)
 
 if not any_visible:
     # Ни один из элементов не виден на активном виде — подсказываем куда смотреть.
-    hint_where_to_look(elements)
+    hint_where_to_look(items)
 elif not points:
     forms.alert(
         u"Элемент(ы) на виде есть, но определить его положение для зума не "
         u"удалось.",
-        title=u"Зум к элементу"
+        title=TITLE
     )
 else:
     zoom_center_on_points(points)
