@@ -3,9 +3,11 @@
 «Боксы на лотки» (Tools.panel/TrayOpeningBoxes)."""
 
 import math
+from datetime import datetime
 
 from lowlife.tray_boxes_core import (merge_intervals, wall_box, floor_box, sized_type_name,
-                                     name_has, split_words, SKIP_SLOPED, SKIP_ANGLE)
+                                     name_has, split_words, creation_comment,
+                                     SKIP_SLOPED, SKIP_ANGLE)
 
 
 def _close(a, b, tol=1e-9):
@@ -62,6 +64,12 @@ def test_floor_box():
     assert _close(box.height, 250.0)
     assert _close(box.angle(), math.pi / 2)
     assert floor_box((0, 0, 0), (1, 0, 0), (0, 1, 0), 250, 400, 80, 50, 0, 1)[1] == SKIP_SLOPED
+
+
+def test_creation_comment():
+    when = datetime(2026, 3, 5, 9, 7)
+    assert creation_comment(u"ivanov", when) == u"ivanov 05.03.2026 09:07"
+    assert creation_comment(u"", when) == u"05.03.2026 09:07"
 
 
 def test_names():

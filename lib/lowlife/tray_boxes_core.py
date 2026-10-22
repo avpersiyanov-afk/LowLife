@@ -138,6 +138,12 @@ def sized_type_name(base, width_mm, depth_mm, height_mm):
         base, float(width_mm), float(depth_mm), float(height_mm))
 
 
+def creation_comment(user, when):
+    u"""Текст для «Комментариев» нового бокса: кто и когда его создал.
+    when — datetime."""
+    return u"{} {}".format(user or u"", when.strftime("%d.%m.%Y %H:%M")).strip()
+
+
 def name_has(name, words):
     u"""Есть ли в имени хотя бы одно из слов (без учёта регистра). Пустой
     список — подходит любое имя."""
