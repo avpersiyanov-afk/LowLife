@@ -78,20 +78,29 @@ def ft(value_mm):
 
 # Вертикаль от точки проверяется на столько вверх и вниз (футы): всё здание.
 _PROBE_RANGE_FT = 1000.0
-# Полуширина «столбика» вокруг точки для отбора элементов по габаритам (футы).
-_PROBE_HALF_WIDTH_FT = 0.01
+# Ячейка сетки габаритов перекрытий в плане (мм).
+GRID_CELL_MM = 5000.0
+# Сколько выше и ниже точки смотреть перекрытия (мм): до самых высоких зон и
+# шахт над этажом хватает с запасом, а грани остального здания не читаются.
+PROBE_UP_MM = 60000.0
+PROBE_DOWN_MM = 30000.0
 
 
 class SlabProbe(object):
     """
     Что над и под точкой: перекрытия («Перекрытия», «Крыши») и подвесные
     потолки («Потолки») модели и загруженных связей — по геометрии, без
-    3D-вида. Для точки быстрый фильтр по габаритам (BoundingBoxIntersects
-    по вертикальному «столбику» в координатах каждой связи) отбирает
-    несколько элементов над и под ней, вертикаль пересекается с их телами
-    (Solid.IntersectWithCurve): где вертикаль входит в тело снизу — низ
-    перекрытия/потолка, где выходит сверху под точкой — пол. Тела читаются
-    один раз на элемент и кэшируются, результаты — по точке.
+    3D-вида. Один раз на запуск габариты всех перекрытий/крыш/потолков
+    модели и связей раскладываются в сетку (core.BoxGrid); для точки из неё
+    берутся элементы над и под ней (в пределах PROBE_UP_MM/PROBE_DOWN_MM),
+    и проверяется, в какие их горизонтальные грани попадает точка
+    (core.FlatFace — контуры разложены по полосам): нижние грани над
+    точкой — низ перекрытия/потолка, верхние под ней — пол. Грани читаются
+    один раз на элемент. Элементы с наклонными гранями (пандус, скатная
+    крыша) — пересечением вертикали с телом (Solid.IntersectWithCurve).
+    На 12 извещателях прежний вариант (запрос по габаритам к каждой связи
+    и пересечение с телами огромных плит на каждой точке) шёл ~0,7 с на
+    точку; теперь Revit на точке не опрашивается вовсе.
 
     Раньше это был ReferenceIntersector по 3D-виду: создание вида, скрытие
     в нём категорий и регенерация на большой модели со связями занимали
@@ -132,6 +141,10 @@ class SlabProbe(object):
         self._thin = {}        # {ключ элемента: тонкий ли (отделка пола)}
         self._solids_cache = {}  # {ключ элемента: [Solid] в координатах его документа}
         self._kind_cache = {}    # {ключ элемента: вид или None (снесён/не та категория)}
+        self._faces_cache = {}   # {ключ элемента: ([core.FlatFace], есть ли наклонные грани)}
+        self._elements = {}      # {ключ элемента: (элемент, преобразование в модель)}
+        self._grid = None        # core.BoxGrid габаритов элементов (мм)
+        self.faces_seconds = 0.0  # время чтения граней (для отчёта)
         self.points = 0          # точек, проверенных по геометрии (для отчёта)
         self.open_seconds = None       # подготовка (список связей), для отчёта
         self.open_steps = []
@@ -141,20 +154,53 @@ class SlabProbe(object):
     # --- источники и элементы ---
 
     def _open(self):
+        """
+        Один раз на запуск: связи и габариты (в плане, мм) всех перекрытий,
+        крыш и потолков модели и связей в сетке core.BoxGrid — дальше для
+        каждой точки элементы над ней берутся из сетки, без запросов к Revit.
+        """
         import time
+        from System.Collections.Generic import List
+        from Autodesk.Revit.DB import ElementMulticategoryFilter
         started = time.time()
         self._sources = []
+        self._elements = {}
+        self._grid = core.BoxGrid(cell=GRID_CELL_MM)
         sources = model_sources(self.doc)
         labels = _source_labels(self.doc)
+        categories = List[BuiltInCategory]([
+            BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs, BuiltInCategory.OST_Ceilings])
         for source_key in sorted(sources):
             source_doc, transform = sources[source_key]
             if abs(transform.BasisZ.Z) < 0.999:
                 self.skipped_links.append(labels.get(source_key, u"связь"))
                 continue
             self._sources.append((source_key, source_doc, transform, transform.Inverse))
+            collector = (FilteredElementCollector(source_doc)
+                         .WherePasses(ElementMulticategoryFilter(categories))
+                         .WhereElementIsNotElementType())
+            for element in collector:
+                key = (source_key, element.Id.IntegerValue)
+                if self._kind_of(key, element) is None:
+                    continue
+                try:
+                    bbox = element.get_BoundingBox(None)
+                    corners = [transform.OfPoint(XYZ(cx, cy, bbox.Min.Z))
+                               for cx in (bbox.Min.X, bbox.Max.X) for cy in (bbox.Min.Y, bbox.Max.Y)]
+                    z_range = (mm(transform.OfPoint(bbox.Min).Z), mm(transform.OfPoint(bbox.Max).Z))
+                except Exception:
+                    continue
+                self._elements[key] = (element, transform)
+                self._grid.add((key, min(z_range), max(z_range)),
+                               (mm(min(c.X for c in corners)), mm(min(c.Y for c in corners)),
+                                mm(max(c.X for c in corners)), mm(max(c.Y for c in corners))))
         self.open_seconds = time.time() - started
+        self.open_steps.append((u"перекрытий, крыш и потолков в модели и связях: {}".format(
+            len(self._elements)), self.open_seconds))
 
     def _element(self, key):
+        if key in self._elements:
+            return self._elements[key][0]
         for source_key, source_doc, _transform, _inverse in self._sources or []:
             if source_key == key[0]:
                 return source_doc.GetElement(ElementId(key[1]))
@@ -172,6 +218,50 @@ class SlabProbe(object):
             kind = None
         self._kind_cache[key] = kind
         return kind
+
+    def _faces(self, key):
+        """
+        Горизонтальные грани элемента (core.FlatFace, координаты модели, мм)
+        и признак наклонных граней (пандус, скатная крыша — для них
+        пересечение с телом, _sloped_hits). Читаются один раз на элемент.
+        """
+        if key in self._faces_cache:
+            return self._faces_cache[key]
+        import time
+        from Autodesk.Revit.DB import UV
+        started = time.time()
+        faces = []
+        sloped = False
+        element, transform = self._elements[key]
+        try:
+            options = Options()
+            options.DetailLevel = ViewDetailLevel.Fine
+            for solid, solid_transform in _solids(element.get_Geometry(options), transform):
+                for face in solid.Faces:
+                    if isinstance(face, PlanarFace):
+                        nz = solid_transform.OfVector(face.FaceNormal).Z
+                        if abs(nz) >= 0.99:
+                            loops = [_loop_points(face, loop, solid_transform) for loop in face.EdgeLoops]
+                            outer, holes = core.split_outer(loops)
+                            if outer is not None:
+                                z = solid_transform.OfPoint(face.Origin).Z
+                                faces.append(core.FlatFace(mm(z), nz < 0, outer, holes))
+                        elif abs(nz) > 0.05:
+                            sloped = True
+                    else:
+                        try:
+                            box = face.GetBoundingBox()
+                            uv = UV((box.Min.U + box.Max.U) / 2.0, (box.Min.V + box.Max.V) / 2.0)
+                            nz = solid_transform.OfVector(face.ComputeNormal(uv)).Z
+                            if abs(nz) > 0.05:
+                                sloped = True
+                        except Exception:
+                            sloped = True
+        except Exception:
+            faces, sloped = [], True
+        self.faces_seconds += time.time() - started
+        self._faces_cache[key] = (faces, sloped)
+        return faces, sloped
 
     def _local_solids(self, key, element):
         """Тела элемента в координатах его документа (кэш по элементу)."""
@@ -192,66 +282,58 @@ class SlabProbe(object):
         self._solids_cache[key] = solids
         return solids
 
-    def _segments(self, x, y, z):
-        """
-        [(низ, верх, вид, ключ)] — где вертикаль через (x, y) пересекает тела
-        перекрытий/потолков (отметки в футах, координаты модели).
-        """
-        from System.Collections.Generic import List
-        from Autodesk.Revit.DB import (
-            Outline, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
-            SolidCurveIntersectionOptions
-        )
-        if self._sources is None:
-            self._open()
-        categories = List[BuiltInCategory]([
-            BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs, BuiltInCategory.OST_Ceilings])
-        options = SolidCurveIntersectionOptions()
-        result = []
-        for source_key, source_doc, transform, inverse in self._sources:
-            local = inverse.OfPoint(XYZ(x, y, z))
-            w = _PROBE_HALF_WIDTH_FT
-            outline = Outline(XYZ(local.X - w, local.Y - w, local.Z - _PROBE_RANGE_FT),
-                              XYZ(local.X + w, local.Y + w, local.Z + _PROBE_RANGE_FT))
-            collector = (FilteredElementCollector(source_doc)
-                         .WherePasses(ElementMulticategoryFilter(categories))
-                         .WherePasses(BoundingBoxIntersectsFilter(outline))
-                         .WhereElementIsNotElementType())
-            line = None
-            for element in collector:
-                key = (source_key, element.Id.IntegerValue)
-                kind = self._kind_of(key, element)
-                if kind is None:
-                    continue
-                if line is None:
-                    line = Line.CreateBound(XYZ(local.X, local.Y, local.Z - _PROBE_RANGE_FT),
-                                            XYZ(local.X, local.Y, local.Z + _PROBE_RANGE_FT))
-                for solid in self._local_solids(key, element):
-                    try:
-                        crossing = solid.IntersectWithCurve(line, options)
-                    except Exception:
-                        continue
-                    for i in range(crossing.SegmentCount):
-                        segment = crossing.GetCurveSegment(i)
-                        z0 = transform.OfPoint(segment.GetEndPoint(0)).Z
-                        z1 = transform.OfPoint(segment.GetEndPoint(1)).Z
-                        result.append((min(z0, z1), max(z0, z1), kind, key))
-        return result
+    def _sloped_hits(self, key, x, y, origin_z):
+        """Для элемента с наклонными гранями: пересечение вертикали с его телами (футы)."""
+        from Autodesk.Revit.DB import SolidCurveIntersectionOptions
+        element, transform = self._elements[key]
+        local = transform.Inverse.OfPoint(XYZ(x, y, origin_z))
+        line = Line.CreateBound(XYZ(local.X, local.Y, local.Z - _PROBE_RANGE_FT),
+                                XYZ(local.X, local.Y, local.Z + _PROBE_RANGE_FT))
+        up = []
+        down = []
+        for solid in self._local_solids(key, element):
+            try:
+                crossing = solid.IntersectWithCurve(line, SolidCurveIntersectionOptions())
+            except Exception:
+                continue
+            for i in range(crossing.SegmentCount):
+                segment = crossing.GetCurveSegment(i)
+                z0 = transform.OfPoint(segment.GetEndPoint(0)).Z
+                z1 = transform.OfPoint(segment.GetEndPoint(1)).Z
+                low, high = min(z0, z1), max(z0, z1)
+                if low > origin_z:
+                    up.append(mm(low - origin_z))
+                elif high < origin_z:
+                    down.append(mm(origin_z - high))
+        return up, down
 
     def _hits(self, x, y, origin_z):
         """
-        (вверх, вниз): [(расстояние мм, вид, ключ элемента)] — вверх до низа
-        каждого тела выше точки, вниз до верха каждого тела ниже точки.
+        (вверх, вниз): [(расстояние мм, вид, ключ элемента)] — вверх до каждой
+        нижней грани над точкой, вниз до каждой верхней грани под ней.
+        Элементы над точкой — из сетки габаритов, грани — из кэша.
         """
         import time
         started = time.time()
+        if self._sources is None:
+            self._open()
+        x_mm, y_mm, z_mm = mm(x), mm(y), mm(origin_z)
         up = []
         down = []
-        for low, high, kind, key in self._segments(x, y, origin_z):
-            if low > origin_z:
-                up.append((mm(low - origin_z), kind, key))
-            elif high < origin_z:
-                down.append((mm(origin_z - high), kind, key))
+        for key, z_min, z_max in self._grid.at(x_mm, y_mm):
+            # только элементы в пределах PROBE_UP_MM над точкой и PROBE_DOWN_MM
+            # под ней — иначе для каждой новой точки читались бы грани всех
+            # перекрытий здания до кровли
+            if z_min > z_mm + PROBE_UP_MM or z_max < z_mm - PROBE_DOWN_MM:
+                continue
+            kind = self._kind_cache.get(key)
+            faces, sloped = self._faces(key)
+            if sloped:
+                element_up, element_down = self._sloped_hits(key, x, y, origin_z)
+            else:
+                element_up, element_down = core.vertical_hits(faces, x_mm, y_mm, z_mm)
+            up.extend((d, kind, key) for d in element_up)
+            down.extend((d, kind, key) for d in element_down)
         if self.first_ray_seconds is None:
             self.first_ray_seconds = time.time() - started
         self.points += 1
@@ -265,10 +347,8 @@ class SlabProbe(object):
         расстояние, отметка от уровня, категория, тип, связь» (до limit на
         направление) и итог probe(). Только для выбранных извещателей.
         """
-        if self._sources is None:
-            self._open()
         labels = _source_labels(self.doc)
-        up, down = self._hits(x, y, origin_z)
+        _found, up, down = self._raw_full(x, y, origin_z, level_z)
         lines = []
         for label, hits, sign in ((u"вверх", up, 1), (u"вниз", down, -1)):
             for distance, _kind, key in sorted(hits, key=lambda h: h[0])[:limit]:
@@ -334,14 +414,19 @@ class SlabProbe(object):
                 best = (distance, key)
         return None if best is None else best[1]
 
-    def _raw(self, x, y, origin_z, level_z):
-        """(core.Probe или None, попадания вверх) без проверки отверстия; кэшируется."""
+    def _raw_full(self, x, y, origin_z, level_z):
+        """(core.Probe или None, попадания вверх, попадания вниз) без проверки отверстия; кэшируется."""
         key = (round(x, 3), round(y, 3), round(origin_z, 3), round(level_z, 3))
         if key in self._cache:
             return self._cache[key]
         up, down = self._hits(x, y, origin_z)
         found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
-        self._cache[key] = (found, up)
+        self._cache[key] = (found, up, down)
+        return self._cache[key]
+
+    def _raw(self, x, y, origin_z, level_z):
+        """(core.Probe или None, попадания вверх) без проверки отверстия; кэшируется."""
+        found, up, _down = self._raw_full(x, y, origin_z, level_z)
         return found, up
 
     def _next_level_z(self, level_z):
