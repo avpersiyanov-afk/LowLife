@@ -461,12 +461,19 @@ def level_of(doc, instance, levels):
     return best
 
 
-def collect_detectors(doc, settings, element_ids=None):
-    """Извещатели модели (или только из element_ids), подходящие по словам из настроек."""
+def collect_detectors(doc, settings, element_ids=None, view=None):
+    """
+    Извещатели, подходящие по словам из настроек: из element_ids (выделение),
+    иначе видимые на виде view, иначе все в модели.
+    """
     include = core.split_words(settings.get("detector_include_words"))
     exclude = core.split_words(settings.get("detector_exclude_words"))
     if element_ids:
         candidates = [doc.GetElement(element_id) for element_id in element_ids]
+    elif view is not None:
+        candidates = (FilteredElementCollector(doc, view.Id)
+                      .OfCategory(BuiltInCategory.OST_FireAlarmDevices)
+                      .WhereElementIsNotElementType())
     else:
         candidates = (FilteredElementCollector(doc)
                       .OfCategory(BuiltInCategory.OST_FireAlarmDevices)
@@ -483,6 +490,28 @@ def collect_detectors(doc, settings, element_ids=None):
         if core.is_detector(_names(element), include, exclude):
             result.append(element)
     return result
+
+
+def detectors_on_levels(doc, settings, views):
+    """Извещатели, чей уровень (level_of) — уровень одного из планов views."""
+    level_ids = set(view.GenLevel.Id.IntegerValue for view in views if is_plan(view))
+    levels = plan_levels(doc)
+    result = []
+    for detector in collect_detectors(doc, settings):
+        level, _z = level_of(doc, detector, levels)
+        if level is not None and level.Id.IntegerValue in level_ids:
+            result.append(detector)
+    return result
+
+
+def can_collect_on(view):
+    """На виде можно собрать видимые элементы: не шаблон, не спецификация/лист."""
+    from Autodesk.Revit.DB import ViewSchedule, ViewSheet
+    try:
+        return view is not None and not view.IsTemplate and \
+            not isinstance(view, (ViewSchedule, ViewSheet))
+    except Exception:
+        return False
 
 
 class MoveResult(object):

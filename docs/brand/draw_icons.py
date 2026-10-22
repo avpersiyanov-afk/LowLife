@@ -581,6 +581,19 @@ def compare_link_datums(c):
     c.line([(51, 46), (57, 46)], ORANGE, 3)
 
 
+def tray_opening_boxes(c):
+    """«Боксы на лотки»: стена в разрезе (штриховка), сквозь неё — лоток,
+    вокруг лотка в стене — оранжевый бокс с запасом."""
+    c.rect((38, 8, 58, 88), BLUE, WHITE, 4, 1)
+    for y in range(14, 86, 10):
+        c.line([(40, y + 6), (56, y - 2)], BLUE, 2)
+    c.rect((32, 34, 64, 62), ORANGE, PALE_ORANGE, 4, 2)
+    c.rect((6, 40, 90, 56), BLUE, WHITE, 4, 1)
+    for x in range(14, 90, 10):
+        if not 34 <= x <= 62:
+            c.line([(x, 43), (x, 53)], BLUE, 2)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -615,6 +628,7 @@ ICONS = [
     ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
     ("Tools.panel/TagTrays.pushbutton", tag_trays),
     ("Tools.panel/CompareLinkDatums.pushbutton", compare_link_datums),
+    ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),
 ]
 
 
