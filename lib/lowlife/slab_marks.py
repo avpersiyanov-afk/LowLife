@@ -7,8 +7,9 @@
   1. move_detectors — каждый пожарный извещатель (категория «Пожарная
      сигнализация», отбор по словам в имени семейства/типа) поднимается или
      опускается так, чтобы точка вставки встала на низ перекрытия над ним.
-     Перекрытие ищется лучом вверх (ReferenceIntersector по временному
-     3D-виду, с элементами связей АР/КР) из точки над уровнем извещателя —
+     Перекрытие ищется по геометрии (SlabProbe: вертикаль из точки над
+     уровнем извещателя пересекается с телами перекрытий модели и связей
+     АР/КР, без 3D-вида) —
      поэтому разные отметки перекрытий в здании учитываются сами.
   2. annotate_view — на плане для каждого помещения (связей и модели) на
      уровне вида — подпись высоты низа перекрытия от пола (пол — ближайшее
@@ -19,8 +20,8 @@
      где сходятся края нижних граней перекрытий с разной отметкой.
      Повторный запуск заменяет подписи, области и линии прошлого запуска на виде.
 
-Вызывать внутри одной открытой транзакции (временный 3D-вид создаётся и
-удаляется в ней же — SlabProbe.close()).
+Вызывать внутри одной открытой транзакции (SlabProbe ничего в модели не
+создаёт; close() оставлен для совместимости).
 """
 
 from Autodesk.Revit.DB import (
@@ -72,32 +73,39 @@ def ft(value_mm):
 
 
 # ------------------------------------------------------------
-# Луч вверх/вниз
+# «Луч» вверх/вниз — по геометрии, без 3D-вида
 # ------------------------------------------------------------
+
+# Вертикаль от точки проверяется на столько вверх и вниз (футы): всё здание.
+_PROBE_RANGE_FT = 1000.0
+# Полуширина «столбика» вокруг точки для отбора элементов по габаритам (футы).
+_PROBE_HALF_WIDTH_FT = 0.01
+
 
 class SlabProbe(object):
     """
-    Лучи вверх и вниз из точки (ReferenceIntersector по временному 3D-виду,
-    с элементами связей): перекрытия («Перекрытия», «Крыши») и подвесные
-    потолки («Потолки»). Вид создаётся при первом запросе; close() удаляет
-    его в той же транзакции.
+    Что над и под точкой: перекрытия («Перекрытия», «Крыши») и подвесные
+    потолки («Потолки») модели и загруженных связей — по геометрии, без
+    3D-вида. Для точки быстрый фильтр по габаритам (BoundingBoxIntersects
+    по вертикальному «столбику» в координатах каждой связи) отбирает
+    несколько элементов над и под ней, вертикаль пересекается с их телами
+    (Solid.IntersectWithCurve): где вертикаль входит в тело снизу — низ
+    перекрытия/потолка, где выходит сверху под точкой — пол. Тела читаются
+    один раз на элемент и кэшируются, результаты — по точке.
 
-    Скорость: на виде скрыты все категории модели, кроме перекрытий, крыш,
-    потолков и связей, — луч иначе собирает попадания во всё подряд
-    (мебель, трубы, воздуховоды, оборудование во всех связях), и на сотнях
-    точек это основное время. Результаты кэшируются по точке (повторные
-    запросы той же точки — подпись помещения, проверка перепада).
+    Раньше это был ReferenceIntersector по 3D-виду: создание вида, скрытие
+    в нём категорий и регенерация на большой модели со связями занимали
+    ~30 с на каждом запуске, ещё ~8 с — первый луч. Пересечение с телом
+    заодно даёт честный низ капителей (луч у капители, присоединённой к
+    плите, бывал отдавал только верхнюю грань).
 
-    Колонны для луча скрыты: луч вниз из точки над колонной упирался в низ
-    колонны (ниже чистого пола), и высота получалась завышенной. Если
-    ближайшим сверху оказался тонкий слой (отделка пола над полостью, а
-    не плита), точка проверяется как отверстие (_check_opening).
+    Снесённые элементы (есть стадия сноса) не учитываются. Колонны не
+    учитываются: вертикаль над колонной упиралась бы в её низ, ниже пола.
+    Если ближайшим сверху оказался тонкий слой (отделка пола над полостью,
+    а не плита), точка проверяется как отверстие (_check_opening).
+
+    Интерфейс прежний: probe(), describe(), slabs_above(), close().
     """
-
-    _VISIBLE = (
-        BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs,
-        BuiltInCategory.OST_Ceilings, BuiltInCategory.OST_RvtLinks,
-    )
 
     _KINDS = {
         int(BuiltInCategory.OST_Floors): core.SLAB,
@@ -107,133 +115,172 @@ class SlabProbe(object):
 
     def __init__(self, doc, opening_size_mm=0.0):
         self.doc = doc
-        # Отверстия в перекрытии (шахты, проёмы): луч проходит насквозь до
-        # плиты следующих этажей. Если найденная плита выше следующего уровня,
-        # проверяются 4 точки на этом расстоянии вокруг (см. _check_opening).
-        # 0 — не проверять.
+        # Отверстия в перекрытии (шахты, проёмы): вертикаль проходит насквозь
+        # до плиты следующих этажей. Если найденная плита выше следующего
+        # уровня, проверяются 4 точки на этом расстоянии вокруг (см.
+        # _check_opening). 0 — не проверять.
         self.opening_ft = ft(opening_size_mm or 0.0)
         self._levels = None
-        self.view = None
-        self.intersector = None
         self.error = None
         self._cache = {}
-        # Перекрытия, в которые лучи упёрлись как в ближайшие сверху, по
-        # уровню, от которого шёл луч: {отметка уровня, мм: {(Id связи или -1
-        # для модели, Id элемента)}} — по ним ищутся перепады (slabs_above).
+        # Перекрытия, ближайшие сверху к проверенным точкам, по уровню точки:
+        # {отметка уровня, мм: {(Id связи или -1 для модели, Id элемента)}} —
+        # по ним ищутся перепады (slabs_above).
         self.slab_elements = {}
         self.openings = 0  # точек над отверстиями в перекрытии (для отчёта)
-        self._sources = None
-        self._thin = {}    # {ключ элемента: тонкий ли (отделка пола)}
-        self._solids_cache = {}
-        self.open_seconds = None       # время подготовки временного 3D-вида (для отчёта)
-        self.first_ray_seconds = None  # время первого луча (для отчёта)  # {ключ элемента: [Solid]} — для _refine_nearest_slab
+        self._sources = None   # [(ключ источника, документ, преобразование, обратное)]
+        self._thin = {}        # {ключ элемента: тонкий ли (отделка пола)}
+        self._solids_cache = {}  # {ключ элемента: [Solid] в координатах его документа}
+        self._kind_cache = {}    # {ключ элемента: вид или None (снесён/не та категория)}
+        self.points = 0          # точек, проверенных по геометрии (для отчёта)
+        self.open_seconds = None       # подготовка (список связей), для отчёта
+        self.open_steps = []
+        self.first_ray_seconds = None  # первая точка (первое чтение геометрии), для отчёта
+        self.skipped_links = []        # связи, повёрнутые не вокруг вертикали
 
-    def _hide_other_categories(self):
-        from Autodesk.Revit.DB import CategoryType
-        keep = set(int(c) for c in self._VISIBLE)
-        for category in self.doc.Settings.Categories:
-            try:
-                if category.CategoryType != CategoryType.Model:
-                    continue
-                if category.Id.IntegerValue in keep:
-                    continue
-                if self.view.CanCategoryBeHidden(category.Id):
-                    self.view.SetCategoryHidden(category.Id, True)
-            except Exception:
-                pass
+    # --- источники и элементы ---
 
     def _open(self):
         import time
-        from Autodesk.Revit.DB import (
-            View3D, ViewFamilyType, ViewFamily, ReferenceIntersector, FindReferenceTarget
-        )
         started = time.time()
-        vft = None
-        for candidate in FilteredElementCollector(self.doc).OfClass(ViewFamilyType):
-            if candidate.ViewFamily == ViewFamily.ThreeDimensional:
-                vft = candidate
-                break
-        if vft is None:
-            raise Exception(u"в проекте нет типа 3D-вида")
-        self.view = View3D.CreateIsometric(self.doc, vft.Id)
-        try:
-            self.view.ViewTemplateId = ElementId.InvalidElementId
-        except Exception:
-            pass
-        self._hide_other_categories()
-        self.doc.Regenerate()
-        self.intersector = ReferenceIntersector(self.view)
-        self.intersector.TargetType = FindReferenceTarget.Face
-        self.intersector.FindReferencesInRevitLinks = True
+        self._sources = []
+        sources = model_sources(self.doc)
+        labels = _source_labels(self.doc)
+        for source_key in sorted(sources):
+            source_doc, transform = sources[source_key]
+            if abs(transform.BasisZ.Z) < 0.999:
+                self.skipped_links.append(labels.get(source_key, u"связь"))
+                continue
+            self._sources.append((source_key, source_doc, transform, transform.Inverse))
         self.open_seconds = time.time() - started
 
-    def _kind(self, reference):
-        """(вид попадания или None, ключ элемента (Id связи или -1, Id элемента))."""
-        element = self.doc.GetElement(reference.ElementId)
-        key = (-1, reference.ElementId.IntegerValue)
-        if reference.LinkedElementId != ElementId.InvalidElementId:
-            key = (reference.ElementId.IntegerValue, reference.LinkedElementId.IntegerValue)
-            try:
-                element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
-            except Exception:
-                return None, key
+    def _element(self, key):
+        for source_key, source_doc, _transform, _inverse in self._sources or []:
+            if source_key == key[0]:
+                return source_doc.GetElement(ElementId(key[1]))
+        return None
+
+    def _kind_of(self, key, element):
+        if key in self._kind_cache:
+            return self._kind_cache[key]
+        kind = None
         try:
-            return self._KINDS.get(element.Category.Id.IntegerValue), key
+            kind = self._KINDS.get(element.Category.Id.IntegerValue)
+            if kind is not None and element.DemolishedPhaseId != ElementId.InvalidElementId:
+                kind = None   # снесён
         except Exception:
-            return None, key
+            kind = None
+        self._kind_cache[key] = kind
+        return kind
 
-    def _find(self, origin, direction):
-        """intersector.Find; время первого луча — в first_ray_seconds (Revit
-        строит геометрию связей для вида при первом луче)."""
+    def _local_solids(self, key, element):
+        """Тела элемента в координатах его документа (кэш по элементу)."""
+        if key in self._solids_cache:
+            return self._solids_cache[key]
+        solids = []
+        try:
+            options = Options()
+            options.DetailLevel = ViewDetailLevel.Fine
+            for solid, solid_transform in _solids(element.get_Geometry(options), Transform.Identity):
+                if solid_transform.IsIdentity:
+                    solids.append(solid)
+                else:
+                    from Autodesk.Revit.DB import SolidUtils
+                    solids.append(SolidUtils.CreateTransformed(solid, solid_transform))
+        except Exception:
+            solids = []
+        self._solids_cache[key] = solids
+        return solids
+
+    def _segments(self, x, y, z):
+        """
+        [(низ, верх, вид, ключ)] — где вертикаль через (x, y) пересекает тела
+        перекрытий/потолков (отметки в футах, координаты модели).
+        """
+        from System.Collections.Generic import List
+        from Autodesk.Revit.DB import (
+            Outline, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
+            SolidCurveIntersectionOptions
+        )
+        if self._sources is None:
+            self._open()
+        categories = List[BuiltInCategory]([
+            BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs, BuiltInCategory.OST_Ceilings])
+        options = SolidCurveIntersectionOptions()
+        result = []
+        for source_key, source_doc, transform, inverse in self._sources:
+            local = inverse.OfPoint(XYZ(x, y, z))
+            w = _PROBE_HALF_WIDTH_FT
+            outline = Outline(XYZ(local.X - w, local.Y - w, local.Z - _PROBE_RANGE_FT),
+                              XYZ(local.X + w, local.Y + w, local.Z + _PROBE_RANGE_FT))
+            collector = (FilteredElementCollector(source_doc)
+                         .WherePasses(ElementMulticategoryFilter(categories))
+                         .WherePasses(BoundingBoxIntersectsFilter(outline))
+                         .WhereElementIsNotElementType())
+            line = None
+            for element in collector:
+                key = (source_key, element.Id.IntegerValue)
+                kind = self._kind_of(key, element)
+                if kind is None:
+                    continue
+                if line is None:
+                    line = Line.CreateBound(XYZ(local.X, local.Y, local.Z - _PROBE_RANGE_FT),
+                                            XYZ(local.X, local.Y, local.Z + _PROBE_RANGE_FT))
+                for solid in self._local_solids(key, element):
+                    try:
+                        crossing = solid.IntersectWithCurve(line, options)
+                    except Exception:
+                        continue
+                    for i in range(crossing.SegmentCount):
+                        segment = crossing.GetCurveSegment(i)
+                        z0 = transform.OfPoint(segment.GetEndPoint(0)).Z
+                        z1 = transform.OfPoint(segment.GetEndPoint(1)).Z
+                        result.append((min(z0, z1), max(z0, z1), kind, key))
+        return result
+
+    def _hits(self, x, y, origin_z):
+        """
+        (вверх, вниз): [(расстояние мм, вид, ключ элемента)] — вверх до низа
+        каждого тела выше точки, вниз до верха каждого тела ниже точки.
+        """
+        import time
+        started = time.time()
+        up = []
+        down = []
+        for low, high, kind, key in self._segments(x, y, origin_z):
+            if low > origin_z:
+                up.append((mm(low - origin_z), kind, key))
+            elif high < origin_z:
+                down.append((mm(origin_z - high), kind, key))
         if self.first_ray_seconds is None:
-            import time
-            started = time.time()
-            found = list(self.intersector.Find(origin, direction))
             self.first_ray_seconds = time.time() - started
-            return found
-        return self.intersector.Find(origin, direction)
+        self.points += 1
+        return up, down
 
-    def _hits(self, origin, direction):
-        """[(расстояние мм, вид, ключ элемента)]."""
-        hits = []
-        for context in self._find(origin, direction):
-            kind, key = self._kind(context.GetReference())
-            if kind is not None:
-                hits.append((mm(context.Proximity), kind, key))
-        return hits
+    # --- диагностика ---
 
     def describe(self, x, y, origin_z, level_z, limit=8):
         """
-        Диагностика для отчёта: во что упираются лучи из точки — строки
-        «вверх/вниз: расстояние, отметка от уровня, категория, тип, связь» (до
-        limit на направление) и итог probe(). Только для выбранных извещателей.
+        Диагностика для отчёта: что над и под точкой — строки «вверх/вниз:
+        расстояние, отметка от уровня, категория, тип, связь» (до limit на
+        направление) и итог probe(). Только для выбранных извещателей.
         """
-        lines = []
-        if self.intersector is None:
+        if self._sources is None:
             self._open()
-        origin = XYZ(x, y, origin_z)
-        for label, direction, sign in ((u"вверх", XYZ.BasisZ, 1), (u"вниз", XYZ.BasisZ.Negate(), -1)):
-            contexts = sorted(self._find(origin, direction), key=lambda c: c.Proximity)
-            for context in contexts[:limit]:
-                reference = context.GetReference()
-                element = self.doc.GetElement(reference.ElementId)
-                link = u"модель"
-                if reference.LinkedElementId != ElementId.InvalidElementId:
-                    link = safe_element_name(element) or u"связь"
-                    try:
-                        element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
-                    except Exception:
-                        element = None
+        labels = _source_labels(self.doc)
+        up, down = self._hits(x, y, origin_z)
+        lines = []
+        for label, hits, sign in ((u"вверх", up, 1), (u"вниз", down, -1)):
+            for distance, _kind, key in sorted(hits, key=lambda h: h[0])[:limit]:
+                element = self._element(key)
                 try:
                     category = element.Category.Name
                     type_name = safe_element_name(element.Document.GetElement(element.GetTypeId())) or u""
-                    element_id = element.Id.IntegerValue
                 except Exception:
-                    category, type_name, element_id = u"?", u"", 0
-                distance = mm(context.Proximity)
+                    category, type_name = u"?", u""
                 lines.append(u"{} {:.0f} мм (от уровня {:+.0f}): {} «{}» Id {} — {}".format(
                     label, float(distance), float(mm(origin_z - level_z) + sign * distance),
-                    category, type_name, element_id, link))
+                    category, type_name, key[1], labels.get(key[0], u"связь")))
         found = self.probe(x, y, origin_z, level_z)
         if found is None:
             lines.append(u"итог: перекрытие не найдено")
@@ -244,13 +291,15 @@ class SlabProbe(object):
                 u", над отверстием — по плите вокруг" if found.through_opening else u""))
         return lines
 
+    # --- перекрытия над уровнем ---
+
     def _remember_slab(self, up_hits, level_z):
         key = self._nearest_slab_key(up_hits)
         if key is not None:
             self.slab_elements.setdefault(int(round(mm(level_z))), set()).add(key)
 
     def slabs_above(self, level_z, tolerance):
-        """Перекрытия, найденные лучами от уровней не дальше tolerance (футы) от level_z."""
+        """Перекрытия, ближайшие сверху к точкам уровней не дальше tolerance (футы) от level_z."""
         result = set()
         for level_mm, keys in self.slab_elements.items():
             if abs(ft(level_mm) - level_z) <= tolerance + ft(1.0):
@@ -263,10 +312,7 @@ class SlabProbe(object):
             return self._thin[key]
         thin = False
         try:
-            if self._sources is None:
-                self._sources = model_sources(self.doc)
-            source_doc, _transform = self._sources[key[0]]
-            element = source_doc.GetElement(ElementId(key[1]))
+            element = self._element(key)
             if element.Category.Id.IntegerValue == int(BuiltInCategory.OST_Floors):
                 param = element.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)
                 if param is not None and param.HasValue:
@@ -289,81 +335,14 @@ class SlabProbe(object):
         return None if best is None else best[1]
 
     def _raw(self, x, y, origin_z, level_z):
-        """(core.Probe или None, лучи вверх) без проверки отверстия; кэшируется."""
+        """(core.Probe или None, попадания вверх) без проверки отверстия; кэшируется."""
         key = (round(x, 3), round(y, 3), round(origin_z, 3), round(level_z, 3))
         if key in self._cache:
             return self._cache[key]
-        if self.intersector is None:
-            self._open()
-        origin = XYZ(x, y, origin_z)
-        up = self._refine_nearest_slab(self._hits(origin, XYZ.BasisZ), x, y, origin_z)
-        down = self._hits(origin, XYZ.BasisZ.Negate())
+        up, down = self._hits(x, y, origin_z)
         found = core.probe(mm(origin_z), [h[:2] for h in up], [h[:2] for h in down], mm(level_z))
         self._cache[key] = (found, up)
         return found, up
-
-    def _element_solids(self, key):
-        """Тела элемента в координатах модели (кэш по элементу); [] — не удалось."""
-        if key in self._solids_cache:
-            return self._solids_cache[key]
-        from Autodesk.Revit.DB import SolidUtils
-        solids = []
-        try:
-            if self._sources is None:
-                self._sources = model_sources(self.doc)
-            source_doc, transform = self._sources[key[0]]
-            element = source_doc.GetElement(ElementId(key[1]))
-            options = Options()
-            options.DetailLevel = ViewDetailLevel.Fine
-            for solid, solid_transform in _solids(element.get_Geometry(options), transform):
-                if solid_transform.IsIdentity:
-                    solids.append(solid)
-                else:
-                    solids.append(SolidUtils.CreateTransformed(solid, solid_transform))
-        except Exception:
-            solids = []
-        self._solids_cache[key] = solids
-        return solids
-
-    def _refine_nearest_slab(self, up, x, y, origin_z):
-        """
-        Низ ближайшего перекрытия — по геометрии самого элемента, а не по
-        грани, которую вернул луч. У капителей (перекрытие, присоединённое к
-        плите) ReferenceIntersector бывает отдаёт только верхнюю грань —
-        отметка получалась по верху капители. Вертикаль от точки до
-        попадания пересекается с телом элемента: где она входит в тело
-        снизу — там низ. Не получилось — попадание как есть.
-        """
-        best = None
-        for index, (distance, kind, key) in enumerate(up):
-            if kind == core.SLAB and distance > 0 and (best is None or distance < up[best][0]):
-                best = index
-        if best is None:
-            return up
-        distance, kind, key = up[best]
-        try:
-            from Autodesk.Revit.DB import SolidCurveIntersectionOptions
-            top = origin_z + ft(distance + 10.0)
-            line = Line.CreateBound(XYZ(x, y, origin_z), XYZ(x, y, top))
-            lowest = None
-            for solid in self._element_solids(key):
-                result = solid.IntersectWithCurve(line, SolidCurveIntersectionOptions())
-                for i in range(result.SegmentCount):
-                    segment = result.GetCurveSegment(i)
-                    z = min(segment.GetEndPoint(0).Z, segment.GetEndPoint(1).Z)
-                    if lowest is None or z < lowest:
-                        lowest = z
-        except Exception:
-            return up
-        if lowest is None:
-            return up
-        refined = mm(lowest - origin_z)
-        # точка внутри тела (колонна) или уточнять нечего — попадание как есть
-        if refined <= 50.0 or refined >= distance - 1.0:
-            return up
-        up = list(up)
-        up[best] = (refined, kind, key)
-        return up
 
     def _next_level_z(self, level_z):
         if self._levels is None:
@@ -376,11 +355,11 @@ class SlabProbe(object):
     def _check_opening(self, found, up, x, y, origin_z, level_z):
         """
         Над точкой отверстие (шахта, проём, полость в плите)? Проверяется,
-        только если найденная плита выше следующего уровня (луч мог пройти
-        сквозь перекрытие этого этажа) или это тонкий слой — отделка пола
-        над полостью. Тогда 4 точки вокруг на opening_ft: если везде плита
-        ниже — отверстие, возвращается Probe с плитой вокруг него; иначе
-        None (высокая зона).
+        только если найденная плита выше следующего уровня (вертикаль могла
+        пройти сквозь перекрытие этого этажа) или это тонкий слой — отделка
+        пола над полостью. Тогда 4 точки вокруг на opening_ft: если везде
+        плита ниже — отверстие, возвращается Probe с плитой вокруг него;
+        иначе None (высокая зона).
         """
         if self.opening_ft <= 0 or found is None:
             return None
@@ -400,8 +379,8 @@ class SlabProbe(object):
 
     def probe(self, x, y, origin_z, level_z):
         """
-        core.Probe для точки (x, y) с началом лучей на высоте origin_z (футы)
-        или None. Над отверстием — перекрытие вокруг отверстия
+        core.Probe для точки (x, y) с началом вертикали на высоте origin_z
+        (футы) или None. Над отверстием — перекрытие вокруг отверстия
         (through_opening=True), плита сверху в поиск перепадов не идёт.
         """
         if self.error is not None:
@@ -419,12 +398,8 @@ class SlabProbe(object):
         return found
 
     def close(self):
-        if self.view is not None:
-            try:
-                self.doc.Delete(self.view.Id)
-            except Exception:
-                pass
-            self.view = None
+        """Ничего не создаётся — закрывать нечего (оставлено для совместимости)."""
+        pass
 
 
 # ------------------------------------------------------------
@@ -653,9 +628,9 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         shifts.append((detector, delta_mm, mm(point.Z)))
     if probe.error is not None:
         result.failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
-    # Сдвиги — только после всех лучей: любое изменение модели заставляет
-    # Revit пересобрать временный 3D-вид (со всеми связями) перед следующим
-    # лучом, и чередование «луч — сдвиг» на сотнях извещателей — это минуты.
+    # Сдвиги — только после всех проверок: так чтение геометрии перекрытий
+    # не перемежается с изменениями модели (с прежними лучами по 3D-виду
+    # чередование «луч — сдвиг» стоило пересборки вида на каждом шаге).
     for detector, delta_mm, z_mm in shifts:
         error = _shift(doc, detector, ft(delta_mm))
         if error:
@@ -1331,8 +1306,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     Всё по плану: заливки плит над уровнем вида по отметкам с подписями,
     подвесные потолки (ПП) и подписи в помещениях, линии перепада.
     Сначала все лучи (помещения, точки подписей плит, проверка перепадов),
-    потом все изменения модели — иначе Revit пересобирает временный 3D-вид
-    перед каждым лучом (см. move_detectors). ViewResult.
+    потом все изменения модели (см. move_detectors). ViewResult.
     """
     result = ViewResult(view)
     clear_view(doc, view, note_type)
