@@ -12,6 +12,9 @@ tray_boxes_settings.py.
 по лотку, с размерами сечения лотка плюс запас (по умолчанию 50 мм) и
 глубиной по толщине стены/перекрытия.
 
+В «Комментарии» нового бокса пишется имя пользователя Revit, дата и время
+создания («ivanov 05.03.2026 09:07»).
+
 Размеры пишутся в параметры экземпляра; если параметр — параметр типа,
 создаётся (или берётся уже созданный) типоразмер «<тип> ШxГxВ».
 
@@ -25,6 +28,7 @@ tray_boxes_settings.py.
 """
 
 import math
+from datetime import datetime
 
 from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
@@ -351,6 +355,7 @@ class BoxPlacer(object):
     def __init__(self, doc, symbol, settings, workset=None):
         self.doc = doc
         self.workset = workset
+        self.comment = core.creation_comment(doc.Application.Username, datetime.now())
         self.symbol = symbol
         self.family = symbol.Family
         self.settings = settings
@@ -420,6 +425,9 @@ class BoxPlacer(object):
             param = inst.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
             if param is not None and not param.IsReadOnly:
                 param.Set(self.workset.Id.IntegerValue)
+        param = inst.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
+        if param is not None and not param.IsReadOnly:
+            param.Set(self.comment)
         self.existing.append(inst)
         return inst
 

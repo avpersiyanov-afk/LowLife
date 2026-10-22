@@ -2797,7 +2797,8 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   `tests/test_tray_boxes_core.py`): `merge_intervals` (куски одного
   пересечения), `wall_box`/`floor_box` → `Box` (центр, направление оси X,
   ширина/глубина/высота, толщина) или причина пропуска, `Box.angle`/
-  `Box.origin`, `sized_type_name`, `name_has`/`split_words`.
+  `Box.origin`, `sized_type_name`, `creation_comment` (текст «Комментариев»:
+  пользователь, дата и время), `name_has`/`split_words`.
 - `tray_boxes.py` — Revit-часть: `find_box_types` (семейство/тип по словам,
   через `OfClass(Family)`), `placement_supported`, `tray_crossings` (ось
   лотка × тела стен/перекрытий модели и связей, `Solid.IntersectWithCurve`),
