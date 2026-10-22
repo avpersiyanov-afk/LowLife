@@ -210,12 +210,18 @@ class _Source(object):
 
 
 def sources(doc, settings):
-    result = [_Source(doc)]
-    if settings.get("box_use_links") == "yes":
-        for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-            link_doc = link.GetLinkDocument()
-            if link_doc is not None:
-                result.append(_Source(link_doc, link))
+    u"""Где искать стены/перекрытия — по настройке «Модель»: эта модель,
+    она же со всеми связями или все экземпляры одной связи (по имени файла)."""
+    chosen = settings.get("box_source_model") or cfg.SOURCE_ALL
+    result = [_Source(doc)] if chosen in (cfg.SOURCE_HOST, cfg.SOURCE_ALL) else []
+    if chosen == cfg.SOURCE_HOST:
+        return result
+    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        link_doc = link.GetLinkDocument()
+        if link_doc is None:
+            continue
+        if chosen == cfg.SOURCE_ALL or link_doc.Title == chosen:
+            result.append(_Source(link_doc, link))
     return result
 
 

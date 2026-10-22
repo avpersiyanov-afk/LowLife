@@ -29,7 +29,7 @@ except Exception:
     config_mode = False
 
 if config_mode:
-    edited = tray_boxes_settings.get_settings_interactive()
+    edited = tray_boxes_settings.get_settings_interactive(doc)
     forms.alert(u"Отменено, настройки не изменены." if edited is None
                 else u"Настройки сохранены.", exitscript=True)
 
@@ -75,6 +75,11 @@ def choose_symbol():
 trays = pick_trays()
 if not trays:
     forms.alert(u"Не выбрано ни одного лотка.", title=TITLE, exitscript=True)
+
+if not tray_boxes.sources(doc, settings):
+    forms.alert(u"Связь «{}», выбранная в настройках как модель для поиска пересечений, "
+                u"не загружена. Загрузите её или выберите другую модель (Shift+клик).".format(
+                    settings.get("box_source_model")), title=TITLE, exitscript=True)
 
 symbol = choose_symbol()
 if not tray_boxes.placement_supported(symbol):
@@ -129,5 +134,5 @@ if result.failed:
 if result.missing_params:
     lines.append(u"Нет параметров: " + u", ".join(sorted(result.missing_params)))
 if not (result.created or result.updated or result.skipped or result.failed):
-    lines.append(u"Выбранные лотки не пересекают ни стен, ни перекрытий.")
+    lines.append(u"Выбранные лотки не пересекают ни стен, ни перекрытий выбранной модели.")
 forms.alert(u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE)
