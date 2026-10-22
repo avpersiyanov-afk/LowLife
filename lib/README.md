@@ -2801,12 +2801,13 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 - `tray_boxes.py` — Revit-часть: `find_box_types` (семейство/тип по словам,
   через `OfClass(Family)`), `placement_supported`, `tray_crossings` (ось
   лотка × тела стен/перекрытий модели и связей, `Solid.IntersectWithCurve`),
-  `run(doc, trays, symbol, settings)` → `Result` (created/updated/skipped/
+  `find_box_worksets` (рабочие наборы по словам `box_workset_words`),
+  `run(doc, trays, symbol, settings, progress, workset)` → `Result` (created/updated/skipped/
   failed, missing_params, new_types). Размеры — параметры экземпляра, а если
   это параметры типа — типоразмер «<тип> ШxГxВ». Уже стоящий бокс того же
   семейства в той же точке не дублируется.
 - `tray_boxes_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeTrayBoxes_settings.json`:
-  `box_family_words`, `box_type_words`, `box_origin`, `box_width_param`,
+  `box_family_words`, `box_type_words`, `box_workset_words`, `box_origin`, `box_width_param`,
   `box_depth_param`, `box_height_param`, `size_extra_mm`, `depth_extra_mm`,
   `box_source_model` (`SOURCE_HOST`/`SOURCE_ALL` или имя файла связи; варианты-связи — из
   открытой модели: `get_settings_interactive(doc)`), `box_hosts`, `max_slope_deg`, `max_wall_angle_deg`.

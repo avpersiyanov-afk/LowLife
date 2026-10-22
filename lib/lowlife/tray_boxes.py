@@ -25,11 +25,11 @@ tray_boxes_settings.py.
 import math
 
 from Autodesk.Revit.DB import (
-    BuiltInCategory, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
+    BuiltInCategory, BuiltInParameter, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
     ElementTransformUtils, Family, FamilyInstance, FamilyPlacementType,
-    FilteredElementCollector, GeometryInstance, Level, Line, LocationCurve, LocationPoint,
+    FilteredElementCollector, FilteredWorksetCollector, GeometryInstance, Level, Line, LocationCurve, LocationPoint,
     Options, Outline, RevitLinkInstance, Solid, SolidCurveIntersectionOptions, StorageType,
-    ViewDetailLevel, XYZ,
+    ViewDetailLevel, WorksetKind, XYZ,
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
@@ -91,6 +91,19 @@ def find_box_types(doc, settings):
                 result.append((u"{} : {}".format(family_name, type_name), symbol))
     result.sort(key=lambda item: item[0].lower())
     return result
+
+
+def find_box_worksets(doc, settings):
+    u"""Пользовательские рабочие наборы, в имени которых есть слово из
+    box_workset_words, по имени. Пустой список — модель без рабочих наборов
+    или слова не заданы (тогда боксы — в активном рабочем наборе)."""
+    words = core.split_words(settings.get("box_workset_words"))
+    if not doc.IsWorkshared or not words:
+        return []
+    worksets = [w for w in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+                if core.name_has(w.Name, words)]
+    worksets.sort(key=lambda w: w.Name.lower())
+    return worksets
 
 
 def placement_supported(symbol):
@@ -333,8 +346,9 @@ def _level_below(levels, z):
 
 
 class BoxPlacer(object):
-    def __init__(self, doc, symbol, settings):
+    def __init__(self, doc, symbol, settings, workset=None):
         self.doc = doc
+        self.workset = workset
         self.symbol = symbol
         self.family = symbol.Family
         self.settings = settings
@@ -390,6 +404,10 @@ class BoxPlacer(object):
         shift = origin.Subtract(inst.Location.Point)
         if shift.GetLength() > 1e-9:
             ElementTransformUtils.MoveElement(doc, inst.Id, shift)
+        if self.workset is not None:
+            param = inst.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+            if param is not None and not param.IsReadOnly:
+                param.Set(self.workset.Id.IntegerValue)
         self.existing.append(inst)
         return inst
 
@@ -455,9 +473,10 @@ class BoxPlacer(object):
         (self.result.created if created else self.result.updated).append((tray, crossing, inst))
 
 
-def run(doc, trays, symbol, settings, progress=None):
-    u"""Боксы на всех пересечениях лотков trays. Возвращает Result."""
-    placer = BoxPlacer(doc, symbol, settings)
+def run(doc, trays, symbol, settings, progress=None, workset=None):
+    u"""Боксы на всех пересечениях лотков trays (новые — в рабочем наборе
+    workset, None — в активном). Возвращает Result."""
+    placer = BoxPlacer(doc, symbol, settings, workset)
     categories = _host_categories(settings)
     options = Options()
     options.ComputeReferences = False

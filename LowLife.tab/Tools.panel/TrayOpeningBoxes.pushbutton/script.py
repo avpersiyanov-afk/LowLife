@@ -86,11 +86,36 @@ if not tray_boxes.placement_supported(symbol):
     forms.alert(u"Семейство бокса должно быть без основы или на рабочей плоскости "
                 u"(на основе грани/стены не поддерживается).", title=TITLE, exitscript=True)
 
+
+def choose_workset():
+    u"""Рабочий набор для новых боксов (None — активный)."""
+    if not doc.IsWorkshared or not settings.get("box_workset_words"):
+        return None
+    worksets = tray_boxes.find_box_worksets(doc, settings)
+    if not worksets:
+        forms.alert(u"В модели нет рабочего набора со словами «{}» в имени. Создайте его "
+                    u"или поправьте слова в настройках (Shift+клик).".format(
+                        settings.get("box_workset_words")), title=TITLE, exitscript=True)
+    if len(worksets) == 1:
+        return worksets[0]
+    name = select_list.SelectFromList.show(
+        [w.Name for w in worksets],
+        title=u"Боксы на лотки — в какой рабочий набор",
+        button_name=u"Выбрать",
+        multiselect=False,
+    )
+    if not name:
+        forms.alert(u"Отменено.", exitscript=True)
+    return [w for w in worksets if w.Name == name][0]
+
+
+workset = choose_workset()
+
 try:
     with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=False) as bar:
         with revit.Transaction(TITLE):
             result = tray_boxes.run(doc, trays, symbol, settings,
-                                    lambda i, n: bar.update_progress(i + 1, n))
+                                    lambda i, n: bar.update_progress(i + 1, n), workset)
 except Exception:
     forms.alert(u"Сбой (транзакция отменена, изменения не сохранены):\n\n{}".format(
         traceback.format_exc()), title=TITLE, exitscript=True)
@@ -100,6 +125,8 @@ output = script.get_output()
 output.print_md(u"## " + TITLE)
 output.print_md(u"- лотков: {}".format(len(trays)))
 output.print_md(u"- поставлено боксов: {}".format(len(result.created)))
+if workset is not None:
+    output.print_md(u"- рабочий набор новых боксов: «{}»".format(workset.Name))
 if result.updated:
     output.print_md(u"- уже стояли, размеры обновлены: {}".format(len(result.updated)))
 if result.new_types:
