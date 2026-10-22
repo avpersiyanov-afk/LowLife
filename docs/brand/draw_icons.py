@@ -607,7 +607,7 @@ ICONS = [
     ("SKUD.panel/InspectSchematicDevices.pushbutton", diag_schematic),
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
-    ("_Themes.panel/Feedback.pushbutton", feedback),
+    ("Info.panel/Info.stack/Feedback.pushbutton", feedback),
     ("_Themes.panel/Search.pushbutton", ribbon_search),
     ("_Themes.panel/MyPanels.pushbutton", favorites),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),

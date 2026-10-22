@@ -25,7 +25,7 @@
 
 Код: `lib/pnotes/feedback.py` (окно и отправка, HTTP — общий с заметками
 `pnotes/core.py`), разметка — `lib/pnotes/xaml/feedback.xaml`, кнопка —
-`LowLife.tab/_Themes.panel/Feedback.pushbutton`.
+`LowLife.tab/Info.panel/Info.stack/Feedback.pushbutton`.
 
 ## Установка Google-части (один раз, делает автор)
 

@@ -12,7 +12,7 @@ from lowlife.geometry import get_point
 конкретных кнопок — в `lib/PARAMETERS.md`.
 
 ## about.py
-Данные окна «О программе» (`_Themes.panel/About`): `REPO_URL`, `TAGLINE`,
+Данные окна «О программе» (`Info.panel/Info.stack/About`, панель «Справка»): `REPO_URL`, `TAGLINE`,
 `DISCIPLINES`, лицензия (`LICENSE_TEXT`, `LICENSE_URL`, `COPYRIGHT`) и версия расширения. `git_revision(root=None)` читает текущий
 коммит прямо из файлов `.git` (HEAD → `refs/heads/…` или `packed-refs`,
 detached HEAD — хеш в самом HEAD) и возвращает `(ветка, хеш)` или `None`;
@@ -2877,7 +2877,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «О программе».
   Чистая логика — `lowlife/usage_core.py` (`parse_item_id`, `find_entry`, `new_event`, `should_flush`,
   `batch_id`, `trim_queue`, `is_duplicate`; тесты `tests/test_usage_core.py`).
-- `pnotes/feedback.py` — кнопка «Обратная связь» (`_Themes.panel/Feedback`):
+- `pnotes/feedback.py` — кнопка «Обратная связь» (`Info.panel/Info.stack/Feedback`, панель «Справка»):
   `FeedbackWindow` (панель → кнопка из `lowlife.ribbon_catalog` → проблема/предложение →
   описание, разметка `xaml/feedback.xaml`), `run(uiapp)`. Отправка — `core._post` на
   `FEEDBACK_URL` (отдельная таблица автора, `docs/feedback/Code.gs`, только запись;

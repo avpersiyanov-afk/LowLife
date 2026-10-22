@@ -13,8 +13,8 @@
   docs/brand/lowlife-logo.png       512×512 — README
   docs/brand/lowlife-logo.svg       вектор того же логотипа
   docs/brand/lowlife-wordmark.png   название — README
-  LowLife.tab/_Themes.panel/About.pushbutton/icon.png      96×96 — кнопка на ленте
-  LowLife.tab/_Themes.panel/About.pushbutton/logo.png      256×256 — окно «О программе»
+  LowLife.tab/Info.panel/Info.stack/About.pushbutton/icon.png      96×96 — кнопка на ленте
+  LowLife.tab/Info.panel/Info.stack/About.pushbutton/logo.png      256×256 — окно «О программе»
 
 В окне «О программе» название не картинкой, а шрифтом: буквы и их
 повороты — lowlife.about.WORDMARK_LETTERS, сборка — lowlife.wordmark_wpf.
@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-ABOUT = os.path.join(ROOT, "LowLife.tab", "_Themes.panel", "About.pushbutton")
+ABOUT = os.path.join(ROOT, "LowLife.tab", "Info.panel", "Info.stack", "About.pushbutton")
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
