@@ -239,6 +239,19 @@ def ribbon_search(c):
     c.rect((45, 45, 57, 57), None, ORANGE, 0, 3)
 
 
+def favorites(c):
+    """«Избранное»: панель ленты с кнопками, на одной — оранжевая звезда."""
+    c.rect((10, 22, 86, 78), BLUE, WHITE, 5, 8)
+    c.line([(10, 66), (86, 66)], BLUE, 4)
+    c.rect((20, 32, 38, 54), BLUE, None, 4, 4)
+    star = []
+    for i in range(10):
+        r = 15 if i % 2 == 0 else 6.5
+        a = math.radians(-90 + i * 36)
+        star.append((62 + r * math.cos(a), 44 + r * math.sin(a)))
+    c.polygon(star, fill=ORANGE)
+
+
 def level_name(c):
     """«Обновить имя уровня»: элементы на линии уровня, отметка уровня с
     оранжевой стрелкой к элементу — имя уровня прописывается элементам."""
@@ -596,6 +609,7 @@ ICONS = [
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
     ("_Themes.panel/Feedback.pushbutton", feedback),
     ("_Themes.panel/Search.pushbutton", ribbon_search),
+    ("Favorites.panel/Manage.pushbutton", favorites),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),

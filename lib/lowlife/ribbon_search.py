@@ -10,6 +10,8 @@
   текущая тема их скрывает — до следующего переключения темы) и несколько раз мигает поверх неё
   оранжевой заливкой (Adorner в слое украшений ленты, если его нет — прозрачный Popup того же
   размера; не нашли кнопку на экране — штатная отметка `HighlightMode.New`).
+- «В избранное» — `favorites_ui.add_to_favorites`: выбрать свою панель избранного (или создать) и
+  добавить на неё кнопку.
 """
 
 try:
@@ -54,15 +56,19 @@ _XAML = u'''
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
                 <TextBlock x:Name="txtStatus" Foreground="#555555" TextWrapping="Wrap"/>
                 <TextBlock Foreground="#888888" FontSize="11" TextWrapping="Wrap"
                            Text="Enter — запустить · Ctrl+Enter — показать на ленте · Esc — закрыть"/>
             </StackPanel>
-            <Button x:Name="btnShow" Grid.Column="1" Content="Показать на ленте"
+            <Button x:Name="btnFavorite" Grid.Column="1" Content="В избранное"
+                    ToolTip="Добавить кнопку на свою панель избранного"
+                    Padding="16,6" MinWidth="100" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <Button x:Name="btnShow" Grid.Column="2" Content="Показать на ленте"
                     Padding="16,6" MinWidth="100" VerticalAlignment="Center"/>
-            <Button x:Name="btnRun" Grid.Column="2" Content="Запустить" FontWeight="SemiBold"
+            <Button x:Name="btnRun" Grid.Column="3" Content="Запустить" FontWeight="SemiBold"
                     Padding="16,6" MinWidth="100" Margin="8,0,0,0" VerticalAlignment="Center"/>
         </Grid>
         <ListBox x:Name="lstResults" Margin="0,8,0,0" HorizontalContentAlignment="Stretch"
@@ -79,7 +85,7 @@ def _short(text, limit=MAX_TOOLTIP):
     return text if len(text) <= limit else text[:limit - 1].rstrip() + u"…"
 
 
-def _row(entry):
+def button_row(entry):
     title = TextBlock()
     title.Text = entry[u"title"]
     title.FontWeight = FontWeights.SemiBold
@@ -115,7 +121,7 @@ class SearchWindow(forms.WPFWindow):
     def __init__(self, entries):
         forms.WPFWindow.__init__(self, _XAML, literal_string=True)
         self.entries = entries
-        self.result = None  # (u"run" | u"show", entry)
+        self.result = None  # (u"run" | u"show" | u"favorite", entry)
         self.txtQuery.TextChanged += lambda s, e: self.refresh()
         self.txtQuery.PreviewKeyDown += self.on_query_key
         self.lstResults.MouseDoubleClick += lambda s, e: self.finish(u"run")
@@ -123,6 +129,7 @@ class SearchWindow(forms.WPFWindow):
         self.lstResults.KeyDown += self.on_list_key
         self.btnRun.Click += lambda s, e: self.finish(u"run")
         self.btnShow.Click += lambda s, e: self.finish(u"show")
+        self.btnFavorite.Click += lambda s, e: self.finish(u"favorite")
         self.Loaded += lambda s, e: self.txtQuery.Focus()
         self.refresh()
 
@@ -130,7 +137,7 @@ class SearchWindow(forms.WPFWindow):
         found = ribbon_catalog.search(self.entries, self.txtQuery.Text)
         self.lstResults.Items.Clear()
         for entry in found:
-            self.lstResults.Items.Add(_row(entry))
+            self.lstResults.Items.Add(button_row(entry))
         if found:
             self.lstResults.SelectedIndex = 0
             self.lstResults.ScrollIntoView(self.lstResults.Items[0])
@@ -141,6 +148,7 @@ class SearchWindow(forms.WPFWindow):
         selected = self.lstResults.SelectedItem is not None
         self.btnRun.IsEnabled = selected
         self.btnShow.IsEnabled = selected
+        self.btnFavorite.IsEnabled = selected
 
     def move(self, step):
         count = self.lstResults.Items.Count
@@ -426,7 +434,10 @@ def _run(uiapp):
     if not win.result:
         return
     action, entry = win.result
-    if action == u"run":
+    if action == u"favorite":
+        from lowlife import favorites_ui
+        favorites_ui.add_to_favorites(uiapp, entry)
+    elif action == u"run":
         error = run_button(uiapp, entry)
         if error:
             show_button(entry)
