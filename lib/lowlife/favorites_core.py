@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""«Избранное» — чистая логика без Revit API (тесты: tests/test_favorites_core.py).
+"""«Мои панели» — чистая логика без Revit API (тесты: tests/test_favorites_core.py).
 
 Пользователь собирает свои панели из кнопок LowLife. Настройки — список панелей по порядку:
 
@@ -8,7 +8,10 @@
 Кнопка запоминается по папкам (`panel` — папка панели, `path` — папки от панели до кнопки, как в
 `ribbon_catalog.list_buttons()`), а не по подписи: подписи меняются, папки — нет.
 
-Revit-часть (панели на ленте, окно настройки) — `favorites.py` / `favorites_ui.py`.
+Свои панели — обычные панели pyRevit: `favorites.py` раскладывает их по папкам-ячейкам
+`LowLife.tab/MyPanel1.panel` … `MyPanel{MAX_PANELS}.panel` (в git их нет — `.gitignore`; ячейки
+перечислены в `layout:` вкладки, без этого pyRevit панель не создаёт), в каждой — копии папок
+исходных кнопок. Окно настройки — `favorites_ui.py`.
 """
 
 try:
@@ -16,12 +19,13 @@ try:
 except NameError:  # Python 3
     unicode = str
 
-# Имя панели избранного на ленте — PANEL_PREFIX + подпись: по префиксу видно, что панель наша,
-# а имя никогда не совпадёт с панелью самого LowLife (Revit не даёт двух панелей с одним именем).
-PANEL_PREFIX = u"LowLifeFav_"
-# Имя кнопки в панели избранного — BUTTON_PREFIX + папки через точку (в именах папок точек нет:
-# pyRevit отрезает расширение по первой точке). По нему статистика запусков узнаёт исходную кнопку.
-BUTTON_PREFIX = u"LLFav."
+# Ячейки своих панелей: папки SLOT_PREFIX + номер (1…MAX_PANELS) в LowLife.tab, по порядку панелей.
+SLOT_PREFIX = u"MyPanel"
+MAX_PANELS = 8
+# Папка копии кнопки — папки исходной через BUTTON_SEP («SCS-PlaceRouteNodes»; в именах папок LowLife
+# дефиса нет — проверяет тест): разные кнопки с одним именем папки на одной панели не столкнутся,
+# а статистика запусков по ней узнаёт исходную кнопку.
+BUTTON_SEP = u"-"
 MAX_TITLE = 40
 # Панели LowLife, кнопки которых на свои панели не кладутся: сама «Мои панели» (её кнопка — это окно настройки)
 EXCLUDED_PANELS = (u"Favorites",)
@@ -29,7 +33,8 @@ EXCLUDED_PANELS = (u"Favorites",)
 
 def can_add(entry_or_ref):
     """Можно ли положить кнопку на свою панель (entry из ribbon_catalog или ссылка из настроек)."""
-    return entry_or_ref[u"panel"] not in EXCLUDED_PANELS
+    panel = entry_or_ref[u"panel"]
+    return panel not in EXCLUDED_PANELS and not is_slot(panel)
 
 
 def _text(value):
@@ -51,7 +56,7 @@ def _clean_ref(raw):
         return None
     panel = _text(raw.get(u"panel"))
     path = [_text(p) for p in (raw.get(u"path") or []) if _text(p)]
-    if not panel or not path or panel in EXCLUDED_PANELS:
+    if not panel or not path or panel in EXCLUDED_PANELS or is_slot(panel):
         return None
     return {u"panel": panel, u"path": path}
 
@@ -77,27 +82,63 @@ def normalize(data):
     return {u"panels": panels}
 
 
-def panel_name(title):
-    return PANEL_PREFIX + title
+def slot_name(index):
+    """Папка (без .panel) ячейки для панели номер index (с нуля)."""
+    return u"{}{}".format(SLOT_PREFIX, index + 1)
 
 
-def is_favorite_panel(name):
-    return unicode(name or u"").startswith(PANEL_PREFIX)
+def is_slot(folder_name):
+    """Папка панели — ячейка своих панелей (MyPanel3), а не панель LowLife."""
+    name = unicode(folder_name or u"")
+    return name.startswith(SLOT_PREFIX) and name[len(SLOT_PREFIX):].isdigit()
 
 
-def button_name(ref):
-    return BUTTON_PREFIX + u".".join([ref[u"panel"]] + list(ref[u"path"]))
+def button_folder(ref):
+    """Имя папки (без расширения) копии кнопки на своей панели."""
+    return BUTTON_SEP.join([ref[u"panel"]] + list(ref[u"path"]))
 
 
-def parse_button_name(name):
-    """{'panel', 'path'} из имени кнопки избранного или None — не наша кнопка."""
-    name = unicode(name or u"")
-    if not name.startswith(BUTTON_PREFIX):
-        return None
-    parts = [p for p in name[len(BUTTON_PREFIX):].split(u".") if p]
+def parse_button_folder(name):
+    """{'panel', 'path'} из имени папки копии или None — не копия."""
+    parts = [p for p in unicode(name or u"").split(BUTTON_SEP) if p]
     if len(parts) < 2:
         return None
     return {u"panel": parts[0], u"path": parts[1:]}
+
+
+def _yaml_text(text):
+    return u'"{}"'.format(text.replace(u"\\", u"\\\\").replace(u'"', u'\\"'))
+
+
+def panel_bundle(title, folders):
+    """Текст bundle.yaml ячейки: подпись панели и порядок кнопок."""
+    lines = [u"title: " + _yaml_text(title), u"layout:"]
+    lines += [u"  - " + name for name in folders]
+    return u"\n".join(lines) + u"\n"
+
+
+def plan(data, entries):
+    """Что разложить по ячейкам: [(папка ячейки, подпись, [(папка копии, entry)])], и список проблем.
+
+    Кнопки, которых больше нет в LowLife, пропускаются (и попадают в проблемы); панели сверх
+    MAX_PANELS — тоже. Пустая панель ячейку не занимает."""
+    result, problems = [], []
+    for panel in normalize(data)[u"panels"]:
+        buttons = []
+        for ref in panel[u"buttons"]:
+            entry = find_entry(entries, ref)
+            if entry is None:
+                problems.append(u"«{}»: кнопки {} больше нет в LowLife.".format(panel[u"title"], button_key(ref)))
+            else:
+                buttons.append((button_folder(ref), entry))
+        if not buttons:
+            continue
+        if len(result) >= MAX_PANELS:
+            problems.append(u"Панель «{}» не поместилась: своих панелей не больше {}.".format(
+                panel[u"title"], MAX_PANELS))
+            continue
+        result.append((slot_name(len(result)), panel[u"title"], buttons))
+    return result, problems
 
 
 def title_problem(title, other_titles, reserved=()):
@@ -114,7 +155,7 @@ def title_problem(title, other_titles, reserved=()):
         return u"Знак «%» в названии панели нельзя: Revit им разделяет имена на ленте."
     low = title.lower()
     if any(low == _text(t).lower() for t in other_titles):
-        return u"Панель «{}» в избранном уже есть.".format(title)
+        return u"Своя панель «{}» уже есть.".format(title)
     if any(low == _text(t).lower() for t in reserved):
         return u"Так называется панель LowLife — выберите другое название."
     return None
@@ -130,11 +171,13 @@ def find_entry(entries, ref):
 
 def add_button(data, title, ref):
     """Новые настройки с кнопкой ref в конце панели title (панели нет — создаётся). False во втором
-    значении — кнопка там уже была."""
+    значении — кнопка там уже была (или панелей уже MAX_PANELS)."""
     data = normalize(data)
     if _clean_ref(ref) is None:
         return data, False
     panel = next((p for p in data[u"panels"] if p[u"title"].lower() == _text(title).lower()), None)
+    if panel is None and len(data[u"panels"]) >= MAX_PANELS:
+        return data, False
     if panel is None:
         panel = {u"title": _text(title), u"buttons": []}
         data[u"panels"].append(panel)

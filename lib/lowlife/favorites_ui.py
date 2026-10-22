@@ -5,8 +5,8 @@
 (убрать, порядок), справа — все кнопки LowLife с поиском (`ribbon_catalog.search`), «Добавить»
 кладёт выбранную в конец панели. Всё то же — и перетаскиванием мышью (`_DragDrop`): кнопку из общего
 списка — на место в списке кнопок панели или на панель слева, кнопку панели — на другое место, на
-другую панель или обратно в общий список (убрать), панель — на другое место в списке панелей. «Сохранить» пишет настройки и сразу строит панели на ленте
-(`favorites.sync`). Логика — `favorites_core`, лента — `favorites`.
+другую панель или обратно в общий список (убрать), панель — на другое место в списке панелей. «Сохранить» пишет настройки, раскладывает панели по папкам
+(`favorites.write_panels`) и предлагает перезагрузить pyRevit. Логика — `favorites_core`, папки — `favorites`.
 """
 
 try:
@@ -27,6 +27,8 @@ from System.Windows.Media import SolidColorBrush, Color, Visual, VisualTreeHelpe
 from lowlife import favorites, favorites_core, ribbon_catalog, ribbon_search, select_list
 
 NEW_PANEL = u"＋ Новая панель…"
+_TOO_MANY = u"Своих панелей может быть не больше {} — добавьте кнопки в уже созданную.".format(
+    favorites_core.MAX_PANELS)
 
 _XAML = u'''
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -36,7 +38,7 @@ _XAML = u'''
         FontFamily="Segoe UI" FontSize="13" Background="White">
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#555555" Margin="0,0,0,10"
-                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью «Мои панели» и видны при любой теме. Кнопка на своей панели запускает ту же команду, что и исходная (Shift+клик — тоже). Кнопки и панели можно перетаскивать мышью: из списка справа — на панель, внутри панели — на другое место, обратно вправо — убрать."/>
+                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью «Мои панели» и видны при любой теме (после «Сохранить» нужна перезагрузка pyRevit; своих панелей — до 8). Кнопка на своей панели — копия исходной: та же команда, Shift+клик и настройки. Кнопки и панели можно перетаскивать мышью: из списка справа — на панель, внутри панели — на другое место, обратно вправо — убрать."/>
         <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -207,6 +209,9 @@ class FavoritesWindow(forms.WPFWindow):
         return [p[u"title"] for p in self.panels() if p is not panel]
 
     def new_panel(self):
+        if len(self.panels()) >= favorites_core.MAX_PANELS:
+            forms.alert(_TOO_MANY, title=u"Мои панели")
+            return None
         title = ask_title(u"", self._titles_except(), self.reserved)
         if title is None:
             return None
@@ -442,13 +447,24 @@ class _DragDrop(object):
             fn(*args)
 
 
-def _apply(uiapp, data):
-    """Сохранить настройки и построить избранное на ленте; проблемы — одним сообщением."""
+def _apply(data, offer_reload=True):
+    """Сохранить настройки и разложить свои панели по папкам; проблемы — одним сообщением.
+
+    Новые панели pyRevit покажет только после перезагрузки — offer_reload предлагает её сразу.
+    Из «Поиска» не предлагается: он работает на постоянном движке, а перезагрузка pyRevit
+    останавливает движки — пусть пользователь нажмёт «Reload» сам."""
     if not favorites.save(data):
         return False
-    problems = favorites.sync(uiapp, data)
+    changed, problems = favorites.write_panels(data)
     if problems:
         forms.alert(u"\n".join(problems), title=u"Мои панели: не всё получилось")
+    if not changed:
+        return True
+    message = u"Свои панели сохранены. На ленте они появятся после перезагрузки pyRevit."
+    if not offer_reload:
+        forms.alert(message + u"\nНажмите pyRevit → «Reload», когда будет удобно.", title=u"Мои панели")
+    elif forms.alert(message + u"\n\nПерезагрузить pyRevit сейчас?", title=u"Мои панели", yes=True, no=True):
+        favorites.reload_pyrevit()
     return True
 
 
@@ -458,7 +474,7 @@ def run(uiapp):
         win = FavoritesWindow(favorites.load(), entries, favorites.reserved_titles())
         win.ShowDialog()
         if win.saved:
-            _apply(uiapp, win.data)
+            _apply(win.data)
     except Exception as ex:
         forms.alert(unicode(ex), title=u"Мои панели: ошибка", expanded=traceback.format_exc())
 
@@ -475,6 +491,9 @@ def add_to_favorites(uiapp, entry):
     if not choice:
         return
     if choice == NEW_PANEL:
+        if len(titles) >= favorites_core.MAX_PANELS:
+            forms.alert(_TOO_MANY, title=u"Мои панели")
+            return
         choice = ask_title(u"", titles, favorites.reserved_titles())
         if choice is None:
             return
@@ -482,4 +501,4 @@ def add_to_favorites(uiapp, entry):
     if not added:
         forms.alert(u"«{}» уже есть на панели «{}».".format(entry[u"title"], choice), title=u"Мои панели")
         return
-    _apply(uiapp, data)
+    _apply(data, offer_reload=False)

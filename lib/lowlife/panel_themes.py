@@ -299,16 +299,6 @@ def apply_theme(selected_theme):
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
 
-    # Свои панели пользователя («Мои панели», lowlife.favorites) в THEMES нет, но после смены темы
-    # они пропадали с ленты — показываем их заново (favorites.sync снова делает видимыми нужные
-    # панели и кнопки). Отдельный try: тема важнее.
-    try:
-        from pyrevit import HOST_APP
-        from lowlife import favorites
-        favorites.sync(HOST_APP.uiapp)
-    except Exception:
-        pass
-
 
 # ------------------------------------------------------------
 # ВЫБРАННАЯ ТЕМА МЕЖДУ ЗАПУСКАМИ
