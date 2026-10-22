@@ -47,7 +47,7 @@ def test_stack_expanded_and_empty_panel_skipped(tmpdir):
 
 def test_real_extension_lists_feedback_button():
     panels = dict(ribbon_catalog.list_panels())
-    assert u"Обратная связь" in panels[u"LowLife"]
+    assert panels[u"Справка"] == [u"О программе", u"Обратная связь"]  # стек — кнопки по порядку
     assert all(buttons for buttons in panels.values())
 
 

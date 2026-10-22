@@ -1,7 +1,4 @@
 title: LowLife
 layout:
-  - About
-  - Search
-  - MyPanels
-  - Feedback
+  - Actions
   - ThemeSelector
