@@ -77,3 +77,16 @@ def test_folder_names_have_no_dots():
     # на точках держится имя кнопки избранного (BUTTON_PREFIX + папки через точку)
     for entry in ribbon_catalog.list_buttons():
         assert all(u"." not in part for part in [entry[u"panel"]] + entry[u"path"])
+
+
+def test_manager_button_is_not_addable():
+    # кнопка «Создать мою панель» (Favorites.panel) — окно настройки, на свою панель её не кладём
+    manager = _ref(u"Favorites", u"Manage")
+    assert not fc.can_add(manager)
+    assert fc.can_add(_ref(u"SCS", u"A"))
+    data = fc.normalize({u"panels": [{u"title": u"моя", u"buttons": [manager, _ref(u"SCS", u"A")]}]})
+    assert data[u"panels"][0][u"buttons"] == [_ref(u"SCS", u"A")]
+    data, added = fc.add_button(data, u"моя", manager)
+    assert not added
+    entries = ribbon_catalog.list_buttons()
+    assert any(e[u"panel"] == u"Favorites" for e in entries)

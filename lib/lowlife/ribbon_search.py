@@ -10,7 +10,7 @@
   текущая тема их скрывает — до следующего переключения темы) и несколько раз мигает поверх неё
   оранжевой заливкой (Adorner в слое украшений ленты, если его нет — прозрачный Popup того же
   размера; не нашли кнопку на экране — штатная отметка `HighlightMode.New`).
-- «В избранное» — `favorites_ui.add_to_favorites`: выбрать свою панель избранного (или создать) и
+- «На мою панель» — `favorites_ui.add_to_favorites`: выбрать свою панель (или создать) и
   добавить на неё кнопку.
 """
 
@@ -63,8 +63,8 @@ _XAML = u'''
                 <TextBlock Foreground="#888888" FontSize="11" TextWrapping="Wrap"
                            Text="Enter — запустить · Ctrl+Enter — показать на ленте · Esc — закрыть"/>
             </StackPanel>
-            <Button x:Name="btnFavorite" Grid.Column="1" Content="В избранное"
-                    ToolTip="Добавить кнопку на свою панель избранного"
+            <Button x:Name="btnFavorite" Grid.Column="1" Content="На мою панель"
+                    ToolTip="Добавить кнопку на свою панель («Мои панели»)"
                     Padding="16,6" MinWidth="100" Margin="0,0,8,0" VerticalAlignment="Center"/>
             <Button x:Name="btnShow" Grid.Column="2" Content="Показать на ленте"
                     Padding="16,6" MinWidth="100" VerticalAlignment="Center"/>

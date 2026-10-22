@@ -23,6 +23,13 @@ PANEL_PREFIX = u"LowLifeFav_"
 # pyRevit отрезает расширение по первой точке). По нему статистика запусков узнаёт исходную кнопку.
 BUTTON_PREFIX = u"LLFav."
 MAX_TITLE = 40
+# Панели LowLife, кнопки которых на свои панели не кладутся: сама «Мои панели» (её кнопка — это окно настройки)
+EXCLUDED_PANELS = (u"Favorites",)
+
+
+def can_add(entry_or_ref):
+    """Можно ли положить кнопку на свою панель (entry из ribbon_catalog или ссылка из настроек)."""
+    return entry_or_ref[u"panel"] not in EXCLUDED_PANELS
 
 
 def _text(value):
@@ -44,7 +51,7 @@ def _clean_ref(raw):
         return None
     panel = _text(raw.get(u"panel"))
     path = [_text(p) for p in (raw.get(u"path") or []) if _text(p)]
-    if not panel or not path:
+    if not panel or not path or panel in EXCLUDED_PANELS:
         return None
     return {u"panel": panel, u"path": path}
 
@@ -125,6 +132,8 @@ def add_button(data, title, ref):
     """Новые настройки с кнопкой ref в конце панели title (панели нет — создаётся). False во втором
     значении — кнопка там уже была."""
     data = normalize(data)
+    if _clean_ref(ref) is None:
+        return data, False
     panel = next((p for p in data[u"panels"] if p[u"title"].lower() == _text(title).lower()), None)
     if panel is None:
         panel = {u"title": _text(title), u"buttons": []}

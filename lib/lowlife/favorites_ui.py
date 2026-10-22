@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Окно «Избранное» (Favorites.panel/Manage) и «В избранное» из окна «Поиск».
+"""Окно «Создать мою панель» (Favorites.panel/Manage) и «На мою панель» из окна «Поиск».
 
 Слева — свои панели (новая, переименовать, удалить, порядок), посередине — кнопки выбранной панели
 (убрать, порядок), справа — все кнопки LowLife с поиском (`ribbon_catalog.search`), «Добавить»
@@ -31,12 +31,12 @@ NEW_PANEL = u"＋ Новая панель…"
 _XAML = u'''
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Избранное LowLife" Width="1100" Height="660" MinWidth="820" MinHeight="400"
+        Title="Мои панели LowLife" Width="1100" Height="660" MinWidth="820" MinHeight="400"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
         FontFamily="Segoe UI" FontSize="13" Background="White">
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#555555" Margin="0,0,0,10"
-                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью «Избранное» и видны при любой теме. Кнопка избранного запускает ту же команду, что и исходная (Shift+клик — тоже). Кнопки и панели можно перетаскивать мышью: из списка справа — на панель, внутри панели — на другое место, обратно вправо — убрать."/>
+                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью «Мои панели» и видны при любой теме. Кнопка на своей панели запускает ту же команду, что и исходная (Shift+клик — тоже). Кнопки и панели можно перетаскивать мышью: из списка справа — на панель, внутри панели — на другое место, обратно вправо — убрать."/>
         <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -110,13 +110,13 @@ def ask_title(default=u"", others=(), reserved=()):
     title = default
     while True:
         title = forms.ask_for_string(default=title, prompt=u"Название панели на ленте:",
-                                     title=u"Панель избранного")
+                                     title=u"Моя панель")
         if title is None:
             return None
         problem = favorites_core.title_problem(title, others, reserved)
         if problem is None:
             return u" ".join(title.split())
-        forms.alert(problem, title=u"Избранное")
+        forms.alert(problem, title=u"Мои панели")
 
 
 class FavoritesWindow(forms.WPFWindow):
@@ -355,7 +355,7 @@ def _index(listbox, item):
 
 
 class _DragDrop(object):
-    """Перетаскивание мышью между тремя списками окна «Избранное».
+    """Перетаскивание мышью между тремя списками окна «Мои панели».
 
     Что тащат — помнит сам объект (`self.source`: (u"all" | u"button" | u"panel", индекс)), в
     DataObject — только метка: перетаскивание идёт внутри одного окна. Перетаскивание начинается,
@@ -448,27 +448,30 @@ def _apply(uiapp, data):
         return False
     problems = favorites.sync(uiapp, data)
     if problems:
-        forms.alert(u"\n".join(problems), title=u"Избранное: не всё получилось")
+        forms.alert(u"\n".join(problems), title=u"Мои панели: не всё получилось")
     return True
 
 
 def run(uiapp):
     try:
-        entries = ribbon_catalog.list_buttons()
+        entries = [e for e in ribbon_catalog.list_buttons() if favorites_core.can_add(e)]
         win = FavoritesWindow(favorites.load(), entries, favorites.reserved_titles())
         win.ShowDialog()
         if win.saved:
             _apply(uiapp, win.data)
     except Exception as ex:
-        forms.alert(unicode(ex), title=u"Избранное: ошибка", expanded=traceback.format_exc())
+        forms.alert(unicode(ex), title=u"Мои панели: ошибка", expanded=traceback.format_exc())
 
 
 def add_to_favorites(uiapp, entry):
-    """«В избранное» из окна «Поиск»: выбрать панель (или создать новую) и добавить в неё кнопку."""
+    """«На мою панель» из окна «Поиск»: выбрать панель (или создать новую) и добавить в неё кнопку."""
+    if not favorites_core.can_add(entry):
+        forms.alert(u"Кнопку «{}» на свою панель не положить.".format(entry[u"title"]), title=u"Мои панели")
+        return
     data = favorites.load()
     titles = [p[u"title"] for p in data[u"panels"]]
     choice = select_list.CommandSwitchWindow.show(
-        titles + [NEW_PANEL], message=u"В какую панель избранного добавить «{}»?".format(entry[u"title"]))
+        titles + [NEW_PANEL], message=u"На какую свою панель добавить «{}»?".format(entry[u"title"]))
     if not choice:
         return
     if choice == NEW_PANEL:
@@ -477,6 +480,6 @@ def add_to_favorites(uiapp, entry):
             return
     data, added = favorites_core.add_button(data, choice, favorites_core.button_ref(entry))
     if not added:
-        forms.alert(u"«{}» уже есть на панели «{}».".format(entry[u"title"], choice), title=u"Избранное")
+        forms.alert(u"«{}» уже есть на панели «{}».".format(entry[u"title"], choice), title=u"Мои панели")
         return
     _apply(uiapp, data)
