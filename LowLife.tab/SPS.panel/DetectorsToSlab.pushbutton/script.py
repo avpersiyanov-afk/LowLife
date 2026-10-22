@@ -6,8 +6,9 @@ __doc__ = (
     u"над этажом штриховкой по отметкам с подписью высоты от пола и разницы с "
     u"типовой, перепады плиты — толстыми красными линиями, а помещения с подвесным потолком обводит областью заливки с "
     u"подписью «ПП» и высотой потолка от пола.\n\n"
-    u"Какие извещатели переносить — выбирается при запуске: выделенные, все на "
-    u"активном виде или все на уровнях выбранных планов.\n\n"
+    u"Какие извещатели переносить — выбирается при запуске: выделенные (если "
+    u"ничего не выделено — выбрать на модели), все на активном виде или все на "
+    u"уровнях выбранных планов.\n\n"
     u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
@@ -48,23 +49,30 @@ selected_ids = list(uidoc.Selection.GetElementIds())
 selected = slab_marks.collect_detectors(doc, settings, selected_ids) if selected_ids else []
 active_view = doc.ActiveView
 
-# Какие извещатели переносить: выделенные, все на активном виде или все на
-# уровнях выбранных планов.
-SCOPE_SELECTED = u"Выделенные извещатели ({})".format(len(selected))
+# Какие извещатели переносить: выделенные (если перед запуском ничего не
+# выделено — выбрать на модели после этого окна), все на активном виде или
+# все на уровнях выбранных планов.
+SCOPE_SELECTED = (u"Выделенные извещатели ({})".format(len(selected)) if selected
+                  else u"Выделенные извещатели — выбрать на модели")
 SCOPE_VIEW = u"Все извещатели на активном виде «{}»".format(
     active_view.Name if active_view is not None else u"")
 SCOPE_LEVELS = u"Все извещатели на уровнях выбранных планов"
 scope = None
 if action != MARK:
-    scopes = []
-    if selected:
-        scopes.append(SCOPE_SELECTED)
+    scopes = [SCOPE_SELECTED]
     if slab_marks.can_collect_on(active_view):
         scopes.append(SCOPE_VIEW)
     scopes.append(SCOPE_LEVELS)
     scope = select_list.CommandSwitchWindow.show(scopes, message=u"Какие извещатели переносить?")
     if not scope:
         script.exit()
+    if scope == SCOPE_SELECTED and not selected:
+        selected = slab_marks.pick_detectors(uidoc, doc, settings)
+        if selected is None:
+            script.exit()
+        if not selected:
+            forms.alert(u"Не выбрано ни одного извещателя (подходящие — по словам в настройках: "
+                        u"Shift+клик).", title=TITLE, exitscript=True)
 
 # Планы для подписей (и для «на уровнях выбранных планов»): при переносе с
 # активного плана подписывается он же — без лишнего окна выбора.
@@ -235,5 +243,8 @@ if timings:
     output.print_md(u"### Время")
     for stage, seconds in timings:
         output.print_md(u"- {}: {:.1f} с".format(stage, float(seconds)))
+    for result in view_results:
+        for stage, seconds in result.stage_times:
+            output.print_md(u"    - «{}» — {}: {:.1f} с".format(result.view.Name, stage, float(seconds)))
 
 forms.alert(u"Готово.\n\n" + u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE)

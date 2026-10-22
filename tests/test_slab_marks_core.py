@@ -248,3 +248,33 @@ def test_interior_points_median_duplicates():
     faces = [(3400, box, 1e6), (3402, (10, 0, 1000, 1000), 1.005e6), (3400, (0, 0, 2000, 1000), 2e6),
              (3800, box, 1e6)]
     assert core.duplicate_faces(faces) == {1}
+
+
+def test_region_index_and_step_confirmed():
+    slab = [(0, 0), (10000, 0), (10000, 10000), (0, 10000)]
+    capital = [(4000, 4000), (6000, 4000), (6000, 6000), (4000, 6000)]
+    high = [(10000, 0), (20000, 0), (20000, 10000), (10000, 10000)]
+    regions = [
+        (-1200, slab, [capital], core.polygon_bbox(slab)),
+        (-1550, capital, [], core.polygon_bbox(capital)),
+        (-550, high, [], core.polygon_bbox(high)),
+    ]
+    index = core.RegionIndex(regions, cell=3000)
+    for x, y in ((5000, 5000), (1000, 1000), (15000, 1000), (-5, -5), (9999, 9999)):
+        assert index.lowest_at(x, y) == core.lowest_face_at(x, y, regions)
+    assert index.z_at(15000, 5000) == -550
+    # граница x=10000 между -1200 и -550 — перепад; линия внутри плиты — нет
+    assert core.step_confirmed((10000, 1000, 10000, 9000, 0), 750, index.z_at, 20)
+    assert not core.step_confirmed((2000, 1000, 2000, 3000, 0), 750, index.z_at, 20)
+    # снаружи здания с одной стороны — не перепад
+    assert not core.step_confirmed((20000, 1000, 20000, 9000, 0), 750, index.z_at, 20)
+
+
+def test_band_polygon_matches_point_in_polygon():
+    import random
+    random.seed(3)
+    l_shape = [(0, 0), (3000, 0), (3000, 300), (300, 300), (300, 3000), (0, 3000)]
+    shape = core.BandPolygon(l_shape, band=250)
+    for _ in range(500):
+        x, y = random.uniform(-100, 3100), random.uniform(-100, 3100)
+        assert shape.contains(x, y) == core.point_in_polygon(x, y, l_shape)
