@@ -8,7 +8,7 @@ import io
 import os
 import re
 
-from lowlife import text_search
+from lowlife import favorites_core, text_search
 
 TAB_FOLDER = u"LowLife.tab"
 BUTTON_EXTS = (u".pushbutton", u".pulldown", u".splitbutton", u".splitpushbutton", u".smartbutton",
@@ -128,11 +128,17 @@ def _buttons(folder):
     return result
 
 
+def _panels(tab):
+    """Папки панелей вкладки по порядку — без ячеек своих панелей пользователя («Мои панели»):
+    там лишь копии кнопок LowLife."""
+    return [n for n in _ordered(tab, (u".panel",)) if not favorites_core.is_slot(_stem(n))]
+
+
 def list_panels(root=None):
     """[(подпись панели, [подписи кнопок]), ...] в порядке ленты; панели без кнопок пропускаются."""
     tab = os.path.join(root or extension_root(), TAB_FOLDER)
     result = []
-    for name in _ordered(tab, (u".panel",)):
+    for name in _panels(tab):
         buttons = _buttons(os.path.join(tab, name))
         if buttons:
             result.append((item_title(os.path.join(tab, name)), buttons))
@@ -167,6 +173,7 @@ def _collect(folder, panel, panel_title, path, out):
                 u"path": path + [_stem(name)],  # имена папок от панели вниз (через выпадающие списки)
                 u"title": item_title(full),
                 u"tooltip": _clean(bundle[u"tooltip"] or _script_doc(full)),
+                u"folder": full,  # папка кнопки на диске — её копирует «Мои панели»
             })
 
 
@@ -178,7 +185,7 @@ def list_buttons(root=None):
     """
     tab = os.path.join(root or extension_root(), TAB_FOLDER)
     result = []
-    for name in _ordered(tab, (u".panel",)):
+    for name in _panels(tab):
         folder = os.path.join(tab, name)
         _collect(folder, _stem(name), item_title(folder), [], result)
     return result

@@ -13,9 +13,9 @@
    показывает все кнопки. Поэтому тема включается при первом простое
    Revit. (``hooks/app-init.py`` для этого не годится: это событие Revit
    ApplicationInitialized, при перезагрузке pyRevit его нет.)
-3. построить панели «Избранного» (``favorites.restore_on_idle``) — тоже при
-   первом простое: pyRevit при загрузке прячет чужие панели вкладки и
-   пересобирает команды кнопок в новую сборку.
+3. обновить копии кнопок на своих панелях пользователя («Мои панели»,
+   ``favorites.restore_on_load``): после обновления LowLife в них должны
+   быть свежие скрипты.
 
 По первой задаче пишем след в
 ``%APPDATA%\\pyRevit\\LowLifeExportRename_watcher.log``, чтобы понять,
@@ -84,20 +84,10 @@ except Exception as exc:
     _crumb(u"тема ленты: {}".format(exc))
 
 
-
-# Избранное — отдельный try, ничего выше не задевает.
+# Мои панели — отдельный try, ничего выше не задевает.
 try:
     from lowlife import favorites as _favorites
 
-    _fav_app = None
-    try:
-        _fav_app = __revit__  # noqa: F821 — UIControlledApplication / UIApplication
-    except Exception:
-        _fav_app = None
-    if _fav_app is None:
-        from pyrevit import HOST_APP as _fav_host
-        _fav_app = _fav_host.uiapp
-    if _fav_app is not None:
-        _favorites.restore_on_idle(_fav_app)
+    _favorites.restore_on_load()
 except Exception as exc:
-    _crumb(u"избранное: {}".format(exc))
+    _crumb(u"мои панели: {}".format(exc))

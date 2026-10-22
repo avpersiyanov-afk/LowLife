@@ -1,20 +1,18 @@
 # -*- coding: utf-8 -*-
-"""«Избранное» на ленте: свои панели пользователя из кнопок LowLife.
+"""«Мои панели»: свои панели пользователя из кнопок LowLife — обычные панели pyRevit.
 
 Настройки (`%APPDATA%\\pyRevit\\LowLifeFavorites_settings.json`) — список панелей и их кнопок,
-логика — `favorites_core`. Здесь — построение панелей на вкладке LowLife через Revit API:
+логика — `favorites_core`. Здесь — раскладка по папкам:
 
-- панель избранного создаётся `UIApplication.CreateRibbonPanel` с именем
-  `favorites_core.panel_name(подпись)` и ставится на ленте сразу за панелью «Мои панели»;
-- кнопка избранного — `PushButtonData` с той же сборкой и классом команды, что у исходной кнопки
-  pyRevit (`PushButton.AssemblyName`/`ClassName`): клик по ней — это запуск той же команды,
-  с тем же Shift+кликом, движком и доступностью; подпись, подсказка и иконка — тоже от исходной;
-- удалить панель или кнопку с ленты Revit API не даёт — убранные из избранного прячутся до
-  перезапуска Revit (при повторном добавлении показываются те же).
+- панель — ячейка `LowLife.tab/MyPanel<N>.panel` (N — порядок панели, до `favorites_core.MAX_PANELS`);
+  ячейки перечислены в `layout:` вкладки (pyRevit создаёт только перечисленные панели, а
+  несуществующие пропускает), в git их нет (`.gitignore`) — у каждого пользователя свои;
+- кнопка — копия папки исходной кнопки (скрипт, bundle.yaml, иконки, xaml) под именем
+  `favorites_core.button_folder`: та же подпись, тот же Shift+клик и движок, настройки кнопки общие;
+- темы ячейки не трогают (их нет в `panel_themes.THEMES`) — свои панели видны при любой теме.
 
-pyRevit при перезагрузке прячет чужие панели вкладки и пересобирает свои кнопки в новую сборку,
-поэтому `startup.py` после каждой загрузки вызывает `restore_on_idle` — при первом простое Revit
-избранное строится заново (сборка и класс кнопок обновляются).
+Панели появляются на ленте после перезагрузки pyRevit (`reload_pyrevit`). `startup.py` при каждой
+загрузке заново раскладывает копии (`restore_on_load`): после обновления LowLife в них новые скрипты.
 """
 
 try:
@@ -22,10 +20,14 @@ try:
 except NameError:  # Python 3
     unicode = str
 
+import io
+import os
+import shutil
+
 from lowlife import favorites_core, ribbon_catalog
 
 TAB_NAME = u"LowLife"
-FAVORITES_PANEL_TITLE = u"Мои панели"  # Favorites.panel — title из bundle.yaml; панели пользователя — за ней
+FAVORITES_PANEL_TITLE = u"Мои панели"  # Favorites.panel — title из bundle.yaml
 
 _STORE = None
 
@@ -34,7 +36,7 @@ def _store():
     global _STORE
     if _STORE is None:
         from lowlife import settings_core
-        _STORE = settings_core.JsonStore("LowLifeFavorites_settings.json", u"избранного", share=False)
+        _STORE = settings_core.JsonStore("LowLifeFavorites_settings.json", u"своих панелей", share=False)
     return _STORE
 
 
@@ -48,243 +50,131 @@ def save(data):
 
 
 def reserved_titles():
-    """Подписи панелей самого LowLife — панель избранного так называть нельзя."""
+    """Подписи панелей самого LowLife — свою панель так называть нельзя."""
     titles = [title for title, _buttons in ribbon_catalog.list_panels()]
     return titles + [TAB_NAME, FAVORITES_PANEL_TITLE]
 
 
-# ---------------------------------------------------------------- кнопки LowLife на ленте
+# ---------------------------------------------------------------- папки
 
-def _panels(uiapp):
+def tab_folder(root=None):
+    return os.path.join(root or ribbon_catalog.extension_root(), ribbon_catalog.TAB_FOLDER)
+
+
+def _same_file(a, b):
     try:
-        return list(uiapp.GetRibbonPanels(TAB_NAME))
-    except Exception:
-        return []
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        with io.open(a, "rb") as fa, io.open(b, "rb") as fb:
+            return fa.read() == fb.read()
+    except (IOError, OSError):
+        return False
 
 
-def _child(items, name):
-    for item in items:
+def _write_text(path, text):
+    try:
+        with io.open(path, "r", encoding="utf-8") as f:
+            if f.read() == text:
+                return
+    except (IOError, OSError, UnicodeDecodeError):
+        pass
+    with io.open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def _remove(path):
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+    elif os.path.exists(path):
         try:
-            if item.Name == name:
-                return item
-        except Exception:
+            os.remove(path)
+        except (IOError, OSError):
             pass
-    return None
 
 
-def source_button(uiapp, entry):
-    """Revit-`PushButton` исходной кнопки LowLife (entry — из ribbon_catalog.list_buttons()) или None.
+def _mirror(src, dst):
+    """dst — точная копия папки src; меняются только отличающиеся файлы (pyRevit не перечитывает
+    лишнего, а занятые файлы не трогаются, если не изменились)."""
+    if not os.path.isdir(dst):
+        os.makedirs(dst)
+    names = set(n for n in os.listdir(src) if n != u"__pycache__" and not n.endswith(u".pyc"))
+    for name in os.listdir(dst):
+        if name not in names:
+            _remove(os.path.join(dst, name))
+    for name in names:
+        s, d = os.path.join(src, name), os.path.join(dst, name)
+        if os.path.isdir(s):
+            if os.path.exists(d) and not os.path.isdir(d):
+                _remove(d)
+            _mirror(s, d)
+        elif not _same_file(s, d):
+            if os.path.isdir(d):
+                _remove(d)
+            shutil.copy2(s, d)
 
-    pyRevit называет панель её подписью, а кнопку — именем папки; кнопка в выпадающем списке
-    ищется по пути папок внутри него."""
-    from Autodesk.Revit.UI import PushButton
-    for panel in _panels(uiapp):
-        if favorites_core.is_favorite_panel(panel.Name):
-            continue
-        if panel.Name not in (entry[u"panel_title"], entry[u"panel"]):
-            continue
-        item = None
-        items = panel.GetItems()
-        for name in entry[u"path"]:
-            item = _child(items, name)
-            if item is None:
-                break
+
+def write_panels(data=None, root=None):
+    """Раскладывает свои панели по ячейкам (data — по умолчанию сохранённые), лишние ячейки убирает.
+
+    Возвращает (изменилось ли что-нибудь на диске — нужна перезагрузка pyRevit, список проблем)."""
+    tab = tab_folder(root)
+    entries = ribbon_catalog.list_buttons(root)
+    panels, problems = favorites_core.plan(data if data is not None else load(), entries)
+    before = _snapshot(tab)
+    used = set()
+    for slot, title, buttons in panels:
+        folder = os.path.join(tab, slot + u".panel")
+        used.add(slot + u".panel")
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+        names = []
+        keep = set([u"bundle.yaml"])
+        for name, entry in buttons:
+            ext = os.path.splitext(entry[u"folder"])[1]
             try:
-                items = item.GetItems()
-            except Exception:
-                items = []
-        if isinstance(item, PushButton):
-            return item
-    return None
+                _mirror(entry[u"folder"], os.path.join(folder, name + ext))
+                names.append(name)
+                keep.add(name + ext)
+            except (IOError, OSError) as ex:
+                problems.append(u"«{}»: не удалось скопировать «{}» — {}".format(title, entry[u"title"], ex))
+        for name in os.listdir(folder):
+            if name not in keep:
+                _remove(os.path.join(folder, name))
+        _write_text(os.path.join(folder, u"bundle.yaml"), favorites_core.panel_bundle(title, names))
+    for name in os.listdir(tab):
+        if name.endswith(u".panel") and favorites_core.is_slot(name[:-len(u".panel")]) and name not in used:
+            _remove(os.path.join(tab, name))
+    return _snapshot(tab) != before, problems
 
 
-# ---------------------------------------------------------------- Autodesk.Windows: порядок и видимость
-
-def _adwin_tab():
-    import clr
-    clr.AddReference("AdWindows")
-    from Autodesk.Windows import ComponentManager
-    for tab in ComponentManager.Ribbon.Tabs:
-        if tab.Title == TAB_NAME or tab.Id == TAB_NAME:
-            return tab
-    return None
-
-
-def _adwin_panel(tab, name=None, title=None):
-    for panel in tab.Panels:
-        source = panel.Source
-        if source is None:
+def _snapshot(tab):
+    """Отпечаток ячеек (пути, размеры, время изменения) — изменилось ли что-нибудь."""
+    result = []
+    for name in sorted(os.listdir(tab)):
+        if not (name.endswith(u".panel") and favorites_core.is_slot(name[:-len(u".panel")])):
             continue
-        if title is not None and source.Title == title:
-            return panel
-        if name is not None and unicode(source.Id or u"").endswith(name):
-            return panel
-    return None
+        for dirpath, dirnames, filenames in os.walk(os.path.join(tab, name)):
+            dirnames.sort()
+            for fname in sorted(filenames):
+                path = os.path.join(dirpath, fname)
+                try:
+                    stat = os.stat(path)
+                    result.append((path, stat.st_size, int(stat.st_mtime)))
+                except OSError:
+                    result.append((path, None, None))
+    return result
 
 
-def _move(collection, item, index):
-    """Поставить item на место index в коллекции ленты (ObservableCollection)."""
-    current = collection.IndexOf(item)
-    if current < 0 or current == index:
-        return
+def reload_pyrevit():
+    """Перезагрузить pyRevit — как его кнопка «Reload»: только так новые панели попадут на ленту."""
+    from pyrevit.loader import sessionmgr
+    sessionmgr.reload_pyrevit()
+
+
+def restore_on_load():
+    """Из startup.py: обновить копии кнопок по настройкам (после обновления LowLife в них старые
+    скрипты; после переустановки ячеек нет совсем — тогда панели появятся со следующей загрузки)."""
     try:
-        collection.Move(current, index)
-    except Exception:
-        collection.Remove(item)
-        collection.Insert(min(index, collection.Count), item)
-
-
-def _arrange(shown):
-    """Панели избранного — сразу за панелью «Мои панели», кнопки — в порядке настроек.
-
-    shown — [(подпись, имя панели, [имена кнопок])]. Без Autodesk.Windows ничего не делает:
-    панели просто останутся в конце вкладки."""
-    tab = _adwin_tab()
-    if tab is None:
-        return
-    anchor = _adwin_panel(tab, title=FAVORITES_PANEL_TITLE)
-    for i, (title, name, buttons) in enumerate(shown):
-        panel = _adwin_panel(tab, name=name) or _adwin_panel(tab, title=title)
-        if panel is None:
-            continue
-        panel.IsVisible = True
-        if anchor is not None:
-            _move(tab.Panels, panel, min(tab.Panels.IndexOf(anchor) + 1 + i, tab.Panels.Count - 1))
-        items = panel.Source.Items
-        for j, button in enumerate(buttons):
-            item = next((it for it in items if unicode(it.Id or u"").endswith(u"%" + button)), None)
-            if item is not None:
-                _move(items, item, j)
-
-
-def _hide_adwin_panel(name, title):
-    tab = _adwin_tab()
-    panel = tab and (_adwin_panel(tab, name=name) or _adwin_panel(tab, title=title))
-    if panel is not None:
-        panel.IsVisible = False
-
-
-# ---------------------------------------------------------------- построение избранного
-
-def _copy_look(button, source):
-    """Подпись, подсказка и иконки — как у исходной кнопки."""
-    for attr in ("ItemText", "ToolTip", "LongDescription", "LargeImage", "Image"):
-        try:
-            value = getattr(source, attr)
-            if value is not None:
-                setattr(button, attr, value)
-        except Exception:
-            pass
-
-
-def _new_button(panel, name, source):
-    from Autodesk.Revit.UI import PushButtonData
-    data = PushButtonData(name, source.ItemText or name, source.AssemblyName, source.ClassName)
-    try:
-        if source.AvailabilityClassName:
-            data.AvailabilityClassName = source.AvailabilityClassName
+        write_panels()
     except Exception:
         pass
-    button = panel.AddItem(data)
-    _copy_look(button, source)
-    return button
-
-
-def _update_button(button, source):
-    # после перезагрузки pyRevit команды лежат в новой сборке — без этого кнопка запускала бы старую
-    for attr in ("AssemblyName", "ClassName", "AvailabilityClassName"):
-        try:
-            value = getattr(source, attr)
-            if value and getattr(button, attr) != value:
-                setattr(button, attr, value)
-        except Exception:
-            pass
-    _copy_look(button, source)
-
-
-def _sync_panel(uiapp, panel, refs, entries, problems):
-    """Кнопки одной панели избранного: нужные показать/создать, остальные спрятать. Имена показанных."""
-    existing = dict((item.Name, item) for item in panel.GetItems())
-    shown = []
-    for ref in refs:
-        entry = favorites_core.find_entry(entries, ref)
-        source = source_button(uiapp, entry) if entry is not None else None
-        if source is None:
-            problems.append(u"«{}»: кнопки {} больше нет на ленте LowLife.".format(
-                panel.Title, favorites_core.button_key(ref)))
-            continue
-        name = favorites_core.button_name(ref)
-        button = existing.get(name)
-        try:
-            if button is None:
-                button = _new_button(panel, name, source)
-            else:
-                _update_button(button, source)
-            button.Visible = True
-            button.Enabled = True
-            shown.append(name)
-        except Exception as ex:
-            problems.append(u"«{}»: не удалось добавить «{}» — {}".format(panel.Title, entry[u"title"], ex))
-    for name, item in existing.items():
-        if name not in shown:
-            item.Visible = False
-    return shown
-
-
-def sync(uiapp, data=None):
-    """Строит избранное на ленте по настройкам (data — по умолчанию сохранённые). Список проблем."""
-    data = favorites_core.normalize(data if data is not None else load())
-    entries = ribbon_catalog.list_buttons()
-    problems = []
-    panels = dict((p.Name, p) for p in _panels(uiapp) if favorites_core.is_favorite_panel(p.Name))
-    shown = []
-    for cfg in data[u"panels"]:
-        name = favorites_core.panel_name(cfg[u"title"])
-        panel = panels.pop(name, None)
-        if panel is None:
-            if not cfg[u"buttons"]:
-                continue  # пустую панель не создаём — её всё равно нечем заполнить
-            try:
-                panel = uiapp.CreateRibbonPanel(TAB_NAME, name)
-            except Exception as ex:
-                problems.append(u"Панель «{}» не создана — {}".format(cfg[u"title"], ex))
-                continue
-        panel.Title = cfg[u"title"]
-        buttons = _sync_panel(uiapp, panel, cfg[u"buttons"], entries, problems)
-        panel.Visible = bool(buttons)
-        if buttons:
-            shown.append((cfg[u"title"], name, buttons))
-        else:
-            _safe(_hide_adwin_panel, name, cfg[u"title"])
-    for name, panel in panels.items():  # убранные из избранного
-        panel.Visible = False
-        _safe(_hide_adwin_panel, name, panel.Title)
-    _safe(_arrange, shown)
-    return problems
-
-
-def _safe(fn, *args):
-    try:
-        fn(*args)
-    except Exception:
-        pass  # порядок и скрытие через Autodesk.Windows — удобство, сами кнопки уже на ленте
-
-
-def restore_on_idle(app):
-    """Из startup.py: построить избранное при первом простое Revit (лента к этому времени готова)."""
-    state = {"done": False}
-
-    def on_idle(sender, args):
-        if state["done"]:
-            return
-        state["done"] = True
-        try:
-            app.Idling -= on_idle
-        except Exception:
-            pass
-        try:
-            sync(sender)
-        except Exception:
-            pass
-
-    app.Idling += on_idle

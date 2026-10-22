@@ -21,19 +21,47 @@ def test_normalize_drops_junk_and_duplicates():
     assert fc.normalize({u"panels": u"не список"}) == {u"panels": []}
 
 
-def test_button_name_round_trip():
+def test_button_folder_round_trip():
     ref = _ref(u"Tools", u"Pull", u"Button")
-    name = fc.button_name(ref)
-    assert u"%" not in name
-    assert fc.parse_button_name(name) == ref
-    assert fc.parse_button_name(u"PlaceRouteNodes") is None
-    assert fc.parse_button_name(fc.BUTTON_PREFIX + u"SCS") is None
+    name = fc.button_folder(ref)
+    assert name == u"Tools-Pull-Button"
+    assert fc.parse_button_folder(name) == ref
+    assert fc.parse_button_folder(u"PlaceRouteNodes") is None
 
 
-def test_panel_name_prefix():
-    assert fc.is_favorite_panel(fc.panel_name(u"Мои"))
-    assert not fc.is_favorite_panel(u"Цепи СКС")
-    assert not fc.is_favorite_panel(None)
+def test_slots():
+    assert fc.slot_name(0) == u"MyPanel1"
+    assert fc.is_slot(u"MyPanel8")
+    assert not fc.is_slot(u"MyPanels")
+    assert not fc.is_slot(u"SCS")
+    # копию кнопки со своей панели на свою панель не кладём
+    assert not fc.can_add(_ref(u"MyPanel1", u"SCS-A"))
+
+
+def test_tab_layout_lists_every_slot():
+    # pyRevit создаёт только панели из layout вкладки
+    import io, os
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), u"LowLife.tab", u"bundle.yaml")
+    with io.open(path, encoding=u"utf-8") as f:
+        layout = [line.strip()[2:] for line in f if line.strip().startswith(u"- ")]
+    assert [fc.slot_name(i) for i in range(fc.MAX_PANELS)] == [n for n in layout if fc.is_slot(n)]
+
+
+def test_panel_bundle_quotes_title():
+    text = fc.panel_bundle(u'Мои "цепи"', [u"SCS-A", u"SKUD-B"])
+    assert text == u'title: "Мои \\"цепи\\""\nlayout:\n  - SCS-A\n  - SKUD-B\n'
+
+
+def test_plan_skips_missing_and_empty_and_extra_panels():
+    entries = [{u"panel": u"SCS", u"path": [u"A"], u"title": u"А"},
+               {u"panel": u"SKUD", u"path": [u"A"], u"title": u"Б"}]
+    data = {u"panels": [{u"title": u"пустая", u"buttons": [_ref(u"SCS", u"нет")]},
+                        {u"title": u"моя", u"buttons": [_ref(u"SCS", u"A"), _ref(u"SKUD", u"A")]}]}
+    data[u"panels"] += [{u"title": u"п{}".format(i), u"buttons": [_ref(u"SCS", u"A")]} for i in range(fc.MAX_PANELS)]
+    panels, problems = fc.plan(data, entries)
+    assert len(panels) == fc.MAX_PANELS
+    assert panels[0] == (u"MyPanel1", u"моя", [(u"SCS-A", entries[0]), (u"SKUD-A", entries[1])])
+    assert len(problems) == 2  # кнопки нет в LowLife + панель не поместилась
 
 
 def test_title_problem():
@@ -69,14 +97,14 @@ def test_refs_resolve_against_real_catalog():
     ref = fc.button_ref(entry)
     assert fc.find_entry(entries, ref) is entry
     assert fc.find_entry(entries, _ref(u"SCS", u"НетТакой")) is None
-    # имя кнопки избранного узнаётся по папкам — так статистика запусков находит исходную кнопку
-    assert fc.find_entry(entries, fc.parse_button_name(fc.button_name(ref))) is entry
+    # папка копии узнаётся — так статистика запусков находит исходную кнопку
+    assert fc.find_entry(entries, fc.parse_button_folder(fc.button_folder(ref))) is entry
 
 
-def test_folder_names_have_no_dots():
-    # на точках держится имя кнопки избранного (BUTTON_PREFIX + папки через точку)
+def test_folder_names_have_no_separator():
+    # на дефисе держится имя папки копии (папки исходной через BUTTON_SEP)
     for entry in ribbon_catalog.list_buttons():
-        assert all(u"." not in part for part in [entry[u"panel"]] + entry[u"path"])
+        assert all(fc.BUTTON_SEP not in part for part in [entry[u"panel"]] + entry[u"path"])
 
 
 def test_manager_button_is_not_addable():

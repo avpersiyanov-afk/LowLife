@@ -33,6 +33,7 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 в порядке ленты — dict с `panel`/`button` (имена папок), `path` (папки от панели
 вниз, через `.pulldown`), `title`/`panel_title`, `tooltip` (из `bundle.yaml`, иначе
 `__doc__` скрипта); выпадающие списки раскрываются, `.combobox` пропускается.
+Ячейки своих панелей («Мои панели», `MyPanel<N>.panel`) пропускаются; у кнопки есть ещё `folder` — её папка на диске.
 `search(entries, query)` — все слова запроса должны найтись (без регистра, ё = е,
 гласное окончание отбрасывается: «цепи» находит «цепей»); порядок — начало подписи,
 подпись, панель, подсказка, внутри — порядок ленты; запрос пробуется и в другой
@@ -45,24 +46,21 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 `LowLifeFavorites_settings.json` (`{"panels": [{"title", "buttons": [{"panel", "path"}]}]}` — кнопка по
 папкам, как в `ribbon_catalog.list_buttons()`).
 `favorites_core` (чистая логика, `tests/test_favorites_core.py`): `normalize`, `button_ref`/`button_key`,
-`panel_name`/`is_favorite_panel` (панель на ленте — `PANEL_PREFIX` + подпись), `button_name`/
-`parse_button_name` (кнопка — `BUTTON_PREFIX` + папки через точку; по нему `pnotes/usage.py` считает запуск
-исходной кнопки), `title_problem` (пусто, длинно, «%», повтор, совпадение с панелью LowLife), `find_entry`,
-`add_button`, `move`.
-`favorites`: `load`/`save`, `reserved_titles()`, `source_button(uiapp, entry)` — Revit-`PushButton`
-исходной кнопки (панель по подписи, кнопка по имени папки, через выпадающий список — по пути);
-`sync(uiapp, data=None)` строит избранное: `CreateRibbonPanel` на вкладке LowLife, кнопки —
-`PushButtonData` с `AssemblyName`/`ClassName`/`AvailabilityClassName` исходной кнопки (та же команда pyRevit,
-Shift+клик тоже), подпись/подсказка/иконки — её же; у существующих кнопок сборка и класс обновляются (после
-перезагрузки pyRevit они новые); убранное прячется (удалять с ленты Revit API не умеет); через
-Autodesk.Windows панели ставятся сразу за панелью «Мои панели», кнопки — в порядке настроек. Возвращает
-список проблем (кнопку удалили из LowLife и т.п.). `restore_on_idle(app)` — из `startup.py`, `sync` при первом
-простое Revit после каждой загрузки pyRevit.
+`slot_name`/`is_slot` (ячейки `MyPanel1`…`MyPanel{MAX_PANELS}`), `button_folder`/`parse_button_folder` (папка копии —
+папки исходной через дефис; по ней `pnotes/usage.py` считает запуск исходной кнопки), `panel_bundle` (bundle.yaml
+ячейки), `plan(data, entries)` (что в какую ячейку, проблемы), `title_problem`, `find_entry`, `can_add`
+(не кнопки самой «Мои панели» и не копии), `add_button`, `move`.
+`favorites` (тесты `tests/test_favorites.py`): свои панели — обычные панели pyRevit. `write_panels(data=None,
+root=None)` раскладывает их по папкам-ячейкам `LowLife.tab/MyPanel<N>.panel` (перечислены в `layout:` вкладки —
+без этого pyRevit панель не создаёт; в git их нет, `.gitignore`): кнопка — копия папки исходной (`_mirror`
+меняет только отличающиеся файлы), лишние ячейки и кнопки убираются; возвращает (изменилось ли — нужна
+перезагрузка pyRevit, проблемы). `reload_pyrevit()`, `restore_on_load()` — из `startup.py` при каждой загрузке
+(после обновления LowLife копии получают свежие скрипты). `load`/`save`, `reserved_titles()`. Ячеек нет в
+`panel_themes.THEMES` — темы свои панели не прячут; `ribbon_catalog` ячейки пропускает.
 `favorites_ui`: окно `FavoritesWindow` (панели / кнопки панели / все кнопки с поиском; перетаскивание мышью
-между списками — `_DragDrop`, сами изменения — методы окна `drop_*`), `run(uiapp)`,
-`add_to_favorites(uiapp, entry)` — «На мою панель» из окна «Поиск», `ask_title`. Кнопки панелей из
-`favorites_core.EXCLUDED_PANELS` (сама «Мои панели») на свои панели не кладутся (`can_add`). `panel_themes.apply_theme`
-после смены темы вызывает `favorites.sync` — иначе свои панели пропадали с ленты.
+между списками — `_DragDrop`, сами изменения — методы окна `drop_*`), `run(uiapp)` — после «Сохранить»
+предлагает перезагрузить pyRevit, `add_to_favorites(uiapp, entry)` — «На мою панель» из окна «Поиск»
+(перезагрузку не предлагает: «Поиск» на постоянном движке), `ask_title`.
 
 ## text_search.py / select_list.py
 Общий поиск для всех полей «Поиск» LowLife. `text_search` (чистая логика, `tests/test_text_search.py`):

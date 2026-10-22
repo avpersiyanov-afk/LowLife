@@ -12,3 +12,6 @@ __pycache__/
 # Подключение «Заметок по проекту» (адрес Apps Script + токен) — репозиторий
 # публичный; образец без данных — config.example.json
 /config.json
+
+# «Мои панели» — свои панели пользователя (копии кнопок), у каждого свои; строит lowlife.favorites
+LowLife.tab/MyPanel*.panel/
