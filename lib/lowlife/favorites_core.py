@@ -27,14 +27,20 @@ MAX_PANELS = 8
 # а статистика запусков по ней узнаёт исходную кнопку.
 BUTTON_SEP = u"-"
 MAX_TITLE = 40
-# Панели LowLife, кнопки которых на свои панели не кладутся: сама «Мои панели» (её кнопка — это окно настройки)
+# Кнопки (папка панели, папка кнопки), которые на свои панели не кладутся: «Создать мою панель» — это
+# окно настройки самих своих панелей.
+EXCLUDED_BUTTONS = ((u"_Themes", u"MyPanels"),)
+# Панели, которых больше нет: «Favorites» — прежнее место кнопки «Создать мою панель».
 EXCLUDED_PANELS = (u"Favorites",)
+
+
+def _excluded(panel, path):
+    return panel in EXCLUDED_PANELS or is_slot(panel) or (panel, path[-1] if path else u"") in EXCLUDED_BUTTONS
 
 
 def can_add(entry_or_ref):
     """Можно ли положить кнопку на свою панель (entry из ribbon_catalog или ссылка из настроек)."""
-    panel = entry_or_ref[u"panel"]
-    return panel not in EXCLUDED_PANELS and not is_slot(panel)
+    return not _excluded(entry_or_ref[u"panel"], list(entry_or_ref[u"path"]))
 
 
 def _text(value):
@@ -56,7 +62,7 @@ def _clean_ref(raw):
         return None
     panel = _text(raw.get(u"panel"))
     path = [_text(p) for p in (raw.get(u"path") or []) if _text(p)]
-    if not panel or not path or panel in EXCLUDED_PANELS or is_slot(panel):
+    if not panel or not path or _excluded(panel, path):
         return None
     return {u"panel": panel, u"path": path}
 
