@@ -240,6 +240,11 @@ if diagnostics:
         for line in diag_lines:
             output.print_md(u"    - " + line)
 
+if probe.skipped_links:
+    output.print_md(u"### Связи пропущены")
+    output.print_md(u"- повёрнуты не вокруг вертикали — перекрытия в них не учитываются: " +
+                    u", ".join(probe.skipped_links))
+
 if probe.openings:
     output.print_md(u"### Отверстия в перекрытиях")
     output.print_md(
@@ -249,12 +254,11 @@ if timings or body_done is not None:
     output.print_md(u"### Время")
     output.print_md(u"- всего: {:.1f} с".format(float(run_done - run_started)))
     if probe.open_seconds is not None:
-        output.print_md(u"- подготовка 3D-вида для лучей: {:.1f} с".format(float(probe.open_seconds)))
-        for step_name, seconds in probe.open_steps:
-            output.print_md(u"    - {}: {:.1f} с".format(step_name, float(seconds)))
+        output.print_md(u"- подготовка (список связей): {:.1f} с".format(float(probe.open_seconds)))
     if probe.first_ray_seconds is not None:
-        output.print_md(u"- первый луч (Revit строит геометрию связей в виде): {:.1f} с".format(
+        output.print_md(u"- первая точка (чтение геометрии перекрытий): {:.1f} с".format(
             float(probe.first_ray_seconds)))
+    output.print_md(u"- точек проверено по геометрии: {}".format(probe.points))
     if body_done is not None:
         output.print_md(u"- завершение транзакции (регенерация): {:.1f} с".format(
             float(run_done - body_done)))
