@@ -60,7 +60,12 @@ replaced: ExportAddressesToExcel and DeleteViewCircuits were missing from
 THEMES, which pinned SCS.panel and Tools.panel visible under every theme).
 """
 
+# «Моя панель»: на вкладке остаются только свои панели пользователя («Мои панели», lowlife.favorites)
+# и панель LowLife с этим списком; прячутся и панели вне THEMES (см. _other_panels).
+MINE = u"Mine"
+
 THEMES = {
+    MINE: [],
     u"SCS": [
         (u"SCS", u"PlaceRouteNodes"),
         (u"SCS", u"RenumberAddresses"),
@@ -204,7 +209,7 @@ THEMES = {
     ],
 }
 
-THEME_NAMES = [u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"SS1", u"КНК", u"Circuits", u"Settings", u"General", u"Service"]
+THEME_NAMES = [MINE, u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"SS1", u"КНК", u"Circuits", u"Settings", u"General", u"Service"]
 
 # A pyRevit RibbonPanel's runtime .name mirrors the Revit API RibbonPanel.Name,
 # which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
@@ -243,6 +248,26 @@ def _find_panel(pyrevit_tabs, panel_name):
         if panel is not None:
             return panel
     return None
+
+
+# Панели, которые видны при любой теме, даже «Моя панель»: _Themes.panel («LowLife» — в ней список тем).
+ALWAYS_VISIBLE = (u"_Themes",)
+
+
+def _other_panels(root=None):
+    """[(папка, подпись)] панелей вкладки, которых нет в THEMES, кроме ALWAYS_VISIBLE и своих панелей
+    пользователя: обычно видны всегда, при «Моя панель» — прячутся."""
+    import os
+    from lowlife import favorites_core, ribbon_catalog
+    tab = os.path.join(root or ribbon_catalog.extension_root(), ribbon_catalog.TAB_FOLDER)
+    themed = set(panel for refs in THEMES.values() for panel, _ in refs)
+    result = []
+    for name in sorted(os.listdir(tab)):
+        stem, ext = os.path.splitext(name)
+        if ext != u".panel" or stem in themed or stem in ALWAYS_VISIBLE or favorites_core.is_slot(stem):
+            continue
+        result.append((stem, ribbon_catalog.item_title(os.path.join(tab, name))))
+    return result
 
 
 def apply_theme(selected_theme):
@@ -298,6 +323,17 @@ def apply_theme(selected_theme):
         adwindows_panel = panel.get_adwindows_object()
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
+
+    # Панели вне THEMES («Мои панели», «Заметки», …): при «Моя панель» прячутся, при остальных — видны.
+    show_other = selected_theme != MINE
+    for _folder, title in _other_panels():
+        panel = _find_panel(pyrevit_tabs, title)
+        if panel is None:
+            continue
+        panel.visible = show_other
+        adwindows_panel = panel.get_adwindows_object()
+        if adwindows_panel is not None:
+            adwindows_panel.IsVisible = show_other
 
 
 # ------------------------------------------------------------
