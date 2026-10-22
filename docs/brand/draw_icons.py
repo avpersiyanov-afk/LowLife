@@ -609,7 +609,7 @@ ICONS = [
     ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
     ("_Themes.panel/Feedback.pushbutton", feedback),
     ("_Themes.panel/Search.pushbutton", ribbon_search),
-    ("Favorites.panel/Manage.pushbutton", favorites),
+    ("_Themes.panel/MyPanels.pushbutton", favorites),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
     ("Tools.panel/SpellCheck.pushbutton", spell_check),
     ("Tools.panel/CropView.pushbutton", crop_view),

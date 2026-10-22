@@ -27,7 +27,6 @@ import shutil
 from lowlife import favorites_core, ribbon_catalog
 
 TAB_NAME = u"LowLife"
-FAVORITES_PANEL_TITLE = u"Мои панели"  # Favorites.panel — title из bundle.yaml
 
 _STORE = None
 
@@ -52,7 +51,7 @@ def save(data):
 def reserved_titles():
     """Подписи панелей самого LowLife — свою панель так называть нельзя."""
     titles = [title for title, _buttons in ribbon_catalog.list_panels()]
-    return titles + [TAB_NAME, FAVORITES_PANEL_TITLE]
+    return titles + [TAB_NAME]
 
 
 # ---------------------------------------------------------------- папки

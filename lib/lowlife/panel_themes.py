@@ -324,7 +324,7 @@ def apply_theme(selected_theme):
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
 
-    # Панели вне THEMES («Мои панели», «Заметки», …): при «Моя панель» прячутся, при остальных — видны.
+    # Панели вне THEMES («Заметки», «Фильтр выбора», …): при «Моя панель» прячутся, при остальных — видны.
     show_other = selected_theme != MINE
     for _folder, title in _other_panels():
         panel = _find_panel(pyrevit_tabs, title)

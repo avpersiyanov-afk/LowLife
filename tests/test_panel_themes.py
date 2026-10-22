@@ -66,7 +66,7 @@ def test_mine_theme_leaves_only_lowlife_and_user_panels():
     assert panel_themes.THEMES[panel_themes.MINE] == []
     other = dict(panel_themes._other_panels())
     assert u"_Themes" not in other
-    assert other[u"Favorites"] == u"Мои панели"
+    assert u"Favorites" not in other  # «Создать мою панель» — на панели LowLife
     assert not any(name.startswith(u"MyPanel") for name in other)
     themed = set(p for refs in panel_themes.THEMES.values() for p, _ in refs)
     on_disk = set(n[:-len(".panel")] for n in os.listdir(TAB) if n.endswith(".panel"))

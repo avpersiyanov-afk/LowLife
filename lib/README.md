@@ -42,14 +42,14 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
 
 ## favorites_core.py / favorites.py / favorites_ui.py
-«Мои панели» (`Favorites.panel/Manage`, кнопка «Создать мою панель»): свои панели пользователя из кнопок LowLife. Настройки —
+«Мои панели» (кнопка «Создать мою панель» на панели LowLife — `_Themes.panel/MyPanels`): свои панели пользователя из кнопок LowLife. Настройки —
 `LowLifeFavorites_settings.json` (`{"panels": [{"title", "buttons": [{"panel", "path"}]}]}` — кнопка по
 папкам, как в `ribbon_catalog.list_buttons()`).
 `favorites_core` (чистая логика, `tests/test_favorites_core.py`): `normalize`, `button_ref`/`button_key`,
 `slot_name`/`is_slot` (ячейки `MyPanel1`…`MyPanel{MAX_PANELS}`), `button_folder`/`parse_button_folder` (папка копии —
 папки исходной через дефис; по ней `pnotes/usage.py` считает запуск исходной кнопки), `panel_bundle` (bundle.yaml
 ячейки), `plan(data, entries)` (что в какую ячейку, проблемы), `title_problem`, `find_entry`, `can_add`
-(не кнопки самой «Мои панели» и не копии), `add_button`, `move`.
+(не «Создать мою панель» — `EXCLUDED_BUTTONS` — и не копии), `add_button`, `move`.
 `favorites` (тесты `tests/test_favorites.py`): свои панели — обычные панели pyRevit. `write_panels(data=None,
 root=None)` раскладывает их по папкам-ячейкам `LowLife.tab/MyPanel<N>.panel` (перечислены в `layout:` вкладки —
 без этого pyRevit панель не создаёт; в git их нет, `.gitignore`): кнопка — копия папки исходной (`_mirror`
