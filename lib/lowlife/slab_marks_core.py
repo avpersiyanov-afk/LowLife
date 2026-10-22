@@ -711,3 +711,71 @@ def step_confirmed(segment, side_mm, z_at, min_dz):
     left = z_at(mx + nx, my + ny)
     right = z_at(mx - nx, my - ny)
     return left is not None and right is not None and abs(left - right) >= min_dz
+
+
+class BoxGrid(object):
+    """
+    Сетка габаритов в плане: add(значение, (xmin, ymin, xmax, ymax)), at(x, y)
+    — значения, чей габарит содержит точку. Для отбора перекрытий над точкой
+    без запроса к Revit на каждую точку.
+    """
+
+    def __init__(self, cell=5000.0):
+        self.cell = float(cell)
+        self.grid = {}
+        self.boxes = []
+
+    def add(self, value, bbox):
+        index = len(self.boxes)
+        self.boxes.append((value, bbox))
+        x0, y0 = int(bbox[0] // self.cell), int(bbox[1] // self.cell)
+        x1, y1 = int(bbox[2] // self.cell), int(bbox[3] // self.cell)
+        for i in range(x0, x1 + 1):
+            for j in range(y0, y1 + 1):
+                self.grid.setdefault((i, j), []).append(index)
+
+    def at(self, x, y):
+        result = []
+        for index in self.grid.get((int(x // self.cell), int(y // self.cell)), ()):
+            value, bbox = self.boxes[index]
+            if bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]:
+                result.append(value)
+        return result
+
+
+class FlatFace(object):
+    """
+    Горизонтальная грань для быстрых проверок «точка на грани»: отметка
+    (мм), нижняя ли (нормаль вниз), контур и отверстия (BandPolygon).
+    """
+
+    def __init__(self, z_mm, is_bottom, outer, holes):
+        self.z_mm = z_mm
+        self.is_bottom = is_bottom
+        self.bbox = polygon_bbox(outer)
+        self.outer = BandPolygon(outer)
+        self.holes = [BandPolygon(h) for h in holes]
+
+    def contains(self, x, y):
+        bbox = self.bbox
+        if not (bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]):
+            return False
+        return self.outer.contains(x, y) and not any(h.contains(x, y) for h in self.holes)
+
+
+def vertical_hits(faces, x, y, origin_z_mm):
+    """
+    По горизонтальным граням одного элемента: (вверх, вниз) — расстояния
+    (мм) от точки на высоте origin_z_mm до нижних граней над ней и до
+    верхних граней под ней, в которые попадает точка (x, y).
+    """
+    up = []
+    down = []
+    for face in faces:
+        if not face.contains(x, y):
+            continue
+        if face.is_bottom and face.z_mm > origin_z_mm:
+            up.append(face.z_mm - origin_z_mm)
+        elif not face.is_bottom and face.z_mm < origin_z_mm:
+            down.append(origin_z_mm - face.z_mm)
+    return up, down

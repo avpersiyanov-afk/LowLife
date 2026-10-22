@@ -278,3 +278,18 @@ def test_band_polygon_matches_point_in_polygon():
     for _ in range(500):
         x, y = random.uniform(-100, 3100), random.uniform(-100, 3100)
         assert shape.contains(x, y) == core.point_in_polygon(x, y, l_shape)
+
+
+def test_box_grid_and_vertical_hits():
+    grid = core.BoxGrid(cell=3000)
+    grid.add("slab", (0, 0, 20000, 10000))
+    grid.add("capital", (4000, 4000, 6000, 6000))
+    assert sorted(grid.at(5000, 5000)) == ["capital", "slab"]
+    assert grid.at(15000, 5000) == ["slab"]
+    assert grid.at(-1, 5000) == []
+    slab = [(0, 0), (20000, 0), (20000, 10000), (0, 10000)]
+    hole = [(4000, 4000), (6000, 4000), (6000, 6000), (4000, 6000)]
+    faces = [core.FlatFace(3400, True, slab, [hole]), core.FlatFace(3800, False, slab, [hole])]
+    assert core.vertical_hits(faces, 1000, 1000, 1500) == ([1900], [])
+    assert core.vertical_hits(faces, 1000, 1000, 5000) == ([], [1200])
+    assert core.vertical_hits(faces, 5000, 5000, 1500) == ([], [])   # в отверстии

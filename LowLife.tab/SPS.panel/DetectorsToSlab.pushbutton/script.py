@@ -254,10 +254,12 @@ if timings or body_done is not None:
     output.print_md(u"### Время")
     output.print_md(u"- всего: {:.1f} с".format(float(run_done - run_started)))
     if probe.open_seconds is not None:
-        output.print_md(u"- подготовка (список связей): {:.1f} с".format(float(probe.open_seconds)))
-    if probe.first_ray_seconds is not None:
-        output.print_md(u"- первая точка (чтение геометрии перекрытий): {:.1f} с".format(
-            float(probe.first_ray_seconds)))
+        output.print_md(u"- подготовка (габариты перекрытий модели и связей): {:.1f} с".format(
+            float(probe.open_seconds)))
+        for step_name, seconds in probe.open_steps:
+            output.print_md(u"    - {}".format(step_name))
+    output.print_md(u"- чтение граней перекрытий (один раз на элемент): {:.1f} с".format(
+        float(probe.faces_seconds)))
     output.print_md(u"- точек проверено по геометрии: {}".format(probe.points))
     if body_done is not None:
         output.print_md(u"- завершение транзакции (регенерация): {:.1f} с".format(
