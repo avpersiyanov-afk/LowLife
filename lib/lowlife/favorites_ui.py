@@ -3,7 +3,9 @@
 
 Слева — свои панели (новая, переименовать, удалить, порядок), посередине — кнопки выбранной панели
 (убрать, порядок), справа — все кнопки LowLife с поиском (`ribbon_catalog.search`), «Добавить»
-кладёт выбранную в конец панели. «Сохранить» пишет настройки и сразу строит панели на ленте
+кладёт выбранную в конец панели. Всё то же — и перетаскиванием мышью (`_DragDrop`): кнопку из общего
+списка — на место в списке кнопок панели или на панель слева, кнопку панели — на другое место, на
+другую панель или обратно в общий список (убрать), панель — на другое место в списке панелей. «Сохранить» пишет настройки и сразу строит панели на ленте
 (`favorites.sync`). Логика — `favorites_core`, лента — `favorites`.
 """
 
@@ -16,9 +18,11 @@ import copy
 import traceback
 
 from pyrevit import forms
-from System.Windows import Thickness
+from System.Windows import (Thickness, DataObject, DragDrop, DragDropEffects, LogicalTreeHelper,
+                            SystemParameters)
 from System.Windows.Controls import ListBoxItem, TextBlock
-from System.Windows.Media import SolidColorBrush, Color
+from System.Windows.Input import MouseButtonState
+from System.Windows.Media import SolidColorBrush, Color, Visual, VisualTreeHelper
 
 from lowlife import favorites, favorites_core, ribbon_catalog, ribbon_search, select_list
 
@@ -32,7 +36,7 @@ _XAML = u'''
         FontFamily="Segoe UI" FontSize="13" Background="White">
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#555555" Margin="0,0,0,10"
-                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью «Избранное» и видны при любой теме. Кнопка избранного запускает ту же команду, что и исходная (Shift+клик — тоже)."/>
+                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью «Избранное» и видны при любой теме. Кнопка избранного запускает ту же команду, что и исходная (Shift+клик — тоже). Кнопки и панели можно перетаскивать мышью: из списка справа — на панель, внутри панели — на другое место, обратно вправо — убрать."/>
         <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -60,7 +64,7 @@ _XAML = u'''
                     <Button x:Name="btnPanelUp" Content="▲" ToolTip="Левее на ленте" Padding="8,3" Margin="0,0,4,4"/>
                     <Button x:Name="btnPanelDown" Content="▼" ToolTip="Правее на ленте" Padding="8,3" Margin="0,0,4,4"/>
                 </WrapPanel>
-                <ListBox x:Name="lstPanels"/>
+                <ListBox x:Name="lstPanels" AllowDrop="True"/>
             </DockPanel>
             <DockPanel Grid.Column="1" Margin="0,0,10,0">
                 <TextBlock x:Name="txtButtonsHeader" DockPanel.Dock="Top" Text="Кнопки панели"
@@ -70,7 +74,7 @@ _XAML = u'''
                     <Button x:Name="btnUp" Content="▲" ToolTip="Раньше на панели" Padding="8,3" Margin="0,0,4,4"/>
                     <Button x:Name="btnDown" Content="▼" ToolTip="Позже на панели" Padding="8,3" Margin="0,0,4,4"/>
                 </WrapPanel>
-                <ListBox x:Name="lstButtons" HorizontalContentAlignment="Stretch"
+                <ListBox x:Name="lstButtons" AllowDrop="True" HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </DockPanel>
             <DockPanel Grid.Column="2">
@@ -78,9 +82,9 @@ _XAML = u'''
                 <TextBox x:Name="txtQuery" DockPanel.Dock="Top" Padding="5,4"/>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
                     <Button x:Name="btnAdd" Content="← Добавить на панель" FontWeight="SemiBold" Padding="10,3"/>
-                    <TextBlock Text="или двойной щелчок" Foreground="#888888" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBlock Text="или перетащите мышью / двойной щелчок" Foreground="#888888" VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </StackPanel>
-                <ListBox x:Name="lstAll" Margin="0,6,0,0" HorizontalContentAlignment="Stretch"
+                <ListBox x:Name="lstAll" AllowDrop="True" Margin="0,6,0,0" HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </DockPanel>
         </Grid>
@@ -140,6 +144,7 @@ class FavoritesWindow(forms.WPFWindow):
         self.btnSave.Click += lambda s, e: self.save()
         self.btnCancel.Click += lambda s, e: self.Close()
         self.Loaded += lambda s, e: self.txtQuery.Focus()
+        self.drag = _DragDrop(self)
 
         self.show_panels(0)
         self.show_all()
@@ -178,7 +183,8 @@ class FavoritesWindow(forms.WPFWindow):
 
     def show_all(self):
         self.lstAll.Items.Clear()
-        for entry in ribbon_catalog.search(self.entries, self.txtQuery.Text):
+        self.entries_shown = ribbon_catalog.search(self.entries, self.txtQuery.Text)
+        for entry in self.entries_shown:
             self.lstAll.Items.Add(ribbon_search.button_row(entry))
         if self.lstAll.Items.Count:
             self.lstAll.SelectedIndex = 0
@@ -264,9 +270,176 @@ class FavoritesWindow(forms.WPFWindow):
         self.show_panels(self.lstPanels.SelectedIndex)
         self.show_buttons(len(panel[u"buttons"]) - 1)
 
+    # ------------------------------------------------------------ перетаскивание (вызывает _DragDrop)
+
+    def _has(self, panel, ref):
+        return any(favorites_core.button_key(r) == favorites_core.button_key(ref) for r in panel[u"buttons"])
+
+    def _already(self, ref, panel):
+        entry = favorites_core.find_entry(self.entries, ref)
+        title = entry[u"title"] if entry else favorites_core.button_key(ref)
+        self.txtStatus.Text = u"«{}» уже есть на панели «{}».".format(title, panel[u"title"])
+
+    def drop_new_button(self, entry, panel_index=None, at=None):
+        """Кнопка из общего списка — в панель panel_index (по умолчанию выбранную) на место at."""
+        if panel_index is None:
+            if self.current_panel() is None and self.new_panel() is None:
+                return
+            panel_index = self.lstPanels.SelectedIndex
+        panel = self.panels()[panel_index]
+        ref = favorites_core.button_ref(entry)
+        if self._has(panel, ref):
+            self._already(ref, panel)
+            return
+        at = len(panel[u"buttons"]) if at is None else min(at, len(panel[u"buttons"]))
+        panel[u"buttons"].insert(at, ref)
+        self.show_panels(panel_index)
+        self.show_buttons(at)
+
+    def drop_move_button(self, index, at):
+        """Кнопка панели с места index — на место at (at — позиция вставки до удаления)."""
+        buttons = self.current_panel()[u"buttons"]
+        ref = buttons.pop(index)
+        if at > index:
+            at -= 1
+        buttons.insert(min(at, len(buttons)), ref)
+        self.show_buttons(buttons.index(ref))
+
+    def drop_button_to_panel(self, index, panel_index):
+        """Кнопка выбранной панели — в конец другой панели."""
+        source = self.current_panel()
+        target = self.panels()[panel_index]
+        if target is source:
+            return
+        ref = source[u"buttons"][index]
+        if self._has(target, ref):
+            self._already(ref, target)
+            return
+        del source[u"buttons"][index]
+        target[u"buttons"].append(ref)
+        self.show_panels(panel_index)
+        self.show_buttons(len(target[u"buttons"]) - 1)
+
+    def drop_remove_button(self, index):
+        self.lstButtons.SelectedIndex = index
+        self.remove()
+
+    def drop_move_panel(self, index, at):
+        panels = self.panels()
+        panel = panels.pop(index)
+        if at > index:
+            at -= 1
+        panels.insert(min(at, len(panels)), panel)
+        self.show_panels(panels.index(panel))
+
     def save(self):
         self.saved = True
         self.Close()
+
+
+def _container(listbox, source):
+    """Строка ListBox (ListBoxItem), над которой элемент source, или None — пустое место списка."""
+    el = source
+    while el is not None and el is not listbox:
+        if isinstance(el, ListBoxItem):
+            return el
+        try:
+            el = VisualTreeHelper.GetParent(el) if isinstance(el, Visual) else LogicalTreeHelper.GetParent(el)
+        except Exception:
+            return None
+    return None
+
+
+def _index(listbox, item):
+    return listbox.ItemContainerGenerator.IndexFromContainer(item) if item is not None else -1
+
+
+class _DragDrop(object):
+    """Перетаскивание мышью между тремя списками окна «Избранное».
+
+    Что тащат — помнит сам объект (`self.source`: (u"all" | u"button" | u"panel", индекс)), в
+    DataObject — только метка: перетаскивание идёт внутри одного окна. Перетаскивание начинается,
+    когда мышь с нажатой кнопкой ушла дальше системного порога, — щелчок и двойной щелчок работают
+    как раньше."""
+
+    FORMAT = u"LowLifeFavorite"
+
+    def __init__(self, win):
+        self.win = win
+        self.start = None
+        self.source = None
+        for listbox, kind in ((win.lstAll, u"all"), (win.lstButtons, u"button"), (win.lstPanels, u"panel")):
+            self._source(listbox, kind)
+            listbox.DragOver += self.on_drag_over
+            listbox.Drop += self.on_drop
+
+    def _source(self, listbox, kind):
+        def down(sender, e):
+            item = _container(listbox, e.OriginalSource)
+            self.start = (listbox, kind, _index(listbox, item), e.GetPosition(listbox)) if item else None
+
+        def move(sender, e):
+            if self.start is None or e.LeftButton != MouseButtonState.Pressed:
+                return
+            box, kind_, index, point = self.start
+            if box is not listbox or index < 0:
+                return
+            pos = e.GetPosition(listbox)
+            if (abs(pos.X - point.X) < SystemParameters.MinimumHorizontalDragDistance
+                    and abs(pos.Y - point.Y) < SystemParameters.MinimumVerticalDragDistance):
+                return
+            self.start = None
+            self.source = (kind_, index)
+            try:
+                DragDrop.DoDragDrop(listbox, DataObject(self.FORMAT, kind_), DragDropEffects.Move)
+            finally:
+                self.source = None
+
+        listbox.PreviewMouseLeftButtonDown += down
+        listbox.PreviewMouseMove += move
+
+    def _action(self, target, e):
+        """(функция, аргументы) для сброса над target в этом месте или None — сюда нельзя."""
+        if self.source is None:
+            return None
+        win = self.win
+        kind, index = self.source
+        item = _container(target, e.OriginalSource)
+        at = _index(target, item)
+        if item is not None and e.GetPosition(item).Y > item.ActualHeight / 2.0:
+            at += 1  # нижняя половина строки — вставить после неё
+        if at < 0:
+            at = target.Items.Count  # пустое место под списком — в конец
+        if target is win.lstButtons:
+            if kind == u"all":
+                return win.drop_new_button, (win.entries_shown[index], None, at)
+            if kind == u"button":
+                return win.drop_move_button, (index, at)
+        elif target is win.lstPanels:
+            over = _index(target, item)
+            if kind == u"panel":
+                return win.drop_move_panel, (index, at)
+            if kind == u"all":
+                if over < 0 and win.current_panel() is not None:
+                    return None
+                return win.drop_new_button, (win.entries_shown[index], over if over >= 0 else None, None)
+            if kind == u"button" and over >= 0 and over != win.lstPanels.SelectedIndex:
+                return win.drop_button_to_panel, (index, over)
+        elif target is win.lstAll and kind == u"button":
+            return win.drop_remove_button, (index,)
+        return None
+
+    def on_drag_over(self, sender, e):
+        # DragDropEffects.None нельзя написать в Python 2 — None там ключевое слово
+        e.Effects = DragDropEffects.Move if self._action(sender, e) else getattr(DragDropEffects, "None")
+        e.Handled = True
+
+    def on_drop(self, sender, e):
+        action = self._action(sender, e)
+        e.Handled = True
+        if action:
+            fn, args = action
+            fn(*args)
 
 
 def _apply(uiapp, data):

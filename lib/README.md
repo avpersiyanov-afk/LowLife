@@ -58,7 +58,8 @@ Shift+клик тоже), подпись/подсказка/иконки — е�
 Autodesk.Windows панели ставятся сразу за панелью «Избранное», кнопки — в порядке настроек. Возвращает
 список проблем (кнопку удалили из LowLife и т.п.). `restore_on_idle(app)` — из `startup.py`, `sync` при первом
 простое Revit после каждой загрузки pyRevit.
-`favorites_ui`: окно `FavoritesWindow` (панели / кнопки панели / все кнопки с поиском), `run(uiapp)`,
+`favorites_ui`: окно `FavoritesWindow` (панели / кнопки панели / все кнопки с поиском; перетаскивание мышью
+между списками — `_DragDrop`, сами изменения — методы окна `drop_*`), `run(uiapp)`,
 `add_to_favorites(uiapp, entry)` — «В избранное» из окна «Поиск», `ask_title`.
 
 ## text_search.py / select_list.py
