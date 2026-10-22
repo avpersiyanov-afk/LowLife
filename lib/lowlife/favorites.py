@@ -5,7 +5,7 @@
 логика — `favorites_core`. Здесь — построение панелей на вкладке LowLife через Revit API:
 
 - панель избранного создаётся `UIApplication.CreateRibbonPanel` с именем
-  `favorites_core.panel_name(подпись)` и ставится на ленте сразу за панелью «Избранное»;
+  `favorites_core.panel_name(подпись)` и ставится на ленте сразу за панелью «Мои панели»;
 - кнопка избранного — `PushButtonData` с той же сборкой и классом команды, что у исходной кнопки
   pyRevit (`PushButton.AssemblyName`/`ClassName`): клик по ней — это запуск той же команды,
   с тем же Shift+кликом, движком и доступностью; подпись, подсказка и иконка — тоже от исходной;
@@ -25,7 +25,7 @@ except NameError:  # Python 3
 from lowlife import favorites_core, ribbon_catalog
 
 TAB_NAME = u"LowLife"
-FAVORITES_PANEL_TITLE = u"Избранное"  # Favorites.panel — title из bundle.yaml; панели пользователя — за ней
+FAVORITES_PANEL_TITLE = u"Мои панели"  # Favorites.panel — title из bundle.yaml; панели пользователя — за ней
 
 _STORE = None
 
@@ -135,7 +135,7 @@ def _move(collection, item, index):
 
 
 def _arrange(shown):
-    """Панели избранного — сразу за панелью «Избранное», кнопки — в порядке настроек.
+    """Панели избранного — сразу за панелью «Мои панели», кнопки — в порядке настроек.
 
     shown — [(подпись, имя панели, [имена кнопок])]. Без Autodesk.Windows ничего не делает:
     панели просто останутся в конце вкладки."""

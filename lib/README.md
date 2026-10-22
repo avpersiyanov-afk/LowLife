@@ -41,7 +41,7 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
 
 ## favorites_core.py / favorites.py / favorites_ui.py
-«Избранное» (`Favorites.panel/Manage`): свои панели пользователя из кнопок LowLife. Настройки —
+«Мои панели» (`Favorites.panel/Manage`, кнопка «Создать мою панель»): свои панели пользователя из кнопок LowLife. Настройки —
 `LowLifeFavorites_settings.json` (`{"panels": [{"title", "buttons": [{"panel", "path"}]}]}` — кнопка по
 папкам, как в `ribbon_catalog.list_buttons()`).
 `favorites_core` (чистая логика, `tests/test_favorites_core.py`): `normalize`, `button_ref`/`button_key`,
@@ -55,12 +55,14 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 `PushButtonData` с `AssemblyName`/`ClassName`/`AvailabilityClassName` исходной кнопки (та же команда pyRevit,
 Shift+клик тоже), подпись/подсказка/иконки — её же; у существующих кнопок сборка и класс обновляются (после
 перезагрузки pyRevit они новые); убранное прячется (удалять с ленты Revit API не умеет); через
-Autodesk.Windows панели ставятся сразу за панелью «Избранное», кнопки — в порядке настроек. Возвращает
+Autodesk.Windows панели ставятся сразу за панелью «Мои панели», кнопки — в порядке настроек. Возвращает
 список проблем (кнопку удалили из LowLife и т.п.). `restore_on_idle(app)` — из `startup.py`, `sync` при первом
 простое Revit после каждой загрузки pyRevit.
 `favorites_ui`: окно `FavoritesWindow` (панели / кнопки панели / все кнопки с поиском; перетаскивание мышью
 между списками — `_DragDrop`, сами изменения — методы окна `drop_*`), `run(uiapp)`,
-`add_to_favorites(uiapp, entry)` — «В избранное» из окна «Поиск», `ask_title`.
+`add_to_favorites(uiapp, entry)` — «На мою панель» из окна «Поиск», `ask_title`. Кнопки панелей из
+`favorites_core.EXCLUDED_PANELS` (сама «Мои панели») на свои панели не кладутся (`can_add`). `panel_themes.apply_theme`
+после смены темы вызывает `favorites.sync` — иначе свои панели пропадали с ленты.
 
 ## text_search.py / select_list.py
 Общий поиск для всех полей «Поиск» LowLife. `text_search` (чистая логика, `tests/test_text_search.py`):
@@ -82,8 +84,8 @@ Autodesk.Windows панели ставятся сразу за панелью «
 (`get_current_ui()` → панель по подписи → `find_child` по `path`) и запускает её
 `UIApplication.PostCommand` по `RibbonItem.Id` (Revit выполнит её сразу после
 скрипта поиска, как клик; Shift+клик так не передать). Не вышло — `show_button`.
-«В избранное» — `favorites_ui.add_to_favorites`. `button_row(entry)` — строка списка кнопок (её же
-показывает окно «Избранное»).
+«На мою панель» — `favorites_ui.add_to_favorites`. `button_row(entry)` — строка списка кнопок (её же
+показывает окно «Мои панели»).
 `show_button(entry)` — открывает вкладку LowLife, делает кнопку и панель видимыми
 (даже если тема их скрыла — до следующего переключения темы) и `flash_item` мигает
 поверх кнопки оранжевой заливкой (`FLASH_TIMES` раз): элемент WPF кнопки ищется в
