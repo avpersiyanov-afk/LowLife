@@ -250,8 +250,22 @@ def _find_panel(pyrevit_tabs, panel_name):
     return None
 
 
-# Панели, которые видны при любой теме, даже «Моя панель»: _Themes.panel («LowLife» — в ней список тем).
-ALWAYS_VISIBLE = (u"_Themes",)
+# Панели, которые видны при любой теме, даже «Моя панель»: _Themes.panel («LowLife» — в ней список тем)
+# и Info.panel («Справка» — «О программе» и «Обратная связь»).
+ALWAYS_VISIBLE = (u"_Themes", u"Info")
+
+
+def _always_visible_panels(root=None):
+    """[(папка, подпись)] панелей ALWAYS_VISIBLE, которые есть на диске."""
+    import os
+    from lowlife import ribbon_catalog
+    tab = os.path.join(root or ribbon_catalog.extension_root(), ribbon_catalog.TAB_FOLDER)
+    result = []
+    for stem in ALWAYS_VISIBLE:
+        folder = os.path.join(tab, stem + u".panel")
+        if os.path.isdir(folder):
+            result.append((stem, ribbon_catalog.item_title(folder)))
+    return result
 
 
 def _other_panels(root=None):
@@ -325,7 +339,15 @@ def apply_theme(selected_theme):
             adwindows_panel.IsVisible = panel_visible
 
     # Панели вне THEMES («Заметки», «Фильтр выбора», …): при «Моя панель» прячутся, при остальных — видны.
+    # ALWAYS_VISIBLE показываем всегда — вдруг их спрятала прежняя версия темы «Моя панель».
     show_other = selected_theme != MINE
+    for _folder, title in _always_visible_panels():
+        panel = _find_panel(pyrevit_tabs, title)
+        if panel is not None:
+            panel.visible = True
+            adwindows_panel = panel.get_adwindows_object()
+            if adwindows_panel is not None:
+                adwindows_panel.IsVisible = True
     for _folder, title in _other_panels():
         panel = _find_panel(pyrevit_tabs, title)
         if panel is None:

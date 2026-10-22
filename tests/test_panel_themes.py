@@ -65,7 +65,8 @@ def test_mine_theme_leaves_only_lowlife_and_user_panels():
     # кроме панели LowLife со списком тем; ячейки своих панелей пользователя не трогаются
     assert panel_themes.THEMES[panel_themes.MINE] == []
     other = dict(panel_themes._other_panels())
-    assert u"_Themes" not in other
+    assert u"_Themes" not in other and u"Info" not in other  # «LowLife» и «Справка» — видны всегда
+    assert dict(panel_themes._always_visible_panels()) == {u"_Themes": u"LowLife", u"Info": u"Справка"}
     assert u"Favorites" not in other  # «Создать мою панель» — на панели LowLife
     assert not any(name.startswith(u"MyPanel") for name in other)
     themed = set(p for refs in panel_themes.THEMES.values() for p, _ in refs)
