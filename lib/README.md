@@ -1730,7 +1730,7 @@ room_number_param)` — запись по точкам прохода, возв�
 - **`draw_steps`** — перепады плиты: края нижних граней перекрытий/крыш модели и
   связей между уровнем вида и следующим (`slab_bottom_edges`) →
   `slab_marks_core.step_segments` (параллельные края с разной отметкой не дальше
-  `step_search_mm`, линия — посередине) → проверка лучами по обе стороны →
+  `step_search_mm`, линия — посередине) → проверка по геометрии видимых граней по обе стороны (`slab_marks_core.RegionIndex.z_at` + `step_confirmed`, без лучей) →
   линия детализации стиля `STEP_LINE_STYLE` (красная, толщина `step_line_weight`).
 
 `slab_marks_core.py` покрыт `tests/test_slab_marks_core.py`.

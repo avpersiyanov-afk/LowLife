@@ -243,5 +243,8 @@ if timings:
     output.print_md(u"### Время")
     for stage, seconds in timings:
         output.print_md(u"- {}: {:.1f} с".format(stage, float(seconds)))
+    for result in view_results:
+        for stage, seconds in result.stage_times:
+            output.print_md(u"    - «{}» — {}: {:.1f} с".format(result.view.Name, stage, float(seconds)))
 
 forms.alert(u"Готово.\n\n" + u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE)

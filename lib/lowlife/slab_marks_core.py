@@ -622,3 +622,92 @@ def duplicate_faces(faces, z_tol=5.0, xy_tol=50.0, area_tol=0.01):
         else:
             kept.append(index)
     return duplicates
+
+
+class BandPolygon(object):
+    """
+    Многоугольник для быстрых проверок «точка внутри»: рёбра заранее
+    разложены по горизонтальным полосам (band мм), точка проверяется только
+    против рёбер своей полосы — у плиты на всё здание тысячи вершин.
+    """
+
+    def __init__(self, points, band=1000.0):
+        self.band = float(band)
+        self.bands = {}
+        n = len(points)
+        for i in range(n):
+            a = points[i]
+            b = points[i - 1]
+            lo, hi = min(a[1], b[1]), max(a[1], b[1])
+            if hi == lo:
+                continue   # горизонтальное ребро лучом вдоль X не пересекается
+            for key in range(int(lo // self.band), int(hi // self.band) + 1):
+                self.bands.setdefault(key, []).append((a[0], a[1], b[0], b[1]))
+
+    def contains(self, x, y):
+        inside = False
+        for xi, yi, xj, yj in self.bands.get(int(y // self.band), ()):
+            if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+                inside = not inside
+        return inside
+
+
+class RegionIndex(object):
+    """
+    lowest_face_at с сеткой по габаритам: точка проверяется только против
+    областей, чей габарит задевает её ячейку (cell мм). На плане из тысяч
+    граней — в разы быстрее перебора всех.
+    """
+
+    def __init__(self, regions, cell=5000.0):
+        self.regions = regions
+        self.cell = float(cell)
+        self.grid = {}
+        self.shapes = [(BandPolygon(outer), [BandPolygon(h) for h in holes])
+                       for _z, outer, holes, _bbox in regions]
+        for index, (_z, _outer, _holes, bbox) in enumerate(regions):
+            for key in self._cells(bbox):
+                self.grid.setdefault(key, []).append(index)
+
+    def _cells(self, bbox):
+        x0, y0 = int(bbox[0] // self.cell), int(bbox[1] // self.cell)
+        x1, y1 = int(bbox[2] // self.cell), int(bbox[3] // self.cell)
+        for i in range(x0, x1 + 1):
+            for j in range(y0, y1 + 1):
+                yield (i, j)
+
+    def lowest_at(self, x, y):
+        """Индекс самой низкой области в точке или None (как lowest_face_at)."""
+        best = None
+        for index in self.grid.get((int(x // self.cell), int(y // self.cell)), ()):
+            z, outer, holes, bbox = self.regions[index]
+            if not (bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]):
+                continue
+            if best is not None and z >= self.regions[best][0]:
+                continue
+            outer_shape, hole_shapes = self.shapes[index]
+            if outer_shape.contains(x, y) and not any(h.contains(x, y) for h in hole_shapes):
+                best = index
+        return best
+
+    def z_at(self, x, y):
+        index = self.lowest_at(x, y)
+        return None if index is None else self.regions[index][0]
+
+
+def step_confirmed(segment, side_mm, z_at, min_dz):
+    """
+    Перепад подтверждён: по обе стороны линии (на side_mm от её середины)
+    есть плита и отметки различаются не меньше min_dz. z_at(x, y) — отметка
+    видимой снизу плиты в точке или None.
+    """
+    import math
+    x1, y1, x2, y2 = segment[:4]
+    length = math.hypot(x2 - x1, y2 - y1)
+    if length <= 0:
+        return False
+    nx, ny = -(y2 - y1) / length * side_mm, (x2 - x1) / length * side_mm
+    mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    left = z_at(mx + nx, my + ny)
+    right = z_at(mx - nx, my - ny)
+    return left is not None and right is not None and abs(left - right) >= min_dz

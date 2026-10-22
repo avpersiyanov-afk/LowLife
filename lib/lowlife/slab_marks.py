@@ -976,8 +976,18 @@ def _confirmed(probe, piece, side, level_z, probe_ft):
     return left is not None and right is not None and abs(left - right) >= STEP_MIN_DZ_MM
 
 
-def find_steps(view, settings, probe, edges, progress=None):
+# Проверок по геометрии (z_at) на план — они дешёвые, лимит только от
+# совсем патологических моделей.
+STEP_GEOMETRY_BUDGET = 20000
+
+
+def find_steps(view, settings, probe, edges, progress=None, z_at=None):
     """
+    Если задан z_at(x, y) — отметка видимой снизу грани в точке (мм) или
+    None — кандидаты проверяются по геометрии граней, без лучей (это то
+    же, что дал бы луч вверх, но без обращения к Revit: на плане с
+    тысячами граней лучи на проверку перепадов были основным временем).
+
     Линии перепада плиты на плане (без изменений модели — только лучи):
     по краям нижних граней перекрытий edges (slab_marks_core.step_segments);
     каждый кандидат проверяется лучами по обе стороны линии — там должны
@@ -997,11 +1007,12 @@ def find_steps(view, settings, probe, edges, progress=None):
     lines = core.merge_collinear(candidates, tol_mm=100.0)
     lines.sort(key=lambda s: -((s[2] - s[0]) ** 2 + (s[3] - s[1]) ** 2))
     stats.lines = len(lines)
-    if len(lines) > STEP_CHECK_BUDGET:
-        stats.skipped = len(lines) - STEP_CHECK_BUDGET
-        lines = lines[:STEP_CHECK_BUDGET]
+    budget = STEP_GEOMETRY_BUDGET if z_at is not None else STEP_CHECK_BUDGET
+    if len(lines) > budget:
+        stats.skipped = len(lines) - budget
+        lines = lines[:budget]
     pieces = [core.split_segment(line) for line in lines]
-    if sum(len(p) for p in pieces) > STEP_CHECK_BUDGET:
+    if sum(len(p) for p in pieces) > budget:
         pieces = [[line] for line in lines]   # не укладываемся — по одной проверке на линию
     side = tol_mm + 150.0
     confirmed = []
@@ -1009,7 +1020,11 @@ def find_steps(view, settings, probe, edges, progress=None):
         if progress is not None:
             progress(index, len(pieces))
         for piece in line_pieces:
-            if _confirmed(probe, piece, side, level_z, probe_ft):
+            if z_at is not None:
+                ok = core.step_confirmed(piece, side, z_at, STEP_MIN_DZ_MM)
+            else:
+                ok = _confirmed(probe, piece, side, level_z, probe_ft)
+            if ok:
                 confirmed.append(piece)
             else:
                 stats.rejected += 1
@@ -1288,6 +1303,7 @@ class ViewResult(object):
         self.fills = 0
         self.faces = []        # SlabFace плит над этажом — для диагностики в отчёте
         self.typical_floor_mm = None  # пол плана относительно уровня (медиана по лучам вниз)
+        self.stage_times = []  # (этап, секунды) — для отчёта
         self.changed = []      # (помещение, основная высота мм)
         self.no_slab = []      # имена помещений без перекрытия над ними
         self.errors = []
@@ -1314,6 +1330,14 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     slab_format = settings.get("slab_text_format") or u"{h}"
     delta_format = settings.get("delta_text_format") or u"Δ {d}"
     ceiling_format = settings.get("ceiling_text_format") or u"ПП {h}"
+
+    import time
+    stage_started = [time.time()]
+
+    def stage(name):
+        now = time.time()
+        result.stage_times.append((name, now - stage_started[0]))
+        stage_started[0] = now
 
     # --- 1. лучи: помещения ---
     rooms = []
@@ -1346,6 +1370,8 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         if mark.anchor is not None:
             marks.append(mark)
 
+    stage(u"лучи в помещениях ({})".format(len(rooms)))
+
     # --- 2. плиты над уровнем: грани и лучи в точках подписей ---
     slabs = probe.slabs_above(level_z, tolerance)
     faces = slab_bottom_faces(doc, slabs, level_z + probe_ft) if slabs else []
@@ -1362,6 +1388,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     # вверх (у капителей луч бывает отдаёт верхнюю грань). Дубли (одна плита
     # в АР и в КР) и закрытые более низкими гранями — отбрасываются.
     regions = [(f.z_mm, f.outer, f.holes, core.polygon_bbox(f.outer)) for f in faces]
+    all_index = core.RegionIndex(regions)
     duplicates = core.duplicate_faces([(f.z_mm, r[3], f.area) for f, r in zip(faces, regions)])
     visible = []
     for index, face in enumerate(faces):
@@ -1376,7 +1403,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
             face.status = u"нет точки внутри контура"
             continue
         point = face.points[0]
-        lowest = core.lowest_face_at(point[0], point[1], regions)
+        lowest = all_index.lowest_at(point[0], point[1])
         if lowest is not None and faces[lowest] is not face and \
                 faces[lowest].z_mm < face.z_mm - FACE_MATCH_MM:
             face.status = u"закрыта более низкой плитой ({})".format(
@@ -1424,6 +1451,8 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         for face in visible:
             face.status = u"заливки выключены"
 
+    stage(u"грани плит ({}), видимость и лучи до пола в точках подписей".format(len(faces)))
+
     # --- 3. лучи: проверка перепадов ---
     step_segments = []
     if (settings.get("draw_steps") or "yes") != "no":
@@ -1433,7 +1462,11 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         for face in visible:
             if not face.column:   # контур колонны — не перепад плиты
                 edges.extend(core.loop_edges(face.loops(), face.z_mm))
-        step_segments, result.step_stats = find_steps(view, settings, probe, edges, progress)
+        # проверка по геометрии видимых граней — без лучей
+        visible_index = core.RegionIndex(
+            [(f.z_mm, f.outer, f.holes, core.polygon_bbox(f.outer)) for f in visible])
+        step_segments, result.step_stats = find_steps(view, settings, probe, edges, progress,
+                                                      z_at=visible_index.z_at)
         result.step_stats.slabs = len(slabs)
 
     # --- типовая высота: по площади заливок, иначе по помещениям ---
@@ -1448,6 +1481,8 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     else:
         result.typical_mm = core.typical_height(
             [core.main_height(m.slab_values(), step) for m in marks], step)
+
+    stage(u"поиск и проверка перепадов")
 
     # --- 4. изменения модели ---
     if fills:
@@ -1511,4 +1546,5 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         result.errors.extend(result.step_stats.errors)
     if probe.error is not None:
         result.errors.append(u"луч к перекрытию: {}".format(probe.error))
+    stage(u"заливки, подписи, линии")
     return result
