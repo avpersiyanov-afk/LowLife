@@ -53,6 +53,9 @@ STEP_LINE_COLOR = (255, 0, 0)
 STEP_MIN_DZ_MM = 20.0
 STEP_MIN_LEN_MM = 100.0
 
+# Служебный 3D-вид для лучей — создаётся при первом запуске и остаётся в модели.
+SERVICE_VIEW_NAME = u"LowLife — лучи (служебный)"
+
 # Расхождение после перемещения, при котором извещатель считается не сдвинутым.
 MOVE_TOLERANCE_MM = 5.0
 
@@ -77,10 +80,11 @@ def ft(value_mm):
 
 class SlabProbe(object):
     """
-    Лучи вверх и вниз из точки (ReferenceIntersector по временному 3D-виду,
-    с элементами связей): перекрытия («Перекрытия», «Крыши») и подвесные
-    потолки («Потолки»). Вид создаётся при первом запросе; close() удаляет
-    его в той же транзакции.
+    Лучи вверх и вниз из точки (ReferenceIntersector по служебному 3D-виду
+    SERVICE_VIEW_NAME, с элементами связей): перекрытия («Перекрытия»,
+    «Крыши») и подвесные потолки («Потолки»). Вид берётся при первом запросе
+    — найденный от прошлых запусков или созданный; остаётся в модели (close()
+    удаляет только временный, если служебный создать не удалось).
 
     Скорость: на виде скрыты все категории модели, кроме перекрытий, крыш,
     потолков и связей, — луч иначе собирает попадания во всё подряд
@@ -125,7 +129,9 @@ class SlabProbe(object):
         self._sources = None
         self._thin = {}    # {ключ элемента: тонкий ли (отделка пола)}
         self._solids_cache = {}
-        self.open_seconds = None       # время подготовки временного 3D-вида (для отчёта)
+        self.open_seconds = None       # время подготовки 3D-вида для лучей (для отчёта)
+        self.open_steps = []           # (шаг, секунды) подготовки — для отчёта
+        self.temporary = False         # вид удалить в close() (служебный не создался)
         self.first_ray_seconds = None  # время первого луча (для отчёта)  # {ключ элемента: [Solid]} — для _refine_nearest_slab
 
     def _hide_other_categories(self):
@@ -142,26 +148,82 @@ class SlabProbe(object):
             except Exception:
                 pass
 
+    def _service_view(self):
+        """Служебный 3D-вид прошлых запусков (SERVICE_VIEW_NAME) или None."""
+        from Autodesk.Revit.DB import View3D
+        for view in FilteredElementCollector(self.doc).OfClass(View3D):
+            try:
+                if not view.IsTemplate and view.Name == SERVICE_VIEW_NAME:
+                    return view
+            except Exception:
+                continue
+        return None
+
+    def _prepare_reused(self):
+        """Служебный вид мог поменять пользователь: шаблон, секущий ящик, скрытые нужные категории."""
+        try:
+            self.view.ViewTemplateId = ElementId.InvalidElementId
+        except Exception:
+            pass
+        try:
+            if self.view.IsSectionBoxActive:
+                self.view.IsSectionBoxActive = False
+        except Exception:
+            pass
+        categories = self.doc.Settings.Categories
+        for bic in self._VISIBLE:
+            try:
+                category = categories.get_Item(bic)
+                if category is not None and self.view.GetCategoryHidden(category.Id):
+                    self.view.SetCategoryHidden(category.Id, False)
+            except Exception:
+                pass
+
     def _open(self):
+        """
+        Вид для лучей. Служебный 3D-вид (SERVICE_VIEW_NAME) создаётся один раз
+        и остаётся в модели: на большой модели со связями создание вида,
+        скрытие сотен категорий и регенерация занимали ~30 с на каждом запуске.
+        Не удалось создать с этим именем — временный вид, удаляется в close().
+        """
         import time
         from Autodesk.Revit.DB import (
             View3D, ViewFamilyType, ViewFamily, ReferenceIntersector, FindReferenceTarget
         )
         started = time.time()
-        vft = None
-        for candidate in FilteredElementCollector(self.doc).OfClass(ViewFamilyType):
-            if candidate.ViewFamily == ViewFamily.ThreeDimensional:
-                vft = candidate
-                break
-        if vft is None:
-            raise Exception(u"в проекте нет типа 3D-вида")
-        self.view = View3D.CreateIsometric(self.doc, vft.Id)
-        try:
-            self.view.ViewTemplateId = ElementId.InvalidElementId
-        except Exception:
-            pass
-        self._hide_other_categories()
-        self.doc.Regenerate()
+        step = [started]
+
+        def mark(name):
+            now = time.time()
+            self.open_steps.append((name, now - step[0]))
+            step[0] = now
+
+        self.view = self._service_view()
+        if self.view is not None:
+            self._prepare_reused()
+            mark(u"служебный вид найден")
+        else:
+            vft = None
+            for candidate in FilteredElementCollector(self.doc).OfClass(ViewFamilyType):
+                if candidate.ViewFamily == ViewFamily.ThreeDimensional:
+                    vft = candidate
+                    break
+            if vft is None:
+                raise Exception(u"в проекте нет типа 3D-вида")
+            self.view = View3D.CreateIsometric(self.doc, vft.Id)
+            try:
+                self.view.Name = SERVICE_VIEW_NAME
+            except Exception:
+                self.temporary = True   # имя занято — вид временный
+            try:
+                self.view.ViewTemplateId = ElementId.InvalidElementId
+            except Exception:
+                pass
+            mark(u"создание вида")
+            self._hide_other_categories()
+            mark(u"скрытие категорий")
+            self.doc.Regenerate()
+            mark(u"регенерация")
         self.intersector = ReferenceIntersector(self.view)
         self.intersector.TargetType = FindReferenceTarget.Face
         self.intersector.FindReferencesInRevitLinks = True
@@ -419,12 +481,13 @@ class SlabProbe(object):
         return found
 
     def close(self):
-        if self.view is not None:
+        """Удалить вид, только если он временный: служебный остаётся для следующих запусков."""
+        if self.view is not None and self.temporary:
             try:
                 self.doc.Delete(self.view.Id)
             except Exception:
                 pass
-            self.view = None
+        self.view = None
 
 
 # ------------------------------------------------------------

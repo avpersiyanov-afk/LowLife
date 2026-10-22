@@ -249,13 +249,14 @@ if timings or body_done is not None:
     output.print_md(u"### Время")
     output.print_md(u"- всего: {:.1f} с".format(float(run_done - run_started)))
     if probe.open_seconds is not None:
-        output.print_md(u"- подготовка временного 3D-вида для лучей: {:.1f} с".format(
-            float(probe.open_seconds)))
+        output.print_md(u"- подготовка 3D-вида для лучей: {:.1f} с".format(float(probe.open_seconds)))
+        for step_name, seconds in probe.open_steps:
+            output.print_md(u"    - {}: {:.1f} с".format(step_name, float(seconds)))
     if probe.first_ray_seconds is not None:
         output.print_md(u"- первый луч (Revit строит геометрию связей в виде): {:.1f} с".format(
             float(probe.first_ray_seconds)))
     if body_done is not None:
-        output.print_md(u"- завершение транзакции (удаление вида, регенерация): {:.1f} с".format(
+        output.print_md(u"- завершение транзакции (регенерация): {:.1f} с".format(
             float(run_done - body_done)))
     for stage, seconds in timings:
         output.print_md(u"- {}: {:.1f} с".format(stage, float(seconds)))
