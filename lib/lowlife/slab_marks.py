@@ -492,6 +492,42 @@ def collect_detectors(doc, settings, element_ids=None, view=None):
     return result
 
 
+def pick_detectors(uidoc, doc, settings):
+    """
+    Выбрать извещатели на модели (рамкой или по одному, «Готово» на панели
+    параметров): к выбору допускаются только подходящие по словам из
+    настроек. Esc — None; выбранное становится выделением Revit.
+    """
+    from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
+    from Autodesk.Revit.Exceptions import OperationCanceledException
+    from System.Collections.Generic import List
+
+    allowed = set(d.Id.IntegerValue for d in collect_detectors(doc, settings))
+
+    class _DetectorFilter(ISelectionFilter):
+        def AllowElement(self, element):
+            try:
+                return element.Id.IntegerValue in allowed
+            except Exception:
+                return False
+
+        def AllowReference(self, reference, position):
+            return False
+
+    try:
+        references = uidoc.Selection.PickObjects(
+            ObjectType.Element, _DetectorFilter(),
+            u"Выберите извещатели (рамкой или по одному), затем «Готово»")
+    except OperationCanceledException:
+        return None
+    ids = [reference.ElementId for reference in references]
+    try:
+        uidoc.Selection.SetElementIds(List[ElementId](ids))
+    except Exception:
+        pass
+    return collect_detectors(doc, settings, ids) if ids else []
+
+
 def detectors_on_levels(doc, settings, views):
     """Извещатели, чей уровень (level_of) — уровень одного из планов views."""
     level_ids = set(view.GenLevel.Id.IntegerValue for view in views if is_plan(view))
