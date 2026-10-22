@@ -6,7 +6,8 @@ __doc__ = (
     u"над этажом штриховкой по отметкам с подписью высоты от пола и разницы с "
     u"типовой, перепады плиты — толстыми красными линиями, а помещения с подвесным потолком обводит областью заливки с "
     u"подписью «ПП» и высотой потолка от пола.\n\n"
-    u"Если перед запуском выделены извещатели — переносятся только они.\n\n"
+    u"Какие извещатели переносить — выбирается при запуске: выделенные, все на "
+    u"активном виде или все на уровнях выбранных планов.\n\n"
     u"Shift+клик — настройки этой кнопки."
 )
 __author__ = "Pipers"
@@ -45,9 +46,32 @@ if not action:
 
 selected_ids = list(uidoc.Selection.GetElementIds())
 selected = slab_marks.collect_detectors(doc, settings, selected_ids) if selected_ids else []
+active_view = doc.ActiveView
 
+# Какие извещатели переносить: выделенные, все на активном виде или все на
+# уровнях выбранных планов.
+SCOPE_SELECTED = u"Выделенные извещатели ({})".format(len(selected))
+SCOPE_VIEW = u"Все извещатели на активном виде «{}»".format(
+    active_view.Name if active_view is not None else u"")
+SCOPE_LEVELS = u"Все извещатели на уровнях выбранных планов"
+scope = None
+if action != MARK:
+    scopes = []
+    if selected:
+        scopes.append(SCOPE_SELECTED)
+    if slab_marks.can_collect_on(active_view):
+        scopes.append(SCOPE_VIEW)
+    scopes.append(SCOPE_LEVELS)
+    scope = select_list.CommandSwitchWindow.show(scopes, message=u"Какие извещатели переносить?")
+    if not scope:
+        script.exit()
+
+# Планы для подписей (и для «на уровнях выбранных планов»): при переносе с
+# активного плана подписывается он же — без лишнего окна выбора.
 views = []
-if action != MOVE or not selected:
+if action != MOVE and scope == SCOPE_VIEW and slab_marks.is_plan(active_view):
+    views = [active_view]
+elif action != MOVE or scope == SCOPE_LEVELS:
     views = select_list.select_views(
         title=u"Планы, на уровнях которых работать" + (u" (и подписать)" if action != MOVE else u""),
         filterfunc=slab_marks.is_plan, multiple=True)
@@ -55,19 +79,15 @@ if action != MOVE or not selected:
         script.exit()
 
 detectors = []
-if action != MARK:
-    if selected:
-        detectors = selected
-    else:
-        level_ids = set(view.GenLevel.Id.IntegerValue for view in views)
-        levels = slab_marks.plan_levels(doc)
-        for detector in slab_marks.collect_detectors(doc, settings):
-            level, _z = slab_marks.level_of(doc, detector, levels)
-            if level is not None and level.Id.IntegerValue in level_ids:
-                detectors.append(detector)
-    if not detectors and action == MOVE:
-        forms.alert(u"Не найдено ни одного извещателя (проверьте слова в настройках: Shift+клик).",
-                    title=TITLE, exitscript=True)
+if scope == SCOPE_SELECTED:
+    detectors = selected
+elif scope == SCOPE_VIEW:
+    detectors = slab_marks.collect_detectors(doc, settings, view=active_view)
+elif scope == SCOPE_LEVELS:
+    detectors = slab_marks.detectors_on_levels(doc, settings, views)
+if action == MOVE and not detectors:
+    forms.alert(u"Не найдено ни одного извещателя (проверьте слова в настройках: Shift+клик).",
+                title=TITLE, exitscript=True)
 
 move_result = None
 view_results = []
