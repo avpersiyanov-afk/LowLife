@@ -2789,6 +2789,28 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   последний выбранный тип марки — `LowLifeTrayTags_types.json`
   (`load_tag_type_label`/`save_tag_type_label`).
 
+## tray_boxes_core.py / tray_boxes.py / tray_boxes_settings.py
+Боксы на пересечениях лотков со стенами/перекрытиями
+(`Tools.panel/TrayOpeningBoxes`, подробно — `docs/tray-opening-boxes.md`).
+
+- `tray_boxes_core.py` — чистая геометрия, **без Revit API** (покрыта
+  `tests/test_tray_boxes_core.py`): `merge_intervals` (куски одного
+  пересечения), `wall_box`/`floor_box` → `Box` (центр, направление оси X,
+  ширина/глубина/высота, толщина) или причина пропуска, `Box.angle`/
+  `Box.origin`, `sized_type_name`, `name_has`/`split_words`.
+- `tray_boxes.py` — Revit-часть: `find_box_types` (семейство/тип по словам,
+  через `OfClass(Family)`), `placement_supported`, `tray_crossings` (ось
+  лотка × тела стен/перекрытий модели и связей, `Solid.IntersectWithCurve`),
+  `run(doc, trays, symbol, settings)` → `Result` (created/updated/skipped/
+  failed, missing_params, new_types). Размеры — параметры экземпляра, а если
+  это параметры типа — типоразмер «<тип> ШxГxВ». Уже стоящий бокс того же
+  семейства в той же точке не дублируется.
+- `tray_boxes_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeTrayBoxes_settings.json`:
+  `box_family_words`, `box_type_words`, `box_origin`, `box_width_param`,
+  `box_depth_param`, `box_height_param`, `size_extra_mm`, `depth_extra_mm`,
+  `box_source_model` (`SOURCE_HOST`/`SOURCE_ALL` или имя файла связи; варианты-связи — из
+  открытой модели: `get_settings_interactive(doc)`), `box_hosts`, `max_slope_deg`, `max_wall_angle_deg`.
+
 ## pnotes/ (отдельный пакет рядом с `lowlife/`) — «Заметки по проекту»
 Панель `Notes.panel` (кнопки «Заметка», «Сводка», «Настройка») и напоминания
 в конце `hooks/doc-opened.py`. Заметки хранятся в общей Google Таблице через

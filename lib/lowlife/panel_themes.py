@@ -134,6 +134,7 @@ THEMES = {
         (u"TrayRoof", u"TraySS"),
         (u"Tools", u"TagTrays"),
         (u"Tools", u"LinkTraysToExcel"),
+        (u"Tools", u"TrayOpeningBoxes"),
     ],
     u"Circuits": [
         (u"CircuitsSCS", u"BuildCircuitsSCS"),
@@ -169,6 +170,7 @@ THEMES = {
         (u"Tools", u"CropView"),
         (u"Tools", u"LineBypass"),
         (u"Tools", u"LinkTraysToExcel"),
+        (u"Tools", u"TrayOpeningBoxes"),
         (u"Tools", u"CompareLinkDatums"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
