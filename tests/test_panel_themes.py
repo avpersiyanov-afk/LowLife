@@ -58,3 +58,17 @@ def test_selected_theme_is_remembered(appdata):
     assert panel_themes.load_selected() == u"КНК"
     panel_themes.save_selected(u"нет такой")  # не тема — не сохраняется
     assert panel_themes.load_selected() == u"КНК"
+
+
+def test_mine_theme_leaves_only_lowlife_and_user_panels():
+    # «Моя панель»: все панели LowLife спрятаны (кнопок в теме нет), панели вне THEMES — тоже,
+    # кроме панели LowLife со списком тем; ячейки своих панелей пользователя не трогаются
+    assert panel_themes.THEMES[panel_themes.MINE] == []
+    other = dict(panel_themes._other_panels())
+    assert u"_Themes" not in other
+    assert other[u"Favorites"] == u"Мои панели"
+    assert not any(name.startswith(u"MyPanel") for name in other)
+    themed = set(p for refs in panel_themes.THEMES.values() for p, _ in refs)
+    on_disk = set(n[:-len(".panel")] for n in os.listdir(TAB) if n.endswith(".panel"))
+    assert on_disk - themed - set(other) <= set(panel_themes.ALWAYS_VISIBLE) | set(
+        n for n in on_disk if n.startswith(u"MyPanel"))
