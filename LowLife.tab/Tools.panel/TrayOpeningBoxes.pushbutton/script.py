@@ -4,8 +4,8 @@ __doc__ = (
     u"Ставит бокс (семейство с «бокс» в имени, тип с «временный») на каждое "
     u"пересечение выбранных кабельных лотков со стенами и перекрытиями "
     u"(модели и связей). Размер — сечение лотка плюс 50 мм, глубина — по "
-    u"толщине стены/перекрытия. Повторный запуск обновляет размеры уже "
-    u"стоящих боксов.\n\n"
+    u"толщине стены/перекрытия. Где бокс уже есть — новый не "
+    u"создаётся, кнопка предупреждает.\n\n"
     u"Shift+клик — настройки."
 )
 __author__ = "Pipers"
@@ -127,8 +127,8 @@ output.print_md(u"- лотков: {}".format(len(trays)))
 output.print_md(u"- поставлено боксов: {}".format(len(result.created)))
 if workset is not None:
     output.print_md(u"- рабочий набор новых боксов: «{}»".format(workset.Name))
-if result.updated:
-    output.print_md(u"- уже стояли, размеры обновлены: {}".format(len(result.updated)))
+if result.existing:
+    output.print_md(u"- **бокс уже есть — новый не ставился**: {}".format(len(result.existing)))
 if result.new_types:
     output.print_md(u"- созданы типоразмеры: " + u", ".join(result.new_types))
 if result.missing_params:
@@ -136,7 +136,7 @@ if result.missing_params:
                     u", ".join(sorted(result.missing_params)))
 
 rows = []
-for state, entries in ((u"новый", result.created), (u"обновлён", result.updated)):
+for state, entries in ((u"новый", result.created), (u"уже был — не ставился", result.existing)):
     for tray, crossing, inst in entries:
         rows.append([output.linkify(tray.Id), crossing.host_label(), output.linkify(inst.Id), state])
 if rows:
@@ -152,14 +152,16 @@ if result.failed:
         output.print_md(u"- {} {}: {}".format(output.linkify(tray.Id), where, error))
 
 lines = [u"Поставлено боксов: {}".format(len(result.created))]
-if result.updated:
-    lines.append(u"Обновлено (уже стояли): {}".format(len(result.updated)))
+if result.existing:
+    lines.append(u"\nВНИМАНИЕ: на {} пересечениях бокс уже есть — новые там не "
+                 u"создавались, стоящие боксы не изменены.\n".format(len(result.existing)))
 if result.skipped:
     lines.append(u"Пропущено пересечений: {}".format(len(result.skipped)))
 if result.failed:
     lines.append(u"Ошибок: {}".format(len(result.failed)))
 if result.missing_params:
     lines.append(u"Нет параметров: " + u", ".join(sorted(result.missing_params)))
-if not (result.created or result.updated or result.skipped or result.failed):
+if not (result.created or result.existing or result.skipped or result.failed):
     lines.append(u"Выбранные лотки не пересекают ни стен, ни перекрытий выбранной модели.")
-forms.alert(u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE)
+forms.alert(u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE,
+            warn_icon=bool(result.existing))
