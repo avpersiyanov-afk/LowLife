@@ -42,7 +42,7 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
 
 ## favorites_core.py / favorites.py / favorites_ui.py
-«Мои панели» (кнопка «Создать мою панель» на панели LowLife — `_Themes.panel/MyPanels`): свои панели пользователя из кнопок LowLife. Настройки —
+«Мои панели» (кнопка «Создать мою панель» на панели LowLife — `_Themes.panel/Actions.stack/MyPanels`): свои панели пользователя из кнопок LowLife. Настройки —
 `LowLifeFavorites_settings.json` (`{"panels": [{"title", "buttons": [{"panel", "path"}]}]}` — кнопка по
 папкам, как в `ribbon_catalog.list_buttons()`).
 `favorites_core` (чистая логика, `tests/test_favorites_core.py`): `normalize`, `button_ref`/`button_key`,
@@ -76,7 +76,7 @@ root=None)` раскладывает их по папкам-ячейкам `LowL
 не `forms.SelectFromList.show(...)`.
 
 ## ribbon_search.py
-Кнопка «Поиск» (`_Themes.panel/Search`): окно (`SearchWindow`, XAML строкой) со
+Кнопка «Поиск» (`_Themes.panel/Actions.stack/Search`): окно (`SearchWindow`, XAML строкой) со
 строкой поиска и списком `ribbon_catalog.search`; стрелки в строке листают список.
 `run_button(uiapp, entry)` — находит кнопку на ленте через обёртки pyRevit
 (`get_current_ui()` → панель по подписи → `find_child` по `path`) и запускает её
