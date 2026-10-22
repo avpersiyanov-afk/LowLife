@@ -15,8 +15,10 @@ tray_boxes_settings.py.
 Размеры пишутся в параметры экземпляра; если параметр — параметр типа,
 создаётся (или берётся уже созданный) типоразмер «<тип> ШxГxВ».
 
-Повторный запуск не плодит дубли: если бокс того же семейства уже стоит в
-этой точке, у него только обновляются размеры.
+Повторный запуск не плодит дубли: если на пересечении уже стоит бокс
+(любое семейство со словами box_family_words — точка вставки рядом или
+габарит накрывает середину пересечения), новый не ставится, а стоящий не
+меняется — пересечение попадает в отчёт как «бокс уже есть».
 
 Семейство бокса — без основы (на уровне) или на рабочей плоскости; на
 основе грани/стены не поддерживается. Вызывать внутри открытой транзакции.
@@ -25,11 +27,11 @@ tray_boxes_settings.py.
 import math
 
 from Autodesk.Revit.DB import (
-    BuiltInCategory, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
+    BuiltInCategory, BuiltInParameter, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
     ElementTransformUtils, Family, FamilyInstance, FamilyPlacementType,
-    FilteredElementCollector, GeometryInstance, Level, Line, LocationCurve, LocationPoint,
+    FilteredElementCollector, FilteredWorksetCollector, GeometryInstance, Level, Line, LocationCurve, LocationPoint,
     Options, Outline, RevitLinkInstance, Solid, SolidCurveIntersectionOptions, StorageType,
-    ViewDetailLevel, XYZ,
+    ViewDetailLevel, WorksetKind, XYZ,
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
@@ -91,6 +93,19 @@ def find_box_types(doc, settings):
                 result.append((u"{} : {}".format(family_name, type_name), symbol))
     result.sort(key=lambda item: item[0].lower())
     return result
+
+
+def find_box_worksets(doc, settings):
+    u"""Пользовательские рабочие наборы, в имени которых есть слово из
+    box_workset_words, по имени. Пустой список — модель без рабочих наборов
+    или слова не заданы (тогда боксы — в активном рабочем наборе)."""
+    words = core.split_words(settings.get("box_workset_words"))
+    if not doc.IsWorkshared or not words:
+        return []
+    worksets = [w for w in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+                if core.name_has(w.Name, words)]
+    worksets.sort(key=lambda w: w.Name.lower())
+    return worksets
 
 
 def placement_supported(symbol):
@@ -312,7 +327,7 @@ def box_for(tray, crossing, settings):
 class Result(object):
     def __init__(self):
         self.created = []   # (лоток, Crossing, бокс)
-        self.updated = []
+        self.existing = []  # (лоток, Crossing, уже стоящий бокс) — не тронуты
         self.skipped = []   # (лоток, Crossing, причина)
         self.failed = []    # (лоток, Crossing или None, текст ошибки)
         self.missing_params = set()
@@ -333,8 +348,9 @@ def _level_below(levels, z):
 
 
 class BoxPlacer(object):
-    def __init__(self, doc, symbol, settings):
+    def __init__(self, doc, symbol, settings, workset=None):
         self.doc = doc
+        self.workset = workset
         self.symbol = symbol
         self.family = symbol.Family
         self.settings = settings
@@ -345,10 +361,12 @@ class BoxPlacer(object):
             ("depth", settings.get("box_depth_param")),
             ("height", settings.get("box_height_param")),
         ]
+        family_words = core.split_words(settings.get("box_family_words"))
         self.existing = []
         for inst in FilteredElementCollector(doc).OfClass(FamilyInstance):
             try:
-                if inst.Symbol.Family.Id == self.family.Id and isinstance(inst.Location, LocationPoint):
+                if (isinstance(inst.Location, LocationPoint) and
+                        core.name_has(safe_element_name(inst.Symbol.Family), family_words)):
                     self.existing.append(inst)
             except Exception:
                 pass
@@ -359,11 +377,19 @@ class BoxPlacer(object):
 
     # --- поиск уже стоящего --------------------------------------------
 
-    def _existing_at(self, origin):
+    def _existing_at(self, origin, center):
+        u"""Уже стоящий бокс: точка вставки ближе SAME_BOX_MM к нужной или
+        габарит бокса накрывает середину пересечения."""
         tol = ft(SAME_BOX_MM)
         for inst in self.existing:
-            p = inst.Location.Point
-            if p.DistanceTo(origin) <= tol:
+            if inst.Location.Point.DistanceTo(origin) <= tol:
+                return inst
+            bbox = inst.get_BoundingBox(None)
+            if bbox is not None and all(
+                    lo - tol <= v <= hi + tol for lo, v, hi in (
+                        (bbox.Min.X, center.X, bbox.Max.X),
+                        (bbox.Min.Y, center.Y, bbox.Max.Y),
+                        (bbox.Min.Z, center.Z, bbox.Max.Z))):
                 return inst
         return None
 
@@ -390,6 +416,10 @@ class BoxPlacer(object):
         shift = origin.Subtract(inst.Location.Point)
         if shift.GetLength() > 1e-9:
             ElementTransformUtils.MoveElement(doc, inst.Id, shift)
+        if self.workset is not None:
+            param = inst.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+            if param is not None and not param.IsReadOnly:
+                param.Set(self.workset.Id.IntegerValue)
         self.existing.append(inst)
         return inst
 
@@ -443,21 +473,23 @@ class BoxPlacer(object):
             self.result.skipped.append((tray, crossing, reason))
             return
         origin = _xyz(box.origin(self.at_bottom))
+        existing = self._existing_at(origin, _xyz(box.center))
+        if existing is not None:
+            self.result.existing.append((tray, crossing, existing))
+            return
         try:
-            inst = self._existing_at(origin)
-            created = inst is None
-            if created:
-                inst = self._create(origin, box)
+            inst = self._create(origin, box)
             self._apply_sizes(inst, box)
         except Exception as ex:
             self.result.failed.append((tray, crossing, u"{}".format(ex)))
             return
-        (self.result.created if created else self.result.updated).append((tray, crossing, inst))
+        self.result.created.append((tray, crossing, inst))
 
 
-def run(doc, trays, symbol, settings, progress=None):
-    u"""Боксы на всех пересечениях лотков trays. Возвращает Result."""
-    placer = BoxPlacer(doc, symbol, settings)
+def run(doc, trays, symbol, settings, progress=None, workset=None):
+    u"""Боксы на всех пересечениях лотков trays (новые — в рабочем наборе
+    workset, None — в активном). Возвращает Result."""
+    placer = BoxPlacer(doc, symbol, settings, workset)
     categories = _host_categories(settings)
     options = Options()
     options.ComputeReferences = False
