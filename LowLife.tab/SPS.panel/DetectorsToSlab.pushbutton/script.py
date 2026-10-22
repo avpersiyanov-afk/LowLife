@@ -103,6 +103,8 @@ timings = []  # (этап, секунды) — для отчёта: где ух�
 diagnostics = []  # (извещатель, [строки]) — лучи над выделенными извещателями
 DIAGNOSE_LIMIT = 30
 FACE_ROWS_LIMIT = 400  # строк диагностики плит на план
+run_started = time.time()
+body_done = None
 with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=False) as bar:
     def progress(index, total):
         if index % 10 == 0:
@@ -113,6 +115,7 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
         try:
             # выделены извещатели (немного) — в отчёт: во что упираются лучи над ними
             if selected and len(selected) <= DIAGNOSE_LIMIT:
+                started = time.time()
                 levels = slab_marks.plan_levels(doc)
                 probe_ft = slab_marks.ft(settings.get("probe_height_mm") or 1500.0)
                 for detector in selected:
@@ -125,6 +128,7 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
                             point.X, point.Y, level_z + probe_ft, level_z)))
                     except Exception as ex:
                         diagnostics.append((detector, [u"ошибка: {}".format(ex)]))
+                timings.append((u"диагностика лучей ({})".format(len(selected)), time.time() - started))
             if detectors:
                 started = time.time()
                 move_result = slab_marks.move_detectors(doc, detectors, settings, probe, progress)
@@ -141,6 +145,8 @@ with forms.ProgressBar(title=TITLE + u": {value} из {max_value}", cancellable=
                     timings.append((u"план «{}»".format(view.Name), time.time() - started))
         finally:
             probe.close()
+            body_done = time.time()
+run_done = time.time()
 
 
 output = script.get_output()
@@ -239,8 +245,18 @@ if probe.openings:
     output.print_md(
         u"- точек над отверстиями: {} — высота взята по перекрытию вокруг отверстия".format(probe.openings))
 
-if timings:
+if timings or body_done is not None:
     output.print_md(u"### Время")
+    output.print_md(u"- всего: {:.1f} с".format(float(run_done - run_started)))
+    if probe.open_seconds is not None:
+        output.print_md(u"- подготовка временного 3D-вида для лучей: {:.1f} с".format(
+            float(probe.open_seconds)))
+    if probe.first_ray_seconds is not None:
+        output.print_md(u"- первый луч (Revit строит геометрию связей в виде): {:.1f} с".format(
+            float(probe.first_ray_seconds)))
+    if body_done is not None:
+        output.print_md(u"- завершение транзакции (удаление вида, регенерация): {:.1f} с".format(
+            float(run_done - body_done)))
     for stage, seconds in timings:
         output.print_md(u"- {}: {:.1f} с".format(stage, float(seconds)))
     for result in view_results:

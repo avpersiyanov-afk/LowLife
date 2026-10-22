@@ -124,7 +124,9 @@ class SlabProbe(object):
         self.openings = 0  # точек над отверстиями в перекрытии (для отчёта)
         self._sources = None
         self._thin = {}    # {ключ элемента: тонкий ли (отделка пола)}
-        self._solids_cache = {}  # {ключ элемента: [Solid]} — для _refine_nearest_slab
+        self._solids_cache = {}
+        self.open_seconds = None       # время подготовки временного 3D-вида (для отчёта)
+        self.first_ray_seconds = None  # время первого луча (для отчёта)  # {ключ элемента: [Solid]} — для _refine_nearest_slab
 
     def _hide_other_categories(self):
         from Autodesk.Revit.DB import CategoryType
@@ -141,9 +143,11 @@ class SlabProbe(object):
                 pass
 
     def _open(self):
+        import time
         from Autodesk.Revit.DB import (
             View3D, ViewFamilyType, ViewFamily, ReferenceIntersector, FindReferenceTarget
         )
+        started = time.time()
         vft = None
         for candidate in FilteredElementCollector(self.doc).OfClass(ViewFamilyType):
             if candidate.ViewFamily == ViewFamily.ThreeDimensional:
@@ -161,6 +165,7 @@ class SlabProbe(object):
         self.intersector = ReferenceIntersector(self.view)
         self.intersector.TargetType = FindReferenceTarget.Face
         self.intersector.FindReferencesInRevitLinks = True
+        self.open_seconds = time.time() - started
 
     def _kind(self, reference):
         """(вид попадания или None, ключ элемента (Id связи или -1, Id элемента))."""
@@ -177,10 +182,21 @@ class SlabProbe(object):
         except Exception:
             return None, key
 
+    def _find(self, origin, direction):
+        """intersector.Find; время первого луча — в first_ray_seconds (Revit
+        строит геометрию связей для вида при первом луче)."""
+        if self.first_ray_seconds is None:
+            import time
+            started = time.time()
+            found = list(self.intersector.Find(origin, direction))
+            self.first_ray_seconds = time.time() - started
+            return found
+        return self.intersector.Find(origin, direction)
+
     def _hits(self, origin, direction):
         """[(расстояние мм, вид, ключ элемента)]."""
         hits = []
-        for context in self.intersector.Find(origin, direction):
+        for context in self._find(origin, direction):
             kind, key = self._kind(context.GetReference())
             if kind is not None:
                 hits.append((mm(context.Proximity), kind, key))
@@ -197,7 +213,7 @@ class SlabProbe(object):
             self._open()
         origin = XYZ(x, y, origin_z)
         for label, direction, sign in ((u"вверх", XYZ.BasisZ, 1), (u"вниз", XYZ.BasisZ.Negate(), -1)):
-            contexts = sorted(self.intersector.Find(origin, direction), key=lambda c: c.Proximity)
+            contexts = sorted(self._find(origin, direction), key=lambda c: c.Proximity)
             for context in contexts[:limit]:
                 reference = context.GetReference()
                 element = self.doc.GetElement(reference.ElementId)
