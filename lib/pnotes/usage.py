@@ -15,7 +15,7 @@ import json
 import System
 
 from pnotes import core, feedback
-from lowlife import about, ribbon_catalog, usage_core
+from lowlife import about, favorites_core, ribbon_catalog, usage_core
 
 try:
     unicode
@@ -148,6 +148,9 @@ def _on_click(uiapp, item_id):
     if not parsed:
         return
     entry = usage_core.find_entry(_entries(), parsed[0], parsed[1])
+    favorite = favorites_core.parse_button_name(parsed[1][-1])
+    if favorite is not None:  # кнопка панели избранного — считаем запуск исходной кнопки
+        entry = favorites_core.find_entry(_entries(), favorite)
     if entry is None:  # не кнопка (список «Тема») или кнопки нет в каталоге
         return
     button_id = u'/'.join([entry[u'panel']] + list(entry[u'path']))
