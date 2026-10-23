@@ -2050,17 +2050,28 @@ Shift+клик по любой кнопке лотка открывает окн
 |---|---|---|
 | `press_key` | `press_key(key)` | Имитирует нажатие и отпускание виртуальной клавиши `key` через `ctypes`/`user32` |
 
-## email_tasks_core.py / email_outlook.py / email_ai*.py / email_claude.py / email_codex.py / email_tasks_excel.py / email_tasks_settings.py
+## email_tasks_core.py / email_tasks_run.py / email_outlook.py / email_ai*.py / email_claude.py / email_codex.py / email_tasks_excel.py / email_tasks_xlsx.py / email_tasks_settings*.py / email_app_core.py
 Кнопка «Задачи из почты» (`Mail.panel/EmailTasks`), подробности — `docs/email-tasks.md`.
+Те же модули использует отдельное приложение без Revit (`apps/mail`,
+`docs/email-tasks-app.md`): в нём нет `clr`, и `email_ai_net`/`email_outlook`
+сами берут stdlib/pywin32 вместо .NET; Excel пишет `email_tasks_xlsx`.
 
+- `email_tasks_run.py` — весь сценарий: `run(settings, prompt_text, engine,
+  progress, excel, test_emails_file)` → `RunResult` (письма, задачи, ошибки
+  пачек, фатальная ошибка, отмена, путь к Excel). `progress` — объект окна
+  прогресса (`title`/`progress`/`busy`/`cancelled`), `excel` — модуль записи
+  (`email_tasks_excel` в Revit, `email_tasks_xlsx` в приложении);
+  `table(rows)`/`TABLE_COLUMNS` — таблица для показа, `fmt_date`.
 - `email_tasks_core.py` — чистая логика без .NET/COM (покрыта тестами):
   `trim_body` (обрезка истории переписки, ≤4000 символов), `format_email`,
   `make_batches` (пачки ≈30k символов), `build_request` (промпт + дата +
   письма), `parse_tasks_json` (устойчивый разбор ответа модели, `ParseError`),
   `normalize_task`, `sort_rows` (приоритет → срок → дата письма),
-  `load_test_emails`.
+  `load_test_emails`; таблица Excel — `COLUMNS`, `STATUSES`, `table_rows`,
+  `cell_text`, `output_file_name`.
 - `email_outlook.py` — `read_inbox(days, unread_only, subfolder, tick)`:
-  чтение «Входящих» классического Outlook через COM (только чтение),
+  чтение «Входящих» классического Outlook через COM (только чтение;
+  подключение — .NET `Activator` в Revit, pywin32 в приложении),
   SMTP Exchange-отправителя через `GetExchangeUser()`; `OutlookError`.
 - `email_ai.py` — выбор способа подключения ИИ по `settings["provider"]`:
   `prepare(settings, system_prompt=None)` → `Engine` (`.run(text, tick)`, `.name`,
@@ -2071,9 +2082,11 @@ Shift+клик по любой кнопке лотка открывает окн
   `openai_request`/`parse_openai_response`, `classify_http_error`;
   `codex_arguments`, `classify_codex_failure`; исключения `AIError`
   (`fatal` — дальше пачки не слать) и `Cancelled`.
-- `email_ai_net.py` — .NET-обвязка: `find_executable`, `run_process`
-  (запрос через stdin в UTF-8, ожидание с `tick()`), `post_json` (HTTP в
-  фоновом потоке, ожидание с `tick()`, `Abort` при отмене).
+- `email_ai_net.py` — выбирает обвязку: `run_process` (запрос через stdin в
+  UTF-8, ожидание с `tick()`) и `post_json` (HTTP в фоновом потоке, ожидание
+  с `tick()`) из `email_ai_clr.py` (.NET, есть `clr`) или `email_ai_std.py`
+  (subprocess/urllib); `find_executable`, `quote`, `work_dir` — из
+  `email_ai_proc.py` (без .NET).
 - `email_claude.py` — `find_claude(path)` (настройка → PATH →
   `~\.local\bin` → `%APPDATA%\npm`), `run_claude(path, model, text, tick)`:
   `claude -p --output-format json ...`, таймаут 3 мин; `ClaudeError` —
@@ -2084,15 +2097,25 @@ Shift+клик по любой кнопке лотка открывает окн
 - `email_tasks_excel.py` — `save_tasks(rows, path)`: книга Excel через COM
   (выпадающий статус, условное форматирование, закреплённая шапка,
   автофильтр), `default_output_path()`.
-- `email_tasks_settings.py` — `load()`/`save()`/`edit_interactive(default_prompt)`/`effective_prompt(values, default_prompt)`:
-  `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` и WPF-окно Shift+клика
+- `email_tasks_xlsx.py` — та же книга через openpyxl для приложения:
+  `build_workbook(rows)`, `save_tasks(rows, path, open_file=True)`,
+  `default_output_path()` (папка «Документы» через Shell API), `open_path`.
+- `email_tasks_settings_core.py` — настройки без окон: `DEFAULTS`, `load()`,
+  `save()`, `effective_prompt`, `stored_prompt`, `parse_days`, `settings_path()`.
+- `email_tasks_settings.py` — реэкспорт `email_tasks_settings_core` +
+  `edit_interactive(default_prompt)`: WPF-окно Shift+клика
   (блок «Подключение ИИ» — `ai_settings.ConnectionSection`, общий с
   «Проверкой орфографии»).
+- `email_app_core.py` — приложение `apps/mail`: `settings_folder_name(appdata)`
+  (файл кнопки в `%APPDATA%\pyRevit`, если он есть, иначе `%APPDATA%\LowLife`),
+  `app_text(text)` — сообщения без «Shift+клик по кнопке».
 
-## ai_settings.py
-Общее подключение ИИ для «Задач из почты» и «Проверки орфографии»:
+## ai_settings.py / ai_settings_core.py
+Общее подключение ИИ для «Задач из почты» и «Проверки орфографии»;
+хранение без окон — `ai_settings_core.py` (его же читает приложение
+`apps/mail`), `ai_settings.py` реэкспортирует его и добавляет окно:
 `DEFAULTS`/`KEYS` (способ, пути к claude/codex, ключи API, модели),
-`normalize(values)`, `load()`/`save(values)` — эти ключи лежат в
+`normalize(values)`, `validate(values)`, `key_hint(provider)`, `load()`/`save(values)` — эти ключи лежат в
 `%APPDATA%\pyRevit\LowLifeEmailTasks_settings.json` (`save` дописывает
 только их, остальные настройки файла не трогает). `ConnectionSection(root,
 values, shared_note)` — блок окна настроек «Подключение ИИ» (`read()`,

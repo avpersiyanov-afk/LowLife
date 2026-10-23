@@ -1,0 +1,68 @@
+# «Задачи из почты» — отдельное приложение (apps/mail): сборка LowLifeMail.exe на Windows.
+# Каждая сборка проверяет себя (--self-test) и кладёт .exe в артефакты запуска;
+# тег mail-v* (например mail-v1.0) ещё и публикует его в Releases — ссылку можно
+# давать коллегам без Revit.
+name: Задачи из почты (exe)
+
+on:
+  push:
+    branches: [main]
+    tags: ['mail-v*']
+    paths:
+      - 'apps/mail/**'
+      - 'lib/lowlife/email_*.py'
+      - 'lib/lowlife/ai_settings_core.py'
+      - 'lib/lowlife/settings_core.py'
+      - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
+      - '.github/workflows/mail-app.yml'
+  pull_request:
+    paths:
+      - 'apps/mail/**'
+      - 'lib/lowlife/email_*.py'
+      - 'lib/lowlife/ai_settings_core.py'
+      - 'lib/lowlife/settings_core.py'
+      - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
+      - '.github/workflows/mail-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # публикация релиза по тегу
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Зависимости
+        run: python -m pip install -r apps/mail/requirements-build.txt
+
+      - name: Сборка
+        run: python -m PyInstaller --noconfirm --clean apps/mail/lowlife_mail.spec
+
+      - name: Проверка сборки (--self-test)
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'self-test'
+          $p = Start-Process -FilePath dist\LowLifeMail.exe -ArgumentList '--self-test', $dir -Wait -PassThru
+          Get-Content (Join-Path $dir 'self-test.log')
+          exit $p.ExitCode
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LowLifeMail
+          path: dist/LowLifeMail.exe
+
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/mail-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create $env:GITHUB_REF_NAME dist/LowLifeMail.exe
+          --title "Задачи из почты $env:GITHUB_REF_NAME"
+          --notes "LowLifeMail.exe — «Задачи из почты» без Revit. Инструкция: https://github.com/${{ github.repository }}/blob/main/docs/email-tasks-app.md"

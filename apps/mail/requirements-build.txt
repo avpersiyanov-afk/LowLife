@@ -1,0 +1,5 @@
+# Сборка LowLifeMail.exe (build.bat, .github/workflows/mail-app.yml)
+-r requirements.txt
+pyinstaller==6.11.1
+# PyInstaller делает из icon.png значок .exe с помощью Pillow
+pillow==11.0.0

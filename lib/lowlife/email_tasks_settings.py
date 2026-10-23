@@ -31,53 +31,19 @@ from System.Windows.Controls import (
     StackPanel, TextBlock, TextBox, Button, Orientation, ScrollViewer, ScrollBarVisibility
 )
 
-from lowlife import ai_settings, settings_core
+from lowlife import ai_settings
 from lowlife.ai_settings import label as _label, hint as _hint, textbox as _textbox, checkbox as _checkbox
-
-SETTINGS_FILE_NAME = ai_settings.SETTINGS_FILE_NAME
+# Хранение — без окон, его читает и отдельное приложение (apps/mail)
+from lowlife.email_tasks_settings_core import (  # noqa: F401 — прежние имена
+    SETTINGS_FILE_NAME, DEFAULTS, load, effective_prompt, save, same_text as _same_text,
+    stored_prompt, parse_days
+)
 
 # Прежние имена — ссылки на инструкцию теперь в ai_settings
 REPO_URL = ai_settings.REPO_URL
 GUIDE_URL = ai_settings.GUIDE_URL
 GUIDE_URLS = ai_settings.GUIDE_URLS
 
-DEFAULTS = {
-    "days": 3,
-    "unread_only": False,
-    "include_subfolders": True,
-    "subfolder": u"",
-    "test_mode": False,
-    "prompt": u"",
-}
-DEFAULTS.update(ai_settings.DEFAULTS)
-
-
-_STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
-
-
-def load():
-    values = dict(DEFAULTS)
-    values.update(_STORE.read())
-    ai_settings.normalize(values)
-    try:
-        values["days"] = max(1, int(values.get("days") or DEFAULTS["days"]))
-    except Exception:
-        values["days"] = DEFAULTS["days"]
-    values["unread_only"] = bool(values.get("unread_only"))
-    values["include_subfolders"] = bool(values.get("include_subfolders"))
-    values["test_mode"] = bool(values.get("test_mode"))
-    values["prompt"] = values.get("prompt") or u""
-    return values
-
-
-def effective_prompt(values, default_prompt):
-    """Промпт для запроса: свой из настроек, иначе стандартный (prompt.txt)."""
-    custom = values.get("prompt") or u""
-    return custom if custom.strip() else default_prompt
-
-
-def save(values):
-    return _STORE.write(values)
 
 def show_settings_form(values, default_prompt):
     """Модальное окно. Возвращает словарь новых значений или None (Отмена).
@@ -172,11 +138,8 @@ def show_settings_form(values, default_prompt):
     ok_btn.IsDefault = True
 
     def on_ok(sender, args):
-        try:
-            days = int(days_box.Text.strip())
-            if days < 1:
-                raise ValueError()
-        except Exception:
+        days = parse_days(days_box.Text)
+        if days is None:
             forms.alert(u"Период — целое число дней, не меньше 1.")
             return
 
@@ -191,9 +154,7 @@ def show_settings_form(values, default_prompt):
             "include_subfolders": bool(subfolders_box.IsChecked),
             "subfolder": subfolder_box.Text.strip(),
             "test_mode": bool(test_box.IsChecked),
-            # Совпадает со стандартным — храним пусто, чтобы правки prompt.txt
-            # в новых версиях расширения подхватывались сами
-            "prompt": u"" if _same_text(prompt_box.Text, default_prompt) else prompt_box.Text,
+            "prompt": stored_prompt(prompt_box.Text, default_prompt),
         }
         new_values.update(connection.read())
         result["values"] = new_values
@@ -214,11 +175,6 @@ def show_settings_form(values, default_prompt):
     win.Content = scroller
     win.ShowDialog()
     return result["values"]
-
-
-def _same_text(a, b):
-    norm = lambda t: (t or u"").replace(u"\r\n", u"\n").strip()
-    return norm(a) == norm(b)
 
 
 def edit_interactive(default_prompt):
