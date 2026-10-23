@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Сохранение списка задач кнопки «Задачи из почты» в .xlsx через COM Excel
-(позднее связывание, без pywin32) и открытие файла.
+(позднее связывание, без pywin32) и открытие файла — в Revit. Отдельное
+приложение (apps/mail) пишет ту же таблицу через openpyxl — email_tasks_xlsx.
 
 Формулы, которые уходят в Excel через COM (проверка данных, условное
 форматирование), намеренно написаны без функций и разделителей
@@ -29,22 +30,9 @@ clr.AddReference("System")
 from System import Type, Activator, Array, Object, DateTime, Environment
 from System.Reflection import Missing
 
-COLUMNS = [
-    # (заголовок, ширина)
-    (u"№", 5),
-    (u"Задача", 60),
-    (u"Кто просит", 22),
-    (u"Срок", 12),
-    (u"Приоритет", 11),
-    (u"Статус", 14),
-    (u"Комментарий", 40),
-    (u"Тема письма", 40),
-    (u"Отправитель", 32),
-    (u"Дата письма", 16),
-]
-
-STATUSES = [u"Не начато", u"В работе", u"Ждёт ответа", u"Готово"]
-STATUS_DONE = u"Готово"
+from lowlife.email_tasks_core import (
+    COLUMNS, STATUSES, STATUS_DONE, OUTPUT_FOLDER_NAME, output_file_name, table_rows
+)
 
 # Константы Excel
 XL_OPENXML_WORKBOOK = 51
@@ -86,21 +74,13 @@ def _excel_date(value):
     return dt.ToOADate()
 
 
-def _cell_text(value):
-    text = u"" if value is None else unicode(value)
-    # Строка, начинающаяся с «=», «+», «-», «@», иначе станет формулой
-    if text[:1] in (u"=", u"+", u"-", u"@"):
-        text = u"'" + text
-    return text
-
-
 def default_output_path(now=None):
     now = now or datetime.datetime.now()
     docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-    folder = os.path.join(docs, u"Задачи из почты")
+    folder = os.path.join(docs, OUTPUT_FOLDER_NAME)
     if not os.path.isdir(folder):
         os.makedirs(folder)
-    return os.path.join(folder, u"Задачи_{}.xlsx".format(now.strftime("%Y-%m-%d_%H%M")))
+    return os.path.join(folder, output_file_name(now))
 
 
 def save_tasks(rows, path):
@@ -143,19 +123,9 @@ def save_tasks(rows, path):
         data = Array.CreateInstance(Object, n_rows, n_cols)
         for c, (title, _width) in enumerate(COLUMNS):
             data[0, c] = title
-        for r, row in enumerate(rows, start=1):
-            values = [
-                r,
-                _cell_text(row.get("task")),
-                _cell_text(row.get("requester")),
-                _excel_date(row.get("deadline")),
-                _cell_text(row.get("priority")),
-                STATUSES[0],
-                _cell_text(row.get("comment")),
-                _cell_text(row.get("subject")),
-                _cell_text(row.get("sender")),
-                _excel_date(row.get("received")),
-            ]
+        for r, values in enumerate(table_rows(rows), start=1):
+            values[3] = _excel_date(values[3])
+            values[9] = _excel_date(values[9])
             for c, value in enumerate(values):
                 data[r, c] = value
 

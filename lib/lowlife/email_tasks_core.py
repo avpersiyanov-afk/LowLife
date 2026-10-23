@@ -280,6 +280,62 @@ def normalize_task(task, emails_by_id):
     }
 
 
+# ------------------------------------------------------------ таблица Excel
+# Общая для обеих записей: email_tasks_excel (COM Excel, в Revit) и
+# email_tasks_xlsx (openpyxl, отдельное приложение).
+
+COLUMNS = [
+    # (заголовок, ширина)
+    (u"№", 5),
+    (u"Задача", 60),
+    (u"Кто просит", 22),
+    (u"Срок", 12),
+    (u"Приоритет", 11),
+    (u"Статус", 14),
+    (u"Комментарий", 40),
+    (u"Тема письма", 40),
+    (u"Отправитель", 32),
+    (u"Дата письма", 16),
+]
+
+STATUSES = [u"Не начато", u"В работе", u"Ждёт ответа", u"Готово"]
+STATUS_DONE = u"Готово"
+
+OUTPUT_FOLDER_NAME = u"Задачи из почты"
+
+
+def cell_text(value):
+    text = u"" if value is None else _u(value)
+    # Строка, начинающаяся с «=», «+», «-», «@», иначе станет формулой
+    if text[:1] in (u"=", u"+", u"-", u"@"):
+        text = u"'" + text
+    return text
+
+
+def output_file_name(now):
+    return u"Задачи_{}.xlsx".format(now.strftime("%Y-%m-%d_%H%M"))
+
+
+def table_rows(rows):
+    """Строки таблицы без шапки: [№, задача, …, дата письма] — даты как
+    date/datetime (как их записать, решает модуль записи)."""
+    result = []
+    for number, row in enumerate(rows, start=1):
+        result.append([
+            number,
+            cell_text(row.get("task")),
+            cell_text(row.get("requester")),
+            row.get("deadline"),
+            cell_text(row.get("priority")),
+            STATUSES[0],
+            cell_text(row.get("comment")),
+            cell_text(row.get("subject")),
+            cell_text(row.get("sender")),
+            row.get("received"),
+        ])
+    return result
+
+
 def sort_rows(rows):
     """Приоритет (высокий первым) → срок (ближайший первым, без срока — в конце)
     → дата письма (новые первыми)."""

@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Чтение писем из классического Outlook через COM для кнопки «Задачи из
-почты» — без pywin32: System.Type.GetTypeFromProgID + Activator /
+Чтение писем из классического Outlook через COM для «Задач из почты».
+В Revit — без pywin32: System.Type.GetTypeFromProgID + Activator /
 Marshal.GetActiveObject, дальше позднее связывание (IDispatch) IronPython.
+В отдельном приложении (apps/mail, обычный Python без .NET) — pywin32
+(win32com.client.Dispatch); дальше код один и тот же: оба дают объект с
+теми же свойствами Outlook.
 
 Только чтение: письма не открываются (Display), не сохраняются, не
 помечаются прочитанными и не перемещаются — читаются лишь свойства
@@ -21,11 +24,15 @@ except NameError:  # Python 3
 
 import datetime
 
-import clr
-clr.AddReference("System")
+try:
+    import clr
+except ImportError:  # отдельное приложение — pywin32
+    clr = None
 
-from System import Type, Activator
-from System.Runtime.InteropServices import Marshal
+if clr is not None:
+    clr.AddReference("System")
+    from System import Type, Activator
+    from System.Runtime.InteropServices import Marshal
 
 from lowlife.email_tasks_core import trim_body
 
@@ -49,6 +56,10 @@ class Cancelled(Exception):
 
 
 def _to_py_datetime(value):
+    if isinstance(value, datetime.datetime):
+        # pywin32: pywintypes.datetime с tzinfo, хотя время в нём местное
+        return datetime.datetime(value.year, value.month, value.day,
+                                 value.hour, value.minute, value.second)
     try:
         return datetime.datetime(value.Year, value.Month, value.Day,
                                  value.Hour, value.Minute, value.Second)
@@ -56,16 +67,36 @@ def _to_py_datetime(value):
         return None
 
 
+_NEW_OUTLOOK_HINT = (
+    u"Если у вас «новый Outlook» — он не поддерживает COM. Переключитесь "
+    u"на классический Outlook (переключатель «Новый Outlook» в правом "
+    u"верхнем углу окна) и запустите его.")
+
+
+def _connect_pywin32():
+    try:
+        import win32com.client
+    except ImportError:
+        raise OutlookError(u"Не найден модуль pywin32 — без него Outlook недоступен.")
+    try:
+        return win32com.client.Dispatch("Outlook.Application")
+    except Exception as ex:
+        raise OutlookError(
+            u"Не удалось подключиться к Outlook:\n{}\n\n"
+            u"Запустите классический Outlook и повторите. {} Если Outlook запущен "
+            u"от имени администратора, а эта программа — нет (или наоборот), "
+            u"подключение тоже не сработает.".format(ex, _NEW_OUTLOOK_HINT))
+
+
 def connect():
     """Объект Outlook.Application (уже запущенный, иначе запускается в фоне)."""
+    if clr is None:
+        return _connect_pywin32()
     com_type = Type.GetTypeFromProgID("Outlook.Application")
     if com_type is None:
         raise OutlookError(
             u"Классический Outlook не найден (COM-объект Outlook.Application "
-            u"не зарегистрирован).\n\n"
-            u"Если у вас «новый Outlook» — он не поддерживает COM. Переключитесь "
-            u"на классический Outlook (переключатель «Новый Outlook» в правом "
-            u"верхнем углу окна) и запустите его.")
+            u"не зарегистрирован).\n\n" + _NEW_OUTLOOK_HINT)
 
     app = None
     # Marshal.GetActiveObject есть только в .NET Framework (Revit до 2024);
