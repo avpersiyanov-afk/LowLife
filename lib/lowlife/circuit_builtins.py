@@ -16,6 +16,8 @@
   строку справочника кабелей (ключевой спецификации цепей). Параметр,
   который заполняет строка, — ключевой параметр её спецификации
   (KeyScheduleParameterName), обычно «Проводник».
+- set_panel_name(panel, value) — «Имя панели» электрооборудования
+  (RBS_ELEC_PANEL_NAME).
 """
 
 try:
@@ -90,3 +92,15 @@ def set_circuit_wire_type(doc, circuit, row_id):
     if row_id is None or row_id == ElementId.InvalidElementId:
         return False
     return set_element_id_param(circuit, wire_type_param_name(doc, row_id), row_id)
+
+
+def set_panel_name(panel, value):
+    """Пишет «Имя панели» электрооборудования (RBS_ELEC_PANEL_NAME). True — записано."""
+    text = u"" if value is None else unicode(value)
+    p = _builtin(panel, BuiltInParameter.RBS_ELEC_PANEL_NAME)
+    try:
+        if p is not None and not p.IsReadOnly:
+            return bool(p.Set(text))
+    except Exception:
+        pass
+    return False

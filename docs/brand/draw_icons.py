@@ -594,6 +594,33 @@ def tray_opening_boxes(c):
             c.line([(x, 43), (x, 53)], BLUE, 2)
 
 
+def _name_tag(c, box):
+    """Оранжевая бирка с «текстом» (две строки-штриха) — записанное имя."""
+    x0, y0, x1, y1 = box
+    c.rect(box, ORANGE, PALE_ORANGE, 3.5, 4)
+    c.line([(x0 + 6, y0 + 7), (x1 - 6, y0 + 7)], ORANGE, 3)
+    c.line([(x0 + 6, y1 - 7), (x1 - 14, y1 - 7)], ORANGE, 3)
+
+
+def write_load_name(c):
+    """«Имя нагрузки»: панель, цепь к устройству, на цепи — бирка с именем."""
+    c.rect((8, 54, 28, 84), BLUE, WHITE, 5, 3)
+    c.line([(18, 54), (18, 40), (74, 40), (74, 58)], BLUE, 4)
+    c.circle((74, 70), 12, BLUE, WHITE, 5)
+    c.line([(46, 40), (46, 30)], ORANGE, 3)
+    _name_tag(c, (26, 8, 70, 30))
+
+
+def write_panel_name(c):
+    """«Имя панели»: щит с дверцей, над ним — бирка с именем."""
+    c.rect((22, 40, 74, 88), BLUE, WHITE, 5, 4)
+    c.line([(48, 46), (48, 82)], BLUE, 3)
+    c.circle((42, 64), 2.5, None, BLUE)
+    c.circle((54, 64), 2.5, None, BLUE)
+    _name_tag(c, (14, 8, 82, 32))
+    c.line([(48, 32), (48, 40)], ORANGE, 3)
+
+
 ICONS = [
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
@@ -629,6 +656,8 @@ ICONS = [
     ("Tools.panel/TagTrays.pushbutton", tag_trays),
     ("Tools.panel/CompareLinkDatums.pushbutton", compare_link_datums),
     ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),
+    ("CircuitsGeneric.panel/WriteLoadName.pushbutton", write_load_name),
+    ("CircuitsGeneric.panel/WritePanelName.pushbutton", write_panel_name),
 ]
 
 
