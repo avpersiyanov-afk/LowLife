@@ -148,6 +148,8 @@ THEMES = {
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
         (u"CircuitsSPA", u"BuildLoopCircuitsSPA"),
         (u"CircuitsGeneric", u"BuildGenericCircuits"),
+        (u"CircuitsGeneric", u"WriteLoadName"),
+        (u"CircuitsGeneric", u"WritePanelName"),
         (u"CircuitsDelete", u"DeleteViewCircuits"),
         (u"CircuitsDelete", u"HighlightNoCircuit"),
     ],

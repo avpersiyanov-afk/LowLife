@@ -140,6 +140,30 @@ LowLife как пара WPF-`GeometryGroup` (обычные буквы, акце
 value)` — «Имя нагрузки» (`RBS_ELEC_CIRCUIT_NAME`); `set_circuit_wire_type(doc,
 circuit, row_id)` — «Проводник»: параметр = ключевой параметр спецификации
 строки справочника кабелей (`KeyScheduleParameterName`, обычно «Проводник»).
+`set_panel_name(panel, value)` — «Имя панели» электрооборудования
+(`RBS_ELEC_PANEL_NAME`).
+
+## name_mask.py / name_by_mask.py / name_by_mask_settings.py
+Кнопки «Имя нагрузки» (`CircuitsGeneric.panel/WriteLoadName`) и «Имя
+панели» (`CircuitsGeneric.panel/WritePanelName`): текст по маске из двух
+параметров элемента. Чистая часть — `name_mask.py` (покрыта
+`tests/test_name_mask.py`): маска — текст с маркерами `{1}`/`{2}`
+(значения первого/второго параметра), `mask_tokens`, `validate_mask`,
+`missing_tokens`, `render_mask(mask, {1: …, 2: …})`. Revit-часть —
+`name_by_mask.py`: `selected_or_picked(uidoc, doc, prompt, keep)`
+(выделенное до запуска, иначе выбор рамкой), `source_value` (экземпляр,
+затем тип), `check_mask_params`, `name_for`; `device_circuits(el)` — цепи,
+куда элемент входит нагрузкой; `write_load_names(doc, elements, settings)`
+— пишет в параметр цепи `load_name_target_param` (пусто — штатное «Имя
+нагрузки»), цепь, в которую выбранные элементы дают разные значения,
+пропускает; `write_panel_names(doc, elements, settings)` — в штатное «Имя
+панели». Обе возвращают `Result` (`written`, `unchanged`, `skipped`), менять
+модель — внутри транзакции. Настройки — `name_by_mask_settings.LOAD_NAME`
+(`LowLifeLoadNameMask_settings.json`: `load_name_first_param`,
+`load_name_second_param`, `load_name_mask`, `load_name_target_param`) и
+`PANEL_NAME` (`LowLifePanelNameMask_settings.json`: `panel_name_first_param`,
+`panel_name_second_param`, `panel_name_mask`), `TextSettings`; поле маски
+(`MaskField`) не сохраняется без `{1}`/`{2}`.
 
 ## selection.py
 Работа с выделением элементов в Revit UI.
