@@ -59,4 +59,7 @@ git tag mail-v1.0
 git push origin mail-v1.0
 ```
 
+Или без тега в git: GitHub → Actions → «Задачи из почты (exe)» → Run
+workflow на `main`, поле «Тег выпуска» — `mail-v1.0`; релиз создаст тег сам.
+
 Ссылку на Releases можно давать коллегам — см. docs/email-tasks-app.md.

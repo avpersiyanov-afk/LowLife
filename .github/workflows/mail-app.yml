@@ -1,7 +1,8 @@
 # «Задачи из почты» — отдельное приложение (apps/mail): сборка LowLifeMail.exe на Windows.
 # Каждая сборка проверяет себя (--self-test) и кладёт .exe в артефакты запуска;
 # тег mail-v* (например mail-v1.0) ещё и публикует его в Releases — ссылку можно
-# давать коллегам без Revit.
+# давать коллегам без Revit. Выпустить можно и без пуша тега: Actions → этот
+# workflow → Run workflow на main с полем «Тег выпуска» — тег создаст сам релиз.
 name: Задачи из почты (exe)
 
 on:
@@ -24,6 +25,11 @@ on:
       - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
       - '.github/workflows/mail-app.yml'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Тег выпуска (например mail-v1.0); пусто — только сборка'
+        required: false
+        default: ''
 
 permissions:
   contents: write  # публикация релиза по тегу
@@ -58,11 +64,12 @@ jobs:
           path: dist/LowLifeMail.exe
 
       - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/mail-v')
+        if: startsWith(github.ref, 'refs/tags/mail-v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
         run: >
-          gh release create $env:GITHUB_REF_NAME dist/LowLifeMail.exe
-          --title "Задачи из почты $env:GITHUB_REF_NAME"
+          gh release create $env:TAG dist/LowLifeMail.exe --target $env:GITHUB_SHA
+          --title "Задачи из почты $env:TAG"
           --notes "LowLifeMail.exe — «Задачи из почты» без Revit. Инструкция: https://github.com/${{ github.repository }}/blob/main/docs/email-tasks-app.md"
