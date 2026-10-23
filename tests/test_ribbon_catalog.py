@@ -28,7 +28,7 @@ def test_titles_and_layout_order(tmpdir):
     _write(root, "LowLife.tab/B.panel/Zed.pushbutton/bundle.yaml", u"title: >-\n  Длинная\n  подпись\n")
     _write(root, "LowLife.tab/B.panel/Extra.pushbutton/script.py", u"pass\n")
     assert ribbon_catalog.list_panels(root) == [
-        (u"Панель Б", [u"Длинная подпись", u"Цепи шлейфов", u"Extra"]),
+        (u"Панель Б", [u"Длинная подпись", u"Цепи шлейфов"]),  # Extra нет в layout — pyRevit её не строит
         (u"Панель А", [u"Первая"]),
     ]
 

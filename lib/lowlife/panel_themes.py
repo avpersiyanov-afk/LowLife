@@ -13,7 +13,8 @@ Circuit-building buttons for each discipline live on their own dedicated
 panel (CircuitsSCS.panel "Цепи СКС", CircuitsSKUD.panel "Цепи СКУД",
 CircuitsSPS.panel "Цепи СПС", CircuitsSPA.panel "Цепи СПА"), separate from
 that discipline's main panel (SCS.panel, SKUD.panel, SPS.panel). Each of
-these buttons is listed under BOTH its own discipline's theme AND the
+these buttons (and SOUE.panel/BuildLoopCircuits, which has no Circuits*
+panel of its own) is listed under BOTH its own discipline's theme AND the
 cross-discipline "Circuits" theme ("Электрические цепи" in the ComboBox) —
 so picking a discipline theme shows that discipline's circuit button among
 its other tools, while picking "Электрические цепи" shows all of them
@@ -21,7 +22,9 @@ together regardless of discipline.
 
 DeleteViewCircuits lives on its own CircuitsDelete.panel ("Удаление") and
 is cross-discipline (deletes any circuit type), so it is only listed under
-"Circuits", not under a specific discipline theme.
+"Circuits", not under a specific discipline theme — as are CircuitsGeneric
+("Цепи (общее)") and the wire catalog that circuits' «Проводник» comes from
+(ToolsCables.panel, "Кабели").
 
 SetupParameters buttons across all disciplines are grouped under their own
 "Settings" theme rather than staying always-visible; Tools.panel/FopParameters
@@ -29,13 +32,12 @@ SetupParameters buttons across all disciplines are grouped under their own
 listed there too, as well as under "General".
 
 The discipline-agnostic tools are split across several small panels for
-readability instead of one jumbled Tools.panel: Tools.panel ("Tools" —
-DimensionGrids/GenericModelLength/ZoomToElement/FamilySection/AlignViewRange/
-LevelViews/
-Greeting/SpellCheck/DwgToDrafting/FopParameters), ToolsRooms.panel
-("Помещения"), ToolsSchedules.panel ("Спецификации"),
-ToolsFamilies.panel ("Семейства") and LOI.panel ("Заполнение LOI" —
-FillLOI, CheckLOI). Every button on all five is listed under the single "General"
+readability instead of one jumbled Tools.panel: Tools.panel ("Tools"),
+FilterSelection.panel ("Фильтр выбора"), Schematic.panel ("Схемы" — the
+room-based schematic draft), ToolsRooms.panel ("Помещения"),
+ToolsSchedules.panel ("Спецификации"), ToolsFamilies.panel ("Семейства"),
+LOI.panel ("Заполнение LOI"), Music.panel and Mail.panel ("Почта"). Every
+button on them is listed under the single "General"
 theme ("Общее" in the ComboBox), so picking "Общее" shows the whole set
 together.
 
@@ -49,7 +51,19 @@ Tray*.panel ("Лестничный лоток"/"Неперфорированны
 лоток"/"Проволочный лоток"/"Лотки на кровле") are grouped under their own
 theme, "КНК" — named after the workset every one of their buttons switches
 to (see lowlife.cable_tray.DEFAULT_WORKSET_FILTER), not after a discipline,
-since tray creation isn't tied to one specific discipline's devices.
+since tray creation isn't tied to one specific discipline's devices. The
+tray helpers on Tools.panel (TagTrays, LinkTraysToExcel, TrayOpeningBoxes)
+and ToolsTraySection.panel ("Сечение лотка") are listed under both "КНК" and
+"General".
+
+Notes.panel ("Заметки") is deliberately outside THEMES: it stays visible
+under every theme except «Моя панель» (see _other_panels), like the
+always-visible _Themes.panel/Info.panel.
+
+Every panel folder must also be listed in LowLife.tab/bundle.yaml `layout:`
+— pyRevit doesn't build a panel missing from it at all (SPA, LOI,
+FilterSelection, Schematic and ToolsTraySection once were, and never showed
+up). tests/test_panel_themes.py checks both lists.
 
 Every button in every panel referenced below MUST have an entry in some
 theme's list. apply_theme() defaults any button it finds in a touched panel
@@ -137,6 +151,7 @@ THEMES = {
         (u"TrayRoof", u"TraySPZp"),
         (u"TrayRoof", u"TraySB"),
         (u"TrayRoof", u"TraySS"),
+        (u"ToolsTraySection", u"TraySection"),
         (u"Tools", u"TagTrays"),
         (u"Tools", u"LinkTraysToExcel"),
         (u"Tools", u"TrayOpeningBoxes"),
@@ -147,11 +162,16 @@ THEMES = {
         (u"CircuitsSPS", u"BuildLoopCircuitsSPS"),
         (u"CircuitsSPS", u"BuildIsolatorCircuitsSPS"),
         (u"CircuitsSPA", u"BuildLoopCircuitsSPA"),
+        (u"SOUE", u"BuildLoopCircuits"),
         (u"CircuitsGeneric", u"BuildGenericCircuits"),
         (u"CircuitsGeneric", u"WriteLoadName"),
         (u"CircuitsGeneric", u"WritePanelName"),
         (u"CircuitsDelete", u"DeleteViewCircuits"),
         (u"CircuitsDelete", u"HighlightNoCircuit"),
+        (u"ToolsCables", u"WireCatalog"),
+        (u"ToolsCables", u"WireCatalogEdit"),
+        (u"ToolsCables", u"WireCatalogExport"),
+        (u"ToolsCables", u"WireCatalogImport"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
@@ -179,6 +199,9 @@ THEMES = {
         (u"Tools", u"LinkTraysToExcel"),
         (u"Tools", u"TrayOpeningBoxes"),
         (u"Tools", u"CompareLinkDatums"),
+        (u"ToolsTraySection", u"TraySection"),
+        (u"FilterSelection", u"CategoryFilterSelect"),
+        (u"Schematic", u"BuildRoomSchematic"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),
@@ -217,34 +240,17 @@ THEME_NAMES = [MINE, u"SCS", u"ACS", u"SOT", u"FAS", u"FAD", u"SPA", u"SS1", u"�
 # which pyRevit sets to the panel's DISPLAYED title (bundle.yaml `title:`), not
 # its bundle folder name — the two only coincide when a panel has no bundle.yaml
 # title override (confirmed via pyrevit/coreutils/ribbon.py: CreateRibbonPanel is
-# called with the title string, and _PyRevitRibbonPanel has no separate field that
-# preserves the folder name). Every panel below has a `title:` in its bundle.yaml,
-# so find_child(folder_name) can never match it; this maps folder name -> title so
-# _find_panel can look panels up by what they are actually named at runtime.
-PANEL_RIBBON_NAMES = {
-    u"CircuitsSCS": u"Цепи СКС",
-    u"CircuitsSKUD": u"Цепи СКУД",
-    u"CircuitsSPS": u"Цепи СПС",
-    u"CircuitsSPA": u"Цепи СПА",
-    u"SS1": u"СС1",
-    u"CircuitsGeneric": u"Цепи (общее)",
-    u"CircuitsDelete": u"Удаление",
-    u"ToolsRooms": u"Помещения",
-    u"ToolsSchedules": u"Спецификации",
-    u"ToolsFamilies": u"Семейства",
-    u"ToolsExport": u"Выгрузка",
-    u"Mail": u"Почта",
-    u"LOI": u"Заполнение LOI",
-    u"TrayLadder": u"Лестничный лоток",
-    u"TrayUnperforated": u"Неперфорированный лоток",
-    u"TrayPerforated": u"Перфорированный лоток",
-    u"TrayWire": u"Проволочный лоток",
-    u"TrayRoof": u"Лотки на кровле",
-}
+# called with the title string). So panels are looked up by the title read from
+# their bundle.yaml (ribbon_catalog.item_title) — no hand-kept folder -> title map
+# to forget when a panel gets a title.
+def _ribbon_name(panel_folder):
+    import os
+    from lowlife import ribbon_catalog
+    return ribbon_catalog.item_title(os.path.join(
+        ribbon_catalog.extension_root(), ribbon_catalog.TAB_FOLDER, panel_folder + u".panel"))
 
 
-def _find_panel(pyrevit_tabs, panel_name):
-    ribbon_name = PANEL_RIBBON_NAMES.get(panel_name, panel_name)
+def _find_panel(pyrevit_tabs, ribbon_name):
     for tab in pyrevit_tabs:
         panel = tab.find_child(ribbon_name)
         if panel is not None:
@@ -322,7 +328,7 @@ def apply_theme(selected_theme):
     touched_panel_names = set(panel_name for panel_name, _ in visibility)
 
     for panel_name in touched_panel_names:
-        panel = _find_panel(pyrevit_tabs, panel_name)
+        panel = _find_panel(pyrevit_tabs, _ribbon_name(panel_name))
         if panel is None:
             continue
         panel_visible = False
