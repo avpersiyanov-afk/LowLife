@@ -98,7 +98,8 @@ def _stem(name):
 
 
 def _ordered(folder, exts):
-    """Подпапки с нужными расширениями: сначала по `layout:`, остальные — по алфавиту (как у pyRevit)."""
+    """Подпапки с нужными расширениями: при `layout:` — только перечисленные в нём и по его порядку
+    (неперечисленные pyRevit не строит), без него — по алфавиту."""
     try:
         names = [n for n in os.listdir(folder)
                  if os.path.isdir(os.path.join(folder, n)) and os.path.splitext(n)[1].lower() in exts]
@@ -107,8 +108,9 @@ def _ordered(folder, exts):
     names.sort(key=lambda n: n.lower())
     _, layout = read_bundle(folder)
     by_stem = dict((_stem(n), n) for n in names)
-    ordered = [by_stem.pop(s) for s in layout if s in by_stem]
-    return ordered + [n for n in names if _stem(n) in by_stem]
+    if layout:
+        return [by_stem[s] for s in layout if s in by_stem]
+    return names
 
 
 def item_title(folder):

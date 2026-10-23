@@ -193,7 +193,7 @@ def _find_ribbon_item(entry):
     """(pyRevit-панель, [элементы pyRevit от панели до кнопки]) или (None, None)."""
     from pyrevit.coreutils.ribbon import get_current_ui
     tabs = get_current_ui().get_pyrevit_tabs()
-    # у RibbonPanel имя — подпись панели (title из bundle.yaml), см. panel_themes.PANEL_RIBBON_NAMES
+    # у RibbonPanel имя — подпись панели (title из bundle.yaml), см. panel_themes._ribbon_name
     for panel_name in (entry[u"panel_title"], entry[u"panel"]):
         for tab in tabs:
             panel = tab.find_child(panel_name)

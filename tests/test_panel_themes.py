@@ -73,3 +73,37 @@ def test_mine_theme_leaves_only_lowlife_and_user_panels():
     on_disk = set(n[:-len(".panel")] for n in os.listdir(TAB) if n.endswith(".panel"))
     assert on_disk - themed - set(other) <= set(panel_themes.ALWAYS_VISIBLE) | set(
         n for n in on_disk if n.startswith(u"MyPanel"))
+
+
+def _layout(folder):
+    from lowlife import ribbon_catalog
+    return ribbon_catalog.read_bundle(folder)[1]
+
+
+def test_every_panel_is_in_the_tab_layout():
+    # панель, которой нет в layout: вкладки, pyRevit не строит вовсе
+    listed = set(_layout(TAB))
+    on_disk = set(n[:-len(".panel")] for n in os.listdir(TAB) if n.endswith(".panel"))
+    assert sorted(on_disk - listed) == []
+    themed = set(p for refs in panel_themes.THEMES.values() for p, _ in refs)
+    assert sorted(themed - listed) == []
+
+
+def test_every_button_is_in_its_container_layout():
+    # то же для кнопок внутри панели/стека со своим layout:
+    missing = []
+    for root, dirs, _files in os.walk(TAB):
+        layout = _layout(root) if root != TAB else None
+        if not layout:
+            continue
+        for name in dirs:
+            base, _dot, kind = name.rpartition(".")
+            if kind in _BUTTON_KINDS and base not in layout:
+                missing.append(os.path.relpath(os.path.join(root, name), TAB))
+    assert missing == []
+
+
+def test_panels_are_found_by_their_ribbon_title():
+    assert panel_themes._ribbon_name(u"SCS") == u"SCS"  # без title — имя папки
+    assert panel_themes._ribbon_name(u"ToolsCables") == u"Кабели"
+    assert panel_themes._ribbon_name(u"LOI") == u"Заполнение LOI"

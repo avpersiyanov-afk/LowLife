@@ -13,7 +13,9 @@ layout:
   - SOT
   - SOUE
   - SPS
+  - SPA
   - SS1
+  - Schematic
   - CircuitsSCS
   - CircuitsSKUD
   - CircuitsSPS
@@ -25,8 +27,11 @@ layout:
   - TrayPerforated
   - TrayWire
   - TrayRoof
+  - ToolsTraySection
   - Tools
+  - FilterSelection
   - ToolsRooms
+  - LOI
   - ToolsSchedules
   - ToolsCables
   - ToolsFamilies
