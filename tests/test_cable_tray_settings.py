@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from lowlife import cable_tray_settings as cts
+from lowlife import cable_tray_settings as cts, i18n
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,3 +51,18 @@ def test_missing_reports_empty_fields(appdata):
 def test_button_title_and_keys():
     assert cts.button_title("TrayRoof", "TraySB") == u"Лоток СБ (Лотки на кровле)"
     assert cts.tray_type_key("TrayLadder", "TraySB") != cts.tray_type_key("TrayRoof", "TraySB")
+
+
+def test_language_switch_changes_labels_and_preserves_type_filters(appdata, monkeypatch):
+    values = cts.get_settings_silent()
+    key = cts.tray_type_key("TrayRoof", "TraySB")
+    values[key] = u""
+    for lang, title, missing_label in [
+        (i18n.EN, u"Tray SB (Roof trays)", u"SB tray — part of type name"),
+        (i18n.RU, u"Лоток СБ (Лотки на кровле)", u"Лоток СБ — часть имени типа"),
+    ]:
+        monkeypatch.setattr(i18n, "current", lambda: lang)
+        assert cts.button_title("TrayRoof", "TraySB") == title
+        assert cts.missing(values, [key]) == [missing_label]
+        assert cts.default_tray_type("TrayRoof", "TraySB") == u"СБ_ЛП_1.5_ГЦ"
+        assert cts.get_settings_silent()["workset_filter"] == u"КНК"

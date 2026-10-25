@@ -22,6 +22,7 @@ run_tray_button is the whole body of a button's script.py.
 """
 
 from Autodesk.Revit.DB import Element, FilteredElementCollector, FilteredWorksetCollector, WorksetKind
+from lowlife.i18n import tr
 from Autodesk.Revit.DB.Electrical import CableTrayType
 from pyrevit import forms, script
 
@@ -72,23 +73,23 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     """
     if not doc.IsWorkshared:
         forms.alert(
-            u"В проекте не включена совместная работа — рабочие наборы недоступны.",
+            tr(u"В проекте не включена совместная работа — рабочие наборы недоступны."),
             exitscript=True
         )
 
     tray_types = find_cable_tray_types(doc, tray_type_filter)
     if not tray_types:
         forms.alert(
-            u"Не найден тип лотка, содержащий «{}» в имени.\n\n"
+            tr(u"Не найден тип лотка, содержащий «{}» в имени.\n\n"
             u"Создайте в проекте тип кабельного лотка с таким текстом в имени "
-            u"или поменяйте текст в настройках кнопки (Shift+клик).".format(tray_type_filter),
+            u"или поменяйте текст в настройках кнопки (Shift+клик).").format(tray_type_filter),
             exitscript=True
         )
     if len(tray_types) > 1:
         forms.alert(
-            u"Найдено несколько типов лотка с «{}» в имени ({} шт.) — "
+            tr(u"Найдено несколько типов лотка с «{}» в имени ({} шт.) — "
             u"уточните имена типов в проекте или текст в настройках кнопки "
-            u"(Shift+клик), чтобы он совпадал ровно с одним.".format(tray_type_filter, len(tray_types)),
+            u"(Shift+клик), чтобы он совпадал ровно с одним.").format(tray_type_filter, len(tray_types)),
             exitscript=True
         )
     tray_type = tray_types[0]
@@ -96,16 +97,16 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
     worksets = find_worksets(doc, workset_filter)
     if not worksets:
         forms.alert(
-            u"Не найден рабочий набор, содержащий «{}» в имени.\n\n"
+            tr(u"Не найден рабочий набор, содержащий «{}» в имени.\n\n"
             u"Создайте такой рабочий набор или поменяйте текст в настройках "
-            u"кнопки (Shift+клик).".format(workset_filter),
+            u"кнопки (Shift+клик).").format(workset_filter),
             exitscript=True
         )
     if len(worksets) > 1:
         forms.alert(
-            u"Найдено несколько рабочих наборов с «{}» в имени ({} шт.) — "
+            tr(u"Найдено несколько рабочих наборов с «{}» в имени ({} шт.) — "
             u"уточните имена рабочих наборов в проекте или текст в настройках "
-            u"кнопки (Shift+клик).".format(workset_filter, len(worksets)),
+            u"кнопки (Shift+клик).").format(workset_filter, len(worksets)),
             exitscript=True
         )
     workset = worksets[0]
@@ -114,10 +115,10 @@ def run_create_cable_tray_button(doc, uidoc, tray_type_filter, workset_filter=DE
 
     if not hasattr(uidoc, "PostRequestForElementTypePlacement"):
         forms.alert(
-            u"Эта версия Revit не поддерживает запуск инструмента вставки типа "
+            tr(u"Эта версия Revit не поддерживает запуск инструмента вставки типа "
             u"из API (UIDocument.PostRequestForElementTypePlacement).\n\n"
             u"Активный рабочий набор уже переключён на «{}» — запустите "
-            u"инструмент «Лоток» вручную и выберите тип «{}».".format(
+            u"инструмент «Лоток» вручную и выберите тип «{}».").format(
                 workset.Name, _safe_type_name(tray_type)
             ),
             exitscript=True
@@ -144,8 +145,8 @@ def run_tray_button(doc, uidoc, panel_folder, button_folder):
     if config_mode:
         edited = cable_tray_settings.get_settings_interactive()
         forms.alert(
-            u"Отменено, настройки не изменены." if edited is None
-            else u"Настройки сохранены."
+            tr(u"Отменено, настройки не изменены.") if edited is None
+            else tr(u"Настройки сохранены.")
         )
         script.exit()
 
@@ -153,8 +154,8 @@ def run_tray_button(doc, uidoc, panel_folder, button_folder):
     missing = cable_tray_settings.missing(settings, [type_key, cable_tray_settings.WORKSET_KEY])
     if missing:
         forms.alert(
-            u"Не заполнены настройки кнопки «{}»:\n\n{}\n\n"
-            u"Откройте настройки лотков: Shift+клик по любой кнопке лотка.".format(
+            tr(u"Не заполнены настройки кнопки «{}»:\n\n{}\n\n"
+            u"Откройте настройки лотков: Shift+клик по любой кнопке лотка.").format(
                 cable_tray_settings.button_title(panel_folder, button_folder),
                 u"\n".join(missing)
             ),

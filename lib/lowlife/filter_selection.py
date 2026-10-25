@@ -24,6 +24,7 @@ except NameError:  # Python 3
 
 
 from Autodesk.Revit.DB import ElementId
+from lowlife.i18n import tr
 from System.Collections.Generic import List
 
 from pyrevit import forms
@@ -88,9 +89,9 @@ def configure(doc, view):
     options = list_view_categories(doc, view)
     if not options:
         forms.alert(
-            u"На активном виде нет модельных элементов, по которым можно "
-            u"настроить фильтр выбора.",
-            title=u"Фильтр выбора",
+            tr(u"На активном виде нет модельных элементов, по которым можно "
+            u"настроить фильтр выбора."),
+            title=tr(u"Фильтр выбора"),
             exitscript=True
         )
 
@@ -101,8 +102,8 @@ def configure(doc, view):
 
     chosen = select_list.SelectFromList.show(
         items,
-        title=u"Категории для фильтра выбора (можно несколько)",
-        button_name=u"Сохранить",
+        title=tr(u"Категории для фильтра выбора (можно несколько)"),
+        button_name=tr(u"Сохранить"),
         multiselect=True
     )
 
@@ -115,15 +116,15 @@ def configure(doc, view):
 
     if names:
         forms.alert(
-            u"Сохранено. Обычный клик по кнопке теперь сразу выделяет "
-            u"элементы категорий:\n{}".format(u", ".join(sorted(names))),
-            title=u"Фильтр выбора"
+            tr(u"Сохранено. Обычный клик по кнопке теперь сразу выделяет "
+            u"элементы категорий:\n{}").format(u", ".join(sorted(names))),
+            title=tr(u"Фильтр выбора")
         )
     else:
         forms.alert(
-            u"Список категорий очищен — обычный клик по кнопке снова "
-            u"попросит настроить фильтр (Shift+клик).",
-            title=u"Фильтр выбора"
+            tr(u"Список категорий очищен — обычный клик по кнопке снова "
+            u"попросит настроить фильтр (Shift+клик)."),
+            title=tr(u"Фильтр выбора")
         )
 
 
@@ -137,21 +138,21 @@ def run(doc, uidoc, view):
     names = load_config()["category_names"]
     if not names:
         forms.alert(
-            u"Категории для фильтра выбора ещё не настроены. Нажмите "
+            tr(u"Категории для фильтра выбора ещё не настроены. Нажмите "
             u"кнопку с зажатым Shift, отметьте нужные категории и "
             u"сохраните — дальше обычный клик будет сразу выделять по "
-            u"ним, без вопросов.",
-            title=u"Фильтр выбора",
+            u"ним, без вопросов."),
+            title=tr(u"Фильтр выбора"),
             exitscript=True
         )
 
     category_ids = resolve_category_ids(doc, names)
     if not category_ids:
         forms.alert(
-            u"Ни одна из сохранённых категорий ({}) не найдена в этом "
+            tr(u"Ни одна из сохранённых категорий ({}) не найдена в этом "
             u"документе. Настройте список заново — Shift+клик по "
-            u"кнопке.".format(u", ".join(names)),
-            title=u"Фильтр выбора",
+            u"кнопке.").format(u", ".join(names)),
+            title=tr(u"Фильтр выбора"),
             exitscript=True
         )
 
@@ -173,10 +174,10 @@ def run(doc, uidoc, view):
         # Показываем traceback, чтобы увидеть причину, а не гадать вслепую.
         import traceback
         forms.alert(
-            u"Фильтр споткнулся на отборе/фиксации выделения — поэтому, "
+            tr(u"Фильтр споткнулся на отборе/фиксации выделения — поэтому, "
             u"похоже, осталось «сырое» выделение без фильтра. Текст "
-            u"ошибки ниже, перешлите его, пожалуйста:\n\n{}".format(
+            u"ошибки ниже, перешлите его, пожалуйста:\n\n{}").format(
                 traceback.format_exc()),
-            title=u"Фильтр выбора — диагностика"
+            title=tr(u"Фильтр выбора — диагностика")
         )
         raise
