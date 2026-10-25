@@ -21,6 +21,7 @@ except NameError:  # Python 3
     unicode = str
 
 import io
+from lowlife.i18n import tr
 import os
 import shutil
 
@@ -51,7 +52,8 @@ def save(data):
 def reserved_titles():
     """Подписи панелей самого LowLife — свою панель так называть нельзя."""
     titles = [title for title, _buttons in ribbon_catalog.list_panels()]
-    return titles + [TAB_NAME]
+    english = [title for title, _buttons in ribbon_catalog.list_panels(lang='en')]
+    return titles + english + [TAB_NAME]
 
 
 # ---------------------------------------------------------------- папки
@@ -135,7 +137,7 @@ def write_panels(data=None, root=None):
                 names.append(name)
                 keep.add(name + ext)
             except (IOError, OSError) as ex:
-                problems.append(u"«{}»: не удалось скопировать «{}» — {}".format(title, entry[u"title"], ex))
+                problems.append(tr(u"«{}»: не удалось скопировать «{}» — {}").format(title, ribbon_catalog.localized(entry, u"title"), ex))
         for name in os.listdir(folder):
             if name not in keep:
                 _remove(os.path.join(folder, name))

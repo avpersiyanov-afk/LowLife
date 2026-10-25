@@ -19,7 +19,9 @@ try:
 except NameError:  # Python 3
     unicode = str
 
+import os
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import forms
 from System import Object, TimeSpan
@@ -32,7 +34,7 @@ from System.Windows.Input import Key, Keyboard, ModifierKeys
 from System.Windows.Media import SolidColorBrush, Color, Pen, Visual, VisualTreeHelper
 from System.Windows.Threading import DispatcherTimer
 
-from lowlife import ribbon_catalog, ribbon_language
+from lowlife import xaml_i18n, ribbon_catalog, ribbon_language
 
 TAB_NAME = u"LowLife"
 SELF = (u"_Themes", u"Search")  # саму кнопку «Поиск» в результатах не показываем
@@ -42,40 +44,7 @@ FLASH_INTERVAL_MS = 350
 FLASH_ALPHA = 170          # непрозрачность заливки (из 255): подпись кнопки под ней ещё читается
 MAX_TOOLTIP = 160
 
-_XAML = u'''
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Поиск кнопки LowLife" Width="820" Height="640" MinWidth="600" MinHeight="360"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
-        FontFamily="Segoe UI" FontSize="13" Background="White">
-    <DockPanel Margin="14">
-        <TextBox x:Name="txtQuery" DockPanel.Dock="Top" Padding="6,5" FontSize="14"/>
-        <!-- сетка, а не DockPanel: текст слева сжимается/переносится и никогда не выталкивает кнопки -->
-        <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
-                <TextBlock x:Name="txtStatus" Foreground="#555555" TextWrapping="Wrap"/>
-                <TextBlock Foreground="#888888" FontSize="11" TextWrapping="Wrap"
-                           Text="Enter — запустить · Ctrl+Enter — показать на ленте · Esc — закрыть"/>
-            </StackPanel>
-            <Button x:Name="btnFavorite" Grid.Column="1" Content="На мою панель"
-                    ToolTip="Добавить кнопку на свою панель («Мои панели»)"
-                    Padding="16,6" MinWidth="100" Margin="0,0,8,0" VerticalAlignment="Center"/>
-            <Button x:Name="btnShow" Grid.Column="2" Content="Показать на ленте"
-                    Padding="16,6" MinWidth="100" VerticalAlignment="Center"/>
-            <Button x:Name="btnRun" Grid.Column="3" Content="Запустить" FontWeight="SemiBold"
-                    Padding="16,6" MinWidth="100" Margin="8,0,0,0" VerticalAlignment="Center"/>
-        </Grid>
-        <ListBox x:Name="lstResults" Margin="0,8,0,0" HorizontalContentAlignment="Stretch"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
-    </DockPanel>
-</Window>
-'''
+_XAML = os.path.join(os.path.dirname(__file__), "xaml", "ribbon_search.xaml")
 
 _GREY = SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77))
 _ACCENT = SolidColorBrush(Color.FromRgb(0xC0, 0x66, 0x10))  # тёмный вариант оранжевого логотипа — читается на белом
@@ -120,7 +89,7 @@ def button_row(entry):
 
 class SearchWindow(forms.WPFWindow):
     def __init__(self, entries):
-        forms.WPFWindow.__init__(self, _XAML, literal_string=True)
+        forms.WPFWindow.__init__(self, xaml_i18n.load(_XAML), literal_string=True)
         self.entries = entries
         self.result = None  # (u"run" | u"show" | u"favorite", entry)
         self.txtQuery.TextChanged += lambda s, e: self.refresh()
@@ -142,7 +111,7 @@ class SearchWindow(forms.WPFWindow):
         if found:
             self.lstResults.SelectedIndex = 0
             self.lstResults.ScrollIntoView(self.lstResults.Items[0])
-        self.txtStatus.Text = u"Найдено: {}".format(len(found)) if found else u"Ничего не нашлось"
+        self.txtStatus.Text = tr(u"Найдено: {}").format(len(found)) if found else tr(u"Ничего не нашлось")
         self.update_buttons()
 
     def update_buttons(self):
@@ -239,15 +208,15 @@ def run_button(uiapp, entry):
     from Autodesk.Revit.UI import RevitCommandId
     panel, chain = _find_ribbon_item(entry)
     if not chain:
-        return u"Кнопка «{}» не найдена на ленте — перезагрузите pyRevit.".format(entry[u"title"])
+        return tr(u"Кнопка «{}» не найдена на ленте — перезагрузите pyRevit.").format(ribbon_catalog.localized(entry, u"title"))
     for cmd_id in _command_id(entry, chain):
         cmd = RevitCommandId.LookupCommandId(cmd_id)
         if cmd is not None and uiapp.CanPostCommand(cmd):
             uiapp.PostCommand(cmd)
             _record_usage(uiapp, entry)
             return None
-    return (u"Revit не даёт запустить «{}» отсюда (возможно, кнопка недоступна без открытой модели) — "
-            u"она подсвечена на ленте.".format(entry[u"title"]))
+    return (tr(u"Revit не даёт запустить «{}» отсюда (возможно, кнопка недоступна без открытой модели) — "
+            u"она подсвечена на ленте.").format(ribbon_catalog.localized(entry, u"title")))
 
 
 def _activate_tab():
@@ -394,7 +363,7 @@ def show_button(entry):
     """Открывает вкладку LowLife, делает кнопку видимой и мигает на ней заливкой. Возвращает текст ошибки или None."""
     panel, chain = _find_ribbon_item(entry)
     if not chain:
-        return u"Кнопка «{}» не найдена на ленте — перезагрузите pyRevit.".format(entry[u"title"])
+        return tr(u"Кнопка «{}» не найдена на ленте — перезагрузите pyRevit.").format(ribbon_catalog.localized(entry, u"title"))
     # тема могла скрыть кнопку/панель — открываем их до следующего переключения темы
     for item in chain:
         item.visible = True
@@ -425,7 +394,7 @@ def run(uiapp):
     try:
         _run(uiapp)
     except Exception as ex:
-        forms.alert(unicode(ex), title=u"Поиск: ошибка", expanded=traceback.format_exc())
+        forms.alert(unicode(ex), title=tr(u"Поиск: ошибка"), expanded=traceback.format_exc())
 
 
 def _run(uiapp):
@@ -442,8 +411,8 @@ def _run(uiapp):
         error = run_button(uiapp, entry)
         if error:
             show_button(entry)
-            forms.alert(error, title=u"Поиск")
+            forms.alert(error, title=tr(u"Поиск"))
     else:
         error = show_button(entry)
         if error:
-            forms.alert(error, title=u"Поиск")
+            forms.alert(error, title=tr(u"Поиск"))

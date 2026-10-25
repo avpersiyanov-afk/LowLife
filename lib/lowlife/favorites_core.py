@@ -13,6 +13,7 @@
 перечислены в `layout:` вкладки, без этого pyRevit панель не создаёт), в каждой — копии папок
 исходных кнопок. Окно настройки — `favorites_ui.py`.
 """
+from lowlife.i18n import tr
 
 try:
     unicode  # noqa: F821 — IronPython/Python 2
@@ -134,13 +135,13 @@ def plan(data, entries):
         for ref in panel[u"buttons"]:
             entry = find_entry(entries, ref)
             if entry is None:
-                problems.append(u"«{}»: кнопки {} больше нет в LowLife.".format(panel[u"title"], button_key(ref)))
+                problems.append(tr(u"«{}»: кнопки {} больше нет в LowLife.").format(panel[u"title"], button_key(ref)))
             else:
                 buttons.append((button_folder(ref), entry))
         if not buttons:
             continue
         if len(result) >= MAX_PANELS:
-            problems.append(u"Панель «{}» не поместилась: своих панелей не больше {}.".format(
+            problems.append(tr(u"Панель «{}» не поместилась: своих панелей не больше {}.").format(
                 panel[u"title"], MAX_PANELS))
             continue
         result.append((slot_name(len(result)), panel[u"title"], buttons))
@@ -154,16 +155,16 @@ def title_problem(title, other_titles, reserved=()):
     (две панели с одной подписью на вкладке не различить)."""
     title = _text(title)
     if not title:
-        return u"Введите название панели."
+        return tr(u"Введите название панели.")
     if len(title) > MAX_TITLE:
-        return u"Название длиннее {} знаков.".format(MAX_TITLE)
+        return tr(u"Название длиннее {} знаков.").format(MAX_TITLE)
     if u"%" in title:
-        return u"Знак «%» в названии панели нельзя: Revit им разделяет имена на ленте."
+        return tr(u"Знак «%» в названии панели нельзя: Revit им разделяет имена на ленте.")
     low = title.lower()
     if any(low == _text(t).lower() for t in other_titles):
-        return u"Своя панель «{}» уже есть.".format(title)
+        return tr(u"Своя панель «{}» уже есть.").format(title)
     if any(low == _text(t).lower() for t in reserved):
-        return u"Так называется панель LowLife — выберите другое название."
+        return tr(u"Так называется панель LowLife — выберите другое название.")
     return None
 
 

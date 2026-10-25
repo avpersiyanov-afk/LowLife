@@ -247,3 +247,36 @@ def test_about_and_feedback_labels_follow_language_without_changing_history(appd
     assert u'My messages' in fc.unread_notice(1)
     i18n.save(i18n.RU)
     assert about.revit_version_text(2024) == u'2024 (основная рабочая версия)'
+
+
+def test_greetings_switch_language_without_changing_time_or_name_matching(appdata):
+    from lowlife import greeting
+    ru = [greeting.extra_line(hour, day, lambda pool: pool[0])
+          for hour, day in [(9, 0), (13, 0), (18, 0), (1, 0), (9, 6), (1, 6)]]
+    i18n.save(i18n.EN)
+    assert greeting.greeting_lines(9, u'Андрей') == (u'GOOD MORNING,', u'АНДРЕЙ!')
+    assert greeting.greeting_lines(1) == (u'GOOD NIGHT!', u'')
+    assert greeting.is_night(1) and not greeting.is_night(9)
+    assert greeting.extra_line(9, 0, lambda pool: pool[0]) == ru[0]
+    assert all(i18n.tr(text) != text for text in ru)
+    assert i18n.tr(greeting.shout_for([u'a.Nikandrov'])) == u'Dyyyyynaaaasty!'
+    assert greeting.shout_for([u'OtherUser']) is None
+    i18n.save(i18n.RU)
+    assert greeting.greeting_lines(9, u'Андрей') == (u'ДОБРОЕ УТРО,', u'АНДРЕЙ!')
+
+
+def test_custom_panels_keep_user_titles_and_button_references_in_english(appdata):
+    from lowlife import favorites_core as fc, favorites
+    ref = {u'panel': u'SCS', u'path': [u'PlaceRouteNodes']}
+    data, _ = fc.add_button({}, u'Мои цепи', ref)
+    i18n.save(i18n.EN)
+    assert fc.normalize(data) == data
+    assert fc.title_problem(u'', []) == u'Enter a panel name.'
+    assert fc.title_problem(u'Мои цепи', [u'Мои цепи']) == u'Custom panel “Мои цепи” already exists.'
+    assert fc.button_ref(ref) == ref
+    assert u'Мои цепи' in fc.panel_bundle(u'Мои цепи', ['SCS-PlaceRouteNodes'])
+    reserved = favorites.reserved_titles()
+    assert u'Справка' in reserved and u'Help' in reserved
+    assert fc.title_problem(u'Help', [], reserved) is not None
+    i18n.save(i18n.RU)
+    assert fc.title_problem(u'', []) == u'Введите название панели.'

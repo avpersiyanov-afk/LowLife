@@ -9,6 +9,7 @@
 в фоновом потоке. Пользователь выключает отправку галочкой в окне «О программе» (`set_enabled`).
 """
 import os
+from lowlife.i18n import tr
 import time
 import json
 
@@ -201,7 +202,7 @@ def install(uiapp):
 def _send(events, timeout_ms=20000):
     url = feedback.feedback_url()
     if not url:
-        raise core.ApiError(u'Адрес таблицы не задан.')
+        raise core.ApiError(tr(u'Адрес таблицы не задан.'))
     body = core._dumps({'action': 'usage', 'usage': {'batch': usage_core.batch_id(events), 'events': events}})
     try:
         raw = core._post(url, body, timeout_ms, track=False)
@@ -212,9 +213,9 @@ def _send(events, timeout_ms=20000):
     try:
         resp = json.loads(raw)
     except Exception:
-        raise core.ApiError(u'Таблица ответила не данными, а страницей.')
+        raise core.ApiError(tr(u'Таблица ответила не данными, а страницей.'))
     if not resp.get('ok'):
-        raise core.ApiError(resp.get('error') or u'Неизвестная ошибка')
+        raise core.ApiError(resp.get('error') or tr(u'Неизвестная ошибка'))
 
 
 def flush_queue(timeout_ms=20000):
