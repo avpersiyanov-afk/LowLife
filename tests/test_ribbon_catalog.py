@@ -33,6 +33,18 @@ def test_titles_and_layout_order(tmpdir):
     ]
 
 
+def test_localized_panel_list_preserves_original_order_and_values(tmpdir):
+    root = str(tmpdir)
+    _write(root, 'LowLife.tab/A.panel/bundle.yaml', u'title: Панель\ntitle_en: Panel\n')
+    _write(root, 'LowLife.tab/A.panel/Actions.stack/One.pushbutton/bundle.yaml',
+           u'title: Первая\ntitle_en: First\n')
+    _write(root, 'LowLife.tab/A.panel/Actions.stack/Two.pushbutton/bundle.yaml', u'title: Вторая\n')
+    raw = ribbon_catalog.list_panels(root)
+    assert raw == [(u'Панель', [u'Первая', u'Вторая'])]
+    assert ribbon_catalog.list_panels(root, lang='en') == [(u'Panel', [u'First', u'Вторая'])]
+    assert ribbon_catalog.list_panels(root) == raw
+
+
 def test_stack_expanded_and_empty_panel_skipped(tmpdir):
     root = str(tmpdir)
     _write(root, "LowLife.tab/_Themes.panel/Theme.combobox/bundle.yaml", u"title: Тема\n")

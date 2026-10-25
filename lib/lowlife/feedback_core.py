@@ -7,6 +7,7 @@
 и известен только отправителю и автору, поэтому чужие ответы так не прочитать.
 """
 import datetime
+from lowlife.i18n import N_, tr
 
 try:
     unicode
@@ -81,12 +82,21 @@ def check_due(last_checked, now=None, hours=CHECK_HOURS):
     return last > now or now - last >= datetime.timedelta(hours=hours)
 
 
-def where_text(entry, general=u"LowLife в целом"):
-    return u" → ".join(p for p in (entry.get(u"panel"), entry.get(u"button")) if p) or general
+def where_text(entry, general=None):
+    return (u" → ".join(p for p in (entry.get(u"panel"), entry.get(u"button")) if p)
+            or (tr(u"LowLife в целом") if general is None else general))
+
+
+# Stored statuses remain the service's original values; only display labels change.
+FEEDBACK_STATUSES = (N_(u'Новое'), N_(u'В работе'), N_(u'Сделано'), N_(u'Не будет'), N_(u'Дубль'))
+
+
+def status_label(value):
+    return tr(value) if value in FEEDBACK_STATUSES else value
 
 
 def unread_notice(count):
     if count == 1:
-        return u"Автор LowLife ответил на ваше сообщение. Ответ — в «Обратной связи», вкладка «Мои сообщения»."
-    return (u"Автор LowLife ответил на ваши сообщения ({}). Ответы — в «Обратной связи», "
-            u"вкладка «Мои сообщения».".format(count))
+        return tr(u"Автор LowLife ответил на ваше сообщение. Ответ — в «Обратной связи», вкладка «Мои сообщения».")
+    return (tr(u"Автор LowLife ответил на ваши сообщения ({}). Ответы — в «Обратной связи», "
+            u"вкладка «Мои сообщения».").format(count))

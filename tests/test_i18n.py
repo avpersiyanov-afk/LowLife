@@ -229,3 +229,21 @@ def test_catalog_extractor_reads_only_marked_xaml_captions(tmpdir):
     folder.join('other.xaml').write_text(u'<Window Title="Не переведено"/>', encoding='utf-8')
     keys = _tool().extract_keys(str(tmpdir))
     assert set(keys) == {u'Окно XAML', u'Ссылка XAML'}
+
+
+def test_about_and_feedback_labels_follow_language_without_changing_history(appdata):
+    from lowlife import about, feedback_core as fc
+    item = dict(id=u'local-test', panel=u'СОТ', button=u'Марки оборудования',
+                kind=u'Предложение', text=u'Текст пользователя')
+    i18n.save(i18n.EN)
+    assert about.revit_version_text(2024) == u'2024 (primary working version)'
+    assert about.revit_version_text(None) == u'unknown'
+    assert u'expected to work' in about.revit_support_summary()
+    history = fc.add_to_history([], item)
+    updated, _ = fc.merge_replies(history, [dict(id=item['id'], status=u'Сделано', reply=u'Ответ автора')])
+    assert fc.status_label(updated[0]['status']) == u'Done'
+    assert updated[0]['status'] == u'Сделано' and updated[0]['reply'] == u'Ответ автора'
+    assert updated[0]['panel'] == item['panel'] and updated[0]['kind'] == item['kind']
+    assert u'My messages' in fc.unread_notice(1)
+    i18n.save(i18n.RU)
+    assert about.revit_version_text(2024) == u'2024 (основная рабочая версия)'

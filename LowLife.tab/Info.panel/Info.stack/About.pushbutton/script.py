@@ -4,6 +4,7 @@ __doc__ = u"О программе: логотип, версия расширен
 __author__ = "Pipers"
 
 import os
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('PresentationFramework')
@@ -16,7 +17,7 @@ from System.Windows import Visibility
 from System.Windows.Media.Imaging import BitmapCacheOption, BitmapImage
 from pyrevit import forms
 
-from lowlife import about, greeting_window, wordmark_wpf
+from lowlife import about, greeting_window, wordmark_wpf, xaml_i18n
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -46,7 +47,7 @@ def _revit_version():
 
 class AboutWindow(forms.WPFWindow):
     def __init__(self):
-        forms.WPFWindow.__init__(self, os.path.join(HERE, "about.xaml"))
+        forms.WPFWindow.__init__(self, xaml_i18n.load(os.path.join(HERE, "about.xaml")), literal_string=True)
         self.logo_img.Source = _bitmap(os.path.join(HERE, "logo.png"))
         try:
             self.wordmark_img.Source = wordmark_wpf.build_image()
@@ -54,15 +55,15 @@ class AboutWindow(forms.WPFWindow):
             # Название шрифтом не собралось — показываем авторскую графику.
             self.wordmark_img.Source = _bitmap(os.path.join(
                 about.extension_root(), "docs", "brand", "lowlife-wordmark.png"))
-        self.tagline_tb.Text = about.TAGLINE
-        self.disciplines_tb.Text = about.DISCIPLINES
+        self.tagline_tb.Text = tr(about.TAGLINE)
+        self.disciplines_tb.Text = tr(about.DISCIPLINES)
         self.version_tb.Text = about.version_text()
         self.revit_tb.Text = about.revit_version_text(_revit_version())
         self.revit_support_tb.Text = about.revit_support_summary()
         self.params_link.Click += lambda s, e: _open_url(about.PARAMS_URL)
         self.repo_run.Text = about.REPO_URL
         self.repo_link.Click += lambda s, e: _open_url(about.REPO_URL)
-        self.license_run.Text = about.LICENSE_TEXT
+        self.license_run.Text = tr(about.LICENSE_TEXT)
         self.license_link.Click += lambda s, e: _open_url(about.LICENSE_URL)
         self.copyright_tb.Text = about.COPYRIGHT
         self.greeting_cb.IsChecked = greeting_window.startup_enabled()
@@ -88,7 +89,7 @@ def _set_usage(value):
         from pnotes import usage
         usage.set_enabled(value)
     except Exception as ex:
-        forms.alert(u'Не удалось сохранить настройку статистики: {}'.format(ex), title=u'LowLife')
+        forms.alert(tr(u'Не удалось сохранить настройку статистики: {}').format(ex), title=u'LowLife')
 
 
 AboutWindow().ShowDialog()
