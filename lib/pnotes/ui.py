@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Окна «Заметок по проекту»: новая заметка, сводка, настройка, напоминания."""
 import os
+from lowlife.i18n import tr, N_
 import io
 import time
 import datetime
@@ -20,7 +21,7 @@ from System.Threading import Thread, ThreadStart
 from Autodesk.Revit.DB import ElementId
 
 from pnotes import core
-from lowlife import text_search
+from lowlife import text_search, xaml_i18n, i18n
 
 
 XAML_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xaml')
@@ -29,7 +30,7 @@ BOOL = clr.GetClrType(System.Boolean)
 
 
 def _xaml(name):
-    return os.path.join(XAML_DIR, name)
+    return xaml_i18n.load(os.path.join(XAML_DIR, name))
 
 
 def _fill(combo, items, selected=None):
@@ -57,7 +58,7 @@ def _spellcheck(textbox):
     """Проверка орфографии — только если она есть в системе: на части машин WPF падает при её включении."""
     try:
         from System.Windows.Markup import XmlLanguage
-        textbox.Language = XmlLanguage.GetLanguage('ru-RU')
+        textbox.Language = XmlLanguage.GetLanguage('en-US' if i18n.is_en() else 'ru-RU')
         textbox.SpellCheck.IsEnabled = True
     except Exception:
         pass
@@ -85,8 +86,8 @@ def guarded(func):
         except Exception as ex:
             details = traceback.format_exc()
             _log_error(func.__name__, details)
-            forms.alert(u'{}\n\nПодробности записаны в файл:\n{}'.format(core.err_text(ex), ERROR_LOG),
-                        title=u'Заметки: ошибка', expanded=details)
+            forms.alert(tr(u'{}\n\nПодробности записаны в файл:\n{}').format(core.err_text(ex), ERROR_LOG),
+                        title=tr(u'Заметки: ошибка'), expanded=details)
     wrapper.__name__ = func.__name__
     return wrapper
 
@@ -130,7 +131,7 @@ def in_background(window, work, done):
             error = core.err_text(ex)
             _log_error(getattr(work, '__name__', 'work'), traceback.format_exc())
         except:  # noqa: E722 — из фонового потока не должно вылететь ничего: это уронило бы Revit
-            error = u'ошибка'
+            error = tr(u'ошибка')
         try:
             window.Dispatcher.BeginInvoke(System.Action(lambda: deliver(result, error)))
         except:  # noqa: E722
@@ -155,7 +156,7 @@ def _stop_background(window):
 
 def _balloon(text):
     try:
-        forms.show_balloon(u'Заметки', text)
+        forms.show_balloon(tr(u'Заметки'), text)
     except Exception:
         pass
 
@@ -170,7 +171,7 @@ class NoteWindow(forms.WPFWindow):
 
     def __init__(self, ctx, settings, online, note=None):
         """online=None — настройки взяты из копии, связь проверяется в фоне после открытия окна."""
-        forms.WPFWindow.__init__(self, _xaml('note.xaml'))
+        forms.WPFWindow.__init__(self, _xaml('note.xaml'), literal_string=True)
         self.ctx = ctx
         self.note = note
         self.result = None  # None — отменено, True — заметка в очереди на отправку
@@ -182,10 +183,10 @@ class NoteWindow(forms.WPFWindow):
             self.txtProject.Text = ctx['key']
         details = []
         if ctx['view']:
-            details.append(u'Вид: ' + ctx['view'])
-        details.append(u'Автор: ' + ctx['user'])
+            details.append(tr(u'Вид: ') + ctx['view'])
+        details.append(tr(u'Автор: ') + ctx['user'])
         if ctx['key_from_file']:
-            details.append(u'код проекта не заполнен — используется имя файла')
+            details.append(tr(u'код проекта не заполнен — используется имя файла'))
         self.txtContext.Text = u'   ·   '.join(details)
 
         state = core.load_state()
@@ -200,10 +201,10 @@ class NoteWindow(forms.WPFWindow):
 
         count = len(ctx['selection'])
         if count:
-            self.chkElements.Content = u'Привязать выбранные элементы ({})'.format(count)
+            self.chkElements.Content = tr(u'Привязать выбранные элементы ({})').format(count)
             self.chkElements.IsChecked = True
         else:
-            self.chkElements.Content = u'Привязать выбранные элементы (сейчас ничего не выбрано)'
+            self.chkElements.Content = tr(u'Привязать выбранные элементы (сейчас ничего не выбрано)')
             self.chkElements.IsEnabled = False
 
         if online is False and note is None:
@@ -211,7 +212,7 @@ class NoteWindow(forms.WPFWindow):
         elif note is None:
             waiting = core.queue_size()
             if waiting:
-                self.txtStatus.Text = u'Ещё не отправлено заметок: {} — уйдут вместе с этой.'.format(waiting)
+                self.txtStatus.Text = tr(u'Ещё не отправлено заметок: {} — уйдут вместе с этой.').format(waiting)
 
         _spellcheck(self.txtText)
         self.btnSave.Click += self.on_save
@@ -224,7 +225,7 @@ class NoteWindow(forms.WPFWindow):
                                                       self._settings_checked)
 
     def _offline_notice(self):
-        self.txtStatus.Text = u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.'
+        self.txtStatus.Text = tr(u'Нет связи с таблицей — заметка сохранится на этом компьютере и отправится при следующей возможности.')
 
     def _settings_checked(self, online, error):
         if not online and self.result is None:
@@ -239,11 +240,11 @@ class NoteWindow(forms.WPFWindow):
         return items
 
     def _init_edit(self, note):
-        self.Title = u'Редактирование заметки'
-        self.btnSave.Content = u'Сохранить изменения'
-        details = [u'Автор: ' + (note.get('author') or u'—'), u'Создано: ' + fmt_date(note.get('created'))]
+        self.Title = tr(u'Редактирование заметки')
+        self.btnSave.Content = tr(u'Сохранить изменения')
+        details = [tr(u'Автор: ') + (note.get('author') or u'—'), tr(u'Создано: ') + fmt_date(note.get('created'))]
         if note.get('view'):
-            details.insert(0, u'Вид: ' + note['view'])
+            details.insert(0, tr(u'Вид: ') + note['view'])
         self.txtContext.Text = u'   ·   '.join(details)
         self.txtText.Text = note.get('text') or u''
         self.cmbAssignee.Text = note.get('assignee') or u''
@@ -261,7 +262,7 @@ class NoteWindow(forms.WPFWindow):
     def on_save(self, sender, e):
         text = (self.txtText.Text or u'').strip()
         if not text:
-            self.txtStatus.Text = u'Напишите текст заметки.'
+            self.txtStatus.Text = tr(u'Напишите текст заметки.')
             self.txtText.Focus()
             return
         due = u''
@@ -288,12 +289,12 @@ class NoteWindow(forms.WPFWindow):
 # ================================================================ сводка
 
 COLUMNS = ('id', 'due', 'type', 'section', 'text', 'answer', 'assignee', 'author', 'created',
-           'status', 'view', 'model', 'overdue', 'closed', 'need_answer')
+           'status', 'status_display', 'view', 'model', 'overdue', 'closed', 'need_answer')
 
-FILTER_STATUS = (u'Открытые', u'Все', u'Закрытые')
-ALL_TYPES = u'Все типы'
-ALL_SECTIONS = u'Все разделы'
-ALL_AUTHORS = u'Все авторы'
+FILTER_STATUS = (N_(u'Открытые'), N_(u'Все'), N_(u'Закрытые'))
+ALL_TYPES = N_(u'Все типы')
+ALL_SECTIONS = N_(u'Все разделы')
+ALL_AUTHORS = N_(u'Все авторы')
 
 
 def _sorted(notes):
@@ -305,7 +306,7 @@ def _sorted(notes):
 class SummaryWindow(forms.WPFWindow):
     def __init__(self, ctx, settings, notes, error=None, uidoc=None, reminders_mode=False, load=False):
         """load=True — notes это сохранённая копия; свежие заметки подгружаются в фоне после открытия."""
-        forms.WPFWindow.__init__(self, _xaml('summary.xaml'))
+        forms.WPFWindow.__init__(self, _xaml('summary.xaml'), literal_string=True)
         self._ready = False
         self.ctx = ctx
         self.settings = settings
@@ -320,8 +321,8 @@ class SummaryWindow(forms.WPFWindow):
 
         title = ctx['key'] if ctx['name'] == ctx['key'] else u'{} — {}'.format(ctx['key'], ctx['name'])
         if reminders_mode:
-            self.Title = u'Напоминания по проекту'
-            self.txtProject.Text = u'{}: сроки подходят или задачи назначены вам'.format(title)
+            self.Title = tr(u'Напоминания по проекту')
+            self.txtProject.Text = tr(u'{}: сроки подходят или задачи назначены вам').format(title)
             self.btnShow.Visibility = Visibility.Collapsed
             self.btnView.Visibility = Visibility.Collapsed
         else:
@@ -330,9 +331,9 @@ class SummaryWindow(forms.WPFWindow):
 
         present_types = [n.get('type') for n in notes if n.get('type')]
         present_sections = [n.get('section') for n in notes if n.get('section')]
-        _fill(self.cmbStatus, FILTER_STATUS)
-        _fill(self.cmbType, [ALL_TYPES] + self._merge(settings['types'], present_types))
-        _fill(self.cmbSection, [ALL_SECTIONS] + self._merge(settings['sections'], present_sections))
+        _fill(self.cmbStatus, [tr(s) for s in FILTER_STATUS])
+        _fill(self.cmbType, [tr(ALL_TYPES)] + self._merge(settings['types'], present_types))
+        _fill(self.cmbSection, [tr(ALL_SECTIONS)] + self._merge(settings['sections'], present_sections))
         self._fill_authors()
 
         for combo in (self.cmbStatus, self.cmbType, self.cmbSection, self.cmbAuthor):
@@ -372,7 +373,7 @@ class SummaryWindow(forms.WPFWindow):
         """Авторы, у которых есть заметки по проекту; выбранный сохраняется при обновлении."""
         current = self.cmbAuthor.SelectedItem
         authors = sorted(set(n.get('author') for n in self.notes if n.get('author')), key=lambda a: a.lower())
-        _fill(self.cmbAuthor, [ALL_AUTHORS] + authors, current)
+        _fill(self.cmbAuthor, [tr(ALL_AUTHORS)] + authors, current)
 
     def _notice(self, text):
         self.txtNotice.Text = text or u''
@@ -390,11 +391,11 @@ class SummaryWindow(forms.WPFWindow):
             closed = core.is_closed(n)
             if status == 0 and closed or status == 2 and not closed:
                 continue
-            if ntype and ntype != ALL_TYPES and n.get('type') != ntype:
+            if ntype and self.cmbType.SelectedIndex > 0 and n.get('type') != ntype:
                 continue
-            if section and section != ALL_SECTIONS and n.get('section') != section:
+            if section and self.cmbSection.SelectedIndex > 0 and n.get('section') != section:
                 continue
-            if author and author != ALL_AUTHORS and n.get('author') != author:
+            if author and self.cmbAuthor.SelectedIndex > 0 and n.get('author') != author:
                 continue
             if mine and not core.is_mine(n, self.ctx['user']):
                 continue
@@ -425,6 +426,7 @@ class SummaryWindow(forms.WPFWindow):
             row['author'] = n.get('author') or u''
             row['created'] = fmt_date(n.get('created'))
             row['status'] = n.get('status') or u''
+            row['status_display'] = tr(row['status'])
             row['view'] = n.get('view') or u''
             row['model'] = core.short_file(n.get('file'))
             row['overdue'] = u'1' if core.is_overdue(n, today) else u'0'
@@ -435,19 +437,19 @@ class SummaryWindow(forms.WPFWindow):
         open_count = len([n for n in self.notes if not core.is_closed(n)])
         overdue = len([n for n in self.notes if core.is_overdue(n, today)])
         unanswered = len([n for n in self.notes if core.needs_answer(n)])
-        self.txtInfo.Text = u'Показано {} из {}   ·   открытых {}   ·   просрочено {}   ·   вопросов без ответа {}'.format(
+        self.txtInfo.Text = tr(u'Показано {} из {}   ·   открытых {}   ·   просрочено {}   ·   вопросов без ответа {}').format(
             len(visible), len(self.notes), open_count, overdue, unanswered)
         if self._load_timing is not None:
             t = self._load_timing
-            text = u'   ·   загружено из таблицы за {:.1f} с'.format(float(t['total']))
+            text = tr(u'   ·   загружено из таблицы за {:.1f} с').format(float(t['total']))
             parts = []
             if t['server'] is not None:
                 script = t['server'] / 1000.0
-                parts.append(u'скрипт Google {:.1f} с'.format(script))
-                parts.append(u'сеть и запуск веб-приложения {:.1f} с'.format(
+                parts.append(tr(u'скрипт Google {:.1f} с').format(script))
+                parts.append(tr(u'сеть и запуск веб-приложения {:.1f} с').format(
                     max(0.0, float(t['total'] - t['queue']) - script)))
             if t['queue'] >= 0.1:
-                parts.append(u'отправка неотправленных {:.1f} с'.format(float(t['queue'])))
+                parts.append(tr(u'отправка неотправленных {:.1f} с').format(float(t['queue'])))
             if parts:
                 text += u' (' + u', '.join(parts) + u')'
             self.txtInfo.Text += text
@@ -459,7 +461,7 @@ class SummaryWindow(forms.WPFWindow):
     def change_status(self, status):
         selected = [n for n in self._selected() if n.get('status') != core.STATUS_PENDING]
         if not selected:
-            self.txtInfo.Text = u'Выделите одну или несколько заметок (Ctrl/Shift — несколько).'
+            self.txtInfo.Text = tr(u'Выделите одну или несколько заметок (Ctrl/Shift — несколько).')
             return
         if status == core.STATUS_DONE:
             unanswered = [n for n in selected if core.needs_answer(n)]
@@ -467,18 +469,18 @@ class SummaryWindow(forms.WPFWindow):
                 self._answer(selected[0], close=True)
                 return
             if unanswered:
-                forms.alert(u'Среди выбранных {} вопрос(ов) без ответа. Вопрос закрывается только с ответом — '
-                            u'выделите его и нажмите «Ответ / решение».'.format(len(unanswered)),
-                            title=u'Нужен ответ')
+                forms.alert(tr(u'Среди выбранных {} вопрос(ов) без ответа. Вопрос закрывается только с ответом — '
+                            u'выделите его и нажмите «Ответ / решение».').format(len(unanswered)),
+                            title=tr(u'Нужен ответ'))
                 return
         ids, user = [n['id'] for n in selected], self.ctx['user']
         self._apply(selected, {'status': status}, lambda: core.set_status(ids, status, user),
-                    u'Не удалось изменить статус')
+                    tr(u'Не удалось изменить статус'))
 
     def on_edit(self, sender, e):
         selected = self._selected()
         if len(selected) != 1:
-            self.txtInfo.Text = u'Выделите одну заметку, чтобы изменить её.'
+            self.txtInfo.Text = tr(u'Выделите одну заметку, чтобы изменить её.')
             return
         note = selected[0]
         dlg = NoteWindow(self.ctx, self.settings, True, note=note)
@@ -488,12 +490,12 @@ class SummaryWindow(forms.WPFWindow):
             return
         changes, user, sent = dict(dlg.changes), self.ctx['user'], dict(note)
         self._apply([note], changes, lambda: core.update_note(sent, changes, user),
-                    u'Не удалось сохранить изменения')
+                    tr(u'Не удалось сохранить изменения'))
 
     def on_answer(self, sender, e):
         selected = [n for n in self._selected() if n.get('status') != core.STATUS_PENDING]
         if len(selected) != 1:
-            self.txtInfo.Text = u'Выделите одну заметку, чтобы записать ответ / решение.'
+            self.txtInfo.Text = tr(u'Выделите одну заметку, чтобы записать ответ / решение.')
             return
         self._answer(selected[0], close=not core.is_closed(selected[0]))
 
@@ -509,7 +511,7 @@ class SummaryWindow(forms.WPFWindow):
             changes['status'] = status
         note_id, answer, user = note['id'], dlg.answer, self.ctx['user']
         self._apply([note], changes, lambda: core.set_answer(note_id, answer, status, user),
-                    u'Не удалось записать решение')
+                    tr(u'Не удалось записать решение'))
 
     def _apply(self, notes, changes, send, fail_title):
         """Изменение видно в сводке сразу, а в таблицу уходит в фоне. Не прошло — откатывается.
@@ -519,7 +521,7 @@ class SummaryWindow(forms.WPFWindow):
             n.update(changes)
         self.refresh()
         self._pending += 1
-        self._notice(u'Сохранение в таблицу…')
+        self._notice(tr(u'Сохранение в таблицу…'))
         # если параллельно идёт загрузка из таблицы, её данные могут быть старше этого изменения
         override = {'ids': set(n.get('id') for n in notes), 'changes': changes, 'done_at': None}
         self._overrides.append(override)
@@ -545,7 +547,7 @@ class SummaryWindow(forms.WPFWindow):
         if self._pending:
             e.Cancel = True
             self._close_when_done = True
-            self._notice(u'Изменения ещё отправляются в таблицу — окно закроется, как только они сохранятся.')
+            self._notice(tr(u'Изменения ещё отправляются в таблицу — окно закроется, как только они сохранятся.'))
 
     def on_show(self, sender, e):
         if self.uidoc is None or self.reminders_mode:
@@ -569,11 +571,11 @@ class SummaryWindow(forms.WPFWindow):
                 else:
                     missing += 1
         if found.Count == 0:
-            msg = u'У выбранных заметок нет привязанных элементов в этой модели.'
+            msg = tr(u'У выбранных заметок нет привязанных элементов в этой модели.')
             if other_model:
-                msg = u'Элементы привязаны в другой модели проекта ({} шт.).'.format(other_model)
+                msg = tr(u'Элементы привязаны в другой модели проекта ({} шт.).').format(other_model)
             elif missing:
-                msg = u'Привязанные элементы удалены из модели.'
+                msg = tr(u'Привязанные элементы удалены из модели.')
             self.txtInfo.Text = msg
             return
         self.Close()
@@ -589,20 +591,20 @@ class SummaryWindow(forms.WPFWindow):
             return
         selected = self._selected()
         if len(selected) != 1:
-            self.txtInfo.Text = u'Выделите одну заметку, чтобы открыть её вид или лист.'
+            self.txtInfo.Text = tr(u'Выделите одну заметку, чтобы открыть её вид или лист.')
             return
         note = selected[0]
         label = note.get('view') or u''
         if not label:
-            self.txtInfo.Text = u'У заметки не записан вид.'
+            self.txtInfo.Text = tr(u'У заметки не записан вид.')
             return
         if core.short_file(note.get('file')) != core.short_file(self.ctx['file']):
-            self.txtInfo.Text = u'Заметка создана в другой модели проекта: {} (вид «{}»).'.format(
+            self.txtInfo.Text = tr(u'Заметка создана в другой модели проекта: {} (вид «{}»).').format(
                 core.short_file(note.get('file')), label)
             return
         view = core.find_view(self.uidoc.Document, label)
         if view is None:
-            self.txtInfo.Text = u'Вид «{}» не найден в модели — возможно, его переименовали или удалили.'.format(label)
+            self.txtInfo.Text = tr(u'Вид «{}» не найден в модели — возможно, его переименовали или удалили.').format(label)
             return
         self.Close()
         try:
@@ -616,8 +618,8 @@ class SummaryWindow(forms.WPFWindow):
         self.btnRefresh.IsEnabled = False
         self.Cursor = Cursors.AppStarting
         if not self.notes:
-            self.txtInfo.Text = u'Загрузка заметок из таблицы…'
-        self._notice(u'Обновление из таблицы…')
+            self.txtInfo.Text = tr(u'Загрузка заметок из таблицы…')
+        self._notice(tr(u'Обновление из таблицы…'))
         key = self.ctx['key']
         started = time.time()
 
@@ -653,7 +655,7 @@ class SummaryWindow(forms.WPFWindow):
         if self.reminders_mode:
             notes = core.reminders(notes, self.ctx['user'], self.settings.get('remind_days'))
         self.notes = notes
-        self._notice(error or (u'Сохранение в таблицу…' if self._pending else None))
+        self._notice(error or (tr(u'Сохранение в таблицу…') if self._pending else None))
         self._ready = False
         self._fill_authors()
         self._ready = True
@@ -678,7 +680,7 @@ class SummaryWindow(forms.WPFWindow):
 
 class AnswerWindow(forms.WPFWindow):
     def __init__(self, note, close):
-        forms.WPFWindow.__init__(self, _xaml('answer.xaml'))
+        forms.WPFWindow.__init__(self, _xaml('answer.xaml'), literal_string=True)
         self.answer = None  # None — отменено
         self.mark_done = False
         self.is_question = core.is_question(note)
@@ -691,7 +693,7 @@ class AnswerWindow(forms.WPFWindow):
             self.chkClose.IsChecked = False
             self.chkClose.Visibility = Visibility.Collapsed
         if self.is_question:
-            self.txtHint.Text = u'Это вопрос — закрыть его можно только с ответом.'
+            self.txtHint.Text = tr(u'Это вопрос — закрыть его можно только с ответом.')
         _spellcheck(self.txtAnswer)
         self.btnSave.Click += self.on_save
         self.btnCancel.Click += lambda s, e: self.Close()
@@ -707,7 +709,7 @@ class AnswerWindow(forms.WPFWindow):
         text = (self.txtAnswer.Text or u'').strip()
         close = bool(self.chkClose.IsChecked)
         if not text and (close or self.is_question):
-            self.txtHint.Text = u'Напишите ответ / решение.'
+            self.txtHint.Text = tr(u'Напишите ответ / решение.')
             self.txtAnswer.Focus()
             return
         self.answer = text
@@ -719,7 +721,7 @@ class AnswerWindow(forms.WPFWindow):
 
 class SetupWindow(forms.WPFWindow):
     def __init__(self, doc, settings):
-        forms.WPFWindow.__init__(self, _xaml('setup.xaml'))
+        forms.WPFWindow.__init__(self, _xaml('setup.xaml'), literal_string=True)
         self.saved = False
         self.doc = doc
         cfg = core.load_config()
@@ -729,9 +731,9 @@ class SetupWindow(forms.WPFWindow):
         self.params = core.list_project_params(doc)
         filled = [p for p in self.params if p['value']]
         self.txtAnalysis.Text = (
-            u'В «Сведениях о проекте» этой модели {} параметров, заполнено {}. '
+            tr(u'В «Сведениях о проекте» этой модели {} параметров, заполнено {}. '
             u'Выберите, какой параметр — код проекта (по нему заметки разных моделей одного объекта '
-            u'попадут в одну сводку) и какой — название.'
+            u'попадут в одну сводку) и какой — название.')
         ).format(len(self.params), len(filled))
 
         refs = [p['ref'] for p in self.params]
@@ -743,8 +745,8 @@ class SetupWindow(forms.WPFWindow):
         for p in self.params:
             row = self.table.NewRow()
             row['name'] = p['name']
-            row['value'] = p['value'] or u'— пусто —'
-            row['kind'] = p['kind']
+            row['value'] = p['value'] or tr(u'— пусто —')
+            row['kind'] = tr(p['kind'])
             row['ref'] = p['ref']
             row['filled'] = u'1' if p['value'] else u'0'
             row['extra'] = p['ref'] in extras
@@ -753,8 +755,8 @@ class SetupWindow(forms.WPFWindow):
 
         self.key_refs = [core.FILE_KEY] + refs
         self.name_refs = [core.FILE_KEY] + refs
-        labels = [u'{} (сейчас: {})'.format(core.FILE_KEY, core.file_key(doc))] + [
-            u'{}   =   {}'.format(p['name'], p['value'] or u'(пусто)') for p in self.params]
+        labels = [tr(u'{} (сейчас: {})').format(tr(core.FILE_KEY), core.file_key(doc))] + [
+            u'{}   =   {}'.format(p['name'], p['value'] or tr(u'(пусто)')) for p in self.params]
         _fill(self.cmbKey, labels)
         _fill(self.cmbName, labels)
         self.cmbKey.SelectedIndex = self._index(self.key_refs, settings.get('key_param'),
@@ -804,18 +806,18 @@ class SetupWindow(forms.WPFWindow):
         key_ref = self._ref(self.cmbKey, self.key_refs)
         key = core.read_param(self.doc, key_ref)
         if key:
-            text = u'В этой модели код проекта = «{}».'.format(key)
+            text = tr(u'В этой модели код проекта = «{}».').format(key)
         else:
-            text = u'В этой модели код будет взят из имени файла: «{}».'.format(core.file_key(self.doc))
+            text = tr(u'В этой модели код будет взят из имени файла: «{}».').format(core.file_key(self.doc))
             if key_ref != core.FILE_KEY:
-                text += u' Параметр пуст — лучше его заполнить, иначе заметки разных моделей одного объекта разойдутся.'
+                text += tr(u' Параметр пуст — лучше его заполнить, иначе заметки разных моделей одного объекта разойдутся.')
         self.txtPreview.Text = text
 
     def _save_connection(self):
         url = (self.txtUrl.Text or u'').strip()
         token = (self.txtToken.Text or u'').strip()
         if not url or not token:
-            self.txtConn.Text = u'Укажите адрес и токен.'
+            self.txtConn.Text = tr(u'Укажите адрес и токен.')
             return False
         core.save_user_config(url, token)
         return True
@@ -827,7 +829,7 @@ class SetupWindow(forms.WPFWindow):
         try:
             started = time.time()
             resp = core.call('ping', timeout_ms=15000)
-            self.txtConn.Text = u'✓ Связь есть, таблица «{}», ответ за {:.1f} с.'.format(
+            self.txtConn.Text = tr(u'✓ Связь есть, таблица «{}», ответ за {:.1f} с.').format(
                 resp.get('sheet') or u'', float(time.time() - started))
         except core.ApiError as ex:
             self.txtConn.Text = core.err_text(ex)
@@ -855,11 +857,11 @@ class SetupWindow(forms.WPFWindow):
 
 def _project_doc(uidoc):
     if uidoc is None:
-        forms.alert(u'Откройте модель проекта.')
+        forms.alert(tr(u'Откройте модель проекта.'))
         return None
     doc = uidoc.Document
     if doc.IsFamilyDocument:
-        forms.alert(u'Заметки ведутся по проектам — откройте модель проекта, а не семейство.')
+        forms.alert(tr(u'Заметки ведутся по проектам — откройте модель проекта, а не семейство.'))
         return None
     return doc
 
@@ -879,7 +881,7 @@ def run_new_note(uidoc):
     if doc is None:
         return
     if not core.is_configured():
-        forms.alert(u'Сначала подключим Google Таблицу и посмотрим, что заполнено в «Сведениях о проекте».')
+        forms.alert(tr(u'Сначала подключим Google Таблицу и посмотрим, что заполнено в «Сведениях о проекте».'))
         if not run_setup(doc):
             return
     if core.has_cached_settings():
@@ -888,8 +890,8 @@ def run_new_note(uidoc):
     else:
         settings, online = core.get_settings()
     if not settings.get('key_param') and core.has_cached_settings():
-        forms.alert(u'Первый запуск: посмотрим, что заполнено в «Сведениях о проекте», '
-                    u'и выберем, по какому параметру различать проекты.')
+        forms.alert(tr(u'Первый запуск: посмотрим, что заполнено в «Сведениях о проекте», '
+                    u'и выберем, по какому параметру различать проекты.'))
         if run_setup(doc, settings):
             settings = core.get_settings(online=False)[0]
 
@@ -899,7 +901,7 @@ def run_new_note(uidoc):
     if win.result:
         # не ждём таблицу: отправка идёт в фоне, Revit свободен сразу
         core.send_queue_detached()
-        _balloon(u'Заметка сохранена и отправляется в таблицу.')
+        _balloon(tr(u'Заметка сохранена и отправляется в таблицу.'))
 
 
 @guarded
@@ -908,7 +910,7 @@ def run_summary(uidoc):
     if doc is None:
         return
     if not core.is_configured():
-        forms.alert(u'Подключение к таблице ещё не настроено — нажмите «Настройка».')
+        forms.alert(tr(u'Подключение к таблице ещё не настроено — нажмите «Настройка».'))
         return
     settings = core.get_settings_fast()
     ctx = core.get_context(doc, uidoc, settings)

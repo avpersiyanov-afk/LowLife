@@ -10,6 +10,11 @@ The sheet's sheets, menus, statuses and column names are in Russian (they are wh
 
 ## Buttons
 
+Select the window language using **Язык / Language** on the LowLife panel.
+Statuses in the summary are displayed in that language; their stored values in
+the sheet and queue stay unchanged. Note text, team-defined types, sections,
+people and parameter names retain their original text.
+
 - **Note** — Type → Section → Text, plus an optional due date, «assigned to» and linking the selected elements. The project code and name, the view, the model and the author are filled in automatically. Ctrl+Enter — save, Esc — cancel.
 - **Summary** — all notes of the current project, including from other models with the same project code. Filters by status/type/section/author, a search, «Only mine», the «Done / In progress / Not relevant / Reopen» buttons, double-click or «Show elements» — select the linked elements in the model; **«Open view / sheet»** — open the view or sheet the note was created on (looked up by view name / sheet number and name in the same model). **«✎ Edit»** — fix the type, section, text, due date and «assigned to» of the selected note (the sheet marks «Изменено» (changed) and «Кто изменил» (changed by); the author, project and linked elements don't change; an unsent note is edited in the local queue). **«Answer / decision»** — write an answer to the «Решение» (decision) column (and mark it «Done» right away). A **Question** (type «Вопрос») can't be closed without an answer: «✓ Done» on an unanswered question opens the answer window right away; unanswered questions are highlighted orange in the «Решение» column.
 - **Setup** — the connection address and token + an analysis of «Project Information»: what is filled in, which parameter counts as the project code, which as the name, which values to save with every note. The parameter choice is shared by the whole team (kept on the sheet's «Настройки» (settings) tab).

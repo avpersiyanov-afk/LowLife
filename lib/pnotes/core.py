@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Заметки по проекту: настройки, связь с Google Таблицей, сведения из модели."""
 import os
+from lowlife.i18n import tr, N_
+from pnotes.localization import server_error
 import io
 import json
 import uuid
@@ -34,17 +36,17 @@ NOTES_CACHE = os.path.join(USER_DIR, 'notes_cache.json')
 QUEUE_FILE = os.path.join(USER_DIR, 'queue.json')
 STATE_FILE = os.path.join(USER_DIR, 'state.json')
 
-STATUS_OPEN = u'Открыто'
-STATUS_WORK = u'В работе'
-STATUS_DONE = u'Выполнено'
-STATUS_CANCEL = u'Отменено'
-STATUS_PENDING = u'Не отправлено'
+STATUS_OPEN = N_(u'Открыто')
+STATUS_WORK = N_(u'В работе')
+STATUS_DONE = N_(u'Выполнено')
+STATUS_CANCEL = N_(u'Отменено')
+STATUS_PENDING = N_(u'Не отправлено')
 CLOSED = (STATUS_DONE, STATUS_CANCEL)
 # Тип «Вопрос» нельзя закрыть как «Выполнено» без «Решения» (то же правило в Code.gs)
 QUESTION_TYPE = u'Вопрос'
 
 # Значение параметра «код проекта», означающее «брать имя файла модели»
-FILE_KEY = u'(имя файла модели)'
+FILE_KEY = N_(u'(имя файла модели)')
 
 DEFAULT_SETTINGS = {
     'types': [u'Замечание', u'Задача', u'Вопрос', u'Напоминание', u'Решение', u'Идея'],
@@ -76,7 +78,7 @@ def err_text(ex):
     try:
         return u'{}'.format(ex)
     except Exception:
-        return u'ошибка'
+        return tr(u'ошибка')
 
 
 # ---------------------------------------------------------------- файлы
@@ -262,7 +264,7 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
     url = url or cfg['url']
     token = token or cfg['token']
     if not (url and token):
-        raise ApiError(u'Не настроено подключение к таблице (кнопка «Настройка»).')
+        raise ApiError(tr(u'Не настроено подключение к таблице (кнопка «Настройка»).'))
     body = dict(payload or {})
     body['action'] = action
     body['token'] = token
@@ -270,7 +272,7 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
     attempt = 0
     while True:
         if track and _cancelled[0]:
-            raise ApiError(u'Запрос отменён: окно закрыто.')
+            raise ApiError(tr(u'Запрос отменён: окно закрыто.'))
         try:
             raw = _post(url, text, timeout_ms, track)
         except Exception as ex:
@@ -278,7 +280,7 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
                 attempt += 1
                 time.sleep(1)
                 continue
-            raise ApiError(u'Нет связи с Google Таблицей: ' + err_text(ex))
+            raise ApiError(tr(u'Нет связи с Google Таблицей: ') + err_text(ex))
         try:
             resp = json.loads(raw)
         except Exception:
@@ -287,15 +289,15 @@ def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1
                 attempt += 1
                 time.sleep(1)
                 continue
-            raise ApiError(u'Таблица ответила не данными, а страницей. Проверьте адрес (должен заканчиваться на /exec) '
-                           u'и что веб-приложение развернуто с доступом «Все».')
+            raise ApiError(tr(u'Таблица ответила не данными, а страницей. Проверьте адрес (должен заканчиваться на /exec) '
+                           u'и что веб-приложение развернуто с доступом «Все».'))
         break
     try:
         last_server_ms[0] = float(resp.get('ms'))
     except Exception:
         last_server_ms[0] = None  # Code.gs старой версии не сообщает своё время
     if not resp.get('ok'):
-        raise ApiError(resp.get('error') or u'Неизвестная ошибка')
+        raise ApiError(server_error(resp.get('error') or tr(u'Неизвестная ошибка')))
     return resp
 
 
@@ -388,9 +390,9 @@ def list_project_params(doc):
         if bip is not None:
             if p.StorageType != StorageType.String or str(bip).startswith(SKIP_BIP_PREFIXES):
                 continue
-            kind = u'Встроенный'
+            kind = N_(u'Встроенный')
         else:
-            kind = u'Общий' if p.IsShared else u'Параметр проекта'
+            kind = N_(u'Общий') if p.IsShared else N_(u'Параметр проекта')
         result.append({'ref': param_ref(p), 'name': p.Definition.Name, 'value': _value(p), 'kind': kind})
     result.sort(key=lambda r: (r['value'] == u'', r['kind'] != u'Встроенный', r['name']))
     return result
@@ -669,7 +671,7 @@ def load_notes(key, timeout_ms=15000, retry_timeout=False):
         notes = entry.get('notes') or []
         error = err_text(ex)
         if entry.get('time'):
-            error += u'\nПоказана копия от ' + entry['time'] + u'.'
+            error += tr(u'\nПоказана копия от ') + entry['time'] + u'.'
         online = False
     return notes + pending_notes(key), online, error
 
