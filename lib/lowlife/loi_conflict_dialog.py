@@ -21,6 +21,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('WindowsBase')
@@ -87,7 +88,7 @@ def show_conflict_dialog(doc, uidoc, matches, param_names):
     result = {"mapping": None}
 
     win = Window()
-    win.Title = u"Заполнение LOI — конфликты (элемент в нескольких формах)"
+    win.Title = tr(u"Заполнение LOI — конфликты (элемент в нескольких формах)")
     win.Width = 920
     win.Height = 560
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -101,17 +102,17 @@ def show_conflict_dialog(doc, uidoc, matches, param_names):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Элементы, найденные сразу в нескольких «Формах»"
+    title.Text = tr(u"Элементы, найденные сразу в нескольких «Формах»")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     info = TextBlock()
     info.Text = (
-        u"Для каждого элемента выберите форму-источник значений в столбце "
+        tr(u"Для каждого элемента выберите форму-источник значений в столбце "
         u"«Форма-источник» — значения её параметров ({}) будут записаны в "
         u"этот элемент. Клик по строке выделяет элемент в модели. Строки без "
-        u"выбора источника пропускаются.".format(u", ".join(param_names))
+        u"выбора источника пропускаются.").format(u", ".join(param_names))
     )
     info.FontSize = 11
     info.TextWrapping = TextWrapping.Wrap
@@ -139,21 +140,21 @@ def show_conflict_dialog(doc, uidoc, matches, param_names):
     grid.Columns.Add(id_col)
 
     type_col = DataGridTextColumn()
-    type_col.Header = u"Тип элемента"
+    type_col.Header = tr(u"Тип элемента")
     type_col.Binding = Binding("TypeName")
     type_col.IsReadOnly = True
     type_col.Width = _star(2)
     grid.Columns.Add(type_col)
 
     preview_col = DataGridTextColumn()
-    preview_col.Header = u"Значения по формам-кандидатам"
+    preview_col.Header = tr(u"Значения по формам-кандидатам")
     preview_col.Binding = Binding("ValuesPreview")
     preview_col.IsReadOnly = True
     preview_col.Width = _star(3)
     grid.Columns.Add(preview_col)
 
     source_col = DataGridComboBoxColumn()
-    source_col.Header = u"Форма-источник"
+    source_col.Header = tr(u"Форма-источник")
     source_col.ItemsSourceBinding = Binding("Candidates")
     selected_binding = Binding("SelectedCandidate")
     selected_binding.Mode = BindingMode.TwoWay
@@ -182,12 +183,12 @@ def show_conflict_dialog(doc, uidoc, matches, param_names):
     DockPanel.SetDock(bottom, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Записать значения"
+    ok_btn.Content = tr(u"Записать значения")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 

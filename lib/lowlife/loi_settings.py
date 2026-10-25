@@ -36,6 +36,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -61,11 +62,11 @@ SETTINGS_FILE_NAME = "LowLifeLOI_settings.json"
 TEXT_FIELDS = [
     (
         "param_names_text",
-        u"② Параметры для клонирования из «Форм»",
-        u"Имена параметров (по одному на строке)",
-        u"Значения этих параметров переносятся из «Формы» в содержащиеся в "
+        N_(u"② Параметры для клонирования из «Форм»"),
+        N_(u"Имена параметров (по одному на строке)"),
+        N_(u"Значения этих параметров переносятся из «Формы» в содержащиеся в "
         u"ней элементы — по имени параметра, оно должно совпадать у «Формы» "
-        u"и у целевого элемента. Один параметр — одна строка.",
+        u"и у целевого элемента. Один параметр — одна строка."),
         u"", True, True
     ),
 ]
@@ -183,16 +184,16 @@ def require(settings, keys):
     for key in keys:
         if key == "param_names_text":
             if not get_param_names(settings):
-                missing.append(PLAIN_LABELS.get(key, key))
+                missing.append(tr(PLAIN_LABELS.get(key, key)))
             continue
         value = settings.get(key)
         if not (value and unicode(value).strip()):
-            missing.append(PLAIN_LABELS.get(key, key))
+            missing.append(tr(PLAIN_LABELS.get(key, key)))
 
     if missing:
         forms.alert(
-            u"Не заполнены обязательные настройки:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «Заполнение LOI».".format(
+            tr(u"Не заполнены обязательные настройки:\n\n{}\n\n"
+            u"Откройте настройки: Shift+клик по кнопке «Заполнение LOI».").format(
                 u"\n".join(missing)
             ),
             exitscript=True
@@ -208,37 +209,37 @@ def require_selection_mode(settings):
     """
     if get_selection_mode(settings) == MODE_TYPES and not get_selected_type_ids(settings):
         forms.alert(
-            u"В настройках выбран режим «Только выбранные типы семейств», "
+            tr(u"В настройках выбран режим «Только выбранные типы семейств», "
             u"но ни один тип не отмечен.\n\n"
             u"Откройте настройки (Shift+клик по кнопке «Заполнение LOI») и "
             u"нажмите «Выбрать типы…», либо переключитесь на другой режим "
-            u"отбора элементов.",
+            u"отбора элементов."),
             exitscript=True
         )
 
 
 def _types_label_text(ids, options):
     if not ids:
-        return u"Типы не выбраны."
+        return tr(u"Типы не выбраны.")
     by_id = {o.type_id.IntegerValue: o.name for o in options} if options else {}
     names = [by_id.get(i, u"?(ID {})".format(i)) for i in ids]
     preview = u"; ".join(names[:5])
     if len(names) > 5:
         preview += u"; …"
-    return u"Выбрано типов: {}. {}".format(len(ids), preview)
+    return tr(u"Выбрано типов: {}. {}").format(len(ids), preview)
 
 
 def _locations_label_text(configured, keys, options):
     if not configured:
-        return u"Не настроено — ищутся все: текущий файл и все загруженные связи."
+        return tr(u"Не настроено — ищутся все: текущий файл и все загруженные связи.")
     if not keys:
-        return u"Не выбрано ни одной модели — формы не будут найдены."
+        return tr(u"Не выбрано ни одной модели — формы не будут найдены.")
     by_key = {o.key: o.name for o in options} if options else {}
     names = [by_key.get(k, k) for k in keys]
     preview = u"; ".join(names[:5])
     if len(names) > 5:
         preview += u"; …"
-    return u"Выбрано: {}. {}".format(len(keys), preview)
+    return tr(u"Выбрано: {}. {}").format(len(keys), preview)
 
 
 def show_settings_form(doc, values):
@@ -255,7 +256,7 @@ def show_settings_form(doc, values):
     }
 
     win = Window()
-    win.Title = u"Настройки: Заполнение LOI"
+    win.Title = tr(u"Настройки: Заполнение LOI")
     win.Width = 760
     win.Height = 760
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -267,14 +268,14 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"В каких моделях искать «Формы» и что из них клонировать"
+    title.Text = tr(u"В каких моделях искать «Формы» и что из них клонировать")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)
     root.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+    hint.Text = tr(u"Значения сохраняются и подставляются при следующих запусках.")
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.Margin = Thickness(0, 0, 0, 10)
@@ -283,7 +284,7 @@ def show_settings_form(doc, values):
     # --- ① в каких моделях искать формы ---------------------------------
 
     locations_section = TextBlock()
-    locations_section.Text = u"① В каких моделях искать элементы «Форма»"
+    locations_section.Text = tr(u"① В каких моделях искать элементы «Форма»")
     locations_section.FontWeight = FontWeights.Bold
     locations_section.Margin = Thickness(0, 2, 0, 2)
     root.Children.Add(locations_section)
@@ -293,7 +294,7 @@ def show_settings_form(doc, values):
     locations_row.Margin = Thickness(0, 4, 0, 0)
 
     locations_pick_btn = Button()
-    locations_pick_btn.Content = u"Выбрать модели…"
+    locations_pick_btn.Content = tr(u"Выбрать модели…")
     locations_pick_btn.Padding = Thickness(8, 2, 8, 2)
     locations_row.Children.Add(locations_pick_btn)
 
@@ -318,8 +319,8 @@ def show_settings_form(doc, values):
 
         chosen = select_list.SelectFromList.show(
             items,
-            title=u"Модели, в которых искать элементы «Форма»",
-            button_name=u"Сохранить",
+            title=tr(u"Модели, в которых искать элементы «Форма»"),
+            button_name=tr(u"Сохранить"),
             multiselect=True
         )
         if chosen is None:
@@ -333,9 +334,9 @@ def show_settings_form(doc, values):
 
     locations_hint = TextBlock()
     locations_hint.Text = (
-        u"«Формы» обычно лежат в отдельной связанной архитектурной модели — "
+        tr(u"«Формы» обычно лежат в отдельной связанной архитектурной модели — "
         u"отметьте текущий файл и/или конкретные загруженные связи. Пока не "
-        u"настроено — «Формы» ищутся везде: в текущем файле и во всех связях."
+        u"настроено — «Формы» ищутся везде: в текущем файле и во всех связях.")
     )
     locations_hint.FontSize = 11
     locations_hint.Foreground = Brushes.Gray
@@ -347,13 +348,13 @@ def show_settings_form(doc, values):
 
     for key, section_title, label_text, hint_text, _, multiline, required in TEXT_FIELDS:
         section = TextBlock()
-        section.Text = section_title
+        section.Text = tr(section_title)
         section.FontWeight = FontWeights.Bold
         section.Margin = Thickness(0, 16, 0, 2)
         root.Children.Add(section)
 
         label = TextBlock()
-        label.Text = label_text + (u" *" if required else u"")
+        label.Text = tr(label_text) + (u" *" if required else u"")
         label.Margin = Thickness(0, 2, 0, 2)
         label.TextWrapping = TextWrapping.Wrap
         root.Children.Add(label)
@@ -372,7 +373,7 @@ def show_settings_form(doc, values):
         boxes[key] = box
 
         field_hint = TextBlock()
-        field_hint.Text = hint_text
+        field_hint.Text = tr(hint_text)
         field_hint.FontSize = 11
         field_hint.Foreground = Brushes.Gray
         field_hint.TextWrapping = TextWrapping.Wrap
@@ -382,7 +383,7 @@ def show_settings_form(doc, values):
     # --- ③ какие элементы проверять -----------------------------------
 
     mode_section = TextBlock()
-    mode_section.Text = u"③ Какие элементы проверять на попадание в форму"
+    mode_section.Text = tr(u"③ Какие элементы проверять на попадание в форму")
     mode_section.FontWeight = FontWeights.Bold
     mode_section.Margin = Thickness(0, 16, 0, 2)
     root.Children.Add(mode_section)
@@ -390,21 +391,21 @@ def show_settings_form(doc, values):
     current_mode = values.get(MODE_KEY, MODE_DEFAULT)
 
     rb_view = RadioButton()
-    rb_view.Content = u"Все элементы на активном виде"
+    rb_view.Content = tr(u"Все элементы на активном виде")
     rb_view.GroupName = u"loi_selection_mode"
     rb_view.Margin = Thickness(0, 4, 0, 2)
     rb_view.IsChecked = (current_mode == MODE_VIEW)
     root.Children.Add(rb_view)
 
     rb_all = RadioButton()
-    rb_all.Content = u"Все элементы документа (без учёта вида)"
+    rb_all.Content = tr(u"Все элементы документа (без учёта вида)")
     rb_all.GroupName = u"loi_selection_mode"
     rb_all.Margin = Thickness(0, 2, 0, 2)
     rb_all.IsChecked = (current_mode == MODE_ALL)
     root.Children.Add(rb_all)
 
     rb_types = RadioButton()
-    rb_types.Content = u"Только выбранные типы семейств"
+    rb_types.Content = tr(u"Только выбранные типы семейств")
     rb_types.GroupName = u"loi_selection_mode"
     rb_types.Margin = Thickness(0, 2, 0, 2)
     rb_types.IsChecked = (current_mode == MODE_TYPES)
@@ -415,7 +416,7 @@ def show_settings_form(doc, values):
     types_row.Margin = Thickness(20, 6, 0, 0)
 
     types_pick_btn = Button()
-    types_pick_btn.Content = u"Выбрать типы…"
+    types_pick_btn.Content = tr(u"Выбрать типы…")
     types_pick_btn.Padding = Thickness(8, 2, 8, 2)
     types_row.Children.Add(types_pick_btn)
 
@@ -432,8 +433,8 @@ def show_settings_form(doc, values):
         options = loi_fill.list_candidate_types(doc, loi_fill.FORM_CATEGORY_NAME)
         if not options:
             forms.alert(
-                u"В документе не найдено модельных элементов с типами (кроме "
-                u"категории «{}»).".format(loi_fill.FORM_CATEGORY_NAME)
+                tr(u"В документе не найдено модельных элементов с типами (кроме "
+                u"категории «{}»).").format(loi_fill.FORM_CATEGORY_NAME)
             )
             return
 
@@ -443,8 +444,8 @@ def show_settings_form(doc, values):
 
         chosen = select_list.SelectFromList.show(
             items,
-            title=u"Типы семейств — кандидаты для заполнения LOI",
-            button_name=u"Сохранить",
+            title=tr(u"Типы семейств — кандидаты для заполнения LOI"),
+            button_name=tr(u"Сохранить"),
             multiselect=True
         )
         if chosen is None:
@@ -458,8 +459,8 @@ def show_settings_form(doc, values):
 
     types_hint = TextBlock()
     types_hint.Text = (
-        u"Учитываются только при выбранном режиме «Только выбранные типы "
-        u"семейств» — поиск идёт по всему документу, без привязки к виду."
+        tr(u"Учитываются только при выбранном режиме «Только выбранные типы "
+        u"семейств» — поиск идёт по всему документу, без привязки к виду.")
     )
     types_hint.FontSize = 11
     types_hint.Foreground = Brushes.Gray
@@ -470,15 +471,15 @@ def show_settings_form(doc, values):
     # --- ④ разбиение элементов на границе форм --------------------------
 
     split_section = TextBlock()
-    split_section.Text = u"④ Элемент сразу в нескольких формах"
+    split_section.Text = tr(u"④ Элемент сразу в нескольких формах")
     split_section.FontWeight = FontWeights.Bold
     split_section.Margin = Thickness(0, 16, 0, 2)
     root.Children.Add(split_section)
 
     split_cb = CheckBox()
     split_cb.Content = (
-        u"Разрезать прямой линейный элемент (лоток, короб, труба…) по "
-        u"границе форм и записать каждому куску значения его формы"
+        tr(u"Разрезать прямой линейный элемент (лоток, короб, труба…) по "
+        u"границе форм и записать каждому куску значения его формы")
     )
     split_cb.Margin = Thickness(0, 4, 0, 2)
     split_cb.IsChecked = bool(values.get(SPLIT_KEY, SPLIT_DEFAULT))
@@ -486,11 +487,11 @@ def show_settings_form(doc, values):
 
     split_hint = TextBlock()
     split_hint.Text = (
-        u"Применяется только к прямым линейным элементам, физически "
+        tr(u"Применяется только к прямым линейным элементам, физически "
         u"проходящим через границу нескольких форм. То, что разрезать не "
         u"удалось (кривые участки, точечные элементы, наложенные формы), "
         u"по-прежнему показывается в окне разрешения конфликтов, где форму-"
-        u"источник для всего элемента выбирает пользователь."
+        u"источник для всего элемента выбирает пользователь.")
     )
     split_hint.FontSize = 11
     split_hint.Foreground = Brushes.Gray
@@ -507,12 +508,12 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 

@@ -53,6 +53,7 @@ except NameError:  # Python 3
 
 
 import math
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     XYZ, Line, FilteredElementCollector, BuiltInCategory, BuiltInParameter,
@@ -254,7 +255,7 @@ def create_on_level(doc, x, y, offset_mm, symbol, level):
     instance = doc.Create.NewFamilyInstance(point, symbol, StructuralType.NonStructural)
     doc.Regenerate()
     if not set_instance_level(instance, level):
-        raise Exception(u"не удалось назначить уровень экземпляру Id {}".format(
+        raise Exception(tr(u"не удалось назначить уровень экземпляру Id {}").format(
             instance.Id.IntegerValue))
     doc.Regenerate()
     return instance
@@ -391,8 +392,8 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
             key = core.dedupe_key(center.X, center.Y, level.Id.IntegerValue)
             if key in seen:
                 result.diagnostics.append(
-                    u"Шахта Id {}: на уровне «{}» в той же точке уже есть шахта СС — "
-                    u"кроссы не дублируются.".format(shaft.Id.IntegerValue, level.Name))
+                    tr(u"Шахта Id {}: на уровне «{}» в той же точке уже есть шахта СС — "
+                    u"кроссы не дублируются.").format(shaft.Id.IntegerValue, level.Name))
                 continue
             seen.add(key)
 
@@ -403,7 +404,7 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
                     rotate_instance(doc, instance, angle)
                     if room_param and not set_text_param(instance, room_param, niche_text):
                         result.diagnostics.append(
-                            u"Кросс Id {}: не удалось записать «{}».".format(
+                            tr(u"Кросс Id {}: не удалось записать «{}».").format(
                                 instance.Id.IntegerValue, room_param))
                     result.crosses += 1
                     result.placed_crosses.append(instance)
@@ -412,7 +413,7 @@ def place_crosses(doc, shafts, levels, settings, symbol, result):
                             (instance, center.X, center.Y, section))
                 except Exception as ex:
                     result.diagnostics.append(
-                        u"Шахта Id {}, уровень «{}»: ошибка установки кросса №{}: {}".format(
+                        tr(u"Шахта Id {}, уровень «{}»: ошибка установки кросса №{}: {}").format(
                             shaft.Id.IntegerValue, level.Name, number, ex))
 
 
@@ -623,9 +624,9 @@ def align_facing(doc, instance, normal):
 
 def _link_label(link_instance):
     try:
-        return safe_element_name(link_instance) or u"связь"
+        return safe_element_name(link_instance) or tr(u"связь")
     except Exception:
-        return u"связь"
+        return tr(u"связь")
 
 
 def place_feeds(doc, levels, settings, symbol, offset_mm, result):
@@ -641,7 +642,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
 
     links = list(FilteredElementCollector(doc).OfClass(RevitLinkInstance))
     if not links:
-        result.diagnostics.append(u"В проекте нет ни одной связи — кабельные подводы не ставятся.")
+        result.diagnostics.append(tr(u"В проекте нет ни одной связи — кабельные подводы не ставятся."))
         return
 
     for link_instance in links:
@@ -711,7 +712,7 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                     point = _door_point(door)
                     if point is None:
                         result.diagnostics.append(
-                            u"{}: дверь Id {} — не удалось определить точку.".format(
+                            tr(u"{}: дверь Id {} — не удалось определить точку.").format(
                                 label, door.Id.IntegerValue))
                         continue
                 host_point = transform.OfPoint(point)
@@ -722,8 +723,8 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                 if host_normal is None or not align_facing(doc, instance, host_normal):
                     result.feeds_unoriented += 1
                     result.diagnostics.append(
-                        u"{}: дверь Id {} — не удалось определить сторону квартиры, подвод "
-                        u"Id {} поставлен по оси стены без поворота.".format(
+                        tr(u"{}: дверь Id {} — не удалось определить сторону квартиры, подвод "
+                        u"Id {} поставлен по оси стены без поворота.").format(
                             label, door.Id.IntegerValue, instance.Id.IntegerValue))
                 result.placed_feeds.append(
                     (instance, host_point.X, host_point.Y, room_sections.get(room_id) or u"",
@@ -732,16 +733,16 @@ def place_feeds(doc, levels, settings, symbol, offset_mm, result):
                     if room_id not in warned_rooms:
                         warned_rooms.add(room_id)
                         result.diagnostics.append(
-                            u"ВНИМАНИЕ. {}: у помещения «{}» Id {} не заполнено «{}» — "
-                            u"подвод Id {} поставлен без имени лота.".format(
+                            tr(u"ВНИМАНИЕ. {}: у помещения «{}» Id {} не заполнено «{}» — "
+                            u"подвод Id {} поставлен без имени лота.").format(
                                 label, target_name, room_id, lot_param,
                                 instance.Id.IntegerValue))
                 elif room_param and not set_text_param(instance, room_param, lot):
                     result.diagnostics.append(
-                        u"Подвод Id {}: не удалось записать «{}».".format(
+                        tr(u"Подвод Id {}: не удалось записать «{}».").format(
                             instance.Id.IntegerValue, room_param))
             except Exception as ex:
-                result.diagnostics.append(u"{}: дверь Id {} — ошибка: {}".format(
+                result.diagnostics.append(tr(u"{}: дверь Id {} — ошибка: {}").format(
                     label, door.Id.IntegerValue, ex))
 
 
@@ -765,15 +766,15 @@ def build_circuits(doc, settings, result):
         index, reason = core.pick_shaft(x, y, section if by_section else u"", candidates)
         if reason == "no_room_section" and by_section:
             result.diagnostics.append(
-                u"Подвод Id {}: у помещения не заполнена секция — цепь от ближайшей "
-                u"шахты уровня «{}».".format(feed.Id.IntegerValue, level_name))
+                tr(u"Подвод Id {}: у помещения не заполнена секция — цепь от ближайшей "
+                u"шахты уровня «{}».").format(feed.Id.IntegerValue, level_name))
         if index is None:
             result.circuits_failed += 1
             if reason == "no_section":
-                why = u"на уровне нет шахты СС секции «{}»".format(section)
+                why = tr(u"на уровне нет шахты СС секции «{}»").format(section)
             else:
-                why = u"на уровне нет кроссов"
-            result.diagnostics.append(u"Подвод Id {} (уровень «{}»): цепь не создана — {}.".format(
+                why = tr(u"на уровне нет кроссов")
+            result.diagnostics.append(tr(u"Подвод Id {} (уровень «{}»): цепь не создана — {}.").format(
                 feed.Id.IntegerValue, level_name, why))
             continue
 
@@ -785,7 +786,7 @@ def build_circuits(doc, settings, result):
             circuit, error = None, ex
         if circuit is None:
             result.circuits_failed += 1
-            result.diagnostics.append(u"Подвод Id {} → кросс Id {}: цепь не создана: {}".format(
+            result.diagnostics.append(tr(u"Подвод Id {} → кросс Id {}: цепь не создана: {}").format(
                 feed.Id.IntegerValue, cross.Id.IntegerValue, error))
         else:
             result.circuits += 1
@@ -807,15 +808,15 @@ def fill_loi(doc, elements, result):
     loi = loi_settings.get_settings_silent()
     param_names = loi_settings.get_param_names(loi)
     if not param_names:
-        result.loi_skipped = (u"не заданы параметры в настройках кнопки «Заполнение LOI» "
-                              u"(Shift+клик по ней)")
+        result.loi_skipped = (tr(u"не заданы параметры в настройках кнопки «Заполнение LOI» "
+                              u"(Shift+клик по ней)"))
         return
     if not elements:
         return
     forms_found = loi_fill.find_forms(doc, loi_fill.FORM_CATEGORY_NAME,
                                       locations=loi_settings.get_search_locations(loi))
     if not forms_found:
-        result.loi_skipped = u"не найдено ни одной «Формы» в моделях из настроек «Заполнение LOI»"
+        result.loi_skipped = tr(u"не найдено ни одной «Формы» в моделях из настроек «Заполнение LOI»")
         return
 
     matches = loi_fill.classify_elements(forms_found, elements)
@@ -823,17 +824,17 @@ def fill_loi(doc, elements, result):
         match = matches.get(element.Id)
         if match is None:
             result.diagnostics.append(
-                u"LOI: элемент Id {} не попал ни в одну «Форму» — не заполнен.".format(
+                tr(u"LOI: элемент Id {} не попал ни в одну «Форму» — не заполнен.").format(
                     element.Id.IntegerValue))
             continue
         if len(match.forms) > 1:
             result.diagnostics.append(
-                u"LOI: элемент Id {} попал в {} «Формы» — взята первая.".format(
+                tr(u"LOI: элемент Id {} попал в {} «Формы» — взята первая.").format(
                     element.Id.IntegerValue, len(match.forms)))
         values = loi_fill.collect_form_values(match.forms[0].element, param_names)
         failed = [name for name, _, ok in loi_fill.apply_values(element, values) if not ok]
         if failed:
-            result.diagnostics.append(u"LOI: элемент Id {} — не записано: {}.".format(
+            result.diagnostics.append(tr(u"LOI: элемент Id {} — не записано: {}.").format(
                 element.Id.IntegerValue, u", ".join(failed)))
         result.loi_filled += 1
 
@@ -851,12 +852,12 @@ def fill_addresses(doc, settings, result):
     mask = settings.get("address_mask") or u""
     letters, errors = core.parse_letter_params(settings.get("address_letters"))
     if errors:
-        result.diagnostics.append(u"Маркировка: ошибки в «Параметрах букв маски»: {}.".format(
+        result.diagnostics.append(tr(u"Маркировка: ошибки в «Параметрах букв маски»: {}.").format(
             u"; ".join(errors)))
     if not letters:
         result.diagnostics.append(
-            u"Маркировка не заполнена: не заданы параметры букв маски (Shift+клик → "
-            u"«Помещения, параметры и высоты…», раздел ④).")
+            tr(u"Маркировка не заполнена: не заданы параметры букв маски (Shift+клик → "
+            u"«Помещения, параметры и высоты…», раздел ④)."))
         return
     for feed, _, _, _, _, _, room_values in result.placed_feeds:
         values = {}
@@ -865,14 +866,14 @@ def fill_addresses(doc, settings, result):
         address, missing = core.format_address(mask, values)
         if missing:
             result.diagnostics.append(
-                u"Маркировка подвода Id {}: нет значения {} — записано «{}».".format(
+                tr(u"Маркировка подвода Id {}: нет значения {} — записано «{}».").format(
                     feed.Id.IntegerValue,
                     u", ".join(u"{} ({})".format(letter, dict(letters)[letter]) for letter in missing),
                     address))
         if set_text_param(feed, address_param, address):
             result.addresses += 1
         else:
-            result.diagnostics.append(u"Маркировка подвода Id {}: не удалось записать «{}».".format(
+            result.diagnostics.append(tr(u"Маркировка подвода Id {}: не удалось записать «{}».").format(
                 feed.Id.IntegerValue, address_param))
 
 
@@ -927,11 +928,11 @@ def ask_levels_and_offset(doc, default_offset_mm):
 
     levels = get_levels(doc)
     if not levels:
-        forms.alert(u"В проекте нет ни одного уровня.", title=u"СС1-8Mile")
+        forms.alert(tr(u"В проекте нет ни одного уровня."), title=tr(u"СС1-8Mile"))
         return None, None
 
     window = Window()
-    window.Title = u"СС1-8Mile — кроссы и кабельные подводы"
+    window.Title = tr(u"СС1-8Mile — кроссы и кабельные подводы")
     window.Width = 440
     window.Height = 625
     window.MinWidth = 400
@@ -944,7 +945,7 @@ def ask_levels_and_offset(doc, default_offset_mm):
     window.Content = root
 
     header = TextBlock()
-    header.Text = u"Уровни для установки оборудования:"
+    header.Text = tr(u"Уровни для установки оборудования:")
     header.Margin = Thickness(0, 0, 0, 8)
     root.Children.Add(header)
 
@@ -958,7 +959,7 @@ def ask_levels_and_offset(doc, default_offset_mm):
     checks = []
     for level in levels:
         try:
-            label = u"{}   ({:.0f} мм)".format(level.Name, float(level.Elevation) * FT_TO_MM)
+            label = tr(u"{}   ({:.0f} мм)").format(level.Name, float(level.Elevation) * FT_TO_MM)
         except Exception:
             label = level.Name
         cb = CheckBox()
@@ -987,11 +988,11 @@ def ask_levels_and_offset(doc, default_offset_mm):
         button.Click += on_click
         select_row.Children.Add(button)
 
-    add_select_button(u"Отметить все", True)
-    add_select_button(u"Снять все", False)
+    add_select_button(tr(u"Отметить все"), True)
+    add_select_button(tr(u"Снять все"), False)
 
     offset_label = TextBlock()
-    offset_label.Text = u"Смещение кабельного подвода от уровня, мм:"
+    offset_label.Text = tr(u"Смещение кабельного подвода от уровня, мм:")
     offset_label.Margin = Thickness(0, 12, 0, 4)
     root.Children.Add(offset_label)
 
@@ -1006,13 +1007,13 @@ def ask_levels_and_offset(doc, default_offset_mm):
     root.Children.Add(buttons)
 
     ok_button = Button()
-    ok_button.Content = u"Запустить"
+    ok_button.Content = tr(u"Запустить")
     ok_button.Width = 100
     ok_button.Margin = Thickness(0, 0, 8, 0)
     buttons.Children.Add(ok_button)
 
     cancel_button = Button()
-    cancel_button.Content = u"Отмена"
+    cancel_button.Content = tr(u"Отмена")
     cancel_button.Width = 90
     buttons.Children.Add(cancel_button)
 
@@ -1021,14 +1022,14 @@ def ask_levels_and_offset(doc, default_offset_mm):
     def on_ok(sender, args):
         checked = [cb.Tag for cb in checks if cb.IsChecked]
         if not checked:
-            forms.alert(u"Отметьте хотя бы один уровень.", title=u"СС1-8Mile")
+            forms.alert(tr(u"Отметьте хотя бы один уровень."), title=tr(u"СС1-8Mile"))
             return
         try:
             value = float(offset_box.Text.strip().replace(u",", u"."))
             if value < 0:
                 raise ValueError()
         except Exception:
-            forms.alert(u"Введите неотрицательное число для смещения подвода.", title=u"СС1-8Mile")
+            forms.alert(tr(u"Введите неотрицательное число для смещения подвода."), title=tr(u"СС1-8Mile"))
             return
         state["result"] = (checked, value)
         window.Close()

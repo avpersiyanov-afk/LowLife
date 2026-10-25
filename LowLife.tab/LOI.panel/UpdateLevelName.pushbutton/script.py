@@ -4,6 +4,7 @@ __title__ = u"Обновить\nимя уровня"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms
 from lowlife import select_list
@@ -14,8 +15,8 @@ from Autodesk.Revit.DB import ElementId
 doc = revit.doc
 uidoc = revit.uidoc
 
-TITLE = u"Обновить имя уровня"
-AUTO_OPTION = u"По высоте — ближайший уровень не выше элемента"
+TITLE = tr(u"Обновить имя уровня")
+AUTO_OPTION = tr(u"По высоте — ближайший уровень не выше элемента")
 
 
 def _pick_level():
@@ -24,7 +25,7 @@ def _pick_level():
 
     levels = geometry.get_document_levels(doc)
     if not levels:
-        forms.alert(u"В документе нет ни одного уровня.", title=TITLE, exitscript=True)
+        forms.alert(tr(u"В документе нет ни одного уровня."), title=TITLE, exitscript=True)
 
     by_name = {}
     options = [AUTO_OPTION]
@@ -35,22 +36,22 @@ def _pick_level():
             options.append(name)
 
     choice = select_list.SelectFromList.show(
-        options, title=u"Какой опорный уровень назначить", button_name=u"Назначить"
+        options, title=tr(u"Какой опорный уровень назначить"), button_name=tr(u"Назначить")
     )
     if not choice:
-        forms.alert(u"Отменено.", title=TITLE, exitscript=True)
+        forms.alert(tr(u"Отменено."), title=TITLE, exitscript=True)
 
     return None if choice == AUTO_OPTION else by_name[choice]
 
 
 def _report(selected_count, skipped, result):
-    lines = [u"Выбрано элементов: {}".format(selected_count)]
+    lines = [tr(u"Выбрано элементов: {}").format(selected_count)]
 
     assigned = len(result.by_param) + len(result.recreated)
-    lines.append(u"Назначен опорный уровень: {}".format(assigned))
+    lines.append(tr(u"Назначен опорный уровень: {}").format(assigned))
     if result.recreated:
         lines.append(
-            u"  из них пересозданы (новый ID, цепи и параметры перенесены): {}".format(
+            tr(u"  из них пересозданы (новый ID, цепи и параметры перенесены): {}").format(
                 len(result.recreated)
             )
         )
@@ -59,25 +60,25 @@ def _report(selected_count, skipped, result):
 
     if skipped:
         lines.append(u"")
-        lines.append(u"Пропущено:")
+        lines.append(tr(u"Пропущено:"))
         for reason in sorted(skipped):
-            lines.append(u"  {} — {}".format(reason, skipped[reason]))
+            lines.append(u"  {} — {}".format(tr(reason), skipped[reason]))
 
     if result.failed:
         lines.append(u"")
-        lines.append(u"Не удалось ({}):".format(len(result.failed)))
+        lines.append(tr(u"Не удалось ({}):").format(len(result.failed)))
         for el_id, reason in result.failed[:15]:
             lines.append(u"  ID {} — {}".format(el_id, reason))
         if len(result.failed) > 15:
-            lines.append(u"  … и ещё {}".format(len(result.failed) - 15))
+            lines.append(tr(u"  … и ещё {}").format(len(result.failed) - 15))
 
     if result.warnings:
         lines.append(u"")
-        lines.append(u"Проверьте:")
+        lines.append(tr(u"Проверьте:"))
         for el_id, text in result.warnings[:15]:
             lines.append(u"  ID {} — {}".format(el_id, text))
         if len(result.warnings) > 15:
-            lines.append(u"  … и ещё {}".format(len(result.warnings) - 15))
+            lines.append(tr(u"  … и ещё {}").format(len(result.warnings) - 15))
 
     forms.alert(u"\n".join(lines), title=TITLE)
 
@@ -89,7 +90,7 @@ def main():
     selected = [el for el in selected if el is not None]
     if not selected:
         forms.alert(
-            u"Сначала выберите элементы в Revit, потом запустите кнопку.",
+            tr(u"Сначала выберите элементы в Revit, потом запустите кнопку."),
             title=TITLE, exitscript=True
         )
 
@@ -112,19 +113,19 @@ def main():
     need_recreate = [el for el in targets if not level_assign.can_assign_by_param(el)]
     if need_recreate:
         answer = forms.alert(
-            u"У {} из {} элементов Revit не даёт поменять параметр «Уровень» — "
+            tr(u"У {} из {} элементов Revit не даёт поменять параметр «Уровень» — "
             u"уровень назначится только пересозданием экземпляра на том же месте.\n\n"
             u"Тип, положение, поворот, параметры экземпляра, рабочий набор и "
             u"электрические цепи переносятся, но у нового элемента будет другой ID, "
-            u"а марки старого элемента удалятся вместе с ним.".format(
+            u"а марки старого элемента удалятся вместе с ним.").format(
                 len(need_recreate), len(targets)
             ),
             title=TITLE,
-            options=[u"Пересоздать", u"Только без пересоздания", u"Отмена"],
+            options=[tr(u"Пересоздать"), tr(u"Только без пересоздания"), tr(u"Отмена")],
         )
-        if not answer or answer == u"Отмена":
+        if not answer or answer == tr(u"Отмена"):
             return
-        allow_recreate = answer == u"Пересоздать"
+        allow_recreate = answer == tr(u"Пересоздать")
 
     with revit.Transaction(TITLE):
         result = level_assign.assign_levels(doc, targets, fixed_level, allow_recreate)
@@ -145,6 +146,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «{}»:\n\n{}".format(TITLE, traceback.format_exc()),
+        tr(u"Сбой в «{}»:\n\n{}").format(TITLE, traceback.format_exc()),
         title=TITLE
     )

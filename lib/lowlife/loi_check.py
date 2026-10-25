@@ -38,6 +38,8 @@ except NameError:  # Python 3
     unicode = str
 
 
+from lowlife.i18n import N_
+
 from Autodesk.Revit.DB import (
     BuiltInParameter, CategoryType, ElementId, FilteredElementCollector,
     ScheduleFieldType, ScheduleSortGroupField, ScheduleSortOrder,
@@ -379,10 +381,10 @@ def _first_by_bips(by_id, bip_names):
 
 
 # причины, по которым параметр не попал в спецификацию
-REASON_NOT_FOUND = u"нет ни у одного элемента категории"
-REASON_FAMILY_PARAM = (u"параметр семейства (не общий) — Revit не выводит такие "
+REASON_NOT_FOUND = N_(u"нет ни у одного элемента категории")
+REASON_FAMILY_PARAM = N_(u"параметр семейства (не общий) — Revit не выводит такие "
                        u"в спецификацию, нужен общий параметр или параметр проекта")
-REASON_NOT_SCHEDULABLE = u"Revit не даёт вывести этот параметр в спецификацию категории"
+REASON_NOT_SCHEDULABLE = N_(u"Revit не даёт вывести этот параметр в спецификацию категории")
 
 
 def _field_via_elements(doc, by_id, param_name, elements):

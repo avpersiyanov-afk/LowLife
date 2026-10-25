@@ -49,6 +49,7 @@ from Autodesk.Revit.DB import (
     LocationPoint, LocationCurve, Line, XYZ, SolidCurveIntersectionOptions,
     CategoryType, ViewDetailLevel, RevitLinkInstance, SolidUtils, BoundingBoxXYZ
 )
+from lowlife.i18n import tr
 
 from lowlife import params as params_mod
 
@@ -386,18 +387,18 @@ def diagnose_form_search(doc, category_name, locations):
                 if sim >= SIMILAR_CATEGORY_THRESHOLD:
                     similar.append((sim, cat.Name))
 
-        mark = u"" if included else u" [не входит в текущий поиск]"
-        line = u"«{}»{}: элементов категории «{}» — {} (с солидом — {})".format(
+        mark = u"" if included else tr(u" [не входит в текущий поиск]")
+        line = tr(u"«{}»{}: элементов категории «{}» — {} (с солидом — {})").format(
             label, mark, category_name, total, with_solid
         )
         if similar:
             similar.sort(key=lambda x: -x[0])
-            line += u"; похожие по названию категории есть в этой модели: {}".format(
+            line += tr(u"; похожие по названию категории есть в этой модели: {}").format(
                 u", ".join(u"«{}»".format(name) for _sim, name in similar[:5])
             )
         lines.append(line)
 
-    _scan(doc, u"Текущий файл", search_host)
+    _scan(doc, tr(u"Текущий файл"), search_host)
 
     loaded_link_names = set()
     for link_inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
@@ -411,9 +412,9 @@ def diagnose_form_search(doc, category_name, locations):
             link_doc = None
         if link_doc is None:
             lines.append(
-                u"«{}»{}: связь сейчас не загружена (Unload/не найден путь) — "
-                u"просканировать нельзя.".format(
-                    link_name, u"" if included else u" [не входит в текущий поиск]"
+                tr(u"«{}»{}: связь сейчас не загружена (Unload/не найден путь) — "
+                u"просканировать нельзя.").format(
+                    link_name, u"" if included else tr(u" [не входит в текущий поиск]")
                 )
             )
             continue
@@ -427,9 +428,9 @@ def diagnose_form_search(doc, category_name, locations):
         ]
         for m in missing:
             lines.append(
-                u"«{}»: такая связь сейчас не найдена среди загруженных в "
+                tr(u"«{}»: такая связь сейчас не найдена среди загруженных в "
                 u"документе — переименована, удалена или не загружена; "
-                u"откройте настройки и выберите модели заново.".format(m)
+                u"откройте настройки и выберите модели заново.").format(m)
             )
 
     return lines
@@ -453,12 +454,12 @@ def list_search_locations(doc):
     выгруженные — RevitLinkInstance остаётся в документе) — источник
     списка для настройки «В каких моделях искать формы».
     """
-    options = [LocationOption(HOST_LOCATION_KEY, u"Текущий файл (хост)")]
+    options = [LocationOption(HOST_LOCATION_KEY, tr(u"Текущий файл (хост)"))]
 
     for link_inst in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         name = _safe_name(link_inst)
         if name:
-            options.append(LocationOption(name, u"Связь: {}".format(name)))
+            options.append(LocationOption(name, tr(u"Связь: {}").format(name)))
 
     return options
 
@@ -647,7 +648,7 @@ def list_candidate_types(doc, exclude_category_name):
             labels[key] = u"{} — {}".format(cat.Name, element_type_name(doc, el))
 
     options = [
-        TypeOption(ElementId(key), u"{} ({} экз.)".format(labels[key], counts[key]))
+        TypeOption(ElementId(key), tr(u"{} ({} экз.)").format(labels[key], counts[key]))
         for key in counts
     ]
     options.sort(key=lambda o: o.name.lower())

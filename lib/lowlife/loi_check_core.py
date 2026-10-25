@@ -9,6 +9,7 @@ Revit API, покрыта tests/test_loi_check_core.py.
 Пустое имя параметра — берётся сама строка списка (частый случай, когда
 строка требований и есть имя параметра).
 """
+from lowlife.i18n import tr
 
 try:
     _text = unicode  # noqa: F821 — IronPython/Python 2
@@ -122,7 +123,7 @@ def status_text(status, value):
         return _text(value).strip()
     if status == EMPTY:
         return u"—"
-    return u"нет параметра"
+    return tr(u"нет параметра")
 
 
 def schedule_name(prefix, category_name):

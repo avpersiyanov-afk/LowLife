@@ -10,13 +10,14 @@ __title__ = u"Проверка\nLOI"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 doc = revit.doc
 uidoc = revit.uidoc
 
-TITLE = u"Проверка LOI"
+TITLE = tr(u"Проверка LOI")
 MAX_ROWS = 300  # строк в таблице отчёта на категорию
 
 
@@ -26,40 +27,40 @@ def _cell(text):
 
 
 def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0, hidden_cats=0):
-    output.print_md(u"# Проверка LOI")
-    output.print_md(u"Этап: **{}**".format(stage.title) if stage is not None
-                    else u"Проверка по своему списку параметров.")
+    output.print_md(tr(u"# Проверка LOI"))
+    output.print_md(tr(u"Этап: **{}**").format(stage.title) if stage is not None
+                    else tr(u"Проверка по своему списку параметров."))
     if view_3d is not None:
         output.print_md(
-            u"3D-вид с незаполненными элементами: {} (оставлено {}; заполненные — {} — "
-            u"спрятаны фильтром вида; выключено других категорий: {})".format(
+            tr(u"3D-вид с незаполненными элементами: {} (оставлено {}; заполненные — {} — "
+            u"спрятаны фильтром вида; выключено других категорий: {})").format(
                 output.linkify(view_3d.Id, view_3d.Name),
                 sum(len(r.incomplete_rows) for r in results), hidden_3d, hidden_cats))
     else:
-        output.print_md(u"Незаполненных элементов нет — 3D-вид не обновлялся (если он есть, на нём результат прошлого запуска).")
+        output.print_md(tr(u"Незаполненных элементов нет — 3D-вид не обновлялся (если он есть, на нём результат прошлого запуска)."))
     if missing_categories:
-        output.print_md(u"**Категории не найдены в документе:** {}".format(
+        output.print_md(tr(u"**Категории не найдены в документе:** {}").format(
             u", ".join(missing_categories)))
 
     for res in results:
         s = res.summary
-        output.print_md(u"## {} — элементов: {}, с незаполненными параметрами: {}".format(
+        output.print_md(tr(u"## {} — элементов: {}, с незаполненными параметрами: {}").format(
             s.category_name, s.total, s.incomplete))
         if res.schedule is not None:
-            output.print_md(u"Спецификация: {}".format(
+            output.print_md(tr(u"Спецификация: {}").format(
                 output.linkify(res.schedule.Id, res.schedule.Name)))
         if res.missing_fields:
-            output.print_md(u"**Не выведены в спецификацию:**")
+            output.print_md(tr(u"**Не выведены в спецификацию:**"))
             output.print_table(
-                table_data=[[_cell(label), reason] for label, reason in res.missing_fields],
-                columns=[u"Параметр", u"Почему"])
+                table_data=[[_cell(label), tr(reason)] for label, reason in res.missing_fields],
+                columns=[tr(u"Параметр"), tr(u"Почему")])
         if res.no_code:
             output.print_md(
-                u"Без кода классификатора: {} — проверены по параметрам, общим "
-                u"для всех классов категории.".format(res.no_code))
+                tr(u"Без кода классификатора: {} — проверены по параметрам, общим "
+                u"для всех классов категории.").format(res.no_code))
         if res.unknown_codes:
             output.print_md(
-                u"Не проверялись — кода нет в загруженных разделах приложения: {}".format(
+                tr(u"Не проверялись — кода нет в загруженных разделах приложения: {}").format(
                     u", ".join(u"{} ({})".format(_cell(code), n)
                                for code, n in sorted(res.unknown_codes.items()))))
         if not s.total:
@@ -68,9 +69,9 @@ def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0, hi
         output.print_table(
             table_data=[[st.label, st.param_name, st.filled, st.empty, st.absent]
                         for st in s.stats],
-            columns=[u"Строка списка", u"Параметр", u"Заполнено", u"Пусто", u"Нет параметра"])
+            columns=[tr(u"Строка списка"), tr(u"Параметр"), tr(u"Заполнено"), tr(u"Пусто"), tr(u"Нет параметра")])
         if stage is not None:
-            output.print_md(u"Пустая ячейка в списке ниже — параметр у этого класса на этапе не требуется.")
+            output.print_md(tr(u"Пустая ячейка в списке ниже — параметр у этого класса на этапе не требуется."))
 
         if res.incomplete_rows:
             shown = res.incomplete_rows[:MAX_ROWS]
@@ -78,10 +79,10 @@ def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0, hi
                 table_data=[[output.linkify(r.element.Id)]
                             + [_cell(x) for x in [r.type_name, r.family_name, r.floor] + r.cells]
                             for r in shown],
-                columns=[u"ID", u"Тип", u"Семейство", u"Этаж"] + [label for label, _ in res.rows],
-                title=u"Незаполненные элементы")
+                columns=[u"ID", tr(u"Тип"), tr(u"Семейство"), tr(u"Этаж")] + [label for label, _ in res.rows],
+                title=tr(u"Незаполненные элементы"))
             if len(res.incomplete_rows) > MAX_ROWS:
-                output.print_md(u"…и ещё {} — полный список в спецификации.".format(
+                output.print_md(tr(u"…и ещё {} — полный список в спецификации.").format(
                     len(res.incomplete_rows) - MAX_ROWS))
 
 
@@ -96,8 +97,8 @@ def main():
     if config_mode:
         edited = loi_check_settings.get_settings_interactive(doc)
         forms.alert(
-            u"Отменено, настройки не изменены." if edited is None
-            else u"Настройки сохранены."
+            tr(u"Отменено, настройки не изменены.") if edited is None
+            else tr(u"Настройки сохранены.")
         )
         return
 
@@ -122,7 +123,7 @@ def main():
 
     if not targets:
         forms.alert(
-            u"Ни одна категория не найдена в документе:\n{}".format(
+            tr(u"Ни одна категория не найдена в документе:\n{}").format(
                 u", ".join(missing_categories)),
             title=TITLE, exitscript=True)
 
@@ -148,8 +149,8 @@ def main():
     if view_3d is not None:
         total = len(incomplete)
         if forms.alert(
-                u"Элементов с незаполненными параметрами: {}.\n\n"
-                u"Открыть 3D-вид «{}»?".format(total, view_3d.Name),
+                tr(u"Элементов с незаполненными параметрами: {}.\n\n"
+                u"Открыть 3D-вид «{}»?").format(total, view_3d.Name),
                 title=TITLE, yes=True, no=True):
             _open(view_3d)
         return
@@ -172,6 +173,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «Проверка LOI»:\n\n{}".format(traceback.format_exc()),
+        tr(u"Сбой в «Проверка LOI»:\n\n{}").format(traceback.format_exc()),
         title=TITLE
     )

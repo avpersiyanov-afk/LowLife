@@ -27,6 +27,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import tr, N_
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -51,7 +52,7 @@ from System.Windows.Media import Brushes
 SETTINGS_FILE_NAME = "LowLifeFloor_settings.json"
 
 PARAM_KEY = "floor_param_name"
-PARAM_LABEL = u"Параметр «Этаж»"
+PARAM_LABEL = N_(u"Параметр «Этаж»")
 LEVEL_VALUES_KEY = "level_values"
 
 
@@ -96,15 +97,15 @@ def require(settings):
     missing = []
 
     if not unicode(settings.get(PARAM_KEY) or u"").strip():
-        missing.append(PARAM_LABEL)
+        missing.append(tr(PARAM_LABEL))
 
     if not get_level_values(settings):
-        missing.append(u"Значения по уровням")
+        missing.append(tr(u"Значения по уровням"))
 
     if missing:
         forms.alert(
-            u"Не заполнены обязательные настройки:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «Заполнение этажа».".format(
+            tr(u"Не заполнены обязательные настройки:\n\n{}\n\n"
+            u"Откройте настройки: Shift+клик по кнопке «Заполнение этажа».").format(
                 u"\n".join(missing)
             ),
             exitscript=True
@@ -136,7 +137,7 @@ def show_settings_form(doc, values):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки: Заполнение этажа"
+    win.Title = tr(u"Настройки: Заполнение этажа")
     win.Width = 640
     win.Height = 640
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -149,26 +150,26 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Параметр «Этаж» и значения по уровням"
+    title.Text = tr(u"Параметр «Этаж» и значения по уровням")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+    hint.Text = tr(u"Значения сохраняются и подставляются при следующих запусках.")
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.Margin = Thickness(0, 4, 0, 0)
     header.Children.Add(hint)
 
     param_section = TextBlock()
-    param_section.Text = u"① Параметр «Этаж»"
+    param_section.Text = tr(u"① Параметр «Этаж»")
     param_section.FontWeight = FontWeights.Bold
     param_section.Margin = Thickness(0, 14, 0, 2)
     header.Children.Add(param_section)
 
     param_label = TextBlock()
-    param_label.Text = u"Имя параметра элемента, в который записывается этаж *"
+    param_label.Text = tr(u"Имя параметра элемента, в который записывается этаж *")
     param_label.TextWrapping = TextWrapping.Wrap
     param_label.Margin = Thickness(0, 2, 0, 2)
     header.Children.Add(param_label)
@@ -180,17 +181,17 @@ def show_settings_form(doc, values):
     header.Children.Add(param_box)
 
     levels_section = TextBlock()
-    levels_section.Text = u"② Значения по уровням"
+    levels_section.Text = tr(u"② Значения по уровням")
     levels_section.FontWeight = FontWeights.Bold
     levels_section.Margin = Thickness(0, 14, 0, 2)
     header.Children.Add(levels_section)
 
     levels_hint = TextBlock()
     levels_hint.Text = (
-        u"Для каждого уровня впишите, что записывать в параметр «Этаж» "
+        tr(u"Для каждого уровня впишите, что записывать в параметр «Этаж» "
         u"элементам, привязанным к этому уровню (тот уровень, что указан в "
         u"свойствах самого элемента), — например «1» или «Этаж 1». Пустое "
-        u"значение — элементы этого уровня не заполняются."
+        u"значение — элементы этого уровня не заполняются.")
     )
     levels_hint.FontSize = 11
     levels_hint.Foreground = Brushes.Gray
@@ -200,7 +201,7 @@ def show_settings_form(doc, values):
 
     if not levels:
         no_levels = TextBlock()
-        no_levels.Text = u"В документе не найдено ни одного уровня."
+        no_levels.Text = tr(u"В документе не найдено ни одного уровня.")
         no_levels.Foreground = Brushes.Firebrick
         no_levels.TextWrapping = TextWrapping.Wrap
         header.Children.Add(no_levels)
@@ -223,7 +224,7 @@ def show_settings_form(doc, values):
     grid.ItemsSource = data
 
     level_col = DataGridTextColumn()
-    level_col.Header = u"Уровень"
+    level_col.Header = tr(u"Уровень")
     level_col.Binding = Binding("LevelName")
     level_col.IsReadOnly = True
     level_col.Width = _star(1)
@@ -233,7 +234,7 @@ def show_settings_form(doc, values):
     value_binding.Mode = BindingMode.TwoWay
     value_binding.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
     value_col = DataGridTextColumn()
-    value_col.Header = u"Значение для элементов этого уровня"
+    value_col.Header = tr(u"Значение для элементов этого уровня")
     value_col.Binding = value_binding
     value_col.Width = _star(1)
     grid.Columns.Add(value_col)
@@ -245,12 +246,12 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 

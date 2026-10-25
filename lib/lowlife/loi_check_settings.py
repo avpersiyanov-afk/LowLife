@@ -35,6 +35,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import tr, N_
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -59,7 +60,7 @@ from System.Windows.Data import Binding, BindingMode, UpdateSourceTrigger
 from System.Windows.Media import Brushes
 
 SETTINGS_FILE_NAME = "LowLifeLOICheck_settings.json"
-BUTTON_NAME = u"Проверка LOI"
+BUTTON_NAME = N_(u"Проверка LOI")
 
 CATEGORIES_KEY = "category_names"
 LABELS_KEY = "labels_text"
@@ -68,7 +69,7 @@ FLOOR_KEY = "floor_param_name"
 APPENDIX_KEY = "appendix"
 LAST_STAGE_KEY = "last_stage"
 
-MANUAL_TITLE = u"Свой список (категории и параметры из настроек)"
+MANUAL_TITLE = N_(u"Свой список (категории и параметры из настроек)")
 
 
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
@@ -124,7 +125,8 @@ def get_appendix(settings):
 
 class _ModeOption(object):
     def __init__(self, title, stage):
-        self.name = title
+        self.title = title
+        self.name = tr(title) if stage is None else title
         self.stage = stage
 
     def __str__(self):
@@ -145,17 +147,17 @@ def choose_stage(settings):
     options = [_ModeOption(st.title, st) for st in stages]
     options.append(_ModeOption(MANUAL_TITLE, None))
     last = settings.get(LAST_STAGE_KEY)
-    options.sort(key=lambda o: 0 if o.name == last else 1)
+    options.sort(key=lambda o: 0 if o.title == last else 1)
 
     chosen = select_list.SelectFromList.show(
         options,
-        title=u"Этап проверки LOI (стадия · ПЧ/НЧ · подэтап)",
-        button_name=u"Проверить",
+        title=tr(u"Этап проверки LOI (стадия · ПЧ/НЧ · подэтап)"),
+        button_name=tr(u"Проверить"),
         multiselect=False
     )
     if chosen is None:
         raise SystemExit
-    save_values({LAST_STAGE_KEY: chosen.name})
+    save_values({LAST_STAGE_KEY: chosen.title})
     return chosen.stage
 
 
@@ -164,14 +166,14 @@ def require(settings):
     выбраны категории или пуст список параметров."""
     missing = []
     if not settings.get(CATEGORIES_KEY):
-        missing.append(u"Категории для проверки")
+        missing.append(tr(u"Категории для проверки"))
     if not get_rows(settings):
-        missing.append(u"Список параметров")
+        missing.append(tr(u"Список параметров"))
     if missing:
         forms.alert(
-            u"Не заполнены обязательные настройки:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «{}».".format(
-                u"\n".join(missing), BUTTON_NAME),
+            tr(u"Не заполнены обязательные настройки:\n\n{}\n\n"
+            u"Откройте настройки: Shift+клик по кнопке «{}».").format(
+                u"\n".join(missing), tr(BUTTON_NAME)),
             exitscript=True
         )
 
@@ -208,9 +210,9 @@ def _hint(text):
 
 def _appendix_label_text(appendix):
     if not appendix or not appendix.get("rules"):
-        return u"Не загружено — проверяется только свой список ниже."
-    return u"{}: {}. Элементов: {}, этапов: {}.".format(
-        appendix.get("source") or u"Приложение",
+        return tr(u"Не загружено — проверяется только свой список ниже.")
+    return tr(u"{}: {}. Элементов: {}, этапов: {}.").format(
+        appendix.get("source") or tr(u"Приложение"),
         u"; ".join(appendix.get("sections") or []),
         len(appendix.get("rules") or []),
         len(core.list_stages(appendix)))
@@ -233,16 +235,16 @@ def import_appendix(current=None):
     import os
     from lowlife import loi_appendix
 
-    path = forms.pick_file(file_ext="xml", title=u"Приложение «Требования к LOI» (XML)")
+    path = forms.pick_file(file_ext="xml", title=tr(u"Приложение «Требования к LOI» (XML)"))
     if not path:
         return None
     try:
         appendix = loi_appendix.read_appendix(path)
     except Exception as ex:
-        forms.alert(u"Не удалось разобрать файл:\n\n{}".format(ex), title=BUTTON_NAME)
+        forms.alert(tr(u"Не удалось разобрать файл:\n\n{}").format(ex), title=tr(BUTTON_NAME))
         return None
     if not appendix["rules"]:
-        forms.alert(u"В файле не найдено ни одного элемента с параметрами LOI.", title=BUTTON_NAME)
+        forms.alert(tr(u"В файле не найдено ни одного элемента с параметрами LOI."), title=tr(BUTTON_NAME))
         return None
 
     counts = {}
@@ -254,8 +256,8 @@ def import_appendix(current=None):
              for name in appendix["sections"]]
     chosen = select_list.SelectFromList.show(
         items,
-        title=u"Разделы приложения для проверки (в скобках — число элементов)",
-        button_name=u"Загрузить",
+        title=tr(u"Разделы приложения для проверки (в скобках — число элементов)"),
+        button_name=tr(u"Загрузить"),
         multiselect=True
     )
     if not chosen:
@@ -267,11 +269,11 @@ def import_appendix(current=None):
 
 def _categories_label_text(names):
     if not names:
-        return u"Категории не выбраны."
+        return tr(u"Категории не выбраны.")
     preview = u"; ".join(sorted(names)[:6])
     if len(names) > 6:
         preview += u"; …"
-    return u"Выбрано: {}. {}".format(len(names), preview)
+    return tr(u"Выбрано: {}. {}").format(len(names), preview)
 
 
 def show_settings_form(doc, values):
@@ -288,7 +290,7 @@ def show_settings_form(doc, values):
     }
 
     win = Window()
-    win.Title = u"Настройки: " + BUTTON_NAME
+    win.Title = tr(u"Настройки: ") + tr(BUTTON_NAME)
     win.Width = 720
     win.Height = 820
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -300,26 +302,26 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Что проверять и какие столбцы выводить в спецификацию"
+    title.Text = tr(u"Что проверять и какие столбцы выводить в спецификацию")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     root.Children.Add(title)
-    root.Children.Add(_hint(u"Значения сохраняются и подставляются при следующих запусках."))
+    root.Children.Add(_hint(tr(u"Значения сохраняются и подставляются при следующих запусках.")))
 
     # --- ① приложение LOI ----------------------------------------------------
-    root.Children.Add(_section(u"① Требования LOI по этапам (приложение)", 8))
+    root.Children.Add(_section(tr(u"① Требования LOI по этапам (приложение)"), 8))
 
     app_row = StackPanel()
     app_row.Orientation = Orientation.Horizontal
     app_row.Margin = Thickness(0, 4, 0, 0)
 
     app_btn = Button()
-    app_btn.Content = u"Загрузить приложение…"
+    app_btn.Content = tr(u"Загрузить приложение…")
     app_btn.Padding = Thickness(8, 2, 8, 2)
     app_row.Children.Add(app_btn)
 
     app_clear_btn = Button()
-    app_clear_btn.Content = u"Убрать"
+    app_clear_btn.Content = tr(u"Убрать")
     app_clear_btn.Padding = Thickness(8, 2, 8, 2)
     app_clear_btn.Margin = Thickness(6, 0, 0, 0)
     app_row.Children.Add(app_clear_btn)
@@ -332,12 +334,12 @@ def show_settings_form(doc, values):
     root.Children.Add(app_label)
 
     root.Children.Add(_hint(
-        u"Таблица «Требования к LOI», сохранённая из Excel как «Таблица XML 2003» "
+        tr(u"Таблица «Требования к LOI», сохранённая из Excel как «Таблица XML 2003» "
         u"(*.xml). Берутся выбранные разделы: категории Revit, классы с кодами "
         u"по классификатору и для каждого параметра — с какого подэтапа "
         u"(Б-1…, ПЭ-1…) он обязателен на стадии, отдельно ПЧ и НЧ. При запуске "
         u"кнопка спросит этап; у каждого элемента проверяются только параметры "
-        u"его класса (по значению параметра кода классификатора)."))
+        u"его класса (по значению параметра кода классификатора).")))
 
     def on_import(sender, args):
         appendix = import_appendix(state["appendix"])
@@ -352,17 +354,17 @@ def show_settings_form(doc, values):
     app_btn.Click += on_import
     app_clear_btn.Click += on_clear
 
-    root.Children.Add(_section(u"Свой список — если этап из приложения не выбран"))
+    root.Children.Add(_section(tr(u"Свой список — если этап из приложения не выбран")))
 
     # --- ② категории ---------------------------------------------------------
-    root.Children.Add(_section(u"② Категории семейств", 8))
+    root.Children.Add(_section(tr(u"② Категории семейств"), 8))
 
     cat_row = StackPanel()
     cat_row.Orientation = Orientation.Horizontal
     cat_row.Margin = Thickness(0, 4, 0, 0)
 
     cat_btn = Button()
-    cat_btn.Content = u"Выбрать категории…"
+    cat_btn.Content = tr(u"Выбрать категории…")
     cat_btn.Padding = Thickness(8, 2, 8, 2)
     cat_row.Children.Add(cat_btn)
 
@@ -375,21 +377,21 @@ def show_settings_form(doc, values):
     root.Children.Add(cat_row)
 
     root.Children.Add(_hint(
-        u"Проверяются все экземпляры отмеченных категорий в текущем файле. "
-        u"По каждой категории строится своя спецификация."))
+        tr(u"Проверяются все экземпляры отмеченных категорий в текущем файле. "
+        u"По каждой категории строится своя спецификация.")))
 
     def on_pick_categories(sender, args):
         options = loi_check.list_categories(doc)
         if not options:
-            forms.alert(u"В документе нет модельных элементов.")
+            forms.alert(tr(u"В документе нет модельных элементов."))
             return
         checked = set(n.lower() for n in state["categories"])
         items = [forms.TemplateListItem(o, checked=(o.raw_name.lower() in checked))
                  for o in options]
         chosen = select_list.SelectFromList.show(
             items,
-            title=u"Категории для проверки LOI (в скобках — число элементов)",
-            button_name=u"Сохранить",
+            title=tr(u"Категории для проверки LOI (в скобках — число элементов)"),
+            button_name=tr(u"Сохранить"),
             multiselect=True
         )
         if chosen is None:
@@ -400,10 +402,10 @@ def show_settings_form(doc, values):
     cat_btn.Click += on_pick_categories
 
     # --- ② список параметров ---------------------------------------------------
-    root.Children.Add(_section(u"③ Список параметров (по одному на строке) *"))
+    root.Children.Add(_section(tr(u"③ Список параметров (по одному на строке) *")))
     root.Children.Add(_hint(
-        u"Впишите параметры так, как они названы в требованиях LOI, — по "
-        u"одному на строке. Строка станет заголовком столбца спецификации."))
+        tr(u"Впишите параметры так, как они названы в требованиях LOI, — по "
+        u"одному на строке. Строка станет заголовком столбца спецификации.")))
 
     labels_box = TextBox()
     labels_box.Text = values.get(LABELS_KEY, u"")
@@ -415,11 +417,11 @@ def show_settings_form(doc, values):
     root.Children.Add(labels_box)
 
     # --- ③ параметр для каждой строки ----------------------------------------
-    root.Children.Add(_section(u"④ Параметр модели для каждой строки"))
+    root.Children.Add(_section(tr(u"④ Параметр модели для каждой строки")))
     root.Children.Add(_hint(
-        u"Таблица повторяет список выше. Для каждой строки впишите имя "
+        tr(u"Таблица повторяет список выше. Для каждой строки впишите имя "
         u"параметра в модели (экземпляра или типа), из которого брать значение. "
-        u"Пусто — параметр с тем же именем, что и строка."))
+        u"Пусто — параметр с тем же именем, что и строка.")))
 
     data = List[object]()
 
@@ -436,7 +438,7 @@ def show_settings_form(doc, values):
     grid.ItemsSource = data
 
     label_col = DataGridTextColumn()
-    label_col.Header = u"Строка списка"
+    label_col.Header = tr(u"Строка списка")
     label_col.Binding = Binding("Label")
     label_col.IsReadOnly = True
     label_col.Width = _star(1)
@@ -446,7 +448,7 @@ def show_settings_form(doc, values):
     param_binding.Mode = BindingMode.TwoWay
     param_binding.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
     param_col = DataGridTextColumn()
-    param_col.Header = u"Параметр в модели"
+    param_col.Header = tr(u"Параметр в модели")
     param_col.Binding = param_binding
     param_col.Width = _star(1)
     grid.Columns.Add(param_col)
@@ -476,15 +478,15 @@ def show_settings_form(doc, values):
     labels_box.TextChanged += on_labels_changed
 
     # --- ④ этаж -------------------------------------------------------------
-    root.Children.Add(_section(u"⑤ Параметр для столбца «Этаж»"))
+    root.Children.Add(_section(tr(u"⑤ Параметр для столбца «Этаж»")))
     floor_box = TextBox()
     floor_box.Text = values.get(FLOOR_KEY, u"")
     floor_box.Padding = Thickness(4)
     param_autocomplete.attach(floor_box, param_autocomplete.NameSource(doc))
     root.Children.Add(floor_box)
     root.Children.Add(_hint(
-        u"Пусто — параметр из настроек кнопки «Заполнение этажа», а если "
-        u"не задан и он — уровень элемента."))
+        tr(u"Пусто — параметр из настроек кнопки «Заполнение этажа», а если "
+        u"не задан и он — уровень элемента.")))
 
     # --- кнопки ----------------------------------------------------------------
     buttons = StackPanel()
@@ -494,12 +496,12 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
