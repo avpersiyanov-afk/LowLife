@@ -40,6 +40,10 @@ Step-by-step instructions for each way are in the general guide: [Claude Code](e
 
 ## Working
 
+Use the **Русский / English** list in the main window to select the interface language.
+The choice is saved, and captions update immediately. Email content, the prompt and
+Excel data keep their original text. Language selection is disabled while mail is being analyzed.
+
 1. Start classic Outlook (if it isn't running, the program starts it in the background by itself).
 2. Press **«Process mail»**. At the bottom you can see what's going on: reading emails, then processing in batches («part 1 of 3»). «Cancel» stops processing.
 3. The tasks found appear in the table (click a row — details at the bottom), and the Excel file is saved to `Documents\Задачи из почты\Задачи_<date>.xlsx` and opens by itself. «Open Excel» and «Open folder» take you back to it.

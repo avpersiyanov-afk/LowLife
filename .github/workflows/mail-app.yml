@@ -14,6 +14,8 @@ on:
       - 'lib/lowlife/email_*.py'
       - 'lib/lowlife/ai_settings_core.py'
       - 'lib/lowlife/settings_core.py'
+      - 'lib/lowlife/i18n.py'
+      - 'lib/lowlife/locale/en.json'
       - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
       - '.github/workflows/mail-app.yml'
   pull_request:
@@ -22,6 +24,8 @@ on:
       - 'lib/lowlife/email_*.py'
       - 'lib/lowlife/ai_settings_core.py'
       - 'lib/lowlife/settings_core.py'
+      - 'lib/lowlife/i18n.py'
+      - 'lib/lowlife/locale/en.json'
       - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
       - '.github/workflows/mail-app.yml'
   workflow_dispatch:

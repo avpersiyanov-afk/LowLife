@@ -15,6 +15,7 @@ __author__ = "Pipers"
 __context__ = "zero-doc"
 
 import os
+from lowlife.i18n import tr
 import io
 import datetime
 
@@ -47,7 +48,7 @@ default_prompt = _read_default_prompt()
 
 if config_mode:
     saved = email_tasks_settings.edit_interactive(default_prompt)
-    forms.alert(u"Настройки сохранены." if saved else u"Отменено, настройки не изменены.")
+    forms.alert(tr(u"Настройки сохранены.") if saved else tr(u"Отменено, настройки не изменены."))
     script.exit()
 
 
@@ -55,15 +56,15 @@ settings = email_tasks_settings.load()
 
 prompt_text = email_tasks_settings.effective_prompt(settings, default_prompt)
 if not prompt_text.strip():
-    forms.alert(u"Промпт пуст: в настройках нет своего текста, а стандартный "
+    forms.alert(tr(u"Промпт пуст: в настройках нет своего текста, а стандартный "
                 u"файл не прочитался:\n{}\n\nВпишите промпт в настройках "
-                u"(Shift+клик по кнопке).".format(PROMPT_FILE),
+                u"(Shift+клик по кнопке).").format(PROMPT_FILE),
                 exitscript=True)
 
 try:
     engine = email_ai.prepare(settings)
 except email_ai.AIError as ex:
-    forms.alert(ex.message, title=u"Задачи из почты", exitscript=True)
+    forms.alert(ex.message, title=tr(u"Задачи из почты"), exitscript=True)
 
 
 class _Progress(object):
@@ -100,51 +101,51 @@ class _Progress(object):
 
 output = script.get_output()
 
-with forms.ProgressBar(title=u"Чтение почты…", cancellable=True) as pb:
+with forms.ProgressBar(title=tr(u"Чтение почты…"), cancellable=True) as pb:
     result = email_tasks_run.run(settings, prompt_text, engine, _Progress(pb), email_tasks_excel,
                                  test_emails_file=TEST_EMAILS_FILE)
 
 
 # --- Итоги (после закрытия окна прогресса, чтобы сообщения не прятались за ним)
 if result.cancelled:
-    forms.alert(u"Отменено пользователем.", exitscript=True)
+    forms.alert(tr(u"Отменено пользователем."), exitscript=True)
 
 if result.fatal_error:
-    forms.alert(result.fatal_error, title=u"Задачи из почты", exitscript=True)
+    forms.alert(result.fatal_error, title=tr(u"Задачи из почты"), exitscript=True)
 
 if not result.emails:
     forms.alert(result.no_emails_text, exitscript=True)
 
 if result.batch_errors and not result.rows:
     forms.alert(
-        u"Не удалось получить задачи:\n\n" + u"\n\n".join(result.batch_errors)[:3000],
-        title=u"Задачи из почты")
+        tr(u"Не удалось получить задачи:\n\n") + u"\n\n".join(result.batch_errors)[:3000],
+        title=tr(u"Задачи из почты"))
 
-output.print_md(u"## Задачи из почты — {}".format(
+output.print_md(tr(u"## Задачи из почты — {}").format(
     email_tasks_run.fmt_date(datetime.datetime.now(), with_time=True)))
-output.print_md(u"Папка: **{}**, писем разобрано: **{}**, задач найдено: **{}**. ИИ: {}.".format(
+output.print_md(tr(u"Папка: **{}**, писем разобрано: **{}**, задач найдено: **{}**. ИИ: {}.").format(
     result.folder_name, len(result.emails), len(result.rows), engine.description))
 if result.read_warning:
     output.print_md(u"> ⚠ " + result.read_warning)
 
 if result.rows:
     output.print_table(table_data=email_tasks_run.table(result.rows),
-                       columns=email_tasks_run.TABLE_COLUMNS)
+                       columns=[tr(c) for c in email_tasks_run.TABLE_COLUMNS])
 else:
-    output.print_md(u"Задач, требующих ваших действий, не найдено.")
+    output.print_md(tr(u"Задач, требующих ваших действий, не найдено."))
 
 for warning in result.excel_warnings:
     output.print_md(u"> ⚠ " + warning)
 
 if result.batch_errors:
-    output.print_md(u"### Ошибки")
+    output.print_md(tr(u"### Ошибки"))
     for err in result.batch_errors:
         output.print_md(u"- " + err.replace(u"\n", u" "))
 
 if result.excel_error:
     output.print_md(u"> ⚠ " + result.excel_error.replace(u"\n", u" "))
-    forms.alert(result.excel_error + u"\n\nСписок задач — в окне вывода pyRevit.",
-                title=u"Задачи из почты")
+    forms.alert(result.excel_error + tr(u"\n\nСписок задач — в окне вывода pyRevit."),
+                title=tr(u"Задачи из почты"))
 
 if result.excel_path:
-    output.print_md(u"Сохранено в Excel: `{}` (файл открыт).".format(result.excel_path))
+    output.print_md(tr(u"Сохранено в Excel: `{}` (файл открыт).").format(result.excel_path))

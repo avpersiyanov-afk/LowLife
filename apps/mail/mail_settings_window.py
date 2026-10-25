@@ -4,6 +4,7 @@ Revit (Shift+клик): подключение ИИ, период, папка, �
 Хранение и проверка — lowlife.email_tasks_settings_core / ai_settings_core."""
 
 import tkinter as tk
+from lowlife.i18n import N_, tr
 import webbrowser
 from tkinter import messagebox, ttk
 
@@ -12,7 +13,7 @@ from lowlife import email_ai_core as ai
 from lowlife import email_tasks_settings_core as settings_core
 from lowlife.email_app_core import app_text
 
-TITLE = u"Настройки: Задачи из почты"
+TITLE = N_(u"Настройки: Задачи из почты")
 WRAP = 620
 
 
@@ -50,7 +51,7 @@ class SettingsWindow(object):
         self.result = None
 
         win = self.win = tk.Toplevel(master)
-        win.title(TITLE)
+        win.title(tr(TITLE))
         win.geometry(u"700x720")
         win.transient(master)
 
@@ -69,26 +70,26 @@ class SettingsWindow(object):
         win.bind_all(u"<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), u"units"))
 
         form = _Form(body)
-        ttk.Label(body, text=u"Задачи из почты", font=(u"Segoe UI", 12, u"bold")).pack(anchor=tk.W)
-        form.hint(u"Программа только читает почту: ничего не отправляет, не помечает прочитанным "
-                  u"и не перемещает.")
+        ttk.Label(body, text=tr(u"Задачи из почты"), font=(u"Segoe UI", 12, u"bold")).pack(anchor=tk.W)
+        form.hint(tr(u"Программа только читает почту: ничего не отправляет, не помечает прочитанным "
+                  u"и не перемещает."))
 
         self._build_connection(body, form, values)
 
-        form.label(u"Период, дней", bold=True, top=18)
+        form.label(tr(u"Период, дней"), bold=True, top=18)
         self.days = form.entry(values.get("days"))
-        form.hint(u"Сколько последних дней «Входящих» разбирать (по дате получения).")
-        self.unread = form.check(u"Только непрочитанные", values.get("unread_only"))
+        form.hint(tr(u"Сколько последних дней «Входящих» разбирать (по дате получения)."))
+        self.unread = form.check(tr(u"Только непрочитанные"), values.get("unread_only"))
 
-        form.label(u"Подпапка «Входящих»", bold=True, top=14)
+        form.label(tr(u"Подпапка «Входящих»"), bold=True, top=14)
         self.subfolder = form.entry(values.get("subfolder"))
-        form.hint(u"Пусто — сами «Входящие». Вложенные папки — через «/», например «Проекты/Объект 1».")
-        self.subfolders = form.check(u"Включая подпапки", values.get("include_subfolders"))
-        form.hint(u"Читать и все вложенные папки — «Входящих» или папки, указанной выше.")
-        self.test_mode = form.check(u"Тестовый режим", values.get("test_mode"))
-        form.hint(u"Вместо Outlook взять встроенные тестовые письма — проверить подключение ИИ.")
+        form.hint(tr(u"Пусто — сами «Входящие». Вложенные папки — через «/», например «Проекты/Объект 1»."))
+        self.subfolders = form.check(tr(u"Включая подпапки"), values.get("include_subfolders"))
+        form.hint(tr(u"Читать и все вложенные папки — «Входящих» или папки, указанной выше."))
+        self.test_mode = form.check(tr(u"Тестовый режим"), values.get("test_mode"))
+        form.hint(tr(u"Вместо Outlook взять встроенные тестовые письма — проверить подключение ИИ."))
 
-        form.label(u"Промпт", bold=True, top=18)
+        form.label(tr(u"Промпт"), bold=True, top=18)
         prompt_frame = ttk.Frame(body)
         prompt_frame.pack(fill=tk.X)
         self.prompt = tk.Text(prompt_frame, height=14, wrap=tk.WORD, undo=True)
@@ -97,27 +98,27 @@ class SettingsWindow(object):
         self.prompt.pack(side=tk.LEFT, fill=tk.X, expand=True)
         prompt_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.prompt.insert(u"1.0", settings_core.effective_prompt(values, default_prompt))
-        form.hint(u"Общий для всех способов подключения. Сегодняшняя дата и сами письма добавляются "
+        form.hint(tr(u"Общий для всех способов подключения. Сегодняшняя дата и сами письма добавляются "
                   u"к промпту автоматически. Сохраните в тексте формат ответа {\"tasks\":[{\"email_id\":…,"
                   u"\"task\":…,\"requester\":…,\"deadline\":…,\"priority\":…,\"comment\":…}]} — по нему "
-                  u"разбирается ответ.")
-        ttk.Button(body, text=u"Вернуть стандартный промпт", command=self.on_reset).pack(
+                  u"разбирается ответ."))
+        ttk.Button(body, text=tr(u"Вернуть стандартный промпт"), command=self.on_reset).pack(
             anchor=tk.W, pady=(6, 0))
 
-        ttk.Button(bottom, text=u"Сохранить", command=self.on_ok).pack(side=tk.RIGHT)
-        ttk.Button(bottom, text=u"Отмена", command=self.win.destroy).pack(side=tk.RIGHT, padx=(0, 8))
+        ttk.Button(bottom, text=tr(u"Сохранить"), command=self.on_ok).pack(side=tk.RIGHT)
+        ttk.Button(bottom, text=tr(u"Отмена"), command=self.win.destroy).pack(side=tk.RIGHT, padx=(0, 8))
         win.bind(u"<Escape>", lambda _e: win.destroy())
 
     def _build_connection(self, body, form, values):
-        form.label(u"Подключение ИИ", bold=True, top=14)
+        form.label(tr(u"Подключение ИИ"), bold=True, top=14)
         keys = ai.provider_keys()
         self.provider = ttk.Combobox(body, state=u"readonly", values=[ai.provider_label(k) for k in keys])
         self.provider.current(keys.index(ai.normalize_provider(values.get("provider"))))
         self.provider.pack(fill=tk.X)
-        form.hint(u"Приложение — работает под вашей подпиской (Claude Pro/Max или ChatGPT Plus/Pro), "
+        form.hint(tr(u"Приложение — работает под вашей подпиской (Claude Pro/Max или ChatGPT Plus/Pro), "
                   u"его нужно один раз установить и войти в аккаунт. Ключ API — ничего ставить не "
-                  u"нужно, но запросы оплачиваются отдельно от подписки, по объёму.")
-        form.link(u"Инструкция: все способы подключения", ai_settings_core.GUIDE_URL + u"#подключение-ии")
+                  u"нужно, но запросы оплачиваются отдельно от подписки, по объёму."))
+        form.link(tr(u"Инструкция: все способы подключения"), ai_settings_core.GUIDE_URL + u"#подключение-ии")
 
         self.sections_host = ttk.Frame(body)
         self.sections_host.pack(fill=tk.X)
@@ -126,44 +127,44 @@ class SettingsWindow(object):
         urls = ai_settings_core.GUIDE_URLS
 
         sub = self._section(ai.CLAUDE_CLI)
-        sub.link(u"Как установить Claude Code и войти в аккаунт", urls[ai.CLAUDE_CLI])
-        sub.label(u"Путь к claude.exe", bold=True)
+        sub.link(tr(u"Как установить Claude Code и войти в аккаунт"), urls[ai.CLAUDE_CLI])
+        sub.label(tr(u"Путь к claude.exe"), bold=True)
         self.fields["claude_path"] = sub.entry(values.get("claude_path"))
-        sub.hint(u"Пусто — искать автоматически (PATH, %USERPROFILE%\\.local\\bin, %APPDATA%\\npm). "
-                 u"Сейчас найден: {}".format(email_claude.find_claude(u"") or u"— не найден —"))
-        sub.label(u"Модель", bold=True)
+        sub.hint(tr(u"Пусто — искать автоматически (PATH, %USERPROFILE%\\.local\\bin, %APPDATA%\\npm). "
+                 u"Сейчас найден: {}").format(email_claude.find_claude(u"") or tr(u"— не найден —")))
+        sub.label(tr(u"Модель"), bold=True)
         self.fields["claude_cli_model"] = sub.entry(values.get("claude_cli_model"))
-        sub.hint(u"Псевдоним (sonnet, opus, haiku) или полное имя модели — как для `claude --model`. "
-                 u"По умолчанию sonnet.")
+        sub.hint(tr(u"Псевдоним (sonnet, opus, haiku) или полное имя модели — как для `claude --model`. "
+                 u"По умолчанию sonnet."))
 
         sub = self._section(ai.ANTHROPIC_API)
-        sub.link(u"Как получить ключ Anthropic API", urls[ai.ANTHROPIC_API])
-        sub.label(u"Ключ Anthropic API", bold=True)
+        sub.link(tr(u"Как получить ключ Anthropic API"), urls[ai.ANTHROPIC_API])
+        sub.label(tr(u"Ключ Anthropic API"), bold=True)
         self.fields["anthropic_api_key"] = sub.entry(values.get("anthropic_api_key"), secret=True)
         sub.hint(ai_settings_core.key_hint(ai.ANTHROPIC_API))
-        sub.label(u"Модель", bold=True)
+        sub.label(tr(u"Модель"), bold=True)
         self.fields["anthropic_api_model"] = sub.entry(values.get("anthropic_api_model"))
-        sub.hint(u"Полное имя (claude-opus-5-5, claude-sonnet-5-5, claude-haiku-4-5) или псевдоним "
-                 u"opus / sonnet / haiku. По умолчанию {}.".format(ai.DEFAULT_MODELS[ai.ANTHROPIC_API]))
+        sub.hint(tr(u"Полное имя (claude-opus-5-5, claude-sonnet-5-5, claude-haiku-4-5) или псевдоним "
+                 u"opus / sonnet / haiku. По умолчанию {}.").format(ai.DEFAULT_MODELS[ai.ANTHROPIC_API]))
 
         sub = self._section(ai.CODEX_CLI)
-        sub.link(u"Как установить Codex CLI и войти в аккаунт ChatGPT", urls[ai.CODEX_CLI])
-        sub.label(u"Путь к codex", bold=True)
+        sub.link(tr(u"Как установить Codex CLI и войти в аккаунт ChatGPT"), urls[ai.CODEX_CLI])
+        sub.label(tr(u"Путь к codex"), bold=True)
         self.fields["codex_path"] = sub.entry(values.get("codex_path"))
-        sub.hint(u"Пусто — искать автоматически (PATH, %APPDATA%\\npm, %USERPROFILE%\\.local\\bin). "
-                 u"Сейчас найден: {}".format(email_codex.find_codex(u"") or u"— не найден —"))
-        sub.label(u"Модель", bold=True)
+        sub.hint(tr(u"Пусто — искать автоматически (PATH, %APPDATA%\\npm, %USERPROFILE%\\.local\\bin). "
+                 u"Сейчас найден: {}").format(email_codex.find_codex(u"") or tr(u"— не найден —")))
+        sub.label(tr(u"Модель"), bold=True)
         self.fields["codex_cli_model"] = sub.entry(values.get("codex_cli_model"))
-        sub.hint(u"Как для `codex -m`. Пусто — модель по умолчанию из настроек Codex.")
+        sub.hint(tr(u"Как для `codex -m`. Пусто — модель по умолчанию из настроек Codex."))
 
         sub = self._section(ai.OPENAI_API)
-        sub.link(u"Как получить ключ OpenAI API", urls[ai.OPENAI_API])
-        sub.label(u"Ключ OpenAI API", bold=True)
+        sub.link(tr(u"Как получить ключ OpenAI API"), urls[ai.OPENAI_API])
+        sub.label(tr(u"Ключ OpenAI API"), bold=True)
         self.fields["openai_api_key"] = sub.entry(values.get("openai_api_key"), secret=True)
         sub.hint(ai_settings_core.key_hint(ai.OPENAI_API))
-        sub.label(u"Модель", bold=True)
+        sub.label(tr(u"Модель"), bold=True)
         self.fields["openai_api_model"] = sub.entry(values.get("openai_api_model"))
-        sub.hint(u"Имя модели OpenAI, например gpt-5 или gpt-5-mini. По умолчанию {}.".format(
+        sub.hint(tr(u"Имя модели OpenAI, например gpt-5 или gpt-5-mini. По умолчанию {}.").format(
             ai.DEFAULT_MODELS[ai.OPENAI_API]))
 
         self.provider.bind(u"<<ComboboxSelected>>", lambda _e: self._show_section())
@@ -208,12 +209,12 @@ class SettingsWindow(object):
     def on_ok(self):
         days = settings_core.parse_days(self.days.get())
         if days is None:
-            messagebox.showerror(TITLE, u"Период — целое число дней, не меньше 1.", parent=self.win)
+            messagebox.showerror(tr(TITLE), tr(u"Период — целое число дней, не меньше 1."), parent=self.win)
             return
         connection = self._connection()
         error = ai_settings_core.validate(connection)
         if error:
-            messagebox.showerror(TITLE, app_text(error), parent=self.win)
+            messagebox.showerror(tr(TITLE), app_text(error), parent=self.win)
             return
         values = {
             "days": days,
@@ -241,7 +242,7 @@ def edit(master, default_prompt):
     merged = dict(stored)
     merged.update(window.result)
     if not settings_core.save(merged):
-        messagebox.showerror(TITLE, u"Не удалось сохранить настройки в файл:\n{}".format(
+        messagebox.showerror(tr(TITLE), tr(u"Не удалось сохранить настройки в файл:\n{}").format(
             settings_core.settings_path()), parent=master)
         return False
     return True

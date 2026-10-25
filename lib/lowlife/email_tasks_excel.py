@@ -21,6 +21,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import tr
 import re
 import datetime
 
@@ -91,11 +92,11 @@ def save_tasks(rows, path):
     """
     com_type = Type.GetTypeFromProgID("Excel.Application")
     if com_type is None:
-        raise ExcelError(u"Excel не найден (COM-объект Excel.Application не зарегистрирован).")
+        raise ExcelError(tr(u"Excel не найден (COM-объект Excel.Application не зарегистрирован)."))
     try:
         xl = Activator.CreateInstance(com_type)
     except Exception as ex:
-        raise ExcelError(u"Не удалось запустить Excel:\n{}".format(ex))
+        raise ExcelError(tr(u"Не удалось запустить Excel:\n{}").format(ex))
 
     try:
         xl.Visible = False
@@ -168,7 +169,7 @@ def save_tasks(rows, path):
             try:
                 _add_conditional_formats(ws, last_col, last_row)
             except Exception as ex:
-                warnings.append(u"Условное форматирование не применилось: {}".format(ex))
+                warnings.append(tr(u"Условное форматирование не применилось: {}").format(ex))
 
         full.AutoFilter()
 
@@ -178,7 +179,7 @@ def save_tasks(rows, path):
         raise
     except Exception as ex:
         _quit(xl)
-        raise ExcelError(u"Ошибка при заполнении/сохранении книги Excel:\n{}".format(ex))
+        raise ExcelError(tr(u"Ошибка при заполнении/сохранении книги Excel:\n{}").format(ex))
 
     # --- показать файл; закрепление шапки надёжно работает только в видимом окне
     try:
@@ -195,7 +196,7 @@ def save_tasks(rows, path):
         ws.Range(u"A2").Select()
         wb.Save()
     except Exception:
-        warnings.append(u"Не удалось закрепить шапку таблицы (файл сохранён).")
+        warnings.append(tr(u"Не удалось закрепить шапку таблицы (файл сохранён)."))
     return warnings
 
 

@@ -15,6 +15,7 @@ sender, to, cc, subject, body (unicode).
 """
 
 import re
+from lowlife.i18n import tr
 import json
 import datetime
 
@@ -206,7 +207,7 @@ def parse_tasks_json(text):
     """
     raw = _u(text)
     if not raw.strip():
-        raise ParseError(u"Пустой ответ.")
+        raise ParseError(tr(u"Пустой ответ."))
 
     candidates = [_strip_fences(raw), raw.strip()]
     for candidate in list(candidates):
@@ -233,7 +234,7 @@ def parse_tasks_json(text):
         except Exception:
             pass
 
-    raise ParseError(u"В ответе не найден JSON вида {\"tasks\": [...]}.")
+    raise ParseError(tr(u"В ответе не найден JSON вида {\"tasks\": [...]}."))
 
 
 def _norm_priority(value):

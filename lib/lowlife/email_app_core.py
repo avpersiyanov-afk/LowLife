@@ -34,10 +34,18 @@ _SHIFT_CLICK = [
     (re.compile(u"процесса Revit"), u"этой программы"),
 ]
 
+# English messages need the same adaptation as Russian ones.
+_SHIFT_CLICK_EN = [
+    (re.compile(r"in the button settings \(Shift\+click\)", re.I), u"in Settings"),
+    (re.compile(r"\(Shift\+click[^)]*\)", re.I), u"(Settings button)"),
+    (re.compile(r"Shift\+click(?:ing)?(?: the button)?", re.I), u"open Settings"),
+    (re.compile(r"(?:the )?Revit process", re.I), u"this application"),
+]
+
 
 def app_text(text):
     """Сообщение для окна приложения: без отсылок к Shift+клику по кнопке."""
     text = text or u""
-    for pattern, replacement in _SHIFT_CLICK:
+    for pattern, replacement in _SHIFT_CLICK + _SHIFT_CLICK_EN:
         text = pattern.sub(replacement, text)
     return text

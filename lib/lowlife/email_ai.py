@@ -13,6 +13,7 @@ Anthropic API и OpenAI API (POST через email_ai_net.post_json, тела
 """
 
 import os
+from lowlife.i18n import tr
 
 from lowlife import email_ai_core as core
 from lowlife import email_ai_net, email_claude, email_codex
@@ -35,7 +36,7 @@ class Engine(object):
             core.CODEX_CLI: u"Codex CLI",
             core.OPENAI_API: u"OpenAI API",
         }.get(self.provider, self.provider)
-        return u"{}, модель {}".format(kind, self.model or u"по умолчанию")
+        return tr(u"{}, модель {}").format(kind, self.model or tr(u"по умолчанию"))
 
     def run(self, request_text, tick=None):
         return self._runner(request_text, tick)
@@ -74,8 +75,8 @@ def prepare(settings, system_prompt=None):
 
     key = core.resolve_key(settings.get(provider + "_key"), provider, os.environ)
     if not key:
-        raise AIError(u"Не указан ключ {}.\n\nВставьте ключ в настройках кнопки "
-                      u"(Shift+клик) — там же ссылка на инструкцию, где его взять."
+        raise AIError(tr(u"Не указан ключ {}.\n\nВставьте ключ в настройках кнопки "
+                      u"(Shift+клик) — там же ссылка на инструкцию, где его взять.")
                       .format(u"Anthropic API" if provider == core.ANTHROPIC_API else u"OpenAI API"),
                       fatal=True)
     if provider == core.ANTHROPIC_API:
@@ -98,10 +99,10 @@ def _run_api(provider, url, request, parse, tick):
 
 def _not_found_message(what, configured, folders, command):
     if configured:
-        return (u"{} не найден по пути из настроек:\n{}\n\n"
+        return (tr(u"{} не найден по пути из настроек:\n{}\n\n"
                 u"Исправьте путь (Shift+клик по кнопке) или очистите поле для "
-                u"автопоиска.".format(what, configured))
-    return (u"{} не найден: нет ни в PATH, ни в {}.\n\n"
+                u"автопоиска.").format(what, configured))
+    return (tr(u"{} не найден: нет ни в PATH, ни в {}.\n\n"
             u"Установите программу по инструкции (ссылка в настройках — Shift+клик) "
             u"или укажите полный путь к ней в настройках. Узнать путь можно "
-            u"командой `where.exe {}` в командной строке.".format(what, folders, command))
+            u"командой `where.exe {}` в командной строке.").format(what, folders, command))

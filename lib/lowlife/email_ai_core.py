@@ -16,6 +16,7 @@ Python 3 (tests/test_email_ai_core.py).
 """
 
 import json
+from lowlife.i18n import N_, tr
 
 CLAUDE_CLI = "claude_cli"
 ANTHROPIC_API = "anthropic_api"
@@ -26,10 +27,10 @@ DEFAULT_PROVIDER = CLAUDE_CLI
 
 # (ключ, подпись в настройках, короткое имя для сообщений)
 PROVIDERS = [
-    (CLAUDE_CLI, u"Claude — приложение Claude Code (по подписке Claude)", u"Claude"),
-    (ANTHROPIC_API, u"Claude — Anthropic API (по ключу API)", u"Claude"),
-    (CODEX_CLI, u"ChatGPT — приложение Codex CLI (по подписке ChatGPT)", u"ChatGPT"),
-    (OPENAI_API, u"ChatGPT — OpenAI API (по ключу API)", u"ChatGPT"),
+    (CLAUDE_CLI, N_(u"Claude — приложение Claude Code (по подписке Claude)"), u"Claude"),
+    (ANTHROPIC_API, N_(u"Claude — Anthropic API (по ключу API)"), u"Claude"),
+    (CODEX_CLI, N_(u"ChatGPT — приложение Codex CLI (по подписке ChatGPT)"), u"ChatGPT"),
+    (OPENAI_API, N_(u"ChatGPT — OpenAI API (по ключу API)"), u"ChatGPT"),
 ]
 
 DEFAULT_MODELS = {
@@ -99,7 +100,7 @@ def normalize_provider(value):
 def provider_label(provider):
     for key, label, _short in PROVIDERS:
         if key == provider:
-            return label
+            return tr(label)
     return provider
 
 
@@ -107,7 +108,7 @@ def provider_short_name(provider):
     for key, _label, short in PROVIDERS:
         if key == provider:
             return short
-    return u"ИИ"
+    return tr(u"ИИ")
 
 
 def resolve_key(configured, provider, environ):
@@ -165,17 +166,17 @@ def parse_anthropic_response(raw):
     stop = data.get("stop_reason")
     if stop == "refusal":
         details = data.get("stop_details") or {}
-        raise AIError(u"Claude отказался обрабатывать эту часть запроса "
-                      u"(фильтр безопасности{}).".format(
+        raise AIError(tr(u"Claude отказался обрабатывать эту часть запроса "
+                      u"(фильтр безопасности{}).").format(
                           u": " + details["category"] if details.get("category") else u""),
                       details=details.get("explanation") or u"")
     text = u"".join(block.get("text") or u"" for block in (data.get("content") or [])
                     if block.get("type") == "text").strip()
     if stop == "max_tokens":
-        raise AIError(u"Ответ Claude оборвался на лимите длины. Уменьшите объём "
-                      u"запроса (период, число писем или текстов).", details=text[:1500])
+        raise AIError(tr(u"Ответ Claude оборвался на лимите длины. Уменьшите объём "
+                      u"запроса (период, число писем или текстов)."), details=text[:1500])
     if not text:
-        raise AIError(u"В ответе Anthropic API нет текста.", details=_short(raw))
+        raise AIError(tr(u"В ответе Anthropic API нет текста."), details=_short(raw))
     return text
 
 
@@ -205,18 +206,18 @@ def parse_openai_response(raw):
     data = _loads(raw, u"OpenAI API")
     choices = data.get("choices") or []
     if not choices:
-        raise AIError(u"В ответе OpenAI API нет вариантов ответа.", details=_short(raw))
+        raise AIError(tr(u"В ответе OpenAI API нет вариантов ответа."), details=_short(raw))
     choice = choices[0]
     message = choice.get("message") or {}
     if message.get("refusal"):
-        raise AIError(u"ChatGPT отказался обрабатывать эту часть запроса.",
+        raise AIError(tr(u"ChatGPT отказался обрабатывать эту часть запроса."),
                       details=message.get("refusal"))
     text = (message.get("content") or u"").strip()
     if choice.get("finish_reason") == "length":
-        raise AIError(u"Ответ ChatGPT оборвался на лимите длины. Уменьшите объём "
-                      u"запроса (период, число писем или текстов).", details=text[:1500])
+        raise AIError(tr(u"Ответ ChatGPT оборвался на лимите длины. Уменьшите объём "
+                      u"запроса (период, число писем или текстов)."), details=text[:1500])
     if not text:
-        raise AIError(u"В ответе OpenAI API нет текста.", details=_short(raw))
+        raise AIError(tr(u"В ответе OpenAI API нет текста."), details=_short(raw))
     return text
 
 
@@ -230,33 +231,33 @@ def classify_http_error(provider, status, raw):
     details = message or _short(raw)
 
     if status is None:
-        return AIError(u"Нет связи с {}. Проверьте интернет и прокси.".format(name),
+        return AIError(tr(u"Нет связи с {}. Проверьте интернет и прокси.").format(name),
                        fatal=True, details=details)
     if status == 401:
-        return AIError(u"{} отклонил ключ (неверный или отозван).\n\n"
-                       u"Проверьте ключ в настройках (Shift+клик по кнопке).".format(name),
+        return AIError(tr(u"{} отклонил ключ (неверный или отозван).\n\n"
+                       u"Проверьте ключ в настройках (Shift+клик по кнопке).").format(name),
                        fatal=True, details=details)
     if status == 403:
-        return AIError(u"У ключа нет доступа к {} (или к этой модели).".format(name),
+        return AIError(tr(u"У ключа нет доступа к {} (или к этой модели).").format(name),
                        fatal=True, details=details)
     if status == 404 or u"model_not_found" in low:
-        return AIError(u"Модель недоступна или указана с ошибкой.\n\n"
-                       u"Проверьте поле «Модель» в настройках (Shift+клик).",
+        return AIError(tr(u"Модель недоступна или указана с ошибкой.\n\n"
+                       u"Проверьте поле «Модель» в настройках (Shift+клик)."),
                        fatal=True, details=details)
     if u"credit balance" in low or u"insufficient_quota" in low or u"billing" in low:
-        return AIError(u"На счёте {} закончились деньги или не подключена оплата.\n\n"
-                       u"Пополните баланс в консоли разработчика.".format(name),
+        return AIError(tr(u"На счёте {} закончились деньги или не подключена оплата.\n\n"
+                       u"Пополните баланс в консоли разработчика.").format(name),
                        fatal=True, details=details)
     if status == 429:
-        return AIError(u"{} ограничил частоту запросов (лимит). Подождите минуту "
-                       u"и повторите или уменьшите период.".format(name),
+        return AIError(tr(u"{} ограничил частоту запросов (лимит). Подождите минуту "
+                       u"и повторите или уменьшите период.").format(name),
                        fatal=True, details=details)
     if status in (529, 503) or u"overloaded" in low:
-        return AIError(u"Сервис перегружен — попробуйте чуть позже.", fatal=True, details=details)
+        return AIError(tr(u"Сервис перегружен — попробуйте чуть позже."), fatal=True, details=details)
     if status >= 500:
-        return AIError(u"{} вернул ошибку сервера (HTTP {}).".format(name, status),
+        return AIError(tr(u"{} вернул ошибку сервера (HTTP {}).").format(name, status),
                        details=details)
-    return AIError(u"{} отклонил запрос (HTTP {}).".format(name, status),
+    return AIError(tr(u"{} отклонил запрос (HTTP {}).").format(name, status),
                    fatal=True, details=details)
 
 
@@ -304,24 +305,24 @@ def classify_codex_failure(text):
     low = (text or u"").lower()
     if any(k in low for k in (u"not logged in", u"codex login", u"please log in",
                               u"unauthorized", u"401", u"authentication")):
-        return AIError(u"Codex не залогинен (или вход устарел).\n\n"
+        return AIError(tr(u"Codex не залогинен (или вход устарел).\n\n"
                        u"Откройте командную строку, выполните `codex login` и войдите "
-                       u"в аккаунт ChatGPT, затем повторите.", fatal=True, details=text)
+                       u"в аккаунт ChatGPT, затем повторите."), fatal=True, details=text)
     if any(k in low for k in (u"usage limit", u"rate limit", u"429", u"quota",
                               u"limit reached", u"try again in")):
-        return AIError(u"Codex упёрся в лимит использования подписки.\n\n"
-                       u"Подождите, пока лимит сбросится, или уменьшите период.",
+        return AIError(tr(u"Codex упёрся в лимит использования подписки.\n\n"
+                       u"Подождите, пока лимит сбросится, или уменьшите период."),
                        fatal=True, details=text)
     if u"unexpected argument" in low or u"unrecognized" in low or u"unknown option" in low:
-        return AIError(u"Установленная версия Codex не поддерживает нужные флаги.\n\n"
-                       u"Обновите её: `npm install -g @openai/codex@latest`.",
+        return AIError(tr(u"Установленная версия Codex не поддерживает нужные флаги.\n\n"
+                       u"Обновите её: `npm install -g @openai/codex@latest`."),
                        fatal=True, details=text)
     if u"model" in low and any(k in low for k in (u"not supported", u"does not exist",
                                                   u"not found", u"unknown model")):
-        return AIError(u"Модель недоступна или указана с ошибкой.\n\n"
+        return AIError(tr(u"Модель недоступна или указана с ошибкой.\n\n"
                        u"Проверьте поле «Модель» в настройках (Shift+клик) или "
-                       u"оставьте его пустым.", fatal=True, details=text)
-    return AIError(u"Codex вернул ошибку.", details=text)
+                       u"оставьте его пустым."), fatal=True, details=text)
+    return AIError(tr(u"Codex вернул ошибку."), details=text)
 
 
 # --------------------------------------------------------------------- общее
@@ -330,9 +331,9 @@ def _loads(raw, name):
     try:
         data = json.loads(raw or u"")
     except Exception:
-        raise AIError(u"{} ответил не JSON.".format(name), details=_short(raw))
+        raise AIError(tr(u"{} ответил не JSON.").format(name), details=_short(raw))
     if not isinstance(data, dict):
-        raise AIError(u"{} ответил неожиданным JSON.".format(name), details=_short(raw))
+        raise AIError(tr(u"{} ответил неожиданным JSON.").format(name), details=_short(raw))
     return data
 
 

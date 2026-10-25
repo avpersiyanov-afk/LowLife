@@ -108,6 +108,9 @@ def self_test(folder=None):
     code = 0
     try:
         from lowlife import email_ai_net, email_outlook, email_tasks_run  # noqa: F401
+        from lowlife import i18n
+        if i18n.catalog().get(u"Задачи из почты") != u"Tasks from mail":
+            raise RuntimeError("English translation catalog is missing or incomplete")
         lines.append(u"ИИ: {}".format(email_ai_net.run_process.__module__))
         if os.name == "nt":
             import win32com.client  # noqa: F401 — Outlook
@@ -155,13 +158,14 @@ def main(argv):
     _dpi_aware()
     import tkinter as tk
     from tkinter import messagebox
+    from lowlife.i18n import tr
 
     root = tk.Tk()
     try:
         import mail_window
         mail_window.MainWindow(root, _read_default_prompt(), TEST_EMAILS_FILE, ICON_FILE)
     except Exception:
-        messagebox.showerror(u"Задачи из почты", u"Не удалось запустить программу:\n\n" + traceback.format_exc())
+        messagebox.showerror(tr(u"Задачи из почты"), tr(u"Не удалось запустить программу:\n\n") + traceback.format_exc())
         root.destroy()
         return 1
     root.mainloop()

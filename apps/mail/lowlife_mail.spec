@@ -17,7 +17,8 @@ LOWLIFE = ['lowlife.' + os.path.splitext(os.path.basename(p))[0] for p in (
 a = Analysis(  # noqa: F821
     [os.path.join(HERE, 'lowlife_mail.py')],
     pathex=[HERE, LIB],
-    datas=[(os.path.join(BUTTON, name), 'data') for name in ('prompt.txt', 'test_emails.json', 'icon.png')],
+    datas=([(os.path.join(BUTTON, name), 'data') for name in ('prompt.txt', 'test_emails.json', 'icon.png')]
+           + [(os.path.join(LIB, 'lowlife', 'locale', 'en.json'), 'lowlife/locale')]),
     hiddenimports=LOWLIFE + ['mail_window', 'mail_settings_window', 'win32com.client'],
     # clr (pythonnet) не берём, даже если он установлен: без него библиотека
     # выбирает stdlib/pywin32 вместо .NET (email_ai_net, email_outlook)

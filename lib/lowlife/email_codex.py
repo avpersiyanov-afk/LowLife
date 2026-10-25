@@ -17,6 +17,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import tr
 import io
 import uuid
 
@@ -66,11 +67,11 @@ def run_codex(codex_path, model, request_text, tick=None, timeout_seconds=TIMEOU
             pass
 
     if exit_code != 0:
-        raise classify_codex_failure(u"код выхода {}\n{}\n{}".format(
+        raise classify_codex_failure(tr(u"код выхода {}\n{}\n{}").format(
             exit_code, stderr.strip()[-3000:], stdout.strip()[-1500:]).strip())
     if not answer:
         # Старые версии без -o: ответ — в stdout
         answer = stdout.strip()
     if not answer:
-        raise AIError(u"codex ничего не вернул.", details=stderr.strip()[-1500:])
+        raise AIError(tr(u"codex ничего не вернул."), details=stderr.strip()[-1500:])
     return unicode(answer)

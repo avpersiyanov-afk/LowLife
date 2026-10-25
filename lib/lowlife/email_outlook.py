@@ -23,6 +23,7 @@ except NameError:  # Python 3
 
 
 import datetime
+from lowlife.i18n import tr, N_
 
 try:
     import clr
@@ -67,7 +68,7 @@ def _to_py_datetime(value):
         return None
 
 
-_NEW_OUTLOOK_HINT = (
+_NEW_OUTLOOK_HINT = N_(
     u"Если у вас «новый Outlook» — он не поддерживает COM. Переключитесь "
     u"на классический Outlook (переключатель «Новый Outlook» в правом "
     u"верхнем углу окна) и запустите его.")
@@ -77,15 +78,15 @@ def _connect_pywin32():
     try:
         import win32com.client
     except ImportError:
-        raise OutlookError(u"Не найден модуль pywin32 — без него Outlook недоступен.")
+        raise OutlookError(tr(u"Не найден модуль pywin32 — без него Outlook недоступен."))
     try:
         return win32com.client.Dispatch("Outlook.Application")
     except Exception as ex:
         raise OutlookError(
-            u"Не удалось подключиться к Outlook:\n{}\n\n"
+            tr(u"Не удалось подключиться к Outlook:\n{}\n\n"
             u"Запустите классический Outlook и повторите. {} Если Outlook запущен "
             u"от имени администратора, а эта программа — нет (или наоборот), "
-            u"подключение тоже не сработает.".format(ex, _NEW_OUTLOOK_HINT))
+            u"подключение тоже не сработает.").format(ex, tr(_NEW_OUTLOOK_HINT)))
 
 
 def connect():
@@ -95,8 +96,8 @@ def connect():
     com_type = Type.GetTypeFromProgID("Outlook.Application")
     if com_type is None:
         raise OutlookError(
-            u"Классический Outlook не найден (COM-объект Outlook.Application "
-            u"не зарегистрирован).\n\n" + _NEW_OUTLOOK_HINT)
+            tr(u"Классический Outlook не найден (COM-объект Outlook.Application "
+            u"не зарегистрирован).\n\n") + tr(_NEW_OUTLOOK_HINT))
 
     app = None
     # Marshal.GetActiveObject есть только в .NET Framework (Revit до 2024);
@@ -113,11 +114,11 @@ def connect():
             app = Activator.CreateInstance(com_type)
         except Exception as ex:
             raise OutlookError(
-                u"Не удалось подключиться к Outlook:\n{}\n\n"
+                tr(u"Не удалось подключиться к Outlook:\n{}\n\n"
                 u"Запустите классический Outlook (не «новый Outlook» — у него "
                 u"нет COM) и повторите. Если Outlook запущен от имени "
                 u"администратора, а Revit — нет (или наоборот), подключение "
-                u"тоже не сработает.".format(ex))
+                u"тоже не сработает.").format(ex))
     return app
 
 
@@ -136,8 +137,8 @@ def _find_subfolder(folder, path):
                 break
         if found is None:
             raise OutlookError(
-                u"Во «Входящих» нет подпапки «{}» (путь из настроек: «{}»).\n\n"
-                u"Проверьте настройки: Shift+клик по кнопке.".format(name, path))
+                tr(u"Во «Входящих» нет подпапки «{}» (путь из настроек: «{}»).\n\n"
+                u"Проверьте настройки: Shift+клик по кнопке.").format(name, path))
         folder = found
     return folder
 
@@ -246,11 +247,11 @@ def read_inbox(days, unread_only=False, subfolder=u"", include_subfolders=True, 
         inbox = namespace.GetDefaultFolder(OL_FOLDER_INBOX)
     except Exception as ex:
         raise OutlookError(
-            u"Outlook запущен, но папка «Входящие» недоступна:\n{}\n\n"
-            u"Проверьте, что Outlook открыт и профиль загружен.".format(ex))
+            tr(u"Outlook запущен, но папка «Входящие» недоступна:\n{}\n\n"
+            u"Проверьте, что Outlook открыт и профиль загружен.").format(ex))
 
     root = _find_subfolder(inbox, subfolder) if (subfolder or u"").strip() else inbox
-    root_name = unicode(_safe(lambda: root.FolderPath, u"Входящие"))
+    root_name = unicode(_safe(lambda: root.FolderPath, tr(u"Входящие")))
     folders = _walk_folders(root) if include_subfolders else [root]
 
     cutoff = datetime.datetime.now() - datetime.timedelta(days=days)
@@ -260,8 +261,8 @@ def read_inbox(days, unread_only=False, subfolder=u"", include_subfolders=True, 
     for folder in folders:
         try:
             if not _read_folder(folder, cutoff, unread_only, emails, tick):
-                warning = (u"Писем за период больше {0} — разобраны только {0} "
-                           u"первых найденных. Уменьшите период в настройках.".format(MAX_EMAILS))
+                warning = (tr(u"Писем за период больше {0} — разобраны только {0} "
+                           u"первых найденных. Уменьшите период в настройках.").format(MAX_EMAILS))
                 break
         except Cancelled:
             raise
@@ -269,7 +270,7 @@ def read_inbox(days, unread_only=False, subfolder=u"", include_subfolders=True, 
             skipped.append(unicode(_safe(lambda: folder.Name, u"?")))
 
     if skipped:
-        note = u"Не удалось прочитать папки: " + u", ".join(skipped)
+        note = tr(u"Не удалось прочитать папки: ") + u", ".join(skipped)
         warning = note if not warning else warning + u" " + note
 
     emails.sort(key=lambda e: e["received"] or datetime.datetime(1900, 1, 1), reverse=True)
@@ -277,7 +278,7 @@ def read_inbox(days, unread_only=False, subfolder=u"", include_subfolders=True, 
         email["id"] = i
 
     if include_subfolders and len(folders) > 1:
-        folder_name = u"{} и подпапки ({})".format(root_name, len(folders) - 1)
+        folder_name = tr(u"{} и подпапки ({})").format(root_name, len(folders) - 1)
     else:
         folder_name = root_name
     return emails, folder_name, warning
