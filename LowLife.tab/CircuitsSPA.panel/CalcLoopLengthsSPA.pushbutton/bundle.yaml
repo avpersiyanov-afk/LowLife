@@ -6,3 +6,14 @@ tooltip: |
   Кольцевой шлейф: если в настройках «Кольцевой шлейф» = «да», магистраль (без веток изоляторов — они не удваиваются) замыкается обратно на панель: добавляется участок от последнего устройства магистрали до ближайшего стояка на его этаже, а если стояк не найден — прямой участок до панели.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Fire automation\nloop lengths"
+tooltip_en: >-
+  Calculates the length of every fire automation loop from device coordinates (along orthogonal legs,
+  not the shortest distance), writes it to the circuit, tags the devices and gives each its previous
+  address — the same logic as «Fire alarm loop lengths». Between floors: if neighbouring devices by
+  address are on different floors and a «Riser keyword» is set in the settings, the segment goes not
+  directly but through the nearest riser on each of the two floors (device → riser → riser → device).
+  Without a riser (or until one is found) — directly, as before. Ring loop: if «Ring loop» = «yes» in
+  the settings, the main line (without isolator branches — they aren't doubled) closes back to the
+  panel: a segment is added from the last main-line device to the nearest riser on its floor, or a
+  straight segment to the panel if no riser is found. Shift+click — settings for this button.

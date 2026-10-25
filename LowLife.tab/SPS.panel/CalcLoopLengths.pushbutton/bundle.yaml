@@ -2,3 +2,8 @@ tooltip: |
   Считает длину каждого шлейфа СПС по координатам устройств (ветви от изоляторов не возвращаются назад), записывает её в цепь, маркирует устройства и проставляет им предыдущий адрес.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Loop\nlengths"
+tooltip_en: >-
+  Calculates the length of every fire alarm loop from device coordinates (branches from isolators
+  don't come back), writes it to the circuit, tags the devices and gives each its previous address.
+  Shift+click — settings for this button.

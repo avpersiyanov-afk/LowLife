@@ -1,1 +1,10 @@
 tooltip: 'Загружает правки из снимка .json обратно в модель: значения параметров («params») и положение элементов («location» — перемещение, поворот, концы линейных элементов, голова марки), а также создаёт новые элементы из раздела «new» (без дублей в той же точке). Показывает список «было → станет» — записываются только отмеченные правки, одной транзакцией (Ctrl+Z отменяет всё). То, что в файле не правили, не пишется (не откатывает изменения модели после выгрузки); правка поверх изменения в модели помечена ⚠ и по умолчанию не отмечена. Параметры только для чтения, параметры типа и цепи из файла не загружаются.'
+title_en: "JSON\n→ model"
+tooltip_en: >-
+  Loads edits from a .json snapshot back into the model: parameter values («params») and element
+  positions («location» — move, rotation, ends of linear elements, tag head), and creates new elements
+  from the «new» section (no duplicates at the same point). Shows a «was → becomes» list — only the
+  ticked edits are written, in one transaction (Ctrl+Z undoes everything). What wasn't edited in the
+  file isn't written (it doesn't roll back model changes made after the export); an edit over a change
+  in the model is marked ⚠ and unticked by default. Read-only parameters, type parameters and circuits
+  aren't loaded from the file.

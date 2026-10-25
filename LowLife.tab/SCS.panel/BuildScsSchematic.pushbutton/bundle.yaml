@@ -8,3 +8,24 @@ tooltip: |
   Повторный запуск не пересоздаёт схему с нуля: обновляется вид с именем из настроек, раскладка предыдущего запуска хранится в служебном параметре этого вида — трогаются (двигаются/перерисовываются) только этаж/помещение/устройство, где реально что-то изменилось. Линии шины не редактируются вручную — перерисовываются заново на каждом запуске.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Riser\ndiagram"
+tooltip_en: >-
+  Builds/updates the SCS riser diagram. It finds the devices itself through the circuits and panels
+  already set up (the same criteria as «Circuit length»), groups them by floor (label «Этаж N
+  (elevation)», ordered by elevation: negative at the bottom of the diagram, deeper is lower; positive
+  higher, the higher the elevation) and by room — frames and layout work the same way as in the CCTV
+  riser diagram. Each panel (cabinet/patch panel) gets its own independent coloured bus: its own
+  horizontal collector on every floor where it has a device (only its own branches) and its own
+  vertical riser to the left of the frames through all its floors. Collectors and risers of different
+  panels on one floor are spread apart — in height (collector) and in X (riser) — so they don't
+  overlap. A panel's branches, collector and riser share one colour (a Line Style created
+  automatically from the panel name), so you can see which device goes to which cabinet. Only the
+  outlet and the panel are shown, without intermediate route nodes (no risers/route nodes from «Node
+  addresses»). Cabinet-to-cabinet backbone links (a circuit whose target is another panel instead of a
+  device — for example a fibre line between two cabinets) leave each cabinet's own node (not its
+  device bus — at a visible distance from it) to their own vertical track to the left of the panel
+  risers, in a bright bold colour; several links through a common cabinet (an A-B-C chain) share one
+  track. Running it again doesn't rebuild the diagram from scratch: the view named in the settings is
+  updated, the previous run's layout is kept in a service parameter of that view, and only the
+  floor/room/device where something actually changed is touched (moved/redrawn). Bus lines are not
+  edited by hand — they are redrawn on every run. Shift+click — settings for this button.

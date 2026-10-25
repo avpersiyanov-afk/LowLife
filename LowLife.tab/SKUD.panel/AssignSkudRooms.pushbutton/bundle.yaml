@@ -2,3 +2,10 @@ tooltip: |
   Проставляет всем устройствам СКУД параметр имени помещения (как «Запись номера помещения» в СПС/СОТ), но по каждой точке прохода берёт ОДНО значение — самое частое среди её устройств — и назначает его всем устройствам этой точки прохода. Контроллерам — помещение индивидуально. Параметр-приёмник и маска берутся из настроек «Запись номера помещения» (Shift+клик).
 
   Shift+клик по этой кнопке — настройки СКУД, которые она использует (без параметра-приёмника/маски помещения — те в «Запись номера помещения»).
+title_en: "Access point\nrooms"
+tooltip_en: >-
+  Writes the room name parameter to all ACS devices (like «Write room number» for fire alarm/CCTV),
+  but for each access point takes ONE value — the most common among its devices — and assigns it to
+  all devices of that access point. Controllers get their room individually. The target parameter and
+  mask come from the «Write room number» settings (Shift+click). Shift+click on this button — the ACS
+  settings it uses (without the room target parameter/mask — those are in «Write room number»).

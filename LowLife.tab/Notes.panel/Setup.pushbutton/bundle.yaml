@@ -2,3 +2,7 @@ title: Настройка
 tooltip: >-
   Подключение к Google Таблице и выбор параметров «Сведений о проекте»
   (код и название проекта) для всей команды.
+title_en: "Setup"
+tooltip_en: >-
+  Connecting to the Google Sheet and choosing the «Project Information» parameters (project code and
+  name) for the whole team.

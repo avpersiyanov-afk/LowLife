@@ -2,3 +2,13 @@ tooltip: |
   Показывает маршрут выбранной цепи СКС на модели — для визуальной проверки, что маршрут выбран правильно. Выберите устройство, входящее в интересующую цепь (если оно состоит в нескольких цепях — предложит выбрать нужную из списка). Строит временную линию (Detail Line на активном виде) через устройство, все узлы/стояки маршрута (по данным параметра «Маршрут цепи», записанного кнопкой «Расчёт длины цепи») и панель, и выделяет все эти элементы в модели, чтобы их было видно отдельно от линии. Вид сам масштабируется, чтобы весь маршрут поместился целиком. Линия временная: удаляется сама через несколько секунд, а также при повторном запуске кнопки (в т.ч. кнопки СКУД/СПС с той же функцией) — прошлая линия удаляется в любом случае.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Circuit\nroute"
+tooltip_en: >-
+  Shows the route of the selected SCS circuit in the model — to check visually that the route is
+  right. Select a device in the circuit you're interested in (if it belongs to several circuits,
+  you'll be offered a list). Draws a temporary line (a Detail Line in the active view) through the
+  device, all route nodes/risers (from the «Circuit route» parameter written by «Circuit length») and
+  the panel, and selects all these elements in the model so they stand out from the line. The view
+  zooms to fit the whole route. The line is temporary: it disappears by itself after a few seconds,
+  and also when the button is run again (including the ACS/fire alarm buttons with the same function)
+  — the previous line is deleted either way. Shift+click — settings for this button.

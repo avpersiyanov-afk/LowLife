@@ -1,2 +1,9 @@
 tooltip: |
   Собирает все кабельные лотки из связанной модели, видимые на активном виде, и выгружает список в .xlsx (Excel не нужен): ID лотка в связанном файле, имя типа, модель, отметка (середина, мм), базовый уровень, имя связи. Если на виде несколько связей — спросит, из каких собирать. В Revit 2024+ видимость берётся точно по виду; в более старых — по подрезке и диапазону вида.
+title_en: "Link trays\nto Excel"
+tooltip_en: >-
+  Collects all cable trays from a linked model that are visible in the active view and exports the
+  list to .xlsx (no Excel needed): the tray ID in the linked file, type name, model, elevation
+  (middle, mm), reference level, link name. If there are several links in the view, it asks which to
+  collect from. In Revit 2024+ visibility is taken exactly from the view; in older versions — from the
+  crop and view range.

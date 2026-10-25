@@ -1,1 +1,6 @@
 tooltip: Переносит значение помещения из связанной модели в параметр выбранных элементов — по маске из параметров помещения связи (например «Имя (Номер)»). Настройки (параметр-приёмник и маска) — Shift+клик по кнопке.
+title_en: "Write room\nnumber"
+tooltip_en: >-
+  Carries a room value from the linked model into a parameter of the selected elements — by a mask of
+  the linked room's parameters (for example «Name (Number)»). Settings (target parameter and mask) —
+  Shift+click on the button.

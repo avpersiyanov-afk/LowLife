@@ -5,3 +5,14 @@ tooltip: |
   Выноска идёт к УГО (в том числе к вложенной аннотации), а не к 3D-семейству, и следует за прибором при его сдвиге/повороте; полка выноски — ровно на уровне марки.
 
   Shift+клик — настройки: отступ, зазор между марками, длина полки, что считать «рядом» (мм на листе).
+title_en: "Equipment\ntags"
+tooltip_en: >-
+  Places and arranges equipment tags in the active view neatly and without overlaps. Two modes (the
+  button asks; if only tags are selected — the first one right away): «Arrange selected tags» — only
+  the selected tags move (for selected equipment — all its tags in the view), no new ones are created.
+  «Tag equipment» — for selected equipment without a tag, a table by family opens: what to tag and
+  with which tag type (the choice is remembered). New tags are arranged right away; existing ones are
+  left alone. The leader goes to the symbol (including a nested annotation), not to the 3D family, and
+  follows the device when it is moved/rotated; the leader shoulder is exactly level with the tag.
+  Shift+click — settings: offset, gap between tags, shoulder length, what counts as «nearby» (mm on
+  the sheet).

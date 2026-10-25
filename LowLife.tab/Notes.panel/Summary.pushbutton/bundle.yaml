@@ -2,3 +2,7 @@ title: Сводка
 tooltip: >-
   Все заметки по текущему проекту: фильтры, отметка «выполнено»,
   показ привязанных элементов в модели.
+title_en: "Summary"
+tooltip_en: >-
+  All notes on the current project: filters, the «done» mark, showing the linked elements in the
+  model.

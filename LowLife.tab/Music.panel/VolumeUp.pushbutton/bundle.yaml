@@ -1,2 +1,5 @@
 tooltip: |
   Увеличивает системную громкость Windows на один шаг.
+title_en: "Louder"
+tooltip_en: >-
+  Raises the Windows system volume by one step.

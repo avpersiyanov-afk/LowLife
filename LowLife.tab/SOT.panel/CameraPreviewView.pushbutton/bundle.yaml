@@ -6,3 +6,13 @@ tooltip: |
   Порядок: сначала кнопка, потом выбор камер (тот же фильтр категорий, что у «Зон обзора») — по одному 3D-виду на камеру. Повторный запуск на той же камере не плодит вид заново, а переставляет уже созданный (найден по имени вида).
 
   Ничего не пишет на саму камеру — только создаёт/меняет вид.
+title_en: "View from\ncamera"
+tooltip_en: >-
+  Creates (or updates, if it already exists) a Revit 3D perspective view at the selected camera's
+  position looking the same way — the same azimuth and tilt as «Fields of view»/«Aim at room» use. The
+  view's field of view is fitted to the camera's calculated horizontal/vertical angle (focal length +
+  sensor format, the same optics as for fields of view) through the perspective view's crop box.
+  Order: first the button, then pick the cameras (the same category filter as «Fields of view») — one
+  3D view per camera. Running it again on the same camera doesn't create another view; it repositions
+  the existing one (found by view name). Writes nothing to the camera itself — it only creates/changes
+  the view.

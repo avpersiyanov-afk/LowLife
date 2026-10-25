@@ -4,3 +4,14 @@ tooltip: |
   Открывается одно окно: слева этажи, справа помещения выбранного этажа. В столбце «На схеме» напишите, как показать помещение на схеме; пусто — помещения на схеме нет. Одинаковая подпись у нескольких помещений этажа — один общий бокс (группа: «Квартиры», «МОП» и т.п.). Можно выделить несколько строк и задать им подпись разом. Этаж с тем же набором помещений, что у уже заполненного (типовой жилой), заполняется сам; подписи можно также скопировать с любого этажа по именам помещений.
 
   Подписи запоминаются между запусками. Результат — чертёжный вид: рамка на каждый этаж и по боксу с подписью на каждую подпись. Без семейств и линий — дальше схема дорабатывается вручную. Каждый запуск перестраивает вид с нуля.
+title_en: "Riser diagram\ndraft"
+tooltip_en: >-
+  Builds a rough draft of a riser diagram by rooms — not from placed devices, unlike the similar
+  CCTV/fire alarm/SCS buttons. One window opens: floors on the left, the selected floor's rooms on the
+  right. In the «On diagram» column type how the room should be shown on the diagram; empty — the room
+  isn't on the diagram. The same label on several rooms of a floor makes one shared box (a group:
+  «Apartments», «Common areas», etc.). You can select several rows and give them a label at once. A
+  floor with the same set of rooms as one already filled in (a typical residential floor) is filled in
+  by itself; labels can also be copied from any floor by room names. Labels are remembered between
+  runs. The result is a drafting view: a frame per floor and a labelled box per label. No families or
+  lines — the diagram is finished by hand from there. Every run rebuilds the view from scratch.

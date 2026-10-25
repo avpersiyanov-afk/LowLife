@@ -2,3 +2,5 @@ title: LowLife
 layout:
   - Actions
   - ThemeSelector
+  - LanguageSelector
+title_en: "LowLife"

@@ -6,3 +6,17 @@ tooltip: |
   Режим — в настройках: либо отдельная цепь на каждое устройство (у каждой своё имя нагрузки), либо все устройства в одну общую цепь (имя нагрузки при этом не заполняется).
 
   Shift+клик — настройки этой кнопки.
+title_en: "Circuit\n(general)"
+tooltip_en: >-
+  Builds arbitrary «panel → devices» electrical circuits from settings — nothing is hard-coded. Select
+  the panel and all devices together in one selection (window and/or clicks, in any order; the panel
+  is detected by the «Electrical Equipment» category and there must be exactly one among the
+  selection). The selection is filtered, so annotations, links, grids, levels, text, detail lines and
+  generic models can't be picked by accident. The circuit type comes from the settings (if empty —
+  from the device connector, Data as the fallback). The cable (a wire catalog row) is written to the
+  circuit parameter from the settings if one is chosen there (optional). The circuit «Load Name» gets
+  a value assembled from the connected device's parameters, by a list of names joined with a separator
+  (one parameter in the list = a single source; for each name the instance parameter is tried first,
+  then the type parameter). Mode — in the settings: either a separate circuit per device (each with
+  its own load name) or all devices in one shared circuit (the load name is then left empty).
+  Shift+click — settings for this button.

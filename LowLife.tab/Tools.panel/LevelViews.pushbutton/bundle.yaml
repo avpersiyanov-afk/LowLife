@@ -1,2 +1,16 @@
 tooltip: |
   Создаёт планы для всех уровней модели по выбранным шаблонам видов: в окне отмечаете шаблоны видов, у каждого вписываете группы вида и назначения (несколько — по одной на строке, на каждую свой вид) и задаёте маску имени ({Уровень}, {Группа вида и назначение}, {Шаблон}, {Отметка}, {Этаж}, {Корпус}, {Комментарий}), по умолчанию «{Группа вида и назначение}_{Корпус}_{Этаж}_{Отметка}». Для каждого отмеченного шаблона на каждом уровне создаётся план с этим шаблоном (тип плана — по виду шаблона: этаж, потолок, несущие конструкции). С галочкой «Выбирать уровни для каждого шаблона» после запуска для каждого шаблона открывается список уровней модели — для каких создавать его виды (выбор запоминается). С галочкой «Выровнять секущий диапазон» диапазон видов выставляется как у кнопки «Секущий диапазон» (если её настройка ещё не заполнена — она откроется перед созданием). Вид с таким же именем на том же уровне не создаётся заново — ему назначается шаблон. Маска, группы вида и назначения и отметки запоминаются; «Сохранить» — сохранить без создания видов, «Выгрузить/Загрузить настройки…» — перенос настроек между проектами и компьютерами.
+title_en: "Views by\nlevel"
+tooltip_en: >-
+  Creates plans for all model levels from the chosen view templates: in the window, tick the view
+  templates, enter the view groups/purposes for each (several — one per line, each gets its own view)
+  and set a name mask ({Level}, {View group and purpose}, {Template}, {Elevation}, {Floor},
+  {Building}, {Comment}), by default «{View group and purpose}_{Building}_{Floor}_{Elevation}». For
+  each ticked template a plan with that template is created on every level (the plan type follows the
+  template's kind: floor, ceiling, structural). With «Choose levels for each template» ticked, after
+  launch a list of model levels opens for each template — which levels to create its views for (the
+  choice is remembered). With «Align view range» ticked, the views' range is set like the «View range»
+  button does (if its setting isn't filled in yet, it opens before creating). A view with the same
+  name on the same level isn't created again — the template is assigned to it. The mask, view
+  groups/purposes and elevations are remembered; «Save» — save without creating views, «Export/Import
+  settings…» — move settings between projects and computers.

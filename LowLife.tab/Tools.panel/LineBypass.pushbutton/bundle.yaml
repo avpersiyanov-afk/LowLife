@@ -11,3 +11,13 @@ tooltip: |
   Цикл возвращается к выбору следующей линии; Esc на выборе линии
   заканчивает работу кнопки, Esc на выборе стороны пропускает только эту
   линию.
+title_en: "Line\nbypass"
+tooltip_en: >-
+  Draws a bypass arc of a given diameter where detail lines cross. The diameter is asked once at the
+  start, then the mode: «Single» (its own arc of exactly the entered diameter at each crossing) or
+  «Multiple» (one big arc over the whole bundle if the second line bypasses several base lines at
+  once). Base lines are picked in one selection (window and/or clicks, Enter/«Finish» to confirm) —
+  they stay whole. Then a loop: click the line that will go around the base lines, then right away
+  click the bypass side — the bypass is built with that same click, no preview. The loop returns to
+  picking the next line; Esc when picking a line ends the button, Esc when picking a side skips only
+  that line.

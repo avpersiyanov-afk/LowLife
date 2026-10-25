@@ -2,3 +2,11 @@ tooltip: |
   Расставляет и обновляет марки помещений из связанной модели на активном плане. Типоразмер марки выбирается из списка. Марки, которые показывают «?» (помещение удалено/переделано у АР, марка осиротела, помещение не окружено, либо голова марки вышла за границы своего помещения — частая причина «?», Revit сам её не пересчитывает), удаляет, а на освободившееся помещение ставит новую с верной головой. На время вставки снимает подложку вида, мешающую ставить марки помещений.
 
   Shift+клик — выбрать несколько планов списком и обновить марки сразу на всех.
+title_en: "Room\ntags"
+tooltip_en: >-
+  Places and updates tags of rooms from the linked model on the active plan. The tag type is picked
+  from a list. Tags showing «?» (the room was deleted/redone in the architectural model, the tag is
+  orphaned, the room isn't enclosed, or the tag head left its room's boundaries — a common cause of
+  «?» that Revit doesn't recalculate itself) are deleted, and the freed room gets a new tag with a
+  correct head. While placing, the view underlay that gets in the way of placing room tags is turned
+  off. Shift+click — pick several plans from a list and update tags on all of them at once.

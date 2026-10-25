@@ -8,3 +8,21 @@ tooltip: |
   Если в настройках задана категория «Шкаф» — рисуются линии до него шинной топологией: на каждом этаже один общий горизонтальный коллектор чуть ниже узлов, от каждого узла к нему короткий вертикальный отвод, коллекторы всех этажей выходят на один общий вертикальный стояк слева от рамок этажей. Эти линии не редактируются вручную — на каждом запуске перерисовываются заново по актуальным позициям.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Riser\ndiagram"
+tooltip_en: >-
+  Builds/updates the CCTV riser diagram. It finds all devices in the model whose type is mapped to a
+  category in the CCTV settings and groups them by floor (label «Этаж N (elevation)», ordered by
+  elevation: negative at the bottom of the diagram, deeper is lower; positive higher, the higher the
+  elevation) and by room. Running it again doesn't rebuild the diagram from scratch: the view named in
+  the CCTV settings is updated (created with that name if it doesn't exist yet), the previous run's
+  layout is kept in a service parameter of that view, and only the floor/room/device where something
+  actually changed (added/removed/moved) is updated; the rest stays as it was, with the same elements.
+  Neighbours to the right of/below the change shift to close or free up space. The view template (if
+  chosen in the settings) is applied on every run. If a building/section parameter and a filter value
+  are set in the settings, only devices with that value are taken (the rest are ignored). To keep a
+  separate diagram per building, give each its own view name and filter value in the settings. If a
+  «Cabinet» category is set in the settings, lines to it are drawn as a bus: on each floor one shared
+  horizontal collector just below the nodes, a short vertical drop from each node to it, and the
+  collectors of all floors run to one shared vertical riser to the left of the floor frames. These
+  lines are not edited by hand — they are redrawn on every run from the current positions. Shift+click
+  — settings for this button.

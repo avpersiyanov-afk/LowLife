@@ -1,2 +1,5 @@
 tooltip: |
   Запускает или ставит на паузу воспроизведение в активном проигрывателе (медиаклавиша Windows Play/Pause).
+title_en: "Play /\npause"
+tooltip_en: >-
+  Starts or pauses playback in the active player (the Windows Play/Pause media key).

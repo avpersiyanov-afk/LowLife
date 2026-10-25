@@ -2,3 +2,12 @@ tooltip: |
   Экспликация помещений по обрезанному плану (фрагменту). Берёт помещения модели и видимых связей, чья точка размещения попадает в рамку подрезки активного плана, и создаёт спецификацию-таблицу: номер, наименование, площадь, категория — без фильтров. Вид таблицы (настройка): ручная спецификация без параметров в модели или ключевая спецификация. Если у плана экспликация уже есть — она обновляется (то же делает кнопка «Обновить экспликацию»).
 
   Shift+клик — настройки: вид таблицы, название, заголовки и ширины граф, высота строк (по умолчанию — форма 2 ГОСТ 21.501: 15/80/20/10 мм, шапка 20, строка 8), параметры номера/имени/площади/категории помещения, знаки площади.
+title_en: "Fragment\nroom schedule"
+tooltip_en: >-
+  A room schedule for a cropped plan (fragment). Takes rooms of the model and visible links whose
+  location point falls inside the active plan's crop region and creates a schedule table: number,
+  name, area, category — without filters. Table kind (a setting): a manual schedule with no parameters
+  in the model, or a key schedule. If the plan already has a schedule, it is updated (the «Update room
+  schedule» button does the same). Shift+click — settings: table kind, title, column headers and
+  widths, row height (by default form 2 of GOST 21.501: 15/80/20/10 mm, header 20, row 8), the room
+  number/name/area/category parameters, area decimals.

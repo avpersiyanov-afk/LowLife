@@ -2,3 +2,10 @@ tooltip: |
   Анализирует помещения связанной модели (АР), группирует их по имени лота и показывает только двухуровневые лоты — те, у которых помещения с одинаковым именем лота стоят на двух и более уровнях: имя лота, секция, уровни. Список отсортирован по имени лота и номеру секции, выводится в окно pyRevit, по желанию — выгрузка в Excel. Модель не меняет.
 
   Shift+клик — настройки (параметры имени лота и номера секции).
+title_en: "Two-level\nlots"
+tooltip_en: >-
+  Analyses the rooms of the linked (architectural) model, groups them by lot name and shows only
+  two-level lots — those whose rooms with the same lot name are on two or more levels: lot name,
+  section, levels. The list is sorted by lot name and section number, shown in the pyRevit window,
+  optionally exported to Excel. Doesn't change the model. Shift+click — settings (lot name and section
+  number parameters).

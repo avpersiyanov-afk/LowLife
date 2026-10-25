@@ -32,7 +32,7 @@ from System.Windows.Input import Key, Keyboard, ModifierKeys
 from System.Windows.Media import SolidColorBrush, Color, Pen, Visual, VisualTreeHelper
 from System.Windows.Threading import DispatcherTimer
 
-from lowlife import ribbon_catalog
+from lowlife import ribbon_catalog, ribbon_language
 
 TAB_NAME = u"LowLife"
 SELF = (u"_Themes", u"Search")  # саму кнопку «Поиск» в результатах не показываем
@@ -86,12 +86,13 @@ def _short(text, limit=MAX_TOOLTIP):
 
 
 def button_row(entry):
+    tooltip = ribbon_catalog.localized(entry, u"tooltip")
     title = TextBlock()
-    title.Text = entry[u"title"]
+    title.Text = ribbon_catalog.localized(entry, u"title")
     title.FontWeight = FontWeights.SemiBold
     title.TextTrimming = TextTrimming.CharacterEllipsis
     panel = TextBlock()
-    panel.Text = entry[u"panel_title"]
+    panel.Text = ribbon_catalog.localized(entry, u"panel_title")
     panel.Foreground = _ACCENT
     panel.Margin = Thickness(12, 0, 0, 0)
     head = DockPanel()
@@ -102,9 +103,9 @@ def button_row(entry):
     box = StackPanel()
     box.Margin = Thickness(2, 3, 2, 3)
     box.Children.Add(head)
-    if entry[u"tooltip"]:
+    if tooltip:
         hint = TextBlock()
-        hint.Text = _short(entry[u"tooltip"])
+        hint.Text = _short(tooltip)
         hint.Foreground = _GREY
         hint.FontSize = 11
         hint.TextWrapping = TextWrapping.Wrap
@@ -113,7 +114,7 @@ def button_row(entry):
     item = ListBoxItem()
     item.Content = box
     item.Tag = entry
-    item.ToolTip = entry[u"tooltip"] or None
+    item.ToolTip = tooltip or None
     return item
 
 
@@ -398,7 +399,7 @@ def show_button(entry):
     for item in chain:
         item.visible = True
     panel.visible = True
-    adwin_panel = panel.get_adwindows_object()
+    adwin_panel = ribbon_language.adwindows_panel(panel)  # и с переведённым заголовком
     if adwin_panel is not None:
         adwin_panel.IsVisible = True
     try:

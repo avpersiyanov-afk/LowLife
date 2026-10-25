@@ -10,3 +10,22 @@ tooltip: |
   Файл .xlsx или .xlsm (макросы не мешают — читается напрямую, без Excel). Данные берутся с листа «сводные данные для плагина» (ищется по имени среди всех листов книги; если не найден — скрипт спросит список). Столбцы жёстко по порядку: A марка, B диаметр, C участок, D кол-во, F система, G % заполнения, H высота лотка, I ширина лотка; участок протягивается вниз по объединённым ячейкам.
 
   Откройте чертёжный вид и нажмите кнопку — лист, участки, марки и точку вставки скрипт спросит сам.
+title_en: "Tray\nsection"
+tooltip_en: >-
+  Draws a cable tray cross-section with the actual cable layout from Excel data (the «Сводный» sheet:
+  tag, diameter, segment, quantity, system, fill %, tray height and width) on the active drafting
+  view. Cables are laid from the largest diameter to the smallest — each at the lowest point touching
+  the floor, the walls or cables already laid (not a grid or brute force but an exact geometric
+  solution), all mixed together, tightly, left to right. Cables that didn't fit the tray height are
+  shown as a separate warning rather than silently dropped. The segment list has checkboxes; tick the
+  ones you need (they're stacked top to bottom from one point, not overlapping). Mode: «Section and
+  table», «Section only» or «Table only» — to put the section and the table on different drafting
+  views, run the button twice. Tags inside each segment are numbered from 1. The tray outline and
+  circles are drawn at real size (scaled by the view), while the table and labels are «paper» size
+  taking the view scale into account, so they read the same at any scale. A .xlsx or .xlsm file
+  (macros don't matter — it's read directly, without Excel). Data comes from the «сводные данные для
+  плагина» sheet (looked up by name among all sheets of the workbook; if not found, the script asks
+  for a sheet). Columns are strictly in order: A tag, B diameter, C segment, D quantity, F system, G
+  fill %, H tray height, I tray width; a segment carries down through merged cells. Open a drafting
+  view and press the button — the script asks for the sheet, segments, tags and insertion point
+  itself.

@@ -1,2 +1,9 @@
 tooltip: |
   Выделение элементов на активном виде, ограниченное только нужными категориями. Обычный клик — сразу запускает выбор по категориям, отмеченным в прошлый раз, без вопросов: выделяйте элементы кликом и/или рамкой, подхватятся только они; Enter (или ПКМ → «Готово») завершает — выделение останется активным в Revit. Shift+клик — настройка: список категорий активного вида, отметьте нужные галочками и нажмите «Сохранить».
+title_en: "Selection\nfilter"
+tooltip_en: >-
+  Selects elements in the active view, limited to the categories you need. A normal click starts
+  selecting right away by the categories ticked last time, no questions asked: pick elements with
+  clicks and/or a window, only those are taken; Enter (or right-click → «Finish») ends it — the
+  selection stays active in Revit. Shift+click — setup: the list of categories in the active view;
+  tick the ones you need and press «Save».

@@ -1,2 +1,10 @@
 tooltip: |
   Показывает список общих параметров, нужных кнопкам LowLife (СКС, СКУД, СПС, СОУЭ, СПА, СОТ), с примером имени, типом данных и категориями. Имена можно поменять под соглашение проекта; отмеченные параметры берутся из файла общих параметров (ФОП) или проекта и сразу привязываются к нужным категориям; недостающие создаются в ФОП, только если включено «Записывать в ФОП» (по умолчанию выключено). Введённые имена вписываются в настройки кнопок.
+title_en: "Shared\nparameters"
+tooltip_en: >-
+  Lists the shared parameters LowLife buttons need (SCS, ACS, fire alarm, voice alarm, fire
+  automation, CCTV), with an example name, data type and categories. Names can be changed to match the
+  project's convention; the ticked parameters are taken from the shared parameters file or the project
+  and bound to the right categories right away; missing ones are created in the shared parameters file
+  only if «Write to shared parameters file» is on (off by default). The entered names are written into
+  the buttons' settings.

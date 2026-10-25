@@ -1,1 +1,6 @@
 tooltip: Разбивает выбранную на листе спецификацию на участки заданной высоты — то же, что перетаскивание ручки «разделение спецификации», но сразу на нужное число частей. Выберите одну спецификацию на листе и запустите кнопку. Объединять участки обратно скрипт не умеет.
+title_en: "Split\nschedule"
+tooltip_en: >-
+  Splits the schedule selected on a sheet into segments of a given height — the same as dragging the
+  «split schedule» grip, but straight into the number of parts you need. Select one schedule on a
+  sheet and run the button. The script can't merge segments back.

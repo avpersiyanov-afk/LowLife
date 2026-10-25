@@ -2,3 +2,7 @@ tooltip: |
   Считает длины кабеля по трассе и номера/маршруты цепей для целевых панелей
 
   Shift+клик — настройки этой кнопки.
+title_en: "Circuit\nlength"
+tooltip_en: >-
+  Calculates cable lengths along the route and circuit numbers/routes for the target panels.
+  Shift+click — settings for this button.

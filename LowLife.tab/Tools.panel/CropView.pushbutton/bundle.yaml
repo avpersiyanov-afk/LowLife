@@ -1,2 +1,9 @@
 tooltip: |
   Обрезает вид и аннотации по прямоугольнику: укажите мышью два противоположных угла, затем выберите, что обрезать — этот вид или его копию (простую, с детализацией или зависимую; в конец имени копии добавляется текст). Включаются подрезка вида и подрезка аннотаций (с минимальным отступом от рамки), копия открывается. Работает на планах, разрезах, фасадах и узлах. Esc — отмена.
+title_en: "Crop\nview"
+tooltip_en: >-
+  Crops the view and annotations to a rectangle: pick two opposite corners with the mouse, then choose
+  what to crop — this view or a copy of it (plain, with detailing or dependent; text is added to the
+  end of the copy's name). View cropping and annotation cropping are turned on (with the minimum
+  offset from the frame), and the copy is opened. Works on plans, sections, elevations and details.
+  Esc — cancel.

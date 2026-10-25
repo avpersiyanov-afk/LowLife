@@ -1,2 +1,11 @@
 tooltip: |
   Расстановка оборудования СС1: два кросса в каждой шахте СС на каждом отмеченном уровне, через который шахта проходит, и кабельный подвод у двери из прихожей в коридор/вестибюль со стороны квартиры (по связи АР), плюс электрическая цепь от кросса №1 шахты своей секции к каждому подводу, заполнение LOI (по настройкам кнопки «Заполнение LOI») и адрес устройства подводов по маске. Перед расстановкой старые экземпляры выбранных типоразмеров на отмеченных уровнях удаляются. Shift+клик — настройки (шахта СС, семейства и типы кросса и подвода, помещения, параметры, высоты, адрес).
+title_en: "SS1-8Mile"
+tooltip_en: >-
+  Places SS1 (communication networks) equipment: two cross-connects in every telecom shaft on every
+  ticked level the shaft passes through, and a cable entry by the door from the hallway to the
+  corridor/lobby on the apartment side (from the architectural link), plus an electrical circuit from
+  cross-connect No. 1 of the shaft of its section to each entry, LOI filling (by the «Fill LOI» button
+  settings) and the entries' device address by a mask. Before placing, old instances of the chosen
+  types on the ticked levels are deleted. Shift+click — settings (telecom shaft, families and types of
+  the cross-connect and entry, rooms, parameters, heights, address).

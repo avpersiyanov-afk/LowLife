@@ -2,3 +2,7 @@ tooltip: |
   Расставляет панели/узлы маршрута/стояки в точках трассы кабеля
 
   Shift+клик — настройки этой кнопки.
+title_en: "Route\nnodes"
+tooltip_en: >-
+  Places panels/route nodes/risers at the points of a cable route. Shift+click — settings for this
+  button.

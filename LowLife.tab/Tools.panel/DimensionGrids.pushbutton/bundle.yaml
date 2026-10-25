@@ -1,2 +1,5 @@
 tooltip: |
   Образмеривает выбранные оси на виде
+title_en: "Dimension\ngrids"
+tooltip_en: >-
+  Dimensions the selected grids in the view.

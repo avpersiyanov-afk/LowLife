@@ -2,3 +2,14 @@ tooltip: |
   Показывает маршрут выбранного шлейфа СПС на модели — для визуальной проверки топологии (в т.ч. ветвей от изоляторов). Выберите устройство, входящее в интересующий шлейф (если оно состоит в нескольких цепях — предложит выбрать нужную из списка). Строит временные линии (Detail Line на активном виде) по рёбрам дерева шлейфа — панель -> первое устройство и родитель -> устройство для каждого звена (не непрерывная цепочка, как у СКС/СКУД: у СПС узлом шлейфа служит само устройство, а ветви от изоляторов не возвращаются в магистраль) — и выделяет все эти устройства в модели. Вид сам масштабируется, чтобы весь шлейф поместился целиком. Линии временные: удаляются сами через несколько секунд, а также при повторном запуске кнопки (в т.ч. кнопки СКС/СКУД с той же функцией) — прошлые линии удаляются в любом случае.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Circuit\nroute"
+tooltip_en: >-
+  Shows the route of the selected fire alarm loop in the model — to check the topology visually
+  (including branches from isolators). Select a device in the loop you're interested in (if it belongs
+  to several circuits, you'll be offered a list). Draws temporary lines (Detail Lines in the active
+  view) along the edges of the loop tree — panel → first device and parent → device for every link
+  (not one continuous chain as for SCS/ACS: in fire alarm the device itself is the loop node, and
+  isolator branches don't return to the main line) — and selects all these devices in the model. The
+  view zooms to fit the whole loop. The lines are temporary: they disappear by themselves after a few
+  seconds, and also when the button is run again (including the SCS/ACS buttons with the same
+  function) — the previous lines are deleted either way. Shift+click — settings for this button.

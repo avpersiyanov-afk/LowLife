@@ -4,3 +4,10 @@ tooltip: |
   Элементы без значений параметров пропускаются и перечисляются в окне вывода pyRevit.
 
   Shift+клик — настройки (параметры и маска).
+title_en: "Panel\nname"
+tooltip_en: >-
+  Writes the built-in «Panel Name» of electrical equipment as text built by a mask from two of its
+  parameters: {1} — the value of the first parameter, {2} — of the second (instance parameter first,
+  then type). Select the equipment before running or pick it with a window/clicks — elements of other
+  categories are dropped. Elements without parameter values are skipped and listed in the pyRevit
+  output window. Shift+click — settings (parameters and mask).

@@ -2,3 +2,13 @@ tooltip: |
   Строит электрические цепи между изолятором и выбранными устройствами пожарной сигнализации: выберите устройства и изолятор («Электрооборудование») вместе одним выбором — среди выбранного должен быть ровно один изолятор. После подтверждения (Enter/«Готово») цепи строятся сразу, и кнопка тут же предлагает выбрать следующий набор — повторный запуск кнопки не нужен, выбор заканчивается по Esc. Все выбранные устройства ручного пуска (с «ручной» в имени типа — ИПР) объединяются в одну общую цепь (в одной цепи может быть несколько ИПР), остальные выбранные устройства — во вторую общую цепь. У изолятора максимум 2 цепи — «ручная» и «автоматическая».
 
   Shift+клик — настройки этой кнопки.
+title_en: "Fire alarm isolator–\ndevice circuits"
+tooltip_en: >-
+  Builds electrical circuits between an isolator and the selected fire alarm devices: select the
+  devices and the isolator («Electrical Equipment») together in one selection — there must be exactly
+  one isolator among them. After confirming (Enter/«Finish») the circuits are built right away, and
+  the button immediately offers to pick the next set — no need to run it again; finish selecting with
+  Esc. All selected manual call points («ручной» in the type name) are combined into one shared
+  circuit (a circuit may hold several call points), the remaining selected devices into a second
+  shared circuit. An isolator has at most 2 circuits — «manual» and «automatic». Shift+click —
+  settings for this button.

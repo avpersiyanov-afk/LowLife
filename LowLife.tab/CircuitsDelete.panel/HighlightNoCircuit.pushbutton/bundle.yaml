@@ -6,3 +6,12 @@ tooltip: |
   Повторный запуск на том же виде пересчитывает подсветку заново (например, если на вид добавили новые устройства).
 
   Shift+клик — снять подсветку, поставленную этой кнопкой на активном виде, не дожидаясь появления цепей.
+title_en: "Highlight\nunconnected"
+tooltip_en: >-
+  Highlights in red, in the active view, every element with electrical connectors (devices, panels,
+  isolators, etc.) that has no electrical circuit yet. The highlight doesn't get in the way of
+  creating circuits right away — with any LowLife button or Revit's own «Create Power Circuit»
+  command. As soon as an element gets a circuit, its highlight goes away on its own, without running
+  this button again. Running it again in the same view recalculates the highlight (for example, after
+  new devices were added to the view). Shift+click — clear the highlight this button placed in the
+  active view without waiting for circuits.

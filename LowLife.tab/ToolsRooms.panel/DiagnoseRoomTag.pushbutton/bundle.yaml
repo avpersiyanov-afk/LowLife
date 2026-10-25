@@ -1,2 +1,7 @@
 tooltip: |
   Временная диагностика: выделите одну марку помещения (RoomTag) и нажмите — покажет, что видит по ней логика кнопки «Марки помещений» (TaggedRoomId, площадь/точку помещения, положение головы относительно границ помещения и т.д.). Нужна, чтобы разобраться, почему конкретная марка так и остаётся «?».
+title_en: "Tag\ndiagnostics"
+tooltip_en: >-
+  Temporary diagnostics: select one room tag (RoomTag) and press — shows what the «Room tags» button
+  logic sees for it (TaggedRoomId, the room's area/point, the tag head's position relative to the room
+  boundaries, etc.). Needed to work out why a particular tag stays «?».

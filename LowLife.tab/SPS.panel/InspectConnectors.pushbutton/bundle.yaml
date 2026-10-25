@@ -1,2 +1,9 @@
 tooltip: |
   Тестовая кнопка: выберите панель, затем несколько устройств шлейфа. Показывает категорию и электрические коннекторы каждого элемента (Domain, ConnectorType) — помогает понять, почему ElectricalSystem.Create отказывается создавать цепь заданного типа: как правило, среди переданных элементов должен быть хотя бы один категории «Электрооборудование» (OST_ElectricalEquipment) — обычные устройства (датчики и т.п.) сами по себе цепь создать не могут, только быть нагрузкой в ней.
+title_en: "Connector\ndiagnostics"
+tooltip_en: >-
+  Test button: pick a panel, then several loop devices. Shows each element's category and electrical
+  connectors (Domain, ConnectorType) — helps understand why ElectricalSystem.Create refuses to create
+  a circuit of a given type: as a rule, at least one of the passed elements must be of the «Electrical
+  Equipment» category (OST_ElectricalEquipment) — ordinary devices (detectors, etc.) can't create a
+  circuit by themselves, only be a load in it.

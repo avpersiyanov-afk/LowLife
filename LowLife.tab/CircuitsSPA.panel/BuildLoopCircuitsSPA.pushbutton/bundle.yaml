@@ -2,3 +2,14 @@ tooltip: |
   Создаёт по одной электрической цепи на каждый шлейф СПА и подключает её к своей панели. Шлейф определяется по адресу устройства вида "панель.шлейф.номер" (например 3.1.2) — та же логика, что у кнопки «Цепи шлейфов СПС», но ищет панели и устройства в рабочем наборе с ключевым словом «СПА» (у СПС — «СПС»), настройки у систем раздельные. Сопутствующие устройства категории «Электроприборы» (РМ/АМ/МДУ, подключённые рядом с устройствами СПА) в сборе устройств не участвуют — это не адресные устройства шлейфа. Каждой созданной цепи сразу проставляется режим траектории «Все устройства» и, по получившейся длине (Revit Length x коэффициент запаса, округление до целого), «Длина проводника» и «Способ прокладки».
 
   Shift+клик — настройки этой кнопки.
+title_en: "Fire automation\nloop circuits"
+tooltip_en: >-
+  Creates one electrical circuit per fire automation loop and connects it to its panel. A loop is
+  identified by a device address of the form "panel.loop.number" (for example 3.1.2) — the same logic
+  as the «Fire alarm loop circuits» button, but it looks for panels and devices in the workset with
+  the keyword «СПА» (fire alarm uses «СПС»); the two systems have separate settings. Companion devices
+  of the «Electrical Fixtures» category (relay/addressable/control modules placed next to fire
+  automation devices) are not collected — they are not addressable loop devices. Each new circuit
+  immediately gets the «All Devices» path mode and, from the resulting length (Revit Length × safety
+  factor, rounded to a whole number), «Wire length» and «Installation method». Shift+click — settings
+  for this button.

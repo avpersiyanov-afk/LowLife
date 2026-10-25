@@ -2,3 +2,7 @@ tooltip: |
   Нумерует адреса узлов трассы СКУД по этажу, начиная от контроллеров/стояков, и записывает контроллерам и устройствам ближайший адресованный узел маршрута.
 
   Shift+клик — настройки этой кнопки.
+title_en: "ACS node\naddresses"
+tooltip_en: >-
+  Numbers ACS route node addresses per floor, starting from controllers/risers, and writes the nearest
+  addressed route node to controllers and devices. Shift+click — settings for this button.

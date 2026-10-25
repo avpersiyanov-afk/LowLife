@@ -7,3 +7,8 @@ tooltip: >-
 # и поток не должен обрываться вместе со скриптом кнопки.
 engine:
   persistent: true
+title_en: "Feedback"
+tooltip_en: >-
+  Tell the LowLife author about a problem or suggest an improvement: pick the panel and button and
+  describe what happened. Only the extension's author sees the messages; the author's replies appear
+  on the «My messages» tab.

@@ -2,3 +2,11 @@ tooltip: |
   Строит и обновляет структурную схему СКУД на отдельном чертёжном виде (имя — из настроек). Схемное семейство контроллера ставится один раз на контроллер; на каждую точку прохода подбирается группа деталей, чей состав устройств совпадает с составом точки прохода. Повторный запуск — инкрементальная синхронизация: неизменные точки прохода не трогаются (ручная раскладка сохраняется), изменившиеся перерисовываются, пропавшие удаляются. Состояние — JSON в служебном параметре вида.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Riser\ndiagram"
+tooltip_en: >-
+  Builds and updates the ACS riser diagram on a separate drafting view (name from the settings). The
+  controller's schematic family is placed once per controller; for each access point a detail group is
+  chosen whose device set matches the access point's set. Running it again is an incremental sync:
+  unchanged access points are left alone (manual layout is kept), changed ones are redrawn, missing
+  ones are deleted. The state is JSON in a service parameter of the view. Shift+click — settings for
+  this button.

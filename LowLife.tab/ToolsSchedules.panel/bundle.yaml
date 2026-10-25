@@ -6,3 +6,4 @@ layout:
   - ScheduleFromExcel
   - ModelToJson
   - JsonToModel
+title_en: "Schedules"
