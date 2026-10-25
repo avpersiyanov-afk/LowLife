@@ -1,3 +1,5 @@
+**Русский** | [English](en/json-snapshot.md)
+
 # Снимок модели в JSON — «Модель → JSON» / «JSON → модель»
 
 Две кнопки на панели `ToolsSchedules` («Спецификации»), тема `General`

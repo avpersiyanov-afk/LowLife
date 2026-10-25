@@ -1,3 +1,5 @@
+**Русский** | [English](en/fire-alarm-panels.md)
+
 # SPS.panel и SOUE.panel — СПС и СОУЭ (+ СПА на CircuitsSPA.panel)
 
 Две панели с одинаковым набором кнопок: **СПС** (пожарная сигнализация) и

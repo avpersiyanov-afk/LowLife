@@ -1,3 +1,5 @@
+**Русский** | [English](en/schedules-panel.md)
+
 # Панель ToolsSchedules — спецификации и Excel
 
 Кнопки «Модель → JSON» и «JSON → модель» описаны отдельно — [docs/json-snapshot.md](json-snapshot.md). Здесь — работа со спецификациями.
