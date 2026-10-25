@@ -2,6 +2,7 @@
 """Shift+клик по кнопке «Загрузить семейства» — сменить папку-каталог семейств."""
 
 from pyrevit import forms
+from lowlife.i18n import tr
 
 from lowlife import family_catalog as fc
 
@@ -15,4 +16,4 @@ elif new:
 else:
     msg = u"Папка-каталог не задана."
 
-forms.alert(msg, title=u"Загрузить семейства — каталог")
+forms.alert(msg, title=tr(u"Загрузить семейства — каталог"))

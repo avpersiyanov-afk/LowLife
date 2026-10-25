@@ -19,7 +19,7 @@ except NameError:  # Python 3
 
 
 import clr
-from lowlife.i18n import tr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -70,8 +70,8 @@ DEFAULTS = {
     BOTTOM_KEY: 0.0,
 }
 
-NO_TEMPLATE = u"<Без шаблона>"
-DEFAULT_TYPE = u"<Тип по умолчанию в проекте>"
+NO_TEMPLATE = N_(u"<Без шаблона>")
+DEFAULT_TYPE = N_(u"<Тип по умолчанию в проекте>")
 
 
 _STORE = settings_core.JsonStore(SETTINGS_FILE_NAME)
@@ -115,10 +115,10 @@ def _parse_mm(text, label, errors):
     try:
         val = float(unicode(text).strip().replace(u",", u"."))
     except (TypeError, ValueError):
-        errors.append(u"«{}» — не число".format(label))
+        errors.append(tr(u"«{}» — не число").format(label))
         return None
     if val < 0:
-        errors.append(u"«{}» — не может быть отрицательным".format(label))
+        errors.append(tr(u"«{}» — не может быть отрицательным").format(label))
         return None
     return val
 
@@ -147,8 +147,8 @@ def _hint(parent, text):
 
 def _combo(parent, items, selected):
     cb = ComboBox()
-    for item in items:
-        cb.Items.Add(item)
+    for index, item in enumerate(items):
+        cb.Items.Add(tr(item) if index == 0 else item)
     cb.SelectedIndex = items.index(selected) if selected in items else 0
     parent.Children.Add(cb)
     return cb
@@ -177,7 +177,7 @@ def show_settings_form(doc, values):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки: Разрез по семейству"
+    win.Title = tr(u"Настройки: Разрез по семейству")
     win.Width = 520
     win.SizeToContent = SizeToContent.Height
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -186,57 +186,57 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16, 12, 16, 12)
 
     title = TextBlock()
-    title.Text = u"Разрез по семейству"
+    title.Text = tr(u"Разрез по семейству")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     root.Children.Add(title)
-    _hint(root, u"Значения сохраняются и применяются при каждом запуске кнопки.")
+    _hint(root, tr(u"Значения сохраняются и применяются при каждом запуске кнопки."))
 
-    _label(root, u"Шаблон вида", bold=True, top=14)
+    _label(root, tr(u"Шаблон вида"), bold=True, top=14)
     template_items = [NO_TEMPLATE] + templates
     template_cb = _combo(root, template_items, values.get(TEMPLATE_KEY) or NO_TEMPLATE)
     if not templates:
-        _hint(root, u"В проекте нет шаблонов видов для разрезов.")
+        _hint(root, tr(u"В проекте нет шаблонов видов для разрезов."))
     else:
-        _hint(root, u"Назначается каждому новому разрезу: задаёт видимость категорий, "
-                    u"масштаб, детализацию. «<Без шаблона>» — вид останется как есть.")
+        _hint(root, tr(u"Назначается каждому новому разрезу: задаёт видимость категорий, "
+                    u"масштаб, детализацию. «<Без шаблона>» — вид останется как есть."))
 
-    _label(root, u"Типоразмер разреза", bold=True)
+    _label(root, tr(u"Типоразмер разреза"), bold=True)
     type_items = [DEFAULT_TYPE] + types
     type_cb = _combo(root, type_items, values.get(TYPE_KEY) or DEFAULT_TYPE)
-    _hint(root, u"Каким типом разреза Revit создавать вид — от типа зависит, в какой "
-                u"папке браузера проекта он окажется и как выглядит его обозначение на плане.")
+    _hint(root, tr(u"Каким типом разреза Revit создавать вид — от типа зависит, в какой "
+                u"папке браузера проекта он окажется и как выглядит его обозначение на плане."))
 
-    _label(root, u"Имя разреза", bold=True)
+    _label(root, tr(u"Имя разреза"), bold=True)
     mask_box = _textbox(root, values.get(NAME_MASK_KEY) or u"")
-    _hint(root, u"Подстановки: " + u"; ".join(
+    _hint(root, tr(u"Подстановки: ") + u"; ".join(
         u"{} — {}".format(k, tr(d)) for k, d in family_section.NAME_PLACEHOLDERS
-    ) + u". Если имя уже занято, добавляется « (2)», « (3)», ...")
+    ) + tr(u". Если имя уже занято, добавляется « (2)», « (3)», ..."))
 
-    _label(root, u"Подрезка, мм", bold=True, top=14)
-    _hint(root, u"Насколько область разреза выходит за габарит самого семейства. "
+    _label(root, tr(u"Подрезка, мм"), bold=True, top=14)
+    _hint(root, tr(u"Насколько область разреза выходит за габарит самого семейства. "
                 u"По высоте — от базового уровня семейства до следующего этажа "
-                u"того же корпуса (см. «Шаблон имени уровня» ниже).")
+                u"того же корпуса (см. «Шаблон имени уровня» ниже)."))
 
-    _label(root, u"Слева и справа от семейства")
+    _label(root, tr(u"Слева и справа от семейства"))
     side_box = _textbox(root, _fmt_mm(values[SIDE_KEY]))
-    _label(root, u"Перед геометрией семейства (плоскость сечения)")
+    _label(root, tr(u"Перед геометрией семейства (плоскость сечения)"))
     front_box = _textbox(root, _fmt_mm(values[FRONT_KEY]))
-    _label(root, u"За геометрией семейства (дальняя граница)")
+    _label(root, tr(u"За геометрией семейства (дальняя граница)"))
     back_box = _textbox(root, _fmt_mm(values[BACK_KEY]))
 
     flip_cb = CheckBox()
-    flip_cb.Content = u"Смотреть с обратной стороны"
+    flip_cb.Content = tr(u"Смотреть с обратной стороны")
     flip_cb.IsChecked = bool(values.get(FLIP_KEY))
     flip_cb.Margin = Thickness(0, 14, 0, 0)
     root.Children.Add(flip_cb)
-    _hint(root, u"Обычно не нужно: разрез смотрит на лицевую сторону семейства "
+    _hint(root, tr(u"Обычно не нужно: разрез смотрит на лицевую сторону семейства "
                 u"(для устройств на стене — со стороны помещения). Включите, "
-                u"если у ваших семейств лицевая сторона задана наоборот.")
+                u"если у ваших семейств лицевая сторона задана наоборот."))
 
-    _label(root, u"Шаблон имени уровня", bold=True, top=14)
+    _label(root, tr(u"Шаблон имени уровня"), bold=True, top=14)
     level_tpl_box = _textbox(root, values.get(LEVEL_TEMPLATE_KEY) or level_name_template.DEFAULT_TEMPLATE)
-    _hint(root, u"Как в ваших именах уровней записаны корпус и этаж. {Корпус}, {Этаж} и "
+    _hint(root, tr(u"Как в ваших именах уровней записаны корпус и этаж. {Корпус}, {Этаж} и "
                 u"{Комментарий} — значимые части, любые другие имена в скобках "
                 u"({Дисциплина}, {Отметка}, ...) — пропускаемые; текст между скобками "
                 u"должен совпадать буквально. {Этаж} обязателен; без {Корпус} все уровни "
@@ -245,18 +245,18 @@ def show_settings_form(doc, values):
                 u"этажом. Примеры: «{Дисциплина}_{Корпус}_{Отметка}_{Этаж}_{Комментарий}» "
                 u"(по умолчанию), «{Корпус}-{Этаж}», «Этаж {Этаж}». Уровни, не подходящие "
                 u"под шаблон, не учитываются; если не подходит базовый уровень — верх "
-                u"берётся по ближайшему уровню выше из всех.")
+                u"берётся по ближайшему уровню выше из всех."))
 
     hide_cb = CheckBox()
-    hide_cb.Content = u"Скрывать на разрезе уровни других корпусов"
+    hide_cb.Content = tr(u"Скрывать на разрезе уровни других корпусов")
     hide_cb.IsChecked = bool(values.get(HIDE_OTHER_BUILDINGS_KEY))
     hide_cb.Margin = Thickness(0, 14, 0, 0)
     root.Children.Add(hide_cb)
-    _hint(root, u"Прячет на новом разрезе линии уровней соседних корпусов, чтобы "
-                u"остались только уровни корпуса, где стоит семейство.")
+    _hint(root, tr(u"Прячет на новом разрезе линии уровней соседних корпусов, чтобы "
+                u"остались только уровни корпуса, где стоит семейство."))
 
     open_cb = CheckBox()
-    open_cb.Content = u"Открыть разрез после создания"
+    open_cb.Content = tr(u"Открыть разрез после создания")
     open_cb.IsChecked = bool(values.get(OPEN_VIEW_KEY))
     open_cb.Margin = Thickness(0, 14, 0, 0)
     root.Children.Add(open_cb)
@@ -267,30 +267,30 @@ def show_settings_form(doc, values):
     buttons.Margin = Thickness(0, 16, 0, 0)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
     def on_ok(sender, args):
         errors = []
-        side = _parse_mm(side_box.Text, u"Слева и справа", errors)
-        front = _parse_mm(front_box.Text, u"Перед геометрией", errors)
-        back = _parse_mm(back_box.Text, u"За геометрией", errors)
+        side = _parse_mm(side_box.Text, tr(u"Слева и справа"), errors)
+        front = _parse_mm(front_box.Text, tr(u"Перед геометрией"), errors)
+        back = _parse_mm(back_box.Text, tr(u"За геометрией"), errors)
         level_tpl = (level_tpl_box.Text or u"").strip()
         tpl_error = level_name_template.validate(level_tpl)
         if tpl_error:
-            errors.append(u"Шаблон имени уровня: {}".format(tpl_error))
+            errors.append(tr(u"Шаблон имени уровня: {}").format(tpl_error))
         if errors:
-            forms.alert(u"\n".join(errors), title=u"Разрез по семейству")
+            forms.alert(u"\n".join(errors), title=tr(u"Разрез по семейству"))
             return
 
-        template = template_cb.SelectedItem
-        section_type = type_cb.SelectedItem
+        template = template_items[template_cb.SelectedIndex] if template_cb.SelectedIndex > 0 else None
+        section_type = type_items[type_cb.SelectedIndex] if type_cb.SelectedIndex > 0 else None
         result["values"] = {
             TEMPLATE_KEY: u"" if template in (None, NO_TEMPLATE) else unicode(template),
             TYPE_KEY: u"" if section_type in (None, DEFAULT_TYPE) else unicode(section_type),
@@ -363,7 +363,7 @@ def ask_run_options(count):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Разрез по семейству"
+    win.Title = tr(u"Разрез по семейству")
     win.Width = 420
     win.SizeToContent = SizeToContent.Height
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -373,7 +373,7 @@ def ask_run_options(count):
     root.Margin = Thickness(16, 12, 16, 12)
 
     title = TextBlock()
-    title.Text = u"Выбрано элементов: {}".format(count)
+    title.Text = tr(u"Выбрано элементов: {}").format(count)
     title.FontSize = 14
     title.FontWeight = FontWeights.Bold
     root.Children.Add(title)
@@ -381,32 +381,32 @@ def ask_run_options(count):
     separate_rb = None
     combined_rb = None
     if count > 1:
-        _label(root, u"Как строить разрез", bold=True, top=12)
+        _label(root, tr(u"Как строить разрез"), bold=True, top=12)
         separate_rb = RadioButton()
-        separate_rb.Content = u"Отдельный разрез для каждого элемента"
+        separate_rb.Content = tr(u"Отдельный разрез для каждого элемента")
         separate_rb.GroupName = u"mode"
         separate_rb.Margin = Thickness(0, 4, 0, 0)
         root.Children.Add(separate_rb)
 
         combined_rb = RadioButton()
-        combined_rb.Content = u"Один разрез для всех элементов"
+        combined_rb.Content = tr(u"Один разрез для всех элементов")
         combined_rb.GroupName = u"mode"
         combined_rb.Margin = Thickness(0, 4, 0, 0)
         root.Children.Add(combined_rb)
-        _hint(root, u"Общий разрез: ширина и глубина — по крайним элементам "
+        _hint(root, tr(u"Общий разрез: ширина и глубина — по крайним элементам "
                     u"(+ отступы из настроек), направление взгляда — по "
                     u"первому выбранному, низ — самый нижний базовый уровень, "
-                    u"верх — следующий этаж над самым верхним.")
+                    u"верх — следующий этаж над самым верхним."))
 
         if saved[COMBINE_KEY]:
             combined_rb.IsChecked = True
         else:
             separate_rb.IsChecked = True
 
-    _label(root, u"Низ разреза ниже базового уровня, мм", bold=True, top=12)
+    _label(root, tr(u"Низ разреза ниже базового уровня, мм"), bold=True, top=12)
     bottom_box = _textbox(root, _fmt_mm(saved[BOTTOM_KEY]))
-    _hint(root, u"0 — низ ровно по базовому уровню. Например, 500 — разрез "
-                u"захватит 500 мм под уровнем (перекрытие, приямки).")
+    _hint(root, tr(u"0 — низ ровно по базовому уровню. Например, 500 — разрез "
+                u"захватит 500 мм под уровнем (перекрытие, приямки)."))
 
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -414,22 +414,22 @@ def ask_run_options(count):
     buttons.Margin = Thickness(0, 16, 0, 0)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
     cancel_btn.IsCancel = True
 
     ok_btn = Button()
-    ok_btn.Content = u"Построить"
+    ok_btn.Content = tr(u"Построить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
     ok_btn.IsDefault = True
 
     def on_ok(sender, args):
         errors = []
-        bottom = _parse_mm(bottom_box.Text, u"Низ разреза ниже уровня", errors)
+        bottom = _parse_mm(bottom_box.Text, tr(u"Низ разреза ниже уровня"), errors)
         if errors:
-            forms.alert(u"\n".join(errors), title=u"Разрез по семейству")
+            forms.alert(u"\n".join(errors), title=tr(u"Разрез по семейству"))
             return
         combined = bool(combined_rb.IsChecked) if combined_rb is not None else saved[COMBINE_KEY]
         result["values"] = {COMBINE_KEY: combined, BOTTOM_KEY: bottom}
