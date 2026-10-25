@@ -98,3 +98,12 @@ def test_search_finds_buttons_by_english_caption():
     assert ribbon_catalog.localized(entry, u"title", u"en") == entry[u"title_en"]
     assert ribbon_catalog.localized(entry, u"title", u"ru") == entry[u"title"]
     assert entry[u"panel_title_en"]
+
+
+def test_language_window_marks_current_and_maps_back():
+    from lowlife import language_ui
+    options = dict(language_ui._options(i18n.EN))
+    assert options == {u"Русский": i18n.RU, u"✓ English": i18n.EN}
+    assert language_ui.chosen_language(u"Русский", i18n.EN) == i18n.RU
+    assert language_ui.chosen_language(u"✓ English", i18n.EN) == i18n.EN
+    assert language_ui.chosen_language(u"Deutsch", i18n.EN) is None

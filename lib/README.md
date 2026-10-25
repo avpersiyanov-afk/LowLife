@@ -46,7 +46,8 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
 
 ## i18n.py / ribbon_language.py
-Язык интерфейса — русский (по умолчанию) или английский, список «Язык» на панели LowLife.
+Язык интерфейса — русский (по умолчанию) или английский, кнопка «Язык / Language» на панели LowLife
+(окно — `language_ui.py`).
 `i18n.current()` → `"ru"`/`"en"` (из `LowLifeLanguage_settings.json`, перечитывается при изменении файла),
 `i18n.save(lang)`, `i18n.tr(ru, en)` — строка на выбранном языке (нет перевода — русская), `i18n.pick(dict)`.
 Без Revit API и clr.

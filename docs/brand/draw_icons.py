@@ -635,7 +635,7 @@ def language(c):
 
 
 ICONS = [
-    ("_Themes.panel/LanguageSelector.combobox", language),
+    ("_Themes.panel/Actions.stack/Language.pushbutton", language),
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
     ("SKUD.panel/BuildSkudSchematic.pushbutton", schematic_skud),
