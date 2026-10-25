@@ -9,11 +9,12 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from lowlife import parking_marks, parking_marks_settings, select_list
 
 doc = revit.doc
-TITLE = u"Отметки парковки"
+TITLE = tr(u"Отметки парковки")
 
 
 try:
@@ -23,7 +24,7 @@ except Exception:
 
 if config_mode:
     edited = parking_marks_settings.get_settings_interactive()
-    forms.alert(u"Отменено, настройки не изменены." if edited is None else u"Настройки сохранены.")
+    forms.alert(tr(u"Отменено, настройки не изменены.") if edited is None else tr(u"Настройки сохранены."))
     script.exit()
 
 
@@ -32,14 +33,14 @@ settings = parking_marks_settings.get_settings_silent()
 if parking_marks.is_plan(doc.ActiveView):
     views = [doc.ActiveView]
 else:
-    views = select_list.select_views(title=u"Планы, на которых отметить парковку",
+    views = select_list.select_views(title=tr(u"Планы, на которых отметить парковку"),
                                      filterfunc=parking_marks.is_plan, multiple=True)
     if not views:
         script.exit()
 
 collected = [(view, parking_marks.collect(doc, view, settings)) for view in views]
 if not any(found.links for _view, found in collected):
-    forms.alert(u"В модели нет загруженных связей.", title=TITLE, exitscript=True)
+    forms.alert(tr(u"В модели нет загруженных связей."), title=TITLE, exitscript=True)
 
 results = []
 with revit.Transaction(TITLE):
@@ -52,37 +53,37 @@ output = script.get_output()
 output.print_md(u"## " + TITLE)
 lines = []
 for found, result in results:
-    output.print_md(u"### План «{}»".format(result.view.Name))
-    output.print_md(u"- связи: " + (u", ".join(found.links) or u"—"))
+    output.print_md(tr(u"### План «{}»").format(result.view.Name))
+    output.print_md(tr(u"- связи: ") + (u", ".join(found.links) or u"—"))
     if found.unloaded:
-        output.print_md(u"- **выгружены** (не проверены): " + u", ".join(found.unloaded))
+        output.print_md(tr(u"- **выгружены** (не проверены): ") + u", ".join(found.unloaded))
     if found.hidden_links:
-        output.print_md(u"- скрыты на плане (проверены): " + u", ".join(found.hidden_links))
+        output.print_md(tr(u"- скрыты на плане (проверены): ") + u", ".join(found.hidden_links))
     if found.category_hidden:
-        output.print_md(u"- **категория «Парковка» скрыта на плане** — подписи поставлены, "
-                        u"но самих элементов не видно")
+        output.print_md(tr(u"- **категория «Парковка» скрыта на плане** — подписи поставлены, "
+                        u"но самих элементов не видно"))
     counts = [u"{}: {}".format(group.name, result.counts[group.key])
               for group in parking_marks.core.GROUPS + [parking_marks.core.OTHER]
               if result.counts.get(group.key)]
-    output.print_md(u"- найдено: " + (u", ".join(counts) or u"ничего"))
-    output.print_md(u"- подписей: {}, заштриховано: {}".format(result.texts, result.fills))
+    output.print_md(tr(u"- найдено: ") + (u", ".join(counts) or tr(u"ничего")))
+    output.print_md(tr(u"- подписей: {}, заштриховано: {}").format(result.texts, result.fills))
     # пропущенные зоны (не машиноместа — их на других этажах сотни) — с отметками,
     # чтобы было видно, почему зона не попала на план
     names = dict((g.key, g.name) for g in parking_marks.core.GROUPS + [parking_marks.core.OTHER])
     skipped_zones = [s for s in found.skipped if s[0] != "parking"]
     if found.skipped:
-        output.print_md(u"- пропущено элементов: {} (не на этом этаже или вне подрезки)".format(
+        output.print_md(tr(u"- пропущено элементов: {} (не на этом этаже или вне подрезки)").format(
             len(found.skipped)))
     if skipped_zones:
         rows = [[names.get(group, group), label,
                  parking_marks.core.format_height(bottom), parking_marks.core.format_height(top), reason]
                 for group, label, bottom, top, reason in skipped_zones[:50]]
-        output.print_table(rows, columns=[u"Группа", u"Элемент", u"Низ от уровня",
-                                          u"Верх от уровня", u"Причина"])
+        output.print_table(rows, columns=[tr(u"Группа"), tr(u"Элемент"), tr(u"Низ от уровня"),
+                                          tr(u"Верх от уровня"), tr(u"Причина")])
     if found.no_geometry:
-        output.print_md(u"- без геометрии и габарита: " + u", ".join(found.no_geometry))
+        output.print_md(tr(u"- без геометрии и габарита: ") + u", ".join(found.no_geometry))
     for error in result.errors:
-        output.print_md(u"- ошибка: " + error)
-    lines.append(u"«{}»: {}".format(result.view.Name, u", ".join(counts) or u"ничего не найдено"))
+        output.print_md(tr(u"- ошибка: ") + error)
+    lines.append(u"«{}»: {}".format(result.view.Name, u", ".join(counts) or tr(u"ничего не найдено")))
 
-forms.alert(u"Готово.\n\n" + u"\n".join(lines) + u"\n\nПодробности — в окне вывода.", title=TITLE)
+forms.alert(tr(u"Готово.\n\n") + u"\n".join(lines) + tr(u"\n\nПодробности — в окне вывода."), title=TITLE)

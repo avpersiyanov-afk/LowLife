@@ -13,6 +13,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -25,8 +26,8 @@ from lowlife import tag_leader_follow
 doc = revit.doc
 uidoc = revit.uidoc
 
-MODE_LAYOUT = u"Разложить выбранные марки"
-MODE_CREATE = u"Поставить марки на оборудование"
+MODE_LAYOUT = tr(u"Разложить выбранные марки")
+MODE_CREATE = tr(u"Поставить марки на оборудование")
 
 
 def preselected():
@@ -42,10 +43,10 @@ def choose_mode(picked):
         return MODE_LAYOUT
     mode = select_list.CommandSwitchWindow.show(
         [MODE_LAYOUT, MODE_CREATE],
-        message=u"Марки оборудования — что сделать?"
+        message=tr(u"Марки оборудования — что сделать?")
     )
     if not mode:
-        forms.alert(u"Отменено.", exitscript=True)
+        forms.alert(tr(u"Отменено."), exitscript=True)
     return mode
 
 
@@ -53,7 +54,7 @@ def pick(selection_filter, prompt):
     try:
         refs = uidoc.Selection.PickObjects(ObjectType.Element, selection_filter, prompt)
     except OperationCanceledException:
-        forms.alert(u"Выбор отменён.", exitscript=True)
+        forms.alert(tr(u"Выбор отменён."), exitscript=True)
     return [doc.GetElement(r) for r in refs]
 
 
@@ -63,10 +64,10 @@ def layout_entries(view, picked):
     pairs = equipment_tags.resolve_tag_pairs(doc, view, picked)
     if not pairs:
         picked = pick(equipment_tags.TagFilter(),
-                      u"Выберите марки оборудования (рамкой и/или кликами), Enter — готово")
+                      tr(u"Выберите марки оборудования (рамкой и/или кликами), Enter — готово"))
         pairs = equipment_tags.resolve_tag_pairs(doc, view, picked)
     if not pairs:
-        forms.alert(u"Среди выбранного нет марок оборудования.", exitscript=True)
+        forms.alert(tr(u"Среди выбранного нет марок оборудования."), exitscript=True)
     return [(el, tag, None) for el, tag in pairs]
 
 
@@ -78,16 +79,16 @@ def create_entries(view, picked):
     if not elements:
         elements = equipment_tags.resolve_elements(doc, pick(
             equipment_tags.EquipmentFilter(),
-            u"Выберите оборудование (рамкой и/или кликами), Enter — готово"))
+            tr(u"Выберите оборудование (рамкой и/или кликами), Enter — готово")))
     if not elements:
-        forms.alert(u"Не выбрано ни одного элемента оборудования.", exitscript=True)
+        forms.alert(tr(u"Не выбрано ни одного элемента оборудования."), exitscript=True)
 
     tagged = equipment_tags.tags_by_element(doc, view)
     untagged = [el for el in elements if equipment_tags.id_int(el.Id) not in tagged]
     skipped = len(elements) - len(untagged)
     if not untagged:
-        forms.alert(u"У всего выбранного оборудования ({}) уже есть марки на этом "
-                    u"виде. Чтобы переложить их — режим «{}».".format(skipped, MODE_LAYOUT),
+        forms.alert(tr(u"У всего выбранного оборудования ({}) уже есть марки на этом "
+                    u"виде. Чтобы переложить их — режим «{}».").format(skipped, MODE_LAYOUT),
                     exitscript=True)
 
     by_group = {}
@@ -117,10 +118,10 @@ def create_entries(view, picked):
 
     chosen = equipment_tags_form.show_groups(groups, skipped)
     if chosen is None:
-        forms.alert(u"Отменено.", exitscript=True)
+        forms.alert(tr(u"Отменено."), exitscript=True)
     equipment_tags_form.save_choice(groups, chosen)
     if not chosen:
-        forms.alert(u"Ничего не выбрано для маркировки.", exitscript=True)
+        forms.alert(tr(u"Ничего не выбрано для маркировки."), exitscript=True)
 
     entries = []
     for key, type_id in chosen.items():
@@ -136,13 +137,13 @@ except Exception:
 
 if config_mode:
     edited = equipment_tags_settings.get_settings_interactive()
-    forms.alert(u"Отменено, настройки не изменены." if edited is None
-                else u"Настройки сохранены.", exitscript=True)
+    forms.alert(tr(u"Отменено, настройки не изменены.") if edited is None
+                else tr(u"Настройки сохранены."), exitscript=True)
 
 view = doc.ActiveView
 if not equipment_tags.is_taggable_view(view):
-    forms.alert(u"Откройте план, разрез или фасад — на этом виде марки "
-                u"оборудования не ставятся.", exitscript=True)
+    forms.alert(tr(u"Откройте план, разрез или фасад — на этом виде марки "
+                u"оборудования не ставятся."), exitscript=True)
 
 settings = equipment_tags_settings.load_settings()
 picked = preselected()
@@ -160,35 +161,35 @@ except Exception:
     pass
 
 try:
-    with revit.Transaction(u"Марки оборудования"):
+    with revit.Transaction(tr(u"Марки оборудования")):
         stats = equipment_tags.run(doc, view, entries, settings)
 except Exception:
     forms.alert(
-        u"Сбой при расстановке марок (транзакция отменена, изменения не "
-        u"сохранены):\n\n{}".format(traceback.format_exc()),
-        title=u"Марки оборудования", exitscript=True
+        tr(u"Сбой при расстановке марок (транзакция отменена, изменения не "
+        u"сохранены):\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Марки оборудования"), exitscript=True
     )
 
-lines = [u"Разложено марок: {}".format(stats["moved"])]
+lines = [tr(u"Разложено марок: {}").format(stats["moved"])]
 if mode == MODE_CREATE:
-    lines.append(u"Из них новых: {}".format(stats["created"]))
+    lines.append(tr(u"Из них новых: {}").format(stats["created"]))
 if stats["failed"]:
-    lines.append(u"Не удалось поставить/сдвинуть: {} (нет подходящей марки "
-                 u"для категории?)".format(stats["failed"]))
+    lines.append(tr(u"Не удалось поставить/сдвинуть: {} (нет подходящей марки "
+                 u"для категории?)").format(stats["failed"]))
 if stats["upper_floor"]:
-    lines.append(u"Только верхний этаж (тип без «/» в двухэтажном "
-                 u"семействе): {}".format(stats["upper_floor"]))
+    lines.append(tr(u"Только верхний этаж (тип без «/» в двухэтажном "
+                 u"семействе): {}").format(stats["upper_floor"]))
 if stats["following"]:
-    lines.append(u"Выноска на краю УГО, следует за прибором: {}{}".format(
+    lines.append(tr(u"Выноска на краю УГО, следует за прибором: {}{}").format(
         stats["following"], u"" if following_ok else
-        u" (слежение не запустилось — перезапустите Revit)"))
+        tr(u" (слежение не запустилось — перезапустите Revit)")))
 if stats["no_symbol"]:
-    lines.append(u"Без УГО — марка к семейству: {}".format(stats["no_symbol"]))
+    lines.append(tr(u"Без УГО — марка к семейству: {}").format(stats["no_symbol"]))
 if stats["no_bbox"]:
-    lines.append(u"Не видно на виде (пропущено): {}".format(stats["no_bbox"]))
+    lines.append(tr(u"Не видно на виде (пропущено): {}").format(stats["no_bbox"]))
 if stats["overlaps"] or stats["crossings"]:
-    lines.append(u"\nМеста не хватило: марок внахлёст — {}, пересечений "
+    lines.append(tr(u"\nМеста не хватило: марок внахлёст — {}, пересечений "
                  u"выносок — {}. Попробуйте уменьшить «рядом» или "
                  u"отступ в настройках (Shift+клик) либо выбрать "
-                 u"оборудование частями.".format(stats["overlaps"], stats["crossings"]))
-forms.alert(u"\n".join(lines), title=u"Марки оборудования")
+                 u"оборудование частями.").format(stats["overlaps"], stats["crossings"]))
+forms.alert(u"\n".join(lines), title=tr(u"Марки оборудования"))

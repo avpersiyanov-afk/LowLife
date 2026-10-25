@@ -22,6 +22,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -37,12 +38,12 @@ from System.Windows.Media import Brushes
 
 from lowlife import settings_core
 
-SKIP = u"— не маркировать —"
+SKIP = N_(u"— не маркировать —")
 
 _STORE = settings_core.JsonStore("LowLifeEquipmentTags_types.json", u"марок оборудования")
 
-_COLUMNS = [(u"Категория", 190), (u"Семейство", None), (u"Без марки", 80),
-            (u"Марка", 300)]
+_COLUMNS = [(N_(u"Категория"), 190), (N_(u"Семейство"), None), (N_(u"Без марки"), 80),
+            (N_(u"Марка"), 300)]
 
 
 class TagGroup(object):
@@ -115,7 +116,7 @@ def show_groups(groups, skipped_tagged=0):
     result = {"value": None}
 
     win = Window()
-    win.Title = u"Марки оборудования — что маркировать"
+    win.Title = tr(u"Марки оборудования — что маркировать")
     win.Width = 960
     win.Height = 560
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -128,19 +129,19 @@ def show_groups(groups, skipped_tagged=0):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Выбранное оборудование без марки на этом виде"
+    title.Text = tr(u"Выбранное оборудование без марки на этом виде")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     hint = TextBlock()
     hint.Text = (
-        u"Для каждого семейства выберите тип марки или «не маркировать». "
+        tr(u"Для каждого семейства выберите тип марки или «не маркировать». "
         u"Выбор запоминается по семейству. Уже стоящие марки не трогаются — "
-        u"чтобы переложить их, запустите кнопку в режиме «Разложить марки»."
+        u"чтобы переложить их, запустите кнопку в режиме «Разложить марки».")
     )
     if skipped_tagged:
-        hint.Text += u" Уже с маркой на этом виде (пропущено): {}.".format(skipped_tagged)
+        hint.Text += tr(u" Уже с маркой на этом виде (пропущено): {}.").format(skipped_tagged)
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.TextWrapping = TextWrapping.Wrap
@@ -150,8 +151,8 @@ def show_groups(groups, skipped_tagged=0):
     tools = StackPanel()
     tools.Orientation = Orientation.Horizontal
     tools.Margin = Thickness(0, 0, 0, 8)
-    none_btn = _button(u"Всем — не маркировать")
-    reset_btn = _button(u"Всем — как в прошлый раз")
+    none_btn = _button(tr(u"Всем — не маркировать"))
+    reset_btn = _button(tr(u"Всем — как в прошлый раз"))
     tools.Children.Add(none_btn)
     tools.Children.Add(reset_btn)
     header.Children.Add(tools)
@@ -159,7 +160,7 @@ def show_groups(groups, skipped_tagged=0):
     head = _make_grid()
     for index, (column_title, _width) in enumerate(_COLUMNS):
         cell = TextBlock()
-        cell.Text = column_title
+        cell.Text = tr(column_title)
         cell.FontWeight = FontWeights.Bold
         _place(head, cell, index)
     header.Children.Add(head)
@@ -183,11 +184,11 @@ def show_groups(groups, skipped_tagged=0):
         names = [SKIP] + [name for name, _tid in group.options]
         combo = ComboBox()
         for name in names:
-            combo.Items.Add(name)
+            combo.Items.Add(tr(name) if name == SKIP else name)
         combo.SelectedIndex = default_index(group, names)
         if not group.options:
             combo.IsEnabled = False
-            combo.ToolTip = u"Для этой категории не загружено ни одной марки"
+            combo.ToolTip = tr(u"Для этой категории не загружено ни одной марки")
         _place(row, combo, 3)
         body.Children.Add(row)
         rows.append((group, combo, names))
@@ -209,8 +210,8 @@ def show_groups(groups, skipped_tagged=0):
     buttons.Margin = Thickness(16, 8, 8, 12)
     DockPanel.SetDock(buttons, Dock.Bottom)
 
-    cancel_btn = _button(u"Отмена")
-    ok_btn = _button(u"Поставить марки", bold=True)
+    cancel_btn = _button(tr(u"Отмена"))
+    ok_btn = _button(tr(u"Поставить марки"), bold=True)
 
     def on_ok(sender, args):
         chosen = {}

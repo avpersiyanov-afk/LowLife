@@ -60,6 +60,7 @@ except NameError:  # Python 3
 
 
 import datetime
+from lowlife.i18n import tr
 import io
 import json
 from collections import OrderedDict
@@ -226,8 +227,8 @@ def collect_elements(doc, uidoc, options):
     if scope == SCOPE_SELECTION:
         ids = list(uidoc.Selection.GetElementIds())
         if not ids:
-            return [], (u"В настройках выбрана выгрузка выделенных элементов, "
-                        u"а в Revit ничего не выделено.")
+            return [], (tr(u"В настройках выбрана выгрузка выделенных элементов, "
+                        u"а в Revit ничего не выделено."))
         raw = [doc.GetElement(i) for i in ids]
         allow_annotation = True
     elif scope == SCOPE_ALL:
@@ -240,9 +241,9 @@ def collect_elements(doc, uidoc, options):
             raw = (FilteredElementCollector(doc, view.Id)
                    .WhereElementIsNotElementType().ToElements())
         except Exception:
-            return [], (u"Не удалось собрать элементы активного вида «{}». "
+            return [], (tr(u"Не удалось собрать элементы активного вида «{}». "
                         u"Откройте план/3D-вид или выберите в настройках "
-                        u"другую область.".format(_safe_name(view)))
+                        u"другую область.").format(_safe_name(view)))
         allow_annotation = False
 
     out = []
@@ -535,19 +536,19 @@ def read_snapshot(path):
         with io.open(path, "r", encoding="utf-8-sig") as f:
             data = json.loads(f.read())
     except Exception as exc:
-        return None, u"Не удалось прочитать JSON:\n{}".format(exc)
+        return None, tr(u"Не удалось прочитать JSON:\n{}").format(exc)
     if not isinstance(data, dict) or data.get("format") != FORMAT:
-        return None, (u"Файл не похож на снимок LowLife (нет \"format\": "
-                      u"\"{}\").".format(FORMAT))
+        return None, (tr(u"Файл не похож на снимок LowLife (нет \"format\": "
+                      u"\"{}\").").format(FORMAT))
     if not isinstance(data.get("elements"), list):
-        return None, u"В файле нет списка \"elements\"."
+        return None, tr(u"В файле нет списка \"elements\".")
     try:
         version = int(data.get("version") or 0)
     except Exception:
         version = 0
     if version > VERSION:
-        return None, (u"Снимок сделан более новой версией LowLife (формат {}), "
-                      u"обновите расширение.".format(version))
+        return None, (tr(u"Снимок сделан более новой версией LowLife (формат {}), "
+                      u"обновите расширение.").format(version))
     return data, None
 
 
@@ -565,7 +566,7 @@ def _value_text(value):
 
 
 def _write_param(p, text):
-    return None if set_param_text(p, text) else u"Revit не принял значение"
+    return None if set_param_text(p, text) else tr(u"Revit не принял значение")
 
 
 def _plan_params(el, params, hashes, res):
@@ -583,7 +584,7 @@ def _plan_params(el, params, hashes, res):
             continue
         new = _value_text(raw)
         if new is None:
-            res["bad_value"].append((eid, name, u"не текст/число"))
+            res["bad_value"].append((eid, name, tr(u"не текст/число")))
             continue
         old = param_to_text(p)
         if old.strip() == new.strip():
@@ -601,7 +602,7 @@ def _plan_params(el, params, hashes, res):
                                          else _fingerprint(u""))
         if not new.strip() and p.StorageType != StorageType.String:
             res["bad_value"].append(
-                (eid, name, u"пустое значение у числового параметра"))
+                (eid, name, tr(u"пустое значение у числового параметра")))
             continue
         label = u"{} · ID {} · «{}»: «{}» → «{}»".format(
             _category_name(el), eid, name, _short(old), _short(new))

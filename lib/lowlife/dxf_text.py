@@ -35,6 +35,7 @@ Revit по габаритам геометрии (масштаб + сдвиг), 
 from __future__ import division
 
 import math
+from lowlife.i18n import tr
 import re
 
 try:
@@ -135,7 +136,7 @@ def _header_value(head, name):
 def decode_dxf(data):
     """Байты DXF → текст в правильной кодировке."""
     if data[:18] == b"AutoCAD Binary DXF":
-        raise ValueError(u"Двоичный DXF не поддерживается — сохраните DXF в текстовом (ASCII) формате.")
+        raise ValueError(tr(u"Двоичный DXF не поддерживается — сохраните DXF в текстовом (ASCII) формате."))
     if data[:3] == b"\xef\xbb\xbf":
         return data[3:].decode("utf-8", "replace")
     head = data[:200000].decode("latin-1")
@@ -164,7 +165,7 @@ def _pairs(text):
         try:
             code = int(raw)
         except ValueError:
-            raise ValueError(u"Файл не похож на текстовый DXF (строка {}: «{}»).".format(i + 1, raw[:40]))
+            raise ValueError(tr(u"Файл не похож на текстовый DXF (строка {}: «{}»).").format(i + 1, raw[:40]))
         result.append((code, lines[i + 1]))
     return result
 

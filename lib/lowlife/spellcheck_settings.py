@@ -11,6 +11,7 @@
 """
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -58,7 +59,7 @@ def show_settings_form(values, default_prompt):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки: Проверка орфографии"
+    win.Title = tr(u"Настройки: Проверка орфографии")
     win.Width = 720
     win.SizeToContent = SizeToContent.Height
     win.MaxHeight = SystemParameters.WorkArea.Height - 40
@@ -68,17 +69,17 @@ def show_settings_form(values, default_prompt):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Проверка орфографии"
+    title.Text = tr(u"Проверка орфографии")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     root.Children.Add(title)
-    _hint(root, u"Тексты заметок модели уходят выбранному ИИ; исправления показываются "
-                u"списком и записываются только отмеченные.")
+    _hint(root, tr(u"Тексты заметок модели уходят выбранному ИИ; исправления показываются "
+                u"списком и записываются только отмеченные."))
 
     connection = ai_settings.ConnectionSection(
-        root, values, shared_note=u"Подключение общее с кнопкой «Задачи из почты».")
+        root, values, shared_note=tr(u"Подключение общее с кнопкой «Задачи из почты»."))
 
-    _label(root, u"Промпт", bold=True, top=18)
+    _label(root, tr(u"Промпт"), bold=True, top=18)
     prompt_box = TextBox()
     prompt_box.Text = effective_prompt(values, default_prompt)
     prompt_box.AcceptsReturn = True
@@ -88,13 +89,13 @@ def show_settings_form(values, default_prompt):
     prompt_box.Height = 260
     prompt_box.Padding = Thickness(4)
     root.Children.Add(prompt_box)
-    _hint(root, u"Тексты добавляются к промпту автоматически в виде "
+    _hint(root, tr(u"Тексты добавляются к промпту автоматически в виде "
                 u"{\"items\":[{\"id\":…,\"text\":…}]}. Сохраните в тексте формат ответа "
                 u"{\"fixes\":[{\"id\":…,\"text\":…}]} — по нему разбирается ответ. Свой "
-                u"текст хранится в настройках и не теряется при обновлении расширения.")
+                u"текст хранится в настройках и не теряется при обновлении расширения."))
 
     reset_btn = Button()
-    reset_btn.Content = u"Вернуть стандартный промпт"
+    reset_btn.Content = tr(u"Вернуть стандартный промпт")
     reset_btn.Padding = Thickness(10, 3, 10, 3)
     reset_btn.Margin = Thickness(0, 6, 0, 0)
     reset_btn.HorizontalAlignment = HorizontalAlignment.Left
@@ -111,12 +112,12 @@ def show_settings_form(values, default_prompt):
     buttons.Margin = Thickness(0, 18, 0, 0)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
     ok_btn.IsDefault = True

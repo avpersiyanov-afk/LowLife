@@ -4,6 +4,7 @@ __title__ = u"Разрез по\nсемейству"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, EXEC_PARAMS
 
@@ -13,7 +14,7 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 doc = revit.doc
 uidoc = revit.uidoc
 
-TITLE = u"Разрез по семейству"
+TITLE = tr(u"Разрез по семейству")
 
 
 class _SectionableFilter(ISelectionFilter):
@@ -38,7 +39,7 @@ def _collect_instances():
     try:
         refs = uidoc.Selection.PickObjects(
             ObjectType.Element, _SectionableFilter(),
-            u"Выберите элементы для разреза и нажмите «Готово»"
+            tr(u"Выберите элементы для разреза и нажмите «Готово»")
         )
     except OperationCanceledException:
         return []
@@ -57,8 +58,8 @@ def main():
         edited = fss.get_settings_interactive(doc)
         if config_mode:
             forms.alert(
-                u"Отменено, настройки не изменены." if edited is None
-                else u"Настройки сохранены.", title=TITLE
+                tr(u"Отменено, настройки не изменены.") if edited is None
+                else tr(u"Настройки сохранены."), title=TITLE
             )
             return
         if edited is None:
@@ -72,18 +73,18 @@ def main():
         family_section.list_section_types(doc), settings[fss.TYPE_KEY])
     if section_type is None:
         if settings[fss.TYPE_KEY]:
-            warnings.append(u"Типоразмер разреза «{}» не найден — взят тип по умолчанию.".format(
+            warnings.append(tr(u"Типоразмер разреза «{}» не найден — взят тип по умолчанию.").format(
                 settings[fss.TYPE_KEY]))
         section_type = family_section.default_section_type(doc)
     if section_type is None:
-        forms.alert(u"В проекте нет ни одного типоразмера разреза.", title=TITLE, exitscript=True)
+        forms.alert(tr(u"В проекте нет ни одного типоразмера разреза."), title=TITLE, exitscript=True)
 
     template = None
     if settings[fss.TEMPLATE_KEY]:
         template = family_section.find_by_name(
             family_section.list_section_templates(doc), settings[fss.TEMPLATE_KEY])
         if template is None:
-            warnings.append(u"Шаблон вида «{}» не найден — разрез создан без шаблона.".format(
+            warnings.append(tr(u"Шаблон вида «{}» не найден — разрез создан без шаблона.").format(
                 settings[fss.TEMPLATE_KEY]))
 
     instances = _collect_instances()
@@ -102,7 +103,7 @@ def main():
     taken_names = family_section.existing_view_names(doc)
     level_template = level_name_template.LevelNameTemplate(settings[fss.LEVEL_TEMPLATE_KEY])
     if level_template.error:
-        warnings.append(u"Шаблон имени уровня «{}»: {} — корпуса не учитываются.".format(
+        warnings.append(tr(u"Шаблон имени уровня «{}»: {} — корпуса не учитываются.").format(
             level_template.template, level_template.error))
     results = []
 
@@ -131,15 +132,15 @@ def main():
             warnings.append(u"{}: {}".format(r.ids_label(), w))
 
     if failed or warnings or len(created) > 1:
-        lines = [u"Создано разрезов: {}".format(len(created))]
+        lines = [tr(u"Создано разрезов: {}").format(len(created))]
         lines.extend(u"  • {}".format(r.name) for r in created)
         if failed:
             lines.append(u"")
-            lines.append(u"Не удалось построить:")
+            lines.append(tr(u"Не удалось построить:"))
             lines.extend(u"  • {}: {}".format(r.ids_label(), r.error) for r in failed)
         if warnings:
             lines.append(u"")
-            lines.append(u"Предупреждения:")
+            lines.append(tr(u"Предупреждения:"))
             lines.extend(u"  • {}".format(w) for w in warnings)
         forms.alert(u"\n".join(lines), title=TITLE)
 
@@ -150,6 +151,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «{}»:\n\n{}".format(TITLE, traceback.format_exc()),
+        tr(u"Сбой в «{}»:\n\n{}").format(TITLE, traceback.format_exc()),
         title=TITLE
     )

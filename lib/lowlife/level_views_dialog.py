@@ -7,6 +7,7 @@ level_views_core, создание видов — level_views.
 """
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -27,7 +28,7 @@ from System.Windows.Controls import (
 )
 from System.Windows.Media import Brushes
 
-TITLE = u"Виды по уровням"
+TITLE = N_(u"Виды по уровням")
 _PREVIEW_MAX = 8
 
 
@@ -62,13 +63,13 @@ def _button(parent, text, handler, bold=False):
 
 # Подстановки маски: (подстановка, что в неё попадёт).
 _TOKEN_HELP = (
-    (u"{Группа вида и назначение}", u"то, что вписано у шаблона в списке ниже"),
-    (u"{Уровень}", u"имя уровня целиком"),
+    (u"{Группа вида и назначение}", N_(u"то, что вписано у шаблона в списке ниже")),
+    (u"{Уровень}", N_(u"имя уровня целиком")),
     (u"{Корпус}, {Этаж}, {Комментарий}",
-     u"части имени уровня — как их выделять, задаёт шаблон имени уровня в настройках "
-     u"кнопки «Секущий диапазон» (Shift+клик); не подходит под шаблон — пусто"),
-    (u"{Отметка}", u"отметка уровня, например «+3.300»"),
-    (u"{Шаблон}", u"имя шаблона вида"),
+     N_(u"части имени уровня — как их выделять, задаёт шаблон имени уровня в настройках "
+        u"кнопки «Секущий диапазон» (Shift+клик); не подходит под шаблон — пусто")),
+    (u"{Отметка}", N_(u"отметка уровня, например «+3.300»")),
+    (u"{Шаблон}", N_(u"имя шаблона вида")),
 )
 
 
@@ -128,7 +129,7 @@ def show(doc, templates, levels, settings, level_template, store):
     result = {"value": None}
 
     win = Window()
-    win.Title = TITLE
+    win.Title = tr(TITLE)
     win.Width = 760
     win.Height = 800
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -140,16 +141,16 @@ def show(doc, templates, levels, settings, level_template, store):
     header = StackPanel()
     DockPanel.SetDock(header, Dock.Top)
     title = TextBlock()
-    title.Text = TITLE
+    title.Text = tr(TITLE)
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
-    _hint(header, u"Для каждого отмеченного шаблона вида создаётся план на каждом уровне "
+    _hint(header, tr(u"Для каждого отмеченного шаблона вида создаётся план на каждом уровне "
                   u"модели (уровней: {}) с этим шаблоном. Вид с таким же именем на том же "
-                  u"уровне не создаётся заново — ему назначается шаблон.".format(len(levels)))
+                  u"уровне не создаётся заново — ему назначается шаблон.").format(len(levels)))
 
     mask_label = TextBlock()
-    mask_label.Text = u"Маска имени вида"
+    mask_label.Text = tr(u"Маска имени вида")
     mask_label.FontWeight = FontWeights.Bold
     mask_label.Margin = Thickness(0, 12, 0, 2)
     header.Children.Add(mask_label)
@@ -157,9 +158,9 @@ def show(doc, templates, levels, settings, level_template, store):
     mask_box.Padding = Thickness(4)
     mask_box.Text = settings[core.MASK_KEY]
     header.Children.Add(mask_box)
-    _hint(header, u"По умолчанию: «{}». Другой пример: «{{Этаж}} этаж. {{Группа вида и "
-                  u"назначение}}».".format(core.DEFAULT_MASK), top=4)
-    _hint(header, u"Подстановки:", top=6)
+    _hint(header, tr(u"По умолчанию: «{}». Другой пример: «{{Этаж}} этаж. {{Группа вида и "
+                  u"назначение}}».").format(core.DEFAULT_MASK), top=4)
+    _hint(header, tr(u"Подстановки:"), top=6)
     _tokens_table(header)
     outer.Children.Add(header)
 
@@ -175,22 +176,22 @@ def show(doc, templates, levels, settings, level_template, store):
     bottom.Children.Add(preview)
 
     align_cb = CheckBox()
-    align_cb.Content = u"Выровнять секущий диапазон (как кнопка «Секущий диапазон»)"
+    align_cb.Content = tr(u"Выровнять секущий диапазон (как кнопка «Секущий диапазон»)")
     align_cb.IsChecked = bool(settings[core.ALIGN_RANGE_KEY])
     align_cb.Margin = Thickness(0, 12, 0, 0)
     bottom.Children.Add(align_cb)
     pick_cb = CheckBox()
-    pick_cb.Content = u"Выбирать уровни для каждого шаблона"
+    pick_cb.Content = tr(u"Выбирать уровни для каждого шаблона")
     pick_cb.IsChecked = bool(settings[core.PICK_LEVELS_KEY])
     pick_cb.Margin = Thickness(0, 6, 0, 0)
     bottom.Children.Add(pick_cb)
-    _hint(bottom, u"После «Создать виды» для каждого отмеченного шаблона по очереди откроется "
+    _hint(bottom, tr(u"После «Создать виды» для каждого отмеченного шаблона по очереди откроется "
                   u"список уровней модели — отметьте, для каких уровней создавать его виды. "
-                  u"Выбор запоминается для каждого шаблона. Без галочки — все уровни.")
-    _hint(bottom, u"Низ и глубина — уровень вида; секущая плоскость +1200 мм (низкий этаж — "
+                  u"Выбор запоминается для каждого шаблона. Без галочки — все уровни."))
+    _hint(bottom, tr(u"Низ и глубина — уровень вида; секущая плоскость +1200 мм (низкий этаж — "
                   u"+900); верх — следующий этаж −200 мм. Если настройка «Секущего "
                   u"диапазона» ещё не заполнена — она откроется перед созданием видов. "
-                  u"Планы потолков и виды, чей диапазон задаёт шаблон, не меняются.")
+                  u"Планы потолков и виды, чей диапазон задаёт шаблон, не меняются."))
 
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -206,7 +207,7 @@ def show(doc, templates, levels, settings, level_template, store):
     list_head = DockPanel()
     DockPanel.SetDock(list_head, Dock.Top)
     list_title = TextBlock()
-    list_title.Text = u"Шаблоны видов"
+    list_title.Text = tr(u"Шаблоны видов")
     list_title.FontWeight = FontWeights.Bold
     list_title.VerticalAlignment = VerticalAlignment.Center
     list_head.Children.Add(list_title)
@@ -216,8 +217,8 @@ def show(doc, templates, levels, settings, level_template, store):
     list_head.Children.Add(select_buttons)
     middle.Children.Add(list_head)
     multi_hint = TextBlock()
-    multi_hint.Text = (u"У шаблона может быть несколько групп вида и назначения — по одной на "
-                       u"строке (Enter); на каждую создаётся свой вид на каждом уровне.")
+    multi_hint.Text = (tr(u"У шаблона может быть несколько групп вида и назначения — по одной на "
+                       u"строке (Enter); на каждую создаётся свой вид на каждом уровне."))
     multi_hint.FontSize = 11
     multi_hint.Foreground = Brushes.Gray
     multi_hint.TextWrapping = TextWrapping.Wrap
@@ -240,7 +241,7 @@ def show(doc, templates, levels, settings, level_template, store):
         grid.ColumnDefinitions.Add(col)
 
     grid.RowDefinitions.Add(RowDefinition())
-    for col, text in enumerate((u"Шаблон вида", u"Вид", u"Группа вида и назначение")):
+    for col, text in enumerate((tr(u"Шаблон вида"), tr(u"Вид"), tr(u"Группа вида и назначение"))):
         head = TextBlock()
         head.Text = text
         head.Foreground = Brushes.Gray
@@ -290,27 +291,27 @@ def show(doc, templates, levels, settings, level_template, store):
         picked = chosen()
         error = core.validate_mask(mask)
         if error:
-            preview_title.Text = u"Маска: " + error
+            preview_title.Text = tr(u"Маска: ") + error
             preview_title.Foreground = Brushes.Firebrick
             preview.Text = u""
             return
         preview_title.Foreground = Brushes.Black
         if not picked:
-            preview_title.Text = u"Отметьте шаблоны, для которых создавать виды."
+            preview_title.Text = tr(u"Отметьте шаблоны, для которых создавать виды.")
             preview.Text = u""
             return
         items = pairs(picked)
-        preview_title.Text = u"Будет видов: {}{} ({} на уровень × {} ур.{}). Имена на уровне «{}»:".format(
-            u"до " if pick_cb.IsChecked else u"", len(items) * len(levels), len(items),
-            len(levels), u", уровни выберете дальше" if pick_cb.IsChecked else u"",
+        preview_title.Text = tr(u"Будет видов: {}{} ({} на уровень × {} ур.{}). Имена на уровне «{}»:").format(
+            tr(u"до ") if pick_cb.IsChecked else u"", len(items) * len(levels), len(items),
+            len(levels), tr(u", уровни выберете дальше") if pick_cb.IsChecked else u"",
             first_values.get(core.TOKEN_LEVEL, u""))
         lines = [u"• " + core.build_view_name(mask, first_values, r.name, v)
                  for r, v in items[:_PREVIEW_MAX]]
         if len(items) > _PREVIEW_MAX:
-            lines.append(u"… и ещё {}".format(len(items) - _PREVIEW_MAX))
+            lines.append(tr(u"… и ещё {}").format(len(items) - _PREVIEW_MAX))
         warning = core.mask_warning(mask, [(r.name, v) for r, v in items])
         if warning:
-            lines.append(u"Внимание: " + warning)
+            lines.append(tr(u"Внимание: ") + warning)
         preview.Text = u"\n".join(lines)
 
     mask_box.TextChanged += update_preview
@@ -327,15 +328,15 @@ def show(doc, templates, levels, settings, level_template, store):
                 r.check.IsChecked = flag
         return handler
 
-    _button(select_buttons, u"Отметить все", set_all(True))
-    _button(select_buttons, u"Снять все", set_all(False))
+    _button(select_buttons, tr(u"Отметить все"), set_all(True))
+    _button(select_buttons, tr(u"Снять все"), set_all(False))
 
     def form_state(action):
         """Значения окна или None (неверная маска — с сообщением)."""
         mask = mask_box.Text
         error = core.validate_mask(mask)
         if error:
-            forms.alert(u"Маска имени вида: " + error, title=TITLE)
+            forms.alert(tr(u"Маска имени вида: ") + error, title=tr(TITLE))
             return None
         picked = chosen()
         return {
@@ -357,7 +358,7 @@ def show(doc, templates, levels, settings, level_template, store):
         if state is None:
             return
         if not state["items"]:
-            forms.alert(u"Отметьте хотя бы один шаблон вида.", title=TITLE)
+            forms.alert(tr(u"Отметьте хотя бы один шаблон вида."), title=tr(TITLE))
             return
         result["value"] = state
         win.Close()
@@ -380,11 +381,11 @@ def show(doc, templates, levels, settings, level_template, store):
         result["value"] = settings_transfer.RELOAD
         win.Close()
 
-    _button(buttons, u"Отмена", lambda s, a: win.Close())
-    _button(buttons, u"Сохранить", on_save)
-    _button(buttons, u"Создать виды", on_run, bold=True)
+    _button(buttons, tr(u"Отмена"), lambda s, a: win.Close())
+    _button(buttons, tr(u"Сохранить"), on_save)
+    _button(buttons, tr(u"Создать виды"), on_run, bold=True)
     settings_transfer.add_transfer_buttons(
-        buttons, read_for_export, store.write_all, u"видов по уровням", on_imported)
+        buttons, read_for_export, store.write_all, tr(u"видов по уровням"), on_imported)
 
     update_preview()
     win.Content = outer
@@ -412,9 +413,9 @@ def pick_levels(template_name, levels, remembered):
              for l in levels]
     chosen = select_list.SelectFromList.show(
         items,
-        title=u"Выберите уровни в модели, для которых создавать виды для шаблона «{}»".format(
+        title=tr(u"Выберите уровни в модели, для которых создавать виды для шаблона «{}»").format(
             template_name),
-        button_name=u"Далее", multiselect=True, width=600, height=600)
+        button_name=tr(u"Далее"), multiselect=True, width=600, height=600)
     if chosen is None:
         return None
     return [o.level for o in chosen]

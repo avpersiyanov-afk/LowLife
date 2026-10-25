@@ -22,6 +22,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('System.Data')
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -61,17 +62,17 @@ def choose_catalog(doc, title):
         catalogs = [ks for ks in wire_catalog.list_key_schedules(doc) if ks.is_circuit]
     if not catalogs:
         forms.alert(
-            u"Справочник кабелей не найден: в модели нет ключевой спецификации "
-            u"категории «Электрические цепи».",
+            tr(u"Справочник кабелей не найден: в модели нет ключевой спецификации "
+            u"категории «Электрические цепи»."),
             title=title, exitscript=True)
     if len(catalogs) == 1:
         return catalogs[0]
 
     by_label = {}
     for ks in catalogs:
-        by_label[u"{} ({} строк)".format(ks.name, len(ks.rows))] = ks
+        by_label[tr(u"{} ({} строк)").format(ks.name, len(ks.rows))] = ks
     picked = select_list.SelectFromList.show(
-        sorted(by_label.keys()), title=u"Какой справочник кабелей", button_name=u"Выбрать")
+        sorted(by_label.keys()), title=tr(u"Какой справочник кабелей"), button_name=tr(u"Выбрать"))
     if not picked:
         import sys
         sys.exit()
@@ -115,7 +116,7 @@ def show_edit_window(doc, ks):
     result = {"entries": None}
 
     win = Window()
-    win.Title = u"Справочник кабелей — {}".format(ks.name)
+    win.Title = tr(u"Справочник кабелей — {}").format(ks.name)
     win.Width = 1000
     win.Height = 620
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -127,16 +128,16 @@ def show_edit_window(doc, ks):
     header.Margin = Thickness(16, 12, 16, 8)
     DockPanel.SetDock(header, Dock.Top)
     title = TextBlock()
-    title.Text = u"{} — {} строк".format(ks.name, len(ks.rows))
+    title.Text = tr(u"{} — {} строк").format(ks.name, len(ks.rows))
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
     info = TextBlock()
     info.Text = (
-        u"Меняйте значения прямо в ячейках. Новая строка — пустая строка внизу "
+        tr(u"Меняйте значения прямо в ячейках. Новая строка — пустая строка внизу "
         u"таблицы или кнопка «Копировать строку» (копия выбранной как основа). "
         u"Ключевые имена должны быть уникальными. Серые столбцы вычисляемые или "
-        u"только для чтения. Удалять строки здесь нельзя — на них могут ссылаться цепи."
+        u"только для чтения. Удалять строки здесь нельзя — на них могут ссылаться цепи.")
     )
     info.FontSize = 11
     info.TextWrapping = TextWrapping.Wrap
@@ -170,7 +171,7 @@ def show_edit_window(doc, ks):
         col.Width = DataGridLength(2 if i == 0 else 1, DataGridLengthUnitType.Star)
         if i > 0 and not writable.get(name):
             col.IsReadOnly = True
-            col.Header = u"{} (только чтение)".format(name)
+            col.Header = tr(u"{} (только чтение)").format(name)
         grid.Columns.Add(col)
 
     def on_copy(sender, args):
@@ -179,7 +180,7 @@ def show_edit_window(doc, ks):
         try:
             src = view.Row
         except Exception:
-            forms.alert(u"Выберите строку, которую копировать.")
+            forms.alert(tr(u"Выберите строку, которую копировать."))
             return
         dr = table.NewRow()
         for i in range(len(columns)):
@@ -217,9 +218,9 @@ def show_edit_window(doc, ks):
     def on_cancel(sender, args):
         win.Close()
 
-    for text, handler in ((u"Копировать строку", on_copy),
-                          (u"Сохранить", on_save),
-                          (u"Отмена", on_cancel)):
+    for text, handler in ((tr(u"Копировать строку"), on_copy),
+                          (tr(u"Сохранить"), on_save),
+                          (tr(u"Отмена"), on_cancel)):
         b = Button()
         b.Content = text
         b.Padding = Thickness(12, 4, 12, 4)
@@ -237,16 +238,16 @@ def show_edit_window(doc, ks):
 def report_stats(stats, title):
     """Итог apply_entries — окном."""
     parts = [
-        u"Добавлено строк: {}".format(stats["added"]),
-        u"Изменено строк: {} (значений: {})".format(stats["updated"], stats["changed"]),
+        tr(u"Добавлено строк: {}").format(stats["added"]),
+        tr(u"Изменено строк: {} (значений: {})").format(stats["updated"], stats["changed"]),
     ]
     if stats.get("unchanged"):
-        parts.append(u"Без изменений: {}".format(stats["unchanged"]))
+        parts.append(tr(u"Без изменений: {}").format(stats["unchanged"]))
     errors = stats.get("errors") or []
     if errors:
         parts.append(u"")
-        parts.append(u"Проблемы ({}):".format(len(errors)))
+        parts.append(tr(u"Проблемы ({}):").format(len(errors)))
         parts.extend(errors[:20])
         if len(errors) > 20:
-            parts.append(u"… и ещё {}".format(len(errors) - 20))
+            parts.append(tr(u"… и ещё {}").format(len(errors) - 20))
     forms.alert(u"\n".join(parts), title=title)

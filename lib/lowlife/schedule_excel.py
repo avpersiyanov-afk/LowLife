@@ -20,6 +20,7 @@ except NameError:  # Python 3
 
 
 import re
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     Element,
@@ -460,7 +461,7 @@ def rows_to_model(doc, rows):
             id_col = i
             break
     if id_col is None:
-        res["errors"].append(u"Не найден столбец «{}».".format(ID_HEADER))
+        res["errors"].append(tr(u"Не найден столбец «{}».").format(ID_HEADER))
         return res
 
     # столбцы-параметры считаем один раз
@@ -522,7 +523,7 @@ def rows_to_model(doc, rows):
                 changed += 1
             else:
                 errors.append(
-                    u"ID {} / «{}»: не удалось записать «{}»".format(eid, h, new_text)
+                    tr(u"ID {} / «{}»: не удалось записать «{}»").format(eid, h, new_text)
                 )
 
     # столбец, где параметр не нашёлся НИ РАЗУ — это не из модели (расчётный

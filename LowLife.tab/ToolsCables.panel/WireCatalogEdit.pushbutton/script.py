@@ -5,6 +5,7 @@ __doc__ = u"Правка справочника кабелей и добавле
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('RevitAPI')
@@ -16,7 +17,7 @@ from lowlife.wire_catalog import apply_entries
 from lowlife.wire_catalog_ui import choose_catalog, report_stats, show_edit_window
 
 doc = revit.doc
-TITLE = u"Правка справочника кабелей"
+TITLE = tr(u"Правка справочника кабелей")
 
 ks = choose_catalog(doc, TITLE)
 entries = show_edit_window(doc, ks)
@@ -28,4 +29,4 @@ try:
         stats = apply_entries(doc, ks, entries)
     report_stats(stats, TITLE)
 except Exception:
-    forms.alert(u"Сбой при записи:\n\n{}".format(traceback.format_exc()), title=TITLE)
+    forms.alert(tr(u"Сбой при записи:\n\n{}").format(traceback.format_exc()), title=TITLE)

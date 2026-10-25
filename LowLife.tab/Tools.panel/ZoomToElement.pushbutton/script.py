@@ -13,6 +13,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -27,35 +28,35 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = u"Зум к элементу"
+TITLE = tr(u"Зум к элементу")
 
 
 def ask_element_by_id():
     raw = forms.ask_for_string(
         default="",
-        prompt=u"Введите ID элемента (модели или связи), к которому нужно приблизить вид:",
+        prompt=tr(u"Введите ID элемента (модели или связи), к которому нужно приблизить вид:"),
         title=TITLE
     )
 
     if raw is None:
         # Пользователь закрыл окно — тихо выходим.
-        forms.alert(u"Операция отменена.", exitscript=True)
+        forms.alert(tr(u"Операция отменена."), exitscript=True)
 
     raw = raw.strip()
     if not raw:
-        forms.alert(u"ID не введён.", exitscript=True)
+        forms.alert(tr(u"ID не введён."), exitscript=True)
 
     try:
         int_id = int(raw)
     except ValueError:
-        forms.alert(u"«{}» — это не число. ID элемента должен быть целым числом.".format(raw), exitscript=True)
+        forms.alert(tr(u"«{}» — это не число. ID элемента должен быть целым числом.").format(raw), exitscript=True)
 
     found = linked_elements.find_by_id(doc, int_id)
     if not found:
         forms.alert(
-            u"Элемент с ID {} не найден ни в текущей модели, ни в "
+            tr(u"Элемент с ID {} не найден ни в текущей модели, ни в "
             u"загруженных связях. Возможно, он удалён или его связь "
-            u"выгружена.".format(int_id),
+            u"выгружена.").format(int_id),
             exitscript=True
         )
     if len(found) == 1:
@@ -74,12 +75,12 @@ def ask_element_by_id():
     by_label = dict(zip(labels, found))
     picked = select_list.SelectFromList.show(
         labels,
-        title=u"Элемент с ID {} есть в нескольких моделях".format(int_id),
-        button_name=u"Зум",
+        title=tr(u"Элемент с ID {} есть в нескольких моделях").format(int_id),
+        button_name=tr(u"Зум"),
         multiselect=False,
     )
     if not picked:
-        forms.alert(u"Операция отменена.", exitscript=True)
+        forms.alert(tr(u"Операция отменена."), exitscript=True)
     return by_label[picked]
 
 
@@ -153,31 +154,31 @@ def hint_where_to_look(items):
     active_level = getattr(view, "GenLevel", None)
     active_level_name = active_level.Name if active_level is not None else None
 
-    elev_line = u"\nОтметка элемента ≈ {:.2f} м.".format(elev_m) if elev_m is not None else u""
+    elev_line = tr(u"\nОтметка элемента ≈ {:.2f} м.").format(elev_m) if elev_m is not None else u""
     if item.is_linked:
-        elev_line += u"\nЭлемент из связи «{}».".format(item.link_name)
+        elev_line += tr(u"\nЭлемент из связи «{}».").format(item.link_name)
 
     if level_name and active_level_name and level_name == active_level_name:
         forms.alert(
-            u"Элемент относится к уровню активного вида («{}»), но на виде "
+            tr(u"Элемент относится к уровню активного вида («{}»), но на виде "
             u"не показан. Проверьте: видимость его категории (VG; для связи — "
             u"вкладка «Связанные файлы RVT»), фильтры вида, стадию (Phase) и "
             u"диапазон вида (View Range) — элемент может быть выше/ниже "
-            u"секущей плоскости.{}".format(level_name, elev_line),
+            u"секущей плоскости.{}").format(level_name, elev_line),
             title=TITLE
         )
     elif level_name:
         forms.alert(
-            u"Элемента не видно на активном виде. Похоже, он расположен на "
+            tr(u"Элемента не видно на активном виде. Похоже, он расположен на "
             u"уровне «{}». Переключитесь на план этого уровня (или на "
-            u"подходящий разрез / 3D-вид) и запустите кнопку снова.{}".format(level_name, elev_line),
+            u"подходящий разрез / 3D-вид) и запустите кнопку снова.{}").format(level_name, elev_line),
             title=TITLE
         )
     else:
         forms.alert(
-            u"Элемента не видно на активном виде, и определить его уровень "
+            tr(u"Элемента не видно на активном виде, и определить его уровень "
             u"не удалось. Откройте 3D-вид или разрез, где элемент виден, и "
-            u"запустите кнопку снова.{}".format(elev_line),
+            u"запустите кнопку снова.{}").format(elev_line),
             title=TITLE
         )
 
@@ -210,8 +211,8 @@ if not any_visible:
     hint_where_to_look(items)
 elif not points:
     forms.alert(
-        u"Элемент(ы) на виде есть, но определить его положение для зума не "
-        u"удалось.",
+        tr(u"Элемент(ы) на виде есть, но определить его положение для зума не "
+        u"удалось."),
         title=TITLE
     )
 else:

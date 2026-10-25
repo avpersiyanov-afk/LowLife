@@ -5,6 +5,7 @@ __doc__ = u"Актуальность семейств выбранных кат�
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('RevitAPI')
@@ -33,18 +34,18 @@ try:
     entries = fc.scan_catalog(root)
     if not entries:
         forms.alert(
-            u"В каталоге не найдено ни одного .rfa:\n{}".format(root),
+            tr(u"В каталоге не найдено ни одного .rfa:\n{}").format(root),
             exitscript=True
         )
 
     categories = fc.list_family_categories(doc)
     if not categories:
-        forms.alert(u"В проекте нет загружаемых семейств.", exitscript=True)
+        forms.alert(tr(u"В проекте нет загружаемых семейств."), exitscript=True)
 
     chosen = select_list.SelectFromList.show(
         categories,
-        title=u"Категории семейств (можно несколько)",
-        button_name=u"Далее",
+        title=tr(u"Категории семейств (можно несколько)"),
+        button_name=tr(u"Далее"),
         multiselect=True
     )
     if not chosen:
@@ -53,7 +54,7 @@ try:
     cat_ids = [c.cat_id for c in chosen]
     families = fc.list_families_in_categories(doc, cat_ids)
     if not families:
-        forms.alert(u"В выбранных категориях нет загружаемых семейств.", exitscript=True)
+        forms.alert(tr(u"В выбранных категориях нет загружаемых семейств."), exitscript=True)
 
     rows = fc.build_matches(families, entries)
 
@@ -65,15 +66,15 @@ try:
     result = fc.apply_updates(doc, jobs, do_rename, overwrite_params)
     fc.render_result_md(output, result)
 
-    summary = [u"Готово.", u""] + fc.result_summary_lines(result)
+    summary = [tr(u"Готово."), u""] + fc.result_summary_lines(result)
     summary += [
         u"",
-        u"Подробности — в окне вывода. Каждая перезагрузка — отдельный шаг отмены (Ctrl+Z).",
+        tr(u"Подробности — в окне вывода. Каждая перезагрузка — отдельный шаг отмены (Ctrl+Z)."),
     ]
-    forms.alert(u"\n".join(summary), title=u"Обновление/проверка семейств")
+    forms.alert(u"\n".join(summary), title=tr(u"Обновление/проверка семейств"))
 
 except Exception:
     forms.alert(
-        u"Сбой при обновлении семейств:\n\n{}".format(traceback.format_exc()),
-        title=u"Обновление/проверка семейств"
+        tr(u"Сбой при обновлении семейств:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Обновление/проверка семейств")
     )

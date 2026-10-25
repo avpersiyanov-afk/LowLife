@@ -19,6 +19,7 @@ from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, FilteredElementCollector,
     RevitLinkInstance,
 )
+from lowlife.i18n import tr
 
 from lowlife.params import get_param_any
 from lowlife.room_finder import natural_key
@@ -93,7 +94,7 @@ def _link_name(link_doc, link):
     try:
         return link.Name
     except Exception:
-        return u"связь"
+        return tr(u"связь")
 
 
 def get_link_sources(doc):
@@ -149,7 +150,7 @@ def _room_level(room):
             return lvl.Name, lvl.Elevation
     except Exception:
         pass
-    return u"(без уровня)", 0.0
+    return tr(u"(без уровня)"), 0.0
 
 
 def _value(room, param_name):

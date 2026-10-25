@@ -12,6 +12,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
@@ -29,8 +30,8 @@ except Exception:
 if config_mode:
     edited = json_snapshot_settings.get_settings_interactive(doc)
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
     script.exit()
 
@@ -44,14 +45,14 @@ try:
         forms.alert(error, exitscript=True)
     if not elements:
         forms.alert(
-            u"Нечего выгружать: под настройки не попал ни один элемент.\n\n"
-            u"Проверьте область и категории (Shift+клик по кнопке).",
+            tr(u"Нечего выгружать: под настройки не попал ни один элемент.\n\n"
+            u"Проверьте область и категории (Shift+клик по кнопке)."),
             exitscript=True
         )
 
     path = forms.save_file(
         file_ext="json",
-        default_name=u"{}_снимок".format(doc.Title),
+        default_name=tr(u"{}_снимок").format(doc.Title),
     )
     if not path:
         script.exit()
@@ -61,14 +62,14 @@ try:
 
     n_params = sum(len(r["params"]) for r in snapshot["elements"])
     forms.alert(
-        u"Готово.\n\nЭлементов: {}\nЗначений для правки (\"params\"): {}\n\n{}\n\n"
+        tr(u"Готово.\n\nЭлементов: {}\nЗначений для правки (\"params\"): {}\n\n{}\n\n"
         u"Правьте значения в \"params\" и загружайте кнопкой «JSON → модель». "
-        u"Правила формата записаны в самом файле (\"readme\").".format(
+        u"Правила формата записаны в самом файле (\"readme\").").format(
             len(snapshot["elements"]), n_params, path
         )
     )
 except Exception:
     forms.alert(
-        u"Сбой при выгрузке:\n\n{}".format(traceback.format_exc()),
-        title=u"Модель → JSON"
+        tr(u"Сбой при выгрузке:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Модель → JSON")
     )

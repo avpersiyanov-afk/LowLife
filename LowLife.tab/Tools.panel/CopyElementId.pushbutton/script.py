@@ -17,6 +17,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -60,7 +61,7 @@ def link_display_name(link_inst, linked_doc):
     try:
         return link_inst.Name
     except:
-        return u"связанный файл"
+        return tr(u"связанный файл")
 
 
 def resolve_reference(ref):
@@ -109,9 +110,9 @@ except:
 
 if not refs:
     forms.alert(
-        u"Ничего не выбрано. Выделите элемент (в том числе внутри "
-        u"связанного файла) и запустите кнопку снова.",
-        title=u"ID элемента",
+        tr(u"Ничего не выбрано. Выделите элемент (в том числе внутри "
+        u"связанного файла) и запустите кнопку снова."),
+        title=tr(u"ID элемента"),
         exitscript=True
     )
 
@@ -122,13 +123,13 @@ if len(entries) == 1:
     desc = describe_element(e["element"])
     lines = [u"ID: {}".format(e["id"])]
     if desc:
-        lines.append(u"Элемент: {}".format(desc))
+        lines.append(tr(u"Элемент: {}").format(desc))
     if e["link_name"]:
-        lines.append(u"Связь: {}".format(e["link_name"]))
+        lines.append(tr(u"Связь: {}").format(e["link_name"]))
     lines.append(u"")
-    lines.append(u"ID скопирован в буфер обмена.")
+    lines.append(tr(u"ID скопирован в буфер обмена."))
     script.clipboard_copy(unicode(e["id"]))
-    forms.alert(u"\n".join(lines), title=u"ID элемента")
+    forms.alert(u"\n".join(lines), title=tr(u"ID элемента"))
 else:
     lines = []
     for e in entries:
@@ -139,7 +140,7 @@ else:
             line += u" ({})".format(extra)
         lines.append(line)
     lines.append(u"")
-    lines.append(u"Все ID скопированы в буфер обмена через запятую.")
+    lines.append(tr(u"Все ID скопированы в буфер обмена через запятую."))
     ids_csv = u", ".join(unicode(e["id"]) for e in entries)
     script.clipboard_copy(ids_csv)
-    forms.alert(u"\n".join(lines), title=u"ID элементов ({})".format(len(entries)))
+    forms.alert(u"\n".join(lines), title=tr(u"ID элементов ({})").format(len(entries)))

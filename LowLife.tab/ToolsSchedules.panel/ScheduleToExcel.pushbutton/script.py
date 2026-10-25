@@ -5,6 +5,7 @@ __doc__ = u"Экспорт спецификации в .xlsx: первый ст�
 __author__ = "Pipers"
 
 import os
+from lowlife.i18n import tr
 import traceback
 
 import clr
@@ -34,7 +35,7 @@ def pick_schedule():
 
     scheds = list_schedules(doc)
     if not scheds:
-        forms.alert(u"В проекте нет подходящих спецификаций.", exitscript=True)
+        forms.alert(tr(u"В проекте нет подходящих спецификаций."), exitscript=True)
 
     by_name = {}
     for v in scheds:
@@ -42,8 +43,8 @@ def pick_schedule():
 
     chosen = select_list.SelectFromList.show(
         sorted(by_name.keys()),
-        title=u"Какую спецификацию выгрузить",
-        button_name=u"Выгрузить",
+        title=tr(u"Какую спецификацию выгрузить"),
+        button_name=tr(u"Выгрузить"),
         multiselect=False,
     )
     if not chosen:
@@ -58,7 +59,7 @@ try:
     rows, n_els, n_cols, col_widths = schedule_to_rows(doc, sched)
     if n_els == 0:
         forms.alert(
-            u"В спецификации «{}» нет элементов-экземпляров для выгрузки.".format(name),
+            tr(u"В спецификации «{}» нет элементов-экземпляров для выгрузки.").format(name),
             exitscript=True
         )
 
@@ -74,9 +75,9 @@ try:
             rows, col_widths, st = merge_export(rows, col_widths, existing, ex_widths)
             if st["merged"]:
                 merge_line = (
-                    u"\nОбновлён существующий файл: совмещено строк {}, "
+                    tr(u"\nОбновлён существующий файл: совмещено строк {}, "
                     u"добавлено новых элементов {}, сохранено доп. столбцов {}, "
-                    u"ручных строк {}".format(
+                    u"ручных строк {}").format(
                         st["matched"],
                         n_els - st["matched"],
                         st["added_cols"],
@@ -85,8 +86,8 @@ try:
                 )
         except Exception as ex:
             if not forms.alert(
-                u"Не удалось прочитать существующий файл для совмещения:\n{}\n\n"
-                u"Перезаписать его целиком (доп. столбцы будут потеряны)?".format(ex),
+                tr(u"Не удалось прочитать существующий файл для совмещения:\n{}\n\n"
+                u"Перезаписать его целиком (доп. столбцы будут потеряны)?").format(ex),
                 yes=True, no=True
             ):
                 script.exit()
@@ -95,9 +96,9 @@ try:
 
     n_cols_final = len(rows[0]) - 1 if rows else n_cols
     forms.alert(
-        u"Готово.\n\nСпецификация: {}\nСтрок данных: {}\nСтолбцов: {}{}\n\n{}\n\n"
+        tr(u"Готово.\n\nСпецификация: {}\nСтрок данных: {}\nСтолбцов: {}{}\n\n{}\n\n"
         u"Правьте значения в Excel (столбец «Revit ID» не трогать) и "
-        u"загружайте кнопкой «Импорт из Эксель».".format(
+        u"загружайте кнопкой «Импорт из Эксель».").format(
             name, n_els, n_cols_final, merge_line, path
         )
     )
@@ -108,6 +109,6 @@ try:
         pass
 except Exception:
     forms.alert(
-        u"Сбой при экспорте:\n\n{}".format(traceback.format_exc()),
-        title=u"Экспорт в Эксель"
+        tr(u"Сбой при экспорте:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Экспорт в Эксель")
     )

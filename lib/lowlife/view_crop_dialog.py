@@ -7,6 +7,7 @@
 """
 
 from lowlife import settings_core, view_crop
+from lowlife.i18n import N_, tr
 
 STORE = settings_core.JsonStore("LowLifeCropView_settings.json", u"настройки «Обрезать вид»")
 
@@ -47,7 +48,7 @@ def ask(modes, source_name):
         mode = view_crop.DEFAULT_MODE if view_crop.DEFAULT_MODE in keys else keys[0]
 
     win = Window()
-    win.Title = u"Обрезать вид"
+    win.Title = tr(u"Обрезать вид")
     win.SizeToContent = SizeToContent.WidthAndHeight
     win.ResizeMode = ResizeMode.NoResize
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -57,14 +58,14 @@ def ask(modes, source_name):
     root.Margin = Thickness(16)
 
     head = TextBlock()
-    head.Text = u"Рамка выбрана. Что обрезать?"
+    head.Text = tr(u"Рамка выбрана. Что обрезать?")
     head.Margin = Thickness(0, 0, 0, 8)
     root.Children.Add(head)
 
     radios = []
     for key, label, _option in modes:
         rb = RadioButton()
-        rb.Content = label
+        rb.Content = tr(label)
         rb.GroupName = "crop_mode"
         rb.IsChecked = (key == mode)
         rb.Margin = Thickness(0, 2, 0, 2)
@@ -73,7 +74,7 @@ def ask(modes, source_name):
         root.Children.Add(rb)
 
     lbl = TextBlock()
-    lbl.Text = u"Добавить в конец имени копии"
+    lbl.Text = tr(u"Добавить в конец имени копии")
     lbl.Margin = Thickness(0, 12, 0, 2)
     root.Children.Add(lbl)
     box = TextBox()
@@ -97,9 +98,9 @@ def ask(modes, source_name):
         is_copy = selected() != view_crop.MODE_SELF
         box.IsEnabled = is_copy
         lbl.Foreground = Brushes.Black if is_copy else Brushes.Gray
-        preview.Text = (u"Имя копии: {}".format(
+        preview.Text = (tr(u"Имя копии: {}").format(
             view_crop.copy_name(box.Text, source_name, set())) if is_copy
-            else u"Копия не создаётся — обрезается открытый вид.")
+            else tr(u"Копия не создаётся — обрезается открытый вид."))
 
     for rb in radios:
         rb.Checked += refresh
@@ -111,11 +112,11 @@ def ask(modes, source_name):
     buttons.HorizontalAlignment = HorizontalAlignment.Right
     buttons.Margin = Thickness(0, 14, 0, 0)
     ok = Button()
-    ok.Content = u"Обрезать"
+    ok.Content = tr(u"Обрезать")
     ok.IsDefault = True
     ok.MinWidth = 90
     cancel = Button()
-    cancel.Content = u"Отмена"
+    cancel.Content = tr(u"Отмена")
     cancel.IsCancel = True
     cancel.MinWidth = 90
     cancel.Margin = Thickness(8, 0, 0, 0)

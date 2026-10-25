@@ -34,6 +34,7 @@ except NameError:  # Python 3
 
 
 import re
+from lowlife.i18n import N_, tr
 
 from System.Collections.Generic import List
 
@@ -62,11 +63,11 @@ FALLBACK_TOP_GAP_MM = 500.0
 _BAD_NAME_CHARS = re.compile(u"[\\\\:{}\\[\\]|;<>?`~]")
 
 NAME_PLACEHOLDERS = [
-    (u"{Семейство}", u"имя семейства"),
-    (u"{Тип}", u"имя типоразмера"),
-    (u"{Марка}", u"параметр «Марка» экземпляра"),
-    (u"{Уровень}", u"базовый уровень"),
-    (u"{Id}", u"ElementId экземпляра"),
+    (u"{Семейство}", N_(u"имя семейства")),
+    (u"{Тип}", N_(u"имя типоразмера")),
+    (u"{Марка}", N_(u"параметр «Марка» экземпляра")),
+    (u"{Уровень}", N_(u"базовый уровень")),
+    (u"{Id}", N_(u"ElementId экземпляра")),
 ]
 
 
@@ -501,8 +502,8 @@ def level_above(doc, level, template=None):
     base_key = tpl.parse(geometry.level_name(level))
     note = None
     if base_key is None:
-        note = (u"имя уровня «{}» не подходит под шаблон «{}»{} — верхний "
-                u"уровень взят из всех уровней проекта, без учёта корпуса".format(
+        note = (tr(u"имя уровня «{}» не подходит под шаблон «{}»{} — верхний "
+                u"уровень взят из всех уровней проекта, без учёта корпуса").format(
                     geometry.level_name(level), tpl.template,
                     u" ({})".format(tpl.error) if tpl.error else u""))
     else:
@@ -631,7 +632,7 @@ class SectionResult(object):
     def ids_label(self):
         ids = [unicode(e.Id.IntegerValue) for e in self.elements]
         if len(ids) > 5:
-            ids = ids[:5] + [u"… всего {}".format(len(self.elements))]
+            ids = ids[:5] + [tr(u"… всего {}").format(len(self.elements))]
         return u"Id " + u", ".join(ids)
 
 
@@ -658,8 +659,8 @@ def compute_section_box(doc, elements, side_mm, front_mm, back_mm, flip=False,
         el_points = element_points(el)
         if not el_points:
             if len(elements) == 1:
-                raise ValueError(u"не удалось получить геометрию элемента")
-            warnings.append(u"Id {}: нет геометрии — не учтён в границах".format(
+                raise ValueError(tr(u"не удалось получить геометрию элемента"))
+            warnings.append(tr(u"Id {}: нет геометрии — не учтён в границах").format(
                 el.Id.IntegerValue))
             continue
         points.extend(el_points)
@@ -668,9 +669,9 @@ def compute_section_box(doc, elements, side_mm, front_mm, back_mm, flip=False,
             base_levels.append(lv)
 
     if not points:
-        raise ValueError(u"не удалось получить геометрию элементов")
+        raise ValueError(tr(u"не удалось получить геометрию элементов"))
     if not base_levels:
-        raise ValueError(u"в проекте нет уровней")
+        raise ValueError(tr(u"в проекте нет уровней"))
 
     max_geom_z = max(p.Z for p in points)
 
@@ -688,8 +689,8 @@ def compute_section_box(doc, elements, side_mm, front_mm, back_mm, flip=False,
         top_z = max(upper_base.ProjectElevation + mm_to_ft(FALLBACK_HEIGHT_MM),
                     max_geom_z + mm_to_ft(FALLBACK_TOP_GAP_MM))
         warnings.append(
-            u"над уровнем «{}» нет следующего этажа этого корпуса — верх "
-            u"подрезки взят на {:.0f} мм выше него".format(
+            tr(u"над уровнем «{}» нет следующего этажа этого корпуса — верх "
+            u"подрезки взят на {:.0f} мм выше него").format(
                 geometry.level_name(upper_base),
                 (top_z - upper_base.ProjectElevation) * MM_IN_FOOT))
 
@@ -697,8 +698,8 @@ def compute_section_box(doc, elements, side_mm, front_mm, back_mm, flip=False,
     for el in elements[1:]:
         if facing_direction(el, flip).DotProduct(toward_viewer) < _FACING_MISMATCH_COS:
             warnings.append(
-                u"элементы смотрят в разные стороны — общий разрез построен "
-                u"по направлению первого (Id {})".format(elements[0].Id.IntegerValue))
+                tr(u"элементы смотрят в разные стороны — общий разрез построен "
+                u"по направлению первого (Id {})").format(elements[0].Id.IntegerValue))
             break
     up = XYZ.BasisZ                               # BasisY
     right = up.CrossProduct(toward_viewer)        # BasisX = Y × Z
@@ -754,7 +755,7 @@ def create_family_section(doc, elements, section_type, template, name_mask,
             try:
                 view.ViewTemplateId = template.Id
             except Exception as ex:
-                result.warnings.append(u"не удалось назначить шаблон: {}".format(ex))
+                result.warnings.append(tr(u"не удалось назначить шаблон: {}").format(ex))
 
         try:
             view.CropBoxActive = True
@@ -768,13 +769,13 @@ def create_family_section(doc, elements, section_type, template, name_mask,
                     view.HideElements(List[ElementId](hide_ids))
                 except Exception as ex:
                     result.warnings.append(
-                        u"не удалось скрыть уровни других корпусов: {}".format(ex))
+                        tr(u"не удалось скрыть уровни других корпусов: {}").format(ex))
 
         name = unique_name(build_view_name(doc, elements[0], level, name_mask), taken_names)
         try:
             view.Name = name
         except Exception as ex:
-            result.warnings.append(u"не удалось задать имя «{}»: {}".format(name, ex))
+            result.warnings.append(tr(u"не удалось задать имя «{}»: {}").format(name, ex))
             name = safe_name(view)
 
         result.view = view

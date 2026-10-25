@@ -22,6 +22,7 @@ show_dialog(app) → dict или None (отмена):
 """
 
 import os
+from lowlife.i18n import N_, tr
 
 import clr
 clr.AddReference('PresentationFramework')
@@ -47,7 +48,7 @@ from System.Windows.Media import Brushes
 from lowlife import fop_catalog, fop_setup, settings_core
 
 
-TITLE = u"Параметры LowLife в ФОП"
+TITLE = N_(u"Параметры LowLife в ФОП")
 
 
 def read_system_settings():
@@ -64,9 +65,9 @@ def write_system_settings(updates):
     written = []
     for system_id, values in updates.items():
         store = settings_core.JsonStore(fop_catalog.SYSTEM_FILES[system_id],
-                                        fop_catalog.SYSTEM_TITLES[system_id])
+                                        tr(fop_catalog.SYSTEM_TITLES[system_id]))
         if store.update(values):
-            written.append(fop_catalog.SYSTEM_TITLES[system_id])
+            written.append(tr(fop_catalog.SYSTEM_TITLES[system_id]))
     return written
 
 
@@ -150,7 +151,7 @@ def show_dialog(app):
     }
 
     win = Window()
-    win.Title = TITLE
+    win.Title = tr(TITLE)
     win.Width = 1180
     win.Height = 760
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -162,24 +163,24 @@ def show_dialog(app):
     header.Margin = Thickness(16, 12, 16, 8)
     DockPanel.SetDock(header, Dock.Top)
 
-    title = _label(TITLE, bold=True)
+    title = _label(tr(TITLE), bold=True)
     title.FontSize = 16
     header.Children.Add(title)
     header.Children.Add(_label(
-        u"Список параметров, нужных кнопкам LowLife выбранных систем. Имена в столбце "
+        tr(u"Список параметров, нужных кнопкам LowLife выбранных систем. Имена в столбце "
         u"«Имя параметра» — пример: поменяйте их под соглашение проекта (двойной клик "
         u"по ячейке). Отмеченные параметры будут созданы в файле ФОП (если их там ещё "
         u"нет) и привязаны к указанным категориям проекта; уже существующие "
-        u"привязки дополняются, а не заменяются.",
+        u"привязки дополняются, а не заменяются."),
         gray=True, margin=Thickness(0, 4, 0, 0)))
 
     # --- системы ---
-    header.Children.Add(_label(u"① Системы", bold=True, margin=Thickness(0, 12, 0, 2)))
+    header.Children.Add(_label(tr(u"① Системы"), bold=True, margin=Thickness(0, 12, 0, 2)))
     systems_panel = WrapPanel()
     system_boxes = {}
     for system_id in fop_catalog.SYSTEM_IDS:
         cb = CheckBox()
-        cb.Content = fop_catalog.SYSTEM_TITLES[system_id]
+        cb.Content = tr(fop_catalog.SYSTEM_TITLES[system_id])
         cb.IsChecked = True
         cb.Margin = Thickness(0, 2, 16, 2)
         systems_panel.Children.Add(cb)
@@ -187,14 +188,14 @@ def show_dialog(app):
     header.Children.Add(systems_panel)
 
     # --- файл ФОП ---
-    header.Children.Add(_label(u"② Файл общих параметров (ФОП)", bold=True,
+    header.Children.Add(_label(tr(u"② Файл общих параметров (ФОП)"), bold=True,
                                margin=Thickness(0, 12, 0, 2)))
     fop_row = DockPanel()
     fop_buttons = StackPanel()
     fop_buttons.Orientation = Orientation.Horizontal
     DockPanel.SetDock(fop_buttons, Dock.Right)
-    pick_btn = _button(u"Выбрать файл…")
-    new_btn = _button(u"Создать новый…")
+    pick_btn = _button(tr(u"Выбрать файл…"))
+    new_btn = _button(tr(u"Создать новый…"))
     new_btn.Margin = Thickness(0)
     fop_buttons.Children.Add(pick_btn)
     fop_buttons.Children.Add(new_btn)
@@ -209,10 +210,10 @@ def show_dialog(app):
     def refresh_fop_text():
         path = state["sp_path"]
         if not path:
-            fop_text.Text = u"К Revit не подключён файл ФОП — выберите существующий или создайте новый."
+            fop_text.Text = tr(u"К Revit не подключён файл ФОП — выберите существующий или создайте новый.")
             fop_text.Foreground = Brushes.Firebrick
         elif state["create_file"]:
-            fop_text.Text = u"{}  (будет создан)".format(path)
+            fop_text.Text = tr(u"{}  (будет создан)").format(path)
             fop_text.Foreground = Brushes.Black
         else:
             fop_text.Text = path
@@ -222,7 +223,7 @@ def show_dialog(app):
 
     def on_pick(sender, args):
         path = _file_dialog(forms.pick_file, file_ext="txt",
-                            title=u"Файл общих параметров (ФОП)")
+                            title=tr(u"Файл общих параметров (ФОП)"))
         if path:
             state["sp_path"] = path
             state["create_file"] = False
@@ -232,7 +233,7 @@ def show_dialog(app):
 
     def on_new(sender, args):
         path = _file_dialog(forms.save_file, file_ext="txt", default_name=u"LowLife_ФОП",
-                            title=u"Новый файл общих параметров")
+                            title=tr(u"Новый файл общих параметров"))
         if path:
             exists = os.path.isfile(path)
             state["sp_path"] = path
@@ -245,7 +246,7 @@ def show_dialog(app):
     new_btn.Click += on_new
 
     # --- группа, префикс, настройки ---
-    header.Children.Add(_label(u"③ Группа и имена", bold=True, margin=Thickness(0, 12, 0, 2)))
+    header.Children.Add(_label(tr(u"③ Группа и имена"), bold=True, margin=Thickness(0, 12, 0, 2)))
     opts = WrapPanel()
 
     def add_field(caption, text, width):
@@ -258,26 +259,26 @@ def show_dialog(app):
         opts.Children.Add(box)
         return box
 
-    group_box = add_field(u"Группа в ФОП для новых параметров:", fop_catalog.DEFAULT_GROUP, 180)
-    prefix_box = add_field(u"Префикс имён-примеров:", fop_catalog.DEFAULT_PREFIX, 100)
+    group_box = add_field(tr(u"Группа в ФОП для новых параметров:"), fop_catalog.DEFAULT_GROUP, 180)
+    prefix_box = add_field(tr(u"Префикс имён-примеров:"), fop_catalog.DEFAULT_PREFIX, 100)
     write_fop_box = CheckBox()
-    write_fop_box.Content = u"Записывать в ФОП недостающие параметры"
+    write_fop_box.Content = tr(u"Записывать в ФОП недостающие параметры")
     write_fop_box.IsChecked = False
     write_fop_box.Margin = Thickness(0, 4, 20, 0)
     opts.Children.Add(write_fop_box)
     write_box = CheckBox()
-    write_box.Content = u"Вписать имена в настройки кнопок выбранных систем"
+    write_box.Content = tr(u"Вписать имена в настройки кнопок выбранных систем")
     write_box.IsChecked = True
     write_box.Margin = Thickness(0, 4, 0, 0)
     opts.Children.Add(write_box)
     header.Children.Add(opts)
     header.Children.Add(_label(
-        u"Имена, уже введённые в настройках кнопок, подставлены как есть. Если в ФОП "
+        tr(u"Имена, уже введённые в настройках кнопок, подставлены как есть. Если в ФОП "
         u"есть похожий параметр (например «Длина проводника» с префиксом проекта), он "
         u"подставлен вместо примера — столбец «В ФОП». Параметр, который уже есть в ФОП "
         u"(в любой группе), берётся оттуда. Параметры, которых нет ни в ФОП, ни в "
         u"проекте, создаются в ФОП только при включённом «Записывать в ФОП», иначе "
-        u"пропускаются. Префикс меняет только примеры, которые вы не правили.",
+        u"пропускаются. Префикс меняет только примеры, которые вы не правили."),
         gray=True, margin=Thickness(0, 4, 0, 6)))
 
     # --- таблица ---
@@ -292,17 +293,17 @@ def show_dialog(app):
     grid.GridLinesVisibility = DataGridGridLinesVisibility.Horizontal
     grid.SelectionMode = DataGridSelectionMode.Single
     grid.Columns.Add(_check_col("Checked"))
-    grid.Columns.Add(_text_col(u"Назначение", "Label", _star(2.2), wrap=True))
-    name_col = _text_col(u"Имя параметра", "Name", _star(1.6), read_only=False)
+    grid.Columns.Add(_text_col(tr(u"Назначение"), "Label", _star(2.2), wrap=True))
+    name_col = _text_col(tr(u"Имя параметра"), "Name", _star(1.6), read_only=False)
     name_col.FontWeight = FontWeights.Bold
     grid.Columns.Add(name_col)
-    grid.Columns.Add(_text_col(u"В ФОП", "FopStatus", _star(1.4), wrap=True))
-    grid.Columns.Add(_text_col(u"Пример", "Example", _star(1.2)))
-    grid.Columns.Add(_text_col(u"Тип данных", "DataType", DataGridLength.Auto))
-    grid.Columns.Add(_text_col(u"Экз./тип", "Kind", DataGridLength.Auto))
-    grid.Columns.Add(_text_col(u"Категории", "Categories", _star(2.2), wrap=True))
-    grid.Columns.Add(_text_col(u"Системы", "Systems", _star(1.0), wrap=True))
-    grid.Columns.Add(_text_col(u"Примечание", "Note", _star(1.8), wrap=True))
+    grid.Columns.Add(_text_col(tr(u"В ФОП"), "FopStatus", _star(1.4), wrap=True))
+    grid.Columns.Add(_text_col(tr(u"Пример"), "Example", _star(1.2)))
+    grid.Columns.Add(_text_col(tr(u"Тип данных"), "DataType", DataGridLength.Auto))
+    grid.Columns.Add(_text_col(tr(u"Экз./тип"), "Kind", DataGridLength.Auto))
+    grid.Columns.Add(_text_col(tr(u"Категории"), "Categories", _star(2.2), wrap=True))
+    grid.Columns.Add(_text_col(tr(u"Системы"), "Systems", _star(1.0), wrap=True))
+    grid.Columns.Add(_text_col(tr(u"Примечание"), "Note", _star(1.8), wrap=True))
 
     def commit():
         try:
@@ -382,16 +383,16 @@ def show_dialog(app):
     left = StackPanel()
     left.Orientation = Orientation.Horizontal
     DockPanel.SetDock(left, Dock.Left)
-    all_btn = _button(u"Отметить все")
-    none_btn = _button(u"Снять все")
+    all_btn = _button(tr(u"Отметить все"))
+    none_btn = _button(tr(u"Снять все"))
     left.Children.Add(all_btn)
     left.Children.Add(none_btn)
 
     right = StackPanel()
     right.Orientation = Orientation.Horizontal
     right.HorizontalAlignment = HorizontalAlignment.Right
-    cancel_btn = _button(u"Отмена")
-    ok_btn = _button(u"Добавить в ФОП и привязать", bold=True)
+    cancel_btn = _button(tr(u"Отмена"))
+    ok_btn = _button(tr(u"Добавить в ФОП и привязать"), bold=True)
     ok_btn.Margin = Thickness(0)
     right.Children.Add(cancel_btn)
     right.Children.Add(ok_btn)
@@ -413,15 +414,15 @@ def show_dialog(app):
         rows = state["rows"]
         problems = []
         if write_fop() and not state["sp_path"]:
-            problems.append(u"Не выбран файл ФОП, куда записывать параметры.")
+            problems.append(tr(u"Не выбран файл ФОП, куда записывать параметры."))
         group = (group_box.Text or u"").strip()
         if write_fop() and not group:
-            problems.append(u"Не задана группа в ФОП.")
+            problems.append(tr(u"Не задана группа в ФОП."))
         if not any(r.Checked for r in rows):
-            problems.append(u"Не отмечено ни одного параметра.")
+            problems.append(tr(u"Не отмечено ни одного параметра."))
         problems.extend(fop_catalog.validate(rows))
         if problems:
-            forms.alert(u"\n".join(problems), title=TITLE)
+            forms.alert(u"\n".join(problems), title=tr(TITLE))
             return
         state["result"] = {
             "rows": rows,

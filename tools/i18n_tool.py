@@ -284,6 +284,8 @@ def cmd_todo(paths):
             if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and body and \
                     isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
                 docstrings.add(id(body[0].value))
+            if isinstance(node, ast.Call):
+                docstrings.update(id(v) for v in _ctor_nodes(node))  # settings_core переводит сам
         for node in ast.walk(tree):
             if _is_cyrillic_str(node) and id(node) not in done and id(node) not in docstrings:
                 short = node.value[:90].replace("\n", " ")
@@ -320,6 +322,9 @@ CTOR_RULES = {
     "TextField": ((1, 2, 3), ("section", "label", "hint"), None),
     "NumberField": ((1, 2, 3), ("section", "label", "hint"), None),
     "ChoiceField": ((1, 2, 4), ("section", "label", "hint"), (3, "choices")),
+    "SourceField": ((1, 2, 4), ("section", "label", "hint"), (3, "choices")),  # tray_boxes_settings
+    "LevelTemplateField": ((1, 2, 3), ("section", "label", "hint"), None),  # view_range_settings
+    "ParamSpec": ((1,), ("label", "note"), None),  # fop_catalog
     "TextSettings": ((1, 2, 3), ("button_name", "heading", "transfer_label", "intro"), None),
     "JsonStore": ((1,), ("label",), None),
 }
@@ -327,6 +332,11 @@ CTOR_RULES = {
 
 def _ctor_strings(call):
     """Строки-подписи из вызова конструктора по CTOR_RULES."""
+    return [v.value for v in _ctor_nodes(call)]
+
+
+def _ctor_nodes(call):
+    """Узлы русских строк-подписей из вызова конструктора по CTOR_RULES."""
     rule = CTOR_RULES.get(_call_name(call))
     if rule is None:
         return []
@@ -341,7 +351,7 @@ def _ctor_strings(call):
             for pair in node.elts:
                 if isinstance(pair, (ast.Tuple, ast.List)) and len(pair.elts) > 1:
                     values.append(pair.elts[1])
-    return [v.value for v in values if _is_cyrillic_str(v)]
+    return [v for v in values if _is_cyrillic_str(v)]
 
 
 def extract_keys(root=ROOT):

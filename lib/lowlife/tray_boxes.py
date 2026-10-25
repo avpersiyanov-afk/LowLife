@@ -28,6 +28,7 @@ tray_boxes_settings.py.
 """
 
 import math
+from lowlife.i18n import tr
 from datetime import datetime
 
 from Autodesk.Revit.DB import (
@@ -141,7 +142,7 @@ class Crossing(object):
 
     def host_label(self):
         name = safe_element_name(self.host) or u""
-        where = safe_element_name(self.link) if self.link is not None else u"модель"
+        where = safe_element_name(self.link) if self.link is not None else tr(u"модель")
         return u"{} (Id {}, {})".format(name, _id_int(self.host.Id), where)
 
 
@@ -509,7 +510,7 @@ def run(doc, trays, symbol, settings, progress=None, workset=None):
         try:
             crossings = tray_crossings(tray, srcs, categories, options)
         except Exception as ex:
-            placer.result.failed.append((tray, None, u"поиск пересечений: {}".format(ex)))
+            placer.result.failed.append((tray, None, tr(u"поиск пересечений: {}").format(ex)))
             continue
         for crossing in crossings:
             placer.place(tray, crossing)

@@ -18,6 +18,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import Element, Transaction
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -30,7 +31,7 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = u"Обрезать вид"
+TITLE = tr(u"Обрезать вид")
 
 
 reason = view_crop.unsupported_reason(view)
@@ -44,7 +45,7 @@ if reason:
 try:
     box = uidoc.Selection.PickBox(
         PickBoxStyle.Enclosing,
-        u"Обрезать вид: укажите два противоположных угла рамки")
+        tr(u"Обрезать вид: укажите два противоположных угла рамки"))
 except OperationCanceledException:
     script.exit()
 pt1, pt2 = box.Min, box.Max
@@ -67,8 +68,8 @@ try:
     t.Commit()
 except Exception:
     t.RollBack()
-    forms.alert(u"Не удалось обрезать вид (возможно, подрезка задана "
-                u"шаблоном вида).\n\n" + traceback.format_exc(),
+    forms.alert(tr(u"Не удалось обрезать вид (возможно, подрезка задана "
+                u"шаблоном вида).\n\n") + traceback.format_exc(),
                 title=TITLE, exitscript=True)
 
 if target.Id != view.Id:

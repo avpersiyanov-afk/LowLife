@@ -16,6 +16,7 @@ Revit API (кнопка `Tools.panel/CompareLinkDatums`, «Оси и уровн�
 """
 
 import math
+from lowlife.i18n import N_, tr
 import re
 
 # Статусы строк отчёта (порядок — порядок сортировки «сначала проблемы»).
@@ -26,11 +27,11 @@ MISSING_IN_MODEL = u"missing_in_model"
 MISSING_IN_LINK = u"missing_in_link"
 
 STATUS_TEXT = {
-    OK: u"Совпадает",
-    MOVED: u"Расходится",
-    RENAMED: u"Другое имя",
-    MISSING_IN_MODEL: u"Нет в модели",
-    MISSING_IN_LINK: u"Нет в связи",
+    OK: N_(u"Совпадает"),
+    MOVED: N_(u"Расходится"),
+    RENAMED: N_(u"Другое имя"),
+    MISSING_IN_MODEL: N_(u"Нет в модели"),
+    MISSING_IN_LINK: N_(u"Нет в связи"),
 }
 _STATUS_ORDER = [MISSING_IN_MODEL, MOVED, RENAMED, MISSING_IN_LINK, OK]
 
@@ -66,7 +67,7 @@ class Row(object):
 
     @property
     def status_text(self):
-        return STATUS_TEXT[self.status]
+        return tr(STATUS_TEXT[self.status])
 
     @property
     def name(self):
@@ -124,10 +125,10 @@ def grid_deviation(model, link):
         return delta, _line_angle(m0, m1, l0, l1), u""
     if "arc" in model and "arc" in link:
         (mc, mr), (lc, lr) = model["arc"], link["arc"]
-        return _length(_sub(mc, lc)) + abs(mr - lr), None, u"дуга"
+        return _length(_sub(mc, lc)) + abs(mr - lr), None, tr(u"дуга")
     if ("line" in model or "arc" in model) and ("line" in link or "arc" in link):
-        return None, None, u"разная форма (прямая/дуга)"
-    return None, None, u"форма оси не распознана"
+        return None, None, tr(u"разная форма (прямая/дуга)")
+    return None, None, tr(u"форма оси не распознана")
 
 
 def level_deviation(model, link):
@@ -239,9 +240,9 @@ def count_by_status(rows):
 
 def summary_text(counts):
     u"""«совпадает 12, расходится 1, нет в модели 2» — в порядке статусов."""
-    parts = [u"{} {}".format(STATUS_TEXT[s].lower(), counts[s])
+    parts = [u"{} {}".format(tr(STATUS_TEXT[s]).lower(), counts[s])
              for s in reversed(_STATUS_ORDER) if counts.get(s)]
-    return u", ".join(parts) if parts else u"нет"
+    return u", ".join(parts) if parts else tr(u"нет")
 
 
 def format_mm(value, decimals=1):

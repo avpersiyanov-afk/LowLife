@@ -11,6 +11,7 @@ __doc__ = u"Загрузка справочника кабелей из .xlsx: �
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('RevitAPI')
@@ -23,10 +24,10 @@ from lowlife.wire_catalog_ui import choose_catalog, report_stats
 from lowlife.xlsx_io import read_xlsx
 
 doc = revit.doc
-TITLE = u"Загрузка справочника кабелей"
+TITLE = tr(u"Загрузка справочника кабелей")
 
 ks = choose_catalog(doc, TITLE)
-path = forms.pick_file(files_filter=u"Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Все файлы (*.*)|*.*")
+path = forms.pick_file(files_filter=tr(u"Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Все файлы (*.*)|*.*"))
 if not path:
     script.exit()
 
@@ -36,11 +37,11 @@ except ValueError as ex:
     forms.alert(unicode(ex), title=TITLE, exitscript=True)
 
 new_count = len([1 for el, _ in entries if el is None])
-question = u"Строк в файле: {}\nИз них новых для «{}»: {}".format(len(entries), ks.name, new_count)
+question = tr(u"Строк в файле: {}\nИз них новых для «{}»: {}").format(len(entries), ks.name, new_count)
 if unknown:
-    question += u"\n\nСтолбцы, которых нет в спецификации (будут пропущены):\n{}".format(
+    question += tr(u"\n\nСтолбцы, которых нет в спецификации (будут пропущены):\n{}").format(
         u", ".join(unknown))
-if not forms.alert(question + u"\n\nЗагрузить?", title=TITLE, yes=True, no=True):
+if not forms.alert(question + tr(u"\n\nЗагрузить?"), title=TITLE, yes=True, no=True):
     script.exit()
 
 try:
@@ -48,4 +49,4 @@ try:
         stats = apply_entries(doc, ks, entries)
     report_stats(stats, TITLE)
 except Exception:
-    forms.alert(u"Сбой при загрузке:\n\n{}".format(traceback.format_exc()), title=TITLE)
+    forms.alert(tr(u"Сбой при загрузке:\n\n{}").format(traceback.format_exc()), title=TITLE)

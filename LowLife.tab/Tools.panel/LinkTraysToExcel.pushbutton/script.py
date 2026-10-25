@@ -9,6 +9,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import os
+from lowlife.i18n import tr
 import traceback
 
 import clr
@@ -22,13 +23,13 @@ from lowlife.link_trays import COL_WIDTHS, build_rows, link_label, visible_links
 from lowlife.xlsx_io import write_xlsx
 
 doc = revit.doc
-TITLE = u"Лотки связи в Эксель"
+TITLE = tr(u"Лотки связи в Эксель")
 
 
 def pick_links(view):
     links = visible_links(doc, view)
     if not links:
-        forms.alert(u"На активном виде нет видимых загруженных связей.",
+        forms.alert(tr(u"На активном виде нет видимых загруженных связей."),
                     title=TITLE, exitscript=True)
     if len(links) == 1:
         return links
@@ -38,8 +39,8 @@ def pick_links(view):
         by_name[u"{} [{}]".format(link_label(link), link.Id)] = link
     chosen = select_list.SelectFromList.show(
         sorted(by_name.keys()),
-        title=u"Из каких связей собрать лотки",
-        button_name=u"Собрать",
+        title=tr(u"Из каких связей собрать лотки"),
+        button_name=tr(u"Собрать"),
         multiselect=True,
     )
     if not chosen:
@@ -54,10 +55,10 @@ try:
     rows, counts, used_fallback = build_rows(doc, view, links)
     total = len(rows) - 1
     if total == 0:
-        forms.alert(u"На активном виде нет кабельных лотков из выбранных связей.",
+        forms.alert(tr(u"На активном виде нет кабельных лотков из выбранных связей."),
                     title=TITLE, exitscript=True)
 
-    default_name = u"Лотки связи - {}".format(view.Name)
+    default_name = tr(u"Лотки связи - {}").format(view.Name)
     for ch in u'\\/:*?"<>|':
         default_name = default_name.replace(ch, u"_")
     path = forms.save_file(file_ext='xlsx', default_name=default_name)
@@ -69,10 +70,10 @@ try:
     lines = u"\n".join(u"  {} — {}".format(n, c) for n, c in counts)
     note = u""
     if used_fallback:
-        note = (u"\n\nВерсия Revit не умеет отбирать элементы связи по виду — "
-                u"лотки отобраны по подрезке/диапазону вида (приблизительно).")
+        note = (tr(u"\n\nВерсия Revit не умеет отбирать элементы связи по виду — "
+                u"лотки отобраны по подрезке/диапазону вида (приблизительно)."))
     forms.alert(
-        u"Готово. Лотков: {}\n{}{}\n\n{}".format(total, lines, note, path),
+        tr(u"Готово. Лотков: {}\n{}{}\n\n{}").format(total, lines, note, path),
         title=TITLE
     )
 
@@ -81,5 +82,5 @@ try:
     except Exception:
         pass
 except Exception:
-    forms.alert(u"Сбой при выгрузке:\n\n{}".format(traceback.format_exc()),
+    forms.alert(tr(u"Сбой при выгрузке:\n\n{}").format(traceback.format_exc()),
                 title=TITLE)

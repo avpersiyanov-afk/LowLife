@@ -17,6 +17,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import Transaction
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -30,7 +31,7 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = u"Повернуть 3D вид"
+TITLE = tr(u"Повернуть 3D вид")
 
 reason = view_rotate.unsupported_reason(view)
 if reason:
@@ -45,28 +46,28 @@ def align(direction):
         t.Commit()
     except Exception:
         t.RollBack()
-        forms.alert(u"Не удалось повернуть вид.\n\n" + traceback.format_exc(),
+        forms.alert(tr(u"Не удалось повернуть вид.\n\n") + traceback.format_exc(),
                     title=TITLE, exitscript=True)
     uidoc.RefreshActiveView()
 
 
-FROM_LIST = u"Ось сетки из списка (модель и связи)"
-IN_MODEL = u"Кликнуть линию в модели (ось, стена, лоток, линия…)"
-IN_LINK = u"Кликнуть линию в связанном файле"
+FROM_LIST = tr(u"Ось сетки из списка (модель и связи)")
+IN_MODEL = tr(u"Кликнуть линию в модели (ось, стена, лоток, линия…)")
+IN_LINK = tr(u"Кликнуть линию в связанном файле")
 mode = select_list.CommandSwitchWindow.show(
-    [FROM_LIST, IN_MODEL, IN_LINK], message=u"Под какую ось повернуть 3D вид?")
+    [FROM_LIST, IN_MODEL, IN_LINK], message=tr(u"Под какую ось повернуть 3D вид?"))
 if not mode:
     script.exit()
 
 if mode == FROM_LIST:
     axes = view_rotate.list_grid_axes(doc)
     if not axes:
-        forms.alert(u"В модели и загруженных связях нет прямых осей сетки.",
+        forms.alert(tr(u"В модели и загруженных связях нет прямых осей сетки."),
                     title=TITLE, exitscript=True)
     by_label = dict(axes)
     picked = select_list.SelectFromList.show(
         [label for label, _d in axes], title=TITLE,
-        button_name=u"Повернуть", multiselect=False)
+        button_name=tr(u"Повернуть"), multiselect=False)
     if not picked:
         script.exit()
     direction = by_label[picked]
@@ -78,7 +79,7 @@ else:
         ref = uidoc.Selection.PickObject(
             ObjectType.LinkedElement if linked else ObjectType.Element,
             view_rotate.make_pick_filter(doc, linked),
-            u"Повернуть 3D вид: выберите прямую линию (Esc — отмена)")
+            tr(u"Повернуть 3D вид: выберите прямую линию (Esc — отмена)"))
     except OperationCanceledException:
         script.exit()
     try:

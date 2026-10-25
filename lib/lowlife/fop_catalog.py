@@ -21,6 +21,7 @@
 """
 
 import re
+from lowlife.i18n import N_, tr
 
 try:
     _text = unicode  # noqa: F821 — IronPython/Python 2
@@ -34,17 +35,17 @@ except NameError:  # Python 3 (тесты)
 
 # (id, подпись, файл настроек кнопок системы в %APPDATA%\pyRevit)
 SYSTEMS = [
-    ("SCS", u"СКС", "LowLifeSCS_settings.json"),
-    ("SKUD", u"СКУД", "LowLifeSKUD_settings.json"),
-    ("SPS", u"СПС", "LowLifeSPS_settings.json"),
-    ("SOUE", u"СОУЭ", "LowLifeSOUE_settings.json"),
-    ("SPA", u"СПА", "LowLifeSPA_settings.json"),
-    ("SOT", u"СОТ", "LowLifeSOT_settings.json"),
-    ("SOUE_FLOOR", u"СОУЭ «Типовой этаж»", "LowLifeSOUEFloor_settings.json"),
-    ("SS1", u"СС1", "LowLifeSS1Easy_settings.json"),
-    ("COMPANION", u"РМ, АМ, МДУ", "LowLifeCompanionPlacement_settings.json"),
-    ("ROOM_INFO", u"Запись помещения", "LowLifeRoomInfo_settings.json"),
-    ("FLOOR", u"Заполнение этажа", "LowLifeFloor_settings.json"),
+    ("SCS", N_(u"СКС"), "LowLifeSCS_settings.json"),
+    ("SKUD", N_(u"СКУД"), "LowLifeSKUD_settings.json"),
+    ("SPS", N_(u"СПС"), "LowLifeSPS_settings.json"),
+    ("SOUE", N_(u"СОУЭ"), "LowLifeSOUE_settings.json"),
+    ("SPA", N_(u"СПА"), "LowLifeSPA_settings.json"),
+    ("SOT", N_(u"СОТ"), "LowLifeSOT_settings.json"),
+    ("SOUE_FLOOR", N_(u"СОУЭ «Типовой этаж»"), "LowLifeSOUEFloor_settings.json"),
+    ("SS1", N_(u"СС1"), "LowLifeSS1Easy_settings.json"),
+    ("COMPANION", N_(u"РМ, АМ, МДУ"), "LowLifeCompanionPlacement_settings.json"),
+    ("ROOM_INFO", N_(u"Запись помещения"), "LowLifeRoomInfo_settings.json"),
+    ("FLOOR", N_(u"Заполнение этажа"), "LowLifeFloor_settings.json"),
 ]
 
 SYSTEM_IDS = [s[0] for s in SYSTEMS]
@@ -57,7 +58,7 @@ FIRE = ("SPS", "SOUE", "SPA")
 # («Запись помещения», «Заполнение этажа»): у их ролей категорий нет — окно
 # создаёт параметр в ФОП и вписывает имя в настройки, а привязать его к
 # нужным категориям нужно вручную.
-MANUAL_BINDING = u"— привяжите вручную"
+MANUAL_BINDING = N_(u"— привяжите вручную")
 
 
 # --- типы данных и привязка ------------------------------------------------------
@@ -67,17 +68,17 @@ LENGTH = "length"
 NUMBER = "number"
 
 DATA_TYPE_TITLES = {
-    TEXT: u"Текст",
-    LENGTH: u"Длина",
-    NUMBER: u"Число",
+    TEXT: N_(u"Текст"),
+    LENGTH: N_(u"Длина"),
+    NUMBER: N_(u"Число"),
 }
 
 INSTANCE = "instance"
 TYPE = "type"
 
 KIND_TITLES = {
-    INSTANCE: u"Экземпляр",
-    TYPE: u"Тип",
+    INSTANCE: N_(u"Экземпляр"),
+    TYPE: N_(u"Тип"),
 }
 
 
@@ -95,16 +96,16 @@ FIRE_DEVICES = "OST_FireAlarmDevices"
 SECURITY = "OST_SecurityDevices"
 
 CATEGORY_TITLES = {
-    GENERIC: u"Обобщённые модели",
-    COMM: u"Устройства связи",
-    FIXTURES: u"Электрические приборы",
-    DATA: u"Датчики/устройства данных",
-    EQUIPMENT: u"Электрооборудование",
-    CIRCUITS: u"Электрические цепи",
-    VIEWS: u"Виды",
-    DETAIL: u"Элементы узлов",
-    FIRE_DEVICES: u"Пожарная сигнализация",
-    SECURITY: u"Охранная сигнализация",
+    GENERIC: N_(u"Обобщённые модели"),
+    COMM: N_(u"Устройства связи"),
+    FIXTURES: N_(u"Электрические приборы"),
+    DATA: N_(u"Датчики/устройства данных"),
+    EQUIPMENT: N_(u"Электрооборудование"),
+    CIRCUITS: N_(u"Электрические цепи"),
+    VIEWS: N_(u"Виды"),
+    DETAIL: N_(u"Элементы узлов"),
+    FIRE_DEVICES: N_(u"Пожарная сигнализация"),
+    SECURITY: N_(u"Охранная сигнализация"),
 }
 
 LV_DEVICES = [COMM, FIXTURES, DATA]          # слаботочные устройства СКС/СКУД
@@ -159,7 +160,7 @@ class ParamSpec(object):
         return list(self.system_keys.get(system) or [self.key])
 
 
-_OPTIONAL_SCHEMATIC = u"Нужен только для структурной схемы"
+_OPTIONAL_SCHEMATIC = N_(u"Нужен только для структурной схемы")
 
 CATALOG = [
     # --- узлы трассы (СКС/СКУД) ---
@@ -291,15 +292,15 @@ class Row(object):
         self.source = source
         self.auto_name = name
         self.Checked = True
-        self.Label = spec.label
+        self.Label = tr(spec.label)
         self.Example = example
         self.Name = name
-        self.DataType = DATA_TYPE_TITLES.get(spec.data_type, spec.data_type)
-        self.Kind = KIND_TITLES.get(spec.kind, spec.kind)
-        self.Categories = (u", ".join(CATEGORY_TITLES.get(c, c) for c in categories)
-                           or MANUAL_BINDING)
-        self.Systems = u", ".join(SYSTEM_TITLES.get(s, s) for s in systems)
-        self.Note = spec.note
+        self.DataType = tr(DATA_TYPE_TITLES.get(spec.data_type, spec.data_type))
+        self.Kind = tr(KIND_TITLES.get(spec.kind, spec.kind))
+        self.Categories = (u", ".join(tr(CATEGORY_TITLES.get(c, c)) for c in categories)
+                           or tr(MANUAL_BINDING))
+        self.Systems = u", ".join(tr(SYSTEM_TITLES.get(s, s)) for s in systems)
+        self.Note = tr(spec.note)
         self.FopStatus = u""
 
     def edited(self):
@@ -401,10 +402,10 @@ def name_error(name):
     """Текст ошибки для имени параметра или None."""
     name = _text(name or u"").strip()
     if not name:
-        return u"пустое имя"
+        return tr(u"пустое имя")
     bad = [ch for ch in FORBIDDEN_CHARS if ch in name]
     if bad:
-        return u"недопустимые символы: {}".format(u" ".join(bad))
+        return tr(u"недопустимые символы: {}").format(u" ".join(bad))
     return None
 
 
@@ -422,7 +423,7 @@ def validate(rows):
             continue
         lower = name.lower()
         if lower in seen:
-            errors.append(u"«{}» и «{}»: одно и то же имя «{}»".format(seen[lower], row.Label, name))
+            errors.append(tr(u"«{}» и «{}»: одно и то же имя «{}»").format(seen[lower], row.Label, name))
         else:
             seen[lower] = row.Label
     return errors
@@ -595,11 +596,11 @@ def update_status(rows, fop_defs, write_fop=False):
     for row in rows:
         d = find_exact(fop_defs, row.Name)
         if d is None:
-            row.FopStatus = u"нет — будет создан" if write_fop else u"нет — не создаётся"
+            row.FopStatus = tr(u"нет — будет создан") if write_fop else tr(u"нет — не создаётся")
             continue
-        status = u"есть, группа «{}»".format(d.group)
+        status = tr(u"есть, группа «{}»").format(d.group)
         if row.source == SOURCE_FOP and not row.edited():
-            status = u"найден похожий, группа «{}»".format(d.group)
+            status = tr(u"найден похожий, группа «{}»").format(d.group)
         if d.data_type != row.spec.data_type:
-            status += u"; тип в ФОП не «{}»".format(DATA_TYPE_TITLES[row.spec.data_type])
+            status += tr(u"; тип в ФОП не «{}»").format(tr(DATA_TYPE_TITLES[row.spec.data_type]))
         row.FopStatus = status

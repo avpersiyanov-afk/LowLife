@@ -42,6 +42,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import N_, tr
 
 from lowlife import settings_core
 
@@ -241,11 +242,11 @@ def apply_renames(plans):
 
 # --- интерактивные сценарии ---------------------------------------------------
 
-def _toast(msg, title=u"Переименование выгрузки"):
+def _toast(msg, title=N_(u"Переименование выгрузки")):
     if forms is None:
         return
     try:
-        forms.toast(msg, title=title)
+        forms.toast(msg, title=tr(title))
     except Exception:
         try:
             forms.alert(msg, title=title)
@@ -261,21 +262,21 @@ def _ask_folder(cfg):
 
     if last and os.path.isdir(last):
         choice = forms.alert(
-            u"Папка выгрузки:\n{}\n\n"
-            u"Переименовать в ней «{}» → «{}»?".format(
+            tr(u"Папка выгрузки:\n{}\n\n"
+            u"Переименовать в ней «{}» → «{}»?").format(
                 last, cfg["from_token"], cfg["to_token"]),
-            title=u"Переименование выгрузки",
-            options=[u"Да, эта папка", u"Выбрать другую…", u"Отмена"],
+            title=tr(u"Переименование выгрузки"),
+            options=[tr(u"Да, эта папка"), tr(u"Выбрать другую…"), tr(u"Отмена")],
         )
-        if choice == u"Да, эта папка":
+        if choice == tr(u"Да, эта папка"):
             return last
-        if choice == u"Выбрать другую…":
+        if choice == tr(u"Выбрать другую…"):
             pass
         else:
             return None
 
     try:
-        picked = forms.pick_folder(title=u"Папка, куда ModPlus сложил файлы")
+        picked = forms.pick_folder(title=tr(u"Папка, куда ModPlus сложил файлы"))
     except TypeError:
         picked = forms.pick_folder()
 
@@ -307,22 +308,22 @@ def rename_folder_interactive(folder, cfg=None, source_label=None,
 
     if not ok and not collisions:
         if not quiet_if_empty:
-            _toast(u"Файлов с «{}» в имени не найдено:\n{}".format(
+            _toast(tr(u"Файлов с «{}» в имени не найдено:\n{}").format(
                 cfg["from_token"], folder))
         return "nothing"
 
     sample = u"\n".join(u"  {}  →  {}".format(
         os.path.basename(s), os.path.basename(d)) for s, d, _ in ok[:12])
     if len(ok) > 12:
-        sample += u"\n  … ещё {}".format(len(ok) - 12)
+        sample += tr(u"\n  … ещё {}").format(len(ok) - 12)
 
-    msg = u"Папка: {}\n\n".format(folder)
+    msg = tr(u"Папка: {}\n\n").format(folder)
     if source_label:
         msg += u"{}\n\n".format(source_label)
-    msg += u"Переименовать «{}» → «{}» в {} файле(ах):\n{}".format(
+    msg += tr(u"Переименовать «{}» → «{}» в {} файле(ах):\n{}").format(
         cfg["from_token"], cfg["to_token"], len(ok), sample or u"  —")
     if collisions:
-        msg += u"\n\nПропущу {} — целевое имя уже занято:\n{}".format(
+        msg += tr(u"\n\nПропущу {} — целевое имя уже занято:\n{}").format(
             len(collisions),
             u"\n".join(u"  {}".format(os.path.basename(s))
                        for s, _d, _ in collisions[:12]))
@@ -332,18 +333,18 @@ def rename_folder_interactive(folder, cfg=None, source_label=None,
             _toast(msg)
         return "nothing"
 
-    if forms is not None and not forms.alert(msg, title=u"Переименование выгрузки",
+    if forms is not None and not forms.alert(msg, title=tr(u"Переименование выгрузки"),
                                              yes=True, no=True):
         return "declined"
 
     renamed, errors = apply_renames(ok)
     save_config({"last_folder": folder})
 
-    result = u"Переименовано: {}".format(renamed)
+    result = tr(u"Переименовано: {}").format(renamed)
     if collisions:
-        result += u"\nПропущено (имя занято): {}".format(len(collisions))
+        result += tr(u"\nПропущено (имя занято): {}").format(len(collisions))
     if errors:
-        result += u"\nОшибок: {}\n{}".format(
+        result += tr(u"\nОшибок: {}\n{}").format(
             len(errors),
             u"\n".join(u"  {} — {}".format(os.path.basename(s), m)
                        for s, _d, m in errors[:8]))
@@ -364,7 +365,7 @@ def run_after_export(command_id_text=None, cfg=None):
     if not folder:
         return
 
-    label = u"Команда: {}".format(command_id_text) if command_id_text else None
+    label = tr(u"Команда: {}").format(command_id_text) if command_id_text else None
     rename_folder_interactive(folder, cfg=cfg, source_label=label)
 
 
@@ -375,34 +376,34 @@ def configure():
     cfg = load_config()
 
     watch_explorer = forms.alert(
-        u"Сам замечать завершение экспорта ModPlus (новое окно Проводника "
+        tr(u"Сам замечать завершение экспорта ModPlus (новое окно Проводника "
         u"с папкой выгрузки / закрытие модального окна экспорта) и сразу "
         u"предлагать переименование?\n\n"
-        u"Работает всю сессию Revit (startup.py). Сейчас: {}".format(
-            u"да" if cfg["watch_explorer"] else u"нет"),
-        title=u"Переименование выгрузки — настройки",
+        u"Работает всю сессию Revit (startup.py). Сейчас: {}").format(
+            tr(u"да") if cfg["watch_explorer"] else tr(u"нет")),
+        title=tr(u"Переименование выгрузки — настройки"),
         yes=True, no=True,
     )
 
     enabled = forms.alert(
-        u"«Взводить» переименование по клику на кнопку «Экспорт листов» "
+        tr(u"«Взводить» переименование по клику на кнопку «Экспорт листов» "
         u"ModPlus (ловится через ComponentManager.ItemExecuted)? Точнее, "
         u"чем эвристика выше; без него — только новое окно Проводника / "
         u"закрытие модального окна.\n\n"
-        u"Сейчас: {}".format(u"да" if cfg["enabled"] else u"нет"),
-        title=u"Переименование выгрузки — настройки",
+        u"Сейчас: {}").format(tr(u"да") if cfg["enabled"] else tr(u"нет")),
+        title=tr(u"Переименование выгрузки — настройки"),
         yes=True, no=True,
     )
 
     hint = u""
     if cfg.get("last_seen_command"):
-        hint = u"\n\nПоследняя пойманная кнопка:\n{}".format(cfg["last_seen_command"])
+        hint = tr(u"\n\nПоследняя пойманная кнопка:\n{}").format(cfg["last_seen_command"])
     subs = forms.ask_for_string(
         default=u", ".join(cfg["trigger_substrings"]),
-        prompt=u"Подстроки для опознания кнопки экспорта по её Id/Text/Cookie "
+        prompt=tr(u"Подстроки для опознания кнопки экспорта по её Id/Text/Cookie "
                u"(через запятую, регистр не важен). Пусто — «взвод» по клику "
-               u"выключен.{}".format(hint),
-        title=u"Кнопка экспорта ModPlus",
+               u"выключен.{}").format(hint),
+        title=tr(u"Кнопка экспорта ModPlus"),
     )
     if subs is None:
         return
@@ -410,23 +411,23 @@ def configure():
 
     frm = forms.ask_for_string(
         default=cfg["from_token"],
-        prompt=u"Что искать в имени файла:",
-        title=u"Заменять",
+        prompt=tr(u"Что искать в имени файла:"),
+        title=tr(u"Заменять"),
     )
     if frm is None:
         return
     to = forms.ask_for_string(
         default=cfg["to_token"],
-        prompt=u"На что заменять (меняются все вхождения):",
-        title=u"Заменять",
+        prompt=tr(u"На что заменять (меняются все вхождения):"),
+        title=tr(u"Заменять"),
     )
     if to is None:
         return
 
     exts = forms.ask_for_string(
         default=u", ".join(cfg["extensions"]),
-        prompt=u"Расширения файлов через запятую (пусто — любые):",
-        title=u"Файлы",
+        prompt=tr(u"Расширения файлов через запятую (пусто — любые):"),
+        title=tr(u"Файлы"),
     )
     if exts is None:
         return
@@ -434,28 +435,28 @@ def configure():
 
     root = forms.ask_for_string(
         default=cfg["export_root"],
-        prompt=u"Корневая папка выгрузки ModPlus (та, ВНУТРИ которой ModPlus "
+        prompt=tr(u"Корневая папка выгрузки ModPlus (та, ВНУТРИ которой ModPlus "
                u"создаёт подпапку с датой-временем). Если задать — авто-режим "
                u"сам найдёт свежую подпапку и переименует в ней без вопросов. "
-               u"Пусто — будет спрашивать папку.",
-        title=u"Папка выгрузки",
+               u"Пусто — будет спрашивать папку."),
+        title=tr(u"Папка выгрузки"),
     )
     if root is None:
         return
     root = root.strip()
 
     recursive = forms.alert(
-        u"Заходить в подпапки выбранной папки?\n\nСейчас: {}".format(
-            u"да" if cfg["recursive"] else u"нет"),
-        title=u"Подпапки",
+        tr(u"Заходить в подпапки выбранной папки?\n\nСейчас: {}").format(
+            tr(u"да") if cfg["recursive"] else tr(u"нет")),
+        title=tr(u"Подпапки"),
         yes=True, no=True,
     )
 
     notify_nothing = forms.alert(
-        u"Показывать окно, когда в выгрузке нет файлов с «{}» "
-        u"(переименовывать нечего)?\n\nСейчас: {}".format(
-            cfg["from_token"], u"да" if cfg["notify_nothing"] else u"нет"),
-        title=u"Пустая выгрузка",
+        tr(u"Показывать окно, когда в выгрузке нет файлов с «{}» "
+        u"(переименовывать нечего)?\n\nСейчас: {}").format(
+            cfg["from_token"], tr(u"да") if cfg["notify_nothing"] else tr(u"нет")),
+        title=tr(u"Пустая выгрузка"),
         yes=True, no=True,
     )
 
@@ -472,16 +473,16 @@ def configure():
     })
     if save_config(cfg):
         forms.alert(
-            u"Сохранено.\n\nАвто-режим: {}\nВзвод по клику: {}\nТриггер: {}\n"
+            tr(u"Сохранено.\n\nАвто-режим: {}\nВзвод по клику: {}\nТриггер: {}\n"
             u"Замена: «{}» → «{}»\nФайлы: {}\nКорень выгрузки: {}\nПодпапки: {}\n\n"
             u"Авто-режим применится после перезагрузки pyRevit (или при первом "
-            u"клике по кнопке).".format(
-                u"да" if cfg["watch_explorer"] else u"нет",
-                u"да" if cfg["enabled"] else u"нет",
+            u"клике по кнопке).").format(
+                tr(u"да") if cfg["watch_explorer"] else tr(u"нет"),
+                tr(u"да") if cfg["enabled"] else tr(u"нет"),
                 u", ".join(trigger_substrings) or u"—",
                 cfg["from_token"], cfg["to_token"],
-                u", ".join(extensions) or u"любые",
-                root or u"— (спрашивать)",
-                u"да" if cfg["recursive"] else u"нет"),
-            title=u"Переименование выгрузки — настройки",
+                u", ".join(extensions) or tr(u"любые"),
+                root or tr(u"— (спрашивать)"),
+                tr(u"да") if cfg["recursive"] else tr(u"нет")),
+            title=tr(u"Переименование выгрузки — настройки"),
         )

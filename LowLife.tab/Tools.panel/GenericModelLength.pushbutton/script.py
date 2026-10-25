@@ -5,6 +5,7 @@ __doc__ = u"Сумма длин выбранных обобщённых моде
 __author__ = "Pipers"
 
 from pyrevit import revit, DB, script as pyrevit_script
+from lowlife.i18n import tr
 
 doc = revit.doc
 selection = revit.get_selection()
@@ -27,9 +28,9 @@ def get_type_name(el):
             try:
                 return type_el.Name
             except:
-                return "Тип ID {}".format(type_el.Id.IntegerValue)
+                return tr("Тип ID {}").format(type_el.Id.IntegerValue)
 
-    return "Без типа"
+    return tr("Без типа")
 
 
 def get_length_ft(el):
@@ -69,7 +70,7 @@ except:
 
 
 if not selected:
-    output.print_md(u"Сначала выберите обобщённые модели.")
+    output.print_md(tr(u"Сначала выберите обобщённые модели."))
 else:
     totals = {}
 
@@ -89,17 +90,17 @@ else:
         totals[type_name] += length_ft
 
     if not totals:
-        output.print_md(u"Среди выбранных элементов нет обобщённых моделей.")
+        output.print_md(tr(u"Среди выбранных элементов нет обобщённых моделей."))
     else:
         total_ft = 0.0
 
-        output.print_md(u"### Длина по типам")
+        output.print_md(tr(u"### Длина по типам"))
 
         for type_name in sorted(totals.keys()):
             length_ft = totals[type_name]
             total_ft += length_ft
 
             length_m = length_ft * 0.3048
-            output.print_md(u"- {} — {:.2f} м".format(type_name, length_m))
+            output.print_md(tr(u"- {} — {:.2f} м").format(type_name, length_m))
 
-        output.print_md(u"**Общая длина — {:.2f} м**".format(total_ft * 0.3048))
+        output.print_md(tr(u"**Общая длина — {:.2f} м**").format(total_ft * 0.3048))

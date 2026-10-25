@@ -10,6 +10,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms
+from lowlife.i18n import tr
 
 from lowlife import room_tags
 
@@ -18,11 +19,11 @@ uidoc = revit.uidoc
 
 selection = list(uidoc.Selection.GetElementIds())
 if not selection:
-    forms.alert(u"Выделите одну марку помещения и повторите.", exitscript=True)
+    forms.alert(tr(u"Выделите одну марку помещения и повторите."), exitscript=True)
 
 tag = doc.GetElement(selection[0])
 if tag is None or tag.Category is None or tag.Category.Id.IntegerValue != room_tags._OST_ROOM_TAGS:
-    forms.alert(u"Выделенный элемент — не марка помещения.", exitscript=True)
+    forms.alert(tr(u"Выделенный элемент — не марка помещения."), exitscript=True)
 
 report = room_tags.diagnose_tag(doc, tag)
-forms.alert(report, title=u"Диагностика марки {}".format(tag.Id.IntegerValue))
+forms.alert(report, title=tr(u"Диагностика марки {}").format(tag.Id.IntegerValue))

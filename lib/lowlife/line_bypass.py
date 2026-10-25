@@ -79,6 +79,7 @@ sot_schematic.sync_rooms_in_level в lib/README.md про марки узлов)
 """
 
 import math
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import Arc, DetailLine, ElementId, Line, XYZ
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
@@ -126,26 +127,26 @@ def ask_diameter_mm():
     while True:
         raw = forms.ask_for_string(
             default=default_text,
-            prompt=u"Диаметр дуги обхода, мм (при «Множественном» обходе — "
-                   u"это запас по краям общей дуги):",
-            title=u"Обход линий"
+            prompt=tr(u"Диаметр дуги обхода, мм (при «Множественном» обходе — "
+                   u"это запас по краям общей дуги):"),
+            title=tr(u"Обход линий")
         )
         if raw is None:
             return None
 
         raw = raw.strip().replace(u",", u".")
         if not raw:
-            forms.alert(u"Введите значение диаметра.")
+            forms.alert(tr(u"Введите значение диаметра."))
             continue
 
         try:
             value = float(raw)
         except ValueError:
-            forms.alert(u"«{}» — не число. Введите положительное число.".format(raw))
+            forms.alert(tr(u"«{}» — не число. Введите положительное число.").format(raw))
             continue
 
         if value <= 0:
-            forms.alert(u"Диаметр должен быть больше нуля.")
+            forms.alert(tr(u"Диаметр должен быть больше нуля."))
             continue
 
         return value
@@ -161,14 +162,14 @@ def ask_bypass_mode():
     (безопаснее не сливать пересечения в одну дугу без явного согласия).
     """
     return bool(forms.alert(
-        u"Как обходить пересечения второй линии с базовыми?\n\n"
+        tr(u"Как обходить пересечения второй линии с базовыми?\n\n"
         u"Да — «Множественный обход»: если вторая линия пересекает сразу "
         u"несколько базовых линий (пучок), строится ОДНА большая дуга через "
         u"весь пучок.\n\n"
         u"Нет — «Одиночный обход»: на каждом отдельном пересечении со своей "
         u"базовой линией строится своя маленькая дуга ровно введённого "
-        u"диаметра — даже если пересечений на одной линии несколько.",
-        title=u"Обход линий",
+        u"диаметра — даже если пересечений на одной линии несколько."),
+        title=tr(u"Обход линий"),
         yes=True, no=True
     ))
 
@@ -259,13 +260,13 @@ def compute_line_plan(base_lines, second_el, radius_ft, bundle_mode):
     dy = a2.Y - a1.Y
     length = math.sqrt(dx * dx + dy * dy)
     if length < EPS_FT:
-        return None, u"вторая линия вырождена (нулевой длины) — пропущено"
+        return None, tr(u"вторая линия вырождена (нулевой длины) — пропущено")
     dir_x = dx / length
     dir_y = dy / length
 
     positions = collect_crossing_positions(a1, a2, dir_x, dir_y, base_lines)
     if not positions:
-        return None, u"нет пересечений с базовыми линиями — пропущено"
+        return None, tr(u"нет пересечений с базовыми линиями — пропущено")
 
     groups = group_crossing_positions(positions, bundle_mode)
 
@@ -276,13 +277,13 @@ def compute_line_plan(base_lines, second_el, radius_ft, bundle_mode):
         c2_pos = max(group) + radius_ft
 
         if c1_pos <= EPS_FT or c2_pos >= length - EPS_FT:
-            return None, u"диаметр/запас обхода больше доступной длины линии у пересечения — пропущено"
+            return None, tr(u"диаметр/запас обхода больше доступной длины линии у пересечения — пропущено")
 
         if prev_c2_pos is not None and c1_pos <= prev_c2_pos + EPS_FT:
             return None, (
-                u"два пересечения слишком близко друг к другу для отдельных "
+                tr(u"два пересечения слишком близко друг к другу для отдельных "
                 u"дуг такого диаметра — уменьшите диаметр или выберите "
-                u"«Множественный обход»"
+                u"«Множественный обход»")
             )
 
         spans.append((c1_pos, c2_pos))
@@ -372,7 +373,7 @@ def build_and_commit_line(doc, view, line_plan, side_pt):
     """
     curves = build_curves_for_side(line_plan, side_pt)
 
-    with revit.Transaction(u"Обход линии"):
+    with revit.Transaction(tr(u"Обход линии")):
         doc.Delete(line_plan["element"].Id)
         for new_curve in curves:
             detail_curve = doc.Create.NewDetailCurve(view, new_curve)
@@ -403,15 +404,15 @@ def run_line_bypass_tool(doc, uidoc, view):
     try:
         base_refs = uidoc.Selection.PickObjects(
             ObjectType.Element, selection_filter,
-            u"Выберите одну или несколько базовых линий — останутся целыми "
-            u"(Enter/«Готово» — подтвердить)"
+            tr(u"Выберите одну или несколько базовых линий — останутся целыми "
+            u"(Enter/«Готово» — подтвердить)")
         )
     except OperationCanceledException:
         return
 
     base_els = [doc.GetElement(r) for r in base_refs]
     if not base_els:
-        forms.alert(u"Не выбрано ни одной базовой линии.", exitscript=True)
+        forms.alert(tr(u"Не выбрано ни одной базовой линии."), exitscript=True)
         return
 
     base_ids = set(el.Id for el in base_els)
@@ -427,7 +428,7 @@ def run_line_bypass_tool(doc, uidoc, view):
         try:
             second_ref = uidoc.Selection.PickObject(
                 ObjectType.Element, selection_filter,
-                u"Выберите линию, которая обойдёт базовые (Esc — закончить)"
+                tr(u"Выберите линию, которая обойдёт базовые (Esc — закончить)")
             )
         except OperationCanceledException:
             break
@@ -435,7 +436,7 @@ def run_line_bypass_tool(doc, uidoc, view):
         second_el = doc.GetElement(second_ref)
 
         if second_el.Id in base_ids:
-            forms.alert(u"Это базовая линия, она должна остаться целой — выберите другую.")
+            forms.alert(tr(u"Это базовая линия, она должна остаться целой — выберите другую."))
             continue
 
         line_plan, error = compute_line_plan(base_lines, second_el, radius_ft, bundle_mode)
@@ -447,23 +448,23 @@ def run_line_bypass_tool(doc, uidoc, view):
 
         side_pt = ask_side_reference(
             uidoc,
-            u"Укажите сторону обхода для этой линии (Esc — пропустить эту линию)"
+            tr(u"Укажите сторону обхода для этой линии (Esc — пропустить эту линию)")
         )
         if side_pt is None:
-            notes.append(u"ID {}: выбор стороны отменён — пропущено".format(second_el.Id.IntegerValue))
+            notes.append(tr(u"ID {}: выбор стороны отменён — пропущено").format(second_el.Id.IntegerValue))
             continue
 
         try:
             build_and_commit_line(doc, view, line_plan, side_pt)
             built_count += 1
         except Exception as ex:
-            notes.append(u"ID {}: не удалось построить обход — {}".format(second_el.Id.IntegerValue, ex))
+            notes.append(tr(u"ID {}: не удалось построить обход — {}").format(second_el.Id.IntegerValue, ex))
 
     if built_count == 0 and not notes:
-        forms.alert(u"Обход не построен — вторые линии не выбирались.", exitscript=True)
+        forms.alert(tr(u"Обход не построен — вторые линии не выбирались."), exitscript=True)
         return
 
-    message = u"Готово. Построено обходов: {}".format(built_count)
+    message = tr(u"Готово. Построено обходов: {}").format(built_count)
     if notes:
-        message += u"\n\nПримечания:\n" + u"\n".join(notes)
+        message += tr(u"\n\nПримечания:\n") + u"\n".join(notes)
     forms.alert(message)

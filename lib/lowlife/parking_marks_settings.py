@@ -10,10 +10,11 @@ settings_core.TextSettings; здесь только описание полей 
 """
 
 from lowlife import settings_core
+from lowlife.i18n import N_
 from lowlife.parking_marks_core import GROUPS, OTHER
 
 _NUMBERS = [u"①", u"②", u"③", u"④"]
-_FILL_CHOICES = [("no", u"Не штриховать"), ("yes", u"Штриховать по контуру")]
+_FILL_CHOICES = [("no", N_(u"Не штриховать")), ("yes", N_(u"Штриховать по контуру"))]
 
 
 def _group_fields(index, group):
@@ -22,7 +23,7 @@ def _group_fields(index, group):
             group.key + "_words",
             u"{} {}".format(_NUMBERS[index], group.name),
             u"Слова (через запятую)",
-            hint=(
+            hint=N_(
                 u"Ищутся без учёта регистра в «Комментариях», имени рабочего набора и "
                 u"имени семейства/типа элемента. Группы проверяются по порядку — "
                 u"элемент попадает в первую подошедшую. Пусто — группа выключена."
@@ -33,7 +34,7 @@ def _group_fields(index, group):
             group.key + "_text_format",
             u"",
             u"Текст подписи",
-            hint=(
+            hint=N_(
                 u"{top} — отметка верха, {bottom} — низа, от уровня плана («+2,450»)."
             ) if index == 0 else u"",
             default=group.text_format,
@@ -43,10 +44,10 @@ def _group_fields(index, group):
             u"",
             u"Штриховка",
             _FILL_CHOICES,
-            hint=(
-                u"Тип области заливки «LowLife — {}» создаётся при первом запуске; "
-                u"его штриховку и цвет можно потом поменять в Revit."
-            ).format(group.name.lower()) if index == 0 else u"",
+            hint=N_(
+                u"Тип области заливки «LowLife — <имя группы>» создаётся для каждой группы "
+                u"при первом запуске; его штриховку и цвет можно потом поменять в Revit."
+            ) if index == 0 else u"",
             default=group.fill,
         ),
     ]
@@ -57,7 +58,7 @@ for _index, _group in enumerate(GROUPS):
     _FIELDS.extend(_group_fields(_index, _group))
 _FIELDS.append(settings_core.TextField(
     OTHER.key + "_text_format",
-    u"{} Остальные элементы «Парковки»".format(_NUMBERS[len(GROUPS)]),
+    u"{} {}".format(_NUMBERS[len(GROUPS)], N_(u"Остальные элементы «Парковки»")),
     u"Текст подписи (пусто — не подписывать)",
     default=OTHER.text_format,
 ))

@@ -20,6 +20,7 @@ Revit API.
 """
 
 import re
+from lowlife.i18n import tr
 
 BUILDING = u"Корпус"
 FLOOR = u"Этаж"
@@ -45,7 +46,7 @@ class LevelNameTemplate(object):
 
     def _compile(self):
         if not self.template:
-            self.error = u"шаблон имени уровня пустой"
+            self.error = tr(u"шаблон имени уровня пустой")
             return
 
         # [(литерал перед подстановкой, имя подстановки)], хвост — отдельно.
@@ -54,22 +55,22 @@ class LevelNameTemplate(object):
         for m in _PLACEHOLDER_RE.finditer(self.template):
             name = m.group(1).strip()
             if not name:
-                self.error = u"в шаблоне есть пустые скобки {}"
+                self.error = tr(u"в шаблоне есть пустые скобки {}")
                 return
             parts.append((self.template[pos:m.start()], name))
             pos = m.end()
         tail = self.template[pos:]
 
         if u"{" in tail or u"}" in tail or any(u"{" in lit or u"}" in lit for lit, _ in parts):
-            self.error = u"в шаблоне есть незакрытая фигурная скобка"
+            self.error = tr(u"в шаблоне есть незакрытая фигурная скобка")
             return
         names = [name for _lit, name in parts]
         if FLOOR not in names:
-            self.error = u"в шаблоне нет {%s}" % FLOOR
+            self.error = tr(u"в шаблоне нет {%s}") % FLOOR
             return
         for key in (BUILDING, FLOOR, COMMENT):
             if names.count(key) > 1:
-                self.error = u"{%s} встречается в шаблоне больше одного раза" % key
+                self.error = tr(u"{%s} встречается в шаблоне больше одного раза") % key
                 return
 
         # Последнее поле — {Комментарий} без текста после него → необязательно.

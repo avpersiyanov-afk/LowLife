@@ -19,6 +19,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import os
+from lowlife.i18n import tr
 import shutil
 import traceback
 
@@ -33,7 +34,7 @@ doc = revit.doc
 uidoc = revit.uidoc
 view = doc.ActiveView
 
-TITLE = u"DWG → чертёжный вид"
+TITLE = tr(u"DWG → чертёжный вид")
 
 try:
     config_mode = bool(EXEC_PARAMS.config_mode)
@@ -42,8 +43,8 @@ except Exception:
 
 if config_mode:
     edited = dwg_transfer_settings.get_settings_interactive()
-    forms.alert(u"Отменено, настройки не изменены." if edited is None
-                else u"Настройки сохранены.", title=TITLE)
+    forms.alert(tr(u"Отменено, настройки не изменены.") if edited is None
+                else tr(u"Настройки сохранены."), title=TITLE)
     script.exit()
 
 settings = dwg_transfer_settings.get_settings_silent()
@@ -52,19 +53,19 @@ SUPPORTED_VIEWS = (ViewType.FloorPlan, ViewType.CeilingPlan, ViewType.Engineerin
                    ViewType.AreaPlan, ViewType.Section, ViewType.Elevation,
                    ViewType.Detail, ViewType.DraftingView)
 if view.ViewType not in SUPPORTED_VIEWS:
-    forms.alert(u"Откройте план, разрез, фасад, узел или чертёжный вид, на "
-                u"котором лежит DWG.", title=TITLE, exitscript=True)
+    forms.alert(tr(u"Откройте план, разрез, фасад, узел или чертёжный вид, на "
+                u"котором лежит DWG."), title=TITLE, exitscript=True)
 
 # --- какой DWG -----------------------------------------------------------------
 
 imports = dt.find_imports(doc, view, uidoc.Selection.GetElementIds())
 if not imports:
-    forms.alert(u"На виде нет импортированного или связанного DWG.", title=TITLE,
+    forms.alert(tr(u"На виде нет импортированного или связанного DWG."), title=TITLE,
                 exitscript=True)
 imp = imports[0]
 if len(imports) > 1:
     labels = [u"{} (id {})".format(dt.import_label(doc, i), i.Id.IntegerValue) for i in imports]
-    picked = select_list.SelectFromList.show(labels, title=TITLE, button_name=u"Перенести",
+    picked = select_list.SelectFromList.show(labels, title=TITLE, button_name=tr(u"Перенести"),
                                        multiselect=False)
     if not picked:
         script.exit()
@@ -78,22 +79,22 @@ style_name = (settings.get("line_style") or u"").strip()
 if style_name:
     fixed_style = dt.find_line_style(doc, style_name)
     if fixed_style is None:
-        forms.alert(u"Стиль линий «{}» не найден в проекте.\n\nShift+клик по "
-                    u"кнопке — настройки (пусто — стили по слоям DWG).".format(style_name),
+        forms.alert(tr(u"Стиль линий «{}» не найден в проекте.\n\nShift+клик по "
+                    u"кнопке — настройки (пусто — стили по слоям DWG).").format(style_name),
                     title=TITLE, exitscript=True)
 
 base_name = (settings.get("base_text_type") or u"").strip()
 base_text_type = dt.find_text_type(doc, base_name) if base_name else dt.default_text_type(doc)
 if base_text_type is None:
-    forms.alert(u"Типоразмер текста «{}» не найден в проекте.\n\nShift+клик по "
-                u"кнопке — настройки.".format(base_name), title=TITLE, exitscript=True)
+    forms.alert(tr(u"Типоразмер текста «{}» не найден в проекте.\n\nShift+клик по "
+                u"кнопке — настройки.").format(base_name), title=TITLE, exitscript=True)
 
 # --- куда -------------------------------------------------------------------------
 
-TO_NEW = u"В новый чертёжный вид"
-TO_SAME = u"На этот вид, поверх DWG"
+TO_NEW = tr(u"В новый чертёжный вид")
+TO_SAME = tr(u"На этот вид, поверх DWG")
 target_choice = select_list.CommandSwitchWindow.show(
-    [TO_NEW, TO_SAME], message=u"«{}»: куда перенести линии и текст?".format(label))
+    [TO_NEW, TO_SAME], message=tr(u"«{}»: куда перенести линии и текст?").format(label))
 if not target_choice:
     script.exit()
 
@@ -114,22 +115,22 @@ if dxf_path is None and file_path and file_path.lower().endswith(".dwg") and os.
 if dxf_path is None:
     where = u""
     if searched:
-        where = u"\n\nDXF искался здесь:\n" + u"\n".join(searched[:6])
+        where = tr(u"\n\nDXF искался здесь:\n") + u"\n".join(searched[:6])
     if not file_path:
-        why = u"DWG вставлен в проект, а не связан — путь к нему неизвестен."
+        why = tr(u"DWG вставлен в проект, а не связан — путь к нему неизвестен.")
     elif not os.path.isfile(file_path):
-        why = u"Файл DWG не найден:\n{}".format(file_path)
+        why = tr(u"Файл DWG не найден:\n{}").format(file_path)
     elif convert_error:
-        why = u"Не удалось сконвертировать DWG в DXF: {}".format(convert_error)
+        why = tr(u"Не удалось сконвертировать DWG в DXF: {}").format(convert_error)
     else:
-        why = (u"Рядом с DWG нет DXF с тем же именем, а ODA File Converter не "
+        why = (tr(u"Рядом с DWG нет DXF с тем же именем, а ODA File Converter не "
                u"найден (бесплатно: opendesign.com → ODA File Converter, или "
-               u"сохраните DWG как DXF в AutoCAD).")
-    PICK = u"Указать DXF-файл…"
-    SKIP = u"Без текста — только линии"
+               u"сохраните DWG как DXF в AutoCAD)."))
+    PICK = tr(u"Указать DXF-файл…")
+    SKIP = tr(u"Без текста — только линии")
     text_choice = select_list.CommandSwitchWindow.show(
         [PICK, SKIP],
-        message=u"Текст DWG читается из DXF того же чертежа. " + why + where)
+        message=tr(u"Текст DWG читается из DXF того же чертежа. ") + why + where)
     if not text_choice:
         script.exit()
     if text_choice == PICK:
@@ -163,8 +164,8 @@ if drawing is not None and drawing.texts:
         mapping_how = fit[3]
 
 if not geo.items and mapping is None:
-    forms.alert(u"В DWG «{}» нечего переносить: видимых линий нет{}.".format(
-        label, u", текст не прочитан" if drawing is None else u""), title=TITLE, exitscript=True)
+    forms.alert(tr(u"В DWG «{}» нечего переносить: видимых линий нет{}.").format(
+        label, tr(u", текст не прочитан") if drawing is None else u""), title=TITLE, exitscript=True)
 
 # --- перенос --------------------------------------------------------------------
 
@@ -191,7 +192,7 @@ try:
             text_types = dt.TextTypes(doc, base_text_type, settings.get("text_type_prefix") or u"")
             dt.transfer_texts(doc, imp, view, geo, drawing, mapping, placement, text_types, result)
 except Exception:
-    forms.alert(u"Не удалось перенести DWG.\n\n" + traceback.format_exc(),
+    forms.alert(tr(u"Не удалось перенести DWG.\n\n") + traceback.format_exc(),
                 title=TITLE, exitscript=True)
 
 if target.Id != view.Id:
@@ -199,62 +200,62 @@ if target.Id != view.Id:
 
 # --- отчёт ----------------------------------------------------------------------
 
-lines = [u"«{}» → {}".format(label, u"чертёжный вид «{}»".format(dt.element_name(target))
-                              if target.Id != view.Id else u"этот вид")]
+lines = [u"«{}» → {}".format(label, tr(u"чертёжный вид «{}»").format(dt.element_name(target))
+                              if target.Id != view.Id else tr(u"этот вид"))]
 if dxf_path:
-    lines.append(u"Текст из: " + (u"DWG, сконвертированного ODA File Converter"
+    lines.append(tr(u"Текст из: ") + (tr(u"DWG, сконвертированного ODA File Converter")
                                   if temp_dir else dxf_path))
-line_text = u"Линий детализации: {}".format(result.lines)
+line_text = tr(u"Линий детализации: {}").format(result.lines)
 if result.lines_failed:
-    line_text += u" (не удалось: {})".format(result.lines_failed)
+    line_text += tr(u" (не удалось: {})").format(result.lines_failed)
 if geo.hidden_skipped:
-    line_text += u"; на скрытых слоях пропущено: {}".format(geo.hidden_skipped)
+    line_text += tr(u"; на скрытых слоях пропущено: {}").format(geo.hidden_skipped)
 lines.append(line_text)
 
 if drawing is None:
-    lines.append(u"Текст не перенесён: " + (read_error or u"DXF не указан."))
+    lines.append(tr(u"Текст не перенесён: ") + (read_error or tr(u"DXF не указан.")))
 elif not drawing.texts:
-    lines.append(u"В DXF нет текста в пространстве модели.")
+    lines.append(tr(u"В DXF нет текста в пространстве модели."))
 elif mapping is None:
-    lines.append(u"Текст не перенесён: не удалось совместить DXF с геометрией DWG "
-                 u"(в DXF нет линий и не заданы единицы $INSUNITS).")
+    lines.append(tr(u"Текст не перенесён: не удалось совместить DXF с геометрией DWG "
+                 u"(в DXF нет линий и не заданы единицы $INSUNITS)."))
 else:
-    text_line = u"Текстов: {}".format(result.texts)
+    text_line = tr(u"Текстов: {}").format(result.texts)
     if result.texts_failed:
-        text_line += u" (не удалось: {})".format(result.texts_failed)
+        text_line += tr(u" (не удалось: {})").format(result.texts_failed)
     hidden = result.texts_hidden + drawing.skipped_hidden
     if hidden:
-        text_line += u"; на скрытых/выключенных слоях пропущено: {}".format(hidden)
+        text_line += tr(u"; на скрытых/выключенных слоях пропущено: {}").format(hidden)
     lines.append(text_line)
     if mapping_how == "units_only":
-        lines.append(u"Внимание: габариты DXF и DWG не совпали (это тот же чертёж?) — "
-                     u"текст поставлен только по единицам DXF, проверьте его положение.")
+        lines.append(tr(u"Внимание: габариты DXF и DWG не совпали (это тот же чертёж?) — "
+                     u"текст поставлен только по единицам DXF, проверьте его положение."))
     kinds = drawing.counts()
     if kinds:
-        names = [(u"TEXT", u"однострочный"), (u"MTEXT", u"многострочный"),
-                 (u"ATTRIB", u"атрибуты блоков"), (u"ATTDEF", u"постоянные атрибуты"),
-                 (u"MULTILEADER", u"мультивыноски")]
-        lines.append(u"Найдено в DXF: " + u", ".join(
+        names = [(u"TEXT", tr(u"однострочный")), (u"MTEXT", tr(u"многострочный")),
+                 (u"ATTRIB", tr(u"атрибуты блоков")), (u"ATTDEF", tr(u"постоянные атрибуты")),
+                 (u"MULTILEADER", tr(u"мультивыноски"))]
+        lines.append(tr(u"Найдено в DXF: ") + u", ".join(
             u"{} {}".format(label, kinds[k]) for k, label in names if kinds.get(k)) + u".")
     if drawing.missing_blocks:
-        lines.append(u"В DXF нет описаний блоков: {}.".format(
+        lines.append(tr(u"В DXF нет описаний блоков: {}.").format(
             u", ".join(sorted(drawing.missing_blocks)[:5])))
 
 if drawing is not None and drawing.unsupported:
     top = sorted(drawing.unsupported.items(), key=lambda kv: -kv[1])[:6]
-    lines.append(u"Не разобраны объекты DXF (их текст не перенесён): " + u", ".join(
+    lines.append(tr(u"Не разобраны объекты DXF (их текст не перенесён): ") + u", ".join(
         u"{} ×{}".format(k, v) for k, v in top) + u".")
 
 if styles is not None and styles.created:
-    lines.append(u"Создано стилей линий по слоям: {}.".format(len(styles.created)))
+    lines.append(tr(u"Создано стилей линий по слоям: {}.").format(len(styles.created)))
 if text_types is not None and text_types.created:
-    lines.append(u"Создано типов текста: {} ({}).".format(
+    lines.append(tr(u"Создано типов текста: {} ({}).").format(
         len(text_types.created), u", ".join(text_types.created[:6])))
 if result.errors:
     lines.append(u"")
-    lines.append(u"Ошибки:")
+    lines.append(tr(u"Ошибки:"))
     lines.extend(result.errors)
 lines.append(u"")
-lines.append(u"Штриховки и заливки DWG не переносятся. Подложку можно скрыть или удалить.")
+lines.append(tr(u"Штриховки и заливки DWG не переносятся. Подложку можно скрыть или удалить."))
 
 forms.alert(u"\n".join(lines), title=TITLE)

@@ -12,6 +12,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import SubTransaction
 
@@ -23,7 +24,7 @@ from lowlife import room_explication_settings
 
 doc = revit.doc
 uidoc = revit.uidoc
-TITLE = u"Обновить экспликацию"
+TITLE = tr(u"Обновить экспликацию")
 
 settings = room_explication_settings.get_settings_silent()
 
@@ -34,29 +35,29 @@ except Exception:
 
 all_items = rexp.list_explications(doc)
 if not all_items:
-    forms.alert(u"В проекте нет экспликаций фрагментов. Создайте их "
-                u"кнопкой «Экспликация фрагмента».", title=TITLE, exitscript=True)
+    forms.alert(tr(u"В проекте нет экспликаций фрагментов. Создайте их "
+                u"кнопкой «Экспликация фрагмента»."), title=TITLE, exitscript=True)
 
 if not only_selected:
-    items, scope = all_items, u"все в проекте"
+    items, scope = all_items, tr(u"все в проекте")
 else:
     items, scope = rexp.explications_to_update(doc, uidoc)
     if not items:
         # Ничего не выделено и не открыто — выбрать из списка.
         by_name = {}
         for e in all_items:
-            plan = (u"план «{}»".format(rexp.element_name(e[1])) if e[1] is not None
-                    else u"план удалён")
+            plan = (tr(u"план «{}»").format(rexp.element_name(e[1])) if e[1] is not None
+                    else tr(u"план удалён"))
             label = u"{}   ({})".format(rexp.element_name(e[0]), plan)
             if label in by_name:  # одинаковые имена — различаем по Id
                 label = u"{} [{}]".format(label, e[0].Id)
             by_name[label] = e
         picked = select_list.SelectFromList.show(
-            sorted(by_name.keys()), title=u"Какие экспликации обновить",
-            button_name=u"Обновить", multiselect=True)
+            sorted(by_name.keys()), title=tr(u"Какие экспликации обновить"),
+            button_name=tr(u"Обновить"), multiselect=True)
         if not picked:
             script.exit()
-        items, scope = [by_name[n] for n in picked], u"выбранные"
+        items, scope = [by_name[n] for n in picked], tr(u"выбранные")
 
 done, lost, failed = [], [], []
 with revit.Transaction(TITLE):
@@ -72,17 +73,17 @@ with revit.Transaction(TITLE):
             _s, count, _skipped, notes = rexp.rebuild(
                 doc, view, sources, settings, schedule, __revit__.Application)
             sub.Commit()
-            done.append(u"{} — {} пом.{}".format(
+            done.append(tr(u"{} — {} пом.{}").format(
                 name, count, u"".join(u" " + n for n in notes)))
         except Exception:
             sub.RollBack()
             failed.append(u"{}:\n{}".format(name, traceback.format_exc()))
 
-lines = [u"Обновлено ({}): {}".format(scope, len(done))] + done
+lines = [tr(u"Обновлено ({}): {}").format(scope, len(done))] + done
 if lost:
-    lines.append(u"\nНе обновлены — план удалён или у него выключена подрезка:")
+    lines.append(tr(u"\nНе обновлены — план удалён или у него выключена подрезка:"))
     lines += lost
 if failed:
-    lines.append(u"\nОшибки:")
+    lines.append(tr(u"\nОшибки:"))
     lines += failed
 forms.alert(u"\n".join(lines), title=TITLE)

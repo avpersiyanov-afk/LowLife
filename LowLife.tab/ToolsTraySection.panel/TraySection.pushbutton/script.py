@@ -3,6 +3,7 @@ __title__ = u"Сечение\nлотка"
 __author__ = "Pipers"
 
 from collections import Counter
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('RevitAPI')
@@ -23,19 +24,19 @@ from lowlife.xlsx_io import list_sheet_names
 doc = revit.doc
 uidoc = revit.uidoc
 
-MODE_BOTH = u"Сечение и таблица"
-MODE_SECTION = u"Только сечение"
-MODE_TABLE = u"Только таблица"
+MODE_BOTH = tr(u"Сечение и таблица")
+MODE_SECTION = tr(u"Только сечение")
+MODE_TABLE = tr(u"Только таблица")
 _TABLE_GAP_MM = 16.0  # отступ таблицы от правой стенки лотка (режим «сечение и таблица»)
 
 
 view = doc.ActiveView
 if not isinstance(view, ViewDrafting):
-    forms.alert(u"Откройте чертёжный вид (Drafting View) и запустите кнопку ещё раз.", exitscript=True)
+    forms.alert(tr(u"Откройте чертёжный вид (Drafting View) и запустите кнопку ещё раз."), exitscript=True)
 
 # .xlsm — тот же формат (ZIP + тот же XML), что .xlsx, отличие только в
 # макросах, парсеру не нужных: читается тем же xlsx_io. Дело за фильтром.
-path = forms.pick_file(files_filter=u"Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Все файлы (*.*)|*.*")
+path = forms.pick_file(files_filter=tr(u"Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Все файлы (*.*)|*.*"))
 if not path:
     pyrevit_script.exit()
 
@@ -43,7 +44,7 @@ if not path:
 # один лист берём молча, несколько — спрашиваем.
 sheet_names = list_sheet_names(path)
 if not sheet_names:
-    forms.alert(u"Не удалось прочитать книгу Excel (не видно ни одного листа).", exitscript=True)
+    forms.alert(tr(u"Не удалось прочитать книгу Excel (не видно ни одного листа)."), exitscript=True)
 
 sheet_name = find_data_sheet(sheet_names)
 if not sheet_name:
@@ -51,8 +52,8 @@ if not sheet_name:
         sheet_name = sheet_names[0]
     else:
         sheet_name = select_list.SelectFromList.show(
-            sheet_names, title=u"Лист «сводные данные для плагина» не найден — выберите лист",
-            button_name=u"Выбрать", multiselect=False
+            sheet_names, title=tr(u"Лист «сводные данные для плагина» не найден — выберите лист"),
+            button_name=tr(u"Выбрать"), multiselect=False
         )
         if not sheet_name:
             pyrevit_script.exit()
@@ -63,11 +64,11 @@ if error:
 
 all_sections = list_sections(cables)
 if not all_sections:
-    forms.alert(u"В файле не заполнен ни один участок (столбец «Участок»).", exitscript=True)
+    forms.alert(tr(u"В файле не заполнен ни один участок (столбец «Участок»)."), exitscript=True)
 
 chosen = select_list.SelectFromList.show(
-    all_sections, title=u"Участки — отметьте, какие вывести (построятся стопкой сверху вниз)",
-    button_name=u"Построить", multiselect=True
+    all_sections, title=tr(u"Участки — отметьте, какие вывести (построятся стопкой сверху вниз)"),
+    button_name=tr(u"Построить"), multiselect=True
 )
 if not chosen:
     pyrevit_script.exit()
@@ -78,9 +79,9 @@ sections = [s for s in all_sections if s in chosen_set]
 
 mode = select_list.SelectFromList.show(
     [MODE_BOTH, MODE_SECTION, MODE_TABLE],
-    title=u"Что построить на этом виде? "
-          u"(сечение и таблицу на разных видах — запустите кнопку дважды)",
-    button_name=u"Выбрать", multiselect=False
+    title=tr(u"Что построить на этом виде? "
+          u"(сечение и таблицу на разных видах — запустите кнопку дважды)"),
+    button_name=tr(u"Выбрать"), multiselect=False
 )
 if not mode:
     pyrevit_script.exit()
@@ -90,7 +91,7 @@ want_table = mode in (MODE_BOTH, MODE_TABLE)
 
 show_marks = False
 if want_section:
-    show_marks = bool(forms.alert(u"Показывать марки кабелей на кружках?", yes=True, no=True))
+    show_marks = bool(forms.alert(tr(u"Показывать марки кабелей на кружках?"), yes=True, no=True))
 
 # готовим данные по каждому участку заранее — чтобы не рисовать половину,
 # а потом упереться в незаполненный размер лотка
@@ -100,7 +101,7 @@ for name in sections:
     first_cable = section_cables[0]
     if first_cable.tray_width <= 0 or first_cable.tray_height <= 0:
         forms.alert(
-            u"В файле не заданы размеры лотка для участка «{}» (ширина: {}, высота: {}).".format(
+            tr(u"В файле не заданы размеры лотка для участка «{}» (ширина: {}, высота: {}).").format(
                 name, first_cable.tray_width, first_cable.tray_height
             ),
             exitscript=True
@@ -109,7 +110,7 @@ for name in sections:
     jobs.append((name, section_cables, first_cable))
 
 try:
-    origin = uidoc.Selection.PickPoint(u"Укажите точку вставки первого блока; дальше участки уйдут вниз")
+    origin = uidoc.Selection.PickPoint(tr(u"Укажите точку вставки первого блока; дальше участки уйдут вниз"))
 except OperationCanceledException:
     pyrevit_script.exit()
 
@@ -119,7 +120,7 @@ title_band_ft = paper_to_model(TITLE_BAND_MM, scale)
 table_gap_ft = paper_to_model(_TABLE_GAP_MM, scale)
 unplaced_by_section = []
 
-with revit.Transaction(u"Сечения кабельных лотков"):
+with revit.Transaction(tr(u"Сечения кабельных лотков")):
     prev_bottom_y = None  # самая нижняя нарисованная точка предыдущего блока
     for name, section_cables, first_cable in jobs:
         placed, unplaced, fill_percent = plan_section(
@@ -160,8 +161,8 @@ with revit.Transaction(u"Сечения кабельных лотков"):
 # Отчёт не показываем. Предупреждаем только про кабели, которые физически
 # не влезли в лоток по высоте (иначе бы молча пропали с чертежа).
 if unplaced_by_section:
-    lines = [u"Не поместились в лоток (не нарисованы):", u""]
+    lines = [tr(u"Не поместились в лоток (не нарисованы):"), u""]
     for name, counts in unplaced_by_section:
-        parts = u", ".join(u"марка {} — {} шт.".format(m, n) for m, n in sorted(counts.items()))
+        parts = u", ".join(tr(u"марка {} — {} шт.").format(m, n) for m, n in sorted(counts.items()))
         lines.append(u"{}: {}".format(name, parts))
     forms.alert(u"\n".join(lines))

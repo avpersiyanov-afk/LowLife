@@ -10,6 +10,7 @@ settings_core.TextSettings; здесь только описание полей.
 """
 
 from lowlife import settings_core
+from lowlife.i18n import tr
 
 
 HOSTS_ALL = "walls_floors"
@@ -37,7 +38,7 @@ class SourceField(settings_core.ChoiceField):
 def _source_field(link_titles):
     choices = [(SOURCE_HOST, u"Только эта модель"),
                (SOURCE_ALL, u"Эта модель и все загруженные связи")]
-    choices += [(title, u"Связь «{}»".format(title)) for title in link_titles]
+    choices += [(title, tr(u"Связь «{}»").format(title)) for title in link_titles]
     return SourceField(
         "box_source_model",
         u"④ Где искать пересечения",

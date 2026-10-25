@@ -15,6 +15,7 @@ from Autodesk.Revit.DB import (
     FilteredElementCollector, TextNote, TextRange, ElementId,
     WorksharingUtils, CheckoutStatus, ModelUpdatesStatus
 )
+from lowlife.i18n import tr
 
 from lowlife import spellcheck_core as core
 
@@ -65,17 +66,17 @@ def skip_reason(doc, note):
     уронили бы при сохранении всю транзакцию — их тоже пропускаем."""
     try:
         if note.GroupId is not None and note.GroupId != ElementId.InvalidElementId:
-            return u"в группе"
+            return tr(u"в группе")
     except Exception:
         pass
     if not doc.IsWorkshared:
         return None
     try:
         if WorksharingUtils.GetCheckoutStatus(doc, note.Id) == CheckoutStatus.OwnedByOtherUser:
-            return u"занята другим пользователем"
+            return tr(u"занята другим пользователем")
         if WorksharingUtils.GetModelUpdatesStatus(doc, note.Id) in (
                 ModelUpdatesStatus.UpdatedInCentral, ModelUpdatesStatus.DeletedInCentral):
-            return u"изменена в центральной модели — синхронизируйтесь"
+            return tr(u"изменена в центральной модели — синхронизируйтесь")
     except Exception:
         pass
     return None
@@ -86,7 +87,7 @@ def apply_fix(note, old_plain, new_plain):
     Возвращает APPLIED_FORMATTED или APPLIED_PLAIN; бросает исключение, если
     текст заметки успел измениться или Revit запись не принял."""
     if plain_text(note) != old_plain:
-        raise ValueError(u"текст заметки изменился после проверки")
+        raise ValueError(tr(u"текст заметки изменился после проверки"))
 
     spans = core.replacement_spans(old_plain, new_plain)
     try:
