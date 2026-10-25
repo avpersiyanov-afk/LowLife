@@ -381,6 +381,26 @@ def extract_keys(root=ROOT):
                 for key in ([m.group(1), m.group(2)] if m else [arg.value]):
                     if key:
                         keys.setdefault(key, []).append(where)
+    # Marked XAML files translate the same literal UI attributes at load time.
+    lib_dir = os.path.join(root, 'lib')
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
+    from lowlife import xaml_i18n
+    for top in SCAN_DIRS:
+        for dirpath, dirnames, filenames in os.walk(os.path.join(root, top)):
+            dirnames[:] = [d for d in dirnames if not re.match(r'MyPanel\d+\.panel$', d)
+                           and d not in ('__pycache__', 'build', 'dist')]
+            for name in filenames:
+                if not name.endswith('.xaml'):
+                    continue
+                path = os.path.join(dirpath, name)
+                with io.open(path, encoding='utf-8-sig') as stream:
+                    source = stream.read()
+                if xaml_i18n.MARKER not in source:
+                    continue
+                for text in xaml_i18n.strings(source):
+                    if CYRILLIC.search(text):
+                        keys.setdefault(text, []).append(os.path.relpath(path, root))
     return keys
 
 

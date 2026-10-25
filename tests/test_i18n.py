@@ -217,3 +217,15 @@ def test_mail_language_changes_labels_and_errors_but_preserves_requests(appdata)
     assert settings == {"provider": ai.OPENAI_API, "openai_api_model": u"gpt-5"}
     i18n.save(i18n.RU)
     assert ai.provider_label(settings["provider"]) == ru_label
+
+
+def test_catalog_extractor_reads_only_marked_xaml_captions(tmpdir):
+    folder = tmpdir.mkdir('lib')
+    folder.join('window.xaml').write_text(
+        u'<!-- lowlife:i18n --><Window Title="Окно XAML">'
+        u'<Hyperlink>Ссылка XAML</Hyperlink>'
+        u'<DataTrigger Value="Статус XAML" Binding="{Binding status}"/></Window>',
+        encoding='utf-8')
+    folder.join('other.xaml').write_text(u'<Window Title="Не переведено"/>', encoding='utf-8')
+    keys = _tool().extract_keys(str(tmpdir))
+    assert set(keys) == {u'Окно XAML', u'Ссылка XAML'}

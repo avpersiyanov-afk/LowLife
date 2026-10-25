@@ -11,6 +11,14 @@ from lowlife.geometry import get_point
 Список общих параметров, которые нужно завести в проекте/ФОП для работы
 конкретных кнопок — в `lib/PARAMETERS.md`.
 
+## xaml_i18n.py
+Перевод подписей WPF-разметки без Revit API: `load(path)` читает XAML и переводит
+литеральные `Title`, `Text`, `Content`, `Header`, `ToolTip` и текст `Hyperlink`;
+`translate(source)` работает со строкой. Результат передаётся в
+`forms.WPFWindow(..., literal_string=True)`. Привязки и значения условий не меняются.
+Пометка `<!-- lowlife:i18n -->` включает извлечение подписей файла утилитой
+`tools/i18n_tool.py`; `strings(source)` возвращает те же подписи для каталога.
+
 ## about.py
 Данные окна «О программе» (`Info.panel/Info.stack/About`, панель «Справка»): `REPO_URL`, `TAGLINE`,
 `DISCIPLINES`, лицензия (`LICENSE_TEXT`, `LICENSE_URL`, `COPYRIGHT`) и версия расширения. `git_revision(root=None)` читает текущий
