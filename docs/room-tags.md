@@ -1,3 +1,5 @@
+**Русский** | [English](en/room-tags.md)
+
 # Марки помещений из связи (RoomTags)
 
 Кнопка `ToolsRooms.panel/RoomTags` («Марки помещений»). Помещения (Room)

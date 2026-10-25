@@ -1,3 +1,5 @@
+**Русский** | [English](en/circuits-panels.md)
+
 # Электрические цепи — общие кнопки
 
 Кнопки панелей CircuitsSKUD, CircuitsGeneric и CircuitsDelete. Цепи СКС, шлейфов СПС/СПА и цепи изоляторов описаны на страницах своих систем: [СКС](scs-panel.md#цепи-скс-circuitsscspanel--buildcircuitsscs), [СПС/СОУЭ/СПА](fire-alarm-panels.md).

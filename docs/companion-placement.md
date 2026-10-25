@@ -1,3 +1,5 @@
+**Русский** | [English](en/companion-placement.md)
+
 # «Расстановка РМ, АМ, МДУ» (SPA.panel/PlaceCompanionDevices)
 
 Живёт на `SPA.panel` (система пожарной автоматики), а не на `SPS.panel`

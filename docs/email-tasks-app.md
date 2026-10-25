@@ -1,3 +1,5 @@
+**Русский** | [English](en/email-tasks-app.md)
+
 # Задачи из почты — программа без Revit
 
 `LowLifeMail.exe` — та же функция, что кнопка «Задачи из почты» в Revit

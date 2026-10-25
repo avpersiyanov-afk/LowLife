@@ -1,3 +1,5 @@
+**Русский** | [English](en/rename-export-files.md)
+
 # Переименование выгрузки (RenameExportFiles)
 
 Кнопка `ToolsExport.panel/RenameExportFiles` («Переименование выгрузки»).

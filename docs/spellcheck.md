@@ -1,3 +1,5 @@
+**Русский** | [English](en/spellcheck.md)
+
 # Проверка орфографии
 
 Кнопка `SpellCheck` («Проверка орфографии») на панели `Tools.panel`.
