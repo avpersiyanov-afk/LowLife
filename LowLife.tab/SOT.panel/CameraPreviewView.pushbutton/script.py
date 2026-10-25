@@ -17,6 +17,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, Element
 from Autodesk.Revit.UI.Selection import ObjectType
@@ -31,18 +32,18 @@ uidoc = revit.uidoc
 def _open_settings():
     edited = sot_fov.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
 _STATUS_RU = {
-    u"ok": u"вид создан",
-    u"ok_no_optics": u"вид создан (без подгонки поля зрения)",
-    u"no_location": u"нет точки вставки (LocationPoint)",
-    u"bad_geometry": u"не удалось определить направление камеры",
-    u"no_view_family_type": u"в проекте нет типа 3D-вида",
-    u"create_failed": u"ошибка создания вида",
+    u"ok": tr(u"вид создан"),
+    u"ok_no_optics": tr(u"вид создан (без подгонки поля зрения)"),
+    u"no_location": tr(u"нет точки вставки (LocationPoint)"),
+    u"bad_geometry": tr(u"не удалось определить направление камеры"),
+    u"no_view_family_type": tr(u"в проекте нет типа 3D-вида"),
+    u"create_failed": tr(u"ошибка создания вида"),
 }
 
 
@@ -58,7 +59,7 @@ def _cam_label(cam):
         mp = cam.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
         mv = mp.AsString() if mp is not None else None
         if mv and mv.strip():
-            parts.append(u"марка {}".format(mv.strip()))
+            parts.append(tr(u"марка {}").format(mv.strip()))
     except Exception:
         pass
     return u" · ".join(p for p in parts if p)
@@ -66,7 +67,7 @@ def _cam_label(cam):
 
 def _report(results):
     output = script.get_output()
-    output.print_md(u"# Вид как с камеры — отчёт ({} камер)".format(len(results)))
+    output.print_md(tr(u"# Вид как с камеры — отчёт ({} камер)").format(len(results)))
 
     ok_n = 0
     for cam, view3d, status, detail in results:
@@ -89,7 +90,7 @@ def _report(results):
         ))
 
     output.print_md(u"---")
-    output.print_md(u"**Создано/обновлено: {} из {}**".format(ok_n, len(results)))
+    output.print_md(tr(u"**Создано/обновлено: {} из {}**").format(ok_n, len(results)))
 
 
 # --- Shift+клик -> настройки ------------------------------------------
@@ -118,23 +119,23 @@ try:
     refs = uidoc.Selection.PickObjects(
         ObjectType.Element,
         sot_fov.CategorySelectionFilter(cat_ids),
-        u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)"
+        tr(u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)")
     )
 except OperationCanceledException:
-    forms.alert(u"Выбор отменён, ничего не создано.", exitscript=True)
+    forms.alert(tr(u"Выбор отменён, ничего не создано."), exitscript=True)
 
 cameras = [doc.GetElement(r) for r in refs]
 cameras = [c for c in cameras if c is not None]
 
 if not cameras:
     forms.alert(
-        u"Не выбрано ни одной камеры.\n\n"
+        tr(u"Не выбрано ни одной камеры.\n\n"
         u"Если камеры не выделялись вовсе — они не в тех категориях, что "
-        u"заданы в настройках («Категории камер для фильтра выбора»).",
+        u"заданы в настройках («Категории камер для фильтра выбора»)."),
         exitscript=True
     )
 
-with revit.Transaction(u"СОТ: вид как с камеры"):
+with revit.Transaction(tr(u"СОТ: вид как с камеры")):
     results = []
     for cam in cameras:
         view3d, status, detail = sot_fov.build_camera_preview_view(doc, cam, view, settings)

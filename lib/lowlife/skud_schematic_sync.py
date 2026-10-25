@@ -20,6 +20,7 @@ passage_point_changed, раскладочные точки) — в skud_schemati
 """
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('RevitAPI')
 
 from Autodesk.Revit.DB import ElementId, XYZ, Line
@@ -372,8 +373,8 @@ def sync_schematic(doc, view, desired_controllers, previous_state, cfg):
 
             if pp["matched_group"] is None:
                 report["no_match"].append(
-                    u"Контроллер {} — точка прохода «{}»: нет типовой группы для "
-                    u"состава {}. Создайте группу с этим составом.".format(
+                    tr(u"Контроллер {} — точка прохода «{}»: нет типовой группы для "
+                    u"состава {}. Создайте группу с этим составом.").format(
                         dc["address"], key, signature_text(tuple(tuple(x) for x in pp["signature"]))
                     )
                 )

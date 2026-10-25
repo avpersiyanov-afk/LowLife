@@ -11,6 +11,7 @@ table_to_sheet/table_from_sheet).
 """
 
 from lowlife import soue_floor_core as core
+from lowlife.i18n import tr
 from lowlife import soue_floor_settings as cfg
 
 TITLE = cfg.BUTTON_NAME
@@ -32,10 +33,10 @@ def export_rows(rows):
     """Выгрузка строк в .xlsx (путь спрашивается). True — сохранено."""
     from pyrevit import forms
     from lowlife.xlsx_io import write_xlsx
-    path = forms.save_file(file_ext='xlsx', default_name=u"СОУЭ — помещения объекта")
+    path = forms.save_file(file_ext='xlsx', default_name=tr(u"СОУЭ — помещения объекта"))
     if not path:
         return False
-    write_xlsx(path, core.table_to_sheet(rows), sheet_name=u"Помещения",
+    write_xlsx(path, core.table_to_sheet(rows), sheet_name=tr(u"Помещения"),
                col_widths=[40, 8, 48, 12, 10, 3, 52, 8])
     return True
 
@@ -49,7 +50,7 @@ def import_rows():
         return None
     rows = core.table_from_sheet(read_xlsx(path))
     if not rows:
-        forms.alert(u"В файле не найден столбец «Помещение» или он пуст.", title=TITLE)
+        forms.alert(tr(u"В файле не найден столбец «Помещение» или он пуст."), title=TITLE)
         return None
     return rows
 
@@ -82,7 +83,7 @@ def show_table_window(rows, heading, intro):
     widths = [300, 50, 330, 70, 70]
 
     win = Window()
-    win.Title = u"{}: помещения объекта".format(TITLE)
+    win.Title = tr(u"{}: помещения объекта").format(TITLE)
     win.Width = 900
     win.Height = 700
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -116,21 +117,21 @@ def show_table_window(rows, heading, intro):
     tools.Orientation = Orientation.Horizontal
     tools.Margin = Thickness(0, 0, 0, 8)
     top.Children.Add(tools)
-    text(tools, u"Поиск:").Margin = Thickness(0, 3, 6, 0)
+    text(tools, tr(u"Поиск:")).Margin = Thickness(0, 3, 6, 0)
     search = TextBox()
     search.Width = 220
     tools.Children.Add(search)
     only_missing = CheckBox()
-    only_missing.Content = u"только без уровня шума"
+    only_missing.Content = tr(u"только без уровня шума")
     only_missing.Margin = Thickness(12, 3, 0, 0)
     tools.Children.Add(only_missing)
     export_btn = Button()
-    export_btn.Content = u"Выгрузить в Excel…"
+    export_btn.Content = tr(u"Выгрузить в Excel…")
     export_btn.Padding = Thickness(8, 2, 8, 2)
     export_btn.Margin = Thickness(16, 0, 0, 0)
     tools.Children.Add(export_btn)
     import_btn = Button()
-    import_btn.Content = u"Загрузить из Excel…"
+    import_btn.Content = tr(u"Загрузить из Excel…")
     import_btn.Padding = Thickness(8, 2, 8, 2)
     import_btn.Margin = Thickness(8, 0, 0, 0)
     tools.Children.Add(import_btn)
@@ -150,8 +151,8 @@ def show_table_window(rows, heading, intro):
         grid.Children.Add(element)
 
     header = make_grid()
-    for index, title in enumerate([u"Помещение", u"Кол-во", u"Категория", u"Шум N, дБА",
-                                   u"Исключить"]):
+    for index, title in enumerate([tr(u"Помещение"), tr(u"Кол-во"), tr(u"Категория"), tr(u"Шум N, дБА"),
+                                   tr(u"Исключить")]):
         block = TextBlock()
         block.Text = title
         block.FontWeight = FontWeights.Bold
@@ -169,12 +170,12 @@ def show_table_window(rows, heading, intro):
     status.Foreground = Brushes.Gray
     bottom.Children.Add(status)
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
     bottom.Children.Add(cancel_btn)
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
     bottom.Children.Add(ok_btn)
@@ -241,7 +242,7 @@ def show_table_window(rows, heading, intro):
         if noise_value:
             noise = core.parse_number(noise_value)
             if noise is None:
-                return None, u"{}: шум — нужно число".format(row.name)
+                return None, tr(u"{}: шум — нужно число").format(row.name)
         if noise is not None and noise == core.category_noise(category):
             noise = None  # совпадает с категорией — пусть следует за ней
         return core.RoomRow(row.name, row.count, category, noise, bool(check.IsChecked)), None
@@ -262,7 +263,7 @@ def show_table_window(rows, heading, intro):
                 visible = False
             grid.Visibility = Visibility.Visible if visible else Visibility.Collapsed
             shown += 1 if visible else 0
-        status.Text = u"Показано {} из {}; без уровня шума: {}".format(shown, len(controls), without)
+        status.Text = tr(u"Показано {} из {}; без уровня шума: {}").format(shown, len(controls), without)
 
     search.TextChanged += refresh
     only_missing.Checked += refresh
@@ -282,7 +283,7 @@ def show_table_window(rows, heading, intro):
     def on_export(sender, args):
         current, errors = current_rows()
         if errors:
-            forms.alert(u"Исправьте:\n\n" + u"\n".join(errors[:20]), title=TITLE)
+            forms.alert(tr(u"Исправьте:\n\n") + u"\n".join(errors[:20]), title=TITLE)
             return
         export_rows(current + list(extra.values()))
 
@@ -300,7 +301,7 @@ def show_table_window(rows, heading, intro):
             apply_row(item, row.category, row.noise, row.exclude)
             applied += 1
         refresh()
-        forms.alert(u"Загружено строк: {} (в этом окне: {}).".format(len(loaded), applied), title=TITLE)
+        forms.alert(tr(u"Загружено строк: {} (в этом окне: {}).").format(len(loaded), applied), title=TITLE)
 
     export_btn.Click += on_export
     import_btn.Click += on_import
@@ -310,7 +311,7 @@ def show_table_window(rows, heading, intro):
     def on_ok(sender, args):
         current, errors = current_rows()
         if errors:
-            forms.alert(u"Исправьте:\n\n" + u"\n".join(errors[:20]), title=TITLE)
+            forms.alert(tr(u"Исправьте:\n\n") + u"\n".join(errors[:20]), title=TITLE)
             return
         result["rows"] = current + list(extra.values())
         win.Close()
@@ -330,11 +331,11 @@ def edit_all_rooms(doc):
     """Окно для всех имён помещений объекта (из Shift+клика). Сохраняет по «Сохранить»."""
     rows = core.merge_room_table(cfg.load_room_table(), room_name_counts(doc))
     edited = show_table_window(
-        rows, u"Помещения объекта: уровень шума и исключения",
-        u"Все уникальные имена помещений связей. Категория — из справочника расчёта СОУЭ "
+        rows, tr(u"Помещения объекта: уровень шума и исключения"),
+        tr(u"Все уникальные имена помещений связей. Категория — из справочника расчёта СОУЭ "
         u"(шум подставляется сам, можно ввести свой). Отмеченные «Исключить» не оснащаются. "
         u"Новые имена заполнены по подсказке — проверьте. Можно выгрузить в Excel, "
-        u"заполнить там и загрузить обратно.")
+        u"заполнить там и загрузить обратно."))
     if edited is not None:
         cfg.save_room_table(edited)
     return edited
@@ -346,10 +347,10 @@ def ask_missing_noise(rows):
     «Сохранить»; возвращает строки или None при отмене.
     """
     edited = show_table_window(
-        rows, u"Новые помещения и помещения без уровня шума",
-        u"Этих имён ещё нет в таблице помещений объекта или у них не задан шум. Категория у "
+        rows, tr(u"Новые помещения и помещения без уровня шума"),
+        tr(u"Этих имён ещё нет в таблице помещений объекта или у них не задан шум. Категория у "
         u"новых имён подобрана по имени — проверьте; выберите категорию, введите шум вручную "
-        u"или отметьте «Исключить». Оставшиеся без шума будут пропущены (с сообщением в отчёте).")
+        u"или отметьте «Исключить». Оставшиеся без шума будут пропущены (с сообщением в отчёте)."))
     if edited is not None:
         cfg.save_room_table(edited)
     return edited

@@ -15,6 +15,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from lowlife import name_by_mask
 from lowlife.name_by_mask_settings import LOAD_NAME
@@ -31,8 +32,8 @@ except Exception:
 if config_mode:
     edited = LOAD_NAME.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
     script.exit()
 
@@ -45,27 +46,27 @@ error = name_by_mask.check_mask_params(
     settings.get("load_name_second_param"),
 )
 if error:
-    forms.alert(error + u"\n\nShift+клик по кнопке — настройки.", exitscript=True)
+    forms.alert(error + tr(u"\n\nShift+клик по кнопке — настройки."), exitscript=True)
 
 elements, _dropped = name_by_mask.selected_or_picked(
     uidoc, doc,
-    u"Выберите семейства, чьим цепям записать имя нагрузки (рамкой и/или "
-    u"кликами), подтвердите Enter",
+    tr(u"Выберите семейства, чьим цепям записать имя нагрузки (рамкой и/или "
+    u"кликами), подтвердите Enter"),
 )
 
-with revit.Transaction(u"LowLife: имя нагрузки по маске"):
+with revit.Transaction(tr(u"LowLife: имя нагрузки по маске")):
     result = name_by_mask.write_load_names(doc, elements, settings)
 
 if result.skipped:
     output = script.get_output()
-    output.print_md(u"### Пропущено ({})".format(len(result.skipped)))
+    output.print_md(tr(u"### Пропущено ({})").format(len(result.skipped)))
     for line in result.skipped[:300]:
         output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\nВыбрано семейств: {}\nЦепей записано: {}\nУже совпадало: {}\n"
-    u"Пропущено: {}{}".format(
+    tr(u"Готово.\n\nВыбрано семейств: {}\nЦепей записано: {}\nУже совпадало: {}\n"
+    u"Пропущено: {}{}").format(
         len(elements), result.written, result.unchanged, len(result.skipped),
-        u"\n\nПодробности — в окне вывода pyRevit." if result.skipped else u""
+        tr(u"\n\nПодробности — в окне вывода pyRevit.") if result.skipped else u""
     )
 )

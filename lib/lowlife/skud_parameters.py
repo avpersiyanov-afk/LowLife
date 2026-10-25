@@ -8,6 +8,7 @@
 """
 
 from Autodesk.Revit.DB import BuiltInCategory
+from lowlife.i18n import N_
 
 from lowlife.scs_parameters import (
     ensure_binding, find_existing_binding, find_shared_definition,
@@ -31,34 +32,34 @@ CAT_CIRCUITS = [BuiltInCategory.OST_ElectricalCircuit]
 # (ключ настроек, подпись, список ли значений через запятую, категории,
 #  instance/type, тип данных для справки, источник)
 PARAM_SPECS = [
-    ("device_address_param", u"Адрес устройства",
+    ("device_address_param", N_(u"Адрес устройства"),
         False, CAT_DEVICES_AND_CONTROLLERS, INSTANCE, TEXT, FOP),
-    ("designation_param", u"Обозначение (тип устройства)",
+    ("designation_param", N_(u"Обозначение (тип устройства)"),
         False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP),
-    ("controller_marking_param", u"Маркировка контроллера",
+    ("controller_marking_param", N_(u"Маркировка контроллера"),
         False, CAT_CONTROLLERS, INSTANCE, TEXT, FOP),
-    ("addr_param_name", u"Адрес узла трассы",
+    ("addr_param_name", N_(u"Адрес узла трассы"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP),
-    ("addr_prev_param_name", u"Предыдущий адрес узла трассы",
+    ("addr_prev_param_name", N_(u"Предыдущий адрес узла трассы"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP),
-    ("nearest_segment_param", u"Ближайший узел маршрута (контроллер/устройство)",
+    ("nearest_segment_param", N_(u"Ближайший узел маршрута (контроллер/устройство)"),
         False, CAT_DEVICES_AND_CONTROLLERS, INSTANCE, TEXT, FOP),
-    ("cable_param_name", u"Тип прокладки кабеля (узлы трассы)",
+    ("cable_param_name", N_(u"Тип прокладки кабеля (узлы трассы)"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP),
-    ("wire_length_param", u"Длина проводника",
+    ("wire_length_param", N_(u"Длина проводника"),
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP),
-    ("tray_length_param", u"Длина проводника в лотке",
+    ("tray_length_param", N_(u"Длина проводника в лотке"),
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP),
-    ("pipe_length_param", u"Длина проводника в трубе",
+    ("pipe_length_param", N_(u"Длина проводника в трубе"),
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP),
-    ("route_method_param", u"Способ прокладки",
+    ("route_method_param", N_(u"Способ прокладки"),
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
-    ("circuit_route_param", u"Маршрут цепи",
+    ("circuit_route_param", N_(u"Маршрут цепи"),
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP),
-    ("segment_loads_param", u"Список цепей (узел маршрута)",
+    ("segment_loads_param", N_(u"Список цепей (узел маршрута)"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP),
-    ("device_marking_param", u"Марка устройства",
+    ("device_marking_param", N_(u"Марка устройства"),
         False, CAT_DEVICES_ONLY, INSTANCE, TEXT, FOP),
-    ("schematic_address_param", u"Адрес устройства (схема)",
+    ("schematic_address_param", N_(u"Адрес устройства (схема)"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP),
 ]

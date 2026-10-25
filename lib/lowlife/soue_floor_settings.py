@@ -23,6 +23,7 @@
 """
 
 from lowlife import settings_core
+from lowlife.i18n import N_, tr
 from lowlife import soue_floor_core as core
 
 
@@ -124,7 +125,7 @@ REQUIRED_KEYS = ["apartment_room_names", "lot_param_name"]
 # Роль оповещателя → (ключ семейства, ключ типа, подпись).
 SYMBOL_APARTMENT = "apartment"
 SYMBOL_KEYS = [
-    (SYMBOL_APARTMENT, "apartment_family", "apartment_type", u"Квартиры"),
+    (SYMBOL_APARTMENT, "apartment_family", "apartment_type", N_(u"Квартиры")),
 ]
 
 # Прочие значения главного окна: ключ → умолчание.
@@ -134,7 +135,7 @@ MAIN_DEFAULTS = {
     "room_wall_height_mm": 2500.0,
 }
 
-MOUNT_LABELS = [(core.MOUNT_WALL, u"На стену"), (core.MOUNT_CEILING, u"На потолок")]
+MOUNT_LABELS = [(core.MOUNT_WALL, N_(u"На стену")), (core.MOUNT_CEILING, N_(u"На потолок"))]
 
 # Таблица помещений объекта: {нормализованное имя: {name, category, noise, exclude}}.
 ROOM_TABLE_KEY = "room_table"
@@ -224,7 +225,7 @@ def show_settings_window(doc):
     all_names = [name for name, _, _ in families]
 
     win = Window()
-    win.Title = u"Настройки: {}".format(BUTTON_NAME)
+    win.Title = tr(u"Настройки: {}").format(BUTTON_NAME)
     win.Width = 620
     win.SizeToContent = SizeToContent.Height
     win.MaxHeight = 900
@@ -261,13 +262,13 @@ def show_settings_window(doc):
 
     def add_search_combo(label, names):
         """Список семейств с полем поиска слева (как в «СС1-8Mile»)."""
-        add_text(label + u" — слева поиск по части имени", top=4)
+        add_text(label + tr(u" — слева поиск по части имени"), top=4)
         row = DockPanel()
         search = TextBox()
         search.Width = 170
         search.Padding = Thickness(2)
         search.Margin = Thickness(0, 0, 6, 0)
-        search.ToolTip = u"Поиск: введите часть имени семейства (можно несколько слов)"
+        search.ToolTip = tr(u"Поиск: введите часть имени семейства (можно несколько слов)")
         DockPanel.SetDock(search, Dock.Left)
         row.Children.Add(search)
         combo = ComboBox()
@@ -287,7 +288,7 @@ def show_settings_window(doc):
             elif len(matches) == 1:
                 combo.SelectedIndex = 0
             if (search.Text or u"").strip():
-                found.Text = u"Найдено: {} из {}".format(len(matches), len(names))
+                found.Text = tr(u"Найдено: {} из {}").format(len(matches), len(names))
             else:
                 found.Text = u""
 
@@ -304,12 +305,12 @@ def show_settings_window(doc):
             combo.SelectedIndex = 0
 
     def add_symbol_pick(family_value, type_value):
-        family_combo = add_search_combo(u"Семейство", all_names)
-        type_combo = add_combo(u"Тип")
+        family_combo = add_search_combo(tr(u"Семейство"), all_names)
+        type_combo = add_combo(tr(u"Тип"))
         fill(family_combo, all_names, family_value)
         fill(type_combo, family_types.get(family_combo.SelectedItem, []), type_value)
         if family_value and family_value not in family_types:
-            missing = add_text(u"Сохранённое семейство «{}» не загружено в проект.".format(
+            missing = add_text(tr(u"Сохранённое семейство «{}» не загружено в проект.").format(
                 family_value), gray=True)
             missing.Foreground = Brushes.IndianRed
 
@@ -331,36 +332,36 @@ def show_settings_window(doc):
         root.Children.Add(row)
         return row, box
 
-    add_text(u"СОУЭ: оповещатели", bold=True, size=16, bottom=4)
-    add_text(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
-             u"выбранных типов на отмеченных уровнях удаляются и ставятся заново.",
+    add_text(tr(u"СОУЭ: оповещатели"), bold=True, size=16, bottom=4)
+    add_text(tr(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
+             u"выбранных типов на отмеченных уровнях удаляются и ставятся заново."),
              gray=True, bottom=4)
 
     symbol_combos = {}
 
     # --- квартиры ---
-    add_text(u"Квартиры", bold=True, top=14)
-    add_text(u"Один оповещатель на лот — в прихожей (список помещений — в «Параметрах»). "
-             u"Не выбрано — квартиры не оснащаются.", gray=True)
+    add_text(tr(u"Квартиры"), bold=True, top=14)
+    add_text(tr(u"Один оповещатель на лот — в прихожей (список помещений — в «Параметрах»). "
+             u"Не выбрано — квартиры не оснащаются."), gray=True)
     symbol_combos[SYMBOL_APARTMENT] = add_symbol_pick(
         values.get("apartment_family"), values.get("apartment_type"))
-    row, apartment_height = add_height_row(u"Высота от уровня, мм:", values.get("apartment_height_mm"))
-    add_text(u"Установка:", parent=row).Margin = Thickness(16, 3, 6, 0)
+    row, apartment_height = add_height_row(tr(u"Высота от уровня, мм:"), values.get("apartment_height_mm"))
+    add_text(tr(u"Установка:"), parent=row).Margin = Thickness(16, 3, 6, 0)
     mount_combo = ComboBox()
     mount_combo.Width = 130
     for _, label in MOUNT_LABELS:
-        mount_combo.Items.Add(label)
+        mount_combo.Items.Add(tr(label))
     mount_combo.SelectedIndex = [key for key, _ in MOUNT_LABELS].index(values.get("apartment_mount"))
     row.Children.Add(mount_combo)
 
     # --- остальные помещения ---
-    add_text(u"Остальные помещения", bold=True, top=14)
-    add_text(u"Все помещения объекта вне квартир, кроме исключённых: количество, места и "
+    add_text(tr(u"Остальные помещения"), bold=True, top=14)
+    add_text(tr(u"Все помещения объекта вне квартир, кроме исключённых: количество, места и "
              u"оповещатель — по акустическому расчёту. Оповещатель и отвод подбираются из всех "
              u"типов проекта с параметрами SPL/мощность/исполнение: где меньше штук, при "
              u"равенстве — меньше суммарная мощность. По умолчанию настенные (на стены и "
-             u"колонны); при подвесном потолке — потолочные в плоскость потолка.", gray=True)
-    _, wall_height = add_height_row(u"Высота настенных от уровня, мм:", values.get("room_wall_height_mm"))
+             u"колонны); при подвесном потолке — потолочные в плоскость потолка."), gray=True)
+    _, wall_height = add_height_row(tr(u"Высота настенных от уровня, мм:"), values.get("room_wall_height_mm"))
 
     # --- кнопки дополнительных окон ---
     def add_button(text, hint):
@@ -374,16 +375,16 @@ def show_settings_window(doc):
         return btn
 
     rooms_btn = add_button(
-        u"Помещения объекта: шум и исключения…",
-        u"Уникальные имена помещений всех связей: категория и уровень шума (справочник "
-        u"расчёта), «исключить». Выгрузка в Excel и загрузка обратно.")
+        tr(u"Помещения объекта: шум и исключения…"),
+        tr(u"Уникальные имена помещений всех связей: категория и уровень шума (справочник "
+        u"расчёта), «исключить». Выгрузка в Excel и загрузка обратно."))
     speakers_btn = add_button(
-        u"Оповещатели проекта…",
-        u"Какие типы найдены для автоподбора: исполнение, SPL, отводы.")
+        tr(u"Оповещатели проекта…"),
+        tr(u"Какие типы найдены для автоподбора: исполнение, SPL, отводы."))
     other_btn = add_button(
-        u"Параметры и отступы…",
-        u"Помещения квартир, параметр имени лота, параметры оповещателя (SPL, отводы, исполнение), "
-        u"отступы от углов и проёмов, параметр «Помещение».")
+        tr(u"Параметры и отступы…"),
+        tr(u"Помещения квартир, параметр имени лота, параметры оповещателя (SPL, отводы, исполнение), "
+        u"отступы от углов и проёмов, параметр «Помещение»."))
 
     def on_rooms(sender, args):
         from lowlife import soue_floor_rooms
@@ -396,15 +397,15 @@ def show_settings_window(doc):
     def on_speakers(sender, args):
         from lowlife import soue_floor
         speakers, messages = soue_floor.collect_speakers(doc, load_all())
-        kinds = {core.KIND_WALL: u"настенный", core.KIND_CEILING: u"потолочный",
-                 core.KIND_PENDANT: u"подвесной (не используется)"}
-        lines = [u"{} — {}, SPL {:g} дБ, отводы {} Вт".format(
+        kinds = {core.KIND_WALL: tr(u"настенный"), core.KIND_CEILING: tr(u"потолочный"),
+                 core.KIND_PENDANT: tr(u"подвесной (не используется)")}
+        lines = [tr(u"{} — {}, SPL {:g} дБ, отводы {} Вт").format(
             sp.label, kinds.get(sp.kind, sp.kind), float(sp.spl),
             u" / ".join(u"{:g}".format(float(t)) for t in sp.taps)) for sp in speakers]
-        text = u"\n".join(lines) if lines else u"Не найдено ни одного типа с параметром SPL."
+        text = u"\n".join(lines) if lines else tr(u"Не найдено ни одного типа с параметром SPL.")
         if messages:
             text += u"\n\n" + u"\n".join(messages)
-        forms.alert(text, title=u"Оповещатели проекта ({})".format(len(speakers)))
+        forms.alert(text, title=tr(u"Оповещатели проекта ({})").format(len(speakers)))
 
     speakers_btn.Click += on_speakers
     rooms_btn.Click += on_rooms
@@ -417,13 +418,13 @@ def show_settings_window(doc):
     root.Children.Add(buttons)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
     buttons.Children.Add(cancel_btn)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
     buttons.Children.Add(ok_btn)
@@ -438,17 +439,17 @@ def show_settings_window(doc):
             update[family_key] = family_combo.SelectedItem or u""
             update[type_key] = type_combo.SelectedItem or u""
             if bool(update[family_key]) != bool(update[type_key]):
-                problems.append(u"{}: выберите и семейство, и тип (или ни того, ни другого)".format(label))
-        for box, key, label in ((apartment_height, "apartment_height_mm", u"Квартиры: высота"),
-                                (wall_height, "room_wall_height_mm", u"Настенный: высота")):
+                problems.append(tr(u"{}: выберите и семейство, и тип (или ни того, ни другого)").format(tr(label)))
+        for box, key, label in ((apartment_height, "apartment_height_mm", tr(u"Квартиры: высота")),
+                                (wall_height, "room_wall_height_mm", tr(u"Настенный: высота"))):
             number = _number(box.Text, None)
             if number is None:
-                problems.append(u"{} — нужно неотрицательное число".format(label))
+                problems.append(tr(u"{} — нужно неотрицательное число").format(label))
             else:
                 update[key] = number
         update["apartment_mount"] = MOUNT_LABELS[max(0, mount_combo.SelectedIndex)][0]
         if problems:
-            forms.alert(u"Исправьте:\n\n" + u"\n".join(problems))
+            forms.alert(tr(u"Исправьте:\n\n") + u"\n".join(problems))
             return
         SETTINGS.store.update(update)
         result["saved"] = True

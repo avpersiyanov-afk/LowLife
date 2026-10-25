@@ -13,6 +13,7 @@
 """
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
@@ -53,104 +54,104 @@ NODE_ANNOTATION_CATEGORIES = ("OST_DetailComponentTags",)
 # (ключ, подпись, пояснение простым языком) — тип, выбираемый из проекта
 # (одиночный выбор, вне таблицы категорий).
 TYPE_FIELDS = [
-    ("node_annotation_type_id", u"Марка узла на схеме",
-        u"Тип аннотации «Обозначение, Адрес» — ставится над каждым схемным "
+    ("node_annotation_type_id", N_(u"Марка узла на схеме"),
+        N_(u"Тип аннотации «Обозначение, Адрес» — ставится над каждым схемным "
         u"семейством на структурной схеме, чтобы на чертеже было видно адрес "
-        u"устройства."),
-    ("view_template_id", u"Шаблон вида для структурной схемы",
-        u"Необязательно: применяется к чертёжному виду схемы при каждом "
-        u"запуске кнопки. «(не выбран)» — вид без шаблона."),
+        u"устройства.")),
+    ("view_template_id", N_(u"Шаблон вида для структурной схемы"),
+        N_(u"Необязательно: применяется к чертёжному виду схемы при каждом "
+        u"запуске кнопки. «(не выбран)» — вид без шаблона.")),
 ]
 
 # (ключ, подпись в окне, пояснение простым языком, значение по умолчанию,
 #  обязательное ли поле, многострочное ли поле)
 TEXT_FIELDS = [
-    ("level_param_name", u"[Уровень] Параметр «Уровень» на устройстве",
-        u"Необязательно — если пусто, берётся реальный уровень элемента в "
+    ("level_param_name", N_(u"[Уровень] Параметр «Уровень» на устройстве"),
+        N_(u"Необязательно — если пусто, берётся реальный уровень элемента в "
         u"Revit. Имя уровня должно содержать «Этаж N» и отметку вида "
         u"«X,YYY» (может быть отрицательной для подземных этажей) — по ним "
-        u"строится подпись и порядок этажей на схеме.",
+        u"строится подпись и порядок этажей на схеме."),
         u"", False, False),
-    ("room_param_name", u"[Параметры] Параметр «Помещение»",
-        u"Параметр с названием помещения — и на самом устройстве, и на его "
+    ("room_param_name", N_(u"[Параметры] Параметр «Помещение»"),
+        N_(u"Параметр с названием помещения — и на самом устройстве, и на его "
         u"значке на схеме. По нему устройства группируются на схеме в "
         u"рамки помещений; если на устройстве он пуст, значение собирается "
-        u"по маске из поля ниже.",
+        u"по маске из поля ниже."),
         u"", True, False),
-    ("room_mask", u"[Параметры] Маска значения помещения из связи",
-        u"Как собрать текст помещения из параметров Room связанной модели — "
+    ("room_mask", N_(u"[Параметры] Маска значения помещения из связи"),
+        N_(u"Как собрать текст помещения из параметров Room связанной модели — "
         u"впишите «Имя» и/или «Номер» через запятую и/или в скобках. "
         u"Примеры: «Имя (Номер)» → «Офис (212)»; «Имя, Номер» → «Офис, 212». "
         u"Срабатывает только если параметр помещения на устройстве ещё не "
-        u"заполнен вручную.",
+        u"заполнен вручную."),
         u"Имя (Номер)", True, False),
-    ("device_address_param", u"[Параметры] Параметр «Адрес устройства»",
-        u"Параметр с адресом (номером) камеры/устройства. Программа его не "
+    ("device_address_param", N_(u"[Параметры] Параметр «Адрес устройства»"),
+        N_(u"Параметр с адресом (номером) камеры/устройства. Программа его не "
         u"вычисляет, а берёт готовое значение с устройства в модели и "
         u"копирует на его значок на схеме; по нему же устройства "
-        u"сортируются внутри помещения.",
+        u"сортируются внутри помещения."),
         u"", True, False),
-    ("building_param_name", u"[Схема] Параметр корпуса на устройстве",
-        u"Необязательно. Если задан — схема делится на блоки по корпусам "
+    ("building_param_name", N_(u"[Схема] Параметр корпуса на устройстве"),
+        N_(u"Необязательно. Если задан — схема делится на блоки по корпусам "
         u"(у каждого блока свой заголовок, свои этажи, свой стояк и свой "
         u"шкаф). Вместе с параметром секции ниже — блок на каждую секцию "
-        u"каждого корпуса.",
+        u"каждого корпуса."),
         u"", False, False),
-    ("section_param_name", u"[Схема] Параметр секции на устройстве",
-        u"Необязательно. Если задан — блоки схемы делятся ещё и по секциям: "
+    ("section_param_name", N_(u"[Схема] Параметр секции на устройстве"),
+        N_(u"Необязательно. Если задан — блоки схемы делятся ещё и по секциям: "
         u"в каждой секции свой стояк, линии от устройств секции идут к "
         u"шкафу этой же секции. Значение секции — внутри корпуса (секция 1 "
-        u"корпуса 1 и секция 1 корпуса 2 — разные блоки).",
+        u"корпуса 1 и секция 1 корпуса 2 — разные блоки)."),
         u"", False, False),
-    ("building_filter_value", u"[Схема] Значение корпуса для фильтрации",
-        u"Необязательно. Если пусто — на схеме все корпуса (каждый своим "
+    ("building_filter_value", N_(u"[Схема] Значение корпуса для фильтрации"),
+        N_(u"Необязательно. Если пусто — на схеме все корпуса (каждый своим "
         u"блоком). Чтобы вести отдельный вид на один корпус, впишите сюда "
         u"его точное значение (кнопкой «Выбрать из модели...» ниже) и "
         u"задайте для него своё имя вида — секции этого корпуса всё равно "
-        u"останутся отдельными блоками.",
+        u"останутся отдельными блоками."),
         u"", False, False),
-    ("schematic_view_name", u"[Схема] Имя вида структурной схемы",
-        u"Чертёжный вид с этим именем создаётся при первом запуске и "
+    ("schematic_view_name", N_(u"[Схема] Имя вида структурной схемы"),
+        N_(u"Чертёжный вид с этим именем создаётся при первом запуске и "
         u"обновляется при повторных. Чтобы вести несколько схем параллельно "
-        u"(например по одной на корпус), задавайте для каждой своё имя.",
+        u"(например по одной на корпус), задавайте для каждой своё имя."),
         u"Структурная схема СОТ", True, False),
-    ("node_label_offset_mm", u"[Схема] Смещение марки узла, мм",
-        u"На сколько миллиметров марка узла (обозначение и адрес) "
+    ("node_label_offset_mm", N_(u"[Схема] Смещение марки узла, мм"),
+        N_(u"На сколько миллиметров марка узла (обозначение и адрес) "
         u"поднимается вверх от точки вставки устройства на схеме, чтобы не "
-        u"перекрывать сам значок устройства.",
+        u"перекрывать сам значок устройства."),
         u"5", True, False),
-    ("max_row_width_mm", u"[Схема] Максимальная ширина строки помещений, мм",
-        u"Когда очередное помещение перестаёт помещаться в строку этажа, "
+    ("max_row_width_mm", N_(u"[Схема] Максимальная ширина строки помещений, мм"),
+        N_(u"Когда очередное помещение перестаёт помещаться в строку этажа, "
         u"оно переносится на новую строку ниже (как перенос текста по "
         u"словам — порядок помещений не меняется). Пусто или 0 — не "
-        u"ограничивать, одна строка на этаж.",
+        u"ограничивать, одна строка на этаж."),
         u"", False, False),
-    ("layout_param_name", u"[Схема] Служебный параметр раскладки схемы",
-        u"Технический параметр вида (текстовый, категория «Виды»), в "
+    ("layout_param_name", N_(u"[Схема] Служебный параметр раскладки схемы"),
+        N_(u"Технический параметр вида (текстовый, категория «Виды»), в "
         u"котором программа хранит раскладку схемы между запусками в виде "
         u"JSON — вручную его не редактируют. Достаточно один раз создать "
         u"текстовый параметр с любым именем, привязанный к категории «Виды», "
-        u"и вписать сюда это имя.",
+        u"и вписать сюда это имя."),
         u"", True, False),
-    ("device_uid_param_name", u"[Схема] Служебный параметр UniqueId устройства",
-        u"Технический текстовый параметр схемного семейства, в котором "
+    ("device_uid_param_name", N_(u"[Схема] Служебный параметр UniqueId устройства"),
+        N_(u"Технический текстовый параметр схемного семейства, в котором "
         u"хранится идентификатор исходного устройства — по нему программа "
         u"узнаёт «то же самое устройство» при повторном запуске и не "
-        u"пересоздаёт его на схеме заново.",
+        u"пересоздаёт его на схеме заново."),
         u"", True, False),
-    ("schematic_device_categories_text", u"[Схема] Категории устройств схемы",
-        u"Список логических категорий схемы, по одной на строку (например "
+    ("schematic_device_categories_text", N_(u"[Схема] Категории устройств схемы"),
+        N_(u"Список логических категорий схемы, по одной на строку (например "
         u"«Камера», «Шкаф») — для каждой ниже отдельно выбирается схемное "
         u"семейство для вставки и реальные типы устройств модели, которые к "
-        u"ней относятся.",
+        u"ней относятся."),
         u"", True, True),
-    ("cabinet_category_name", u"[Схема] Категория «Шкаф»",
-        u"Необязательно. Имя одной из категорий схемы выше — устройство "
+    ("cabinet_category_name", N_(u"[Схема] Категория «Шкаф»"),
+        N_(u"Необязательно. Имя одной из категорий схемы выше — устройство "
         u"этой категории считается шкафом, к которому линиями подключаются "
         u"все остальные узлы. Если схема делится на корпуса/секции — у "
         u"каждой секции свой шкаф (ищется среди устройств этой секции). "
         u"Должно точно совпадать с одним из имён в списке категорий выше. "
-        u"Если пусто — линии не рисуются.",
+        u"Если пусто — линии не рисуются."),
         u"", False, False),
 ]
 
@@ -271,21 +272,21 @@ def list_used_symbols_by_categories(doc, builtin_categories):
 def _type_names_display(doc, id_strs):
     """Отображаемое имя списка выбранных типов (id-строки) через "; ", либо "(не выбрано)"."""
     if not id_strs:
-        return u"(не выбрано)"
+        return tr(u"(не выбрано)")
     return u"; ".join(_type_display_name(doc, s) for s in id_strs)
 
 
 def _type_display_name(doc, id_str):
     if not id_str:
-        return u"(не выбран)"
+        return tr(u"(не выбран)")
 
     try:
         el = doc.GetElement(ElementId(int(id_str)))
     except:
-        return u"(не выбран)"
+        return tr(u"(не выбран)")
 
     if el is None:
-        return u"(не выбран)"
+        return tr(u"(не выбран)")
 
     fam_name = None
     try:
@@ -437,12 +438,12 @@ def require(settings, keys):
         value = settings.get(key)
         ok = bool(value and str(value).strip())
         if not ok:
-            missing.append(PLAIN_LABELS.get(key, key))
+            missing.append(tr(PLAIN_LABELS.get(key, key)))
 
     if missing:
         forms.alert(
-            u"В настройках СОТ не заполнены обязательные для этой кнопки поля:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по этой же кнопке — и заполните их там.".format(u"\n".join(missing)),
+            tr(u"В настройках СОТ не заполнены обязательные для этой кнопки поля:\n\n{}\n\n"
+            u"Откройте настройки: Shift+клик по этой же кнопке — и заполните их там.").format(u"\n".join(missing)),
             exitscript=True
         )
 
@@ -457,7 +458,7 @@ def show_settings_form(doc, values):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки СОТ"
+    win.Title = tr(u"Настройки СОТ")
     win.Width = 800
     win.Height = 700
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -469,14 +470,14 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Настройки параметров СОТ"
+    title.Text = tr(u"Настройки параметров СОТ")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)
     root.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+    hint.Text = tr(u"Значения сохраняются и подставляются при следующих запусках.")
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.Margin = Thickness(0, 0, 0, 10)
@@ -488,21 +489,21 @@ def show_settings_form(doc, values):
     type_labels = {}
 
     type_section_title = TextBlock()
-    type_section_title.Text = u"Марка узла и шаблон вида"
+    type_section_title.Text = tr(u"Марка узла и шаблон вида")
     type_section_title.FontWeight = FontWeights.Bold
     type_section_title.Margin = Thickness(0, 0, 0, 4)
     root.Children.Add(type_section_title)
 
     for key, label_text, hint_text in TYPE_FIELDS:
         label = TextBlock()
-        label.Text = label_text
+        label.Text = tr(label_text)
         label.Margin = Thickness(0, 8, 0, 2)
         label.TextWrapping = TextWrapping.Wrap
         root.Children.Add(label)
 
         if hint_text:
             type_hint = TextBlock()
-            type_hint.Text = hint_text
+            type_hint.Text = tr(hint_text)
             type_hint.FontSize = 11
             type_hint.Foreground = Brushes.Gray
             type_hint.TextWrapping = TextWrapping.Wrap
@@ -520,7 +521,7 @@ def show_settings_form(doc, values):
         type_labels[key] = value_label
 
         pick_btn = Button()
-        pick_btn.Content = u"Выбрать..."
+        pick_btn.Content = tr(u"Выбрать...")
         pick_btn.Padding = Thickness(8, 2, 8, 2)
         pick_btn.Margin = Thickness(8, 0, 0, 0)
 
@@ -528,14 +529,14 @@ def show_settings_form(doc, values):
             if key == "view_template_id":
                 templates = list_drafting_view_templates(doc)
                 if not templates:
-                    forms.alert(u"В проекте нет шаблонов вида, применимых к чертёжным видам.")
+                    forms.alert(tr(u"В проекте нет шаблонов вида, применимых к чертёжным видам."))
                     return
 
                 options = sorted([ViewTemplateOption(v) for v in templates], key=lambda o: o.name)
                 selected = select_list.SelectFromList.show(
                     options,
-                    title=u"Шаблон вида для структурной схемы",
-                    button_name=u"Выбрать",
+                    title=tr(u"Шаблон вида для структурной схемы"),
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
 
@@ -547,14 +548,14 @@ def show_settings_form(doc, values):
             annotation_categories = [getattr(BuiltInCategory, c) for c in NODE_ANNOTATION_CATEGORIES]
             symbols = list_symbols_by_categories(doc, annotation_categories)
             if not symbols:
-                forms.alert(u"В проекте нет типов категории «Марки элементов узла».")
+                forms.alert(tr(u"В проекте нет типов категории «Марки элементов узла»."))
                 return
 
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
             selected = select_list.SelectFromList.show(
                 options,
-                title=u"Марка узла",
-                button_name=u"Выбрать",
+                title=tr(u"Марка узла"),
+                button_name=tr(u"Выбрать"),
                 multiselect=False
             )
 
@@ -587,7 +588,7 @@ def show_settings_form(doc, values):
 
         if not categories:
             hint2 = TextBlock()
-            hint2.Text = u"(нет категорий — заполните поле выше и нажмите «Обновить список»)"
+            hint2.Text = tr(u"(нет категорий — заполните поле выше и нажмите «Обновить список»)")
             hint2.FontSize = 11
             hint2.Foreground = Brushes.Gray
             category_types_panel.Children.Add(hint2)
@@ -595,7 +596,7 @@ def show_settings_form(doc, values):
 
         for name in categories:
             group_title = TextBlock()
-            group_title.Text = u"Категория «{}»".format(name)
+            group_title.Text = tr(u"Категория «{}»").format(name)
             group_title.FontWeight = FontWeights.Bold
             group_title.Margin = Thickness(0, 12, 0, 2)
             category_types_panel.Children.Add(group_title)
@@ -603,7 +604,7 @@ def show_settings_form(doc, values):
             # --- схемное семейство для вставки ---
 
             label = TextBlock()
-            label.Text = u"Схемное семейство (для вставки)"
+            label.Text = tr(u"Схемное семейство (для вставки)")
             label.Margin = Thickness(0, 4, 0, 2)
             category_types_panel.Children.Add(label)
 
@@ -618,7 +619,7 @@ def show_settings_form(doc, values):
             category_type_labels[name] = value_label
 
             pick_btn = Button()
-            pick_btn.Content = u"Выбрать..."
+            pick_btn.Content = tr(u"Выбрать...")
             pick_btn.Padding = Thickness(8, 2, 8, 2)
             pick_btn.Margin = Thickness(8, 0, 0, 0)
 
@@ -626,14 +627,14 @@ def show_settings_form(doc, values):
                 schematic_categories = [getattr(BuiltInCategory, key) for key in SCHEMATIC_CATEGORIES]
                 symbols = list_symbols_by_categories(doc, schematic_categories)
                 if not symbols:
-                    forms.alert(u"В проекте нет типов категории «Элементы узлов».")
+                    forms.alert(tr(u"В проекте нет типов категории «Элементы узлов»."))
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
                 selected = select_list.SelectFromList.show(
                     options,
-                    title=u"Схемное семейство для категории «{}»".format(name),
-                    button_name=u"Выбрать",
+                    title=tr(u"Схемное семейство для категории «{}»").format(name),
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
 
@@ -650,7 +651,7 @@ def show_settings_form(doc, values):
             # --- реальные типы устройств модели, относящиеся к категории ---
 
             label2 = TextBlock()
-            label2.Text = u"Реальные типы устройств этой категории (в модели)"
+            label2.Text = tr(u"Реальные типы устройств этой категории (в модели)")
             label2.Margin = Thickness(0, 6, 0, 2)
             category_types_panel.Children.Add(label2)
 
@@ -666,7 +667,7 @@ def show_settings_form(doc, values):
             category_device_labels[name] = device_label
 
             pick_btn2 = Button()
-            pick_btn2.Content = u"Выбрать..."
+            pick_btn2.Content = tr(u"Выбрать...")
             pick_btn2.Padding = Thickness(8, 2, 8, 2)
             pick_btn2.Margin = Thickness(8, 0, 0, 0)
 
@@ -674,14 +675,14 @@ def show_settings_form(doc, values):
                 source_categories = [getattr(BuiltInCategory, key) for key in SOURCE_CATEGORIES]
                 symbols = list_used_symbols_by_categories(doc, source_categories)
                 if not symbols:
-                    forms.alert(u"В проекте нет размещённых экземпляров в категориях устройств СОТ.")
+                    forms.alert(tr(u"В проекте нет размещённых экземпляров в категориях устройств СОТ."))
                     return
 
                 options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
                 selected = select_list.SelectFromList.show(
                     options,
-                    title=u"Типы устройств для категории «{}»".format(name),
-                    button_name=u"Выбрать",
+                    title=tr(u"Типы устройств для категории «{}»").format(name),
+                    button_name=tr(u"Выбрать"),
                     multiselect=True
                 )
 
@@ -701,20 +702,20 @@ def show_settings_form(doc, values):
         if section != current_section:
             current_section = section
             section_title = TextBlock()
-            section_title.Text = section if section else u"Параметры"
+            section_title.Text = tr(section) if section else tr(u"Параметры")
             section_title.FontWeight = FontWeights.Bold
             section_title.Margin = Thickness(0, 16, 0, 4)
             root.Children.Add(section_title)
 
         label = TextBlock()
-        label.Text = plain_label + (u" *" if required else u"")
+        label.Text = tr(plain_label) + (u" *" if required else u"")
         label.Margin = Thickness(0, 8, 0, 2)
         label.TextWrapping = TextWrapping.Wrap
         root.Children.Add(label)
 
         if hint_text:
             field_hint = TextBlock()
-            field_hint.Text = hint_text
+            field_hint.Text = tr(hint_text)
             field_hint.FontSize = 11
             field_hint.Foreground = Brushes.Gray
             field_hint.TextWrapping = TextWrapping.Wrap
@@ -736,7 +737,7 @@ def show_settings_form(doc, values):
 
         if key == "building_filter_value":
             pick_building_btn = Button()
-            pick_building_btn.Content = u"Выбрать из модели..."
+            pick_building_btn.Content = tr(u"Выбрать из модели...")
             pick_building_btn.Padding = Thickness(8, 2, 8, 2)
             pick_building_btn.HorizontalAlignment = HorizontalAlignment.Left
             pick_building_btn.Margin = Thickness(0, 4, 0, 0)
@@ -744,22 +745,22 @@ def show_settings_form(doc, values):
             def on_pick_building(sender, args):
                 param_name = boxes["building_param_name"].Text.strip()
                 if not param_name:
-                    forms.alert(u"Сначала заполните поле «Параметр корпуса на устройстве» выше.")
+                    forms.alert(tr(u"Сначала заполните поле «Параметр корпуса на устройстве» выше."))
                     return
 
                 source_categories = [getattr(BuiltInCategory, c) for c in SOURCE_CATEGORIES]
                 values = list_distinct_param_values(doc, source_categories, param_name)
                 if not values:
                     forms.alert(
-                        u"В модели не нашлось ни одного устройства с заполненным "
-                        u"параметром «{}».".format(param_name)
+                        tr(u"В модели не нашлось ни одного устройства с заполненным "
+                        u"параметром «{}».").format(param_name)
                     )
                     return
 
                 selected = select_list.SelectFromList.show(
                     values,
-                    title=u"Значение корпуса для фильтрации",
-                    button_name=u"Выбрать",
+                    title=tr(u"Значение корпуса для фильтрации"),
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
 
@@ -771,7 +772,7 @@ def show_settings_form(doc, values):
 
         if key == "schematic_device_categories_text":
             refresh_btn = Button()
-            refresh_btn.Content = u"Обновить список категорий ниже"
+            refresh_btn.Content = tr(u"Обновить список категорий ниже")
             refresh_btn.Padding = Thickness(8, 2, 8, 2)
             refresh_btn.HorizontalAlignment = HorizontalAlignment.Left
             refresh_btn.Margin = Thickness(0, 4, 0, 0)
@@ -779,7 +780,7 @@ def show_settings_form(doc, values):
             root.Children.Add(refresh_btn)
 
             category_types_title = TextBlock()
-            category_types_title.Text = u"Категории структурной схемы: семейства и устройства"
+            category_types_title.Text = tr(u"Категории структурной схемы: семейства и устройства")
             category_types_title.FontWeight = FontWeights.Bold
             category_types_title.Margin = Thickness(0, 12, 0, 4)
             category_types_title.TextWrapping = TextWrapping.Wrap
@@ -789,7 +790,7 @@ def show_settings_form(doc, values):
             rebuild_category_type_pickers()
 
     required_hint = TextBlock()
-    required_hint.Text = u"* обязательные поля — без них соответствующая кнопка не сможет найти элементы или записать параметры"
+    required_hint.Text = tr(u"* обязательные поля — без них соответствующая кнопка не сможет найти элементы или записать параметры")
     required_hint.FontSize = 11
     required_hint.Foreground = Brushes.Gray
     required_hint.TextWrapping = TextWrapping.Wrap
@@ -805,17 +806,17 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     reset_btn = Button()
-    reset_btn.Content = u"Сбросить параметры"
+    reset_btn.Content = tr(u"Сбросить параметры")
     reset_btn.Padding = Thickness(10, 4, 10, 4)
     reset_btn.Margin = Thickness(0, 0, 8, 0)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить и запустить"
+    ok_btn.Content = tr(u"Сохранить и запустить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 

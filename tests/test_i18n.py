@@ -160,3 +160,7 @@ def test_wrap_tool_wraps_ui_strings_but_not_data_or_metadata():
     assert u'forms.alert(tr(u"Найдено: {}").format(n))' in out
     assert u'box.Text = tr(u"Подпись")' in out
     assert u'KEYWORDS = [u"стояк"]' in out and u'value == u"стояк"' in out
+
+
+def test_library_does_not_translate_at_import_time():
+    assert _tool().module_level_tr() == []

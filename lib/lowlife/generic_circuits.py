@@ -30,6 +30,7 @@ electrical_circuits.create_circuit.
 """
 
 from Autodesk.Revit.DB import ElementId
+from lowlife.i18n import tr
 
 from pyrevit import revit
 
@@ -130,11 +131,11 @@ def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
             circuit, error = create_circuit(doc, panel_el, device_els, system_type)
 
             if circuit is None:
-                errors.append(u"Общая цепь: {}".format(error))
+                errors.append(tr(u"Общая цепь: {}").format(error))
             else:
                 created += 1
                 if error:
-                    errors.append(u"Общая цепь: {}".format(error))
+                    errors.append(tr(u"Общая цепь: {}").format(error))
                 _apply_conductor(doc, circuit, conductor_id)
 
         else:
@@ -144,13 +145,13 @@ def build_generic_circuits(doc, panel_el, device_els, conductor_id, settings):
                 circuit, error = create_circuit(doc, panel_el, [dev], system_type)
 
                 if circuit is None:
-                    errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
+                    errors.append(tr(u"Устройство ID {}: {}").format(dev.Id.IntegerValue, error))
                     continue
 
                 created += 1
 
                 if error:
-                    errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
+                    errors.append(tr(u"Устройство ID {}: {}").format(dev.Id.IntegerValue, error))
 
                 _apply_conductor(doc, circuit, conductor_id)
 

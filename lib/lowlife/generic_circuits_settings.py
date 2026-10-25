@@ -36,6 +36,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
@@ -44,7 +45,7 @@ from Autodesk.Revit.DB import ElementId
 from Autodesk.Revit.DB.Electrical import ElectricalSystemType
 
 from pyrevit import forms
-from lowlife import select_list
+from lowlife import i18n, select_list
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
@@ -64,25 +65,25 @@ SETTINGS_FILE_NAME = "LowLifeGeneric_settings.json"
 # (ключ, подпись, пояснение простым языком, значение по умолчанию,
 #  список ли это через запятую, обязательное ли поле, многострочное ли поле)
 TEXT_FIELDS = [
-    ("circuit_system_type", u"Тип электрической цепи",
-        u"Какой категорией Revit считать создаваемую цепь (Data, Security, "
+    ("circuit_system_type", N_(u"Тип электрической цепи"),
+        N_(u"Какой категорией Revit считать создаваемую цепь (Data, Security, "
         u"Communication…) — выберите из списка кнопкой «Выбрать…» справа или "
-        u"впишите системное имя вручную.",
+        u"впишите системное имя вручную."),
         u"Data", False, True, False),
-    ("wire_catalog_marker_param", u"Признак строки справочника кабелей",
-        u"Необязательно. Имя параметра, который есть только у нужных строк "
+    ("wire_catalog_marker_param", N_(u"Признак строки справочника кабелей"),
+        N_(u"Необязательно. Имя параметра, который есть только у нужных строк "
         u"вашего справочника кабелей — по нему программа отличает их от "
-        u"остальных элементов проекта, когда предлагает выбрать кабель ниже.",
+        u"остальных элементов проекта, когда предлагает выбрать кабель ниже."),
         u"", False, False, False),
-    ("load_name_source_params", u"Параметры устройства для имени нагрузки",
-        u"Из каких параметров подключаемого устройства собрать имя нагрузки "
+    ("load_name_source_params", N_(u"Параметры устройства для имени нагрузки"),
+        N_(u"Из каких параметров подключаемого устройства собрать имя нагрузки "
         u"— через запятую, по порядку (один параметр в списке — источник "
         u"будет только он). Для каждого имени сначала берётся значение "
-        u"экземпляра устройства, а если оно пустое — значение типа.",
+        u"экземпляра устройства, а если оно пустое — значение типа."),
         u"", True, False, False),
-    ("load_name_separator", u"Разделитель имени нагрузки",
-        u"Каким текстом соединять значения параметров при сборке имени "
-        u"нагрузки — например точкой: «Розетка.Каб-1».",
+    ("load_name_separator", N_(u"Разделитель имени нагрузки"),
+        N_(u"Каким текстом соединять значения параметров при сборке имени "
+        u"нагрузки — например точкой: «Розетка.Каб-1»."),
         u".", False, False, False),
 ]
 
@@ -90,10 +91,10 @@ TEXT_FIELDS = [
 # list_wire_catalog_items), выбирается пикером; хранится строкой ElementId,
 # как conductor_type_id в СКС.
 CONDUCTOR_FIELDS = [
-    ("conductor_type_id", u"Кабель для цепей",
-        u"Необязательно: конкретная строка из справочника кабелей — она "
+    ("conductor_type_id", N_(u"Кабель для цепей"),
+        N_(u"Необязательно: конкретная строка из справочника кабелей — она "
         u"будет проставлена всем создаваемым этой кнопкой цепям, без "
-        u"запроса при каждом запуске."),
+        u"запроса при каждом запуске.")),
 ]
 
 MODE_KEY = "circuit_mode"
@@ -170,12 +171,12 @@ def require(settings, keys):
             ok = bool(value and unicode(value).strip())
 
         if not ok:
-            missing.append(PLAIN_LABELS.get(key, key))
+            missing.append(tr(PLAIN_LABELS.get(key, key)))
 
     if missing:
         forms.alert(
-            u"В настройках «Параметры цепей (общее)» не заполнены обязательные поля:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по этой же кнопке — и заполните их там.".format(u"\n".join(missing)),
+            tr(u"В настройках «Параметры цепей (общее)» не заполнены обязательные поля:\n\n{}\n\n"
+            u"Откройте настройки: Shift+клик по этой же кнопке — и заполните их там.").format(u"\n".join(missing)),
             exitscript=True
         )
 
@@ -209,7 +210,7 @@ class SystemTypeOption(object):
 
     def __init__(self, name):
         self.system_type_name = name
-        ru = SYSTEM_TYPE_RU.get(name)
+        ru = None if i18n.is_en() else SYSTEM_TYPE_RU.get(name)
         self.name = u"{} ({})".format(name, ru) if ru else name
 
     def __str__(self):
@@ -239,7 +240,7 @@ def show_settings_form(doc, values):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки «Цепь (общее)»"
+    win.Title = tr(u"Настройки «Цепь (общее)»")
     win.Width = 760
     win.Height = 600
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -251,14 +252,14 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Настройки кнопки «Цепь (общее)»"
+    title.Text = tr(u"Настройки кнопки «Цепь (общее)»")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)
     root.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = u"Значения сохраняются и подставляются при следующих запусках."
+    hint.Text = tr(u"Значения сохраняются и подставляются при следующих запусках.")
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.Margin = Thickness(0, 0, 0, 10)
@@ -268,14 +269,14 @@ def show_settings_form(doc, values):
 
     def add_text_field(key, label_text, hint_text, default, required):
         label = TextBlock()
-        label.Text = label_text + (u" *" if required else u"")
+        label.Text = tr(label_text) + (u" *" if required else u"")
         label.TextWrapping = TextWrapping.Wrap
         label.Margin = Thickness(0, 10, 0, 2)
         root.Children.Add(label)
 
         if hint_text:
             field_hint = TextBlock()
-            field_hint.Text = hint_text
+            field_hint.Text = tr(hint_text)
             field_hint.FontSize = 11
             field_hint.Foreground = Brushes.Gray
             field_hint.TextWrapping = TextWrapping.Wrap
@@ -294,20 +295,20 @@ def show_settings_form(doc, values):
 
         if key == "circuit_system_type":
             pick_btn = Button()
-            pick_btn.Content = u"Выбрать…"
+            pick_btn.Content = tr(u"Выбрать…")
             pick_btn.Padding = Thickness(8, 2, 8, 2)
             pick_btn.Margin = Thickness(8, 0, 0, 0)
 
             def on_pick_type(sender, args):
                 names = _available_system_type_names()
                 if not names:
-                    forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
+                    forms.alert(tr(u"В этой версии Revit не нашлось значений ElectricalSystemType."))
                     return
                 options = [SystemTypeOption(n) for n in names]
                 selected = select_list.SelectFromList.show(
                     options,
-                    title=u"Тип электрической цепи (в скобках — пояснение)",
-                    button_name=u"Выбрать",
+                    title=tr(u"Тип электрической цепи (в скобках — пояснение)"),
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
                 if selected:
@@ -324,7 +325,7 @@ def show_settings_form(doc, values):
     # --- кабель (строка справочника) ---
 
     conductor_title = TextBlock()
-    conductor_title.Text = u"Кабель для цепей"
+    conductor_title.Text = tr(u"Кабель для цепей")
     conductor_title.FontWeight = FontWeights.Bold
     conductor_title.Margin = Thickness(0, 16, 0, 4)
     root.Children.Add(conductor_title)
@@ -332,7 +333,7 @@ def show_settings_form(doc, values):
     conductor_key, conductor_label_text, conductor_hint_text = CONDUCTOR_FIELDS[0]
 
     conductor_hint = TextBlock()
-    conductor_hint.Text = conductor_hint_text
+    conductor_hint.Text = tr(conductor_hint_text)
     conductor_hint.FontSize = 11
     conductor_hint.Foreground = Brushes.Gray
     conductor_hint.TextWrapping = TextWrapping.Wrap
@@ -352,7 +353,7 @@ def show_settings_form(doc, values):
     conductor_row.Children.Add(conductor_value_label)
 
     conductor_pick_btn = Button()
-    conductor_pick_btn.Content = u"Выбрать…"
+    conductor_pick_btn.Content = tr(u"Выбрать…")
     conductor_pick_btn.Padding = Thickness(8, 2, 8, 2)
     conductor_pick_btn.Margin = Thickness(8, 0, 0, 0)
 
@@ -362,17 +363,17 @@ def show_settings_form(doc, values):
         wire_items = list_wire_catalog_items(doc, marker_param_name)
         if not wire_items:
             forms.alert(
-                u"Не найдено строк справочника кабелей: в модели нет ключевой "
+                tr(u"Не найдено строк справочника кабелей: в модели нет ключевой "
                 u"спецификации категории «Электрические цепи» со строками. "
-                u"Проверьте кнопкой «Справочник кабелей» (панель «Кабели»)."
+                u"Проверьте кнопкой «Справочник кабелей» (панель «Кабели»).")
             )
             return
 
         options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
         selected = select_list.SelectFromList.show(
             options,
-            title=conductor_label_text,
-            button_name=u"Выбрать",
+            title=tr(conductor_label_text),
+            button_name=tr(u"Выбрать"),
             multiselect=False
         )
 
@@ -384,7 +385,7 @@ def show_settings_form(doc, values):
     conductor_row.Children.Add(conductor_pick_btn)
 
     conductor_clear_btn = Button()
-    conductor_clear_btn.Content = u"Очистить"
+    conductor_clear_btn.Content = tr(u"Очистить")
     conductor_clear_btn.Padding = Thickness(8, 2, 8, 2)
     conductor_clear_btn.Margin = Thickness(8, 0, 0, 0)
 
@@ -400,7 +401,7 @@ def show_settings_form(doc, values):
     # --- режим: одна цепь на всех / отдельная цепь на устройство ---
 
     mode_title = TextBlock()
-    mode_title.Text = u"Как строить цепи"
+    mode_title.Text = tr(u"Как строить цепи")
     mode_title.FontWeight = FontWeights.Bold
     mode_title.Margin = Thickness(0, 16, 0, 4)
     root.Children.Add(mode_title)
@@ -408,14 +409,14 @@ def show_settings_form(doc, values):
     current_mode = values.get(MODE_KEY, MODE_DEFAULT)
 
     rb_per_device = RadioButton()
-    rb_per_device.Content = u"Отдельная электрическая цепь на каждое устройство (у каждой — своё имя нагрузки по маске)"
+    rb_per_device.Content = tr(u"Отдельная электрическая цепь на каждое устройство (у каждой — своё имя нагрузки по маске)")
     rb_per_device.GroupName = u"generic_circuit_mode"
     rb_per_device.Margin = Thickness(0, 2, 0, 2)
     rb_per_device.IsChecked = (current_mode != MODE_SINGLE)
     root.Children.Add(rb_per_device)
 
     rb_single = RadioButton()
-    rb_single.Content = u"Все устройства в одну общую электрическую цепь (имя нагрузки не заполняется)"
+    rb_single.Content = tr(u"Все устройства в одну общую электрическую цепь (имя нагрузки не заполняется)")
     rb_single.GroupName = u"generic_circuit_mode"
     rb_single.Margin = Thickness(0, 2, 0, 2)
     rb_single.IsChecked = (current_mode == MODE_SINGLE)
@@ -423,9 +424,9 @@ def show_settings_form(doc, values):
 
     required_hint = TextBlock()
     required_hint.Text = (
-        u"Тип цепи, параметр кабеля и параметр «Имя нагрузки» обязательны. "
+        tr(u"Тип цепи, параметр кабеля и параметр «Имя нагрузки» обязательны. "
         u"Список параметров устройства и кабель — по желанию: если список пуст, "
-        u"«Имя нагрузки» не заполняется; если кабель не выбран — не проставляется."
+        u"«Имя нагрузки» не заполняется; если кабель не выбран — не проставляется.")
     )
     required_hint.FontSize = 11
     required_hint.Foreground = Brushes.Gray
@@ -442,17 +443,17 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     reset_btn = Button()
-    reset_btn.Content = u"Сбросить параметры"
+    reset_btn.Content = tr(u"Сбросить параметры")
     reset_btn.Padding = Thickness(10, 4, 10, 4)
     reset_btn.Margin = Thickness(0, 0, 8, 0)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
@@ -486,7 +487,7 @@ def show_settings_form(doc, values):
         win.Close()
 
     settings_transfer.add_transfer_buttons(
-        buttons, _read_all, _write_all, u"Общие цепи", _on_settings_imported
+        buttons, _read_all, _write_all, N_(u"Общие цепи"), _on_settings_imported
     )
 
     scroll = ScrollViewer()

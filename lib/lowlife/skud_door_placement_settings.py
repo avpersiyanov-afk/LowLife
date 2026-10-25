@@ -44,6 +44,7 @@ id линий подсветки «Показать на плане» по до�
 """
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
@@ -182,7 +183,7 @@ class FamilyOption(object):
     def __init__(self, family_name, category_name=u"", missing=False):
         self.family_name = family_name
         if missing:
-            self.name = u"{}  (нет в проекте)".format(family_name)
+            self.name = tr(u"{}  (нет в проекте)").format(family_name)
         elif category_name:
             self.name = u"{}  [{}]".format(family_name, category_name)
         else:
@@ -253,7 +254,7 @@ def _brush(hex_color):
 def _role_info(role_key):
     for key, label, short, color in layout.ROLES:
         if key == role_key:
-            return label, short, color
+            return tr(label), tr(short), color
     return role_key, role_key, "#555555"
 
 
@@ -357,11 +358,11 @@ def _draw_door_view(canvas, side, slots, composition):
             tooltip = u"{} — {} : {}".format(label, entry["family"], entry["type"])
         elif slot.get("families"):
             state = "allowed"
-            tooltip = u"{} — в выбранном типе не используется ({})".format(
+            tooltip = tr(u"{} — в выбранном типе не используется ({})").format(
                 label, u", ".join(slot["families"]))
         else:
             state = "off"
-            tooltip = u"{} — семейства не выбраны".format(label)
+            tooltip = tr(u"{} — семейства не выбраны").format(label)
         positions = layout.slot_local_positions(key, slot, PREVIEW_DOOR_WIDTH_MM, PREVIEW_DOOR_HEIGHT_MM)
         for u, z, _depth in positions:
             _add_marker(canvas, cx + u * PREVIEW_SCALE, FLOOR_Y - z * PREVIEW_SCALE,
@@ -369,12 +370,12 @@ def _draw_door_view(canvas, side, slots, composition):
 
 
 def _families_text(names):
-    return u", ".join(names) if names else u"— не выбрано"
+    return u", ".join(names) if names else tr(u"— не выбрано")
 
 
 def _type_text(entry):
     if not entry:
-        return u"— не используется"
+        return tr(u"— не используется")
     return u"{} : {}".format(entry["family"], entry["type"])
 
 
@@ -402,7 +403,7 @@ def show_settings_form(doc, values):
         return access_type["composition"] if access_type else {}
 
     win = Window()
-    win.Title = u"Настройки: Точки доступа на двери"
+    win.Title = tr(u"Настройки: Точки доступа на двери")
     win.Width = 1400
     win.Height = 900
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -417,14 +418,14 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Мнемосхема двери и типы точек доступа"
+    title.Text = tr(u"Мнемосхема двери и типы точек доступа")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     hint = TextBlock()
     hint.Text = (
-        u"1) В таблице мест укажите, какие СЕМЕЙСТВА могут стоять на каждом месте и "
+        tr(u"1) В таблице мест укажите, какие СЕМЕЙСТВА могут стоять на каждом месте и "
         u"где оно относительно двери. «Левый/правый край» — как видит дверь человек, "
         u"стоящий с этой стороны; расстояние — от края проёма в сторону стены. "
         u"Высота — от низа двери (для «над дверью» — от верха). «От стены» — отступ "
@@ -432,7 +433,7 @@ def show_settings_form(doc, values):
         u"двустворчатая дверь: второй ставится зеркально относительно оси двери.\n"
         u"2) Создайте типы точек доступа и для выбранного типа задайте в колонке "
         u"«Типоразмер» состав: какой типоразмер стоит на каком месте. Эти типы "
-        u"выбираются для помещений при запуске кнопки."
+        u"выбираются для помещений при запуске кнопки.")
     )
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
@@ -445,7 +446,7 @@ def show_settings_form(doc, values):
     types_row.Margin = Thickness(0, 0, 0, 8)
 
     types_label = TextBlock()
-    types_label.Text = u"Тип точки доступа:"
+    types_label.Text = tr(u"Тип точки доступа:")
     types_label.FontWeight = FontWeights.Bold
     types_label.VerticalAlignment = VerticalAlignment.Center
     types_label.Margin = Thickness(0, 0, 8, 0)
@@ -463,17 +464,17 @@ def show_settings_form(doc, values):
         types_row.Children.Add(btn)
         return btn
 
-    new_btn = make_small_button(u"Новый…")
-    copy_btn = make_small_button(u"Копировать…")
-    rename_btn = make_small_button(u"Переименовать…")
-    delete_btn = make_small_button(u"Удалить")
+    new_btn = make_small_button(tr(u"Новый…"))
+    copy_btn = make_small_button(tr(u"Копировать…"))
+    rename_btn = make_small_button(tr(u"Переименовать…"))
+    delete_btn = make_small_button(tr(u"Удалить"))
     header.Children.Add(types_row)
 
     number_row = StackPanel()
     number_row.Orientation = Orientation.Horizontal
     number_row.Margin = Thickness(0, 0, 0, 8)
     number_label = TextBlock()
-    number_label.Text = u"Параметр номера помещения (номер показывается в таблице помещений как «Имя (номер)»):"
+    number_label.Text = tr(u"Параметр номера помещения (номер показывается в таблице помещений как «Имя (номер)»):")
     number_label.VerticalAlignment = VerticalAlignment.Center
     number_label.Margin = Thickness(0, 0, 8, 0)
     number_row.Children.Add(number_label)
@@ -481,7 +482,7 @@ def show_settings_form(doc, values):
     number_box.Width = 280
     number_box.Padding = Thickness(4, 2, 4, 2)
     number_box.Text = values.get("room_number_param") or u""
-    number_box.ToolTip = u"Пусто — штатный параметр «Номер» помещения. " + param_autocomplete.HINT
+    number_box.ToolTip = tr(u"Пусто — штатный параметр «Номер» помещения. ") + param_autocomplete.HINT
     param_autocomplete.attach(number_box, param_autocomplete.NameSource(doc))
     number_row.Children.Add(number_box)
     header.Children.Add(number_row)
@@ -490,7 +491,7 @@ def show_settings_form(doc, values):
     filter_row.Orientation = Orientation.Horizontal
     filter_row.Margin = Thickness(0, 0, 0, 8)
     filter_label = TextBlock()
-    filter_label.Text = u"Оснащать двери, ведущие в помещения с именем, содержащим:"
+    filter_label.Text = tr(u"Оснащать двери, ведущие в помещения с именем, содержащим:")
     filter_label.VerticalAlignment = VerticalAlignment.Center
     filter_label.Margin = Thickness(0, 0, 8, 0)
     filter_row.Children.Add(filter_label)
@@ -499,14 +500,14 @@ def show_settings_form(doc, values):
     filter_box.Padding = Thickness(4, 2, 4, 2)
     filter_box.Text = values.get("door_keywords_text") or u""
     filter_box.ToolTip = (
-        u"Через запятую, без учёта регистра, достаточно основы слова. Проверяется "
+        tr(u"Через запятую, без учёта регистра, достаточно основы слова. Проверяется "
         u"имя помещения ЗА дверью (с другой стороны от выбранного помещения). "
         u"Пусто — оснащаются все двери помещения. Отдельные двери можно "
-        u"включить/исключить вручную в таблице помещений."
+        u"включить/исключить вручную в таблице помещений.")
     )
     filter_row.Children.Add(filter_box)
     outside_box = CheckBox()
-    outside_box.Content = u"и двери наружу (за дверью нет помещения)"
+    outside_box.Content = tr(u"и двери наружу (за дверью нет помещения)")
     outside_box.IsChecked = bool(values.get("include_outside", True))
     outside_box.VerticalAlignment = VerticalAlignment.Center
     outside_box.Margin = Thickness(12, 0, 0, 0)
@@ -516,10 +517,11 @@ def show_settings_form(doc, values):
     views_row = StackPanel()
     views_row.Orientation = Orientation.Horizontal
     for side, side_label in layout.SIDES:
+        side_label = tr(side_label)
         box = StackPanel()
         box.Margin = Thickness(0, 0, 24, 0)
         caption = TextBlock()
-        caption.Text = u"{} — вид на дверь".format(side_label)
+        caption.Text = tr(u"{} — вид на дверь").format(side_label)
         caption.FontWeight = FontWeights.Bold
         caption.Margin = Thickness(0, 0, 0, 4)
         box.Children.Add(caption)
@@ -540,15 +542,15 @@ def show_settings_form(doc, values):
     legend.VerticalAlignment = VerticalAlignment.Bottom
     for _key, label, short, color in layout.ROLES:
         item = TextBlock()
-        item.Text = u"{} — {}".format(short, label)
+        item.Text = u"{} — {}".format(tr(short), tr(label))
         item.Foreground = _brush(color)
         item.FontSize = 11
         legend.Children.Add(item)
     legend_note = TextBlock()
     legend_note.Text = (
-        u"Закрашен — место занято в выбранном типе,\n"
+        tr(u"Закрашен — место занято в выбранном типе,\n"
         u"контур — семейства есть, в типе не используется,\n"
-        u"серый — семейства не выбраны."
+        u"серый — семейства не выбраны.")
     )
     legend_note.FontSize = 10
     legend_note.Foreground = Brushes.Gray
@@ -566,7 +568,7 @@ def show_settings_form(doc, values):
         composition = current_composition()
         has_type = current_type() is not None
         for key, cell in type_cells:
-            cell.Text = _type_text(composition.get(key)) if has_type else u"— сначала создайте тип"
+            cell.Text = _type_text(composition.get(key)) if has_type else tr(u"— сначала создайте тип")
         for btn in type_buttons:
             btn.IsEnabled = has_type
         rename_btn.IsEnabled = has_type
@@ -589,19 +591,19 @@ def show_settings_form(doc, values):
         refresh_type_column()
 
     def ask_name(prompt, default=u""):
-        name = forms.ask_for_string(default=default, prompt=prompt, title=u"Тип точки доступа")
+        name = forms.ask_for_string(default=default, prompt=prompt, title=tr(u"Тип точки доступа"))
         if name is None:
             return None
         name = name.strip()
         if not name:
             return None
         if layout.find_access_type(access_types, name) is not None:
-            forms.alert(u"Тип «{}» уже есть.".format(name))
+            forms.alert(tr(u"Тип «{}» уже есть.").format(name))
             return None
         return name
 
     def on_new(sender, args):
-        name = ask_name(u"Имя нового типа точки доступа (например «ТД-1 вход по карте»):")
+        name = ask_name(tr(u"Имя нового типа точки доступа (например «ТД-1 вход по карте»):"))
         if name is None:
             return
         access_types.append({"name": name, "composition": {}})
@@ -612,7 +614,7 @@ def show_settings_form(doc, values):
         source = current_type()
         if source is None:
             return
-        name = ask_name(u"Имя копии типа «{}»:".format(source["name"]), source["name"] + u" (копия)")
+        name = ask_name(tr(u"Имя копии типа «{}»:").format(source["name"]), source["name"] + tr(u" (копия)"))
         if name is None:
             return
         access_types.append({"name": name, "composition": dict(source["composition"])})
@@ -623,7 +625,7 @@ def show_settings_form(doc, values):
         access_type = current_type()
         if access_type is None:
             return
-        name = ask_name(u"Новое имя типа «{}»:".format(access_type["name"]), access_type["name"])
+        name = ask_name(tr(u"Новое имя типа «{}»:").format(access_type["name"]), access_type["name"])
         if name is None:
             return
         access_type["name"] = name
@@ -634,7 +636,7 @@ def show_settings_form(doc, values):
         access_type = current_type()
         if access_type is None:
             return
-        if not forms.alert(u"Удалить тип «{}»?".format(access_type["name"]), yes=True, no=True):
+        if not forms.alert(tr(u"Удалить тип «{}»?").format(access_type["name"]), yes=True, no=True):
             return
         access_types.remove(access_type)
         state["current"] = access_types[0]["name"] if access_types else None
@@ -652,8 +654,8 @@ def show_settings_form(doc, values):
     table.Margin = Thickness(16, 4, 16, 8)
 
     column_widths = [190, None, 80, 140, 60, 70, 70, 50, 250, 80]
-    column_titles = [u"Место", u"Семейства (могут стоять)", u"", u"Привязка", u"Расст., мм",
-                     u"Высота, мм", u"От стены, мм", u"Кол-во", u"Типоразмер в выбранном типе", u""]
+    column_titles = [tr(u"Место"), tr(u"Семейства (могут стоять)"), u"", tr(u"Привязка"), tr(u"Расст., мм"),
+                     tr(u"Высота, мм"), tr(u"От стены, мм"), tr(u"Кол-во"), tr(u"Типоразмер в выбранном типе"), u""]
 
     def make_grid():
         grid = Grid()
@@ -676,7 +678,7 @@ def show_settings_form(doc, values):
         cell = StackPanel()
         cell.Orientation = Orientation.Horizontal
         pick_btn = Button()
-        pick_btn.Content = u"Выбрать…"
+        pick_btn.Content = tr(u"Выбрать…")
         pick_btn.ToolTip = pick_tooltip
         pick_btn.Padding = Thickness(4, 1, 4, 1)
         clear_btn = Button()
@@ -696,6 +698,7 @@ def show_settings_form(doc, values):
         return family_cache["items"]
 
     for side, side_label in layout.SIDES:
+        side_label = tr(side_label)
         section = TextBlock()
         section.Text = side_label
         section.FontSize = 14
@@ -731,7 +734,7 @@ def show_settings_form(doc, values):
             place(row, families_cell, 1)
 
             fam_buttons, fam_pick, fam_clear = make_buttons(
-                u"Выбрать семейства для этого места", u"Очистить список семейств")
+                tr(u"Выбрать семейства для этого места"), tr(u"Очистить список семейств"))
             place(row, fam_buttons, 2)
 
             def on_pick_families(sender, args, key=key, label=label, side_label=side_label,
@@ -748,8 +751,8 @@ def show_settings_form(doc, values):
                     for o in options]
                 chosen = select_list.SelectFromList.show(
                     items,
-                    title=u"Семейства: {} — {}".format(label, side_label.lower()),
-                    button_name=u"Выбрать",
+                    title=tr(u"Семейства: {} — {}").format(label, side_label.lower()),
+                    button_name=tr(u"Выбрать"),
                     multiselect=True
                 )
                 if chosen is None:
@@ -768,7 +771,7 @@ def show_settings_form(doc, values):
 
             anchor_box = ComboBox()
             for _anchor_key, anchor_label in layout.ANCHORS:
-                anchor_box.Items.Add(anchor_label)
+                anchor_box.Items.Add(tr(anchor_label))
             anchor_box.SelectedIndex = layout.ANCHOR_KEYS.index(slot["anchor"])
 
             def on_anchor(sender, args, key=key, anchor_box=anchor_box):
@@ -812,8 +815,8 @@ def show_settings_form(doc, values):
             type_cells.append((key, type_cell))
 
             type_btns, type_pick, type_clear = make_buttons(
-                u"Выбрать типоразмер для этого места в выбранном типе точки доступа",
-                u"Не использовать это место в выбранном типе")
+                tr(u"Выбрать типоразмер для этого места в выбранном типе точки доступа"),
+                tr(u"Не использовать это место в выбранном типе"))
             place(row, type_btns, 9)
             type_buttons.extend([type_pick, type_clear])
 
@@ -824,16 +827,16 @@ def show_settings_form(doc, values):
                     return
                 families = slots[key]["families"]
                 if not families:
-                    forms.alert(u"Сначала выберите для этого места семейства (колонка «Семейства»).")
+                    forms.alert(tr(u"Сначала выберите для этого места семейства (колонка «Семейства»)."))
                     return
                 options = [SymbolOption(f, t) for f, t in list_family_type_names(doc, families)]
                 if not options:
-                    forms.alert(u"У выбранных семейств этого места в проекте нет типоразмеров.")
+                    forms.alert(tr(u"У выбранных семейств этого места в проекте нет типоразмеров."))
                     return
                 chosen = select_list.SelectFromList.show(
                     options,
                     title=u"«{}»: {} — {}".format(access_type["name"], label, side_label.lower()),
-                    button_name=u"Выбрать",
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
                 if not chosen:
@@ -864,12 +867,12 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
@@ -894,7 +897,7 @@ def show_settings_form(doc, values):
         win.Close()
 
     settings_transfer.add_transfer_buttons(
-        buttons, _read_all, _write_all, u"точек доступа на двери", _on_settings_imported
+        buttons, _read_all, _write_all, tr(u"точек доступа на двери"), _on_settings_imported
     )
 
     scroll = ScrollViewer()
@@ -944,10 +947,10 @@ def require_access_types(values):
             usable.append(access_type)
     if not usable:
         forms.alert(
-            u"Не настроено ни одного типа точки доступа с составом.\n\n"
+            tr(u"Не настроено ни одного типа точки доступа с составом.\n\n"
             u"Откройте настройки: Shift+клик по кнопке «Точки доступа на двери», "
             u"выберите семейства для мест мнемосхемы, создайте тип точки доступа "
-            u"(«Новый…») и задайте ему типоразмеры в колонке «Типоразмер».",
+            u"(«Новый…») и задайте ему типоразмеры в колонке «Типоразмер»."),
             exitscript=True
         )
     return usable

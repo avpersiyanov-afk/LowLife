@@ -26,6 +26,7 @@
 """
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -41,10 +42,10 @@ from System.Windows.Media import Brushes
 
 from lowlife import text_search
 
-NO_TYPE = u"— не расставлять —"
+NO_TYPE = N_(u"— не расставлять —")
 
-_COLUMNS = [(u"Имя", None), (u"Уровень", 140), (u"Двери (оснащается / всего)", 150),
-            (u"Тип точки доступа", 260)]
+_COLUMNS = [(N_(u"Имя"), None), (N_(u"Уровень"), 140), (N_(u"Двери (оснащается / всего)"), 150),
+            (N_(u"Тип точки доступа"), 260)]
 
 
 def _make_grid():
@@ -82,7 +83,7 @@ def _show_doors_dialog(room_title, doors, number_param, auto_of, state):
     result = {"ok": False}
 
     win = Window()
-    win.Title = u"Двери помещения: {}".format(room_title)
+    win.Title = tr(u"Двери помещения: {}").format(room_title)
     win.Width = 720
     win.Height = 420
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -92,9 +93,9 @@ def _show_doors_dialog(room_title, doors, number_param, auto_of, state):
 
     hint = TextBlock()
     hint.Text = (
-        u"Отмечены двери, которые будут оснащены. Изначально галочки ставит фильтр "
+        tr(u"Отмечены двери, которые будут оснащены. Изначально галочки ставит фильтр "
         u"по помещению за дверью (настройки кнопки); изменённая вручную галочка "
-        u"запоминается для этой двери. Серым — решение фильтра."
+        u"запоминается для этой двери. Серым — решение фильтра.")
     )
     hint.TextWrapping = TextWrapping.Wrap
     hint.FontSize = 11
@@ -117,7 +118,7 @@ def _show_doors_dialog(room_title, doors, number_param, auto_of, state):
         box.IsChecked = auto if manual is None else bool(manual)
         row.Children.Add(box)
         note = TextBlock()
-        note.Text = u"   фильтр: {}".format(u"да" if auto else u"нет")
+        note.Text = tr(u"   фильтр: {}").format(tr(u"да") if auto else tr(u"нет"))
         note.Foreground = Brushes.Gray
         note.FontSize = 11
         note.VerticalAlignment = VerticalAlignment.Center
@@ -131,9 +132,9 @@ def _show_doors_dialog(room_title, doors, number_param, auto_of, state):
     buttons.Margin = Thickness(12, 8, 4, 12)
     DockPanel.SetDock(buttons, Dock.Bottom)
 
-    reset_btn = _button(u"Сбросить к фильтру")
-    cancel_btn = _button(u"Отмена")
-    ok_btn = _button(u"ОК", bold=True)
+    reset_btn = _button(tr(u"Сбросить к фильтру"))
+    cancel_btn = _button(tr(u"Отмена"))
+    ok_btn = _button(tr(u"ОК"), bold=True)
 
     def on_reset(sender, args):
         for _entry, box, auto in rows:
@@ -198,7 +199,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
         return u"{} / {}".format(sum(1 for e in room.doors if included(e)), len(room.doors))
 
     win = Window()
-    win.Title = u"Точки доступа на двери — выбор типов по помещениям"
+    win.Title = tr(u"Точки доступа на двери — выбор типов по помещениям")
     win.Width = 1000
     win.Height = 700
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -211,19 +212,19 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Помещения активного вида"
+    title.Text = tr(u"Помещения активного вида")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     hint = TextBlock()
     hint.Text = (
-        u"Для каждого помещения выберите тип точки доступа — его состав "
+        tr(u"Для каждого помещения выберите тип точки доступа — его состав "
         u"расставляется на оснащаемые двери помещения по мнемосхеме. Какие двери "
         u"оснащаются — решает фильтр по помещению за дверью (настройки кнопки), "
         u"поправить можно по клику на «Двери». «Показать на плане» — обвести "
         u"двери выбранных помещений на активном виде, ничего не расставляя. "
-        u"«Внутри» — сторона двери, обращённая в это помещение."
+        u"«Внутри» — сторона двери, обращённая в это помещение.")
     )
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
@@ -236,7 +237,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     tools.Margin = Thickness(0, 0, 0, 8)
 
     search_label = TextBlock()
-    search_label.Text = u"Поиск:"
+    search_label.Text = tr(u"Поиск:")
     search_label.VerticalAlignment = VerticalAlignment.Center
     search_label.Margin = Thickness(0, 0, 6, 0)
     tools.Children.Add(search_label)
@@ -247,7 +248,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     tools.Children.Add(search_box)
 
     bulk_label = TextBlock()
-    bulk_label.Text = u"Всем показанным:"
+    bulk_label.Text = tr(u"Всем показанным:")
     bulk_label.VerticalAlignment = VerticalAlignment.Center
     bulk_label.Margin = Thickness(24, 0, 6, 0)
     tools.Children.Add(bulk_label)
@@ -255,12 +256,12 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     bulk_combo = ComboBox()
     bulk_combo.Width = 240
     for name in choices:
-        bulk_combo.Items.Add(name)
+        bulk_combo.Items.Add(tr(name) if name == NO_TYPE else name)
     bulk_combo.SelectedIndex = 0
     tools.Children.Add(bulk_combo)
 
     bulk_btn = Button()
-    bulk_btn.Content = u"Назначить"
+    bulk_btn.Content = tr(u"Назначить")
     bulk_btn.Padding = Thickness(8, 2, 8, 2)
     bulk_btn.Margin = Thickness(6, 0, 0, 0)
     tools.Children.Add(bulk_btn)
@@ -270,7 +271,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     head = _make_grid()
     for index, (column_title, _width) in enumerate(_COLUMNS):
         cell = TextBlock()
-        cell.Text = column_title
+        cell.Text = tr(column_title)
         cell.FontWeight = FontWeights.Bold
         cell.TextWrapping = TextWrapping.Wrap
         _place(head, cell, index)
@@ -296,7 +297,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
         doors_btn.Padding = Thickness(6, 1, 6, 1)
         doors_btn.HorizontalAlignment = HorizontalAlignment.Left
         doors_btn.IsEnabled = door_count > 0
-        doors_btn.ToolTip = u"Список дверей помещения — какие оснащать"
+        doors_btn.ToolTip = tr(u"Список дверей помещения — какие оснащать")
 
         def on_doors(sender, args, room=room, display=display, doors_btn=doors_btn):
             if _show_doors_dialog(display, room.doors, room_number_param, auto_of, state):
@@ -307,7 +308,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
 
         combo = ComboBox()
         for name in choices:
-            combo.Items.Add(name)
+            combo.Items.Add(tr(name) if name == NO_TYPE else name)
         saved = saved_choice.get(room.key)
         combo.SelectedIndex = choices.index(saved) if saved in choices else 0
         combo.IsEnabled = door_count > 0
@@ -318,7 +319,7 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
 
     if not rooms:
         empty = TextBlock()
-        empty.Text = u"На активном виде нет помещений."
+        empty.Text = tr(u"На активном виде нет помещений.")
         empty.Foreground = Brushes.Gray
         body.Children.Add(empty)
 
@@ -344,14 +345,14 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     buttons.Margin = Thickness(16, 8, 8, 12)
     DockPanel.SetDock(buttons, Dock.Bottom)
 
-    preview_btn = _button(u"Показать на плане")
+    preview_btn = _button(tr(u"Показать на плане"))
     preview_btn.ToolTip = (
-        u"Обвести на активном виде двери помещений с выбранным типом: зелёный — "
+        tr(u"Обвести на активном виде двери помещений с выбранным типом: зелёный — "
         u"будет оснащена, красный — исключена. Ничего не расставляется; выбор "
-        u"сохраняется, подсветка убирается при следующем запуске кнопки."
+        u"сохраняется, подсветка убирается при следующем запуске кнопки.")
     )
-    cancel_btn = _button(u"Отмена")
-    ok_btn = _button(u"Расставить", bold=True)
+    cancel_btn = _button(tr(u"Отмена"))
+    ok_btn = _button(tr(u"Расставить"), bold=True)
 
     def finish(action):
         choice = {}

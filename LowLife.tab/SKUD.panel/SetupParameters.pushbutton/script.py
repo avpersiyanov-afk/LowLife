@@ -11,6 +11,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -48,8 +49,8 @@ except:
 
 if not sp_path:
     forms.alert(
-        u"К Revit не подключён файл общих параметров (ФОП).\n\n"
-        u"Управление → Общие параметры → укажите файл, затем запустите кнопку заново.",
+        tr(u"К Revit не подключён файл общих параметров (ФОП).\n\n"
+        u"Управление → Общие параметры → укажите файл, затем запустите кнопку заново."),
         exitscript=True
     )
 
@@ -60,7 +61,7 @@ except:
     pass
 
 if sp_file is None:
-    forms.alert(u"Не удалось открыть файл ФОП:\n{}".format(sp_path), exitscript=True)
+    forms.alert(tr(u"Не удалось открыть файл ФОП:\n{}").format(sp_path), exitscript=True)
 
 
 # ------------------------------------------------------------
@@ -149,7 +150,7 @@ with revit.Transaction("Setup SKUD Parameters"):
                 already_ok.append(label)
             else:
                 native_skipped.append(
-                    u"{} (необязательный, ни один из вариантов «{}» не найден в ФОП)".format(
+                    tr(u"{} (необязательный, ни один из вариантов «{}» не найден в ФОП)").format(
                         label, u", ".join(names)
                     )
                 )
@@ -162,54 +163,54 @@ with revit.Transaction("Setup SKUD Parameters"):
 from pyrevit import script as pyrevit_script
 output = pyrevit_script.get_output()
 
-output.print_md(u"## Параметры СКУД")
+output.print_md(tr(u"## Параметры СКУД"))
 
 if already_ok:
-    output.print_md(u"### Уже привязаны ({})".format(len(already_ok)))
+    output.print_md(tr(u"### Уже привязаны ({})").format(len(already_ok)))
     for line in already_ok:
         output.print_md(u"- {}".format(line))
 
 if added:
-    output.print_md(u"### Добавлены привязки ({})".format(len(added)))
+    output.print_md(tr(u"### Добавлены привязки ({})").format(len(added)))
     for line in added:
         output.print_md(u"- {}".format(line))
 
 if native_skipped:
-    output.print_md(u"### Пропущены (нативные/необязательные) ({})".format(len(native_skipped)))
+    output.print_md(tr(u"### Пропущены (нативные/необязательные) ({})").format(len(native_skipped)))
     for line in native_skipped:
         output.print_md(u"- {}".format(line))
 
 if errors:
-    output.print_md(u"### Ошибки привязки ({})".format(len(errors)))
+    output.print_md(tr(u"### Ошибки привязки ({})").format(len(errors)))
     for line in errors:
         output.print_md(u"- {}".format(line))
 
 if missing_definition:
-    output.print_md(u"### Нет определения ни в проекте, ни в ФОП ({})".format(len(missing_definition)))
+    output.print_md(tr(u"### Нет определения ни в проекте, ни в ФОП ({})").format(len(missing_definition)))
     for line in missing_definition:
         output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Уже привязано: {}\n"
     u"Добавлено привязок: {}\n"
     u"Пропущено (нативные/необязательные): {}\n"
     u"Ошибки: {}\n"
     u"Нет определения ни в проекте, ни в ФОП: {}\n\n"
-    u"{}".format(
+    u"{}").format(
         len(already_ok),
         len(added),
         len(native_skipped),
         len(errors),
         len(missing_definition),
-        u"Подробности — в окне вывода pyRevit." if (added or errors or missing_definition or native_skipped) else u""
+        tr(u"Подробности — в окне вывода pyRevit.") if (added or errors or missing_definition or native_skipped) else u""
     )
 )
 
 if missing_definition:
     forms.alert(
-        u"Добавьте эти параметры в файл ФОП (или создайте с такими же именами "
-        u"в другом ФОП), затем запустите кнопку ещё раз:\n\n{}".format(
+        tr(u"Добавьте эти параметры в файл ФОП (или создайте с такими же именами "
+        u"в другом ФОП), затем запустите кнопку ещё раз:\n\n{}").format(
             u"\n".join(missing_definition)
         )
     )

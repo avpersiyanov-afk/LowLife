@@ -9,6 +9,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -38,8 +39,8 @@ def _open_settings():
         "schematic_device_categories_text", "wire_catalog_marker_param"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -78,10 +79,10 @@ CATEGORY_WIRE_TYPE_IDS = get_schematic_category_wire_type_elem_ids(doc, settings
 
 if not CATEGORY_DEVICE_TYPE_IDS or not CATEGORY_WIRE_TYPE_IDS:
     forms.alert(
-        u"Не заданы категории устройств с типом проводника.\n\n"
+        tr(u"Не заданы категории устройств с типом проводника.\n\n"
         u"В настройках СКУД, в разделе «Категории устройств схемы», для "
         u"каждой категории выберите реальные типы устройств и тип "
-        u"проводника.",
+        u"проводника."),
         exitscript=True
     )
 
@@ -102,8 +103,8 @@ controllers = [
 
 if not controllers:
     forms.alert(
-        u"Не найдено ни одного контроллера (рабочий набор содержит «{}», "
-        u"имя типа содержит «{}»).".format(CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD),
+        tr(u"Не найдено ни одного контроллера (рабочий набор содержит «{}», "
+        u"имя типа содержит «{}»).").format(CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD),
         exitscript=True
     )
 
@@ -194,7 +195,7 @@ with revit.Transaction("Assign SKUD Circuits And Cables"):
                     cables_written += 1
             else:
                 no_cable_match.append(
-                    u"Цепь «{}» (контроллер {}, устройство ID {}) — не найдена категория/тип проводника.".format(
+                    tr(u"Цепь «{}» (контроллер {}, устройство ID {}) — не найдена категория/тип проводника.").format(
                         norm(c.Name) or c.Id.IntegerValue, controller_name, dev.Id.IntegerValue
                     )
                 )
@@ -207,12 +208,12 @@ with revit.Transaction("Assign SKUD Circuits And Cables"):
 if no_cable_match:
     from pyrevit import script as pyrevit_script
     output = pyrevit_script.get_output()
-    output.print_md(u"### Цепи без найденной категории/типа проводника ({})".format(len(no_cable_match)))
+    output.print_md(tr(u"### Цепи без найденной категории/типа проводника ({})").format(len(no_cable_match)))
     for line in no_cable_match:
         output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Контроллеров найдено: {}\n"
     u"Обработано контроллеров (есть адрес): {}\n"
     u"Нет адреса у контроллера: {}\n\n"
@@ -223,7 +224,7 @@ forms.alert(
     u"Типов кабеля записано: {}\n"
     u"Маркировок контроллеров записано: {}\n"
     u"Не найдена категория/тип проводника: {}\n\n"
-    u"{}".format(
+    u"{}").format(
         len(controllers),
         processed_controllers,
         no_controller_addr,
@@ -234,6 +235,6 @@ forms.alert(
         cables_written,
         markings_written,
         len(no_cable_match),
-        u"Подробности — в окне вывода pyRevit." if no_cable_match else u""
+        tr(u"Подробности — в окне вывода pyRevit.") if no_cable_match else u""
     )
 )

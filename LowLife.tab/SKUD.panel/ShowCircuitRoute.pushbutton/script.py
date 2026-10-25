@@ -18,6 +18,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -46,8 +47,8 @@ def _open_settings():
         "addr_param_name", "excluded_device_keywords"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -63,9 +64,9 @@ if config_mode:
 
 if view.ViewType == ViewType.ThreeD:
     forms.alert(
-        u"Временная линия маршрута — это Detail Line, она не поддерживается "
+        tr(u"Временная линия маршрута — это Detail Line, она не поддерживается "
         u"на 3D-виде. Переключитесь на план (или другой 2D-вид) и запустите "
-        u"кнопку заново.",
+        u"кнопку заново."),
         exitscript=True
     )
 
@@ -94,7 +95,7 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 # ------------------------------------------------------------
 
 picked, circuit = pick_circuit(
-    uidoc, doc, u"Выберите устройство, входящее в интересующую цепь СКУД"
+    uidoc, doc, tr(u"Выберите устройство, входящее в интересующую цепь СКУД")
 )
 
 
@@ -167,8 +168,8 @@ for el in route_elements:
 
 if len(points) < 2:
     forms.alert(
-        u"Недостаточно данных, чтобы построить маршрут (найдено точек: {}). "
-        u"Сначала запустите кнопку «Длины и маркировка».".format(len(points)),
+        tr(u"Недостаточно данных, чтобы построить маршрут (найдено точек: {}). "
+        u"Сначала запустите кнопку «Длины и маркировка».").format(len(points)),
         exitscript=True
     )
 
@@ -177,7 +178,7 @@ if len(points) < 2:
 # ПОСТРОЕНИЕ ЛИНИИ + ВЫДЕЛЕНИЕ
 # ------------------------------------------------------------
 
-with revit.Transaction(u"Показать маршрут цепи СКУД"):
+with revit.Transaction(tr(u"Показать маршрут цепи СКУД")):
     created_ids = create_route_lines(doc, view, points)
 
 select_elements(uidoc, route_elements, created_ids)
@@ -185,19 +186,19 @@ zoom_to_fit_points(uidoc, view, points)
 schedule_preview_cleanup(uidoc.Application, doc, created_ids)
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Цепь: {}\n"
     u"{}"
     u"Элементов в маршруте: {}\n"
     u"Построено отрезков линии: {}\n"
     u"Не найдено узлов по адресу: {}\n\n"
     u"{}"
-    u"Устройство, узлы и контроллер выделены в модели.".format(
+    u"Устройство, узлы и контроллер выделены в модели.").format(
         norm(circuit.Name) or circuit.Id.IntegerValue,
-        u"Рядом с контроллером — прямая линия (без узлов маршрута)\n" if is_near_controller else u"",
+        tr(u"Рядом с контроллером — прямая линия (без узлов маршрута)\n") if is_near_controller else u"",
         len(route_elements),
         len(created_ids),
         len(missing_addrs),
-        (u"Не найдены (удалены/на другом виде): {}\n\n".format(u", ".join(missing_addrs)) if missing_addrs else u"")
+        (tr(u"Не найдены (удалены/на другом виде): {}\n\n").format(u", ".join(missing_addrs)) if missing_addrs else u"")
     )
 )

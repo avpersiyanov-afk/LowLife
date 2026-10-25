@@ -10,6 +10,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -50,8 +51,8 @@ def _open_settings():
         "nearest_segment_param", "cable_param_name"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -177,7 +178,7 @@ for e in all_generic:
 
     if sid in segments:
         duplicate_addr_report.append(
-            u"Адрес «{}»: элементы {} и {} — оставлен первый, второй проигнорирован.".format(
+            tr(u"Адрес «{}»: элементы {} и {} — оставлен первый, второй проигнорирован.").format(
                 sid, segments[sid]["el"].Id.IntegerValue, e.Id.IntegerValue
             )
         )
@@ -211,8 +212,8 @@ controllers = [
 
 if not controllers:
     forms.alert(
-        u"Не найдено ни одного контроллера (рабочий набор содержит «{}», "
-        u"имя типа содержит «{}»).".format(CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD),
+        tr(u"Не найдено ни одного контроллера (рабочий набор содержит «{}», "
+        u"имя типа содержит «{}»).").format(CONTROLLER_WORKSET_KEYWORD, CONTROLLER_TYPE_KEYWORD),
         exitscript=True
     )
 
@@ -310,10 +311,10 @@ with revit.Transaction("Calc SKUD Lengths And Marking"):
                 if not controller_start or not dev_end:
                     no_segment += 1
                     no_segment_report.append(
-                        u"Цепь «{}» (контроллер {}): нет привязки к узлу маршрута "
-                        u"{}.".format(
+                        tr(u"Цепь «{}» (контроллер {}): нет привязки к узлу маршрута "
+                        u"{}.").format(
                             norm(c.Name) or c.Id.IntegerValue, controller_name,
-                            u"у контроллера" if not controller_start else u"у устройства"
+                            tr(u"у контроллера") if not controller_start else tr(u"у устройства")
                         )
                     )
                     continue
@@ -321,8 +322,8 @@ with revit.Transaction("Calc SKUD Lengths And Marking"):
                 if controller_start not in segments or dev_end not in segments:
                     no_segment += 1
                     no_segment_report.append(
-                        u"Цепь «{}» (контроллер {}): узел «{}» не найден среди "
-                        u"адресованных узлов трассы.".format(
+                        tr(u"Цепь «{}» (контроллер {}): узел «{}» не найден среди "
+                        u"адресованных узлов трассы.").format(
                             norm(c.Name) or c.Id.IntegerValue, controller_name,
                             controller_start if controller_start not in segments else dev_end
                         )
@@ -338,8 +339,8 @@ with revit.Transaction("Calc SKUD Lengths And Marking"):
                     near_a, near_b, gap = find_closest_pair_between_sets(segments, start_component, end_component)
 
                     no_path_report.append(
-                        u"Цепь «{}» (контроллер {}): {} -> {} — путь не найден. "
-                        u"Ближайший разрыв: {} <-> {} (зазор {:.2f} м)".format(
+                        tr(u"Цепь «{}» (контроллер {}): {} -> {} — путь не найден. "
+                        u"Ближайший разрыв: {} <-> {} (зазор {:.2f} м)").format(
                             norm(c.Name) or c.Id.IntegerValue, controller_name,
                             controller_start, dev_end,
                             near_a, near_b,
@@ -404,34 +405,34 @@ if broken_parent_links or no_path_report or duplicate_addr_report or no_segment_
     output = pyrevit_script.get_output()
 
     if no_segment_report:
-        output.print_md(u"### Цепи без привязки к узлу маршрута ({})".format(len(no_segment_report)))
+        output.print_md(tr(u"### Цепи без привязки к узлу маршрута ({})").format(len(no_segment_report)))
         if not segments:
             output.print_md(
-                u"**В проекте не найдено ни одного адресованного узла трассы.** "
+                tr(u"**В проекте не найдено ни одного адресованного узла трассы.** "
                 u"Для устройств дальше порога «рядом с контроллером» нужны узлы "
                 u"маршрута с адресами — расставьте их и пронумеруйте кнопками "
-                u"«Узлы трассы СКУД» и «Адреса узлов СКУД»."
+                u"«Узлы трассы СКУД» и «Адреса узлов СКУД».")
             )
         for line in no_segment_report[:100]:
             output.print_md(u"- {}".format(line))
 
     if duplicate_addr_report:
-        output.print_md(u"### Дублирующиеся адреса узлов ({})".format(len(duplicate_addr_report)))
+        output.print_md(tr(u"### Дублирующиеся адреса узлов ({})").format(len(duplicate_addr_report)))
         for line in duplicate_addr_report:
             output.print_md(u"- {}".format(line))
 
     if broken_parent_links:
-        output.print_md(u"### Разорванные ссылки «предыдущий адрес» ({})".format(len(broken_parent_links)))
+        output.print_md(tr(u"### Разорванные ссылки «предыдущий адрес» ({})").format(len(broken_parent_links)))
         for line in broken_parent_links[:100]:
             output.print_md(u"- {}".format(line))
 
     if no_path_report:
-        output.print_md(u"### Цепи без найденного пути ({})".format(len(no_path_report)))
+        output.print_md(tr(u"### Цепи без найденного пути ({})").format(len(no_path_report)))
         for line in no_path_report:
             output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Контроллеров: {}\n"
     u"Обработано цепей: {}\n"
     u"Рядом с контроллером (катеты): {}\n"
@@ -444,7 +445,7 @@ forms.alert(
     u"Дублирующихся адресов: {}\n"
     u"Очищено чужих адресов: {}\n"
     u"Узлов чужого рабочего набора пропущено: {}\n\n"
-    u"{}".format(
+    u"{}").format(
         len(controllers),
         processed_circuits,
         near_count,
@@ -457,6 +458,6 @@ forms.alert(
         len(duplicate_addr_report),
         len(stray_cleared),
         foreign_workset_nodes,
-        u"Подробности — в окне вывода pyRevit." if (broken_parent_links or no_path_report or duplicate_addr_report or no_segment_report) else u""
+        tr(u"Подробности — в окне вывода pyRevit.") if (broken_parent_links or no_path_report or duplicate_addr_report or no_segment_report) else u""
     )
 )

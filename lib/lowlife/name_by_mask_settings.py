@@ -15,6 +15,7 @@ settings_core.TextSettings; здесь только описание полей.
 """
 
 from lowlife import settings_core
+from lowlife.i18n import N_
 from lowlife.name_mask import DEFAULT_MASK, validate_mask
 
 
@@ -30,12 +31,12 @@ class MaskField(settings_core.TextField):
         return text, None
 
 
-_MASK_HINT = (
+_MASK_HINT = N_(
     u"Текст, в котором {1} заменяется значением первого параметра, {2} — "
     u"второго, остальное переносится как есть: «{1}-{2}», «Щ{1} (эт. {2})», "
     u"«{1}»."
 )
-_SOURCE_HINT = u"Для имени сначала берётся параметр экземпляра, если его нет — параметр типа."
+_SOURCE_HINT = N_(u"Для имени сначала берётся параметр экземпляра, если его нет — параметр типа.")
 
 
 LOAD_NAME = settings_core.TextSettings(

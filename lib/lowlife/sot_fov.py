@@ -54,6 +54,7 @@ except NameError:  # Python 3
 
 
 import re
+from lowlife.i18n import N_, tr
 import math
 
 from Autodesk.Revit.DB import (
@@ -478,15 +479,15 @@ def _optical_fov(doc, fi, settings):
     """
     fname = (settings.get("focal_length_param_name") or u"").strip()
     if not fname:
-        return None, None, u"не задано имя параметра фокусного расстояния (настройки)"
+        return None, None, tr(u"не задано имя параметра фокусного расстояния (настройки)")
     p = _find_param(doc, fi, fname)
     if p is None or not p.HasValue:
-        return None, None, u"параметр «{}» (фокусное расстояние) не найден на камере".format(fname)
+        return None, None, tr(u"параметр «{}» (фокусное расстояние) не найден на камере").format(fname)
     if p.StorageType != StorageType.Double:
-        return None, None, u"параметр «{}» не числовой".format(fname)
+        return None, None, tr(u"параметр «{}» не числовой").format(fname)
     f_mm = _length_param_mm(p)
     if not f_mm or f_mm <= 0.01:
-        return None, None, u"фокусное расстояние = 0 (параметр «{}»)".format(fname)
+        return None, None, tr(u"фокусное расстояние = 0 (параметр «{}»)").format(fname)
 
     sensor = None
     sensor_pname = (settings.get("sensor_format_param_name") or u"").strip()
@@ -498,7 +499,7 @@ def _optical_fov(doc, fi, settings):
     if sensor is None:
         sensor = _parse_sensor(settings.get("sensor_format"))
     if sensor is None:
-        return None, None, u"формат матрицы не задан или не распознан (ни на камере, ни в настройках)"
+        return None, None, tr(u"формат матрицы не задан или не распознан (ни на камере, ни в настройках)")
     w_mm, h_mm = sensor
 
     hfov = 2.0 * math.atan(w_mm / (2.0 * f_mm))
@@ -515,28 +516,28 @@ def _optical_fov(doc, fi, settings):
 # Порядок и роли соответствуют полям ①-настроек (TEXT_FIELDS) и таблице
 # параметров в docs/camera-fov.md — держите их синхронно при изменении.
 _ROLE_SPECS = [
-    ("focal_length_param_name", u"Фокусное расстояние",
+    ("focal_length_param_name", N_(u"Фокусное расстояние"),
      (u"length", u"number"), True, False),
-    ("sensor_format_param_name", u"Формат матрицы (текст)",
+    ("sensor_format_param_name", N_(u"Формат матрицы (текст)"),
      (u"text",), False, False),
-    ("camera_h_res_param_name", u"Горизонтальное разрешение, пикс",
+    ("camera_h_res_param_name", N_(u"Горизонтальное разрешение, пикс"),
      (u"integer", u"number", u"text"), False, False),
-    ("distance_param_name", u"Дальность",
+    ("distance_param_name", N_(u"Дальность"),
      (u"length",), True, False),
-    ("height_param_name", u"Высота установки",
+    ("height_param_name", N_(u"Высота установки"),
      (u"length",), False, False),
-    ("tilt_param_name", u"Наклон оптической оси вниз",
+    ("tilt_param_name", N_(u"Наклон оптической оси вниз"),
      (u"angle", u"number"), False, True),
-    ("rotation_param_name", u"Поворот камеры (внутри семейства)",
+    ("rotation_param_name", N_(u"Поворот камеры (внутри семейства)"),
      (u"angle", u"number", u"integer"), False, False),
 ]
 
 # Публичная — используется CameraParamsCheck.pushbutton для отображения
 # «kind» из _ROLE_SPECS/diagnose_camera_params человеку.
 PARAM_KIND_RU = {
-    u"length": u"Длина", u"angle": u"Угол", u"text": u"Текст",
-    u"number": u"Число", u"integer": u"Целое число", u"yesno": u"Да/Нет",
-    u"elementid": u"ссылка на элемент", u"other": u"другое",
+    u"length": N_(u"Длина"), u"angle": N_(u"Угол"), u"text": N_(u"Текст"),
+    u"number": N_(u"Число"), u"integer": N_(u"Целое число"), u"yesno": N_(u"Да/Нет"),
+    u"elementid": N_(u"ссылка на элемент"), u"other": N_(u"другое"),
 }
 
 
@@ -699,6 +700,7 @@ def diagnose_camera_params(doc, el, settings):
 
     roles = []
     for key, label, expected_kinds, required, must_be_instance in _ROLE_SPECS:
+        label = tr(label)
         configured_name = (settings.get(key) or u"").strip() or None
         candidate_names = _split_alias_names(configured_name)
         found_entry = None
@@ -938,13 +940,13 @@ def _camera_azimuth(doc, cam, s, unit_mode):
     rot = _opt_param_radians(doc, cam, rot_name, unit_mode)
     if rot is None:
         if rot_name:
-            note = u"{}; параметр поворота «{}» не найден ни на камере, ни на её " \
-                   u"типе, ни во вложенных семействах — поворот не учтён".format(
+            note = tr(u"{}; параметр поворота «{}» не найден ни на камере, ни на её " \
+                   u"типе, ни во вложенных семействах — поворот не учтён").format(
                        note, rot_name)
         return forward, note, forward
     zero, sign, _rng = _rotation_spec(s)
     az = forward + zero + sign * rot
-    return az, u"{} + поворот {:.1f}°".format(note, math.degrees(rot)), forward
+    return az, tr(u"{} + поворот {:.1f}°").format(note, math.degrees(rot)), forward
 
 
 def _rotation_value_for_azimuth(az, forward, s):
@@ -1077,7 +1079,7 @@ def describe_camera_geometry(doc, el, settings):
             host_cat = u""
         info[u"host_label"] = u"{} (id {})".format(host_cat or u"?", host.Id.IntegerValue)
     else:
-        info[u"host_label"] = u"нет (не хостовый экземпляр)"
+        info[u"host_label"] = tr(u"нет (не хостовый экземпляр)")
 
     try:
         info[u"placement_type"] = unicode(el.Symbol.Family.FamilyPlacementType)
@@ -1167,13 +1169,13 @@ def inspect_family_definition(doc, el):
     }
 
     if Family is None:
-        result[u"error"] = u"класс Family недоступен в этой версии Revit API"
+        result[u"error"] = tr(u"класс Family недоступен в этой версии Revit API")
         return result
 
     try:
         family = el.Symbol.Family
     except Exception as ex:
-        result[u"error"] = u"у элемента нет типа/семейства: {}".format(ex)
+        result[u"error"] = tr(u"у элемента нет типа/семейства: {}").format(ex)
         return result
 
     result[u"family_name"] = _safe_name(family)
@@ -1193,17 +1195,17 @@ def inspect_family_definition(doc, el):
     result[u"editable"] = editable
     if not editable:
         result[u"error"] = (
-            u"Revit не даёт открыть это семейство на редактирование в "
+            tr(u"Revit не даёт открыть это семейство на редактирование в "
             u"текущей сессии (IsEditable=False) — часто потому, что оно "
             u"уже открыто на редактирование в другом окне, либо это "
-            u"системное семейство"
+            u"системное семейство")
         )
         return result
 
     try:
         fam_doc = doc.EditFamily(family)
     except Exception as ex:
-        result[u"error"] = u"doc.EditFamily упал: {}".format(ex)
+        result[u"error"] = tr(u"doc.EditFamily упал: {}").format(ex)
         return result
 
     try:
@@ -1249,7 +1251,7 @@ def inspect_family_definition(doc, el):
             for f in FilteredElementCollector(fam_doc).OfClass(GenericForm).ToElements():
                 try:
                     is_solid = bool(f.IsSolid)
-                    kind = u"тело" if is_solid else u"вырез"
+                    kind = tr(u"тело") if is_solid else tr(u"вырез")
                 except Exception:
                     kind = u"?"
                 result[u"forms"].append({u"name": _safe_name(f), u"kind": kind})
@@ -1285,7 +1287,7 @@ def inspect_family_definition(doc, el):
                 pass
 
     except Exception as ex:
-        result[u"error"] = u"ошибка при чтении семейства: {}".format(ex)
+        result[u"error"] = tr(u"ошибка при чтении семейства: {}").format(ex)
     finally:
         try:
             fam_doc.Close(False)
@@ -1564,7 +1566,7 @@ def room_rings_for_point(doc, host_point, boundary_mode):
 
     links = list(FilteredElementCollector(doc).OfClass(RevitLinkInstance))
     if not links:
-        return None, u"в проекте нет связей (RevitLinkInstance)"
+        return None, tr(u"в проекте нет связей (RevitLinkInstance)")
 
     loaded = 0
     total_rooms = 0
@@ -1624,13 +1626,13 @@ def room_rings_for_point(doc, host_point, boundary_mode):
                     near.append((d, rings))
 
     if loaded == 0:
-        return None, u"связи есть, но не загружены (GetLinkDocument = None)"
+        return None, tr(u"связи есть, но не загружены (GetLinkDocument = None)")
     if total_rooms == 0:
-        return None, u"в связях ({} шт.) нет размещённых помещений".format(loaded)
+        return None, tr(u"в связях ({} шт.) нет размещённых помещений").format(loaded)
 
     if xy_hits:
         if len(xy_hits) == 1:
-            return xy_hits[0][1], u"помещение (1 по XY)"
+            return xy_hits[0][1], tr(u"помещение (1 по XY)")
 
         def _contains_z(h):
             _, _, zmin, zmax, pz = h
@@ -1639,7 +1641,7 @@ def room_rings_for_point(doc, host_point, boundary_mode):
         in_z = [h for h in xy_hits if _contains_z(h)]
         if in_z:
             in_z.sort(key=lambda h: h[0])   # меньшая площадь = более точное
-            return in_z[0][1], u"помещение (из {} по XY — по высоте)".format(len(xy_hits))
+            return in_z[0][1], tr(u"помещение (из {} по XY — по высоте)").format(len(xy_hits))
 
         def _zdist(h):
             _, _, zmin, zmax, pz = h
@@ -1648,13 +1650,13 @@ def room_rings_for_point(doc, host_point, boundary_mode):
             return abs(0.5 * (zmin + zmax) - pz)
 
         xy_hits.sort(key=_zdist)
-        return xy_hits[0][1], u"помещение (из {} по XY — ближайшее по высоте)".format(len(xy_hits))
+        return xy_hits[0][1], tr(u"помещение (из {} по XY — ближайшее по высоте)").format(len(xy_hits))
 
     if near:
         near.sort(key=lambda c: c[0])
-        return near[0][1], u"вне контура, взято ближайшее ({:.0f} мм)".format(near[0][0] * 304.8)
+        return near[0][1], tr(u"вне контура, взято ближайшее ({:.0f} мм)").format(near[0][0] * 304.8)
 
-    return None, u"проверено помещений: {}, точка вне всех контуров по XY".format(total_rooms)
+    return None, tr(u"проверено помещений: {}, точка вне всех контуров по XY").format(total_rooms)
 
 
 # ======================================================================
@@ -1941,7 +1943,7 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     dist_name = (s.get("distance_param_name") or u"").strip()
     dist_p = _find_param(doc, cam, dist_name)
     if dist_p is None or not dist_p.HasValue:
-        return (cam, u"no_distance_param", dist_name or u"(имя не задано)")
+        return (cam, u"no_distance_param", dist_name or tr(u"(имя не задано)"))
 
     # горизонтальный и вертикальный угол обзора — ВСЕГДА расчётные, из
     # фокусного расстояния и формата матрицы (см. _optical_fov)
@@ -1952,12 +1954,12 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     max_r = dist_p.AsDouble()
     if hfov <= 1e-4:
         return (cam, u"bad_geometry",
-                u"расчётный угол обзора = {:.4f} рад ({:.1f}°) — проверьте "
-                u"фокусное расстояние/формат матрицы".format(hfov, math.degrees(hfov)))
+                tr(u"расчётный угол обзора = {:.4f} рад ({:.1f}°) — проверьте "
+                u"фокусное расстояние/формат матрицы").format(hfov, math.degrees(hfov)))
     if max_r <= 0.02:
         return (cam, u"bad_geometry",
-                u"дальность = {:.3f} фт ({:.0f} мм) — параметр «{}» пуст или "
-                u"не типа «Длина»".format(max_r, max_r * 304.8, dist_name))
+                tr(u"дальность = {:.3f} фт ({:.0f} мм) — параметр «{}» пуст или "
+                u"не типа «Длина»").format(max_r, max_r * 304.8, dist_name))
     hfov = min(hfov, 2.0 * math.pi - 1e-3)
     half = hfov / 2.0
 
@@ -1966,7 +1968,7 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     base, dir_note, _fwd = _camera_azimuth(doc, cam, s, unit_mode)
     if base is None:
         return (cam, u"bad_geometry",
-                u"не удалось определить направление камеры [{}]".format(dir_note))
+                tr(u"не удалось определить направление камеры [{}]").format(dir_note))
 
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
@@ -1979,22 +1981,22 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         h_ft = h_ft - target_off_ft
 
     if h_ft is not None and tilt is not None and vfov is not None:
-        cone_note = u"h={:.2f} м, наклон={:.0f}°, верт.угол={:.0f}°".format(
+        cone_note = tr(u"h={:.2f} м, наклон={:.0f}°, верт.угол={:.0f}°").format(
             h_ft * _M_PER_FT, math.degrees(tilt), math.degrees(vfov))
     else:
         missing = []
         if h_ft is None:
-            missing.append(u"высота")
+            missing.append(tr(u"высота"))
         if tilt is None:
-            missing.append(u"наклон")
+            missing.append(tr(u"наклон"))
         if vfov is None:
-            missing.append(u"верт.угол")
-        cone_note = u"мёртвая зона не считается (не найдено: {})".format(u", ".join(missing))
+            missing.append(tr(u"верт.угол"))
+        cone_note = tr(u"мёртвая зона не считается (не найдено: {})").format(u", ".join(missing))
 
     near_r, far_r = _near_far_radius(h_ft, tilt, vfov, max_r)
     if not dead_zone_on:
         near_r = 0.0
-        cone_note = u"мёртвая зона отключена (draw_dead_zone)"
+        cone_note = tr(u"мёртвая зона отключена (draw_dead_zone)")
 
     status = u"ok"
     room_rings = None
@@ -2016,8 +2018,8 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
             status = u"ok_clip_failed"
     if cl is None:
         return (cam, u"bad_geometry",
-                u"контур вырожден (near={:.2f} far={:.2f} фт, обрезка={})".format(
-                    near_r, far_r, u"да" if room_rings is not None else u"нет"))
+                tr(u"контур вырожден (near={:.2f} far={:.2f} фт, обрезка={})").format(
+                    near_r, far_r, tr(u"да") if room_rings is not None else tr(u"нет")))
 
     try:
         fr = FilledRegion.Create(doc, frt.Id, view.Id, List[CurveLoop]([cl]))
@@ -2039,17 +2041,17 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
             _draw_dori(doc, view, center, base, half, cam_res, hfov, max_r, z, dori_style)
 
     if not clip:
-        clip_note = u"без обрезки по помещению (выключена)"
+        clip_note = tr(u"без обрезки по помещению (выключена)")
     elif status == u"ok_no_room":
-        clip_note = u"без обрезки по помещению — {}".format(room_note or u"не найдено")
+        clip_note = tr(u"без обрезки по помещению — {}").format(room_note or tr(u"не найдено"))
     elif used_room:
-        clip_note = u"обрезка по помещению: {} ({} сегм.)".format(
+        clip_note = tr(u"обрезка по помещению: {} ({} сегм.)").format(
             room_note or u"", sum(len(r) for r in room_rings))
     else:
-        clip_note = u"обрезка по помещению не удалась — без неё"
+        clip_note = tr(u"обрезка по помещению не удалась — без неё")
 
     az = math.degrees(base) % 360.0
-    summary = (u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; {}; напр.: {}; {}"
+    summary = (tr(u"азимут {:.0f}°, угол {:.0f}°, R {:.1f}–{:.1f} м; {}; напр.: {}; {}")
                .format(az, math.degrees(hfov),
                        near_r * _M_PER_FT, far_r * _M_PER_FT,
                        cone_note, dir_note, clip_note))
@@ -2122,7 +2124,7 @@ def build_fov_zones(doc, cameras, view, settings):
     frt = _pick_filled_region_type(doc, s.get("fill_type_name"))
     if frt is None:
         return [(None, u"no_fill_type",
-                 u"В проекте нет ни одного типа области заливки (FilledRegionType).")]
+                 tr(u"В проекте нет ни одного типа области заливки (FilledRegionType)."))]
 
     line_style = _get_or_create_line_style(doc, s.get("line_subcategory") or u"СОТ_Зона обзора")
 
@@ -2353,22 +2355,22 @@ def _rotate_camera(doc, cam, s, unit_mode, target, forward, delta):
     if _writable_angle(rot_p):
         new, in_range = _rotation_value_for_azimuth(target, forward, s)
         if not in_range:
-            return False, u"азимут вне диапазона поворота «{}»".format(
+            return False, tr(u"азимут вне диапазона поворота «{}»").format(
                 s.get("rotation_range_deg"))
         if rot_p.StorageType == StorageType.Integer:
             mode = (unit_mode or u"авто").strip().lower()
             rot_p.Set(int(round(new if mode.startswith(u"рад") else math.degrees(new))))
         else:
             rot_p.Set(_radians_to_param_value(rot_p, new, unit_mode))
-        return True, u"параметр «{}» = {:.1f}°".format(
+        return True, tr(u"параметр «{}» = {:.1f}°").format(
             rot_p.Definition.Name, math.degrees(new))
     p = cam.Location.Point
     axis = Line.CreateBound(p, XYZ(p.X, p.Y, p.Z + 1.0))
     try:
         ElementTransformUtils.RotateElement(doc, cam.Id, axis, delta)
     except Exception as ex:
-        return False, u"не удалось повернуть экземпляр ({})".format(ex)
-    return True, u"повёрнут экземпляр"
+        return False, tr(u"не удалось повернуть экземпляр ({})").format(ex)
+    return True, tr(u"повёрнут экземпляр")
 
 
 # --- учёт других камер ------------------------------------------------
@@ -2508,7 +2510,7 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
 
     tilt_name = (s.get("tilt_param_name") or u"").strip()
     if not tilt_name:
-        return (cam, u"no_tilt_param", u"в настройках не задано имя параметра наклона")
+        return (cam, u"no_tilt_param", tr(u"в настройках не задано имя параметра наклона"))
 
     # Наклон подбирается ПОД КОНКРЕТНУЮ камеру (её помещение, её
     # направление) — параметр должен быть параметром ЭКЗЕМПЛЯРА: если бы
@@ -2517,28 +2519,28 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
     tilt_p = _instance_param(cam, tilt_name)
     if tilt_p is None:
         return (cam, u"tilt_not_instance",
-                u"«{}» не найден как параметр ЭКЗЕМПЛЯРА этой камеры (если он "
+                tr(u"«{}» не найден как параметр ЭКЗЕМПЛЯРА этой камеры (если он "
                 u"параметр типа — сделайте его параметром экземпляра: наклон "
-                u"должен подбираться отдельно для каждой камеры)".format(tilt_name))
+                u"должен подбираться отдельно для каждой камеры)").format(tilt_name))
     if not _writable_double(tilt_p):
         return (cam, u"tilt_readonly",
-                u"параметр «{}» недоступен для записи".format(tilt_name))
+                tr(u"параметр «{}» недоступен для записи").format(tilt_name))
 
     # дальность — паспортная характеристика камеры (обычно параметр типа)
     dist_name = (s.get("distance_param_name") or u"").strip()
     dist_p = _find_param(doc, cam, dist_name) if dist_name else None
     if dist_p is None or not dist_p.HasValue or dist_p.StorageType != StorageType.Double:
         return (cam, u"no_distance_param",
-                u"параметр дальности «{}» не найден на камере (ни на экземпляре, "
-                u"ни на типе)".format(dist_name or u"(имя не задано)"))
+                tr(u"параметр дальности «{}» не найден на камере (ни на экземпляре, "
+                u"ни на типе)").format(dist_name or tr(u"(имя не задано)")))
     range_ft = dist_p.AsDouble()
     if range_ft <= 0.02:
         return (cam, u"no_distance_param",
-                u"дальность = 0 (параметр «{}»)".format(dist_name))
+                tr(u"дальность = 0 (параметр «{}»)").format(dist_name))
 
     base, dir_note, forward = _camera_azimuth(doc, cam, s, unit_mode)
     if base is None:
-        return (cam, u"bad_geometry", u"нет направления камеры [{}]".format(dir_note))
+        return (cam, u"bad_geometry", tr(u"нет направления камеры [{}]").format(dir_note))
 
     p = cam.Location.Point
     center = XYZ(p.X, p.Y, 0.0)
@@ -2589,21 +2591,21 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
                 ok, how = _rotate_camera(doc, cam, s, unit_mode, target, forward, delta)
                 if ok:
                     base = target
-                    notes.append(u"повёрнута на {:+.0f}° ({})".format(math.degrees(delta), how))
+                    notes.append(tr(u"повёрнута на {:+.0f}° ({})").format(math.degrees(delta), how))
                 else:
                     warn_reasons.append(how)
             else:
-                notes.append(u"поворот не нужен")
+                notes.append(tr(u"поворот не нужен"))
         else:
-            notes.append(u"поворот: помещение симметрично вокруг камеры, направление не менялось")
+            notes.append(tr(u"поворот: помещение симметрично вокруг камеры, направление не менялось"))
 
     # --- рабочее расстояние по оси взгляда
     wall_ft = _clip_distance(center.X, center.Y, math.cos(base), math.sin(base),
                              _AIM_SEARCH_FT, rings)
     if wall_ft >= _AIM_SEARCH_FT - 1e-6:
         return (cam, u"no_wall_hit",
-                u"по направлению камеры (азимут {:.0f}°) граница помещения не "
-                u"встретилась — контур помещения незамкнут?".format(
+                tr(u"по направлению камеры (азимут {:.0f}°) граница помещения не "
+                u"встретилась — контур помещения незамкнут?").format(
                     math.degrees(base) % 360.0))
     work_ft = min(wall_ft, range_ft)
     large_room = wall_ft > range_ft + 1e-6
@@ -2614,8 +2616,8 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
     if mode == u"auto":
         mode = u"dori" if large_room else u"area"
     if mode == u"dori" and h_res <= 0:
-        notes.append(u"DORI: не задано разрешение матрицы (ни параметром камеры, ни в "
-                     u"разделе ⑤) — фокусное по площади")
+        notes.append(tr(u"DORI: не задано разрешение матрицы (ни параметром камеры, ни в "
+                     u"разделе ⑤) — фокусное по площади"))
         mode = u"area"
         if weights is None:
             weights = _ray_weights(center, _ray_table(center, rings, range_ft), range_ft, others)
@@ -2625,21 +2627,21 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
         # кадр шириной res/ppm метров на расстоянии L
         frame_w_ft = (h_res / o["dori_ppm"]) / _M_PER_FT
         needed_hfov = 2.0 * math.atan2(frame_w_ft / 2.0, work_ft)
-        focal_how = u"DORI {:.0f} пикс/м на {:.1f} м, {:.0f} пикс".format(
+        focal_how = tr(u"DORI {:.0f} пикс/м на {:.1f} м, {:.0f} пикс").format(
             o["dori_ppm"], work_ft * _M_PER_FT, h_res)
     else:
         center_idx = int(round(_norm_angle(base) / step)) % n
         cov_half = _coverage_half_steps(weights, center_idx, o["coverage"]) * step
         needed_hfov = min(2.0 * cov_half, math.radians(178.0))
-        focal_how = u"{:.0f}% площади".format(o["coverage"] * 100.0)
+        focal_how = tr(u"{:.0f}% площади").format(o["coverage"] * 100.0)
     if varifocal:
         tan_half = math.tan(needed_hfov / 2.0)
         needed_f = (sensor[0] / (2.0 * tan_half)) if tan_half > 1e-6 else focal_max_mm
         chosen_f = max(focal_min_mm, min(needed_f, focal_max_mm))
         focal_p.Set(_mm_to_param_value(focal_p, chosen_f))
-        notes.append(u"фокусное {:.2f} мм ({}){}".format(
+        notes.append(tr(u"фокусное {:.2f} мм ({}){}").format(
             chosen_f, focal_how,
-            u", ограничено диапазоном" if abs(chosen_f - needed_f) > 0.005 else u""))
+            tr(u", ограничено диапазоном") if abs(chosen_f - needed_f) > 0.005 else u""))
 
     hfov, vfov, _optic_reason = _optical_fov(doc, cam, s)
     vfov_default_used = False
@@ -2649,18 +2651,18 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
     if mode == u"area":
         if hfov is not None and needed_hfov > hfov + math.radians(1.0):
             warn_reasons.append(
-                u"для {:.0f}% площади помещения нужен угол {:.0f}°, объектив даёт "
-                u"{:.0f}° — часть помещения вне кадра".format(
+                tr(u"для {:.0f}% площади помещения нужен угол {:.0f}°, объектив даёт "
+                u"{:.0f}° — часть помещения вне кадра").format(
                     o["coverage"] * 100.0, math.degrees(needed_hfov), math.degrees(hfov)))
         if large_room:
             warn_reasons.append(
-                u"до стены {:.1f} м, а дальность камеры {:.1f} м — дальняя часть "
-                u"помещения не просматривается".format(
+                tr(u"до стены {:.1f} м, а дальность камеры {:.1f} м — дальняя часть "
+                u"помещения не просматривается").format(
                     wall_ft * _M_PER_FT, range_ft * _M_PER_FT))
     elif hfov is not None and needed_hfov < hfov - math.radians(1.0):
         warn_reasons.append(
-            u"детализация {:.0f} пикс/м на {:.1f} м недостижима — объектив даёт "
-            u"угол не уже {:.0f}° (нужно {:.0f}°)".format(
+            tr(u"детализация {:.0f} пикс/м на {:.1f} м недостижима — объектив даёт "
+            u"угол не уже {:.0f}° (нужно {:.0f}°)").format(
                 o["dori_ppm"], work_ft * _M_PER_FT, math.degrees(hfov),
                 math.degrees(needed_hfov)))
 
@@ -2675,28 +2677,28 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
             h_written = True
     if h_ft is None or h_ft <= 0.1:
         return (cam, u"missing_inputs",
-                u"нет высоты установки и не задано значение по умолчанию")
+                tr(u"нет высоты установки и не задано значение по умолчанию"))
     h_eff = h_ft - o["target_off_ft"]
     if h_eff <= 0.1:
         return (cam, u"missing_inputs",
-                u"камера ({:.2f} м) не выше плоскости расчёта ({:.2f} м)".format(
+                tr(u"камера ({:.2f} м) не выше плоскости расчёта ({:.2f} м)").format(
                     h_ft * _M_PER_FT, o["target_off_ft"] * _M_PER_FT))
     if vfov is None or vfov <= 1e-4:
         return (cam, u"missing_inputs",
-                u"нет вертикального угла обзора и значения по умолчанию")
+                tr(u"нет вертикального угла обзора и значения по умолчанию"))
 
     # --- наклон
     max_near_ft = o["max_near_ft"]
     tmode = o["tilt_mode"]
     if tmode.startswith(u"верх"):
         tilt = math.atan2(h_eff, work_ft) + vfov / 2.0
-        mode_note = u"верх кадра в цель"
+        mode_note = tr(u"верх кадра в цель")
     elif tmode.startswith(u"низ"):
         tilt = math.atan2(h_eff, max(max_near_ft, 0.01)) - vfov / 2.0
-        mode_note = u"низ кадра по мёртвой зоне"
+        mode_note = tr(u"низ кадра по мёртвой зоне")
     else:
         tilt = math.atan2(h_eff, work_ft)
-        mode_note = u"ось в цель"
+        mode_note = tr(u"ось в цель")
     tilt = max(0.0, min(tilt, math.radians(89.0)))
     tilt_p.Set(_radians_to_param_value(tilt_p, tilt, unit_mode))
 
@@ -2706,22 +2708,22 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
     if 1e-3 < bottom < (math.pi / 2.0 - 1e-3):
         near_ft = max(0.0, h_eff / math.tan(bottom))
     if near_ft > max_near_ft + 1e-6:
-        warn_reasons.append(u"мёртвая зона {:.2f} м больше допустимой {:.2f} м".format(
+        warn_reasons.append(tr(u"мёртвая зона {:.2f} м больше допустимой {:.2f} м").format(
             near_ft * _M_PER_FT, max_near_ft * _M_PER_FT))
     if tilt > o["max_tilt_rad"]:
-        warn_reasons.append(u"наклон {:.0f}° больше допустимого {:.0f}°".format(
+        warn_reasons.append(tr(u"наклон {:.0f}° больше допустимого {:.0f}°").format(
             math.degrees(tilt), math.degrees(o["max_tilt_rad"])))
 
     if others:
-        notes.append(u"учтено камер рядом: {}".format(len(others)))
+        notes.append(tr(u"учтено камер рядом: {}").format(len(others)))
     if h_written:
-        notes.append(u"высота по умолчанию (записана)")
+        notes.append(tr(u"высота по умолчанию (записана)"))
     if vfov_default_used:
-        notes.append(u"верт.угол по умолчанию (не найдена оптика)")
+        notes.append(tr(u"верт.угол по умолчанию (не найдена оптика)"))
 
-    detail = (u"азимут {:.0f}°, до стены {:.2f} м, L={:.2f} м, h={:.2f} м "
+    detail = (tr(u"азимут {:.0f}°, до стены {:.2f} м, L={:.2f} м, h={:.2f} м "
               u"(над плоскостью {:.2f} м), гор./верт. угол {}/{:.0f}° -> наклон "
-              u"{:.1f}° ({}), мёртвая зона {:.2f} м".format(
+              u"{:.1f}° ({}), мёртвая зона {:.2f} м").format(
                   math.degrees(base) % 360.0, wall_ft * _M_PER_FT,
                   work_ft * _M_PER_FT, h_ft * _M_PER_FT, h_eff * _M_PER_FT,
                   u"{:.0f}".format(math.degrees(hfov)) if hfov else u"?",
@@ -2730,7 +2732,7 @@ def _auto_aim_one(doc, cam, view, s, o, covered):
     if notes:
         detail += u"; " + u"; ".join(notes)
     if warn_reasons:
-        detail += u"; ВНИМАНИЕ: " + u", ".join(warn_reasons)
+        detail += tr(u"; ВНИМАНИЕ: ") + u", ".join(warn_reasons)
         return (cam, u"ok_warn", detail)
     return (cam, u"ok", detail)
 
@@ -2942,13 +2944,13 @@ def build_camera_preview_view(doc, cam, view, settings):
     base, dir_note, _fwd = _camera_azimuth(doc, cam, s, unit_mode)
     if base is None:
         return (None, u"bad_geometry",
-                u"не удалось определить направление камеры [{}]".format(dir_note))
+                tr(u"не удалось определить направление камеры [{}]").format(dir_note))
 
     notes = []
     tilt = _opt_param_radians(doc, cam, s.get("tilt_param_name"), unit_mode)
     if tilt is None:
         tilt = 0.0
-        notes.append(u"наклон не найден на камере — вид горизонтальный")
+        notes.append(tr(u"наклон не найден на камере — вид горизонтальный"))
 
     p = cam.Location.Point
     h_ft = _mounting_height_ft(doc, cam, view, s.get("height_param_name"))
@@ -2964,14 +2966,14 @@ def build_camera_preview_view(doc, cam, view, settings):
     right = XYZ(-math.sin(base), math.cos(base), 0.0)
     up = forward.CrossProduct(right)
     if up.GetLength() < 1e-6:
-        return (None, u"bad_geometry", u"вырожденный базис вида (up почти нулевой)")
+        return (None, u"bad_geometry", tr(u"вырожденный базис вида (up почти нулевой)"))
     up = up.Normalize()
     forward = forward.Normalize()
 
     vft = _pick_3d_view_family_type(doc, s.get("view3d_type_name"))
     if vft is None:
         return (None, u"no_view_family_type",
-                u"в проекте нет типа 3D-вида (ViewFamilyType, ViewFamily.ThreeDimensional)")
+                tr(u"в проекте нет типа 3D-вида (ViewFamilyType, ViewFamily.ThreeDimensional)"))
 
     name = _camera_view_name(cam)
     v3d = _find_existing_preview_view(doc, name)
@@ -2986,8 +2988,8 @@ def build_camera_preview_view(doc, cam, view, settings):
         except Exception as ex:
             # имя занято (например, обычным видом) — без имени повторный
             # запуск не найдёт этот вид и создаст ещё один
-            notes.append(u"не удалось назвать вид «{}» ({}) — повторный запуск "
-                         u"создаст новый вид".format(name, ex))
+            notes.append(tr(u"не удалось назвать вид «{}» ({}) — повторный запуск "
+                         u"создаст новый вид").format(name, ex))
 
     try:
         v3d.SetOrientation(ViewOrientation3D(eye, up, forward))
@@ -3008,11 +3010,11 @@ def build_camera_preview_view(doc, cam, view, settings):
         if can:
             v3d.HideElements(List[ElementId](can))
     except Exception as ex:
-        notes.append(u"не удалось скрыть саму камеру в виде ({})".format(ex))
+        notes.append(tr(u"не удалось скрыть саму камеру в виде ({})").format(ex))
 
     hfov, vfov, optic_reason = _optical_fov(doc, cam, s)
     status = u"ok"
-    detail = u"азимут {:.0f}°, наклон {:.0f}°".format(
+    detail = tr(u"азимут {:.0f}°, наклон {:.0f}°").format(
         math.degrees(base) % 360.0, math.degrees(tilt))
 
     if hfov is not None and vfov is not None:
@@ -3032,7 +3034,7 @@ def build_camera_preview_view(doc, cam, view, settings):
             box.Min = XYZ(-half_w, -half_h, z_min)
             box.Max = XYZ(half_w, half_h, z_max)
             v3d.CropBox = box
-            detail += u", угол {:.0f}°×{:.0f}°".format(
+            detail += tr(u", угол {:.0f}°×{:.0f}°").format(
                 math.degrees(hfov), math.degrees(vfov))
             # диагностика: что Revit в итоге хранит в crop box (если Revit
             # что-то пересчитал — углы в скобках разойдутся с расчётными)
@@ -3040,9 +3042,9 @@ def build_camera_preview_view(doc, cam, view, settings):
                 rb = v3d.CropBox
                 rd = abs(rb.Max.Z)
                 if rd > 1e-6:
-                    detail += (u" [crop: X {:.2f}…{:.2f}, Y {:.2f}…{:.2f}, "
+                    detail += (tr(u" [crop: X {:.2f}…{:.2f}, Y {:.2f}…{:.2f}, "
                                u"Z {:.2f}…{:.2f} фт -> по глубине |Max.Z| "
-                               u"{:.0f}°×{:.0f}°]".format(
+                               u"{:.0f}°×{:.0f}°]").format(
                                    rb.Min.X, rb.Max.X, rb.Min.Y, rb.Max.Y,
                                    rb.Min.Z, rb.Max.Z,
                                    math.degrees(2.0 * math.atan((rb.Max.X - rb.Min.X) / 2.0 / rd)),
@@ -3051,15 +3053,15 @@ def build_camera_preview_view(doc, cam, view, settings):
                 pass
         except Exception as ex:
             status = u"ok_no_optics"
-            detail += u"; не удалось подогнать crop box: {}".format(ex)
+            detail += tr(u"; не удалось подогнать crop box: {}").format(ex)
     else:
         status = u"ok_no_optics"
-        detail += u"; поле зрения не подогнано под объектив ({})".format(optic_reason)
+        detail += tr(u"; поле зрения не подогнано под объектив ({})").format(optic_reason)
 
-    detail += u", глаз h={:.2f} м".format(h_ft * _M_PER_FT)
+    detail += tr(u", глаз h={:.2f} м").format(h_ft * _M_PER_FT)
     if notes:
         detail += u"; " + u"; ".join(notes)
-    detail += u"; {}".format(u"создан" if created else u"обновлён")
+    detail += u"; {}".format(tr(u"создан") if created else tr(u"обновлён"))
     return (v3d, status, detail)
 
 
@@ -3075,22 +3077,22 @@ SETTINGS_FILE_NAME = "LowLifeCameraFov_settings.json"
 TEXT_FIELDS = [
     (
         "camera_categories",
-        u"⓪ Что выбирать",
-        u"Категории камер для фильтра выбора",
-        u"Через запятую. Имя BuiltInCategory (OST_SecurityDevices, "
+        N_(u"⓪ Что выбирать"),
+        N_(u"Категории камер для фильтра выбора"),
+        N_(u"Через запятую. Имя BuiltInCategory (OST_SecurityDevices, "
         u"OST_CommunicationDevices, OST_DataDevices, OST_ElectricalEquipment, "
         u"OST_GenericModel) и/или русское имя категории как в дереве "
         u"«Категории» («Оборудование систем безопасности»). Кнопка даст "
         u"выбрать только элементы этих категорий. Если после нажатия ничего "
         u"не выделяется — камера не в этой категории; посмотрите её "
-        u"категорию в свойствах и впишите сюда.",
+        u"категорию в свойствах и впишите сюда."),
         u"OST_SecurityDevices", True
     ),
     (
         "focal_length_param_name",
-        u"① Параметры камеры (в этой модели)",
-        u"Параметр «фокусное расстояние», мм",
-        u"Имя параметра объектива — экземпляра ИЛИ типа (сначала ищется "
+        N_(u"① Параметры камеры (в этой модели)"),
+        N_(u"Параметр «фокусное расстояние», мм"),
+        N_(u"Имя параметра объектива — экземпляра ИЛИ типа (сначала ищется "
         u"на экземпляре, если там пусто/нет — на его типе). Горизонтальный "
         u"и вертикальный угол обзора — ВСЕГДА расчётные (не вписываются "
         u"вручную): θ = 2·arctg(размер матрицы / (2·f)) — так они не "
@@ -3101,41 +3103,41 @@ TEXT_FIELDS = [
         u"отличается у одинаковых по типу камер) — берётся текущее значение. "
         u"Если разные семейства камер в проекте называют этот параметр "
         u"по-разному — перечислите все имена через «;» (проверяются по "
-        u"порядку, первое найденное на камере побеждает).",
+        u"порядку, первое найденное на камере побеждает)."),
         u"", True
     ),
     (
         "sensor_format_param_name",
         u"",
-        u"Параметр «формат матрицы» (необязательно)",
-        u"Имя ТЕКСТОВОГО параметра камеры (экземпляра или типа) со "
+        N_(u"Параметр «формат матрицы» (необязательно)"),
+        N_(u"Имя ТЕКСТОВОГО параметра камеры (экземпляра или типа) со "
         u"значением формата матрицы — тем же, что принимает поле «Формат "
         u"матрицы» ниже («1/2.8», «5.37x4.04» и т.п.). Нужен, только если "
         u"разные типы/модели камер в проекте отличаются матрицей и она уже "
         u"внесена в семейство. Пусто — берётся общее значение из поля "
         u"«Формат матрицы» для всех камер сразу. Несколько имён (у разных "
-        u"семейств камер) — через «;».",
+        u"семейств камер) — через «;»."),
         u"", False
     ),
     (
         "sensor_format",
         u"",
-        u"Формат матрицы (общий, если нет параметра выше)",
-        u"Нужен вместе с фокусным расстоянием, чтобы посчитать угол обзора. "
+        N_(u"Формат матрицы (общий, если нет параметра выше)"),
+        N_(u"Нужен вместе с фокусным расстоянием, чтобы посчитать угол обзора. "
         u"Оптический формат — «1/2.8», «1/3», «1/1.8», «2/3», «1» (по "
         u"таблице диагоналей, кадр 16:9 — как у IP-камер; для кадра 4:3 "
         u"допишите «1/3 4:3»); либо явные размеры активной области «ШхВ» в "
         u"мм — «5.37x4.04»; либо одна ширина «5.37» (высота — по 16:9). "
         u"Обязательно, "
         u"если не заполнен параметр формата матрицы выше хотя бы у части "
-        u"камер.",
+        u"камер."),
         u"", True
     ),
     (
         "distance_param_name",
         u"",
-        u"Параметр «дальность» (макс. радиус зоны)",
-        u"Имя параметра камеры с максимальной дальностью обзора —  "
+        N_(u"Параметр «дальность» (макс. радиус зоны)"),
+        N_(u"Имя параметра камеры с максимальной дальностью обзора —  "
         u"экземпляра ИЛИ типа. Должен быть параметром типа «Длина» (иначе "
         u"значение уедет по единицам). Задаёт дальнюю границу зоны, если "
         u"она не ограничена расчётом по наклону/вертикальному углу. "
@@ -3143,50 +3145,50 @@ TEXT_FIELDS = [
         u"площадь помещения дальше неё при повороте и подборе фокусного не "
         u"учитывается, а ось кадра наводится не дальше неё. Обычно это "
         u"параметр ТИПА — паспортная дальность модели камеры. "
-        u"Несколько имён (у разных семейств камер) — через «;».",
+        u"Несколько имён (у разных семейств камер) — через «;»."),
         u"УГО_ПВ_Дистанция до объекта", True
     ),
     (
         "angle_unit",
         u"",
-        u"Единицы параметров наклона и поворота",
-        u"«авто» — по типу параметра (тип «Угол» → радианы, иначе число "
+        N_(u"Единицы параметров наклона и поворота"),
+        N_(u"«авто» — по типу параметра (тип «Угол» → радианы, иначе число "
         u"трактуется как градусы). «градусы» / «радианы» — принудительно. "
         u"Горизонтальный и вертикальный угол обзора это поле не "
-        u"затрагивает — они расчётные, единиц не имеют (сразу радианы).",
+        u"затрагивает — они расчётные, единиц не имеют (сразу радианы)."),
         u"авто", False
     ),
     (
         "height_param_name",
         u"",
-        u"Параметр «высота установки» над уровнем",
-        u"Имя параметра высоты монтажа камеры (тип «Длина») — экземпляра "
+        N_(u"Параметр «высота установки» над уровнем"),
+        N_(u"Имя параметра высоты монтажа камеры (тип «Длина») — экземпляра "
         u"ИЛИ типа; обычно экземпляра (у каждой камеры своя высота). Если "
         u"пусто — высота берётся как отметка точки вставки минус отметка "
         u"уровня камеры. Нужна для расчёта ближней мёртвой зоны и дальней "
         u"границы — без неё (и без наклона ниже) зона всегда плоский "
         u"сектор от самой точки камеры, без мёртвой зоны. Несколько имён "
-        u"(у разных семейств камер) — через «;».",
+        u"(у разных семейств камер) — через «;»."),
         u"", False
     ),
     (
         "tilt_param_name",
         u"",
-        u"Параметр «наклон оптической оси вниз»",
-        u"Имя углового параметра наклона оси камеры вниз от горизонта — "
+        N_(u"Параметр «наклон оптической оси вниз»"),
+        N_(u"Имя углового параметра наклона оси камеры вниз от горизонта — "
         u"экземпляра ИЛИ типа (0 — камера смотрит горизонтально). Пусто — "
         u"наклон не учитывается, зона строится как плоский сектор без "
         u"мёртвой зоны, даже если высота задана. Подобрать автоматически "
         u"под помещение можно кнопкой «Навести на помещение». Несколько "
         u"имён (у разных семейств камер, если наклон называется по-разному) "
-        u"— через «;».",
+        u"— через «;»."),
         u"", False
     ),
     (
         "rotation_param_name",
         u"",
-        u"Параметр «поворот камеры» (угол внутри семейства)",
-        u"Имя углового параметра камеры (экземпляра ИЛИ типа), которым "
+        N_(u"Параметр «поворот камеры» (угол внутри семейства)"),
+        N_(u"Имя углового параметра камеры (экземпляра ИЛИ типа), которым "
         u"камера разворачивается НЕ поворотом самого экземпляра, а внутри "
         u"семейства (тогда FacingOrientation не меняется, и без этого поля "
         u"все зоны смотрят в одну сторону). Его значение прибавляется к "
@@ -3196,299 +3198,299 @@ TEXT_FIELDS = [
         u"параметр называется по-разному (например, «Вращение (поворот)» у "
         u"одних, «УГО_Поворот» у других) — перечислите все варианты через "
         u"«;»: «Вращение (поворот);УГО_Поворот». Как значение переводится "
-        u"в направление — три поля ниже.",
+        u"в направление — три поля ниже."),
         u"", False
     ),
     (
         "rotation_zero_deg",
         u"",
-        u"Поворот 0 — куда смотрит камера, ° от «вперёд»",
-        u"Куда смотрит камера, когда параметр поворота = 0: угол от "
+        N_(u"Поворот 0 — куда смотрит камера, ° от «вперёд»"),
+        N_(u"Куда смотрит камера, когда параметр поворота = 0: угол от "
         u"направления «вперёд» семейства (от основания, от стены), против "
         u"часовой стрелки. Обычно 0 (при 0 камера смотрит вперёд). Для "
         u"поворотной камеры на настенном основании, у которой (на плане, "
         u"стена снизу) 0 — вправо вдоль стены, 90 — вверх от стены, 180 — "
         u"влево, впишите -90 (и «по часовой» — «нет»); если наоборот "
-        u"(0 — влево, 180 — вправо) — 90 и «по часовой» — «да».",
+        u"(0 — влево, 180 — вправо) — 90 и «по часовой» — «да»."),
         u"0", False
     ),
     (
         "rotation_clockwise",
         u"",
-        u"Поворот растёт по часовой стрелке (да/нет)",
-        u"«нет» — большее значение параметра поворачивает камеру против "
+        N_(u"Поворот растёт по часовой стрелке (да/нет)"),
+        N_(u"«нет» — большее значение параметра поворачивает камеру против "
         u"часовой стрелки (в плане), «да» — по часовой. Для камеры «0 — "
         u"вправо, 90 — от стены, 180 — влево» (стена снизу) — «нет», для "
         u"«0 — влево, 180 — вправо» — «да». Если после «Зон обзора» зоны "
         u"смотрят зеркально — поменяйте и это поле, и знак поля выше "
-        u"(90 <-> -90).",
+        u"(90 <-> -90)."),
         u"нет", False
     ),
     (
         "rotation_range_deg",
         u"",
-        u"Диапазон поворота, ° (мин-макс, необязательно)",
-        u"Пределы, в которых поворачивается камера внутри семейства, "
+        N_(u"Диапазон поворота, ° (мин-макс, необязательно)"),
+        N_(u"Пределы, в которых поворачивается камера внутри семейства, "
         u"например «0-180» — тогда «Навести на помещение» выбирает "
         u"направление только из них (камера не отвернётся в стену) и "
-        u"записывает значение в этом диапазоне. Пусто — без ограничений.",
+        u"записывает значение в этом диапазоне. Пусто — без ограничений."),
         u"", False
     ),
     (
         "direction_offset_deg",
         u"",
-        u"Доворот направления «взгляда», градусы",
-        u"Фиксированная поправка направления (одинаковая для всех камер, "
+        N_(u"Доворот направления «взгляда», градусы"),
+        N_(u"Фиксированная поправка направления (одинаковая для всех камер, "
         u"против часовой стрелки), если геометрия камеры в семействе "
         u"смотрит не «вперёд» относительно FacingOrientation. Обычно 0. "
         u"Индивидуальный разворот каждой камеры — это поле выше "
-        u"«Параметр поворот камеры», а не это.",
+        u"«Параметр поворот камеры», а не это."),
         u"0", False
     ),
     (
         "target_level_offset_mm",
-        u"② Плоскость расчёта и форма зоны",
-        u"Высота плоскости расчёта над уровнем, мм",
-        u"На какой высоте считать зону: 0 — пол; 1500 — плоскость лиц; "
+        N_(u"② Плоскость расчёта и форма зоны"),
+        N_(u"Высота плоскости расчёта над уровнем, мм"),
+        N_(u"На какой высоте считать зону: 0 — пол; 1500 — плоскость лиц; "
         u"800 — рабочие поверхности. Влияет на ближнюю/дальнюю границу при "
-        u"учёте высоты установки.",
+        u"учёте высоты установки."),
         u"0", False
     ),
     (
         "draw_dead_zone",
         u"",
-        u"Показывать ближнюю мёртвую зону (да/нет)",
-        u"«да» — при заданных высоте/наклоне/вертикальном угле зона рисуется "
+        N_(u"Показывать ближнюю мёртвую зону (да/нет)"),
+        N_(u"«да» — при заданных высоте/наклоне/вертикальном угле зона рисуется "
         u"кольцевым сектором (с вырезом под камерой). «нет» — всегда сплошной "
-        u"сектор от точки камеры.",
+        u"сектор от точки камеры."),
         u"да", False
     ),
     (
         "ray_count",
         u"",
-        u"Детализация дуги (число лучей на сектор)",
-        u"Больше — глаже дуга и точнее обрезка по помещению, но тяжелее "
-        u"область заливки. 64–128 обычно достаточно.",
+        N_(u"Детализация дуги (число лучей на сектор)"),
+        N_(u"Больше — глаже дуга и точнее обрезка по помещению, но тяжелее "
+        u"область заливки. 64–128 обычно достаточно."),
         u"96", False
     ),
     (
         "clip_to_rooms",
-        u"③ Обрезка по помещению",
-        u"Резать зону по границе помещения (да/нет)",
-        u"«да» — зона обрезается по контуру Room из связанной модели, в "
+        N_(u"③ Обрезка по помещению"),
+        N_(u"Резать зону по границе помещения (да/нет)"),
+        N_(u"«да» — зона обрезается по контуру Room из связанной модели, в "
         u"котором стоит камера. Учитываются вогнутые помещения и «дыры» — "
         u"внутренние контуры, которые сам Revit вырезает в границе "
         u"помещения вокруг колонн с отделкой, если она отмечена «граница "
         u"помещения» (обычный случай для АР) — отдельно колонны в кнопке "
         u"ничем не обрабатываются, тень от них берётся прямо из контура "
-        u"помещения. «нет» — зона строится без обрезки.",
+        u"помещения. «нет» — зона строится без обрезки."),
         u"да", False
     ),
     (
         "room_boundary",
         u"",
-        u"Граница помещения",
-        u"«отделка» — по чистовой поверхности стен (Finish); «центр» — по "
+        N_(u"Граница помещения"),
+        N_(u"«отделка» — по чистовой поверхности стен (Finish); «центр» — по "
         u"осям стен (Center). Если для конкретного помещения контур так и "
         u"не построился (открытый/повреждённый контур) — используется "
         u"резервный способ: сечение уже готового тела помещения, которое "
         u"сам Revit строит для площади/объёма — работает для помещений "
-        u"любой формы (вогнутых, с несколькими контурами, с дугами).",
+        u"любой формы (вогнутых, с несколькими контурами, с дугами)."),
         u"отделка", False
     ),
     (
         "fill_type_name",
-        u"④ Оформление",
-        u"Тип области заливки (FilledRegion)",
-        u"Имя типа штриховки для зоны. Пусто — берётся первый доступный тип "
-        u"в проекте. Прозрачность/цвет настраиваются в самом типе.",
+        N_(u"④ Оформление"),
+        N_(u"Тип области заливки (FilledRegion)"),
+        N_(u"Имя типа штриховки для зоны. Пусто — берётся первый доступный тип "
+        u"в проекте. Прозрачность/цвет настраиваются в самом типе."),
         u"", False
     ),
     (
         "line_subcategory",
         u"",
-        u"Подкатегория линий контура",
-        u"Имя подкатегории категории «Линии» для границы зоны (создаётся "
+        N_(u"Подкатегория линий контура"),
+        N_(u"Имя подкатегории категории «Линии» для границы зоны (создаётся "
         u"автоматически). По ней же именуется стиль дуг DORI "
-        u"(«… · DORI»).",
+        u"(«… · DORI»)."),
         u"СОТ_Зона обзора", False
     ),
     (
         "zone_tag",
         u"",
-        u"Метка зоны в параметре «Комментарии»",
-        u"Служебная строка, по которой кнопка находит и удаляет прежние зоны "
-        u"этих камер при повторном запуске. Формат записи — «метка|Id камеры».",
+        N_(u"Метка зоны в параметре «Комментарии»"),
+        N_(u"Служебная строка, по которой кнопка находит и удаляет прежние зоны "
+        u"этих камер при повторном запуске. Формат записи — «метка|Id камеры»."),
         u"CCTV_FOV", True
     ),
     (
         "draw_dori",
-        u"⑤ Зоны DORI (EN 62676-4, необязательно)",
-        u"Рисовать дуги DORI (да/нет)",
-        u"«да» — добавляет концентрические дуги на расстояниях "
+        N_(u"⑤ Зоны DORI (EN 62676-4, необязательно)"),
+        N_(u"Рисовать дуги DORI (да/нет)"),
+        N_(u"«да» — добавляет концентрические дуги на расстояниях "
         u"идентификации / распознавания / наблюдения / обнаружения "
-        u"(250 / 125 / 63 / 25 пикс/м).",
+        u"(250 / 125 / 63 / 25 пикс/м)."),
         u"нет", False
     ),
     (
         "camera_h_res_param_name",
         u"",
-        u"Параметр «горизонтальное разрешение» (необязательно)",
-        u"Имя параметра камеры с горизонтальным разрешением матрицы в "
+        N_(u"Параметр «горизонтальное разрешение» (необязательно)"),
+        N_(u"Имя параметра камеры с горизонтальным разрешением матрицы в "
         u"пикселях — обычно параметр ТИПА (характеристика модели; ищется и "
         u"на экземпляре, и на типе). «Целое», «Число» или текст вида «1920» "
         u"/ «1920x1080». Если параметр не задан, не найден или пуст — "
         u"берётся общее значение из поля ниже. Несколько имён (у разных "
-        u"семейств камер) — через «;».",
+        u"семейств камер) — через «;»."),
         u"", False
     ),
     (
         "camera_h_res_px",
         u"",
-        u"Горизонтальное разрешение матрицы, пикс (общее)",
-        u"Нужно для дуг DORI и для подбора фокусного по DORI (раздел ⑥), "
+        N_(u"Горизонтальное разрешение матрицы, пикс (общее)"),
+        N_(u"Нужно для дуг DORI и для подбора фокусного по DORI (раздел ⑥), "
         u"если у камеры нет параметра разрешения (поле выше). "
         u"Например 1920 (Full HD), 2560, 3840. "
-        u"Расстояние: d = H / (2 · пикс/м · tg(гор.угол / 2)).",
+        u"Расстояние: d = H / (2 · пикс/м · tg(гор.угол / 2))."),
         u"", False
     ),
     (
         "auto_rotate",
-        u"⑥ Автонаведение (кнопка «Навести на помещение»)",
-        u"Поворачивать камеру автоматически (да/нет)",
-        u"«нет» (обычный режим) — камеру ориентируете вы, кнопка подбирает "
+        N_(u"⑥ Автонаведение (кнопка «Навести на помещение»)"),
+        N_(u"Поворачивать камеру автоматически (да/нет)"),
+        N_(u"«нет» (обычный режим) — камеру ориентируете вы, кнопка подбирает "
         u"только фокусное и наклон. «да» — кнопка сама разворачивает камеру "
         u"туда, где кадр самого "
         u"широкого угла (минимальное фокусное) накрывает наибольшую площадь "
         u"помещения в пределах дальности: у камеры в углу — по диагонали, "
         u"у камеры на стене — перпендикулярно стене. Поворот пишется в "
         u"параметр поворота камеры (если он задан и это параметр "
-        u"экземпляра), иначе поворачивается сам экземпляр семейства.",
+        u"экземпляра), иначе поворачивается сам экземпляр семейства."),
         u"нет", False
     ),
     (
         "auto_consider_others",
         u"",
-        u"Учитывать другие камеры (да/нет)",
-        u"«да» — камеры наводятся по очереди, и площадь, которую уже видят "
+        N_(u"Учитывать другие камеры (да/нет)"),
+        N_(u"«да» — камеры наводятся по очереди, и площадь, которую уже видят "
         u"другие камеры на этом виде (невыбранные — как они стоят сейчас, "
         u"выбранные — после наведения), при выборе поворота и фокусного "
         u"почти не учитывается: соседние камеры расходятся по разным "
-        u"направлениям, а не смотрят в одну точку. Работает медленнее.",
+        u"направлениям, а не смотрят в одну точку. Работает медленнее."),
         u"нет", False
     ),
     (
         "auto_focal_mode",
         u"",
-        u"Фокусное: авто / площадь / DORI",
-        u"«площадь» — самый узкий угол, при котором в кадре заданная ниже "
+        N_(u"Фокусное: авто / площадь / DORI"),
+        N_(u"«площадь» — самый узкий угол, при котором в кадре заданная ниже "
         u"доля площади помещения. «DORI» — чтобы на рабочем расстоянии "
         u"(до стены, но не дальше дальности камеры) была заданная ниже "
         u"детализация; нужно разрешение матрицы (раздел ⑤). «авто» — DORI, "
         u"если стена дальше дальности камеры (паркинг, склад), иначе "
-        u"площадь.",
+        u"площадь."),
         u"авто", False
     ),
     (
         "auto_dori_level",
         u"",
-        u"Детализация для фокусного по DORI",
-        u"обнаружение (25 пикс/м) / наблюдение (63) / распознавание (125) "
+        N_(u"Детализация для фокусного по DORI"),
+        N_(u"обнаружение (25 пикс/м) / наблюдение (63) / распознавание (125) "
         u"/ идентификация (250) или число пикс/м. Фокусное подбирается "
         u"так, чтобы кадр на рабочем расстоянии был шириной "
-        u"разрешение / пикс_на_м.",
+        u"разрешение / пикс_на_м."),
         u"распознавание", False
     ),
     (
         "auto_coverage_pct",
         u"",
-        u"Какую долю площади помещения держать в кадре, %",
-        u"Фокусное подбирается как самый узкий угол вокруг направления "
+        N_(u"Какую долю площади помещения держать в кадре, %"),
+        N_(u"Фокусное подбирается как самый узкий угол вокруг направления "
         u"камеры, при котором в кадре эта доля площади помещения (в пределах "
         u"дальности). 100 — всё помещение (у камеры на стене почти всегда "
         u"упрётся в минимальное фокусное), 80–90 — можно отдать углы у "
-        u"самой камеры ради большей детализации вдали.",
+        u"самой камеры ради большей детализации вдали."),
         u"90", False
     ),
     (
         "auto_tilt_mode",
         u"",
-        u"Как считать наклон: ось / верх / низ",
-        u"«ось» — ось кадра смотрит в точку на плоскости расчёта у дальней "
+        N_(u"Как считать наклон: ось / верх / низ"),
+        N_(u"«ось» — ось кадра смотрит в точку на плоскости расчёта у дальней "
         u"стены (или на дальности, если стена дальше): наклон = "
         u"arctg(h / L). «верх» — туда же приходится верхний край кадра "
         u"(камера смотрит круче, видно больше пола под собой). «низ» — "
         u"нижний край кадра даёт мёртвую зону из поля «Предупреждать, если "
         u"мёртвая зона больше». h — высота камеры над плоскостью расчёта "
-        u"(раздел ②).",
+        u"(раздел ②)."),
         u"ось", False
     ),
     (
         "auto_default_height_mm",
         u"",
-        u"Высота установки по умолчанию, мм",
-        u"Используется кнопкой «Навести на помещение», только если у "
+        N_(u"Высота установки по умолчанию, мм"),
+        N_(u"Используется кнопкой «Навести на помещение», только если у "
         u"конкретной камеры высоту не удалось определить (нет параметра "
         u"высоты и нет уровня для расчёта по отметке) — тогда это значение "
-        u"записывается в параметр высоты (если он есть на экземпляре).",
+        u"записывается в параметр высоты (если он есть на экземпляре)."),
         u"3000", False
     ),
     (
         "auto_default_vfov_deg",
         u"",
-        u"Вертикальный угол обзора по умолчанию, °",
-        u"Используется той же кнопкой, только если у камеры не нашёлся "
+        N_(u"Вертикальный угол обзора по умолчанию, °"),
+        N_(u"Используется той же кнопкой, только если у камеры не нашёлся "
         u"вертикальный угол (ни параметром, ни из фокусного+матрицы) — "
         u"записывается в параметр вертикального угла (если он есть на "
-        u"экземпляре). Возьмите из паспорта объектива/камеры.",
+        u"экземпляре). Возьмите из паспорта объектива/камеры."),
         u"30", False
     ),
     (
         "auto_focal_min_mm",
         u"",
-        u"Автоподбор фокусного — минимум, мм",
-        u"«Навести на помещение» подбирает фокусное (если оно параметр "
+        N_(u"Автоподбор фокусного — минимум, мм"),
+        N_(u"«Навести на помещение» подбирает фокусное (если оно параметр "
         u"ЭКЗЕМПЛЯРА этой камеры) так, чтобы в кадре была заданная выше доля "
         u"площади помещения, и записывает его — результат клампится в этот "
         u"диапазон (непрерывный вариофокал). По минимуму считается и самый "
         u"широкий угол для поворота камеры. Если фокусное — параметр типа, "
-        u"оно не трогается, используется то, что уже на камере.",
+        u"оно не трогается, используется то, что уже на камере."),
         u"2.8", False
     ),
     (
         "auto_focal_max_mm",
         u"",
-        u"Автоподбор фокусного — максимум, мм",
-        u"Верхняя граница того же диапазона.",
+        N_(u"Автоподбор фокусного — максимум, мм"),
+        N_(u"Верхняя граница того же диапазона."),
         u"12", False
     ),
     (
         "auto_max_tilt_deg",
         u"",
-        u"Предупреждать, если наклон больше, °",
-        u"После подбора наклона под помещение — если получившийся наклон "
+        N_(u"Предупреждать, если наклон больше, °"),
+        N_(u"После подбора наклона под помещение — если получившийся наклон "
         u"больше этого значения, статус камеры в отчёте станет "
         u"«с предупреждением»: слишком крутой наклон обычно значит, что "
-        u"камеру стоит установить выше.",
+        u"камеру стоит установить выше."),
         u"60", False
     ),
     (
         "auto_max_near_zone_mm",
         u"",
-        u"Предупреждать, если мёртвая зона больше, мм",
-        u"Так же — если получившаяся ближняя мёртвая зона (не видно под "
+        N_(u"Предупреждать, если мёртвая зона больше, мм"),
+        N_(u"Так же — если получившаяся ближняя мёртвая зона (не видно под "
         u"камерой) больше этого значения, отчёт предупредит: поднимите "
         u"камеру выше — это уменьшает мёртвую зону при том же дальнем "
         u"крае обзора. В режиме наклона «низ» — это же значение задаёт "
-        u"желаемую мёртвую зону.",
+        u"желаемую мёртвую зону."),
         u"1500", False
     ),
     (
         "view3d_type_name",
-        u"⑦ Вид как с камеры",
-        u"Тип 3D-вида (необязательно)",
-        u"Имя ViewFamilyType для создаваемого перспективного вида. Пусто — "
-        u"берётся первый доступный 3D-тип в проекте.",
+        N_(u"⑦ Вид как с камеры"),
+        N_(u"Тип 3D-вида (необязательно)"),
+        N_(u"Имя ViewFamilyType для создаваемого перспективного вида. Пусто — "
+        u"берётся первый доступный 3D-тип в проекте."),
         u"", False
     ),
 ]

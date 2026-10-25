@@ -17,6 +17,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -47,8 +48,8 @@ def _open_settings():
         "excluded_device_keywords",
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -66,9 +67,9 @@ view = doc.ActiveView
 
 if view.ViewType == ViewType.ThreeD:
     forms.alert(
-        u"Временная линия маршрута — это Detail Line, она не поддерживается "
+        tr(u"Временная линия маршрута — это Detail Line, она не поддерживается "
         u"на 3D-виде. Переключитесь на план (или другой 2D-вид) и запустите "
-        u"кнопку заново.",
+        u"кнопку заново."),
         exitscript=True
     )
 
@@ -92,7 +93,7 @@ CIRCUIT_ROUTE_PARAM = settings["circuit_route_param"]
 # ------------------------------------------------------------
 
 picked, circuit = pick_circuit(
-    uidoc, doc, u"Выберите устройство, входящее в интересующий шлейф СПС"
+    uidoc, doc, tr(u"Выберите устройство, входящее в интересующий шлейф СПС")
 )
 
 
@@ -103,8 +104,8 @@ picked, circuit = pick_circuit(
 route_text = clean_text_value(get_string_param(circuit, CIRCUIT_ROUTE_PARAM))
 if not route_text:
     forms.alert(
-        u"У цепи не заполнен маршрут (параметр «{}»). Сначала запустите "
-        u"кнопку «Длины шлейфов» — она считает и записывает маршрут.".format(CIRCUIT_ROUTE_PARAM),
+        tr(u"У цепи не заполнен маршрут (параметр «{}»). Сначала запустите "
+        u"кнопку «Длины шлейфов» — она считает и записывает маршрут.").format(CIRCUIT_ROUTE_PARAM),
         exitscript=True
     )
 
@@ -171,7 +172,7 @@ for parent_addr, child_addr in edges:
 # ПОСТРОЕНИЕ ЛИНИЙ + ВЫДЕЛЕНИЕ
 # ------------------------------------------------------------
 
-with revit.Transaction(u"Показать маршрут шлейфа СПС"):
+with revit.Transaction(tr(u"Показать маршрут шлейфа СПС")):
     created_ids = create_route_line_segments(doc, view, segments)
 
 select_elements(uidoc, route_elements, created_ids)
@@ -179,18 +180,18 @@ zoom_to_fit_points(uidoc, view, [pt for seg in segments for pt in seg])
 schedule_preview_cleanup(uidoc.Application, doc, created_ids)
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Цепь: {}\n"
     u"Устройств/панели в маршруте: {}\n"
     u"Построено отрезков линии: {}\n"
     u"Не найдено устройств по адресу: {}\n\n"
     u"{}"
-    u"Устройства и панель выделены в модели.".format(
+    u"Устройства и панель выделены в модели.").format(
         norm(circuit.Name) or circuit.Id.IntegerValue,
         len(route_elements),
         len(created_ids),
         len(missing_addrs),
-        (u"Не найдены (удалены/на другом виде/вне рабочего набора): {}\n\n".format(
+        (tr(u"Не найдены (удалены/на другом виде/вне рабочего набора): {}\n\n").format(
             u", ".join(missing_addrs)
         ) if missing_addrs else u"")
     )

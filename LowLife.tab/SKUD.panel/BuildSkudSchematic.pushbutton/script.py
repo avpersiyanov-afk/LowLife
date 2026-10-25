@@ -12,6 +12,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -57,8 +58,8 @@ def _open_settings():
         "device_uid_param_name", "passage_point_group_ids"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -103,7 +104,7 @@ FALLBACK_STEP_FT = float(settings["schematic_layout_step_mm"]) * MM_TO_FT   # д
 DEVICE_CATEGORY_NAMES = parse_category_names(settings["schematic_device_categories_text"])
 if not DEVICE_CATEGORY_NAMES:
     forms.alert(
-        u"Не заданы категории устройств схемы (поле «Категории устройств схемы»).",
+        tr(u"Не заданы категории устройств схемы (поле «Категории устройств схемы»)."),
         exitscript=True
     )
 CONTROLLER_CATEGORY_NAME = next(
@@ -123,8 +124,8 @@ CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
 if not CONTROLLER_CATEGORY_NAME or CONTROLLER_CATEGORY_NAME not in CATEGORY_SYMBOLS:
     forms.alert(
-        u"Не выбрано схемное семейство для категории «контроллер».\n\n"
-        u"«Параметры СКУД» → категории устройств схемы → строка «контроллер».",
+        tr(u"Не выбрано схемное семейство для категории «контроллер».\n\n"
+        u"«Параметры СКУД» → категории устройств схемы → строка «контроллер»."),
         exitscript=True
     )
 CONTROLLER_SYMBOL = CATEGORY_SYMBOLS[CONTROLLER_CATEGORY_NAME]
@@ -140,8 +141,8 @@ categories_without_symbol = [
 PASSAGE_POINT_GROUP_IDS = load_passage_point_group_ids()
 if not PASSAGE_POINT_GROUP_IDS:
     forms.alert(
-        u"Не выбраны типовые группы точек прохода.\n\n"
-        u"«Параметры СКУД» → «Типовые группы точек прохода».",
+        tr(u"Не выбраны типовые группы точек прохода.\n\n"
+        u"«Параметры СКУД» → «Типовые группы точек прохода»."),
         exitscript=True
     )
 
@@ -222,7 +223,7 @@ for controller, devices in collect_controller_devices(
     })
 
 if not desired_controllers:
-    forms.alert(u"Не найдено ни одного контроллера с адресом и подключёнными устройствами.",
+    forms.alert(tr(u"Не найдено ни одного контроллера с адресом и подключёнными устройствами."),
                 exitscript=True)
 
 desired_controllers.sort(key=lambda c: (c["elevation"], c["address"]))
@@ -238,8 +239,8 @@ view, previous_state, name_conflict = find_schematic_view(
 
 if name_conflict:
     forms.alert(
-        u"В проекте есть вид с именем «{}», но это не чертёжный вид. "
-        u"Переименуйте его или измените имя в «Параметры СКУД».".format(SCHEMATIC_VIEW_NAME),
+        tr(u"В проекте есть вид с именем «{}», но это не чертёжный вид. "
+        u"Переименуйте его или измените имя в «Параметры СКУД».").format(SCHEMATIC_VIEW_NAME),
         exitscript=True
     )
 
@@ -256,7 +257,7 @@ if is_new_view:
         except:
             continue
     if drafting_type_id is None:
-        forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).",
+        forms.alert(tr(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting)."),
                     exitscript=True)
 else:
     # Несовместимый/битый манифест load_manifest вернёт как empty_manifest()
@@ -296,48 +297,48 @@ with revit.Transaction("Sync SKUD Schematic"):
 # ------------------------------------------------------------
 
 if controllers_without_address:
-    output.print_md(u"### Контроллеры без адреса, пропущены ({})".format(len(controllers_without_address)))
+    output.print_md(tr(u"### Контроллеры без адреса, пропущены ({})").format(len(controllers_without_address)))
     for name in controllers_without_address:
         output.print_md(u"- {}".format(name))
 
 if categories_without_symbol:
-    output.print_md(u"### Категории без схемного семейства ({})".format(len(categories_without_symbol)))
+    output.print_md(tr(u"### Категории без схемного семейства ({})").format(len(categories_without_symbol)))
     output.print_md(
-        u"Для этих категорий не выбрано «Схемное семейство» в «Параметры СКУД» — их "
+        tr(u"Для этих категорий не выбрано «Схемное семейство» в «Параметры СКУД» — их "
         u"устройства не попадут ни в подбор групп (сигнатура группы соберётся неполной), "
-        u"ни в резервную раскладку:"
+        u"ни в резервную раскладку:")
     )
     for name in categories_without_symbol:
         output.print_md(u"- {}".format(name))
 
 if group_read_errors:
-    output.print_md(u"### Не удалось прочитать состав групп ({})".format(len(group_read_errors)))
-    output.print_md(u"У этих типов групп нет ни одного размещённого экземпляра — вставьте группу один раз:")
+    output.print_md(tr(u"### Не удалось прочитать состав групп ({})").format(len(group_read_errors)))
+    output.print_md(tr(u"У этих типов групп нет ни одного размещённого экземпляра — вставьте группу один раз:"))
     for name in group_read_errors:
         output.print_md(u"- {}".format(name))
 
 if report["no_match"]:
-    output.print_md(u"### Точки прохода без типовой группы ({})".format(len(report["no_match"])))
+    output.print_md(tr(u"### Точки прохода без типовой группы ({})").format(len(report["no_match"])))
     for line in report["no_match"]:
         output.print_md(u"- {}".format(line))
 
 if not manifest_saved:
     output.print_md(
-        u"### ⚠ Манифест НЕ сохранён в параметр вида «{}»\n\nПричина: {}.\n\n"
-        u"Без него следующий запуск не найдёт эту схему и нарисует всё заново.".format(
+        tr(u"### ⚠ Манифест НЕ сохранён в параметр вида «{}»\n\nПричина: {}.\n\n"
+        u"Без него следующий запуск не найдёт эту схему и нарисует всё заново.").format(
             MANIFEST_PARAM_NAME, manifest_save_error)
     )
 
-warn = u"" if manifest_saved else u"\n\nВНИМАНИЕ: манифест не сохранён — см. окно вывода."
+warn = u"" if manifest_saved else tr(u"\n\nВНИМАНИЕ: манифест не сохранён — см. окно вывода.")
 
 forms.alert(
-    u"Готово. Вид: {}\n\n"
+    tr(u"Готово. Вид: {}\n\n"
     u"Точек прохода: не изменилось {} / перерисовано {} / добавлено {} / удалено {}\n"
     u"Контроллеров: добавлено {} / удалено {}\n"
     u"Нерезолвившихся ссылок на схемные элементы: {}\n"
     u"Точек прохода без типовой группы: {}\n"
     u"Категорий без схемного семейства: {}\n"
-    u"Контроллеров без адреса (пропущено): {}{}".format(
+    u"Контроллеров без адреса (пропущено): {}{}").format(
         view_name,
         report["pp_unchanged"], report["pp_redrawn"], report["pp_created"], report["pp_removed"],
         report["controllers_created"], report["controllers_removed"],

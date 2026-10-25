@@ -9,6 +9,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -34,8 +35,8 @@ def _open_settings():
         "panel_exclude_keywords", "riser_keywords", "riser_exclude_keywords"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -74,8 +75,8 @@ for category_name, type_id in TYPE_ID_BY_CATEGORY.items():
     symbol = doc.GetElement(type_id)
     if symbol is None:
         forms.alert(
-            u"Не найден выбранный тип для категории «{}». "
-            u"Откройте «Параметры СКУД» и выберите тип заново.".format(category_name),
+            tr(u"Не найден выбранный тип для категории «{}». "
+            u"Откройте «Параметры СКУД» и выберите тип заново.").format(category_name),
             exitscript=True
         )
     symbols_by_category[category_name] = symbol
@@ -102,29 +103,29 @@ config = {
 
 document_levels = get_document_levels(doc)
 if not document_levels:
-    forms.alert(u"В проекте нет ни одного уровня.", exitscript=True)
+    forms.alert(tr(u"В проекте нет ни одного уровня."), exitscript=True)
 
 with revit.Transaction("Place SKUD Route Nodes"):
     result = place_route_nodes(doc, view, config, symbols_by_category, document_levels)
 
 if not result["segments_found"]:
     forms.alert(
-        u"Сегменты трассы не найдены на активном виде.\n\n"
+        tr(u"Сегменты трассы не найдены на активном виде.\n\n"
         u"Проверьте фильтр семейства сегментов трассы в «Параметры СКУД» "
-        u"(сейчас: «{}»).".format(config["family_filter"]),
+        u"(сейчас: «{}»).").format(config["family_filter"]),
         exitscript=True
     )
 
 counts = result["counts_by_category"]
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Сегментов трассы: {}\n"
     u"Создано элементов: {}\n"
     u"Пропущено (уже стоял маркер): {}\n\n"
     u"Панелей/контроллеров: {}\n"
     u"Стояков: {}\n"
-    u"Узлов маршрута: {}".format(
+    u"Узлов маршрута: {}").format(
         result["segments_found"],
         len(result["created"]),
         len(result["skipped"]),
