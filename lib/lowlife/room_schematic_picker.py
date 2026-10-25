@@ -29,6 +29,7 @@
 """
 
 from collections import OrderedDict
+from lowlife.i18n import tr, N_
 
 import clr
 clr.AddReference('System')
@@ -59,7 +60,7 @@ from lowlife.room_schematic import SCHEMATIC_VIEW_NAME
 from lowlife.settings_core import JsonStore
 from lowlife.sot_levels import sorted_level_names, get_level_label
 
-TITLE = u"Рыба структурной схемы"
+TITLE = N_(u"Рыба структурной схемы")
 
 _store = JsonStore("LowLifeRoomSchematic_settings.json", label=u"рыбы структурной схемы")
 
@@ -168,9 +169,9 @@ def _label(text):
 
 def _floor_caption(level_name, rows):
     boxes = len(core.boxes_for_floor(rows))
-    text = u"{}  ·  пом.: {}".format(get_level_label(level_name), len(rows))
+    text = tr(u"{}  ·  пом.: {}").format(get_level_label(level_name), len(rows))
     if boxes:
-        text += u"  ·  боксов: {}".format(boxes)
+        text += tr(u"  ·  боксов: {}").format(boxes)
     return text
 
 
@@ -192,7 +193,7 @@ def show(doc, records):
     state = {"level": None, "auto_filled": set(), "result": None}
 
     win = Window()
-    win.Title = TITLE
+    win.Title = tr(TITLE)
     win.Width = 1050
     win.Height = 720
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -203,12 +204,12 @@ def show(doc, records):
     # --- шапка ---
     header = TextBlock()
     header.Text = (
-        u"Выберите этаж слева и в столбце «На схеме» напишите, как показать "
+        tr(u"Выберите этаж слева и в столбце «На схеме» напишите, как показать "
         u"помещение на схеме. Пусто — помещения на схеме не будет. Одинаковая "
         u"подпись у нескольких помещений этажа — один общий бокс (группа). "
         u"Можно выделить несколько строк (Shift/Ctrl) и задать им подпись "
         u"разом. Этаж с тем же набором помещений, что у уже заполненного "
-        u"(типовой), заполнится сам."
+        u"(типовой), заполнится сам.")
     )
     header.TextWrapping = TextWrapping.Wrap
     header.Margin = Thickness(12, 10, 12, 8)
@@ -222,14 +223,14 @@ def show(doc, records):
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
     DockPanel.SetDock(buttons, Dock.Right)
-    cancel_btn = _button(u"Отмена")
-    build_btn = _button(u"Построить схему", bold=True)
+    cancel_btn = _button(tr(u"Отмена"))
+    build_btn = _button(tr(u"Построить схему"), bold=True)
     buttons.Children.Add(cancel_btn)
     buttons.Children.Add(build_btn)
 
     view_row = StackPanel()
     view_row.Orientation = Orientation.Horizontal
-    view_row.Children.Add(_label(u"Имя чертёжного вида:"))
+    view_row.Children.Add(_label(tr(u"Имя чертёжного вида:")))
     view_box = TextBox()
     view_box.Width = 360
     view_box.Margin = Thickness(0, 0, 6, 4)
@@ -275,25 +276,25 @@ def show(doc, records):
     tools = WrapPanel()
     tools.Margin = Thickness(0, 6, 0, 0)
     DockPanel.SetDock(tools, Dock.Bottom)
-    tools.Children.Add(_label(u"Выделенным:"))
+    tools.Children.Add(_label(tr(u"Выделенным:")))
     label_box = TextBox()
     label_box.Width = 180
     label_box.Margin = Thickness(0, 0, 6, 4)
     tools.Children.Add(label_box)
-    set_btn = _button(u"Задать подпись")
-    name_btn = _button(u"Подпись = имя помещения")
-    clear_btn = _button(u"Убрать со схемы")
+    set_btn = _button(tr(u"Задать подпись"))
+    name_btn = _button(tr(u"Подпись = имя помещения"))
+    clear_btn = _button(tr(u"Убрать со схемы"))
     tools.Children.Add(set_btn)
     tools.Children.Add(name_btn)
     tools.Children.Add(clear_btn)
-    tools.Children.Add(_label(u"   Как на этаже:"))
+    tools.Children.Add(_label(tr(u"   Как на этаже:")))
     copy_combo = ComboBox()
     copy_combo.Width = 200
     copy_combo.Margin = Thickness(0, 0, 6, 4)
     for level_name in level_order:
         copy_combo.Items.Add(get_level_label(level_name))
     tools.Children.Add(copy_combo)
-    copy_btn = _button(u"Скопировать")
+    copy_btn = _button(tr(u"Скопировать"))
     tools.Children.Add(copy_btn)
     right.Children.Add(tools)
 
@@ -307,14 +308,14 @@ def show(doc, records):
     grid.SelectionMode = DataGridSelectionMode.Extended
 
     number_col = DataGridTextColumn()
-    number_col.Header = u"Номер"
+    number_col.Header = tr(u"Номер")
     number_col.Binding = Binding("number")
     number_col.IsReadOnly = True
     number_col.Width = DataGridLength(90)
     grid.Columns.Add(number_col)
 
     name_col = DataGridTextColumn()
-    name_col.Header = u"Имя"
+    name_col.Header = tr(u"Имя")
     name_col.Binding = Binding("name")
     name_col.IsReadOnly = True
     name_col.Width = _star(1)
@@ -324,7 +325,7 @@ def show(doc, records):
     label_binding.Mode = BindingMode.TwoWay
     label_binding.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
     label_col = DataGridTextColumn()
-    label_col.Header = u"На схеме"
+    label_col.Header = tr(u"На схеме")
     label_col.Binding = label_binding
     label_col.Width = _star(1)
     grid.Columns.Add(label_col)
@@ -358,7 +359,7 @@ def show(doc, records):
     def selected_rows():
         rows = [row for row in grid.SelectedItems]
         if not rows:
-            forms.alert(u"Выделите строки в таблице (Shift/Ctrl — несколько).", title=TITLE)
+            forms.alert(tr(u"Выделите строки в таблице (Shift/Ctrl — несколько)."), title=tr(TITLE))
         return rows
 
     def open_level(level_name):
@@ -375,8 +376,8 @@ def show(doc, records):
                 core.copy_labels_by_name(rows_by_level[source], rows)
                 state["auto_filled"].add(level_name)
                 banner.Text = (
-                    u"Типовой этаж: подписи взяты с «{}» (тот же набор помещений). "
-                    u"Проверьте и при необходимости поправьте."
+                    tr(u"Типовой этаж: подписи взяты с «{}» (тот же набор помещений). "
+                    u"Проверьте и при необходимости поправьте.")
                 ).format(get_level_label(source))
 
         data = List[object]()
@@ -393,7 +394,7 @@ def show(doc, records):
     def on_set(sender, args):
         text = (label_box.Text or u"").strip()
         if not text:
-            forms.alert(u"Впишите подпись в поле слева от кнопки.", title=TITLE)
+            forms.alert(tr(u"Впишите подпись в поле слева от кнопки."), title=tr(TITLE))
             return
         commit()
         for row in selected_rows():
@@ -419,14 +420,14 @@ def show(doc, records):
     def on_copy(sender, args):
         index = copy_combo.SelectedIndex
         if not (0 <= index < len(level_order)):
-            forms.alert(u"Выберите этаж-образец в списке.", title=TITLE)
+            forms.alert(tr(u"Выберите этаж-образец в списке."), title=tr(TITLE))
             return
         source = level_order[index]
         if source == state["level"]:
             return
         commit()
         copied = core.copy_labels_by_name(rows_by_level[source], current_rows())
-        banner.Text = u"С «{}» перенесено подписей (по именам помещений): {}.".format(
+        banner.Text = tr(u"С «{}» перенесено подписей (по именам помещений): {}.").format(
             get_level_label(source), copied)
         refresh()
 
@@ -438,7 +439,7 @@ def show(doc, records):
         refresh()
         boxes = core.build_boxes(level_order, rows_by_level)
         if not boxes:
-            forms.alert(u"Ни у одного помещения нет подписи «На схеме» — строить нечего.", title=TITLE)
+            forms.alert(tr(u"Ни у одного помещения нет подписи «На схеме» — строить нечего."), title=tr(TITLE))
             return
         state["result"] = (view_name_text(), boxes)
         win.Close()

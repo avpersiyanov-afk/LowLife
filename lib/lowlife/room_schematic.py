@@ -25,6 +25,7 @@ rebuild) — второй, куда более простой движок ра�
 from Autodesk.Revit.DB import (
     FilteredElementCollector, View, ViewDrafting, ViewFamilyType, ViewFamily
 )
+from lowlife.i18n import tr
 
 from lowlife.sot_levels import get_level_label
 from lowlife.sot_schematic import (
@@ -163,8 +164,8 @@ def check_view(doc, view_name):
     view, name_conflict = _find_view_by_name(doc, view_name)
     if name_conflict:
         return None, None, (
-            u"Вид «{}» уже существует, но не является чертёжным. "
-            u"Переименуйте его или удалите.".format(view_name)
+            tr(u"Вид «{}» уже существует, но не является чертёжным. "
+            u"Переименуйте его или удалите.").format(view_name)
         )
     if view is not None:
         return view, None, None
@@ -179,7 +180,7 @@ def check_view(doc, view_name):
             continue
 
     if drafting_type_id is None:
-        return None, None, u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting)."
+        return None, None, tr(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).")
 
     return None, drafting_type_id, None
 

@@ -16,6 +16,7 @@ settings_core.TextSettings; здесь только описание полей.
 """
 
 from lowlife import settings_core
+from lowlife.i18n import tr, N_
 
 
 FILE_NAME = "LowLifeCableTray_settings.json"
@@ -26,11 +27,11 @@ WORKSET_KEY = "workset_filter"
 
 # (папка панели без .panel, заголовок панели на ленте, хвост имени типа)
 PANELS = [
-    ("TrayLadder", u"Лестничный лоток", u"ЛЛ_1.5_СЦ"),
-    ("TrayUnperforated", u"Неперфорированный лоток", u"ЛН_1.5_СЦ"),
-    ("TrayPerforated", u"Перфорированный лоток", u"ЛП_1.5_СЦ"),
-    ("TrayWire", u"Проволочный лоток", u"ЛВ_1.5_СЦ"),
-    ("TrayRoof", u"Лотки на кровле", u"ЛП_1.5_ГЦ"),
+    ("TrayLadder", N_(u"Лестничный лоток"), u"ЛЛ_1.5_СЦ"),
+    ("TrayUnperforated", N_(u"Неперфорированный лоток"), u"ЛН_1.5_СЦ"),
+    ("TrayPerforated", N_(u"Перфорированный лоток"), u"ЛП_1.5_СЦ"),
+    ("TrayWire", N_(u"Проволочный лоток"), u"ЛВ_1.5_СЦ"),
+    ("TrayRoof", N_(u"Лотки на кровле"), u"ЛП_1.5_ГЦ"),
 ]
 
 # (папка кнопки без .pushbutton, система — начало имени типа и подпись кнопки)
@@ -40,6 +41,14 @@ SYSTEMS = [
     ("TraySB", u"СБ"),
     ("TraySS", u"СС"),
 ]
+
+# Display labels are separate from the system prefixes used in type names.
+SYSTEM_LABELS = {
+    "TraySPZo": N_(u"Лоток СПЗо — часть имени типа"),
+    "TraySPZp": N_(u"Лоток СПЗп — часть имени типа"),
+    "TraySB": N_(u"Лоток СБ — часть имени типа"),
+    "TraySS": N_(u"Лоток СС — часть имени типа"),
+}
 
 
 def tray_type_key(panel_folder, button_folder):
@@ -68,7 +77,11 @@ def default_tray_type(panel_folder, button_folder):
 
 def button_title(panel_folder, button_folder):
     """Как кнопка называется в сообщениях: «Лоток СБ (Лестничный лоток)»."""
-    return u"Лоток {} ({})".format(_system(button_folder)[1], _panel(panel_folder)[1])
+    system = _system(button_folder)[1]
+    display_system = {"TraySPZo": "SPZo", "TraySPZp": "SPZp",
+                      "TraySB": "SB", "TraySS": "SS"}[button_folder]
+    return tr(u"Лоток {} ({})", u"Tray {} ({})").format(
+        tr(system, display_system), tr(_panel(panel_folder)[1]))
 
 
 def _fields():
@@ -77,11 +90,11 @@ def _fields():
             WORKSET_KEY,
             u"Рабочий набор",
             u"Часть имени рабочего набора",
-            hint=(
+            hint=N_(
                 u"Перед рисованием кнопка делает активным рабочий набор, в имени "
                 u"которого есть этот текст, — чтобы лоток попал в нужный рабочий "
                 u"набор. Должен совпадать ровно с одним рабочим набором. "
-                u"По умолчанию — «{}».".format(DEFAULT_WORKSET_FILTER)
+                u"По умолчанию — «КНК»."
             ),
             default=DEFAULT_WORKSET_FILTER, required=True,
         ),
@@ -92,7 +105,7 @@ def _fields():
                 tray_type_key(panel_folder, button_folder),
                 # заголовок панели — над первым полем её группы
                 panel_title if i == 0 else u"",
-                u"Лоток {} — часть имени типа".format(system),
+                SYSTEM_LABELS[button_folder],
                 default=default_tray_type(panel_folder, button_folder),
                 required=True,
             ))
