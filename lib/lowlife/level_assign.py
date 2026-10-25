@@ -36,6 +36,7 @@ except NameError:  # Python 3
 
 
 import math
+from lowlife.i18n import tr, N_
 
 # Допуск по высоте, футы (~3 мм): элемент, стоящий ровно на отметке уровня,
 # но из-за округления чуть ниже неё, относится к этому уровню, а не к нижнему.
@@ -93,12 +94,12 @@ def pick_level_by_elevation(z, levels_with_elevation, tol=ELEVATION_TOL_FT):
 
 # --- разбор выбора ------------------------------------------------------------
 
-SKIP_HAS_LEVEL = u"уже есть опорный уровень"
-SKIP_NOT_FAMILY = u"не экземпляр семейства"
-SKIP_HOSTED = u"размещён на основе"
-SKIP_NESTED = u"вложенное семейство"
-SKIP_IN_GROUP = u"в группе"
-SKIP_NO_LOCATION = u"нет точки/линии размещения"
+SKIP_HAS_LEVEL = N_(u"уже есть опорный уровень")
+SKIP_NOT_FAMILY = N_(u"не экземпляр семейства")
+SKIP_HOSTED = N_(u"размещён на основе")
+SKIP_NESTED = N_(u"вложенное семейство")
+SKIP_IN_GROUP = N_(u"в группе")
+SKIP_NO_LOCATION = N_(u"нет точки/линии размещения")
 
 
 def classify(doc, el):
@@ -421,15 +422,15 @@ def _relink_circuits(new, as_device, as_panel):
             members = ElementSet()
             members.Insert(new)
             if system.AddToCircuit(members) is False:
-                return u"цепь {} не приняла новый элемент".format(_circuit_name(system))
+                return tr(u"цепь {} не приняла новый элемент").format(_circuit_name(system))
         except Exception as ex:
-            return u"цепь {}: {}".format(_circuit_name(system), ex)
+            return tr(u"цепь {}: {}").format(_circuit_name(system), ex)
 
     for system in as_panel:
         try:
             system.SelectPanel(new)
         except Exception as ex:
-            return u"цепь {} (панель): {}".format(_circuit_name(system), ex)
+            return tr(u"цепь {} (панель): {}").format(_circuit_name(system), ex)
 
     return None
 
@@ -574,12 +575,12 @@ def recreate_with_level(doc, el, level):
 
         if new is None:
             st.RollBack()
-            return None, u"Revit не создал экземпляр с уровнем", []
+            return None, tr(u"Revit не создал экземпляр с уровнем"), []
         doc.Regenerate()
 
         if geometry.get_element_level(doc, new) is None:
             st.RollBack()
-            return None, u"семейство не принимает опорный уровень (иной способ размещения)", []
+            return None, tr(u"семейство не принимает опорный уровень (иной способ размещения)"), []
 
         if isinstance(new.Location, LocationPoint):
             _match_orientation(doc, el, new)
@@ -589,11 +590,11 @@ def recreate_with_level(doc, el, level):
         doc.Regenerate()
 
         if isinstance(new.Location, LocationPoint) and not _orientation_matches(el, new):
-            warnings.append(u"ориентация может отличаться от исходной")
+            warnings.append(tr(u"ориентация может отличаться от исходной"))
 
         failed_params = copy_instance_params(el, new)
         if failed_params:
-            warnings.append(u"не скопировано параметров: {}".format(failed_params))
+            warnings.append(tr(u"не скопировано параметров: {}").format(failed_params))
 
         error = _relink_circuits(new, as_device, as_panel)
         if error:
@@ -649,7 +650,7 @@ def assign_levels(doc, elements, fixed_level=None, allow_recreate=True):
         el_id = el.Id.IntegerValue
         level = fixed_level or level_for_element(el, levels)
         if level is None:
-            result.failed.append((el_id, u"не удалось определить уровень по высоте"))
+            result.failed.append((el_id, tr(u"не удалось определить уровень по высоте")))
             continue
 
         name = geometry.level_name(level)
@@ -660,12 +661,12 @@ def assign_levels(doc, elements, fixed_level=None, allow_recreate=True):
             continue
 
         if not allow_recreate:
-            result.failed.append((el_id, u"уровень меняется только пересозданием (отключено)"))
+            result.failed.append((el_id, tr(u"уровень меняется только пересозданием (отключено)")))
             continue
 
         new, error, warnings = recreate_with_level(doc, el, level)
         if new is None:
-            result.failed.append((el_id, error or u"не удалось пересоздать"))
+            result.failed.append((el_id, error or tr(u"не удалось пересоздать")))
             continue
 
         result.recreated.append((el_id, new))

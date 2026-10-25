@@ -27,6 +27,7 @@ System.Xml (IronPython, если etree недоступен); разбор — �
 """
 
 import re
+from lowlife.i18n import tr
 
 try:
     _text = unicode  # noqa: F821 — IronPython/Python 2
@@ -266,8 +267,8 @@ def parse(values, origins):
             if layout:
                 break
     if layout is None:
-        raise ValueError(u"Не найден заголовок таблицы требований LOI "
-                         u"(«{}», «{}», «Подэтап проверки …»).".format(GROUP_HEADER, LOI_HEADER))
+        raise ValueError(tr(u"Не найден заголовок таблицы требований LOI "
+                         u"(«{}», «{}», «Подэтап проверки …»).").format(GROUP_HEADER, LOI_HEADER))
 
     prefixes, levels = {}, {}
     rules, sections = [], []

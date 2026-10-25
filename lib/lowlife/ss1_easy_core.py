@@ -6,6 +6,7 @@
 Все высоты/отметки — в одной системе координат (футы, как у Revit), какие
 именно — решает вызывающий код.
 """
+from lowlife.i18n import tr
 
 try:
     _text = unicode  # noqa: F821 — IronPython/Python 2
@@ -209,20 +210,20 @@ def parse_letter_params(text):
                 sep = candidate
                 break
         if sep is None:
-            errors.append(u"«{}» — нужно «буква = параметр»".format(chunk))
+            errors.append(tr(u"«{}» — нужно «буква = параметр»").format(chunk))
             continue
         letter, param = chunk.split(sep, 1)
         letter = letter.strip()
         param = param.strip()
         if len(letter) != 1:
-            errors.append(u"«{}» — слева должна быть одна буква".format(chunk))
+            errors.append(tr(u"«{}» — слева должна быть одна буква").format(chunk))
             continue
         if not param:
-            errors.append(u"«{}» — не указан параметр".format(chunk))
+            errors.append(tr(u"«{}» — не указан параметр").format(chunk))
             continue
         key = mask_letter(letter)
         if key in seen:
-            errors.append(u"буква «{}» указана дважды".format(letter))
+            errors.append(tr(u"буква «{}» указана дважды").format(letter))
             continue
         seen.add(key)
         pairs.append((key, param))

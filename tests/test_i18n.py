@@ -170,3 +170,33 @@ def test_wrap_tool_wraps_ui_strings_but_not_data_or_metadata():
 
 def test_library_does_not_translate_at_import_time():
     assert _tool().module_level_tr() == []
+
+
+def test_ss1_labels_switch_language_without_changing_model_defaults(appdata):
+    from lowlife import ss1_easy_settings as ss1
+    before = ss1.load_all()
+    ru_missing = ss1.missing_main({})
+    i18n.save(i18n.EN)
+    assert ss1.missing_main({}) == [
+        u"Telecom shaft — family", u"Telecom shaft — checkbox",
+        u"Cross-connect — family and type", u"Cable entry — family and type",
+    ]
+    assert ss1.load_all() == before
+    assert ss1.DEFAULT_SHAFT_FLAG == u"СС"
+    assert before["target_room_name"] == u"Прихожая"
+    assert before["niche_text"] == u"Ниша СС"
+    i18n.save(i18n.RU)
+    assert ss1.missing_main({}) == ru_missing
+
+
+def test_loi_status_and_mask_errors_follow_language_preserving_data(appdata):
+    from lowlife import loi_check_core as loi, ss1_easy_core as ss1
+    i18n.save(i18n.EN)
+    assert loi.status_text(loi.ABSENT, None) == u"parameter missing"
+    assert loi.status_text(loi.FILLED, u"Этаж 2") == u"Этаж 2"
+    pairs, errors = ss1.parse_letter_params(u"А=Этаж; AB=Секция; C=")
+    assert pairs == [(u"A", u"Этаж")]
+    assert errors == [u"«AB=Секция» — the left side must contain one letter",
+                      u"«C=» — no parameter specified"]
+    i18n.save(i18n.RU)
+    assert loi.status_text(loi.ABSENT, None) == u"нет параметра"

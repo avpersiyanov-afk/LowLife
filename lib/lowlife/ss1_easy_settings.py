@@ -26,9 +26,10 @@ pyrevit.script.get_config(), см. CLAUDE.md).
 """
 
 from lowlife import i18n, settings_core
+from lowlife.i18n import N_, tr
 
 
-BUTTON_NAME = u"СС1-8Mile"
+BUTTON_NAME = N_(u"СС1-8Mile")
 
 
 class LetterParamsField(settings_core.TextField):
@@ -183,8 +184,8 @@ SETTINGS = settings_core.TextSettings(
         LetterParamsField(
             "address_letters",
             u"",
-            u"Параметры букв маски",
-            hint=(
+            N_(u"Параметры букв маски"),
+            hint=N_(
                 u"Пары «буква = параметр» через «;», например: «A=Этаж; B=Секция; "
                 u"C=Номер квартиры». Значение берётся сначала у самого подвода "
                 u"(после заполнения LOI), а если там пусто — у прихожей в связи АР."
@@ -208,8 +209,8 @@ REQUIRED_KEYS = ["target_room_name", "neighbor_room_names", "lot_param_name"]
 # Шахта СС: семейство + параметр (типа или экземпляра) + значение — в окне
 # Shift+клика, хранятся в том же файле.
 SHAFT_KEYS = [
-    ("shaft_family_name", u"Шахта СС — семейство"),
-    ("shaft_param", u"Шахта СС — галочка"),
+    ("shaft_family_name", N_(u"Шахта СС — семейство")),
+    ("shaft_param", N_(u"Шахта СС — галочка")),
 ]
 
 # Галочка, которая подставляется в список, если у семейства шахты она есть
@@ -218,8 +219,8 @@ DEFAULT_SHAFT_FLAG = u"СС"
 
 # Роль → (ключ семейства, ключ типоразмера, подпись)
 SYMBOL_KEYS = [
-    ("cross", "cross_family", "cross_type", u"Кросс"),
-    ("feed", "feed_family", "feed_type", u"Кабельный подвод"),
+    ("cross", "cross_family", "cross_type", N_(u"Кросс")),
+    ("feed", "feed_family", "feed_type", N_(u"Кабельный подвод")),
 ]
 
 # Тип электрической цепи кросс №1 → подвод (имя ElectricalSystemType Revit;
@@ -251,8 +252,8 @@ def load_all():
 
 def missing_main(values):
     """Подписи незаполненных пунктов главного окна (шахта, кросс, подвод)."""
-    missing = [label for key, label in SHAFT_KEYS if not (values.get(key) or u"").strip()]
-    missing += [label + u" — семейство и тип" for _, family_key, type_key, label in SYMBOL_KEYS
+    missing = [tr(label) for key, label in SHAFT_KEYS if not (values.get(key) or u"").strip()]
+    missing += [tr(label) + tr(u" — семейство и тип") for _, family_key, type_key, label in SYMBOL_KEYS
                 if not values.get(family_key) or not values.get(type_key)]
     return missing
 
@@ -262,9 +263,9 @@ def require_all(values):
     missing = missing_main(values)
     if missing:
         settings_core._alert(
-            u"Не заполнены настройки:\n\n{}\n\n"
-            u"Откройте настройки: Shift+клик по кнопке «{}».".format(
-                u"\n".join(missing), BUTTON_NAME),
+            tr(u"Не заполнены настройки:\n\n{}\n\n"
+            u"Откройте настройки: Shift+клик по кнопке «{}».").format(
+                u"\n".join(missing), tr(BUTTON_NAME)),
             exitscript=True
         )
     SETTINGS.require(values, REQUIRED_KEYS)
@@ -435,7 +436,7 @@ def show_settings_window(doc):
         return param_cache[name]
 
     win = Window()
-    win.Title = u"Настройки: {}".format(BUTTON_NAME)
+    win.Title = tr(u"Настройки: {}").format(tr(BUTTON_NAME))
     win.Width = 620
     win.SizeToContent = SizeToContent.Height
     win.MaxHeight = 860
@@ -476,13 +477,13 @@ def show_settings_window(doc):
         Список семейств с полем поиска слева: ввод фильтрует список по части
         имени (core.filter_names); если найдено одно — оно и выбирается.
         """
-        add_text(label + u" — слева поиск по части имени", top=4)
+        add_text(label + tr(u" — слева поиск по части имени"), top=4)
         row = DockPanel()
         search = TextBox()
         search.Width = 170
         search.Padding = Thickness(2)
         search.Margin = Thickness(0, 0, 6, 0)
-        search.ToolTip = u"Поиск: введите часть имени семейства (можно несколько слов)"
+        search.ToolTip = tr(u"Поиск: введите часть имени семейства (можно несколько слов)")
         DockPanel.SetDock(search, Dock.Left)
         row.Children.Add(search)
         combo = ComboBox()
@@ -502,7 +503,7 @@ def show_settings_window(doc):
             elif len(matches) == 1:
                 combo.SelectedIndex = 0
             if (search.Text or u"").strip():
-                found.Text = u"Найдено: {} из {}".format(len(matches), len(names))
+                found.Text = tr(u"Найдено: {} из {}").format(len(matches), len(names))
             else:
                 found.Text = u""
 
@@ -520,18 +521,18 @@ def show_settings_window(doc):
         elif len(items) == 1:
             combo.SelectedIndex = 0
 
-    add_text(u"СС1-8Mile: что и куда ставить", bold=True, size=16, bottom=4)
-    add_text(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
+    add_text(tr(u"СС1-8Mile: что и куда ставить"), bold=True, size=16, bottom=4)
+    add_text(tr(u"Списки — семейства, загруженные в проект. При запуске все экземпляры "
              u"выбранных типов кросса и подвода на отмеченных уровнях удаляются и "
-             u"ставятся заново.", gray=True, bottom=4)
+             u"ставятся заново."), gray=True, bottom=4)
 
     # --- шахта СС ---------------------------------------------------------
-    add_text(u"Шахта СС *", bold=True, top=12)
-    add_text(u"Шахта СС — экземпляр этого семейства (Обобщённая модель), у типа "
+    add_text(tr(u"Шахта СС *"), bold=True, top=12)
+    add_text(tr(u"Шахта СС — экземпляр этого семейства (Обобщённая модель), у типа "
              u"которого отмечена выбранная галочка (параметр Да/Нет, например «СС»; "
-             u"у шахт других систем отмечены «СБ», «СПЗ»…).", gray=True)
-    shaft_family = add_search_combo(u"Семейство шахты", generic_names)
-    shaft_param = add_combo(u"Галочка шахты СС")
+             u"у шахт других систем отмечены «СБ», «СПЗ»…)."), gray=True)
+    shaft_family = add_search_combo(tr(u"Семейство шахты"), generic_names)
+    shaft_param = add_combo(tr(u"Галочка шахты СС"))
 
     def fill_shaft_params(family_name, selected_param):
         fill(shaft_param, family_flags(family_name), selected_param or DEFAULT_SHAFT_FLAG)
@@ -547,14 +548,14 @@ def show_settings_window(doc):
     # --- кросс, подвод ------------------------------------------------------
     symbol_combos = {}
     for role, family_key, type_key, label in SYMBOL_KEYS:
-        add_text(label + u" *", bold=True, top=12)
-        family_combo = add_search_combo(u"Семейство", all_names)
-        type_combo = add_combo(u"Тип")
+        add_text(tr(label) + u" *", bold=True, top=12)
+        family_combo = add_search_combo(tr(u"Семейство"), all_names)
+        type_combo = add_combo(tr(u"Тип"))
         fill(family_combo, all_names, values.get(family_key))
         fill(type_combo, family_types.get(family_combo.SelectedItem, []), values.get(type_key))
         saved_family = values.get(family_key)
         if saved_family and saved_family not in family_types:
-            missing = add_text(u"Сохранённое семейство «{}» не загружено в проект.".format(
+            missing = add_text(tr(u"Сохранённое семейство «{}» не загружено в проект.").format(
                 saved_family), gray=True)
             missing.Foreground = Brushes.IndianRed
 
@@ -567,8 +568,8 @@ def show_settings_window(doc):
     # --- тип цепи -------------------------------------------------------------
     from lowlife.generic_circuits_settings import SYSTEM_TYPE_RU, _available_system_type_names
 
-    add_text(u"Тип электрической цепи", bold=True, top=12)
-    add_text(u"Какой цепью соединять кросс №1 шахты с каждым подводом.", gray=True)
+    add_text(tr(u"Тип электрической цепи"), bold=True, top=12)
+    add_text(tr(u"Какой цепью соединять кросс №1 шахты с каждым подводом."), gray=True)
     system_names = _available_system_type_names()
     saved_system = values.get(CIRCUIT_SYSTEM_TYPE_KEY) or DEFAULT_CIRCUIT_SYSTEM_TYPE
     if saved_system not in system_names:
@@ -582,13 +583,13 @@ def show_settings_window(doc):
 
     # --- остальное ----------------------------------------------------------
     other_btn = Button()
-    other_btn.Content = u"Помещения, параметры и высоты…"
+    other_btn.Content = tr(u"Помещения, параметры и высоты…")
     other_btn.Padding = Thickness(10, 4, 10, 4)
     other_btn.Margin = Thickness(0, 16, 0, 0)
     other_btn.HorizontalAlignment = HorizontalAlignment.Left
     root.Children.Add(other_btn)
-    add_text(u"Имена прихожей и соседних помещений, параметр имени лота, параметр "
-             u"«Помещение» оборудования, высоты кроссов и подвода.", gray=True, top=2)
+    add_text(tr(u"Имена прихожей и соседних помещений, параметр имени лота, параметр "
+             u"«Помещение» оборудования, высоты кроссов и подвода."), gray=True, top=2)
 
     def on_other(sender, args):
         # Окно без Topmost — дочернее окно не застрянет позади (см. CLAUDE.md).
@@ -603,13 +604,13 @@ def show_settings_window(doc):
     root.Children.Add(buttons)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
     buttons.Children.Add(cancel_btn)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
     buttons.Children.Add(ok_btn)
@@ -630,7 +631,7 @@ def show_settings_window(doc):
             update[type_key] = type_combo.SelectedItem or u""
         problems = missing_main(update)
         if problems:
-            forms.alert(u"Заполните:\n\n" + u"\n".join(problems))
+            forms.alert(tr(u"Заполните:\n\n") + u"\n".join(problems))
             return
         SETTINGS.store.update(update)
         result["saved"] = True

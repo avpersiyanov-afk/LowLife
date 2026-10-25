@@ -4,6 +4,7 @@ __title__ = u"Заполнение\nLOI"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
@@ -22,8 +23,8 @@ def main():
     if config_mode:
         edited = loi_settings.get_settings_interactive(doc)
         forms.alert(
-            u"Отменено, настройки не изменены." if edited is None
-            else u"Настройки сохранены."
+            tr(u"Отменено, настройки не изменены.") if edited is None
+            else tr(u"Настройки сохранены.")
         )
         return
 
@@ -40,18 +41,18 @@ def main():
 
     view = doc.ActiveView
     if view is None:
-        forms.alert(u"Нет активного вида.", exitscript=True)
+        forms.alert(tr(u"Нет активного вида."), exitscript=True)
 
     form_records = loi_fill.find_forms(doc, category_name, locations=search_locations)
     if not form_records:
         diag_lines = loi_fill.diagnose_form_search(doc, category_name, search_locations)
-        diag_text = u"\n".join(diag_lines) if diag_lines else u"(нечего сканировать — список моделей пуст)"
+        diag_text = u"\n".join(diag_lines) if diag_lines else tr(u"(нечего сканировать — список моделей пуст)")
         forms.alert(
-            u"Не найдено элементов категории «{}» с геометрией (солидом) — "
+            tr(u"Не найдено элементов категории «{}» с геометрией (солидом) — "
             u"ни в одной из настроенных моделей.\n\n"
             u"{}\n\n"
             u"В каких моделях искать — настраивается: Shift+клик по кнопке "
-            u"«Заполнение LOI».".format(category_name, diag_text),
+            u"«Заполнение LOI».").format(category_name, diag_text),
             exitscript=True
         )
 
@@ -132,31 +133,31 @@ def main():
                     resolved_count += 1
 
     report_lines = [
-        u"Форм найдено: {}".format(len(form_records)),
-        u"Заполнено автоматически (1 форма): {}".format(written_count),
+        tr(u"Форм найдено: {}").format(len(form_records)),
+        tr(u"Заполнено автоматически (1 форма): {}").format(written_count),
     ]
 
     if split_source_count:
         report_lines.append(
-            u"Разделено по границе форм: {} элементов → {} кусков.".format(
+            tr(u"Разделено по границе форм: {} элементов → {} кусков.").format(
                 split_source_count, split_piece_count
             )
         )
 
     if still_multi:
         if cancelled_conflicts:
-            report_lines.append(u"Конфликтов (несколько форм): {} — отменено пользователем.".format(len(still_multi)))
+            report_lines.append(tr(u"Конфликтов (несколько форм): {} — отменено пользователем.").format(len(still_multi)))
         else:
-            report_lines.append(u"Конфликтов (несколько форм): {}, разрешено: {}.".format(len(still_multi), resolved_count))
+            report_lines.append(tr(u"Конфликтов (несколько форм): {}, разрешено: {}.").format(len(still_multi), resolved_count))
 
     if failed_params:
         report_lines.append(u"")
-        report_lines.append(u"Не удалось записать параметр у:")
+        report_lines.append(tr(u"Не удалось записать параметр у:"))
         report_lines.extend(failed_params[:20])
         if len(failed_params) > 20:
-            report_lines.append(u"… и ещё {}.".format(len(failed_params) - 20))
+            report_lines.append(tr(u"… и ещё {}.").format(len(failed_params) - 20))
 
-    forms.alert(u"\n".join(report_lines), title=u"Заполнение LOI")
+    forms.alert(u"\n".join(report_lines), title=tr(u"Заполнение LOI"))
 
 
 try:
@@ -165,6 +166,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «Заполнение LOI»:\n\n{}".format(traceback.format_exc()),
-        title=u"Заполнение LOI"
+        tr(u"Сбой в «Заполнение LOI»:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Заполнение LOI")
     )

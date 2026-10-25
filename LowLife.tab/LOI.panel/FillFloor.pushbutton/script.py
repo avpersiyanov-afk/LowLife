@@ -4,6 +4,7 @@ __title__ = u"Заполнение\nэтажа"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, EXEC_PARAMS
 
@@ -22,8 +23,8 @@ def main():
     if config_mode:
         edited = floor_settings.get_settings_interactive(doc)
         forms.alert(
-            u"Отменено, настройки не изменены." if edited is None
-            else u"Настройки сохранены."
+            tr(u"Отменено, настройки не изменены.") if edited is None
+            else tr(u"Настройки сохранены.")
         )
         return
 
@@ -37,15 +38,15 @@ def main():
         result = floor_fill.fill_floors(doc, target_param_name, level_values)
 
     report_lines = [
-        u"Записано: {}".format(result.written),
+        tr(u"Записано: {}").format(result.written),
     ]
 
     if result.no_level:
-        report_lines.append(u"Без уровня (пропущено): {}".format(result.no_level))
+        report_lines.append(tr(u"Без уровня (пропущено): {}").format(result.no_level))
 
     if result.unmapped_levels:
         report_lines.append(
-            u"Уровни без значения в настройках (пропущено): {}".format(
+            tr(u"Уровни без значения в настройках (пропущено): {}").format(
                 u", ".join(sorted(result.unmapped_levels))
             )
         )
@@ -53,13 +54,13 @@ def main():
     if result.failed:
         report_lines.append(u"")
         report_lines.append(
-            u"Не удалось записать параметр «{}» у {} элементов "
-            u"(нет такого параметра или он нередактируемый).".format(
+            tr(u"Не удалось записать параметр «{}» у {} элементов "
+            u"(нет такого параметра или он нередактируемый).").format(
                 target_param_name, len(result.failed)
             )
         )
 
-    forms.alert(u"\n".join(report_lines), title=u"Заполнение этажа")
+    forms.alert(u"\n".join(report_lines), title=tr(u"Заполнение этажа"))
 
 
 try:
@@ -68,6 +69,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «Заполнение этажа»:\n\n{}".format(traceback.format_exc()),
-        title=u"Заполнение этажа"
+        tr(u"Сбой в «Заполнение этажа»:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Заполнение этажа")
     )
