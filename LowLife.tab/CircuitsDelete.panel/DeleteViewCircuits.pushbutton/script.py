@@ -15,6 +15,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from Autodesk.Revit.DB import FilteredElementCollector, BuiltInCategory
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script as pyrevit_script
 
@@ -32,7 +33,7 @@ def circuit_label(circuit):
                 return value
     except:
         pass
-    return u"без номера"
+    return tr(u"без номера")
 
 
 try:
@@ -41,7 +42,7 @@ try:
         for el in FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElements()
     )
 except Exception as ex:
-    forms.alert(u"Не удалось получить элементы активного вида: {}".format(ex), exitscript=True)
+    forms.alert(tr(u"Не удалось получить элементы активного вида: {}").format(ex), exitscript=True)
 
 circuits = FilteredElementCollector(doc) \
     .OfCategory(BuiltInCategory.OST_ElectricalCircuit) \
@@ -69,14 +70,14 @@ for circuit in circuits:
         to_delete.append(circuit)
 
 if not to_delete:
-    forms.alert(u"На активном виде не найдено устройств, входящих в электрические цепи.", exitscript=True)
+    forms.alert(tr(u"На активном виде не найдено устройств, входящих в электрические цепи."), exitscript=True)
 
-output.print_md(u"### Цепи для удаления ({})".format(len(to_delete)))
+output.print_md(tr(u"### Цепи для удаления ({})").format(len(to_delete)))
 for c in to_delete:
     output.print_md(u"- «{}» (ID {})".format(circuit_label(c), c.Id.IntegerValue))
 
 confirmed = forms.alert(
-    u"Будет удалено цепей: {}\n\nПодробности — в окне вывода pyRevit.\n\nПродолжить?".format(len(to_delete)),
+    tr(u"Будет удалено цепей: {}\n\nПодробности — в окне вывода pyRevit.\n\nПродолжить?").format(len(to_delete)),
     ok=False, yes=True, no=True
 )
 
@@ -84,7 +85,7 @@ if confirmed:
     deleted = 0
     errors = []
 
-    with revit.Transaction(u"Удалить цепи на виде"):
+    with revit.Transaction(tr(u"Удалить цепи на виде")):
         for c in to_delete:
             try:
                 doc.Delete(c.Id)
@@ -93,8 +94,8 @@ if confirmed:
                 errors.append(u"ID {}: {}".format(c.Id.IntegerValue, ex))
 
     if errors:
-        output.print_md(u"### Ошибки удаления ({})".format(len(errors)))
+        output.print_md(tr(u"### Ошибки удаления ({})").format(len(errors)))
         for line in errors:
             output.print_md(u"- {}".format(line))
 
-    forms.alert(u"Готово.\n\nУдалено цепей: {}\nОшибок: {}".format(deleted, len(errors)))
+    forms.alert(tr(u"Готово.\n\nУдалено цепей: {}\nОшибок: {}").format(deleted, len(errors)))

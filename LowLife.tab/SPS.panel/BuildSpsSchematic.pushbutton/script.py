@@ -85,6 +85,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import time
+from lowlife.i18n import tr
 
 import clr
 
@@ -150,8 +151,8 @@ def _open_settings():
         "isolator_keyword", "node_annotation_type_id", "view_template_id",
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -224,19 +225,19 @@ VIEW_TEMPLATE = get_view_template(doc, settings)
 
 if ANNOTATION_SYMBOL is None and DRAW_TAGS:
     forms.alert(
-        u"Не выбрана марка узла в настройках СПС — марки над схемными "
+        tr(u"Не выбрана марка узла в настройках СПС — марки над схемными "
         u"семействами ставиться не будут.\n\n"
-        u"Откройте «Параметры СПС» и выберите марку узла, чтобы включить их."
+        u"Откройте «Параметры СПС» и выберите марку узла, чтобы включить их.")
     )
 
 CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
 if not CATEGORY_SYMBOLS:
     forms.alert(
-        u"Не выбран ни один тип схемного семейства для категорий устройств "
+        tr(u"Не выбран ни один тип схемного семейства для категорий устройств "
         u"структурной схемы СПС.\n\n"
         u"Откройте «Параметры СПС», обновите список категорий и выберите "
-        u"схемное семейство для каждой из них.",
+        u"схемное семейство для каждой из них."),
         exitscript=True
     )
 
@@ -244,10 +245,10 @@ CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
 
 if not CATEGORY_DEVICE_TYPE_IDS:
     forms.alert(
-        u"Не выбраны реальные типы устройств ни для одной категории "
+        tr(u"Не выбраны реальные типы устройств ни для одной категории "
         u"структурной схемы СПС.\n\n"
         u"Откройте «Параметры СПС» и выберите типы устройств модели для "
-        u"каждой категории.",
+        u"каждой категории."),
         exitscript=True
     )
 
@@ -282,12 +283,12 @@ for cat_key in SCHEMATIC_SOURCE_CATEGORIES:
 
 if not elements:
     forms.alert(
-        u"Не найдено ни одного устройства с типом, сопоставленным категории "
-        u"в настройках СПС.",
+        tr(u"Не найдено ни одного устройства с типом, сопоставленным категории "
+        u"в настройках СПС."),
         exitscript=True
     )
 
-_mark(u"Автосбор устройств")
+_mark(tr(u"Автосбор устройств"))
 
 
 # ------------------------------------------------------------
@@ -297,20 +298,20 @@ _mark(u"Автосбор устройств")
 if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
     def _element_building(el):
         value = get_string_param(el, BUILDING_PARAM_NAME)
-        return value.strip() if value and value.strip() else u"(без корпуса)"
+        return value.strip() if value and value.strip() else tr(u"(без корпуса)")
 
     elements = [el for el in elements if _element_building(el) == BUILDING_FILTER_VALUE]
 
     if not elements:
         forms.alert(
-            u"После фильтрации по корпусу/секции «{}» не осталось устройств.\n\n"
+            tr(u"После фильтрации по корпусу/секции «{}» не осталось устройств.\n\n"
             u"Проверьте значение в «Параметры СПС» — «Значение корпуса/секции для "
-            u"фильтрации».".format(BUILDING_FILTER_VALUE),
+            u"фильтрации».").format(BUILDING_FILTER_VALUE),
             exitscript=True
         )
 
 
-_mark(u"Фильтр по корпусу/секции")
+_mark(tr(u"Фильтр по корпусу/секции"))
 
 
 # ------------------------------------------------------------
@@ -347,11 +348,11 @@ element_ids_set = set(el.Id.IntegerValue for el in elements)
 isolator_keyword = settings.get("isolator_keyword") or u"изолятор"
 isolator_ids = set(el.Id.IntegerValue for el in elements if is_isolator(el, isolator_keyword))
 
-_mark(u"Поиск изоляторов (is_isolator по всем устройствам)")
+_mark(tr(u"Поиск изоляторов (is_isolator по всем устройствам)"))
 
 branch_devices_by_isolator_id = isolator_branch_device_map(doc, isolator_ids) if isolator_ids else {}
 
-_mark(u"Поиск ответвлений изоляторов (обход электрических цепей)")
+_mark(tr(u"Поиск ответвлений изоляторов (обход электрических цепей)"))
 
 # {изолятор (элемент): [устройства ветви (элементы), ...]} — только
 # изоляторы, реально попавшие в elements (иначе рисовать спутник не для
@@ -376,7 +377,7 @@ for el in elements:
 branch_count = len(satellite_branches_by_isolator)
 branch_device_count = len(branch_device_ids)
 
-_mark(u"Сборка веток ответвлений (спутников)")
+_mark(tr(u"Сборка веток ответвлений (спутников)"))
 
 
 # ------------------------------------------------------------
@@ -387,7 +388,7 @@ level_groups = group_elements_by_level(doc, elements, LEVEL_PARAM_NAME)
 level_order = sorted_level_names(level_groups)
 level_labels = dict((name, get_level_label(name)) for name in level_order)
 
-_mark(u"Группировка по этажу (уровень элемента)")
+_mark(tr(u"Группировка по этажу (уровень элемента)"))
 
 
 def resolve_room_value(doc, el, counters, is_branch=False):
@@ -455,10 +456,10 @@ view, previous_state, name_conflict = find_layout_view(doc, SCHEMATIC_VIEW_NAME,
 
 if name_conflict:
     forms.alert(
-        u"В проекте уже есть вид с именем «{}», но это не чертёжный вид — "
+        tr(u"В проекте уже есть вид с именем «{}», но это не чертёжный вид — "
         u"структурную схему СПС туда поставить нельзя.\n\n"
         u"Переименуйте существующий вид либо измените имя вида в «Параметры "
-        u"СПС».".format(SCHEMATIC_VIEW_NAME),
+        u"СПС».").format(SCHEMATIC_VIEW_NAME),
         exitscript=True
     )
 
@@ -476,7 +477,7 @@ if is_new_view:
             continue
 
     if drafting_type_id is None:
-        forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).", exitscript=True)
+        forms.alert(tr(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting)."), exitscript=True)
 
     previous_state = {"v": 1, "levels": {}}
 
@@ -511,7 +512,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
             doc, el, room_counters, is_branch=(el_id in branch_device_ids)
         )
 
-    _mark(u"Определение помещений (resolve_room_value, поиск в связи)")
+    _mark(tr(u"Определение помещений (resolve_room_value, поиск в связи)"))
 
     # --- доп. ширина под ветки изоляторов "в том же помещении" (см.
     # fire_alarm_schematic.sync_isolator_satellites) — считается ЗАРАНЕЕ,
@@ -562,7 +563,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         level_extra = extra_room_width_mm.setdefault(level_name, {})
         level_extra[isolator_room_value] = level_extra.get(isolator_room_value, 0.0) + extra_mm
 
-    _mark(u"Резерв ширины под ветки изоляторов в том же помещении")
+    _mark(tr(u"Резерв ширины под ветки изоляторов в том же помещении"))
 
     level_room_groups = OrderedDict()
 
@@ -585,7 +586,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
 
         level_room_groups[level_name] = room_groups
 
-    _mark(u"Раскладка по этажам (level_room_groups)")
+    _mark(tr(u"Раскладка по этажам (level_room_groups)"))
 
     if is_new_view:
         view = ViewDrafting.Create(doc, drafting_type_id)
@@ -632,7 +633,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         extra_row_wrap_step_mm=satellite_extra_bottom
     )
 
-    _mark(u"sync_levels (раскладка этажей/помещений/устройств)")
+    _mark(tr(u"sync_levels (раскладка этажей/помещений/устройств)"))
 
     # --- ряды-спутники ответвлений изоляторов (раскладка, без линий) ---
     # Всегда (не зависит от DRAW_LOOP_LINES — это про расположение
@@ -653,7 +654,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
         delete_elements(doc, old_satellite_ids)
         new_state["satellite_ids"] = []
 
-    _mark(u"Ряды-спутники ответвлений")
+    _mark(tr(u"Ряды-спутники ответвлений"))
 
     # --- провода: пока выключены целиком (и «шкафные», и кольца/ответвления) ---
     # DRAW_LOOP_LINES управляет ОБОИМИ видами линий, пока раскладка
@@ -669,7 +670,7 @@ with revit.Transaction(u"Sync SPS Schematic"):
             doc, view, new_state, old_cable_line_ids, CABINET_UID if DRAW_LOOP_LINES else None
         )
 
-    _mark(u"Линии к шкафу")
+    _mark(tr(u"Линии к шкафу"))
 
     # --- кольцевые шлейфы: панель -> устройство №1 -> ... -> №N -> обратно ---
 
@@ -731,111 +732,111 @@ with revit.Transaction(u"Sync SPS Schematic"):
     old_loop_line_ids = previous_state.get("loop_line_ids", [])
     new_state["loop_line_ids"] = sync_loop_connections(doc, view, old_loop_line_ids, loops_for_drawing, node_placement)
 
-    _mark(u"Линии колец/ответвлений")
+    _mark(tr(u"Линии колец/ответвлений"))
 
     state_saved, state_save_error = save_state(view, LAYOUT_PARAM_NAME, new_state)
 
-    _mark(u"Сохранение раскладки в параметр вида")
+    _mark(tr(u"Сохранение раскладки в параметр вида"))
 
 
 # ------------------------------------------------------------
 # ОТЧЁТ
 # ------------------------------------------------------------
 
-output.print_md(u"### Структурная схема СПС: {}".format(view_name))
+output.print_md(tr(u"### Структурная схема СПС: {}").format(view_name))
 
-output.print_md(u"### Время по этапам (сек.)")
+output.print_md(tr(u"### Время по этапам (сек.)"))
 _total_time = sum(seconds for _label, seconds in _timings)
 for _label, _seconds in _timings:
-    output.print_md(u"- {} — **{:.1f}** сек.".format(_label, _seconds))
-output.print_md(u"Итого: **{:.1f}** сек.".format(_total_time))
+    output.print_md(tr(u"- {} — **{:.1f}** сек.").format(_label, _seconds))
+output.print_md(tr(u"Итого: **{:.1f}** сек.").format(_total_time))
 
 _timing_labels = {
-    "text": u"создание+центрирование текста помещения",
-    "lines": u"линии рамки (5 отрезков)",
-    "symbol_activate": u"активация типа семейства (редко, раз на тип)",
-    "instance": u"вставка экземпляра устройства (NewFamilyInstance)",
-    "params": u"запись параметров устройства (адрес/помещение/UID)",
-    "tag": u"марка узла (IndependentTag)",
+    "text": tr(u"создание+центрирование текста помещения"),
+    "lines": tr(u"линии рамки (5 отрезков)"),
+    "symbol_activate": tr(u"активация типа семейства (редко, раз на тип)"),
+    "instance": tr(u"вставка экземпляра устройства (NewFamilyInstance)"),
+    "params": tr(u"запись параметров устройства (адрес/помещение/UID)"),
+    "tag": tr(u"марка узла (IndependentTag)"),
 }
 
 
 def _print_timing_breakdown(title, timing_dict):
     if not timing_dict:
         return
-    output.print_md(u"### {} — разбивка по операциям (сек.)".format(title))
+    output.print_md(tr(u"### {} — разбивка по операциям (сек.)").format(title))
     for key, seconds in sorted(timing_dict.items(), key=lambda kv: -kv[1]):
-        output.print_md(u"- {} — **{:.1f}** сек.".format(_timing_labels.get(key, key), seconds))
+        output.print_md(tr(u"- {} — **{:.1f}** сек.").format(_timing_labels.get(key, key), seconds))
 
 
 _print_timing_breakdown(u"sync_levels", timing_levels)
-_print_timing_breakdown(u"Ряды-спутники", timing_satellites)
+_print_timing_breakdown(tr(u"Ряды-спутники"), timing_satellites)
 
 if not state_saved:
     output.print_md(
-        u"### ⚠ Раскладка НЕ сохранена в параметр вида «{}»\n\n"
+        tr(u"### ⚠ Раскладка НЕ сохранена в параметр вида «{}»\n\n"
         u"Причина: {}.\n\n"
         u"Без этого параметра повторный запуск не найдёт сегодняшнюю раскладку и "
         u"нарисует все узлы/помещения/этажи заново поверх уже существующих "
-        u"(дублирование).".format(LAYOUT_PARAM_NAME, state_save_error)
+        u"(дублирование).").format(LAYOUT_PARAM_NAME, state_save_error)
     )
 
 if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
-    output.print_md(u"Корпус/секция (фильтр): **{}**".format(BUILDING_FILTER_VALUE))
+    output.print_md(tr(u"Корпус/секция (фильтр): **{}**").format(BUILDING_FILTER_VALUE))
 
 if CABINET_CATEGORY_NAME:
     if CABINET_UID is None:
         output.print_md(
-            u"⚠ Категория «Шкаф»/«Панель» задана («{}»), но среди устройств на схеме такой нет — "
-            u"линии не нарисованы.".format(CABINET_CATEGORY_NAME)
+            tr(u"⚠ Категория «Шкаф»/«Панель» задана («{}»), но среди устройств на схеме такой нет — "
+            u"линии не нарисованы.").format(CABINET_CATEGORY_NAME)
         )
     else:
         cable_count = len(new_state.get("cable_line_ids", []))
-        output.print_md(u"Линий к шкафу нарисовано: **{}**".format(cable_count))
+        output.print_md(tr(u"Линий к шкафу нарисовано: **{}**").format(cable_count))
         if cabinet_extra_count:
             output.print_md(
-                u"Найдено ещё {} устройств категории «Шкаф»/«Панель» кроме первого — "
-                u"линии рисуются только к одному (по алфавиту адреса).".format(cabinet_extra_count)
+                tr(u"Найдено ещё {} устройств категории «Шкаф»/«Панель» кроме первого — "
+                u"линии рисуются только к одному (по алфавиту адреса).").format(cabinet_extra_count)
             )
 
 if not DRAW_TAGS:
     output.print_md(
-        u"Марки узлов выключены в настройках («Ставить марки узлов» = «нет») — узлы на "
-        u"схеме без марок."
+        tr(u"Марки узлов выключены в настройках («Ставить марки узлов» = «нет») — узлы на "
+        u"схеме без марок.")
     )
 
 if not DRAW_LOOP_LINES:
     output.print_md(
-        u"Кольцевые шлейфы и ответвления выключены в настройках («Рисовать кольцевые "
-        u"шлейфы...» = «нет») — построена только раскладка узлов."
+        tr(u"Кольцевые шлейфы и ответвления выключены в настройках («Рисовать кольцевые "
+        u"шлейфы...» = «нет») — построена только раскладка узлов.")
     )
 else:
     output.print_md(
-        u"Кольцевых шлейфов найдено: **{}**, линий кольца нарисовано: **{}**".format(
+        tr(u"Кольцевых шлейфов найдено: **{}**, линий кольца нарисовано: **{}**").format(
             len(loops_for_drawing), len(new_state.get("loop_line_ids", []))
         )
     )
 if loops_without_panel:
     output.print_md(
-        u"⚠ У **{}** шлейфов панель не найдена среди узлов схемы (адрес панели не "
+        tr(u"⚠ У **{}** шлейфов панель не найдена среди узлов схемы (адрес панели не "
         u"разбирается как одно число, либо тип панели не сопоставлен ни одной "
-        u"категории в настройках) — кольцо для них не нарисовано.".format(loops_without_panel)
+        u"категории в настройках) — кольцо для них не нарисовано.").format(loops_without_panel)
     )
 if branch_count:
     output.print_md(
-        u"Ответвлений от изоляторов: **{}** ({} устройств) — размещены рядом-веткой "
+        tr(u"Ответвлений от изоляторов: **{}** ({} устройств) — размещены рядом-веткой "
         u"под своим изолятором (состав из электрической цепи «изолятор -> "
-        u"устройства», не из адреса; элементов на схеме под них создано: {}).".format(
+        u"устройства», не из адреса; элементов на схеме под них создано: {}).").format(
             branch_count, branch_device_count, len(new_state.get("satellite_ids", []))
         )
     )
 
-output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
-    u"Вид создан заново" if is_new_view else u"Вид обновлён",
+output.print_md(tr(u"{}, этажей: {}, устройств на схеме: {}").format(
+    tr(u"Вид создан заново") if is_new_view else tr(u"Вид обновлён"),
     len(level_order), len(all_report_rows)
 ))
 output.print_md(
-    u"Помещения: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
+    tr(u"Помещения: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}").format(
         sync_stats.get("rooms_unchanged", 0), sync_stats.get("rooms_moved", 0),
         sync_stats.get("rooms_created", 0), sync_stats.get("rooms_redrawn", 0),
         sync_stats.get("rooms_removed", 0)
@@ -843,35 +844,35 @@ output.print_md(
 )
 if sync_stats.get("tags_added", 0):
     output.print_md(
-        u"Добавлено марок задним числом на уже стоявшие узлы (раньше не было — "
+        tr(u"Добавлено марок задним числом на уже стоявшие узлы (раньше не было — "
         u"например, марка не была выбрана в настройках при первом запуске): "
-        u"**{}**.".format(sync_stats["tags_added"])
+        u"**{}**.").format(sync_stats["tags_added"])
     )
 output.print_md(
-    u"Этажи: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
+    tr(u"Этажи: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}").format(
         sync_stats.get("levels_unchanged", 0), sync_stats.get("levels_moved", 0),
         sync_stats.get("levels_created", 0), sync_stats.get("levels_redrawn", 0),
         sync_stats.get("levels_removed", 0)
     )
 )
 output.print_md(
-    u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, "
-    u"не найдено — {}{}".format(
+    tr(u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, "
+    u"не найдено — {}{}").format(
         room_counters["already_set"], room_counters["looked_up"], room_counters["not_found"],
-        u", по «Имени лота» ветви — {}".format(room_counters["lot_written"])
+        tr(u", по «Имени лота» ветви — {}").format(room_counters["lot_written"])
         if room_counters["lot_written"] else u""
     )
 )
 
 if room_counters["not_found"]:
     output.print_md(
-        u"Для устройств без найденного помещения (**{}** шт.) на схеме будет "
+        tr(u"Для устройств без найденного помещения (**{}** шт.) на схеме будет "
         u"группа «(пусто)» — либо точка устройства не попадает ни в один Room "
-        u"связанной модели, либо не подключена сама связь.".format(room_counters["not_found"])
+        u"связанной модели, либо не подключена сама связь.").format(room_counters["not_found"])
     )
 
 if unmatched_report:
-    output.print_md(u"### Не размещено (нет категории/схемного семейства) — {}".format(len(unmatched_report)))
+    output.print_md(tr(u"### Не размещено (нет категории/схемного семейства) — {}").format(len(unmatched_report)))
     for level_label, room_key, device in unmatched_report:
         try:
             device_name = device.Name
@@ -880,20 +881,20 @@ if unmatched_report:
         output.print_md(u"- {} / {} — {} (ID {})".format(level_label, room_key, device_name, device.Id.IntegerValue))
 
 forms.alert(
-    u"{}"
+    tr(u"{}"
     u"Готово.\n\n"
     u"Вид: {} ({})\n"
     u"Этажей: {}\n"
     u"Устройств на схеме: {}\n"
     u"Не размещено (нет категории/схемного семейства): {}\n\n"
     u"Подробности (включая статистику "
-    u"не тронуто/сдвинуто/создано/перерисовано/удалено) — в окне вывода pyRevit.".format(
-        (u"ВНИМАНИЕ: раскладка НЕ сохранена в параметр вида «{}».\nПричина: {}.\n"
-         u"Без этого параметра следующий запуск продублирует схему.\n\n".format(
+    u"не тронуто/сдвинуто/создано/перерисовано/удалено) — в окне вывода pyRevit.").format(
+        (tr(u"ВНИМАНИЕ: раскладка НЕ сохранена в параметр вида «{}».\nПричина: {}.\n"
+         u"Без этого параметра следующий запуск продублирует схему.\n\n").format(
              LAYOUT_PARAM_NAME, state_save_error
          )
          if not state_saved else u""),
-        view_name, (u"новый" if is_new_view else u"обновлён"),
+        view_name, (tr(u"новый") if is_new_view else tr(u"обновлён")),
         len(level_order), len(all_report_rows), len(unmatched_report)
     )
 )

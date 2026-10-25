@@ -20,6 +20,7 @@ except NameError:  # Python 3
 
 
 from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, StorageType
+from lowlife.i18n import tr
 
 from lowlife.circuit_builtins import set_circuit_load_name, set_panel_name
 from lowlife.name_mask import mask_tokens, missing_tokens, render_mask
@@ -95,7 +96,7 @@ def check_mask_params(mask, first_param, second_param):
     names = {1: first_param, 2: second_param}
     lacking = [i for i in mask_tokens(mask) if not (names.get(i) or u"").strip()]
     if lacking:
-        return u"В маске есть {{{}}}, но параметр для него в настройках не указан.".format(lacking[0])
+        return tr(u"В маске есть {{{}}}, но параметр для него в настройках не указан.").format(lacking[0])
     return None
 
 
@@ -110,11 +111,11 @@ def name_for(doc, el, first_param, second_param, mask):
         values[i] = source_value(doc, el, names[i])
     lacking = missing_tokens(mask, values)
     if lacking:
-        return None, u"не заполнен параметр «{}»".format(
+        return None, tr(u"не заполнен параметр «{}»").format(
             u"», «".join(names[i] for i in lacking))
     text = render_mask(mask, values)
     if not text:
-        return None, u"по маске получилась пустая строка"
+        return None, tr(u"по маске получилась пустая строка")
     return text, None
 
 
@@ -150,7 +151,7 @@ def _circuit_label(circuit):
         eid = unicode(circuit.Id.IntegerValue)
     except Exception:
         eid = u"?"
-    return u"цепь {} [{}]".format(number, eid) if number else u"цепь [{}]".format(eid)
+    return tr(u"цепь {} [{}]").format(number, eid) if number else tr(u"цепь [{}]").format(eid)
 
 
 def _target_parameter(circuit, target_param):
@@ -163,11 +164,11 @@ def _write_circuit(circuit, target_param, text):
     """'written' / 'unchanged' / текст ошибки."""
     p = _target_parameter(circuit, target_param)
     if p is None:
-        return u"у цепи нет параметра «{}»".format(target_param or u"Имя нагрузки")
+        return tr(u"у цепи нет параметра «{}»").format(target_param or tr(u"Имя нагрузки"))
     if param_to_text(p) == text:
         return "unchanged"
     if p.IsReadOnly:
-        return u"параметр «{}» только для чтения".format(target_param or u"Имя нагрузки")
+        return tr(u"параметр «{}» только для чтения").format(target_param or tr(u"Имя нагрузки"))
     if not target_param:
         ok = set_circuit_load_name(circuit, text)
     elif p.StorageType == StorageType.ElementId:
@@ -175,8 +176,8 @@ def _write_circuit(circuit, target_param, text):
     else:
         ok = set_param_text(p, text)
     if not ok:
-        return u"не удалось записать «{}» в параметр «{}»".format(
-            text, target_param or u"Имя нагрузки")
+        return tr(u"не удалось записать «{}» в параметр «{}»").format(
+            text, target_param or tr(u"Имя нагрузки"))
     return "written"
 
 
@@ -198,7 +199,7 @@ def write_load_names(doc, elements, settings):
     for el in elements:
         circuits = device_circuits(el)
         if not circuits:
-            result.skip(u"{} — нет электрической цепи".format(element_label(el)))
+            result.skip(tr(u"{} — нет электрической цепи").format(element_label(el)))
             continue
         text, reason = name_for(doc, el, first, second, mask)
         if text is None:
@@ -214,7 +215,7 @@ def write_load_names(doc, elements, settings):
     for key in order:
         circuit, texts = planned[key]
         if len(texts) > 1:
-            result.skip(u"{} — у элементов цепи разные значения: {}".format(
+            result.skip(tr(u"{} — у элементов цепи разные значения: {}").format(
                 _circuit_label(circuit),
                 u"; ".join(u"«{}» ({})".format(t, u", ".join(labels))
                            for t, labels in sorted(texts.items()))))
@@ -254,13 +255,13 @@ def write_panel_names(doc, elements, settings):
             continue
         p = el.get_Parameter(BuiltInParameter.RBS_ELEC_PANEL_NAME)
         if p is None:
-            result.skip(u"{} — нет параметра «Имя панели»".format(element_label(el)))
+            result.skip(tr(u"{} — нет параметра «Имя панели»").format(element_label(el)))
             continue
         if param_to_text(p) == text:
             result.unchanged += 1
         elif set_panel_name(el, text):
             result.written += 1
         else:
-            result.skip(u"{} — не удалось записать «{}» в «Имя панели»".format(
+            result.skip(tr(u"{} — не удалось записать «{}» в «Имя панели»").format(
                 element_label(el), text))
     return result

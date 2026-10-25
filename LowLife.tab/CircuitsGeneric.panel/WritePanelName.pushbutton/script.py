@@ -13,6 +13,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from lowlife import name_by_mask
 from lowlife.name_by_mask_settings import PANEL_NAME
@@ -29,8 +30,8 @@ except Exception:
 if config_mode:
     edited = PANEL_NAME.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
     script.exit()
 
@@ -43,31 +44,31 @@ error = name_by_mask.check_mask_params(
     settings.get("panel_name_second_param"),
 )
 if error:
-    forms.alert(error + u"\n\nShift+клик по кнопке — настройки.", exitscript=True)
+    forms.alert(error + tr(u"\n\nShift+клик по кнопке — настройки."), exitscript=True)
 
 panels, dropped = name_by_mask.selected_or_picked(
     uidoc, doc,
-    u"Выберите электрооборудование (рамкой и/или кликами), подтвердите Enter",
+    tr(u"Выберите электрооборудование (рамкой и/или кликами), подтвердите Enter"),
     keep=name_by_mask.is_electrical_equipment,
 )
 if not panels:
-    forms.alert(u"Среди выбранного нет электрооборудования.", exitscript=True)
+    forms.alert(tr(u"Среди выбранного нет электрооборудования."), exitscript=True)
 
-with revit.Transaction(u"LowLife: имя панели по маске"):
+with revit.Transaction(tr(u"LowLife: имя панели по маске")):
     result = name_by_mask.write_panel_names(doc, panels, settings)
 
 if result.skipped:
     output = script.get_output()
-    output.print_md(u"### Пропущено ({})".format(len(result.skipped)))
+    output.print_md(tr(u"### Пропущено ({})").format(len(result.skipped)))
     for line in result.skipped[:300]:
         output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\nЭлектрооборудования выбрано: {}{}\nЗаписано: {}\n"
-    u"Уже совпадало: {}\nПропущено: {}{}".format(
+    tr(u"Готово.\n\nЭлектрооборудования выбрано: {}{}\nЗаписано: {}\n"
+    u"Уже совпадало: {}\nПропущено: {}{}").format(
         len(panels),
-        u" (не электрооборудование, отброшено: {})".format(dropped) if dropped else u"",
+        tr(u" (не электрооборудование, отброшено: {})").format(dropped) if dropped else u"",
         result.written, result.unchanged, len(result.skipped),
-        u"\n\nПодробности — в окне вывода pyRevit." if result.skipped else u""
+        tr(u"\n\nПодробности — в окне вывода pyRevit.") if result.skipped else u""
     )
 )

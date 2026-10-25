@@ -11,6 +11,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -37,8 +38,8 @@ def _open_settings():
         "passage_point_param"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -82,7 +83,7 @@ controller_devices = collect_controller_devices(
 )
 
 if not controller_devices:
-    forms.alert(u"Не найдено ни одного контроллера СКУД.", exitscript=True)
+    forms.alert(tr(u"Не найдено ни одного контроллера СКУД."), exitscript=True)
 
 passage_point_device_lists = []
 controllers_with_room = []
@@ -100,7 +101,7 @@ for controller, devices in controller_devices:
         passage_point_device_lists.append(pp_devices)
 
 if not passage_point_device_lists:
-    forms.alert(u"Ни у одного контроллера нет подключённых устройств.", exitscript=True)
+    forms.alert(tr(u"Ни у одного контроллера нет подключённых устройств."), exitscript=True)
 
 
 # ------------------------------------------------------------
@@ -131,17 +132,17 @@ no_room_pp = [r for r in results if r[3] == "no_room"]
 devices_written = sum(r[2] for r in written_pp)
 
 if no_room_pp:
-    output.print_md(u"### Точки прохода без помещения ({})".format(len(no_room_pp)))
-    output.print_md(u"Ни у одного устройства точки прохода не нашлось помещения в связях.")
+    output.print_md(tr(u"### Точки прохода без помещения ({})").format(len(no_room_pp)))
+    output.print_md(tr(u"Ни у одного устройства точки прохода не нашлось помещения в связях."))
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Точек прохода обработано: {}\n"
     u"Точек прохода с помещением: {}\n"
     u"Устройствам записано: {}\n"
     u"Контроллерам записано: {}\n"
     u"Точек прохода без помещения: {}\n"
-    u"Контроллеров без устройств (пропущено): {}".format(
+    u"Контроллеров без устройств (пропущено): {}").format(
         len(results),
         len(written_pp),
         devices_written,

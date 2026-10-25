@@ -37,6 +37,7 @@ find_layout_view.
 """
 
 import json
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import FilteredElementCollector, View, ViewDrafting
 
@@ -130,31 +131,31 @@ def save_state(view, layout_param_name, state):
     API (не тот StorageType, залочен шаблоном вида и т.п.).
     """
     if view is None:
-        return False, u"вид не найден"
+        return False, tr(u"вид не найден")
 
     if not layout_param_name:
-        return False, u"имя параметра раскладки не задано в настройках"
+        return False, tr(u"имя параметра раскладки не задано в настройках")
 
     try:
         text = json.dumps(state, ensure_ascii=False)
     except Exception as e:
-        return False, u"не удалось сериализовать раскладку в JSON: {}".format(e)
+        return False, tr(u"не удалось сериализовать раскладку в JSON: {}").format(e)
 
     try:
         p = view.LookupParameter(layout_param_name)
     except Exception as e:
-        return False, u"LookupParameter упал с ошибкой: {}".format(e)
+        return False, tr(u"LookupParameter упал с ошибкой: {}").format(e)
 
     if p is None:
-        return False, u"LookupParameter('{}') вернул None на этом виде".format(layout_param_name)
+        return False, tr(u"LookupParameter('{}') вернул None на этом виде").format(layout_param_name)
 
     try:
         if p.IsReadOnly:
-            return False, u"параметр «{}» на этом виде доступен только для чтения (IsReadOnly)".format(layout_param_name)
+            return False, tr(u"параметр «{}» на этом виде доступен только для чтения (IsReadOnly)").format(layout_param_name)
     except Exception as e:
-        return False, u"не удалось проверить IsReadOnly: {}".format(e)
+        return False, tr(u"не удалось проверить IsReadOnly: {}").format(e)
 
     if not set_param_any(view, layout_param_name, text):
-        return False, u"set_param_any не смог записать значение (см. StorageType параметра)"
+        return False, tr(u"set_param_any не смог записать значение (см. StorageType параметра)")
 
     return True, None

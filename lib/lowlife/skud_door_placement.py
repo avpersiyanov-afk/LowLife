@@ -42,6 +42,7 @@ Revit трактует Z точки вставки у конкретного с�
 """
 
 import math
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     XYZ, Line, Transform, FilteredElementCollector, BuiltInCategory, BuiltInParameter,
@@ -117,7 +118,7 @@ class DoorEntry(object):
 
     def other_room_display(self, number_param):
         if self.other_room is None:
-            return u"наружу (за дверью нет помещения)"
+            return tr(u"наружу (за дверью нет помещения)")
         return room_display_name(self.other_room, number_param)
 
     def label(self, number_param):
@@ -138,7 +139,7 @@ class DoorEntry(object):
                                            safe_element_name(symbol) or u"?"))
         except:
             pass
-        return u"{}  →  {}".format(u" · ".join(parts) or u"Дверь", self.other_room_display(number_param))
+        return u"{}  →  {}".format(u" · ".join(parts) or tr(u"Дверь"), self.other_room_display(number_param))
 
 
 def room_display_name(room, number_param):
@@ -206,7 +207,7 @@ def _door_sources(doc, view):
                 continue
         except:
             pass
-        label = safe_element_name(link) or u"Связь"
+        label = safe_element_name(link) or tr(u"Связь")
         sources.append(DoorSource(linked_doc, link.GetTotalTransform(), link, label))
     return sources
 

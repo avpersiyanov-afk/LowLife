@@ -8,6 +8,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -39,8 +40,8 @@ def _open_settings():
         "panel_exclude_keywords"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -178,10 +179,10 @@ def mm(v):
 
 def category_label(n):
     if n["is_panel"]:
-        return u"Контроллер"
+        return tr(u"Контроллер")
     if n["is_riser"]:
-        return u"Стояк"
-    return u"Маршрут"
+        return tr(u"Стояк")
+    return tr(u"Маршрут")
 
 
 all_points_by_id = result["all_points_by_id"]
@@ -195,35 +196,35 @@ def parent_label(n):
     if parent_obj is None:
         return u"ID {}".format(pid)
     return u"{} ({}, ID {})".format(
-        parent_obj.get("addr") or u"без адреса", category_label(parent_obj), pid
+        parent_obj.get("addr") or tr(u"без адреса"), category_label(parent_obj), pid
     )
 
 
 from pyrevit import script as pyrevit_script
 output = pyrevit_script.get_output()
 
-output.print_md(u"## Адреса узлов СКУД — подробный отчёт")
+output.print_md(tr(u"## Адреса узлов СКУД — подробный отчёт"))
 
 far_ids = set(s["id"] for s in result["far_sources"])
 panels = result["panels"]
 risers = result["risers"]
 
 if panels or risers:
-    output.print_md(u"### Контроллеры и стояки ({})".format(len(panels) + len(risers)))
+    output.print_md(tr(u"### Контроллеры и стояки ({})").format(len(panels) + len(risers)))
     roots_table = []
     for n in panels + risers:
         roots_table.append([
             n["id"], category_label(n), mm(n["point"][0]), mm(n["point"][1]),
-            u"Слишком далеко — не корень" if n["id"] in far_ids else u"Корень"
+            tr(u"Слишком далеко — не корень") if n["id"] in far_ids else tr(u"Корень")
         ])
     output.print_table(
         table_data=roots_table,
-        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Статус"]
+        columns=[u"ID", tr(u"Категория"), tr(u"X, мм"), tr(u"Y, мм"), tr(u"Статус")]
     )
 
 ordered_routes = result["ordered_routes"]
 
-output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
+output.print_md(tr(u"### Узлы маршрута — в порядке нумерации ({})").format(len(ordered_routes)))
 nodes_table = []
 for i, n in enumerate(ordered_routes, start=1):
     nodes_table.append([
@@ -235,13 +236,13 @@ for i, n in enumerate(ordered_routes, start=1):
     ])
 output.print_table(
     table_data=nodes_table,
-    columns=[u"#", u"ID", u"X, мм", u"Y, мм", u"Классификация", u"Адрес", u"Предыдущий адрес", u"Родитель"]
+    columns=[u"#", u"ID", tr(u"X, мм"), tr(u"Y, мм"), tr(u"Классификация"), tr(u"Адрес"), tr(u"Предыдущий адрес"), tr(u"Родитель")]
 )
 
 root_sources = result["root_sources"]
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Уровень: {}\n"
     u"Код этажа: {}\n"
     u"Корень: {}\n\n"
@@ -252,10 +253,10 @@ forms.alert(
     u"Контроллеров: {}\n"
     u"Устройств в цепях: {}\n"
     u"Записано «Ближайший узел маршрута»: {}\n\n"
-    u"Подробности — в окне вывода pyRevit.".format(
+    u"Подробности — в окне вывода pyRevit.").format(
         result["level_name"],
         result["floor_code"],
-        (u"Контроллер" if root_sources[0]["is_panel"] else u"Стояк") if root_sources else u"Нет (все далеко)",
+        (tr(u"Контроллер") if root_sources[0]["is_panel"] else tr(u"Стояк")) if root_sources else tr(u"Нет (все далеко)"),
         len(result["route_points"]),
         len(changed),
         len(stray_cleared),

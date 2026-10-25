@@ -23,6 +23,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from lowlife.manual_circuits import pick_panel_and_devices
 from lowlife import generic_circuits_settings
@@ -36,8 +37,8 @@ uidoc = revit.uidoc
 def _open_settings():
     edited = get_settings_interactive(doc)
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -61,8 +62,8 @@ conductor_id = get_conductor_id(doc, settings)
 
 panel_el, device_els = pick_panel_and_devices(
     uidoc, doc,
-    u"Выберите панель и устройства вместе — рамкой и/или кликами, "
-    u"без порядка (подтвердите Enter/«Готово»)",
+    tr(u"Выберите панель и устройства вместе — рамкой и/или кликами, "
+    u"без порядка (подтвердите Enter/«Готово»)"),
     strict=True
 )
 
@@ -70,13 +71,13 @@ created, errors = build_generic_circuits(doc, panel_el, device_els, conductor_id
 
 if errors:
     output = pyrevit_script.get_output()
-    output.print_md(u"### Ошибки ({})".format(len(errors)))
+    output.print_md(tr(u"### Ошибки ({})").format(len(errors)))
     for line in errors[:200]:
         output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\nУстройств выбрано: {}\nЦепей создано: {}\nОшибок: {}\n\n{}".format(
+    tr(u"Готово.\n\nУстройств выбрано: {}\nЦепей создано: {}\nОшибок: {}\n\n{}").format(
         len(device_els), created, len(errors),
-        u"Подробности — в окне вывода pyRevit." if errors else u""
+        tr(u"Подробности — в окне вывода pyRevit.") if errors else u""
     )
 )

@@ -33,6 +33,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -70,8 +71,8 @@ output = pyrevit_script.get_output()
 def _open_settings():
     edited = get_settings_interactive(doc)
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -126,18 +127,18 @@ VIEW_TEMPLATE = get_view_template(doc, settings)
 
 if ANNOTATION_SYMBOL is None:
     forms.alert(
-        u"Не выбрана марка узла в настройках СОТ — марки над схемными "
+        tr(u"Не выбрана марка узла в настройках СОТ — марки над схемными "
         u"семействами ставиться не будут.\n\n"
-        u"Откройте «Параметры СОТ» и выберите марку узла, чтобы включить их."
+        u"Откройте «Параметры СОТ» и выберите марку узла, чтобы включить их.")
     )
 
 CATEGORY_SYMBOLS = get_schematic_category_symbols(doc, settings)
 
 if not CATEGORY_SYMBOLS:
     forms.alert(
-        u"Не выбран ни один тип схемного семейства для категорий устройств СОТ.\n\n"
+        tr(u"Не выбран ни один тип схемного семейства для категорий устройств СОТ.\n\n"
         u"Откройте «Параметры СОТ», обновите список категорий и выберите "
-        u"схемное семейство для каждой из них.",
+        u"схемное семейство для каждой из них."),
         exitscript=True
     )
 
@@ -145,9 +146,9 @@ CATEGORY_DEVICE_TYPE_IDS = get_schematic_category_device_type_ids(settings)
 
 if not CATEGORY_DEVICE_TYPE_IDS:
     forms.alert(
-        u"Не выбраны реальные типы устройств ни для одной категории СОТ.\n\n"
+        tr(u"Не выбраны реальные типы устройств ни для одной категории СОТ.\n\n"
         u"Откройте «Параметры СОТ» и выберите типы устройств модели для "
-        u"каждой категории.",
+        u"каждой категории."),
         exitscript=True
     )
 
@@ -182,8 +183,8 @@ for cat_key in SOURCE_CATEGORIES:
 
 if not elements:
     forms.alert(
-        u"Не найдено ни одного устройства с типом, сопоставленным категории "
-        u"в настройках СОТ.",
+        tr(u"Не найдено ни одного устройства с типом, сопоставленным категории "
+        u"в настройках СОТ."),
         exitscript=True
     )
 
@@ -207,9 +208,9 @@ if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
 
     if not elements:
         forms.alert(
-            u"После фильтрации по корпусу «{}» не осталось устройств.\n\n"
+            tr(u"После фильтрации по корпусу «{}» не осталось устройств.\n\n"
             u"Проверьте значение в настройках СОТ — «Значение корпуса для "
-            u"фильтрации».".format(BUILDING_FILTER_VALUE),
+            u"фильтрации».").format(BUILDING_FILTER_VALUE),
             exitscript=True
         )
 
@@ -288,10 +289,10 @@ view, previous_state, name_conflict = find_layout_view(doc, SCHEMATIC_VIEW_NAME,
 
 if name_conflict:
     forms.alert(
-        u"В проекте уже есть вид с именем «{}», но это не чертёжный вид — "
+        tr(u"В проекте уже есть вид с именем «{}», но это не чертёжный вид — "
         u"структурную схему СОТ туда поставить нельзя.\n\n"
         u"Переименуйте существующий вид либо измените имя вида в «Параметры "
-        u"СОТ».".format(SCHEMATIC_VIEW_NAME),
+        u"СОТ».").format(SCHEMATIC_VIEW_NAME),
         exitscript=True
     )
 
@@ -309,7 +310,7 @@ if is_new_view:
             continue
 
     if drafting_type_id is None:
-        forms.alert(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting).", exitscript=True)
+        forms.alert(tr(u"В проекте не найден ViewFamilyType для чертёжных видов (Drafting)."), exitscript=True)
 
     previous_state = {"v": 1, "levels": {}}
 
@@ -384,27 +385,27 @@ with revit.Transaction(u"Sync SOT Schematic"):
 # ОТЧЁТ
 # ------------------------------------------------------------
 
-output.print_md(u"### Структурная схема СОТ: {}".format(view_name))
+output.print_md(tr(u"### Структурная схема СОТ: {}").format(view_name))
 
 if not state_saved:
     output.print_md(
-        u"### ⚠ Раскладка НЕ сохранена в параметр вида «{}»\n\n"
+        tr(u"### ⚠ Раскладка НЕ сохранена в параметр вида «{}»\n\n"
         u"Причина: {}.\n\n"
         u"Без этого параметра повторный запуск не найдёт сегодняшнюю раскладку и "
         u"нарисует все узлы/помещения/этажи заново поверх уже существующих "
-        u"(дублирование).".format(LAYOUT_PARAM_NAME, state_save_error)
+        u"(дублирование).").format(LAYOUT_PARAM_NAME, state_save_error)
     )
 
 if BUILDING_PARAM_NAME and BUILDING_FILTER_VALUE:
-    output.print_md(u"Корпус (фильтр): **{}**".format(BUILDING_FILTER_VALUE))
+    output.print_md(tr(u"Корпус (фильтр): **{}**").format(BUILDING_FILTER_VALUE))
 
 level_count = sum(len(group["level_order"]) for group in section_groups)
 has_section_blocks = bool(BUILDING_PARAM_NAME or SECTION_PARAM_NAME)
 
 if has_section_blocks:
-    output.print_md(u"Блоков «корпус/секция» на схеме: **{}**".format(len(section_groups)))
+    output.print_md(tr(u"Блоков «корпус/секция» на схеме: **{}**").format(len(section_groups)))
     for group in section_groups:
-        output.print_md(u"- {}: этажей {}, устройств {}".format(
+        output.print_md(tr(u"- {}: этажей {}, устройств {}").format(
             group["label"], len(group["level_order"]), len(group["items"])
         ))
 
@@ -413,32 +414,32 @@ if CABINET_CATEGORY_NAME:
     if groups_without_cabinet:
         if has_section_blocks:
             output.print_md(
-                u"⚠ Категория «Шкаф» задана («{}»), но в этих блоках шкафа нет — "
-                u"линии и стояк там не нарисованы: {}".format(
+                tr(u"⚠ Категория «Шкаф» задана («{}»), но в этих блоках шкафа нет — "
+                u"линии и стояк там не нарисованы: {}").format(
                     CABINET_CATEGORY_NAME, u", ".join(g["label"] for g in groups_without_cabinet)
                 )
             )
         else:
             output.print_md(
-                u"⚠ Категория «Шкаф» задана («{}»), но среди устройств на схеме такого нет — "
-                u"линии не нарисованы.".format(CABINET_CATEGORY_NAME)
+                tr(u"⚠ Категория «Шкаф» задана («{}»), но среди устройств на схеме такого нет — "
+                u"линии не нарисованы.").format(CABINET_CATEGORY_NAME)
             )
-    output.print_md(u"Линий к шкафам нарисовано: **{}**".format(len(new_state.get("cable_line_ids", []))))
+    output.print_md(tr(u"Линий к шкафам нарисовано: **{}**").format(len(new_state.get("cable_line_ids", []))))
     for group in section_groups:
         extra = cabinet_extra_by_group.get(group["key"])
         if extra:
             output.print_md(
-                u"{}найдено ещё {} устройств категории «Шкаф» кроме первого — "
-                u"линии рисуются только к одному (по порядку адреса).".format(
+                tr(u"{}найдено ещё {} устройств категории «Шкаф» кроме первого — "
+                u"линии рисуются только к одному (по порядку адреса).").format(
                     (group["label"] + u": ") if group["label"] else u"", extra
                 )
             )
-output.print_md(u"{}, этажей: {}, устройств на схеме: {}".format(
-    u"Вид создан заново" if is_new_view else u"Вид обновлён",
+output.print_md(tr(u"{}, этажей: {}, устройств на схеме: {}").format(
+    tr(u"Вид создан заново") if is_new_view else tr(u"Вид обновлён"),
     level_count, len(all_report_rows)
 ))
 output.print_md(
-    u"Помещения: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
+    tr(u"Помещения: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}").format(
         sync_stats.get("rooms_unchanged", 0), sync_stats.get("rooms_moved", 0),
         sync_stats.get("rooms_created", 0), sync_stats.get("rooms_redrawn", 0),
         sync_stats.get("rooms_removed", 0)
@@ -446,32 +447,32 @@ output.print_md(
 )
 if sync_stats.get("tags_added", 0):
     output.print_md(
-        u"Добавлено марок задним числом на уже стоявшие узлы (раньше не было — "
+        tr(u"Добавлено марок задним числом на уже стоявшие узлы (раньше не было — "
         u"например, марка не была выбрана в настройках при первом запуске): "
-        u"**{}**.".format(sync_stats["tags_added"])
+        u"**{}**.").format(sync_stats["tags_added"])
     )
 output.print_md(
-    u"Этажи: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}".format(
+    tr(u"Этажи: не тронуто {}, сдвинуто {}, создано {}, перерисовано {}, удалено {}").format(
         sync_stats.get("levels_unchanged", 0), sync_stats.get("levels_moved", 0),
         sync_stats.get("levels_created", 0), sync_stats.get("levels_redrawn", 0),
         sync_stats.get("levels_removed", 0)
     )
 )
 output.print_md(
-    u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, не найдено — {}".format(
+    tr(u"Помещение (реального устройства): уже было заполнено — {}, найдено в связи — {}, не найдено — {}").format(
         room_counters["already_set"], room_counters["looked_up"], room_counters["not_found"]
     )
 )
 
 if room_counters["not_found"]:
     output.print_md(
-        u"Для устройств без найденного помещения (**{}** шт.) на схеме будет "
+        tr(u"Для устройств без найденного помещения (**{}** шт.) на схеме будет "
         u"группа «(пусто)» — либо точка устройства не попадает ни в один Room "
-        u"связанной модели, либо не подключена сама связь.".format(room_counters["not_found"])
+        u"связанной модели, либо не подключена сама связь.").format(room_counters["not_found"])
     )
 
 if unmatched_report:
-    output.print_md(u"### Не размещено (нет категории/схемного семейства) — {}".format(len(unmatched_report)))
+    output.print_md(tr(u"### Не размещено (нет категории/схемного семейства) — {}").format(len(unmatched_report)))
     for level_label, room_key, device in unmatched_report:
         try:
             device_name = device.Name
@@ -480,20 +481,20 @@ if unmatched_report:
         output.print_md(u"- {} / {} — {} (ID {})".format(level_label, room_key, device_name, device.Id.IntegerValue))
 
 forms.alert(
-    u"{}"
+    tr(u"{}"
     u"Готово.\n\n"
     u"Вид: {} ({})\n"
     u"Этажей: {}\n"
     u"Устройств на схеме: {}\n"
     u"Не размещено (нет категории/схемного семейства): {}\n\n"
     u"Подробности (включая статистику "
-    u"не тронуто/сдвинуто/создано/перерисовано/удалено) — в окне вывода pyRevit.".format(
-        (u"ВНИМАНИЕ: раскладка НЕ сохранена в параметр вида «{}».\nПричина: {}.\n"
-         u"Без этого параметра следующий запуск продублирует схему.\n\n".format(
+    u"не тронуто/сдвинуто/создано/перерисовано/удалено) — в окне вывода pyRevit.").format(
+        (tr(u"ВНИМАНИЕ: раскладка НЕ сохранена в параметр вида «{}».\nПричина: {}.\n"
+         u"Без этого параметра следующий запуск продублирует схему.\n\n").format(
              LAYOUT_PARAM_NAME, state_save_error
          )
          if not state_saved else u""),
-        view_name, (u"новый" if is_new_view else u"обновлён"),
+        view_name, (tr(u"новый") if is_new_view else tr(u"обновлён")),
         level_count, len(all_report_rows), len(unmatched_report)
     )
 )

@@ -31,6 +31,7 @@ from Autodesk.Revit.DB import (
     SpatialElementBoundaryOptions, CurveElement, GraphicsStyleType, Color, Options,
     ViewDetailLevel, Solid, GeometryInstance, PlanarFace, RevitLinkInstance, Transform
 )
+from lowlife.i18n import tr
 
 from lowlife import slab_marks_core as core
 from lowlife.scs import safe_element_name
@@ -195,7 +196,7 @@ class SlabProbe(object):
                                (mm(min(c.X for c in corners)), mm(min(c.Y for c in corners)),
                                 mm(max(c.X for c in corners)), mm(max(c.Y for c in corners))))
         self.open_seconds = time.time() - started
-        self.open_steps.append((u"перекрытий, крыш и потолков в модели и связях: {}".format(
+        self.open_steps.append((tr(u"перекрытий, крыш и потолков в модели и связях: {}").format(
             len(self._elements)), self.open_seconds))
 
     def _element(self, key):
@@ -350,7 +351,7 @@ class SlabProbe(object):
         labels = _source_labels(self.doc)
         _found, up, down = self._raw_full(x, y, origin_z, level_z)
         lines = []
-        for label, hits, sign in ((u"вверх", up, 1), (u"вниз", down, -1)):
+        for label, hits, sign in ((tr(u"вверх"), up, 1), (tr(u"вниз"), down, -1)):
             for distance, _kind, key in sorted(hits, key=lambda h: h[0])[:limit]:
                 element = self._element(key)
                 try:
@@ -358,17 +359,17 @@ class SlabProbe(object):
                     type_name = safe_element_name(element.Document.GetElement(element.GetTypeId())) or u""
                 except Exception:
                     category, type_name = u"?", u""
-                lines.append(u"{} {:.0f} мм (от уровня {:+.0f}): {} «{}» Id {} — {}".format(
+                lines.append(tr(u"{} {:.0f} мм (от уровня {:+.0f}): {} «{}» Id {} — {}").format(
                     label, float(distance), float(mm(origin_z - level_z) + sign * distance),
-                    category, type_name, key[1], labels.get(key[0], u"связь")))
+                    category, type_name, key[1], labels.get(key[0], tr(u"связь"))))
         found = self.probe(x, y, origin_z, level_z)
         if found is None:
-            lines.append(u"итог: перекрытие не найдено")
+            lines.append(tr(u"итог: перекрытие не найдено"))
         else:
-            lines.append(u"итог: низ перекрытия {} от пола, пол {:+.0f} мм от уровня{}{}".format(
+            lines.append(tr(u"итог: низ перекрытия {} от пола, пол {:+.0f} мм от уровня{}{}").format(
                 core.format_height(found.slab_mm), float(found.floor_z_mm - mm(level_z)),
-                u", ПП {}".format(core.format_height(found.ceiling_mm)) if found.ceiling_mm is not None else u"",
-                u", над отверстием — по плите вокруг" if found.through_opening else u""))
+                tr(u", ПП {}").format(core.format_height(found.ceiling_mm)) if found.ceiling_mm is not None else u"",
+                tr(u", над отверстием — по плите вокруг") if found.through_opening else u""))
         return lines
 
     # --- перекрытия над уровнем ---
@@ -593,7 +594,7 @@ def pick_detectors(uidoc, doc, settings):
     try:
         references = uidoc.Selection.PickObjects(
             ObjectType.Element, _DetectorFilter(),
-            u"Выберите извещатели (рамкой или по одному), затем «Готово»")
+            tr(u"Выберите извещатели (рамкой или по одному), затем «Готово»"))
     except OperationCanceledException:
         return None
     ids = [reference.ElementId for reference in references]
@@ -667,7 +668,7 @@ def _shift(doc, instance, delta_ft):
         return None
     except Exception as ex:
         if face_hosted or host is not None:
-            return u"размещён на грани/основе — сдвинуть по высоте нельзя ({})".format(ex)
+            return tr(u"размещён на грани/основе — сдвинуть по высоте нельзя ({})").format(ex)
         return u"{}".format(ex)
 
 
@@ -690,7 +691,7 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         point = _point(detector)
         _level, level_z = level_of(doc, detector, levels)
         if level_z is None:
-            result.failed.append((detector, u"не определён уровень"))
+            result.failed.append((detector, tr(u"не определён уровень")))
             continue
         found = probe.probe(point.X, point.Y, level_z + probe_ft, level_z)
         if found is None:
@@ -712,7 +713,7 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
             continue
         shifts.append((detector, delta_mm, mm(point.Z)))
     if probe.error is not None:
-        result.failed.append((None, u"луч к перекрытию: {}".format(probe.error)))
+        result.failed.append((None, tr(u"луч к перекрытию: {}").format(probe.error)))
     # Сдвиги — только после всех проверок: так чтение геометрии перекрытий
     # не перемежается с изменениями модели (с прежними лучами по 3D-виду
     # чередование «луч — сдвиг» стоило пересборки вида на каждом шаге).
@@ -729,7 +730,7 @@ def move_detectors(doc, detectors, settings, probe, progress=None):
         if point is not None and abs(mm(point.Z) - target_mm) < MOVE_TOLERANCE_MM:
             result.moved += 1
         else:
-            result.failed.append((detector, u"Revit не сдвинул элемент по высоте (размещён на грани?)"))
+            result.failed.append((detector, tr(u"Revit не сдвинул элемент по высоте (размещён на грани?)")))
     return result
 
 
@@ -934,7 +935,7 @@ def _filled_region(doc, view, region_type_id, room, transform, z):
     for plane_z in (z, 0.0):
         loops = _boundary_loops(room, transform, plane_z)
         if not loops:
-            return None, u"нет контура помещения"
+            return None, tr(u"нет контура помещения")
         try:
             return FilledRegion.Create(doc, region_type_id, view.Id, List[CurveLoop](loops)), None
         except Exception as ex:
@@ -1119,7 +1120,7 @@ def draw_step_lines(doc, view, segments, style, stats):
                 curve.LineStyle = style
             stats.drawn += 1
         except Exception as ex:
-            stats.errors.append(u"линия перепада плиты — {}".format(ex))
+            stats.errors.append(tr(u"линия перепада плиты — {}").format(ex))
 
 
 def draw_steps(doc, view, settings, probe, style, progress=None):
@@ -1216,9 +1217,9 @@ def _loop_points(face, loop, transform):
 
 
 def _source_labels(doc):
-    labels = {-1: u"модель"}
+    labels = {-1: tr(u"модель")}
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        labels[link.Id.IntegerValue] = safe_element_name(link) or u"связь"
+        labels[link.Id.IntegerValue] = safe_element_name(link) or tr(u"связь")
     return labels
 
 
@@ -1445,7 +1446,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         if mark.anchor is not None:
             marks.append(mark)
 
-    stage(u"лучи в помещениях ({})".format(len(rooms)))
+    stage(tr(u"лучи в помещениях ({})").format(len(rooms)))
 
     # --- 2. плиты над уровнем: грани и лучи в точках подписей ---
     slabs = probe.slabs_above(level_z, tolerance)
@@ -1468,20 +1469,20 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
     visible = []
     for index, face in enumerate(faces):
         if face.area < MIN_FILL_AREA_MM2:
-            face.status = u"меньше {:.1f} м²".format(MIN_FILL_AREA_MM2 / 1e6)
+            face.status = tr(u"меньше {:.1f} м²").format(MIN_FILL_AREA_MM2 / 1e6)
             continue
         if index in duplicates:
-            face.status = u"дубль (та же плита в другой связи)"
+            face.status = tr(u"дубль (та же плита в другой связи)")
             continue
         face.points = core.interior_points(face.outer, face.holes)
         if not face.points:
-            face.status = u"нет точки внутри контура"
+            face.status = tr(u"нет точки внутри контура")
             continue
         point = face.points[0]
         lowest = all_index.lowest_at(point[0], point[1])
         if lowest is not None and faces[lowest] is not face and \
                 faces[lowest].z_mm < face.z_mm - FACE_MATCH_MM:
-            face.status = u"закрыта более низкой плитой ({})".format(
+            face.status = tr(u"закрыта более низкой плитой ({})").format(
                 core.format_height(faces[lowest].z_mm - mm(level_z), signed=True))
             continue
         visible.append(face)
@@ -1516,17 +1517,17 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
                     break
             if chosen is None:
                 chosen = (face.points[0], level_mm + (typical_floor or 0.0))
-                face.status = u"залита (пол — типовой плана)"
+                face.status = tr(u"залита (пол — типовой плана)")
             else:
-                face.status = u"залита"
+                face.status = tr(u"залита")
             face.point = chosen[0]
             face.height_mm = face.z_mm - chosen[1]
             fills.append(face)
     else:
         for face in visible:
-            face.status = u"заливки выключены"
+            face.status = tr(u"заливки выключены")
 
-    stage(u"грани плит ({}), видимость и лучи до пола в точках подписей".format(len(faces)))
+    stage(tr(u"грани плит ({}), видимость и лучи до пола в точках подписей").format(len(faces)))
 
     # --- 3. лучи: проверка перепадов ---
     step_segments = []
@@ -1557,7 +1558,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         result.typical_mm = core.typical_height(
             [core.main_height(m.slab_values(), step) for m in marks], step)
 
-    stage(u"поиск и проверка перепадов")
+    stage(tr(u"поиск и проверка перепадов"))
 
     # --- 4. изменения модели ---
     if fills:
@@ -1581,7 +1582,7 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
                                 text.replace(u"\n", u"\r"), note_type.Id)
                 result.fills += 1
             except Exception as ex:
-                result.errors.append(u"заливка плиты {} — {}".format(core.format_height(key), ex))
+                result.errors.append(tr(u"заливка плиты {} — {}").format(core.format_height(key), ex))
 
     for index, mark in enumerate(marks):
         if not mark.probes:
@@ -1602,15 +1603,15 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
                 TextNote.Create(doc, view.Id, mark.anchor, text.replace(u"\n", u"\r"), note_type.Id)
                 result.rooms += 1
             except Exception as ex:
-                result.errors.append(u"{}: подпись — {}".format(mark.name, ex))
+                result.errors.append(tr(u"{}: подпись — {}").format(mark.name, ex))
         if ceiling:
             if fill_type is None:
-                result.errors.append(u"{}: в проекте нет типа области заливки".format(mark.name))
+                result.errors.append(tr(u"{}: в проекте нет типа области заливки").format(mark.name))
                 continue
             region, error = _filled_region(doc, view, fill_type.Id, mark.room,
                                            mark.source.transform, level_z)
             if region is None:
-                result.errors.append(u"{}: область заливки — {}".format(mark.name, error))
+                result.errors.append(tr(u"{}: область заливки — {}").format(mark.name, error))
                 continue
             _tag(region, u"{} {}".format(REGION_TAG, mark.name))
             result.ceiling_rooms += 1
@@ -1620,6 +1621,6 @@ def annotate_view(doc, view, settings, probe, note_type, fill_type, step_style=N
         result.steps = result.step_stats.drawn
         result.errors.extend(result.step_stats.errors)
     if probe.error is not None:
-        result.errors.append(u"луч к перекрытию: {}".format(probe.error))
-    stage(u"заливки, подписи, линии")
+        result.errors.append(tr(u"луч к перекрытию: {}").format(probe.error))
+    stage(tr(u"заливки, подписи, линии"))
     return result

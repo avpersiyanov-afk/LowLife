@@ -23,6 +23,7 @@ fire_alarm_settings/fire_alarm_buttons.build_loop_circuits (система "SPA"
 """
 
 from Autodesk.Revit.DB import BuiltInCategory, CategoryType
+from lowlife.i18n import tr
 from Autodesk.Revit.DB.Electrical import ElectricalSystemType
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -134,7 +135,7 @@ def pick_panel_and_devices(uidoc, doc, prompt, strict=False):
     try:
         refs = uidoc.Selection.PickObjects(ObjectType.Element, selection_filter, prompt)
     except OperationCanceledException:
-        forms.alert(u"Операция отменена.", exitscript=True)
+        forms.alert(tr(u"Операция отменена."), exitscript=True)
         return None, None
 
     els = [doc.GetElement(r) for r in refs]
@@ -143,14 +144,14 @@ def pick_panel_and_devices(uidoc, doc, prompt, strict=False):
 
     if len(panels) != 1:
         forms.alert(
-            u"В выборе должна быть ровно одна панель (категория "
-            u"«Электрооборудование»), а выбрано {}.".format(len(panels)),
+            tr(u"В выборе должна быть ровно одна панель (категория "
+            u"«Электрооборудование»), а выбрано {}.").format(len(panels)),
             exitscript=True
         )
         return None, None
 
     if not device_els:
-        forms.alert(u"Не выбрано ни одного устройства.", exitscript=True)
+        forms.alert(tr(u"Не выбрано ни одного устройства."), exitscript=True)
 
     return panels[0], device_els
 
@@ -178,13 +179,13 @@ def pick_system_type(default_name):
 
     selected = select_list.SelectFromList.show(
         available,
-        title=u"Тип электрической цепи (по умолчанию для дисциплины — первый в списке)",
-        button_name=u"Выбрать",
+        title=tr(u"Тип электрической цепи (по умолчанию для дисциплины — первый в списке)"),
+        button_name=tr(u"Выбрать"),
         multiselect=False
     )
 
     if not selected:
-        forms.alert(u"Операция отменена.", exitscript=True)
+        forms.alert(tr(u"Операция отменена."), exitscript=True)
 
     return selected
 
@@ -205,13 +206,13 @@ def build_device_circuits(doc, panel_el, device_els, system_type_name, transacti
             circuit, error = create_circuit(doc, panel_el, [dev], system_type_name)
 
             if circuit is None:
-                errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
+                errors.append(tr(u"Устройство ID {}: {}").format(dev.Id.IntegerValue, error))
                 continue
 
             created += 1
 
             if error:
-                errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
+                errors.append(tr(u"Устройство ID {}: {}").format(dev.Id.IntegerValue, error))
 
     return created, errors
 
@@ -223,26 +224,26 @@ def run_manual_circuit_button(discipline_title, default_system_type):
 
     panel_el, device_els = pick_panel_and_devices(
         uidoc, doc,
-        u"Выберите панель и устройства {} вместе — рамкой и/или кликами, "
-        u"без порядка (подтвердите Enter/«Готово»)".format(discipline_title)
+        tr(u"Выберите панель и устройства {} вместе — рамкой и/или кликами, "
+        u"без порядка (подтвердите Enter/«Готово»)").format(tr(discipline_title))
     )
 
     system_type_name = pick_system_type(default_system_type)
 
     created, errors = build_device_circuits(
         doc, panel_el, device_els, system_type_name,
-        u"Построение цепей {}".format(discipline_title)
+        tr(u"Построение цепей {}").format(tr(discipline_title))
     )
 
     if errors:
         output = pyrevit_script.get_output()
-        output.print_md(u"### Ошибки ({})".format(len(errors)))
+        output.print_md(tr(u"### Ошибки ({})").format(len(errors)))
         for line in errors[:200]:
             output.print_md(u"- {}".format(line))
 
     forms.alert(
-        u"Готово.\n\nУстройств выбрано: {}\nЦепей создано: {}\nОшибок: {}\n\n{}".format(
+        tr(u"Готово.\n\nУстройств выбрано: {}\nЦепей создано: {}\nОшибок: {}\n\n{}").format(
             len(device_els), created, len(errors),
-            u"Подробности — в окне вывода pyRevit." if errors else u""
+            tr(u"Подробности — в окне вывода pyRevit.") if errors else u""
         )
     )

@@ -36,6 +36,7 @@ except NameError:  # Python 3
 
 
 from Autodesk.Revit.DB import BuiltInCategory
+from lowlife.i18n import tr
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
 
@@ -104,10 +105,10 @@ def pick_devices_and_isolator(uidoc, doc):
         try:
             refs = uidoc.Selection.PickObjects(
                 ObjectType.Element, combined_filter,
-                u"Выберите устройства и изолятор (панель) — рамкой и/или кликами; "
+                tr(u"Выберите устройства и изолятор (панель) — рамкой и/или кликами; "
                 u"для КАЖДОЙ следующей рамки держите Ctrl, иначе она заменит "
                 u"предыдущий выбор (так работает выделение в Revit). "
-                u"Enter/«Готово» — подтвердить, Esc — закончить"
+                u"Enter/«Готово» — подтвердить, Esc — закончить")
             )
         except OperationCanceledException:
             return None, None
@@ -118,13 +119,13 @@ def pick_devices_and_isolator(uidoc, doc):
 
         if len(isolators) != 1:
             forms.alert(
-                u"В выборе должен быть ровно один изолятор (электрооборудование), "
-                u"а выбрано {}. Повторите выбор.".format(len(isolators))
+                tr(u"В выборе должен быть ровно один изолятор (электрооборудование), "
+                u"а выбрано {}. Повторите выбор.").format(len(isolators))
             )
             continue
 
         if not device_els:
-            forms.alert(u"Не выбрано ни одного устройства. Повторите выбор.")
+            forms.alert(tr(u"Не выбрано ни одного устройства. Повторите выбор."))
             continue
 
         return device_els, isolators[0]
@@ -231,7 +232,7 @@ def _apply_circuit_length(doc, circuit, config):
     except Exception as ex:
         try:
             pyrevit_script.get_output().print_md(
-                u"Цепь ID {}: не удалось проставить режим траектории/длину — {}: {}".format(
+                tr(u"Цепь ID {}: не удалось проставить режим траектории/длину — {}: {}").format(
                     circuit.Id.IntegerValue, type(ex).__name__, ex
                 )
             )
@@ -263,8 +264,8 @@ def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
 
     if len(groups) > MAX_CIRCUITS_PER_ISOLATOR:
         return [], (
-            u"У изолятора «{}» получилось бы {} цепей (максимум {}). "
-            u"Цепи не созданы.".format(
+            tr(u"У изолятора «{}» получилось бы {} цепей (максимум {}). "
+            u"Цепи не созданы.").format(
                 clean_text_value(safe_element_name(isolator_el)) or isolator_el.Id.IntegerValue,
                 len(groups), MAX_CIRCUITS_PER_ISOLATOR
             )
@@ -302,7 +303,7 @@ def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
                 except Exception as ex:
                     try:
                         pyrevit_script.get_output().print_md(
-                            u"Цепь ID {}: не удалось подписать линии проводки — {}: {}".format(
+                            tr(u"Цепь ID {}: не удалось подписать линии проводки — {}: {}").format(
                                 circuit.Id.IntegerValue, type(ex).__name__, ex
                             )
                         )
@@ -312,6 +313,6 @@ def build_isolator_device_circuits(doc, device_els, isolator_el, settings):
             created.append(circuit)
 
             if error:
-                errors.append(u"Цепь ID {}: {}".format(circuit.Id.IntegerValue, error))
+                errors.append(tr(u"Цепь ID {}: {}").format(circuit.Id.IntegerValue, error))
 
     return created, (u"\n".join(errors) if errors else None)

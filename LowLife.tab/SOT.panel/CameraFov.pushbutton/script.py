@@ -18,6 +18,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     ViewPlan, ViewDrafting, BuiltInCategory, BuiltInParameter, Element
@@ -34,23 +35,23 @@ uidoc = revit.uidoc
 def _open_settings():
     edited = sot_fov.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки зон обзора сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки зон обзора сохранены.")
     )
 
 
 _OK_STATUSES = (u"ok", u"ok_no_room", u"ok_clip_failed")
 
 _STATUS_RU = {
-    u"ok": u"построена",
-    u"ok_no_room": u"построена (без обрезки — помещение не найдено)",
-    u"ok_clip_failed": u"построена (без обрезки — обрезка дала пустой контур)",
-    u"no_location": u"нет точки вставки (LocationPoint)",
-    u"no_optics": u"нельзя посчитать угол обзора (фокусное/матрица)",
-    u"no_distance_param": u"нет параметра дальности",
-    u"bad_geometry": u"вырожденная геометрия",
-    u"create_failed": u"ошибка создания области заливки",
-    u"no_fill_type": u"в проекте нет типа области заливки",
+    u"ok": tr(u"построена"),
+    u"ok_no_room": tr(u"построена (без обрезки — помещение не найдено)"),
+    u"ok_clip_failed": tr(u"построена (без обрезки — обрезка дала пустой контур)"),
+    u"no_location": tr(u"нет точки вставки (LocationPoint)"),
+    u"no_optics": tr(u"нельзя посчитать угол обзора (фокусное/матрица)"),
+    u"no_distance_param": tr(u"нет параметра дальности"),
+    u"bad_geometry": tr(u"вырожденная геометрия"),
+    u"create_failed": tr(u"ошибка создания области заливки"),
+    u"no_fill_type": tr(u"в проекте нет типа области заливки"),
 }
 
 
@@ -66,7 +67,7 @@ def _cam_label(cam):
         mp = cam.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
         mv = mp.AsString() if mp is not None else None
         if mv and mv.strip():
-            parts.append(u"марка {}".format(mv.strip()))
+            parts.append(tr(u"марка {}").format(mv.strip()))
     except Exception:
         pass
     return u" · ".join(p for p in parts if p)
@@ -74,7 +75,7 @@ def _cam_label(cam):
 
 def _report(results):
     output = script.get_output()
-    output.print_md(u"# Зоны обзора — отчёт ({} камер)".format(len(results)))
+    output.print_md(tr(u"# Зоны обзора — отчёт ({} камер)").format(len(results)))
 
     ok_n = 0
     bad_n = 0
@@ -95,9 +96,9 @@ def _report(results):
         ))
 
     output.print_md(u"---")
-    output.print_md(u"**Построено: {}  ·  Не построено: {}**".format(ok_n, bad_n))
+    output.print_md(tr(u"**Построено: {}  ·  Не построено: {}**").format(ok_n, bad_n))
     if bad_n:
-        output.print_md(u"_Клик по ссылке в строке — выделить камеру в модели._")
+        output.print_md(tr(u"_Клик по ссылке в строке — выделить камеру в модели._"))
 
 
 # --- Shift+клик -> настройки ------------------------------------------
@@ -119,19 +120,19 @@ _has_sensor = bool((settings.get("sensor_format") or u"").strip()
                    or (settings.get("sensor_format_param_name") or u"").strip())
 if not _has_sensor:
     forms.alert(
-        u"В настройках не задан формат матрицы — он нужен вместе с "
+        tr(u"В настройках не задан формат матрицы — он нужен вместе с "
         u"фокусным расстоянием, чтобы посчитать угол обзора: заполните "
         u"«Формат матрицы» (общий на все камеры) или «Параметр формата "
         u"матрицы» (на самой камере).\n\n"
-        u"Откройте настройки: Shift+клик по кнопке «Зоны обзора».",
+        u"Откройте настройки: Shift+клик по кнопке «Зоны обзора»."),
         exitscript=True
     )
 
 view = doc.ActiveView
 if not isinstance(view, (ViewPlan, ViewDrafting)):
     forms.alert(
-        u"Активируйте план (этажа или потолка) либо чертёжный вид.\n"
-        u"На 3D-виде, разрезе, фасаде и листе зона обзора не строится.",
+        tr(u"Активируйте план (этажа или потолка) либо чертёжный вид.\n"
+        u"На 3D-виде, разрезе, фасаде и листе зона обзора не строится."),
         exitscript=True
     )
 
@@ -145,25 +146,25 @@ try:
     refs = uidoc.Selection.PickObjects(
         ObjectType.Element,
         sot_fov.CategorySelectionFilter(cat_ids),
-        u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)"
+        tr(u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)")
     )
 except OperationCanceledException:
-    forms.alert(u"Выбор отменён, ничего не построено.", exitscript=True)
+    forms.alert(tr(u"Выбор отменён, ничего не построено."), exitscript=True)
 
 cameras = [doc.GetElement(r) for r in refs]
 cameras = [c for c in cameras if c is not None]
 
 if not cameras:
     forms.alert(
-        u"Не выбрано ни одной камеры.\n\n"
+        tr(u"Не выбрано ни одной камеры.\n\n"
         u"Если камеры не выделялись вовсе — они не в тех категориях, что "
         u"заданы в настройках («Категории камер для фильтра выбора»). "
         u"Посмотрите категорию семейства камеры в свойствах и впишите её "
-        u"в настройки (Shift+клик).",
+        u"в настройки (Shift+клик)."),
         exitscript=True
     )
 
-with revit.Transaction(u"СОТ: зоны обзора камер"):
+with revit.Transaction(tr(u"СОТ: зоны обзора камер")):
     results = sot_fov.build_fov_zones(doc, cameras, view, settings)
 
 _report(results)

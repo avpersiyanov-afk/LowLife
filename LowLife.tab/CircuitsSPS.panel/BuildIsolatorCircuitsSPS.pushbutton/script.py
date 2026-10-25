@@ -15,6 +15,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from lowlife import fire_alarm_settings
 from lowlife.fire_alarm_isolator_circuits import (
@@ -37,8 +38,8 @@ def _open_settings():
         "wire_catalog_marker_param", "category_wire_type_ids",
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -73,10 +74,10 @@ while device_els is not None:
     device_els, isolator_el = pick_devices_and_isolator(uidoc, doc)
 
 if not all_created and not all_errors:
-    forms.alert(u"Операция отменена. Цепи не созданы.")
+    forms.alert(tr(u"Операция отменена. Цепи не созданы."))
 elif all_errors and not all_created:
     forms.alert(u"\n\n".join(all_errors), exitscript=True)
 elif all_errors:
-    forms.alert(u"Создано цепей: {}. Есть ошибки:\n\n{}".format(len(all_created), u"\n\n".join(all_errors)))
+    forms.alert(tr(u"Создано цепей: {}. Есть ошибки:\n\n{}").format(len(all_created), u"\n\n".join(all_errors)))
 else:
-    forms.alert(u"Готово. Создано цепей: {}.".format(len(all_created)))
+    forms.alert(tr(u"Готово. Создано цепей: {}.").format(len(all_created)))

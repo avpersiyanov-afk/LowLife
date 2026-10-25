@@ -25,7 +25,7 @@ pyrevit.script.get_config(), см. CLAUDE.md).
 типоразмеры хранятся в том же файле под ключами SHAFT_KEYS/SYMBOL_KEYS.
 """
 
-from lowlife import settings_core
+from lowlife import i18n, settings_core
 
 
 BUTTON_NAME = u"СС1-8Mile"
@@ -575,7 +575,7 @@ def show_settings_window(doc):
         system_names.append(saved_system)
     system_combo = ComboBox()
     for name in system_names:
-        ru = SYSTEM_TYPE_RU.get(name)
+        ru = None if i18n.is_en() else SYSTEM_TYPE_RU.get(name)
         system_combo.Items.Add(u"{} ({})".format(name, ru) if ru else name)
     system_combo.SelectedIndex = system_names.index(saved_system)
     root.Children.Add(system_combo)

@@ -8,6 +8,7 @@
 """
 
 from pyrevit import revit, forms, script as pyrevit_script
+from lowlife.i18n import tr
 
 from lowlife.geometry import get_point
 from lowlife.params import get_string_param, get_type_string_param, set_param_any
@@ -35,8 +36,8 @@ def _collect(doc, config):
 
     if not panels:
         forms.alert(
-            u"Не найдено ни одной панели: рабочий набор содержит «{}», "
-            u"«Обозначение» = «{}», «Адрес устройства» — одно число.".format(
+            tr(u"Не найдено ни одной панели: рабочий набор содержит «{}», "
+            u"«Обозначение» = «{}», «Адрес устройства» — одно число.").format(
                 config["workset_filter_key"], config["panel_designation_key"]
             ),
             exitscript=True
@@ -46,8 +47,8 @@ def _collect(doc, config):
 
     if not devices:
         forms.alert(
-            u"Не найдено ни одного устройства с разбираемым адресом вида "
-            u"«панель.шлейф.номер» в рабочем наборе «{}».".format(config["workset_filter_key"]),
+            tr(u"Не найдено ни одного устройства с разбираемым адресом вида "
+            u"«панель.шлейф.номер» в рабочем наборе «{}».").format(config["workset_filter_key"]),
             exitscript=True
         )
 
@@ -97,11 +98,11 @@ def build_loop_circuits(doc, settings):
     already_circuited_total = 0
 
     output = pyrevit_script.get_output()
-    output.print_md(u"## Отладка «Цепи шлейфов»")
+    output.print_md(tr(u"## Отладка «Цепи шлейфов»"))
     output.print_md(
-        u"Ключевое слово изолятора: «{}»{}".format(
+        tr(u"Ключевое слово изолятора: «{}»{}").format(
             isolator_keyword or u"",
-            u" — **ПУСТО, is_isolator() всегда вернёт False!**"
+            tr(u" — **ПУСТО, is_isolator() всегда вернёт False!**")
             if not isolator_keyword else u""
         )
     )
@@ -114,7 +115,7 @@ def build_loop_circuits(doc, settings):
             panel_el = panels.get(panel_num)
             if panel_el is None:
                 no_panel.append(
-                    u"Шлейф {}.{}: панель с номером {} не найдена — {} устройств пропущено.".format(
+                    tr(u"Шлейф {}.{}: панель с номером {} не найдена — {} устройств пропущено.").format(
                         panel_num, loop_num, panel_num, len(loop_devices)
                     )
                 )
@@ -143,7 +144,7 @@ def build_loop_circuits(doc, settings):
             trunk_devices = [el for el in loop_devices if el.Id.IntegerValue not in already_ids]
 
             output.print_md(
-                u"Шлейф {}: всего {}, изоляторов {}, в магистрали {}, уже в другой цепи {}".format(
+                tr(u"Шлейф {}: всего {}, изоляторов {}, в магистрали {}, уже в другой цепи {}").format(
                     circuit_number, len(loop_devices), isolator_count,
                     len(trunk_devices), len(already_in_circuit)
                 )
@@ -152,15 +153,15 @@ def build_loop_circuits(doc, settings):
                 already_circuited_total += len(already_in_circuit)
                 for el, (existing_number, circ_id) in already_in_circuit:
                     output.print_md(
-                        u"- ID {} уже в цепи ID {} (Номер цепи «{}»)".format(
+                        tr(u"- ID {} уже в цепи ID {} (Номер цепи «{}»)").format(
                             el.Id.IntegerValue, circ_id, existing_number or u"—"
                         )
                     )
 
             if not trunk_devices:
                 no_panel.append(
-                    u"Шлейф {}: все устройства уже состоят в других цепях — "
-                    u"магистральная цепь не создана.".format(circuit_number)
+                    tr(u"Шлейф {}: все устройства уже состоят в других цепях — "
+                    u"магистральная цепь не создана.").format(circuit_number)
                 )
                 continue
 
@@ -170,12 +171,12 @@ def build_loop_circuits(doc, settings):
 
             if circuit is None:
                 errors.append(
-                    u"Шлейф {}: {} [панель ID {}, устройств {}: {}]".format(
+                    tr(u"Шлейф {}: {} [панель ID {}, устройств {}: {}]").format(
                         circuit_number, error, panel_el.Id.IntegerValue, len(trunk_devices),
                         u", ".join(str(d.Id.IntegerValue) for d in trunk_devices)
                     )
                 )
-                output.print_md(u"#### Шлейф {} — не удалось создать цепь, состав магистрали:".format(circuit_number))
+                output.print_md(tr(u"#### Шлейф {} — не удалось создать цепь, состав магистрали:").format(circuit_number))
                 for i, el in enumerate(trunk_devices):
                     try:
                         cat_name = el.Category.Name if el.Category else u"?"
@@ -187,7 +188,7 @@ def build_loop_circuits(doc, settings):
                     except:
                         fam_name = u"?"
                     output.print_md(
-                        u"{}. ID {}: категория «{}», семейство «{}»".format(
+                        tr(u"{}. ID {}: категория «{}», семейство «{}»").format(
                             i + 1, el.Id.IntegerValue, cat_name, fam_name
                         )
                     )
@@ -244,7 +245,7 @@ def build_loop_circuits(doc, settings):
             except Exception as ex:
                 try:
                     output.print_md(
-                        u"Шлейф {}: не удалось проставить режим траектории/длину — {}: {}".format(
+                        tr(u"Шлейф {}: не удалось проставить режим траектории/длину — {}: {}").format(
                             circuit_number, type(ex).__name__, ex
                         )
                     )
@@ -254,12 +255,12 @@ def build_loop_circuits(doc, settings):
             created += 1
 
             if error:
-                errors.append(u"Шлейф {}: {}".format(circuit_number, error))
+                errors.append(tr(u"Шлейф {}: {}").format(circuit_number, error))
 
     _report_collect_problems(skipped, no_panel, errors)
 
     forms.alert(
-        u"Готово.\n\n"
+        tr(u"Готово.\n\n"
         u"Панелей: {}\n"
         u"Устройств с адресом: {}\n"
         u"Шлейфов найдено: {}\n\n"
@@ -269,11 +270,11 @@ def build_loop_circuits(doc, settings):
         u"Шлейфов без панели: {}\n"
         u"Устройств с нечитаемым адресом: {}\n"
         u"Устройств, уже состоявших в другой цепи (исключены из магистральной цепи): {}\n\n"
-        u"{}".format(
+        u"{}").format(
             len(panels), len(devices), len(loops),
             created, already, len(errors), len(no_panel), len(skipped),
             already_circuited_total,
-            u"Подробности — в окне вывода pyRevit." if (skipped or no_panel or errors) else u""
+            tr(u"Подробности — в окне вывода pyRevit.") if (skipped or no_panel or errors) else u""
         )
     )
 
@@ -351,7 +352,7 @@ def calc_loop_lengths(doc, settings):
 
             if circuit is None:
                 no_circuit.append(
-                    u"Шлейф {}: цепь не найдена — сначала запустите «Цепи шлейфов».".format(
+                    tr(u"Шлейф {}: цепь не найдена — сначала запустите «Цепи шлейфов».").format(
                         circuit_number
                     )
                 )
@@ -382,7 +383,7 @@ def calc_loop_lengths(doc, settings):
                 except Exception as ex:
                     try:
                         pyrevit_script.get_output().print_md(
-                            u"Шлейф {}: не удалось подписать линии проводки — {}: {}".format(
+                            tr(u"Шлейф {}: не удалось подписать линии проводки — {}: {}").format(
                                 circuit_number, type(ex).__name__, ex
                             )
                         )
@@ -394,7 +395,7 @@ def calc_loop_lengths(doc, settings):
     _report_collect_problems(skipped, no_circuit, [])
 
     forms.alert(
-        u"Готово.\n\n"
+        tr(u"Готово.\n\n"
         u"Панелей: {}\n"
         u"Устройств с адресом: {}\n"
         u"Шлейфов: {}\n\n"
@@ -404,10 +405,10 @@ def calc_loop_lengths(doc, settings):
         u"«Предыдущий адрес» записан: {}\n"
         u"Линий проводки подписано: {}\n"
         u"Устройств с нечитаемым адресом: {}\n\n"
-        u"{}".format(
+        u"{}").format(
             len(panels), len(devices), len(loops),
             processed, len(no_circuit), marked, prev_written, wire_lines_marked, len(skipped),
-            u"Подробности — в окне вывода pyRevit." if (skipped or no_circuit) else u""
+            tr(u"Подробности — в окне вывода pyRevit.") if (skipped or no_circuit) else u""
         )
     )
 
@@ -419,20 +420,20 @@ def _report_collect_problems(skipped, no_panel, errors):
     output = pyrevit_script.get_output()
 
     if skipped:
-        output.print_md(u"### Устройства с нечитаемым адресом ({})".format(len(skipped)))
+        output.print_md(tr(u"### Устройства с нечитаемым адресом ({})").format(len(skipped)))
         output.print_md(
-            u"Ожидается «панель.шлейф.номер», например `3.1.2`. "
-            u"Эти устройства в шлейфы не попали:"
+            tr(u"Ожидается «панель.шлейф.номер», например `3.1.2`. "
+            u"Эти устройства в шлейфы не попали:")
         )
         for el, raw in skipped[:100]:
             output.print_md(u"- ID {} — «{}»".format(el.Id.IntegerValue, raw))
 
     if no_panel:
-        output.print_md(u"### Шлейфы без панели / без цепи ({})".format(len(no_panel)))
+        output.print_md(tr(u"### Шлейфы без панели / без цепи ({})").format(len(no_panel)))
         for line in no_panel[:100]:
             output.print_md(u"- {}".format(line))
 
     if errors:
-        output.print_md(u"### Ошибки ({})".format(len(errors)))
+        output.print_md(tr(u"### Ошибки ({})").format(len(errors)))
         for line in errors[:100]:
             output.print_md(u"- {}".format(line))

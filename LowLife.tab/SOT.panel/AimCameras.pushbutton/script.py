@@ -24,6 +24,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import ViewPlan, ViewDrafting, BuiltInCategory, BuiltInParameter, Element
 from Autodesk.Revit.UI.Selection import ObjectType
@@ -38,24 +39,24 @@ uidoc = revit.uidoc
 def _open_settings():
     edited = sot_fov.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
 _STATUS_RU = {
-    u"ok": u"наведена",
-    u"ok_warn": u"наведена (с предупреждением)",
-    u"no_distance_param": u"не найдена дальность камеры",
-    u"no_location": u"нет точки вставки (LocationPoint)",
-    u"no_tilt_param": u"в настройках не задано имя параметра наклона",
-    u"tilt_not_instance": u"параметр наклона не найден как параметр экземпляра",
-    u"tilt_readonly": u"параметр наклона недоступен для записи",
-    u"bad_geometry": u"не удалось определить направление камеры",
-    u"no_room": u"помещение не найдено",
-    u"no_wall_hit": u"граница помещения не встретилась по направлению взгляда",
-    u"missing_inputs": u"нет высоты/вертикального угла и значений по умолчанию",
-    u"error": u"ошибка",
+    u"ok": tr(u"наведена"),
+    u"ok_warn": tr(u"наведена (с предупреждением)"),
+    u"no_distance_param": tr(u"не найдена дальность камеры"),
+    u"no_location": tr(u"нет точки вставки (LocationPoint)"),
+    u"no_tilt_param": tr(u"в настройках не задано имя параметра наклона"),
+    u"tilt_not_instance": tr(u"параметр наклона не найден как параметр экземпляра"),
+    u"tilt_readonly": tr(u"параметр наклона недоступен для записи"),
+    u"bad_geometry": tr(u"не удалось определить направление камеры"),
+    u"no_room": tr(u"помещение не найдено"),
+    u"no_wall_hit": tr(u"граница помещения не встретилась по направлению взгляда"),
+    u"missing_inputs": tr(u"нет высоты/вертикального угла и значений по умолчанию"),
+    u"error": tr(u"ошибка"),
 }
 
 
@@ -71,7 +72,7 @@ def _cam_label(cam):
         mp = cam.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)
         mv = mp.AsString() if mp is not None else None
         if mv and mv.strip():
-            parts.append(u"марка {}".format(mv.strip()))
+            parts.append(tr(u"марка {}").format(mv.strip()))
     except Exception:
         pass
     return u" · ".join(p for p in parts if p)
@@ -79,7 +80,7 @@ def _cam_label(cam):
 
 def _report(results):
     output = script.get_output()
-    output.print_md(u"# Навести на помещение — отчёт ({} камер)".format(len(results)))
+    output.print_md(tr(u"# Навести на помещение — отчёт ({} камер)").format(len(results)))
 
     ok_n = 0
     for cam, status, detail in results:
@@ -96,9 +97,9 @@ def _report(results):
         ))
 
     output.print_md(u"---")
-    output.print_md(u"**Наведено камер: {} из {}**".format(ok_n, len(results)))
+    output.print_md(tr(u"**Наведено камер: {} из {}**").format(ok_n, len(results)))
     if ok_n:
-        output.print_md(u"_Перестройте зону кнопкой «Зоны обзора», чтобы увидеть результат._")
+        output.print_md(tr(u"_Перестройте зону кнопкой «Зоны обзора», чтобы увидеть результат._"))
 
 
 # --- Shift+клик -> настройки ------------------------------------------
@@ -119,8 +120,8 @@ sot_fov.require(settings, ["tilt_param_name", "distance_param_name"])
 view = doc.ActiveView
 if not isinstance(view, (ViewPlan, ViewDrafting)):
     forms.alert(
-        u"Активируйте план (этажа или потолка) либо чертёжный вид — "
-        u"по нему определяется уровень камеры.",
+        tr(u"Активируйте план (этажа или потолка) либо чертёжный вид — "
+        u"по нему определяется уровень камеры."),
         exitscript=True
     )
 
@@ -134,18 +135,18 @@ try:
     refs = uidoc.Selection.PickObjects(
         ObjectType.Element,
         sot_fov.CategorySelectionFilter(cat_ids),
-        u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)"
+        tr(u"Выберите видеокамеры, затем Enter (фильтр — категории из настроек)")
     )
 except OperationCanceledException:
-    forms.alert(u"Выбор отменён, ничего не изменено.", exitscript=True)
+    forms.alert(tr(u"Выбор отменён, ничего не изменено."), exitscript=True)
 
 cameras = [doc.GetElement(r) for r in refs]
 cameras = [c for c in cameras if c is not None]
 
 if not cameras:
-    forms.alert(u"Не выбрано ни одной камеры.", exitscript=True)
+    forms.alert(tr(u"Не выбрано ни одной камеры."), exitscript=True)
 
-with revit.Transaction(u"СОТ: наведение камер на помещение"):
+with revit.Transaction(tr(u"СОТ: наведение камер на помещение")):
     results = sot_fov.auto_aim_cameras(doc, cameras, view, settings)
 
 _report(results)

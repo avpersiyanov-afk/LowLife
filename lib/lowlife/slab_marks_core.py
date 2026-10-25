@@ -7,6 +7,7 @@ slab_marks_settings.py. Без Revit API, покрыт tests/test_slab_marks_cor
 
 Все длины здесь — в миллиметрах.
 """
+from lowlife.i18n import tr
 
 try:
     unicode
@@ -320,7 +321,7 @@ def mount_surface(found, ceiling_mount):
     if not ceiling_mount:
         return found.slab_z_mm, None
     if found.ceiling_z_mm is None:
-        return None, u"встраиваемый, но подвесного потолка над ним нет"
+        return None, tr(u"встраиваемый, но подвесного потолка над ним нет")
     return found.ceiling_z_mm, None
 
 

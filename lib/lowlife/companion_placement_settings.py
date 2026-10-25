@@ -75,6 +75,7 @@ companion_placement._expected_values_for_group).
 """
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('RevitAPI')
@@ -105,13 +106,13 @@ SETTINGS_FILE_NAME = "LowLifeCompanionPlacement_settings.json"
 
 # (ключ, подпись, значение по умолчанию) — числовые поля смещения одной пары.
 OFFSET_FIELDS = [
-    ("offset_forward_mm", u"Вперёд, мм", u"0"),
-    ("offset_side_mm", u"Вбок, мм", u"0"),
-    ("offset_up_mm", u"Вверх, мм", u"0"),
+    ("offset_forward_mm", N_(u"Вперёд, мм"), u"0"),
+    ("offset_side_mm", N_(u"Вбок, мм"), u"0"),
+    ("offset_up_mm", N_(u"Вверх, мм"), u"0"),
 ]
 
 PLAIN_LABELS = {
-    "pair_names_text": u"Названия пар расстановки",
+    "pair_names_text": N_(u"Названия пар расстановки"),
 }
 
 
@@ -336,33 +337,33 @@ def require_valid_pairs(runtime_settings):
 
     if group_misconfigured:
         forms.alert(
-            u"У этих пар включена группировка, но не выбран «Компаньон на "
+            tr(u"У этих пар включена группировка, но не выбран «Компаньон на "
             u"группу» — для них группировка отключена, объекты расставятся "
-            u"обычным компаньоном по одному:\n\n{}".format(u"\n".join(group_misconfigured))
+            u"обычным компаньоном по одному:\n\n{}").format(u"\n".join(group_misconfigured))
         )
 
     if circuit_misconfigured:
         forms.alert(
-            u"У этих пар включено построение цепи, но не выбран тип "
+            tr(u"У этих пар включено построение цепи, но не выбран тип "
             u"электрической цепи ни в «Цепь 1», ни в «Цепь 2» — для них "
-            u"цепь строиться не будет:\n\n{}".format(
+            u"цепь строиться не будет:\n\n{}").format(
                 u"\n".join(circuit_misconfigured)
             )
         )
 
     if not valid:
         forms.alert(
-            u"Не настроено ни одной пары расстановки.\n\n"
+            tr(u"Не настроено ни одной пары расстановки.\n\n"
             u"Откройте настройки: Shift+клик по кнопке «Расстановка РМ, АМ, МДУ», "
             u"впишите название пары, нажмите «Обновить список» и заполните "
-            u"«рядом с чем ставить» и «что ставим».",
+            u"«рядом с чем ставить» и «что ставим»."),
             exitscript=True
         )
 
     if incomplete:
         forms.alert(
-            u"У этих пар заполнено не всё (нужны и «рядом с чем ставить», и "
-            u"«что ставим») — они пропущены:\n\n{}".format(u"\n".join(incomplete))
+            tr(u"У этих пар заполнено не всё (нужны и «рядом с чем ставить», и "
+            u"«что ставим») — они пропущены:\n\n{}").format(u"\n".join(incomplete))
         )
 
     return valid
@@ -376,7 +377,7 @@ def show_settings_form(doc, values):
     param_names = param_autocomplete.NameSource(doc)
 
     win = Window()
-    win.Title = u"Настройки: Расстановка РМ, АМ, МДУ"
+    win.Title = tr(u"Настройки: Расстановка РМ, АМ, МДУ")
     win.Width = 820
     win.Height = 640
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -388,7 +389,7 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Пары «рядом с чем ставить -> что ставим»"
+    title.Text = tr(u"Пары «рядом с чем ставить -> что ставим»")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)
@@ -396,9 +397,9 @@ def show_settings_form(doc, values):
 
     hint = TextBlock()
     hint.Text = (
-        u"Значения сохраняются и подставляются при следующих запусках. "
+        tr(u"Значения сохраняются и подставляются при следующих запусках. "
         u"Каждая пара — правило: рядом с базовым объектом ставится компаньон "
-        u"со смещением и с переносом выбранных параметров."
+        u"со смещением и с переносом выбранных параметров.")
     )
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
@@ -410,8 +411,8 @@ def show_settings_form(doc, values):
 
     marker_label = TextBlock()
     marker_label.Text = (
-        u"Параметр-признак строки справочника кабелей (нужен для выбора "
-        u"кабеля у цепей ниже — общий на все пары)"
+        tr(u"Параметр-признак строки справочника кабелей (нужен для выбора "
+        u"кабеля у цепей ниже — общий на все пары)")
     )
     marker_label.TextWrapping = TextWrapping.Wrap
     marker_label.Margin = Thickness(0, 0, 0, 2)
@@ -430,11 +431,11 @@ def show_settings_form(doc, values):
 
     wire_line_label = TextBlock()
     wire_line_label.Text = (
-        u"Ключевое слово в имени семейства линии провода — необязательно, "
+        tr(u"Ключевое слово в имени семейства линии провода — необязательно, "
         u"общее на все пары. Если задано, уже нарисованным вручную линиям "
         u"проводки рядом с компаньоном в параметр ниже записывается имя "
         u"построенной для него цепи — чтобы на плане было видно, какая линия "
-        u"к какой цепи относится (как у СПС)"
+        u"к какой цепи относится (как у СПС)")
     )
     wire_line_label.TextWrapping = TextWrapping.Wrap
     wire_line_label.Margin = Thickness(0, 0, 0, 2)
@@ -451,7 +452,7 @@ def show_settings_form(doc, values):
     root.Children.Add(wire_line_filter_box)
 
     wire_mark_label = TextBlock()
-    wire_mark_label.Text = u"Параметр линии для подписи — необязательно, общий на все пары"
+    wire_mark_label.Text = tr(u"Параметр линии для подписи — необязательно, общий на все пары")
     wire_mark_label.TextWrapping = TextWrapping.Wrap
     wire_mark_label.Margin = Thickness(0, 0, 0, 2)
     root.Children.Add(wire_mark_label)
@@ -468,7 +469,7 @@ def show_settings_form(doc, values):
     # --- строка имён пар ---
 
     names_label = TextBlock()
-    names_label.Text = u"Названия пар расстановки, через запятую (например «РМ у дверей, МДУ у клапанов»)"
+    names_label.Text = tr(u"Названия пар расстановки, через запятую (например «РМ у дверей, МДУ у клапанов»)")
     names_label.TextWrapping = TextWrapping.Wrap
     names_label.Margin = Thickness(0, 4, 0, 2)
     root.Children.Add(names_label)
@@ -483,7 +484,7 @@ def show_settings_form(doc, values):
     names_row.Children.Add(names_box)
 
     refresh_btn = Button()
-    refresh_btn.Content = u"Обновить список"
+    refresh_btn.Content = tr(u"Обновить список")
     refresh_btn.Padding = Thickness(8, 2, 8, 2)
     refresh_btn.Margin = Thickness(8, 0, 0, 0)
     names_row.Children.Add(refresh_btn)
@@ -504,7 +505,7 @@ def show_settings_form(doc, values):
 
         if not names:
             empty_hint = TextBlock()
-            empty_hint.Text = u"(нет пар — впишите имена выше и нажмите «Обновить список»)"
+            empty_hint.Text = tr(u"(нет пар — впишите имена выше и нажмите «Обновить список»)")
             empty_hint.FontSize = 11
             empty_hint.Foreground = Brushes.Gray
             pairs_panel.Children.Add(empty_hint)
@@ -516,7 +517,7 @@ def show_settings_form(doc, values):
 
     def _build_pair_section(doc, container, name, pair_values):
         group_title = TextBlock()
-        group_title.Text = u"Пара «{}»".format(name)
+        group_title.Text = tr(u"Пара «{}»").format(name)
         group_title.FontWeight = FontWeights.Bold
         group_title.Margin = Thickness(0, 16, 0, 2)
         container.Children.Add(group_title)
@@ -524,7 +525,7 @@ def show_settings_form(doc, values):
         # --- базовые типы (рядом с чем ставить) ---
 
         base_label = TextBlock()
-        base_label.Text = u"Рядом с чем ставить (базовые объекты — можно несколько типов)"
+        base_label.Text = tr(u"Рядом с чем ставить (базовые объекты — можно несколько типов)")
         base_label.Margin = Thickness(0, 4, 0, 2)
         container.Children.Add(base_label)
 
@@ -539,22 +540,22 @@ def show_settings_form(doc, values):
         base_row.Children.Add(base_value_label)
 
         base_pick_btn = Button()
-        base_pick_btn.Content = u"Выбрать..."
+        base_pick_btn.Content = tr(u"Выбрать...")
         base_pick_btn.Padding = Thickness(8, 2, 8, 2)
         base_pick_btn.Margin = Thickness(8, 0, 0, 0)
 
         def on_pick_base(sender, args, pair_values=pair_values, base_value_label=base_value_label):
             symbols = list_all_symbols(doc)
             if not symbols:
-                forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
+                forms.alert(tr(u"В проекте нет ни одного загруженного типа семейства."))
                 return
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
             selected = select_list.SelectFromList.show(
                 options,
-                title=u"Рядом с чем ставить — пара «{}» (уже выбрано: {})".format(
+                title=tr(u"Рядом с чем ставить — пара «{}» (уже выбрано: {})").format(
                     name, _type_names_display(doc, pair_values.get("base_symbol_ids") or [])
                 ),
-                button_name=u"Выбрать",
+                button_name=tr(u"Выбрать"),
                 multiselect=True
             )
             if selected is not None:
@@ -568,7 +569,7 @@ def show_settings_form(doc, values):
         # --- тип компаньона (что ставим) ---
 
         companion_label = TextBlock()
-        companion_label.Text = u"Что ставим (компаньон — один тип)"
+        companion_label.Text = tr(u"Что ставим (компаньон — один тип)")
         companion_label.Margin = Thickness(0, 6, 0, 2)
         container.Children.Add(companion_label)
 
@@ -583,20 +584,20 @@ def show_settings_form(doc, values):
         companion_row.Children.Add(companion_value_label)
 
         companion_pick_btn = Button()
-        companion_pick_btn.Content = u"Выбрать..."
+        companion_pick_btn.Content = tr(u"Выбрать...")
         companion_pick_btn.Padding = Thickness(8, 2, 8, 2)
         companion_pick_btn.Margin = Thickness(8, 0, 0, 0)
 
         def on_pick_companion(sender, args, pair_values=pair_values, companion_value_label=companion_value_label):
             symbols = list_all_symbols(doc)
             if not symbols:
-                forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
+                forms.alert(tr(u"В проекте нет ни одного загруженного типа семейства."))
                 return
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
             selected = select_list.SelectFromList.show(
                 options,
-                title=u"Что ставим — пара «{}»".format(name),
-                button_name=u"Выбрать",
+                title=tr(u"Что ставим — пара «{}»").format(name),
+                button_name=tr(u"Выбрать"),
                 multiselect=False
             )
             if selected:
@@ -611,9 +612,9 @@ def show_settings_form(doc, values):
 
         offset_label = TextBlock()
         offset_label.Text = (
-            u"Смещение компаньона от базового объекта, мм. Считается с учётом "
+            tr(u"Смещение компаньона от базового объекта, мм. Считается с учётом "
             u"поворота объекта: «Вперёд» — вдоль оси X семейства, «Вбок» — "
-            u"поперёк (плюс — влево, минус — вправо), «Вверх» — по высоте"
+            u"поперёк (плюс — влево, минус — вправо), «Вверх» — по высоте")
         )
         offset_label.TextWrapping = TextWrapping.Wrap
         offset_label.Margin = Thickness(0, 6, 0, 2)
@@ -627,7 +628,7 @@ def show_settings_form(doc, values):
             field_col.Margin = Thickness(0, 0, 16, 0)
 
             field_label = TextBlock()
-            field_label.Text = label_text
+            field_label.Text = tr(label_text)
             field_label.FontSize = 11
             field_label.Foreground = Brushes.Gray
             field_col.Children.Add(field_label)
@@ -651,10 +652,10 @@ def show_settings_form(doc, values):
 
         param_label = TextBlock()
         param_label.Text = (
-            u"Параметры для переноса с базового объекта на компаньон: "
+            tr(u"Параметры для переноса с базового объекта на компаньон: "
             u"«Источник=Приёмник, ...» (без «=» — имя совпадает с обеих сторон). "
             u"Нужен хотя бы один: по совпадению этих значений повторный запуск "
-            u"узнаёт уже поставленный компаньон и не ставит рядом второй."
+            u"узнаёт уже поставленный компаньон и не ставит рядом второй.")
         )
         param_label.TextWrapping = TextWrapping.Wrap
         param_label.Margin = Thickness(0, 6, 0, 2)
@@ -678,8 +679,8 @@ def show_settings_form(doc, values):
 
         group_checkbox = CheckBox()
         group_checkbox.Content = (
-            u"Группировать по 2-4 близких базовых объекта одного помещения — "
-            u"ставить один компаньон на группу вместо компаньона на каждый"
+            tr(u"Группировать по 2-4 близких базовых объекта одного помещения — "
+            u"ставить один компаньон на группу вместо компаньона на каждый")
         )
         group_checkbox.IsChecked = bool(pair_values.get("group_enabled"))
         group_checkbox.Margin = Thickness(0, 10, 0, 2)
@@ -692,7 +693,7 @@ def show_settings_form(doc, values):
         container.Children.Add(group_checkbox)
 
         group_companion_label = TextBlock()
-        group_companion_label.Text = u"Компаньон на группу (семейство с несколькими входами, например на 4)"
+        group_companion_label.Text = tr(u"Компаньон на группу (семейство с несколькими входами, например на 4)")
         group_companion_label.Margin = Thickness(0, 4, 0, 2)
         container.Children.Add(group_companion_label)
 
@@ -707,20 +708,20 @@ def show_settings_form(doc, values):
         group_companion_row.Children.Add(group_companion_value_label)
 
         group_companion_pick_btn = Button()
-        group_companion_pick_btn.Content = u"Выбрать..."
+        group_companion_pick_btn.Content = tr(u"Выбрать...")
         group_companion_pick_btn.Padding = Thickness(8, 2, 8, 2)
         group_companion_pick_btn.Margin = Thickness(8, 0, 0, 0)
 
         def on_pick_group_companion(sender, args, pair_values=pair_values, group_companion_value_label=group_companion_value_label):
             symbols = list_all_symbols(doc)
             if not symbols:
-                forms.alert(u"В проекте нет ни одного загруженного типа семейства.")
+                forms.alert(tr(u"В проекте нет ни одного загруженного типа семейства."))
                 return
             options = sorted([TypeOption(s) for s in symbols], key=lambda o: o.name)
             selected = select_list.SelectFromList.show(
                 options,
-                title=u"Компаньон на группу — пара «{}»".format(name),
-                button_name=u"Выбрать",
+                title=tr(u"Компаньон на группу — пара «{}»").format(name),
+                button_name=tr(u"Выбрать"),
                 multiselect=False
             )
             if selected:
@@ -732,7 +733,7 @@ def show_settings_form(doc, values):
         container.Children.Add(group_companion_row)
 
         group_radius_label = TextBlock()
-        group_radius_label.Text = u"Радиус группировки, мм (+ обязательно одно помещение — Room в точке базового объекта)"
+        group_radius_label.Text = tr(u"Радиус группировки, мм (+ обязательно одно помещение — Room в точке базового объекта)")
         group_radius_label.TextWrapping = TextWrapping.Wrap
         group_radius_label.Margin = Thickness(0, 4, 0, 2)
         container.Children.Add(group_radius_label)
@@ -753,13 +754,13 @@ def show_settings_form(doc, values):
 
         circuit_checkbox = CheckBox()
         circuit_checkbox.Content = (
-            u"Строить электрическую цепь между компаньоном и его базовым "
+            tr(u"Строить электрическую цепь между компаньоном и его базовым "
             u"объектом (или объектами группы) сразу при расстановке — "
             u"компаньон становится источником/панелью, как изолятор в "
             u"«Цепи изолятор-устройства». Второй слот («Цепь 2») — для "
             u"компаньонов, которым к базовому объекту нужны СРАЗУ ДВЕ цепи "
             u"разной категории (например силовая + сигнальная); пусто — "
-            u"строится только «Цепь 1»"
+            u"строится только «Цепь 1»")
         )
         circuit_checkbox.IsChecked = bool(pair_values.get("circuit_enabled"))
         circuit_checkbox.Margin = Thickness(0, 10, 0, 2)
@@ -776,13 +777,13 @@ def show_settings_form(doc, values):
             conductor_key = "circuit_{}_conductor_type_id".format(slot_number)
 
             slot_title = TextBlock()
-            slot_title.Text = u"Цепь {}{}".format(slot_number, required_hint)
+            slot_title.Text = tr(u"Цепь {}{}").format(slot_number, required_hint)
             slot_title.FontWeight = FontWeights.Bold
             slot_title.Margin = Thickness(0, 8, 0, 2)
             container.Children.Add(slot_title)
 
             type_label = TextBlock()
-            type_label.Text = u"Тип электрической цепи Revit (ElectricalSystemType — «Выбрать...» справа)"
+            type_label.Text = tr(u"Тип электрической цепи Revit (ElectricalSystemType — «Выбрать...» справа)")
             type_label.TextWrapping = TextWrapping.Wrap
             type_label.Margin = Thickness(0, 2, 0, 2)
             container.Children.Add(type_label)
@@ -802,22 +803,22 @@ def show_settings_form(doc, values):
             type_box.TextChanged += on_type_changed
 
             type_pick_btn = Button()
-            type_pick_btn.Content = u"Выбрать..."
+            type_pick_btn.Content = tr(u"Выбрать...")
             type_pick_btn.Padding = Thickness(8, 2, 8, 2)
             type_pick_btn.Margin = Thickness(8, 0, 0, 0)
 
             def on_pick_type(sender, args, pair_values=pair_values, type_key=type_key, type_box=type_box):
                 type_names = _available_system_type_names()
                 if not type_names:
-                    forms.alert(u"В этой версии Revit не нашлось значений ElectricalSystemType.")
+                    forms.alert(tr(u"В этой версии Revit не нашлось значений ElectricalSystemType."))
                     return
                 options = [SystemTypeOption(n) for n in type_names]
                 selected = select_list.SelectFromList.show(
                     options,
-                    title=u"Тип электрической цепи {} (в скобках — пояснение) — пара «{}»".format(
+                    title=tr(u"Тип электрической цепи {} (в скобках — пояснение) — пара «{}»").format(
                         slot_number, name
                     ),
-                    button_name=u"Выбрать",
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
                 if selected:
@@ -829,7 +830,7 @@ def show_settings_form(doc, values):
             container.Children.Add(type_row)
 
             conductor_label = TextBlock()
-            conductor_label.Text = u"Кабель (строка справочника) для этой цепи — необязательно"
+            conductor_label.Text = tr(u"Кабель (строка справочника) для этой цепи — необязательно")
             conductor_label.TextWrapping = TextWrapping.Wrap
             conductor_label.Margin = Thickness(0, 4, 0, 2)
             container.Children.Add(conductor_label)
@@ -845,7 +846,7 @@ def show_settings_form(doc, values):
             conductor_row.Children.Add(conductor_value_label)
 
             conductor_pick_btn = Button()
-            conductor_pick_btn.Content = u"Выбрать..."
+            conductor_pick_btn.Content = tr(u"Выбрать...")
             conductor_pick_btn.Padding = Thickness(8, 2, 8, 2)
             conductor_pick_btn.Margin = Thickness(8, 0, 0, 0)
 
@@ -856,17 +857,17 @@ def show_settings_form(doc, values):
                 wire_items = list_wire_catalog_items(doc, marker_param_name)
                 if not wire_items:
                     forms.alert(
-                        u"Не найдено строк справочника кабелей: в модели нет ключевой "
+                        tr(u"Не найдено строк справочника кабелей: в модели нет ключевой "
                         u"спецификации категории «Электрические цепи» со строками. "
-                        u"Проверьте кнопкой «Справочник кабелей» (панель «Кабели»)."
+                        u"Проверьте кнопкой «Справочник кабелей» (панель «Кабели»).")
                     )
                     return
 
                 options = sorted([WireTypeOption(w) for w in wire_items], key=lambda o: o.name)
                 selected = select_list.SelectFromList.show(
                     options,
-                    title=u"Кабель — цепь {}, пара «{}»".format(slot_number, name),
-                    button_name=u"Выбрать",
+                    title=tr(u"Кабель — цепь {}, пара «{}»").format(slot_number, name),
+                    button_name=tr(u"Выбрать"),
                     multiselect=False
                 )
                 if selected:
@@ -877,7 +878,7 @@ def show_settings_form(doc, values):
             conductor_row.Children.Add(conductor_pick_btn)
 
             conductor_clear_btn = Button()
-            conductor_clear_btn.Content = u"Очистить"
+            conductor_clear_btn.Content = tr(u"Очистить")
             conductor_clear_btn.Padding = Thickness(8, 2, 8, 2)
             conductor_clear_btn.Margin = Thickness(8, 0, 0, 0)
 
@@ -890,8 +891,8 @@ def show_settings_form(doc, values):
             conductor_row.Children.Add(conductor_clear_btn)
             container.Children.Add(conductor_row)
 
-        add_circuit_slot(1, u" (обязательна, если галочка выше включена)")
-        add_circuit_slot(2, u" (необязательно — вторая цепь другой категории к тому же базовому объекту)")
+        add_circuit_slot(1, tr(u" (обязательна, если галочка выше включена)"))
+        add_circuit_slot(2, tr(u" (необязательно — вторая цепь другой категории к тому же базовому объекту)"))
 
     refresh_btn.Click += rebuild_pairs_panel
     root.Children.Add(pairs_panel)
@@ -906,12 +907,12 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
@@ -939,7 +940,7 @@ def show_settings_form(doc, values):
         win.Close()
 
     settings_transfer.add_transfer_buttons(
-        buttons, _read_all, _write_all, u"расстановки компаньонов", _on_settings_imported
+        buttons, _read_all, _write_all, N_(u"расстановки компаньонов"), _on_settings_imported
     )
 
     scroll = ScrollViewer()

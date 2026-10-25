@@ -374,6 +374,29 @@ def extract_keys(root=ROOT):
     return keys
 
 
+def module_level_tr(root=ROOT):
+    """[(файл, строка)] — вызовы tr() в библиотеке (lib/), которые выполняются при импорте модуля:
+    язык там застынет на момент загрузки. В данных — N_(…), tr(…) — при показе."""
+    found = []
+    for path in iter_sources(root):
+        if not path.startswith(os.path.join(root, "lib")):
+            continue
+        with io.open(path, "r", encoding="utf-8-sig") as f:
+            text = f.read()
+        if "tr(" not in text:
+            continue
+        tree = ast.parse(text)
+        inside = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.Lambda, ast.AsyncFunctionDef)):
+                for sub in ast.walk(node):
+                    inside.add(id(sub))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _call_name(node) == "tr" and id(node) not in inside:
+                found.append((os.path.relpath(path, root), node.lineno))
+    return found
+
+
 def load_catalog():
     try:
         with io.open(CATALOG, "r", encoding="utf-8") as f:
