@@ -7,6 +7,7 @@
 """
 
 from lowlife import email_ai_core as ai
+from lowlife.i18n import tr
 from lowlife import settings_core
 
 SETTINGS_FILE_NAME = "LowLifeEmailTasks_settings.json"
@@ -71,17 +72,17 @@ def validate(values):
     provider = values.get("provider")
     claude_path, codex_path = values.get("claude_path") or u"", values.get("codex_path") or u""
     if provider == ai.CLAUDE_CLI and claude_path and email_claude.find_claude(claude_path) is None:
-        return (u"По указанному пути claude не найден:\n{}\n\n"
+        return (tr(u"По указанному пути claude не найден:\n{}\n\n"
                 u"Укажите полный путь к claude.exe или оставьте поле "
-                u"пустым для автопоиска.".format(claude_path))
+                u"пустым для автопоиска.").format(claude_path))
     if provider == ai.CODEX_CLI and codex_path and email_codex.find_codex(codex_path) is None:
-        return (u"По указанному пути codex не найден:\n{}\n\n"
+        return (tr(u"По указанному пути codex не найден:\n{}\n\n"
                 u"Укажите полный путь к codex или оставьте поле "
-                u"пустым для автопоиска.".format(codex_path))
+                u"пустым для автопоиска.").format(codex_path))
     key_field = provider + "_key"
     if key_field in values and not ai.resolve_key(values[key_field], provider, os.environ):
-        return (u"Вставьте ключ API — или выберите другой способ подключения.\n\n"
-                u"Где взять ключ — по ссылке «Как получить ключ» в окне настроек.")
+        return (tr(u"Вставьте ключ API — или выберите другой способ подключения.\n\n"
+                u"Где взять ключ — по ссылке «Как получить ключ» в окне настроек."))
     return None
 
 
@@ -90,6 +91,6 @@ def key_hint(provider):
     import os
     env_name = ai.KEY_ENV_VARS[provider]
     env_key = ai.resolve_key(u"", provider, os.environ)
-    found = u"сейчас там {}".format(ai.mask_key(env_key)) if env_key else u"сейчас её нет"
-    return (u"Хранится в файле настроек на этом компьютере. Пусто — взять из "
-            u"переменной окружения {} ({}).".format(env_name, found))
+    found = tr(u"сейчас там {}").format(ai.mask_key(env_key)) if env_key else tr(u"сейчас её нет")
+    return (tr(u"Хранится в файле настроек на этом компьютере. Пусто — взять из "
+            u"переменной окружения {} ({}).").format(env_name, found))

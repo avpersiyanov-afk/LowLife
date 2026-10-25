@@ -200,3 +200,20 @@ def test_loi_status_and_mask_errors_follow_language_preserving_data(appdata):
                       u"«C=» — no parameter specified"]
     i18n.save(i18n.RU)
     assert loi.status_text(loi.ABSENT, None) == u"нет параметра"
+
+
+def test_mail_language_changes_labels_and_errors_but_preserves_requests(appdata):
+    from lowlife import email_ai_core as ai, email_tasks_core as mail, email_tasks_run
+    settings = {"provider": ai.OPENAI_API, "openai_api_model": u"gpt-5"}
+    request = mail.build_request(u"Промпт пользователя", [], None)
+    ru_label = ai.provider_label(settings["provider"])
+    i18n.save(i18n.EN)
+    assert ai.provider_label(settings["provider"]) == u"ChatGPT — OpenAI API (API key)"
+    assert i18n.tr(email_tasks_run.TABLE_COLUMNS[1]) == u"Task"
+    error = ai.classify_codex_failure(u"not logged in")
+    assert error.fatal and u"not signed in" in error.message
+    assert error.details == u"not logged in"
+    assert mail.build_request(u"Промпт пользователя", [], None) == request
+    assert settings == {"provider": ai.OPENAI_API, "openai_api_model": u"gpt-5"}
+    i18n.save(i18n.RU)
+    assert ai.provider_label(settings["provider"]) == ru_label

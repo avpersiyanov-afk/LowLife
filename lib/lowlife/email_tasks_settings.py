@@ -18,6 +18,7 @@ pyrevit.script.get_config(), см. докстринг scs_settings.py про п�
 """
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -51,7 +52,7 @@ def show_settings_form(values, default_prompt):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки: Задачи из почты"
+    win.Title = tr(u"Настройки: Задачи из почты")
     win.Width = 720
     win.SizeToContent = SizeToContent.Height
     win.MaxHeight = SystemParameters.WorkArea.Height - 40
@@ -61,38 +62,38 @@ def show_settings_form(values, default_prompt):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Задачи из почты"
+    title.Text = tr(u"Задачи из почты")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     root.Children.Add(title)
-    _hint(root, u"Кнопка только читает почту: ничего не отправляет, не помечает "
-                u"прочитанным и не перемещает.")
+    _hint(root, tr(u"Кнопка только читает почту: ничего не отправляет, не помечает "
+                u"прочитанным и не перемещает."))
 
     # --- Подключение ИИ (общее с «Проверкой орфографии»)
     connection = ai_settings.ConnectionSection(
-        root, values, shared_note=u"Подключение общее с кнопкой «Проверка орфографии».")
+        root, values, shared_note=tr(u"Подключение общее с кнопкой «Проверка орфографии»."))
 
     # --- Почта
-    _label(root, u"Период, дней", bold=True, top=18)
+    _label(root, tr(u"Период, дней"), bold=True, top=18)
     days_box = _textbox(root, values.get("days"))
-    _hint(root, u"Сколько последних дней «Входящих» разбирать (по дате получения).")
+    _hint(root, tr(u"Сколько последних дней «Входящих» разбирать (по дате получения)."))
 
-    unread_box = _checkbox(root, u"Только непрочитанные", values.get("unread_only"))
+    unread_box = _checkbox(root, tr(u"Только непрочитанные"), values.get("unread_only"))
 
-    _label(root, u"Подпапка «Входящих»", bold=True, top=14)
+    _label(root, tr(u"Подпапка «Входящих»"), bold=True, top=14)
     subfolder_box = _textbox(root, values.get("subfolder"))
-    _hint(root, u"Пусто — сами «Входящие». Вложенные папки — через «/», например "
-                u"«Проекты/Объект 1».")
+    _hint(root, tr(u"Пусто — сами «Входящие». Вложенные папки — через «/», например "
+                u"«Проекты/Объект 1»."))
 
-    subfolders_box = _checkbox(root, u"Включая подпапки — читать и все вложенные папки "
-                                     u"(«Входящих» или папки, указанной выше)",
+    subfolders_box = _checkbox(root, tr(u"Включая подпапки — читать и все вложенные папки "
+                                     u"(«Входящих» или папки, указанной выше)"),
                                values.get("include_subfolders"))
 
-    test_box = _checkbox(root, u"Тестовый режим — вместо Outlook брать письма из "
-                               u"test_emails.json (рядом со скриптом кнопки)",
+    test_box = _checkbox(root, tr(u"Тестовый режим — вместо Outlook брать письма из "
+                               u"test_emails.json (рядом со скриптом кнопки)"),
                          values.get("test_mode"))
 
-    _label(root, u"Промпт", bold=True, top=18)
+    _label(root, tr(u"Промпт"), bold=True, top=18)
     prompt_box = TextBox()
     prompt_box.Text = effective_prompt(values, default_prompt)
     prompt_box.AcceptsReturn = True
@@ -102,15 +103,15 @@ def show_settings_form(values, default_prompt):
     prompt_box.Height = 260
     prompt_box.Padding = Thickness(4)
     root.Children.Add(prompt_box)
-    _hint(root, u"Общий для всех способов подключения. Сегодняшняя дата и сами письма "
+    _hint(root, tr(u"Общий для всех способов подключения. Сегодняшняя дата и сами письма "
                 u"добавляются к промпту автоматически. "
                 u"Сохраните в тексте формат ответа {\"tasks\":[{\"email_id\":…,\"task\":…,"
                 u"\"requester\":…,\"deadline\":…,\"priority\":…,\"comment\":…}]} — по нему "
                 u"разбирается ответ. Свой текст хранится в настройках и не теряется при "
-                u"обновлении расширения.")
+                u"обновлении расширения."))
 
     reset_btn = Button()
-    reset_btn.Content = u"Вернуть стандартный промпт"
+    reset_btn.Content = tr(u"Вернуть стандартный промпт")
     reset_btn.Padding = Thickness(10, 3, 10, 3)
     reset_btn.Margin = Thickness(0, 6, 0, 0)
     reset_btn.HorizontalAlignment = HorizontalAlignment.Left
@@ -127,12 +128,12 @@ def show_settings_form(values, default_prompt):
     buttons.Margin = Thickness(0, 18, 0, 0)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
     ok_btn.IsDefault = True
@@ -140,7 +141,7 @@ def show_settings_form(values, default_prompt):
     def on_ok(sender, args):
         days = parse_days(days_box.Text)
         if days is None:
-            forms.alert(u"Период — целое число дней, не меньше 1.")
+            forms.alert(tr(u"Период — целое число дней, не меньше 1."))
             return
 
         error = connection.validate()

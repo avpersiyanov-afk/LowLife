@@ -16,6 +16,7 @@ except NameError:  # Python 3
 
 
 import json
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference("System")
@@ -53,7 +54,7 @@ def run_process(exe_path, args, stdin_text, name, tick=None, timeout_seconds=TIM
     try:
         proc = Process.Start(info)
     except Exception as ex:
-        raise AIError(u"Не удалось запустить {}:\n{}\n\n{}".format(name, exe_path, ex), fatal=True)
+        raise AIError(tr(u"Не удалось запустить {}:\n{}\n\n{}").format(name, exe_path, ex), fatal=True)
 
     try:
         # Читаем stdout/stderr асинхронно, иначе при большом выводе процесс
@@ -78,8 +79,8 @@ def run_process(exe_path, args, stdin_text, name, tick=None, timeout_seconds=TIM
             if waited_ms >= timeout_seconds * 1000:
                 _kill(proc)
                 raise AIError(
-                    u"{} не ответил за {} мин. — вызов прерван.\n"
-                    u"Попробуйте ещё раз или уменьшите период.".format(name, timeout_seconds // 60))
+                    tr(u"{} не ответил за {} мин. — вызов прерван.\n"
+                    u"Попробуйте ещё раз или уменьшите период.").format(name, timeout_seconds // 60))
         proc.WaitForExit()
 
         return proc.ExitCode, out_task.Result or u"", err_task.Result or u""
@@ -172,8 +173,8 @@ def post_json(url, headers, body, tick=None, timeout_seconds=TIMEOUT_SECONDS):
             raise Cancelled()
         if waited_ms >= timeout_seconds * 1000 + 5000:
             _abort(req)
-            raise AIError(u"Сервис не ответил за {} мин. — запрос прерван.\n"
-                          u"Попробуйте ещё раз или уменьшите период.".format(timeout_seconds // 60))
+            raise AIError(tr(u"Сервис не ответил за {} мин. — запрос прерван.\n"
+                          u"Попробуйте ещё раз или уменьшите период.").format(timeout_seconds // 60))
     return result.get("status"), result.get("text") or u""
 
 

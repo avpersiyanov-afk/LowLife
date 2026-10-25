@@ -28,6 +28,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import tr
 import json
 
 from lowlife import email_ai_net
@@ -74,28 +75,28 @@ def _classify_failure(text):
     if any(k in low for k in (u"not logged in", u"/login", u"please run", u"invalid api key",
                               u"authentication", u"unauthorized", u"oauth", u"http 401")):
         return AIError(
-            u"Claude Code не залогинен (или вход устарел).\n\n"
+            tr(u"Claude Code не залогинен (или вход устарел).\n\n"
             u"Откройте командную строку, запустите `claude` и выполните /login, "
-            u"затем повторите.", fatal=True, details=text)
+            u"затем повторите."), fatal=True, details=text)
     if any(k in low for k in (u"usage limit", u"rate limit", u"limit reached", u"hit your limit",
                               u"limit will reset", u"http 429", u"quota")):
         return AIError(
-            u"Claude упёрся в лимит использования подписки.\n\n"
+            tr(u"Claude упёрся в лимит использования подписки.\n\n"
             u"Подождите, пока лимит сбросится (время сброса — в тексте ниже), "
-            u"или уменьшите период в настройках.", fatal=True, details=text)
+            u"или уменьшите период в настройках."), fatal=True, details=text)
     if u"unknown option" in low or u"error: option" in low:
         return AIError(
-            u"Установленная версия Claude Code не поддерживает нужные флаги.\n\n"
-            u"Обновите её: `claude update` в командной строке.", fatal=True, details=text)
+            tr(u"Установленная версия Claude Code не поддерживает нужные флаги.\n\n"
+            u"Обновите её: `claude update` в командной строке."), fatal=True, details=text)
     if u"selected model" in low or u"unrecognized_model" in low or u"model not found" in low:
         return AIError(
-            u"Модель недоступна или указана с ошибкой.\n\n"
+            tr(u"Модель недоступна или указана с ошибкой.\n\n"
             u"Проверьте поле «Модель» в настройках (Shift+клик): например "
-            u"sonnet, opus или haiku.", fatal=True, details=text)
+            u"sonnet, opus или haiku."), fatal=True, details=text)
     if u"overloaded" in low or u"http 529" in low:
-        return AIError(u"Сервис Claude перегружен — попробуйте чуть позже.",
+        return AIError(tr(u"Сервис Claude перегружен — попробуйте чуть позже."),
                        fatal=True, details=text)
-    return AIError(u"Claude вернул ошибку.", fatal=False, details=text)
+    return AIError(tr(u"Claude вернул ошибку."), fatal=False, details=text)
 
 
 def _parse_cli_json(stdout):
@@ -131,19 +132,19 @@ def run_claude(claude_path, model, request_text, tick=None, timeout_seconds=TIME
     result = _parse_cli_json(stdout)
     if result is None:
         if exit_code != 0 or stderr.strip():
-            raise _classify_failure(u"код выхода {}\n{}\n{}".format(
+            raise _classify_failure(tr(u"код выхода {}\n{}\n{}").format(
                 exit_code, stderr.strip(), stdout.strip()).strip())
-        raise AIError(u"claude ничего не вернул (код выхода {}).".format(exit_code))
+        raise AIError(tr(u"claude ничего не вернул (код выхода {}).").format(exit_code))
 
     if result.get("is_error") or exit_code != 0:
         text = u"{}\n{}".format(result.get("result") or u"", stderr).strip()
         if result.get("api_error_status"):
             text = u"HTTP {}: {}".format(result.get("api_error_status"), text)
         if result.get("subtype") == u"error_max_turns":
-            text = u"error_max_turns: модель попыталась сделать больше одного хода.\n" + text
-        raise _classify_failure(text or u"код выхода {}".format(exit_code))
+            text = tr(u"error_max_turns: модель попыталась сделать больше одного хода.\n") + text
+        raise _classify_failure(text or tr(u"код выхода {}").format(exit_code))
 
     answer = result.get("result")
     if not answer:
-        raise AIError(u"В ответе claude нет текста (поле result пустое).", details=stdout)
+        raise AIError(tr(u"В ответе claude нет текста (поле result пустое)."), details=stdout)
     return unicode(answer)

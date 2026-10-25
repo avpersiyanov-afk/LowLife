@@ -13,6 +13,7 @@ Revit): колонки и статусы — email_tasks_core, скрытый л
 """
 
 import datetime
+from lowlife.i18n import tr
 import os
 
 from lowlife.email_tasks_core import (
@@ -156,18 +157,18 @@ def save_tasks(rows, path, open_file=True):
     try:
         import openpyxl  # noqa: F401
     except ImportError:
-        raise ExcelError(u"Не найден модуль openpyxl — без него Excel-файл не записать.")
+        raise ExcelError(tr(u"Не найден модуль openpyxl — без него Excel-файл не записать."))
     try:
         build_workbook(rows).save(path)
     except Exception as ex:
-        raise ExcelError(u"Не удалось сохранить Excel:\n{}\n\n{}".format(path, ex))
+        raise ExcelError(tr(u"Не удалось сохранить Excel:\n{}\n\n{}").format(path, ex))
 
     warnings = []
     if open_file:
         try:
             open_path(path)
         except Exception as ex:
-            warnings.append(u"Файл сохранён, но не открылся: {}".format(ex))
+            warnings.append(tr(u"Файл сохранён, но не открылся: {}").format(ex))
     return warnings
 
 

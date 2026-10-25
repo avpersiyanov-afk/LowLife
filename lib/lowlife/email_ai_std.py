@@ -13,6 +13,7 @@ True — процесс убивается (вместе с дочерними) 
 """
 
 import json
+from lowlife.i18n import tr
 import os
 import subprocess
 import threading
@@ -65,7 +66,7 @@ def run_process(exe_path, args, stdin_text, name, tick=None, timeout_seconds=TIM
         proc = subprocess.Popen(cmd, cwd=work_dir(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, creationflags=flags)
     except Exception as ex:
-        raise AIError(u"Не удалось запустить {}:\n{}\n\n{}".format(name, exe_path, ex), fatal=True)
+        raise AIError(tr(u"Не удалось запустить {}:\n{}\n\n{}").format(name, exe_path, ex), fatal=True)
 
     result = {}
 
@@ -82,12 +83,12 @@ def run_process(exe_path, args, stdin_text, name, tick=None, timeout_seconds=TIM
     thread.start()
 
     def timeout():
-        raise AIError(u"{} не ответил за {} мин. — вызов прерван.\n"
-                      u"Попробуйте ещё раз или уменьшите период.".format(name, timeout_seconds // 60))
+        raise AIError(tr(u"{} не ответил за {} мин. — вызов прерван.\n"
+                      u"Попробуйте ещё раз или уменьшите период.").format(name, timeout_seconds // 60))
 
     _wait(thread, tick, timeout_seconds, lambda: _kill(proc), timeout)
     if "error" in result:
-        raise AIError(u"Ошибка обмена данными с {}:\n{}".format(name, result["error"]))
+        raise AIError(tr(u"Ошибка обмена данными с {}:\n{}").format(name, result["error"]))
     return (proc.returncode, _decode(result.get("out")), _decode(result.get("err")))
 
 
@@ -156,8 +157,8 @@ def post_json(url, headers, body, tick=None, timeout_seconds=TIMEOUT_SECONDS):
     thread.start()
 
     def timeout():
-        raise AIError(u"Сервис не ответил за {} мин. — запрос прерван.\n"
-                      u"Попробуйте ещё раз или уменьшите период.".format(timeout_seconds // 60))
+        raise AIError(tr(u"Сервис не ответил за {} мин. — запрос прерван.\n"
+                      u"Попробуйте ещё раз или уменьшите период.").format(timeout_seconds // 60))
 
     _wait(thread, tick, timeout_seconds + 5, lambda: None, timeout)
     return result.get("status"), result.get("text") or u""

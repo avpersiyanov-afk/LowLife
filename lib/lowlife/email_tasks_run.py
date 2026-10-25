@@ -22,14 +22,15 @@ except NameError:  # Python 3
 
 
 import datetime
+from lowlife.i18n import tr, N_
 import io
 import os
 
 from lowlife import email_ai, email_outlook
 from lowlife import email_tasks_core as core
 
-TABLE_COLUMNS = [u"№", u"Задача", u"Кто просит", u"Срок", u"Приоритет",
-                 u"Комментарий", u"Тема письма", u"Дата письма"]
+TABLE_COLUMNS = [u"№", N_(u"Задача"), N_(u"Кто просит"), N_(u"Срок"), N_(u"Приоритет"),
+                 N_(u"Комментарий"), N_(u"Тема письма"), N_(u"Дата письма")]
 
 
 class RunResult(object):
@@ -48,11 +49,11 @@ class RunResult(object):
 
     @property
     def no_emails_text(self):
-        return u"Нет писем за период ({}) в папке:\n{}".format(
-            self.period, self.folder_name or u"Входящие")
+        return tr(u"Нет писем за период ({}) в папке:\n{}").format(
+            self.period, self.folder_name or tr(u"Входящие"))
 
     def describe(self, engine):
-        return u"Папка: {}, писем разобрано: {}, задач найдено: {}. ИИ: {}.".format(
+        return tr(u"Папка: {}, писем разобрано: {}, задач найдено: {}. ИИ: {}.").format(
             self.folder_name, len(self.emails), len(self.rows), engine.description)
 
 
@@ -85,8 +86,8 @@ def run(settings, prompt_text, engine, progress, excel, test_emails_file=None, t
     """Весь разбор; возвращает RunResult. Исключения чтения/ИИ/Excel
     превращаются в поля результата, чтобы окно прогресса закрылось штатно."""
     result = RunResult()
-    extra = u", только непрочитанные" if settings["unread_only"] else u""
-    result.period = u"{} дн.{}".format(settings["days"], extra)
+    extra = tr(u", только непрочитанные") if settings["unread_only"] else u""
+    result.period = tr(u"{} дн.{}").format(settings["days"], extra)
     today = today or datetime.date.today()
 
     _read(settings, progress, result, test_emails_file)
@@ -95,7 +96,7 @@ def run(settings, prompt_text, engine, progress, excel, test_emails_file=None, t
 
     result.rows = core.sort_rows([r for r in result.rows if r["task"]])
     if result.rows and not result.fatal_error and not result.cancelled:
-        progress.title(u"Сохранение в Excel…")
+        progress.title(tr(u"Сохранение в Excel…"))
         progress.busy()
         progress.cancelled()
         try:
@@ -105,26 +106,26 @@ def run(settings, prompt_text, engine, progress, excel, test_emails_file=None, t
             result.excel_error = ex.message
             result.excel_path = None
         except Exception as ex:
-            result.excel_error = u"Не удалось сохранить Excel: {}".format(ex)
+            result.excel_error = tr(u"Не удалось сохранить Excel: {}").format(ex)
             result.excel_path = None
     return result
 
 
 def _read(settings, progress, result, test_emails_file):
-    progress.title(u"Чтение почты…")
+    progress.title(tr(u"Чтение почты…"))
     progress.busy()
     progress.cancelled()
     if settings["test_mode"]:
-        result.folder_name = u"ТЕСТОВЫЙ РЕЖИМ: test_emails.json"
+        result.folder_name = tr(u"ТЕСТОВЫЙ РЕЖИМ: test_emails.json")
         try:
             result.emails = core.load_test_emails(test_emails_file)
         except Exception as ex:
-            result.fatal_error = u"Не удалось прочитать тестовые письма:\n{}\n\n{}".format(
+            result.fatal_error = tr(u"Не удалось прочитать тестовые письма:\n{}\n\n{}").format(
                 test_emails_file, ex)
         return
 
     def read_tick(count):
-        progress.title(u"Чтение почты… писем: " + unicode(count))
+        progress.title(tr(u"Чтение почты… писем: ") + unicode(count))
         return progress.cancelled()
 
     try:
@@ -136,7 +137,7 @@ def _read(settings, progress, result, test_emails_file):
     except email_outlook.OutlookError as ex:
         result.fatal_error = ex.message
     except Exception as ex:
-        result.fatal_error = u"Ошибка чтения почты из Outlook:\n{}".format(ex)
+        result.fatal_error = tr(u"Ошибка чтения почты из Outlook:\n{}").format(ex)
 
 
 def _analyze(prompt_text, engine, progress, result, today):
@@ -144,7 +145,7 @@ def _analyze(prompt_text, engine, progress, result, today):
     batches = core.make_batches(result.emails)
     total = len(batches)
     for part, batch in enumerate(batches, start=1):
-        progress.title(u"Анализ писем в {}: часть {} из {} (писем: {})".format(
+        progress.title(tr(u"Анализ писем в {}: часть {} из {} (писем: {})").format(
             engine.name, part, total, len(batch)))
         progress.progress(part - 1, total)
         progress.busy()
@@ -159,11 +160,11 @@ def _analyze(prompt_text, engine, progress, result, today):
         except email_ai.AIError as ex:
             text = ex.message
             if ex.details:
-                text += u"\n\nПодробности:\n" + ex.details[:1500]
+                text += tr(u"\n\nПодробности:\n") + ex.details[:1500]
             if ex.fatal:
                 result.fatal_error = text
                 return
-            result.batch_errors.append(u"Часть {} из {}: {}".format(part, total, text))
+            result.batch_errors.append(tr(u"Часть {} из {}: {}").format(part, total, text))
             continue
 
         try:
@@ -171,8 +172,8 @@ def _analyze(prompt_text, engine, progress, result, today):
         except core.ParseError as ex:
             raw_path = save_raw_answer(part, answer)
             result.batch_errors.append(
-                u"Часть {} из {}: не удалось разобрать ответ {} ({}). "
-                u"Ответ сохранён: {}".format(part, total, engine.name, ex, raw_path))
+                tr(u"Часть {} из {}: не удалось разобрать ответ {} ({}). "
+                u"Ответ сохранён: {}").format(part, total, engine.name, ex, raw_path))
             continue
         result.rows.extend(core.normalize_task(t, emails_by_id) for t in tasks)
 

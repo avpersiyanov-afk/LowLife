@@ -4,17 +4,19 @@
 та же, что у кнопки в Revit."""
 
 import datetime
+from lowlife.i18n import N_, tr
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from lowlife import email_ai, email_tasks_run, email_tasks_xlsx
+from lowlife import i18n
 from lowlife import email_tasks_settings_core as settings_core
 from lowlife.email_app_core import app_text
 
 import mail_settings_window
 
-TITLE = u"Задачи из почты"
+TITLE = N_(u"Задачи из почты")
 # Ширины колонок таблицы (TABLE_COLUMNS), в пикселях
 COLUMN_WIDTHS = [36, 360, 150, 80, 80, 220, 220, 115]
 
@@ -56,7 +58,7 @@ class MainWindow(object):
         self.excel_path = None
         self.rows = []
 
-        root.title(TITLE)
+        root.title(tr(TITLE))
         root.geometry(u"1180x680")
         root.minsize(760, 480)
         if icon_file and os.path.isfile(icon_file):
@@ -70,11 +72,12 @@ class MainWindow(object):
         outer = ttk.Frame(root, padding=12)
         outer.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(outer, text=TITLE, font=(u"Segoe UI", 14, u"bold")).pack(anchor=tk.W)
-        intro = ttk.Label(outer, foreground=u"gray", text=(
-            u"Разбирает «Входящие» классического Outlook и составляет список задач в Excel "
+        self.heading = ttk.Label(outer, text=tr(TITLE), font=(u"Segoe UI", 14, u"bold"))
+        self.heading.pack(anchor=tk.W)
+        self.intro_text = N_(u"Разбирает «Входящие» классического Outlook и составляет список задач в Excel "
             u"(Документы\\Задачи из почты). Почта только читается: ничего не отправляется, "
-            u"не помечается прочитанным и не перемещается."))
+            u"не помечается прочитанным и не перемещается.")
+        intro = self.intro = ttk.Label(outer, foreground=u"gray", text=tr(self.intro_text))
         intro.pack(anchor=tk.W, fill=tk.X, pady=(2, 8))
         intro.bind(u"<Configure>", lambda e: intro.configure(wraplength=max(e.width - 4, 200)))
 
@@ -83,19 +86,25 @@ class MainWindow(object):
 
         buttons = ttk.Frame(outer)
         buttons.pack(fill=tk.X, pady=(8, 6))
-        self.run_btn = ttk.Button(buttons, text=u"Разобрать почту", command=self.on_run)
+        self.run_btn = ttk.Button(buttons, text=tr(u"Разобрать почту"), command=self.on_run)
         self.run_btn.pack(side=tk.LEFT)
-        self.cancel_btn = ttk.Button(buttons, text=u"Отмена", command=self.on_cancel, state=tk.DISABLED)
+        self.cancel_btn = ttk.Button(buttons, text=tr(u"Отмена"), command=self.on_cancel, state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT, padx=(6, 0))
-        self.settings_btn = ttk.Button(buttons, text=u"Настройки", command=self.on_settings)
+        self.settings_btn = ttk.Button(buttons, text=tr(u"Настройки"), command=self.on_settings)
         self.settings_btn.pack(side=tk.LEFT, padx=(6, 0))
-        self.folder_btn = ttk.Button(buttons, text=u"Открыть папку", command=self.on_open_folder)
+        self.folder_btn = ttk.Button(buttons, text=tr(u"Открыть папку"), command=self.on_open_folder)
         self.folder_btn.pack(side=tk.RIGHT)
-        self.excel_btn = ttk.Button(buttons, text=u"Открыть Excel", command=self.on_open_excel,
+        self.excel_btn = ttk.Button(buttons, text=tr(u"Открыть Excel"), command=self.on_open_excel,
                                     state=tk.DISABLED)
         self.excel_btn.pack(side=tk.RIGHT, padx=(0, 6))
 
-        self.status = tk.StringVar(value=u"Готово к запуску.")
+        self.language = ttk.Combobox(buttons, state=u"readonly", width=10,
+                                     values=[i18n.LABELS[k] for k in i18n.LANGUAGES])
+        self.language.set(i18n.LABELS[i18n.current()])
+        self.language.pack(side=tk.LEFT, padx=(16, 0))
+        self.language.bind(u"<<ComboboxSelected>>", self.on_language)
+
+        self.status = tk.StringVar(value=tr(u"Готово к запуску."))
         ttk.Label(outer, textvariable=self.status).pack(anchor=tk.W)
         self.bar = ttk.Progressbar(outer, mode=u"determinate")
         self.bar.pack(fill=tk.X, pady=(2, 8))
@@ -107,7 +116,7 @@ class MainWindow(object):
         columns = [u"c{}".format(i) for i in range(len(email_tasks_run.TABLE_COLUMNS))]
         self.table = ttk.Treeview(table_frame, columns=columns, show=u"headings", selectmode=u"browse")
         for col, title, width in zip(columns, email_tasks_run.TABLE_COLUMNS, COLUMN_WIDTHS):
-            self.table.heading(col, text=title)
+            self.table.heading(col, text=tr(title))
             self.table.column(col, width=width, minwidth=30, stretch=(title == u"Задача"))
         scroll_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.table.yview)
         scroll_x = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=self.table.xview)
@@ -128,6 +137,26 @@ class MainWindow(object):
 
         self.refresh_summary()
 
+    def on_language(self, _event=None):
+        index = self.language.current()
+        if self.running or not 0 <= index < len(i18n.LANGUAGES):
+            return
+        i18n.save(i18n.LANGUAGES[index])
+        self.root.title(tr(TITLE))
+        self.heading.configure(text=tr(TITLE))
+        self.intro.configure(text=tr(self.intro_text))
+        for widget, caption in [
+            (self.run_btn, N_(u"Разобрать почту")), (self.cancel_btn, N_(u"Отмена")),
+            (self.settings_btn, N_(u"Настройки")), (self.folder_btn, N_(u"Открыть папку")),
+            (self.excel_btn, N_(u"Открыть Excel")),
+        ]:
+            widget.configure(text=tr(caption))
+        for i, caption in enumerate(email_tasks_run.TABLE_COLUMNS):
+            self.table.heading(u"c{}".format(i), text=tr(caption))
+        self.status.set(tr(u"Готово к запуску."))
+        self.refresh_summary()
+        self.on_select()
+
     # ------------------------------------------------------------ состояние
 
     def refresh_summary(self):
@@ -135,17 +164,18 @@ class MainWindow(object):
         try:
             ai_text = email_ai.prepare(settings).description
         except email_ai.AIError as ex:
-            ai_text = u"не настроен — " + app_text(ex.message).split(u"\n")[0]
-        source = (u"тестовые письма" if settings["test_mode"] else
-                  u"«Входящие»" + (u" / " + settings["subfolder"] if settings["subfolder"] else u""))
-        self.summary.set(u"Почта: {}, за {} дн.{}   •   ИИ: {}".format(
-            source, settings["days"], u", только непрочитанные" if settings["unread_only"] else u"",
+            ai_text = tr(u"не настроен — ") + app_text(ex.message).split(u"\n")[0]
+        source = (tr(u"тестовые письма") if settings["test_mode"] else
+                  tr(u"«Входящие»") + (u" / " + settings["subfolder"] if settings["subfolder"] else u""))
+        self.summary.set(tr(u"Почта: {}, за {} дн.{}   •   ИИ: {}").format(
+            source, settings["days"], tr(u", только непрочитанные") if settings["unread_only"] else u"",
             ai_text))
 
     def _set_running(self, running):
         self.running = running
         self.run_btn.configure(state=tk.DISABLED if running else tk.NORMAL)
         self.settings_btn.configure(state=tk.DISABLED if running else tk.NORMAL)
+        self.language.configure(state=tk.DISABLED if running else u"readonly")
         self.cancel_btn.configure(state=tk.NORMAL if running else tk.DISABLED)
         if not running:
             self.bar.stop()
@@ -168,12 +198,12 @@ class MainWindow(object):
         settings = settings_core.load()
         prompt_text = settings_core.effective_prompt(settings, self.default_prompt)
         if not prompt_text.strip():
-            messagebox.showerror(TITLE, u"Промпт пуст. Впишите промпт в настройках.", parent=self.root)
+            messagebox.showerror(tr(TITLE), tr(u"Промпт пуст. Впишите промпт в настройках."), parent=self.root)
             return
         try:
             engine = email_ai.prepare(settings)
         except email_ai.AIError as ex:
-            messagebox.showerror(TITLE, app_text(ex.message), parent=self.root)
+            messagebox.showerror(tr(TITLE), app_text(ex.message), parent=self.root)
             return
 
         self.cancel_requested = False
@@ -187,7 +217,7 @@ class MainWindow(object):
                                          email_tasks_xlsx, test_emails_file=self.test_emails_file)
         except Exception as ex:  # не должно случаться: run сам ловит ошибки шагов
             self._set_running(False)
-            messagebox.showerror(TITLE, u"Непредвиденная ошибка:\n{}".format(ex), parent=self.root)
+            messagebox.showerror(tr(TITLE), tr(u"Непредвиденная ошибка:\n{}").format(ex), parent=self.root)
             return
         self._set_running(False)
         if self.close_after_run:
@@ -197,16 +227,16 @@ class MainWindow(object):
 
     def _show_result(self, result, engine):
         if result.cancelled:
-            self.status.set(u"Отменено.")
+            self.status.set(tr(u"Отменено."))
             return
         if result.fatal_error:
-            self.status.set(u"Ошибка — разбор остановлен.")
+            self.status.set(tr(u"Ошибка — разбор остановлен."))
             self._show_text(app_text(result.fatal_error))
-            messagebox.showerror(TITLE, app_text(result.fatal_error), parent=self.root)
+            messagebox.showerror(tr(TITLE), app_text(result.fatal_error), parent=self.root)
             return
         if not result.emails:
-            self.status.set(u"Писем нет.")
-            messagebox.showinfo(TITLE, result.no_emails_text, parent=self.root)
+            self.status.set(tr(u"Писем нет."))
+            messagebox.showinfo(tr(TITLE), result.no_emails_text, parent=self.root)
             return
 
         self.rows = result.rows
@@ -218,24 +248,24 @@ class MainWindow(object):
         if result.read_warning:
             lines.append(u"⚠ " + result.read_warning)
         if not result.rows:
-            lines.append(u"Задач, требующих ваших действий, не найдено.")
+            lines.append(tr(u"Задач, требующих ваших действий, не найдено."))
         lines.extend(u"⚠ " + w for w in result.excel_warnings)
         if result.batch_errors:
-            lines.append(u"Ошибки:")
+            lines.append(tr(u"Ошибки:"))
             lines.extend(u"• " + app_text(e) for e in result.batch_errors)
         if result.excel_error:
             lines.append(u"⚠ " + result.excel_error)
         if result.excel_path:
             self.excel_path = result.excel_path
             self.excel_btn.configure(state=tk.NORMAL)
-            lines.append(u"Сохранено в Excel: {} (файл открыт).".format(result.excel_path))
+            lines.append(tr(u"Сохранено в Excel: {} (файл открыт).").format(result.excel_path))
         self._show_text(u"\n".join(lines))
 
         if result.batch_errors and not result.rows:
-            messagebox.showwarning(TITLE, u"Не удалось получить задачи:\n\n" + app_text(
+            messagebox.showwarning(tr(TITLE), tr(u"Не удалось получить задачи:\n\n") + app_text(
                 u"\n\n".join(result.batch_errors))[:3000], parent=self.root)
         elif result.excel_error:
-            messagebox.showwarning(TITLE, result.excel_error + u"\n\nСписок задач — в окне программы.",
+            messagebox.showwarning(tr(TITLE), result.excel_error + tr(u"\n\nСписок задач — в окне программы."),
                                    parent=self.root)
 
     def on_select(self, _event=None):
@@ -247,21 +277,21 @@ class MainWindow(object):
             return
         row = self.rows[index]
         parts = [
-            u"Задача: " + (row.get("task") or u""),
-            u"Кто просит: " + (row.get("requester") or u""),
-            u"Срок: " + (email_tasks_run.fmt_date(row.get("deadline")) or u"—"),
-            u"Приоритет: " + (row.get("priority") or u""),
+            tr(u"Задача: ") + (row.get("task") or u""),
+            tr(u"Кто просит: ") + (row.get("requester") or u""),
+            tr(u"Срок: ") + (email_tasks_run.fmt_date(row.get("deadline")) or u"—"),
+            tr(u"Приоритет: ") + (row.get("priority") or u""),
         ]
         if row.get("comment"):
-            parts.append(u"Комментарий: " + row["comment"])
-        parts.append(u"Письмо: «{}» от {}, {}".format(
+            parts.append(tr(u"Комментарий: ") + row["comment"])
+        parts.append(tr(u"Письмо: «{}» от {}, {}").format(
             row.get("subject") or u"", row.get("sender") or u"",
             email_tasks_run.fmt_date(row.get("received"), with_time=True)))
         self._show_text(u"\n".join(parts))
 
     def on_cancel(self):
         self.cancel_requested = True
-        self.status.set(u"Отмена…")
+        self.status.set(tr(u"Отмена…"))
 
     def on_settings(self):
         if mail_settings_window.edit(self.root, self.default_prompt):
@@ -275,7 +305,7 @@ class MainWindow(object):
         try:
             folder = os.path.dirname(email_tasks_xlsx.default_output_path())
         except Exception as ex:
-            messagebox.showerror(TITLE, u"Папка недоступна:\n{}".format(ex), parent=self.root)
+            messagebox.showerror(tr(TITLE), tr(u"Папка недоступна:\n{}").format(ex), parent=self.root)
             return
         self._open(folder)
 
@@ -283,13 +313,13 @@ class MainWindow(object):
         try:
             email_tasks_xlsx.open_path(path)
         except Exception as ex:
-            messagebox.showerror(TITLE, u"Не удалось открыть:\n{}\n\n{}".format(path, ex), parent=self.root)
+            messagebox.showerror(tr(TITLE), tr(u"Не удалось открыть:\n{}\n\n{}").format(path, ex), parent=self.root)
 
     def on_close(self):
         if self.running:
             # Разбор идёт внутри on_run — окно закроется, когда он остановится
             self.cancel_requested = True
             self.close_after_run = True
-            self.status.set(u"Отмена…")
+            self.status.set(tr(u"Отмена…"))
             return
         self.root.destroy()

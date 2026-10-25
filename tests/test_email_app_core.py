@@ -23,3 +23,13 @@ def test_app_text_has_no_shift_click():
     for source, expected in cases.items():
         assert email_app_core.app_text(source) == expected
     assert email_app_core.app_text(None) == u""
+
+
+def test_app_text_adapts_english_settings_instructions():
+    assert email_app_core.app_text(
+        u"Enter a key in the button settings (Shift+click).") == u"Enter a key in Settings."
+    assert email_app_core.app_text(
+        u"Check the key in settings (Shift+click the button).") == (
+            u"Check the key in settings (Settings button).")
+    assert email_app_core.app_text(u"Shift+clicking the button uses the Revit process.") == (
+        u"open Settings uses this application.")
