@@ -28,6 +28,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import tr
 import io
 import datetime
 
@@ -101,12 +102,12 @@ def _kick_watcher():
     try:
         from lowlife import export_watcher
     except Exception as exc:
-        return u"export_watcher НЕ ИМПОРТИРУЕТСЯ: {}".format(exc)
+        return tr(u"export_watcher НЕ ИМПОРТИРУЕТСЯ: {}").format(exc)
     try:
         export_watcher.ensure_installed()
-        return u"export_watcher.ensure_installed() выполнен"
+        return tr(u"export_watcher.ensure_installed() выполнен")
     except Exception as exc:
-        return u"export_watcher.ensure_installed() упал: {}".format(exc)
+        return tr(u"export_watcher.ensure_installed() упал: {}").format(exc)
 
 
 def arm():
@@ -121,8 +122,8 @@ def arm():
     try:
         cm = _component_manager()
     except Exception:
-        forms.alert(u"{}\n\nНе удалось подключить Autodesk.Windows "
-                    u"(AdWindows) — перехват команд недоступен.".format(kick))
+        forms.alert(tr(u"{}\n\nНе удалось подключить Autodesk.Windows "
+                    u"(AdWindows) — перехват команд недоступен.").format(kick))
         return
 
     _since_marker = 0
@@ -147,17 +148,17 @@ def arm():
         try:
             cm.ItemExecuted += _on_item_executed
         except Exception:
-            forms.alert(u"Не удалось подписаться на ComponentManager.ItemExecuted.")
+            forms.alert(tr(u"Не удалось подписаться на ComponentManager.ItemExecuted."))
             return
         _handler = _on_item_executed
         _subscribed = True
 
     forms.alert(
-        u"{}\n\n"
+        tr(u"{}\n\n"
         u"Перехват команд включён.\n\n"
         u"1. Нажми «Экспорт листов» в ModPlus, доведи экспорт до конца.\n"
         u"2. Вернись сюда, нажми эту кнопку с Shift — покажу лог и статус.\n\n"
-        u"Логи в {}".format(kick, os.path.dirname(_log_path())))
+        u"Логи в {}").format(kick, os.path.dirname(_log_path())))
 
 
 def _watcher_diag():
@@ -223,8 +224,8 @@ def _emit(text):
 
     if forms is not None:
         if path:
-            forms.alert(u"Отчёт открыт в Блокноте и сохранён:\n{}\n\n"
-                        u"Пришли этот файл (или его текст / скриншот).".format(path))
+            forms.alert(tr(u"Отчёт открыт в Блокноте и сохранён:\n{}\n\n"
+                        u"Пришли этот файл (или его текст / скриншот).").format(path))
         else:
             forms.alert(text)
 

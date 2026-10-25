@@ -55,6 +55,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import N_, tr
 import io
 import shutil
 import tempfile
@@ -129,10 +130,10 @@ _F_UPDATED_AT = "updated_at_iso"         # когда кнопка проста�
 STALE_TOLERANCE_SEC = 90
 
 # Статусы актуальности (assess_families / MatchRow.status).
-STATUS_STALE = u"устарело"
-STATUS_NO_STAMP = u"нет метки"
-STATUS_CURRENT = u"актуально"
-STATUS_NO_CATALOG = u"нет в каталоге"
+STATUS_STALE = N_(u"устарело")
+STATUS_NO_STAMP = N_(u"нет метки")
+STATUS_CURRENT = N_(u"актуально")
+STATUS_NO_CATALOG = N_(u"нет в каталоге")
 
 # Сигнал «вернуться на предыдущий шаг» из окна выбора типоразмеров.
 BACK = u"__back__"
@@ -280,7 +281,7 @@ def pick_catalog_root(current=None):
     """
     try:
         picked = forms.pick_folder(
-            title=u"Папка-каталог семейств (.rfa, включая подпапки)"
+            title=tr(u"Папка-каталог семейств (.rfa, включая подпапки)")
         )
     except TypeError:
         picked = forms.pick_folder()
@@ -912,7 +913,7 @@ def reload_family(doc, src_path, target_family_name, temp_dir, options):
         if os.path.isfile(src_txt):
             shutil.copyfile(src_txt, dst_txt)
     except Exception as ex:
-        return (u"error", u"копирование во временный файл: {}".format(ex), u"")
+        return (u"error", tr(u"копирование во временный файл: {}").format(ex), u"")
 
     # Совместная модель: одолжить существующее семейство из центральной,
     # иначе Document.LoadFamily молча вернёт False (не может ответить на
@@ -983,17 +984,17 @@ def rename_family(doc, family, new_name):
     try:
         new_name = unicode(new_name or u"").strip()
         if not new_name:
-            return (False, u"пустое имя файла")
+            return (False, tr(u"пустое имя файла"))
         if _safe_element_name(family) == new_name:
-            return (False, u"имя уже совпадает")
+            return (False, tr(u"имя уже совпадает"))
 
         existing = find_family_by_name(doc, new_name)
         if existing is not None and existing.Id != family.Id:
-            return (False, u"в проекте уже есть семейство «{}»".format(new_name))
+            return (False, tr(u"в проекте уже есть семейство «{}»").format(new_name))
 
         if _set_element_name(family, new_name):
             return (True, None)
-        return (False, u"Revit отклонил имя «{}»".format(new_name))
+        return (False, tr(u"Revit отклонил имя «{}»").format(new_name))
     except Exception as ex:
         return (False, u"{}".format(ex))
 
@@ -1123,7 +1124,7 @@ class _StatusRow(object):
 
     def _refresh(self):
         mr = self.mr
-        self.Status = mr.status
+        self.Status = tr(mr.status)
         self.ModelDate = (mr.stamp or {}).get("iso") or u"—"
         self.CatalogDate = (mr.entry.mtime_iso if mr.entry and mr.entry.mtime_iso else u"—")
         self.CatalogFile = mr.entry.rel if mr.entry else u"—"
@@ -1156,7 +1157,7 @@ def show_status_form(rows, catalog_root, entries):
     result = {"jobs": None, "rename": True, "overwrite": True}
 
     win = Window()
-    win.Title = u"Обновление/проверка семейств — актуальность и обновление"
+    win.Title = tr(u"Обновление/проверка семейств — актуальность и обновление")
     win.Width = 1120
     win.Height = 720
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -1169,19 +1170,19 @@ def show_status_form(rows, catalog_root, entries):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Актуальность семейств относительно каталога"
+    title.Text = tr(u"Актуальность семейств относительно каталога")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     info = TextBlock()
     info.Text = (
-        u"Каталог: {}\n"
+        tr(u"Каталог: {}\n"
         u"Устарели: {}   ·   без метки: {}   ·   нет в каталоге: {}   ·   актуальны: {}\n"
         u"Красным — требуют обновления, оранжевым — без метки, зелёным — актуальны. "
         u"Клик по заголовку — сортировка. Двойной клик по строке или «Файл…» — "
         u"выбрать другой файл каталога. Отметьте, что обновить, и нажмите "
-        u"«Обновить отмеченные»; чтобы просто посмотреть — закройте окно.".format(
+        u"«Обновить отмеченные»; чтобы просто посмотреть — закройте окно.").format(
             catalog_root,
             counts.get(STATUS_STALE, 0), counts.get(STATUS_NO_STAMP, 0),
             counts.get(STATUS_NO_CATALOG, 0), counts.get(STATUS_CURRENT, 0)
@@ -1205,26 +1206,26 @@ def show_status_form(rows, catalog_root, entries):
     grid.IsReadOnly = False
     grid.ItemsSource = data
 
-    grid.Columns.Add(_check_col(u"Обновить"))
-    grid.Columns.Add(_text_col(u"Семейство", "FamilyName", _star(3)))
-    grid.Columns.Add(_text_col(u"Категория", "Category", _star(2)))
-    grid.Columns.Add(_text_col(u"Статус", "Status"))
-    grid.Columns.Add(_text_col(u"Дата в модели", "ModelDate"))
-    grid.Columns.Add(_text_col(u"Дата в каталоге", "CatalogDate"))
-    grid.Columns.Add(_text_col(u"Файл каталога", "CatalogFile", _star(3)))
-    grid.Columns.Add(_text_col(u"Похожесть", "ScoreText", sort_path="Score"))
+    grid.Columns.Add(_check_col(tr(u"Обновить")))
+    grid.Columns.Add(_text_col(tr(u"Семейство"), "FamilyName", _star(3)))
+    grid.Columns.Add(_text_col(tr(u"Категория"), "Category", _star(2)))
+    grid.Columns.Add(_text_col(tr(u"Статус"), "Status"))
+    grid.Columns.Add(_text_col(tr(u"Дата в модели"), "ModelDate"))
+    grid.Columns.Add(_text_col(tr(u"Дата в каталоге"), "CatalogDate"))
+    grid.Columns.Add(_text_col(tr(u"Файл каталога"), "CatalogFile", _star(3)))
+    grid.Columns.Add(_text_col(tr(u"Похожесть"), "ScoreText", sort_path="Score"))
 
-    _attach_row_coloring(grid, lambda it: _status_brush(it.Status))
+    _attach_row_coloring(grid, lambda it: _status_brush(it.mr.status))
     _attach_datagrid_sorting(grid, data)
 
     def _choose_file(row):
         if row is None:
-            forms.alert(u"Сначала выделите строку в таблице.")
+            forms.alert(tr(u"Сначала выделите строку в таблице."))
             return
         sel = select_list.SelectFromList.show(
             entry_options,
-            title=u"Файл каталога для «{}»".format(row.mr.family_name),
-            button_name=u"Выбрать",
+            title=tr(u"Файл каталога для «{}»").format(row.mr.family_name),
+            button_name=tr(u"Выбрать"),
             multiselect=False
         )
         if not sel:
@@ -1248,8 +1249,8 @@ def show_status_form(rows, catalog_root, entries):
 
     overwrite_cb = CheckBox()
     overwrite_cb.Content = (
-        u"Заменять значения параметров типоразмеров из файла каталога "
-        u"(в браузере — «Перезаписать существующую версию и значения параметров»)"
+        tr(u"Заменять значения параметров типоразмеров из файла каталога "
+        u"(в браузере — «Перезаписать существующую версию и значения параметров»)")
     )
     overwrite_cb.IsChecked = True
     overwrite_cb.Margin = Thickness(0, 0, 0, 6)
@@ -1257,7 +1258,7 @@ def show_status_form(rows, catalog_root, entries):
 
     rename_cb = CheckBox()
     rename_cb.Content = (
-        u"Переименовывать семейство модели по имени файла каталога, если они различаются"
+        tr(u"Переименовывать семейство модели по имени файла каталога, если они различаются")
     )
     rename_cb.IsChecked = True
     rename_cb.Margin = Thickness(0, 0, 0, 8)
@@ -1278,13 +1279,13 @@ def show_status_form(rows, catalog_root, entries):
         grid.Items.Refresh()
 
     file_btn = Button()
-    file_btn.Content = u"Файл…"
+    file_btn.Content = tr(u"Файл…")
     file_btn.Padding = Thickness(10, 4, 10, 4)
     file_btn.Margin = Thickness(0, 0, 8, 0)
     file_btn.Click += lambda s, a: _choose_file(grid.SelectedItem)
 
     sel_stale_btn = Button()
-    sel_stale_btn.Content = u"Отметить требующие обновления"
+    sel_stale_btn.Content = tr(u"Отметить требующие обновления")
     sel_stale_btn.Padding = Thickness(10, 4, 10, 4)
     sel_stale_btn.Margin = Thickness(0, 0, 8, 0)
     sel_stale_btn.Click += lambda s, a: _select_where(
@@ -1292,18 +1293,18 @@ def show_status_form(rows, catalog_root, entries):
     )
 
     sel_none_btn = Button()
-    sel_none_btn.Content = u"Снять все"
+    sel_none_btn.Content = tr(u"Снять все")
     sel_none_btn.Padding = Thickness(10, 4, 10, 4)
     sel_none_btn.Margin = Thickness(0, 0, 8, 0)
     sel_none_btn.Click += lambda s, a: _select_where(lambda r: False)
 
     close_btn = Button()
-    close_btn.Content = u"Закрыть"
+    close_btn.Content = tr(u"Закрыть")
     close_btn.Padding = Thickness(10, 4, 10, 4)
     close_btn.Margin = Thickness(0, 0, 8, 0)
 
     run_btn = Button()
-    run_btn.Content = u"Обновить отмеченные"
+    run_btn.Content = tr(u"Обновить отмеченные")
     run_btn.Padding = Thickness(10, 4, 10, 4)
     run_btn.FontWeight = FontWeights.Bold
 
@@ -1324,7 +1325,7 @@ def show_status_form(rows, catalog_root, entries):
                 row.mr.entry.name,
             ))
         if not jobs:
-            forms.alert(u"Не отмечено ни одного семейства с файлом в каталоге.")
+            forms.alert(tr(u"Не отмечено ни одного семейства с файлом в каталоге."))
             return
         result["jobs"] = jobs
         result["rename"] = bool(rename_cb.IsChecked)
@@ -1451,51 +1452,51 @@ def render_result_md(output, result):
     sf = result["stamp_failed"]
 
     if up:
-        output.print_md(u"### Обновлены семейства ({})".format(len(up)))
+        output.print_md(tr(u"### Обновлены семейства ({})").format(len(up)))
         output.print_md(u"\n".join(
-            u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in up
+            tr(u"- **{}**  ←  `{}`  _(файл {})_").format(n, d, i or u"?") for n, d, i in up
         ))
     if rn:
-        output.print_md(u"### Переименованы по файлу каталога ({})".format(len(rn)))
+        output.print_md(tr(u"### Переименованы по файлу каталога ({})").format(len(rn)))
         output.print_md(u"\n".join(u"- «{}»  →  «{}»".format(a, b) for a, b in rn))
     if ch:
-        output.print_md(u"### Без изменений — содержимое совпадает ({})".format(len(ch)))
+        output.print_md(tr(u"### Без изменений — содержимое совпадает ({})").format(len(ch)))
         output.print_md(u"\n".join(
-            u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in ch
+            tr(u"- **{}**  ←  `{}`  _(файл {})_").format(n, d, i or u"?") for n, d, i in ch
         ))
     if fl:
-        output.print_md(u"### Не удалось загрузить ({})".format(len(fl)))
+        output.print_md(tr(u"### Не удалось загрузить ({})").format(len(fl)))
         output.print_md(u"\n".join(
             u"- **{}**  ←  `{}` — {}".format(n, d, e) for n, d, e in fl
         ))
     if rf:
-        output.print_md(u"### Обновлены, но не переименованы ({})".format(len(rf)))
+        output.print_md(tr(u"### Обновлены, но не переименованы ({})").format(len(rf)))
         output.print_md(u"\n".join(
             u"- «{}»  →  «{}» — {}".format(a, b, e) for a, b, e in rf
         ))
     if sf:
-        output.print_md(u"### Метку даты записать не удалось ({})\n{}".format(
+        output.print_md(tr(u"### Метку даты записать не удалось ({})\n{}").format(
             len(sf), u"\n".join(u"- {}".format(x) for x in sf)
         ))
     dbg = result.get("debug")
     if dbg:
-        output.print_md(u"### Диагностика LoadFamily")
+        output.print_md(tr(u"### Диагностика LoadFamily"))
         output.print_md(u"\n".join(u"- {}".format(x) for x in dbg))
 
 
 def result_summary_lines(result):
     """Короткая сводка apply_updates для forms.alert."""
-    lines = [u"Обновлено: {}".format(len(result["updated"]))]
+    lines = [tr(u"Обновлено: {}").format(len(result["updated"]))]
     if result["renamed"]:
-        lines.append(u"Переименовано: {}".format(len(result["renamed"])))
+        lines.append(tr(u"Переименовано: {}").format(len(result["renamed"])))
     if result["unchanged"]:
-        lines.append(u"Без изменений: {}".format(len(result["unchanged"])))
+        lines.append(tr(u"Без изменений: {}").format(len(result["unchanged"])))
     if result["failed"]:
-        lines.append(u"Ошибок загрузки: {}".format(len(result["failed"])))
+        lines.append(tr(u"Ошибок загрузки: {}").format(len(result["failed"])))
     if result["rename_failed"]:
-        lines.append(u"Не переименовано: {}".format(len(result["rename_failed"])))
+        lines.append(tr(u"Не переименовано: {}").format(len(result["rename_failed"])))
     if result["stamp_failed"]:
-        lines.append(u"Без метки даты: {}".format(len(result["stamp_failed"])))
+        lines.append(tr(u"Без метки даты: {}").format(len(result["stamp_failed"])))
     return lines
 
 
@@ -1511,7 +1512,7 @@ class _LoadRow(object):
         self.FileName = entry.name
         self.Folder = os.path.dirname(entry.rel) or u"."
         self.InModel = bool(in_model)
-        self.InModelText = u"да" if in_model else u"нет"
+        self.InModelText = tr(u"да") if in_model else tr(u"нет")
         self.CatalogDate = entry.mtime_iso or u"—"
         self.Selected = not in_model
 
@@ -1534,7 +1535,7 @@ def show_load_form(entries, present_names, catalog_root):
     result = {"entries": None, "overwrite": True}
 
     win = Window()
-    win.Title = u"Загрузка семейств из каталога"
+    win.Title = tr(u"Загрузка семейств из каталога")
     win.Width = 1000
     win.Height = 720
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -1547,18 +1548,18 @@ def show_load_form(entries, present_names, catalog_root):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Загрузить семейства из каталога в модель"
+    title.Text = tr(u"Загрузить семейства из каталога в модель")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     info = TextBlock()
     info.Text = (
-        u"Каталог: {}\n"
+        tr(u"Каталог: {}\n"
         u"Файлов: {}   ·   новых (нет в модели): {}   ·   уже в модели: {}\n"
         u"Зелёным — новые, серым — уже загружены (будут перезагружены с заменой "
         u"параметров). Клик по заголовку — сортировка. Отметьте нужные и нажмите "
-        u"«Загрузить отмеченные».".format(
+        u"«Загрузить отмеченные».").format(
             catalog_root, len(entries), n_new, len(entries) - n_new
         )
     )
@@ -1580,11 +1581,11 @@ def show_load_form(entries, present_names, catalog_root):
     grid.IsReadOnly = False
     grid.ItemsSource = data
 
-    grid.Columns.Add(_check_col(u"Загрузить"))
-    grid.Columns.Add(_text_col(u"Файл", "FileName", _star(3)))
-    grid.Columns.Add(_text_col(u"Папка", "Folder", _star(2)))
-    grid.Columns.Add(_text_col(u"В модели", "InModelText", sort_path="InModel"))
-    grid.Columns.Add(_text_col(u"Дата файла", "CatalogDate"))
+    grid.Columns.Add(_check_col(tr(u"Загрузить")))
+    grid.Columns.Add(_text_col(tr(u"Файл"), "FileName", _star(3)))
+    grid.Columns.Add(_text_col(tr(u"Папка"), "Folder", _star(2)))
+    grid.Columns.Add(_text_col(tr(u"В модели"), "InModelText", sort_path="InModel"))
+    grid.Columns.Add(_text_col(tr(u"Дата файла"), "CatalogDate"))
 
     _attach_row_coloring(grid, lambda it: Brushes.Gray if it.InModel else Brushes.Green)
     _attach_datagrid_sorting(grid, data)
@@ -1595,8 +1596,8 @@ def show_load_form(entries, present_names, catalog_root):
 
     overwrite_cb = CheckBox()
     overwrite_cb.Content = (
-        u"Для уже присутствующих в модели — заменять значения параметров типоразмеров "
-        u"из файла каталога (для новых семейств роли не играет)"
+        tr(u"Для уже присутствующих в модели — заменять значения параметров типоразмеров "
+        u"из файла каталога (для новых семейств роли не играет)")
     )
     overwrite_cb.IsChecked = True
     overwrite_cb.Margin = Thickness(0, 0, 0, 8)
@@ -1617,30 +1618,30 @@ def show_load_form(entries, present_names, catalog_root):
         grid.Items.Refresh()
 
     sel_new_btn = Button()
-    sel_new_btn.Content = u"Отметить новые"
+    sel_new_btn.Content = tr(u"Отметить новые")
     sel_new_btn.Padding = Thickness(10, 4, 10, 4)
     sel_new_btn.Margin = Thickness(0, 0, 8, 0)
     sel_new_btn.Click += lambda s, a: _select_where(lambda r: not r.InModel)
 
     sel_all_btn = Button()
-    sel_all_btn.Content = u"Отметить все"
+    sel_all_btn.Content = tr(u"Отметить все")
     sel_all_btn.Padding = Thickness(10, 4, 10, 4)
     sel_all_btn.Margin = Thickness(0, 0, 8, 0)
     sel_all_btn.Click += lambda s, a: _select_where(lambda r: True)
 
     sel_none_btn = Button()
-    sel_none_btn.Content = u"Снять все"
+    sel_none_btn.Content = tr(u"Снять все")
     sel_none_btn.Padding = Thickness(10, 4, 10, 4)
     sel_none_btn.Margin = Thickness(0, 0, 8, 0)
     sel_none_btn.Click += lambda s, a: _select_where(lambda r: False)
 
     close_btn = Button()
-    close_btn.Content = u"Закрыть"
+    close_btn.Content = tr(u"Закрыть")
     close_btn.Padding = Thickness(10, 4, 10, 4)
     close_btn.Margin = Thickness(0, 0, 8, 0)
 
     run_btn = Button()
-    run_btn.Content = u"Загрузить отмеченные"
+    run_btn.Content = tr(u"Загрузить отмеченные")
     run_btn.Padding = Thickness(10, 4, 10, 4)
     run_btn.FontWeight = FontWeights.Bold
 
@@ -1651,7 +1652,7 @@ def show_load_form(entries, present_names, catalog_root):
             pass
         picked = [row.entry for row in data if row.Selected]
         if not picked:
-            forms.alert(u"Не отмечено ни одного семейства.")
+            forms.alert(tr(u"Не отмечено ни одного семейства."))
             return
         result["entries"] = picked
         result["overwrite"] = bool(overwrite_cb.IsChecked)
@@ -1711,7 +1712,7 @@ def show_type_picker(type_map):
     result = {"map": None}
 
     win = Window()
-    win.Title = u"Выбор типоразмеров для загрузки"
+    win.Title = tr(u"Выбор типоразмеров для загрузки")
     win.Width = 820
     win.Height = 640
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -1724,16 +1725,16 @@ def show_type_picker(type_map):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Отметьте типоразмеры для загрузки в модель"
+    title.Text = tr(u"Отметьте типоразмеры для загрузки в модель")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     info = TextBlock()
     info.Text = (
-        u"Семейств: {}   ·   типоразмеров всего: {}\n"
+        tr(u"Семейств: {}   ·   типоразмеров всего: {}\n"
         u"Снятые типоразмеры не загружаются. Если у семейства отмечены все "
-        u"типоразмеры — оно грузится целиком.".format(len(type_map), data.Count)
+        u"типоразмеры — оно грузится целиком.").format(len(type_map), data.Count)
     )
     info.FontSize = 11
     info.Foreground = Brushes.Gray
@@ -1753,9 +1754,9 @@ def show_type_picker(type_map):
     grid.IsReadOnly = False
     grid.ItemsSource = data
 
-    grid.Columns.Add(_check_col(u"Загрузить"))
-    grid.Columns.Add(_text_col(u"Семейство", "FamilyName", _star(2)))
-    grid.Columns.Add(_text_col(u"Типоразмер", "TypeName", _star(3)))
+    grid.Columns.Add(_check_col(tr(u"Загрузить")))
+    grid.Columns.Add(_text_col(tr(u"Семейство"), "FamilyName", _star(2)))
+    grid.Columns.Add(_text_col(tr(u"Типоразмер"), "TypeName", _star(3)))
 
     _attach_datagrid_sorting(grid, data)
 
@@ -1778,29 +1779,29 @@ def show_type_picker(type_map):
         grid.Items.Refresh()
 
     all_btn = Button()
-    all_btn.Content = u"Отметить все"
+    all_btn.Content = tr(u"Отметить все")
     all_btn.Padding = Thickness(10, 4, 10, 4)
     all_btn.Margin = Thickness(0, 0, 8, 0)
     all_btn.Click += lambda s, a: _select_all(True)
 
     none_btn = Button()
-    none_btn.Content = u"Снять все"
+    none_btn.Content = tr(u"Снять все")
     none_btn.Padding = Thickness(10, 4, 10, 4)
     none_btn.Margin = Thickness(0, 0, 8, 0)
     none_btn.Click += lambda s, a: _select_all(False)
 
     back_btn = Button()
-    back_btn.Content = u"← Назад"
+    back_btn.Content = tr(u"← Назад")
     back_btn.Padding = Thickness(10, 4, 10, 4)
     back_btn.Margin = Thickness(0, 0, 8, 0)
 
     close_btn = Button()
-    close_btn.Content = u"Закрыть"
+    close_btn.Content = tr(u"Закрыть")
     close_btn.Padding = Thickness(10, 4, 10, 4)
     close_btn.Margin = Thickness(0, 0, 8, 0)
 
     run_btn = Button()
-    run_btn.Content = u"Загрузить отмеченные"
+    run_btn.Content = tr(u"Загрузить отмеченные")
     run_btn.Padding = Thickness(10, 4, 10, 4)
     run_btn.FontWeight = FontWeights.Bold
 
@@ -1814,7 +1815,7 @@ def show_type_picker(type_map):
             if row.Selected:
                 picked.setdefault(row.entry, set()).add(row.TypeName)
         if not picked:
-            forms.alert(u"Не отмечено ни одного типоразмера.")
+            forms.alert(tr(u"Не отмечено ни одного типоразмера."))
             return
         result["map"] = picked
         win.Close()
@@ -1961,7 +1962,7 @@ def _load_symbol(doc, rfa_path, type_name, options):
         ok = bool(res[0]) if res else False
     else:
         ok = bool(res)
-    return (ok, None if ok else u"LoadFamilySymbol вернул False")
+    return (ok, None if ok else tr(u"LoadFamilySymbol вернул False"))
 
 
 def _family_has_symbol(doc, family_name, type_name):
@@ -1990,14 +1991,14 @@ def _compact_symbol_errors(failed):
         return []
     reasons = set(r for _n, r in failed)
     if len(reasons) == 1:
-        out = [u"{} (типов: {}, напр. «{}»)".format(
+        out = [tr(u"{} (типов: {}, напр. «{}»)").format(
             failed[0][1], len(failed), failed[0][0]
         )]
     else:
         out = [u"«{}»: {}".format(n, r) for n, r in failed]
     bad = _invalid_name_chars(u"".join(n for n, _r in failed))
     if bad:
-        out.append(u"в именах типов есть символы, запрещённые Revit: {}".format(
+        out.append(tr(u"в именах типов есть символы, запрещённые Revit: {}").format(
             u" ".join(bad)
         ))
     return out
@@ -2031,7 +2032,7 @@ def load_catalog_symbols(doc, rfa_path, family_name, type_names, options):
                 if ok or _family_has_symbol(doc, family_name, tn):
                     ok_n += 1
                 else:
-                    failed.append((tn, err or u"тип не появился в модели"))
+                    failed.append((tn, err or tr(u"тип не появился в модели")))
             if ok_n:
                 t.Commit()
             else:
@@ -2055,13 +2056,13 @@ def load_catalog_symbols(doc, rfa_path, family_name, type_names, options):
         dst = os.path.join(tmp, os.path.basename(rfa_path))
         shutil.copyfile(rfa_path, dst)
         if not _write_utf16_catalog(src_txt, os.path.splitext(dst)[0] + u".txt"):
-            return n_ok, errs + [u"не удалось перекодировать каталог в UTF-16"]
+            return n_ok, errs + [tr(u"не удалось перекодировать каталог в UTF-16")]
         n2, errs2 = _try(dst)
         if n2:
             return n2, errs2
-        return n_ok, errs + [u"повтор с каталогом в UTF-16 тоже не помог"]
+        return n_ok, errs + [tr(u"повтор с каталогом в UTF-16 тоже не помог")]
     except Exception as ex:
-        return n_ok, errs + [u"повтор через временную копию: {}".format(ex)]
+        return n_ok, errs + [tr(u"повтор через временную копию: {}").format(ex)]
     finally:
         if tmp:
             try:
@@ -2118,7 +2119,7 @@ def read_family_types_batch(app, load_entries):
     passthru = []
     try:
         with forms.ProgressBar(
-            title=u"Чтение типоразмеров… ({value}/{max_value})"
+            title=tr(u"Чтение типоразмеров… ({value}/{max_value})")
         ) as pb:
             for i, e in enumerate(load_entries):
                 names = read_family_type_names(app, e.path)
@@ -2191,7 +2192,7 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
                 if not n_ok:
                     result["failed"].append((
                         e.name, e.rel,
-                        u"типы из каталога не загрузились: {}".format(
+                        tr(u"типы из каталога не загрузились: {}").format(
                             u"; ".join(errs) or u"?"
                         )
                     ))
@@ -2199,7 +2200,7 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
                 if errs:
                     result["failed"].append((
                         e.name, e.rel,
-                        u"загружено {} из {} типоразмеров; не загрузились: {}".format(
+                        tr(u"загружено {} из {} типоразмеров; не загрузились: {}").format(
                             n_ok, len(want_types), u"; ".join(errs)
                         )
                     ))
@@ -2217,7 +2218,7 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
             continue
 
         if fam is None and not was_present:
-            result["failed"].append((e.name, e.rel, u"семейство не загрузилось"))
+            result["failed"].append((e.name, e.rel, tr(u"семейство не загрузилось")))
             continue
 
         done.append((e, fam, was_present, n_types))
@@ -2232,7 +2233,7 @@ def apply_loads(doc, jobs, present_names, overwrite_params=True):
     try:
         for e, fam, was_present, n_types in done:
             nm = (_safe_element_name(fam) if fam else None) or e.name
-            disp = e.rel if n_types is None else u"{} · типоразмеров: {}".format(e.rel, n_types)
+            disp = e.rel if n_types is None else tr(u"{} · типоразмеров: {}").format(e.rel, n_types)
             ok_stamp = write_stamp(fam, e.mtime, e.mtime_iso, e.rel) if fam else False
             if not ok_stamp:
                 result["stamp_failed"].append(nm)
@@ -2256,32 +2257,32 @@ def render_load_result_md(output, result):
     sf = result["stamp_failed"]
 
     if ld:
-        output.print_md(u"### Загружены новые семейства ({})".format(len(ld)))
+        output.print_md(tr(u"### Загружены новые семейства ({})").format(len(ld)))
         output.print_md(u"\n".join(
-            u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in ld
+            tr(u"- **{}**  ←  `{}`  _(файл {})_").format(n, d, i or u"?") for n, d, i in ld
         ))
     if up:
-        output.print_md(u"### Перезагружены (уже были в модели) ({})".format(len(up)))
+        output.print_md(tr(u"### Перезагружены (уже были в модели) ({})").format(len(up)))
         output.print_md(u"\n".join(
-            u"- **{}**  ←  `{}`  _(файл {})_".format(n, d, i or u"?") for n, d, i in up
+            tr(u"- **{}**  ←  `{}`  _(файл {})_").format(n, d, i or u"?") for n, d, i in up
         ))
     if fl:
-        output.print_md(u"### Не удалось загрузить ({})".format(len(fl)))
+        output.print_md(tr(u"### Не удалось загрузить ({})").format(len(fl)))
         output.print_md(u"\n".join(
             u"- **{}**  ←  `{}` — {}".format(n, d, e) for n, d, e in fl
         ))
     if sf:
-        output.print_md(u"### Метку даты записать не удалось ({})\n{}".format(
+        output.print_md(tr(u"### Метку даты записать не удалось ({})\n{}").format(
             len(sf), u"\n".join(u"- {}".format(x) for x in sf)
         ))
 
 
 def load_summary_lines(result):
-    lines = [u"Загружено новых: {}".format(len(result["loaded"]))]
+    lines = [tr(u"Загружено новых: {}").format(len(result["loaded"]))]
     if result["updated"]:
-        lines.append(u"Перезагружено: {}".format(len(result["updated"])))
+        lines.append(tr(u"Перезагружено: {}").format(len(result["updated"])))
     if result["failed"]:
-        lines.append(u"Ошибок: {}".format(len(result["failed"])))
+        lines.append(tr(u"Ошибок: {}").format(len(result["failed"])))
     if result["stamp_failed"]:
-        lines.append(u"Без метки даты: {}".format(len(result["stamp_failed"])))
+        lines.append(tr(u"Без метки даты: {}").format(len(result["stamp_failed"])))
     return lines
