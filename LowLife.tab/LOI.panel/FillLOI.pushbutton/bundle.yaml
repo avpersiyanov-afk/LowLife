@@ -4,3 +4,15 @@ tooltip: |
   Элемент, попавший ровно в одну форму, заполняется сразу. Элемент, попавший сразу в несколько форм (типично — линейный элемент на границе двух форм), по умолчанию разрезается по границе форм, каждый кусок получает значения своей формы; то, что разрезать не удалось, идёт в таблицу конфликтов, где для каждого выбирается форма-источник.
 
   Shift+клик — настройки: в каких моделях искать «Формы», список клонируемых параметров, какие элементы проверять и разрешение конфликтов на границе форм.
+title_en: "Fill\nLOI"
+tooltip_en: >-
+  Copies parameter values from elements of the «Masses» category to every checked element that
+  physically lies inside the solid of a particular «Mass» — the check is exact, by the solid (for
+  point elements — the point falls inside, for linear ones such as trays — the line intersects the
+  solid). «Masses» are looked up in the models ticked in the settings (the current file and/or
+  specific loaded links). An element inside exactly one mass is filled in right away. An element
+  inside several masses (typically a linear element on the border of two masses) is split along the
+  mass border by default, and each piece gets the values of its mass; whatever couldn't be split goes
+  to a conflict table where a source mass is chosen for each. Shift+click — settings: which models to
+  search for «Masses», the list of copied parameters, which elements to check and how to resolve
+  conflicts on mass borders.

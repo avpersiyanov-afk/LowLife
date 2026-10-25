@@ -2,3 +2,7 @@ tooltip: |
   Нумерует адреса узлов маршрута по этажу, начиная от панелей/стояков
 
   Shift+клик — настройки этой кнопки.
+title_en: "Node\naddresses"
+tooltip_en: >-
+  Numbers route node addresses per floor, starting from panels/risers. Shift+click — settings for this
+  button.

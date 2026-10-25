@@ -5,3 +5,14 @@ tooltip: |
   Марка смотрит в середину видимой части лотка, выноска — от края лотка, полка — ровно на уровне марки.
 
   Shift+клик — настройки: отступ, зазор между марками, длина полки, что считать «рядом» (мм на листе), допуск наклона (градусы).
+title_en: "Tray\ntags"
+tooltip_en: >-
+  Places and arranges cable tray tags in the active view neatly and without overlaps — the same way as
+  «Equipment tags». Two modes (the button asks; if only tags are selected — the first one right away):
+  «Arrange selected tags» — only the selected tray tags move (for a selected tray — all its tags in
+  the view), no new ones are created. «Tag trays» — selected trays without a tag in the view get one
+  (the type is picked from a list if there are several; the choice is remembered), arranged right
+  away. Fittings aren't tagged (or picked); sloped and vertical trays are skipped. The tag points to
+  the middle of the visible part of the tray, the leader starts at the tray edge, and the shoulder is
+  exactly level with the tag. Shift+click — settings: offset, gap between tags, shoulder length, what
+  counts as «nearby» (mm on the sheet), slope tolerance (degrees).

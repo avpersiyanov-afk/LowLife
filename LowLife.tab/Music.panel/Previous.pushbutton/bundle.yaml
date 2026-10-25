@@ -1,2 +1,5 @@
 tooltip: |
   Переключает активный проигрыватель на предыдущий трек (медиаклавиша Windows Previous).
+title_en: "Previous\ntrack"
+tooltip_en: >-
+  Switches the active player to the previous track (the Windows Previous media key).

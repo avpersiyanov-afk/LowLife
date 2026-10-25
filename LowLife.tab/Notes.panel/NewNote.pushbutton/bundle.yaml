@@ -6,3 +6,7 @@ tooltip: >-
 # и поток не должен обрываться вместе со скриптом кнопки.
 engine:
   persistent: true
+title_en: "Note"
+tooltip_en: >-
+  Quickly jot down a remark, task or reminder for the current project. The project code, view and
+  selected elements are filled in from the model.

@@ -2,3 +2,9 @@ tooltip: |
   Проверяет, что все параметры СКУД привязаны в проекте к нужным категориям, и добавляет недостающие привязки из подключённого файла общих параметров (ФОП). Если определения параметра нет ни в проекте, ни в файле ФОП — ничего не выдумывает, только сообщает об этом.
 
   Настройки самих кнопок СКУД сюда не входят — у каждой рабочей кнопки свои настройки по Shift+клику.
+title_en: "Bind\nparameters"
+tooltip_en: >-
+  Checks that all ACS parameters are bound to the right categories in the project and adds missing
+  bindings from the connected shared parameters file. If a parameter's definition is in neither the
+  project nor the shared parameters file, it doesn't make one up — it only reports it. The settings of
+  the ACS buttons themselves are not here — every working button has its own settings on Shift+click.

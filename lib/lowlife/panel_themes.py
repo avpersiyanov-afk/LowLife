@@ -317,6 +317,7 @@ def apply_theme(selected_theme):
     is left on the ribbon.
     """
     from pyrevit.coreutils.ribbon import get_current_ui
+    from lowlife import ribbon_language
 
     pyrevit_tabs = get_current_ui().get_pyrevit_tabs()
 
@@ -342,7 +343,7 @@ def apply_theme(selected_theme):
         # RibbonPanel.Visible alone can leave an empty strip on the ribbon
         # until the layout is rebuilt; the underlying Autodesk.Windows
         # panel's IsVisible is what the ribbon actually renders from.
-        adwindows_panel = panel.get_adwindows_object()
+        adwindows_panel = ribbon_language.adwindows_panel(panel)  # и с переведённым заголовком
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = panel_visible
 
@@ -353,7 +354,7 @@ def apply_theme(selected_theme):
         panel = _find_panel(pyrevit_tabs, title)
         if panel is not None:
             panel.visible = True
-            adwindows_panel = panel.get_adwindows_object()
+            adwindows_panel = ribbon_language.adwindows_panel(panel)  # и с переведённым заголовком
             if adwindows_panel is not None:
                 adwindows_panel.IsVisible = True
     for _folder, title in _other_panels():
@@ -361,7 +362,7 @@ def apply_theme(selected_theme):
         if panel is None:
             continue
         panel.visible = show_other
-        adwindows_panel = panel.get_adwindows_object()
+        adwindows_panel = ribbon_language.adwindows_panel(panel)  # и с переведённым заголовком
         if adwindows_panel is not None:
             adwindows_panel.IsVisible = show_other
 

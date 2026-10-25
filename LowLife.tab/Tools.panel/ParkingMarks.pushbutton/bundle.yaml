@@ -2,3 +2,14 @@ tooltip: |
   Подписывает на плане отметки элементов категории «Парковка» из связей — от уровня плана (пол этажа = ±0,000). Элементы делятся на группы по словам в «Комментариях», имени рабочего набора и имени семейства/типа (по порядку, элемент попадает в первую подошедшую): зона светильников («светильн») — низ и верх, контур заштрихован; проезд («проезд») — верх, штриховка; машиноместо («машиномест») — верх, штриховка; остальные — верх. Подписи, попавшие в одно место плана, объединяются в одну. Берутся все загруженные связи (и скрытые на плане), элементы между уровнем плана и следующим этажом (уровни ближе 2,5 м — части того же этажа; верх — не ниже верха секущего диапазона вида), в пределах подрезки. Повторный запуск заменяет подписи и штриховку прошлого запуска.
 
   Shift+клик — настройки: слова, тексты подписей и штриховка для каждой группы.
+title_en: "Parking\nelevations"
+tooltip_en: >-
+  Labels on the plan the elevations of «Parking» category elements from links — from the plan's level
+  (floor = ±0.000). Elements are split into groups by words in «Comments», the workset name and the
+  family/type name (in order; an element goes to the first matching group): luminaire zone
+  («светильн») — bottom and top, outline hatched; driveway («проезд») — top, hatched; parking space
+  («машиномест») — top, hatched; the rest — top. Labels that land in the same spot on the plan are
+  merged into one. All loaded links are used (including ones hidden on the plan), elements between the
+  plan's level and the next floor (levels closer than 2.5 m are parts of the same floor; the top is no
+  lower than the top of the view range), within the crop. Running it again replaces the previous run's
+  labels and hatching. Shift+click — settings: words, label texts and hatching for each group.

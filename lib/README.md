@@ -39,7 +39,23 @@ detached HEAD — хеш в самом HEAD) и возвращает `(ветк�
 подпись, панель, подсказка, внутри — порядок ленты; запрос пробуется и в другой
 раскладке (`text_search.query_variants`: «wtgb» → «цепи», «вцп» → «dwg») — такое совпадение
 идёт сразу после совпадения того же уровня в набранной.
+Английские подписи: `item_title_en(folder)` (`title_en:` из `bundle.yaml`), `raw_bundle_text(folder)` — все четыре
+текста как есть (с `\n`), `read_members_en(folder)` — блок `members_en:` списка (.combobox); у записей
+`list_buttons` есть `title_en`/`panel_title_en`/`tooltip_en`, `localized(entry, key, lang=None)` берёт поле на
+выбранном языке, `search` ищет по обоим языкам.
 Без Revit API, покрыт `tests/test_ribbon_catalog.py`.
+
+## i18n.py / ribbon_language.py
+Язык интерфейса — русский (по умолчанию) или английский, список «Язык» на панели LowLife.
+`i18n.current()` → `"ru"`/`"en"` (из `LowLifeLanguage_settings.json`, перечитывается при изменении файла),
+`i18n.save(lang)`, `i18n.tr(ru, en)` — строка на выбранном языке (нет перевода — русская), `i18n.pick(dict)`.
+Без Revit API и clr.
+`ribbon_language.apply_language(lang=None, capture=False)` — подписи/подсказки панелей, кнопок и участников списков
+на ленте из `title_en`/`tooltip_en`/`members_en` (английский) или запомненные русские (их берёт с ленты при первом
+переводе и держит в AppDomain; `capture=True` — запомнить заново, лента только что построена).
+`switch(lang)` — из списка «Язык»; `restore_on_idle(app)` — из `startup.py`; `adwindows_panel(panel)` — Autodesk.Windows-
+панель и после перевода заголовка (вместо `panel.get_adwindows_object()` pyRevit). Чистая часть — `english_tooltip`,
+`panel_index` — покрыта `tests/test_i18n.py`.
 
 ## favorites_core.py / favorites.py / favorites_ui.py
 «Мои панели» (кнопка «Создать мою панель» на панели LowLife — `_Themes.panel/Actions.stack/MyPanels`): свои панели пользователя из кнопок LowLife. Настройки —

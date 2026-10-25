@@ -1,2 +1,8 @@
 tooltip: |
   Загружает справочник кабелей из .xlsx (формат — как у «Выгрузить справочник»; первая строка — заголовки, обязателен столбец «Ключевое имя»). Строки сопоставляются по ключевому имени: найденные обновляются, новые добавляются, остальные строки проекта не трогаются. Столбцы, которых нет в ключевой спецификации проекта, пропускаются.
+title_en: "Import\ncatalog"
+tooltip_en: >-
+  Loads the cable catalog from .xlsx (the format of «Export catalog»; the first row is headers, the
+  «Key name» column is required). Rows are matched by key name: found ones are updated, new ones
+  added, the project's other rows are left alone. Columns that aren't in the project's key schedule
+  are skipped.

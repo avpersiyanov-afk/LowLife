@@ -10,3 +10,22 @@ tooltip: |
   Повторный запуск не плодит дубли: прежние зоны выбранных камер на этом виде находятся по метке в параметре «Комментарии» и создаются заново. Необязательно — концентрические дуги зон DORI (идентификация/распознавание/наблюдение/обнаружение) по разрешению матрицы.
 
   Настройки (все параметры расчёта, включая высоту установки) — Shift+клик по кнопке.
+title_en: "Fields\nof view"
+tooltip_en: >-
+  Draws the field of view of the selected CCTV cameras in the active view (a floor/ceiling plan or a
+  drafting view) as a filled region, clipped by the room boundary from the linked model. Order: first
+  press the button, then pick cameras in the model — the selection filter lets only the «Security
+  Devices» category through. For each camera: the horizontal and vertical angles of view are ALWAYS
+  calculated from the lens focal length and sensor format (θ = 2·arctan(sensor size / 2·f)), never
+  typed in by hand — so the angle never drifts from the real lens, especially a varifocal one. Range —
+  a camera parameter (names in the settings); direction — the family's FacingOrientation plus an
+  optional extra rotation (the rotation parameter isn't added separately). If mounting height and
+  downward tilt parameters are set, the zone is the projection of the cone onto the calculation plane:
+  near dead zone near = h / tan(tilt + vertical/2) and far edge far = h / tan(tilt − vertical/2), then
+  clipped by range. Room clipping: the linked Room the camera stands in is found, and every ray of the
+  sector is shortened to its first intersection with the room outline — correct for concave rooms and
+  «holes» (columns, shafts). It can be switched off in the settings. Running it again doesn't create
+  duplicates: the earlier zones of the selected cameras in this view are found by a mark in «Comments»
+  and re-created. Optionally — concentric DORI arcs (identification/recognition/observation/detection)
+  by sensor resolution. Settings (all calculation parameters, including mounting height) — Shift+click
+  on the button.

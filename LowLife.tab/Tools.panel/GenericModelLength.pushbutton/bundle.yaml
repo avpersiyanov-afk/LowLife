@@ -1,2 +1,5 @@
 tooltip: |
   Сумма длин выбранных обобщённых моделей по типам
+title_en: "Line\nlength"
+tooltip_en: >-
+  Total length of the selected generic models by type.

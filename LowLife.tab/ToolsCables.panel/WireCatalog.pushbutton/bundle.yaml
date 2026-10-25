@@ -1,2 +1,9 @@
 tooltip: |
   Ищет в модели справочник кабелей — ключевую спецификацию категории «Электрические цепи», на строки которой ссылается параметр цепи «Проводник». Выводит список всех ключевых спецификаций проекта (какие из них признаны справочником кабелей), а для справочника — таблицу строк: ключевое имя, ID, столбцы спецификации и число цепей, где строка уже проставлена. Этот же поиск используют окна выбора проводника в настройках СКС/СКУД/СПС/СОУЭ/СПА.
+title_en: "Cable\ncatalog"
+tooltip_en: >-
+  Finds the cable catalog in the model — the «Electrical Circuits» key schedule whose rows the circuit
+  «Wire» parameter refers to. Lists all key schedules of the project (which of them are recognised as
+  the cable catalog), and for the catalog — a table of rows: key name, ID, schedule columns and the
+  number of circuits where the row is already set. The wire pickers in the SCS/ACS/fire alarm/voice
+  alarm/fire automation settings use the same search.

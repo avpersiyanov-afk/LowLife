@@ -16,3 +16,48 @@ tooltip: |
   Марки узлов (IndependentTag) — тоже отдельный переключатель, «Ставить марки узлов»: сама вставка марки — штатный вызов Revit API, который на некоторых моделях занимает секунду и больше НА КАЖДУЮ марку, и легко становится основным временем построения схемы при сотнях устройств (на практике наблюдалось на порядок дольше, чем всё остальное вместе взятое). Впишите «нет», чтобы сначала построить/поправить раскладку без марок, добавить их отдельным запуском, когда раскладка устроит.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Fire alarm\nriser diagram"
+tooltip_en: >-
+  Builds/updates the fire alarm riser diagram (fire alarm and electrical equipment —
+  panels/isolators). It finds all devices in the model whose type is mapped to a category in the fire
+  alarm settings and groups them by floor (label «Этаж N (elevation)», ordered by elevation: negative
+  at the bottom of the diagram, deeper is lower; positive higher, the higher the elevation) and by
+  room. Running it again doesn't rebuild the diagram from scratch: the view named in the fire alarm
+  settings is updated (created with that name if it doesn't exist yet), the previous run's layout is
+  kept in a service parameter of that view, and only the floor/room/device where something actually
+  changed is updated; the rest stays as it was, with the same elements. Neighbours to the right
+  of/below the change shift to close or free up space. The view template (if chosen) is applied on
+  every run. If a building/section parameter and a filter value are set, only devices with that value
+  are taken; to keep a separate diagram per building, give each its own view name and filter value.
+  Isolator branches (devices connected to an isolator — taken from the actual «isolator → devices»
+  electrical circuit made by «Fire alarm isolator–device circuits», not from the address or geometry)
+  are drawn NOT in their usual room but as a separate branch row right under the isolator (same node
+  spacing and frame as an ordinary room, 5 mm gap) — the result looks like a tree growing out of the
+  ring. If ALL branch devices are in the isolator's own room, no separate frame is drawn — the branch
+  sits right under the isolator inside its room's frame («Branch offset in the same room, mm» in the
+  settings); space for it is reserved in advance with the floor layout. Branch devices are often
+  physically spread over several rooms — if «Lot name on the room in the linked model» is set, for
+  such devices the parameter of the linked room containing the device point is checked first, and if
+  it is filled in (and, if a «Lot name» filter is set, contains that substring, case-insensitive), its
+  value is written to the device's room parameter (both on the real element and on the diagram node)
+  instead of the usual room name/number — so several physically different rooms marked with one lot
+  read as one frame on the diagram. An isolator without such a circuit has no branch — its devices
+  stay in the usual per-room layout. If a «Cabinet»/«Panel» category is set, lines to it are drawn as
+  a bus: one shared horizontal collector per floor just below the nodes, a short vertical drop from
+  each node, and the collectors of all floors run to one shared vertical riser to the left of the
+  floor frames. In addition, every loop (device address «panel.loop.number») is drawn as a ring:
+  inside each room with devices of that loop (including the panel if it's there) — one segment at node
+  height running through them. Moving to ANY other room — neighbouring or on another floor — goes only
+  through one shared riser to the left of the floor frames, never directly between rooms (otherwise
+  the line would cut other rooms' frames): a short drop into the free gap under the frame leads to the
+  riser. The ring interface goes «there» and «back» along the same route, so the whole structure is
+  drawn in two passes 3 mm apart. A loop with no panel among the diagram nodes is drawn without
+  closing on it. Both kinds of lines (to the cabinet and rings/branches) are not edited by hand — they
+  are redrawn on every run, and both are switched off by ONE settings field. On large models drawing
+  them takes noticeably longer than the node layout itself; to check/adjust the layout first, put
+  «нет» in «Draw ring loops and branches» — the layout is built as usual, the lines are simply not
+  drawn (old ones are deleted). Put back «да» (or clear the field) once the layout suits you and run
+  again. Node tags (IndependentTag) have their own switch, «Place node tags»: placing a tag is a Revit
+  API call that on some models takes a second or more PER tag and easily becomes the main build time
+  with hundreds of devices. Put «нет» to build the layout without tags first and add them in a
+  separate run. Shift+click — settings for this button.

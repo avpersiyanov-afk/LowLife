@@ -3,3 +3,4 @@ tooltip: Загрузка и обновление семейств из папк
 layout:
   - LoadFamiliesFromCatalog
   - UpdateFamiliesFromCatalog
+title_en: "Families"

@@ -1,2 +1,7 @@
 tooltip: |
   Лоток СБ (Перфорированный) — делает активным рабочий набор лотков (по умолчанию «КНК») и запускает вставку лотка типа, в имени которого есть (по умолчанию) «СБ_ЛП_1.5_СЦ». Shift+клик — общие настройки всех кнопок лотков (рабочий набор и имена типов).
+title_en: "Tray\nSB"
+tooltip_en: >-
+  SB tray (perforated) — makes the tray workset active (by default «КНК») and starts placing a tray of
+  the type whose name contains (by default) «СБ_ЛП_1.5_СЦ». Shift+click — shared settings of all tray
+  buttons (workset and type names).

@@ -2,3 +2,8 @@ tooltip: |
   Находит контроллеры СКУД и их цепи, назначает подключённым устройствам адрес по маске "адрес контроллера.N", выбирает тип проводника по категории устройства (из настроек СКУД), пишет имя нагрузки и маркирует контроллеры.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Circuits\nand cables"
+tooltip_en: >-
+  Finds ACS controllers and their circuits, gives the connected devices an address by the mask
+  "controller address.N", picks the wire type by device category (from the ACS settings), writes the
+  load name and tags the controllers. Shift+click — settings for this button.

@@ -13,7 +13,9 @@
    показывает все кнопки. Поэтому тема включается при первом простое
    Revit. (``hooks/app-init.py`` для этого не годится: это событие Revit
    ApplicationInitialized, при перезагрузке pyRevit его нет.)
-3. обновить копии кнопок на своих панелях пользователя («Мои панели»,
+3. перевести ленту на выбранный язык (``ribbon_language.restore_on_idle``) —
+   тоже при первом простое, по той же причине;
+4. обновить копии кнопок на своих панелях пользователя («Мои панели»,
    ``favorites.restore_on_load``): после обновления LowLife в них должны
    быть свежие скрипты.
 
@@ -82,6 +84,24 @@ try:
         _panel_themes.restore_on_idle(_theme_app)
 except Exception as exc:
     _crumb(u"тема ленты: {}".format(exc))
+
+
+# Язык ленты — отдельный try, ничего выше не задевает. Тоже при первом простое: лента ещё не построена.
+try:
+    from lowlife import ribbon_language as _ribbon_language
+
+    _lang_app = None
+    try:
+        _lang_app = __revit__  # noqa: F821 — UIControlledApplication / UIApplication
+    except Exception:
+        _lang_app = None
+    if _lang_app is None:
+        from pyrevit import HOST_APP as _lang_host
+        _lang_app = _lang_host.uiapp
+    if _lang_app is not None:
+        _ribbon_language.restore_on_idle(_lang_app)
+except Exception as exc:
+    _crumb(u"язык ленты: {}".format(exc))
 
 
 # Мои панели — отдельный try, ничего выше не задевает.

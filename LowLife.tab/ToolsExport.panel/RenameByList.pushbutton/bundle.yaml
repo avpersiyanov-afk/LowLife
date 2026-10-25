@@ -2,3 +2,10 @@ tooltip: |
   Переименование файлов по списку соответствий. Нужна папка с двумя подпапками, где лежат файлы с одинаковыми именами без учёта расширения (например DWG и PDF по номеру листа) — список имён собирается автоматически, во втором столбце указываете новое имя.
 
   ОК переименовывает совпадающие по имени (без расширения) файлы во всей выбранной папке и её подпапках. В модели Revit ничего не меняется.
+title_en: "Rename\nby list"
+tooltip_en: >-
+  Renames files by a list of matches. You need a folder with two subfolders holding files with the
+  same names regardless of extension (for example DWG and PDF by sheet number) — the list of names is
+  collected automatically, and you enter the new name in the second column. OK renames the files
+  matching by name (without extension) in the whole selected folder and its subfolders. Nothing
+  changes in the Revit model.

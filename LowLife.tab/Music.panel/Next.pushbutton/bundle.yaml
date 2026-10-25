@@ -1,2 +1,5 @@
 tooltip: |
   Переключает активный проигрыватель на следующий трек (медиаклавиша Windows Next).
+title_en: "Next\ntrack"
+tooltip_en: >-
+  Switches the active player to the next track (the Windows Next media key).

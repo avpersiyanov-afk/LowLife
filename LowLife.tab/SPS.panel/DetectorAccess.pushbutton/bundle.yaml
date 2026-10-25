@@ -6,3 +6,16 @@ tooltip: |
   Если перед запуском выделены извещатели — проверяются только они.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Detector\naccess"
+tooltip_en: >-
+  Checks whether fire detectors can be reached from the floor: there is floor under the detector (not
+  a shaft or an opening), the detector isn't above a suspended ceiling and isn't closer than 500 mm to
+  a wall (room boundary), and the «access zone» cylinder (a circle in plan, radius 500 mm by default)
+  from the floor up to the detector has no building services in it — ducts, pipes, trays, conduits,
+  their fittings and equipment, in the model and in links. On the selected plans each detector's
+  access zone is circled: green — accessible, red — not, with the reason as a label. For an
+  inaccessible one the nearest spot in the same room with a free zone, a floor and the same mounting
+  surface is searched — a green circle, a move arrow and the label «Move detector by … mm» are drawn
+  there. Running it again replaces the previous run's graphics on the plan. Inaccessible detectors are
+  selected. If detectors are selected before running, only they are checked. Shift+click — settings
+  for this button.

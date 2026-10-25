@@ -2,3 +2,11 @@ tooltip: |
   Переименовывает файлы выгрузки Revit/ModPlus — в имени каждого файла меняет «0000» на «000» (по умолчанию). Нужно, когда два листа идут под одним номером, но с разными именами: листам дают разные номера, а после выгрузки приводят к одному.
 
   Обычный клик — спросить папку выгрузки (подставляется прошлый путь), показать список и переименовать; в модели ничего не меняется. Shift+клик — настройки: что на что менять, расширения, подпапки, автозапуск после команды.
+title_en: "Rename\nexport"
+tooltip_en: >-
+  Renames Revit/ModPlus export files — replaces «0000» with «000» in every file name (by default).
+  Needed when two sheets go under one number but with different names: the sheets get different
+  numbers, and after export they are brought back to one. Normal click — ask for the export folder
+  (the previous path is filled in), show the list and rename; nothing changes in the model.
+  Shift+click — settings: what to replace with what, extensions, subfolders, auto-run after the
+  command.

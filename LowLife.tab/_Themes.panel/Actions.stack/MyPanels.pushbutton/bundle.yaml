@@ -4,3 +4,9 @@ tooltip: >-
   Кнопка на своей панели запускает ту же команду, что исходная (Shift+клик — тоже). Добавить кнопку
   можно и из окна «Поиск» — «На мою панель».
 context: zero-doc
+title_en: "Create\nmy panel"
+tooltip_en: >-
+  Your own panels made of LowLife buttons: create a panel and drag the buttons you need onto it (or
+  find them by search and add them) — the panels appear on the LowLife tab right after the LowLife
+  panel and are visible under any theme. A button on your panel runs the same command as the original
+  (Shift+click too). You can also add a button from the «Search» window — «To my panel».

@@ -41,3 +41,46 @@ members:
 - id: Service
   text: Служебное
   tooltip: Редко нужные служебные кнопки (переименование выгрузки, диагностика)
+title_en: "Theme"
+tooltip_en: >-
+  Ribbon theme switcher — shows only the buttons of the selected discipline
+members_en:
+- id: Mine
+  text: My panel
+  tooltip: Only your own panels («Create my panel») — all LowLife panels are hidden except the LowLife panel with this list
+- id: SCS
+  text: SCS
+  tooltip: Structured cabling system
+- id: ACS
+  text: ACS
+  tooltip: Access control system
+- id: SOT
+  text: CCTV
+  tooltip: Video surveillance (CCTV) system
+- id: FAS
+  text: Voice alarm
+  tooltip: Voice alarm and evacuation control system
+- id: FAD
+  text: Fire alarm
+  tooltip: Fire alarm system
+- id: SPA
+  text: Fire automation
+  tooltip: Fire automation system (draft, work in progress)
+- id: SS1
+  text: SS1
+  tooltip: Communication networks — placing cross-connects and cable entries
+- id: КНК
+  text: Trays
+  tooltip: Creating cable trays (ladder/solid/perforated/wire mesh/on the roof)
+- id: Circuits
+  text: Electrical circuits
+  tooltip: All circuit-building buttons (SCS/ACS/fire alarm/fire automation/general) in one place
+- id: Settings
+  text: Settings
+  tooltip: Parameter settings of all disciplines
+- id: General
+  text: General
+  tooltip: Tools and music — not tied to a discipline
+- id: Service
+  text: Service
+  tooltip: Rarely needed service buttons (export renaming, diagnostics)

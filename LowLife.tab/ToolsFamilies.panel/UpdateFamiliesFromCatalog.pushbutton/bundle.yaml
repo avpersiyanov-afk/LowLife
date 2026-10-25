@@ -1,1 +1,13 @@
 tooltip: Одно окно для актуальности и обновления семейств из папки-каталога .rfa. Выбор нескольких категорий, затем сортируемая таблица — семейство, категория, статус (зелёным «актуально», оранжевым «нет метки», красным «устарело»), дата в модели и дата похожего файла каталога, похожесть имени. Статус считается по скрытой метке даты (ExtensibleStorage) и текущей дате файла. Двойной клик по строке или «Файл…» — вручную указать другой файл каталога. Отмеченные галочкой семейства обновляются на месте. Флажок «заменять значения параметров типоразмеров» соответствует выбору в диалоге браузера («Перезаписать существующую версию» с учётом значений параметров или без); флажок «переименовывать» переносит новое имя из каталога. Файл с другим именем всё равно обновит нужное семейство, а не создаст новое. Просто закрыть окно — ничего не меняется. Путь к каталогу запоминается; Shift+клик — сменить папку. Каждая перезагрузка — отдельный шаг отмены
+title_en: "Update/check\nfamilies"
+tooltip_en: >-
+  One window for keeping families from a .rfa catalog folder up to date. Pick several categories, then
+  a sortable table — family, category, status (green «up to date», orange «no mark», red «outdated»),
+  the date in the model and the date of the similar catalog file, name similarity. The status is
+  worked out from a hidden date mark (ExtensibleStorage) and the file's current date. Double-click a
+  row or «File…» — pick a different catalog file by hand. Ticked families are updated in place.
+  «Overwrite type parameter values» matches the choice in the browser dialog («Overwrite the existing
+  version» with or without parameter values); «rename» carries the new name over from the catalog. A
+  file with a different name still updates the right family instead of creating a new one. Just
+  closing the window changes nothing. The catalog path is remembered; Shift+click — change the folder.
+  Each reload is a separate undo step.

@@ -1,2 +1,12 @@
 tooltip: |
   Выравнивает секущий диапазон планов: низ и глубина вида — уровень плана со смещением 0, секущая плоскость — уровень плана +1200 мм (если до следующего этажа меньше 1400 мм — +900 мм), верх — уровень следующего этажа −200 мм. Следующий этаж определяется по имени уровня (тот же корпус, другой этаж) — по шаблону имени уровня из настроек кнопки (Shift+клик), например «{Дисциплина}_{Корпус}_{Отметка}_{Этаж}_{Комментарий}» или «Этаж {Этаж}»; если выше уровней нет — верх «Неограниченно». Работает с планами, выделенными в Диспетчере проекта, а если их нет — с активным видом. Планы потолков и планы, у которых диапазон задаёт шаблон вида, пропускаются с пояснением.
+title_en: "View\nrange"
+tooltip_en: >-
+  Aligns the view range of plans: bottom and view depth — the plan's level with offset 0, cut plane —
+  the plan's level +1200 mm (+900 mm if the next floor is less than 1400 mm away), top — the next
+  floor's level −200 mm. The next floor is found by level name (same building, another floor) — by the
+  level name pattern from the button's settings (Shift+click), for example
+  «{Discipline}_{Building}_{Elevation}_{Floor}_{Comment}» or «Этаж {Floor}»; if there are no levels
+  above, the top is «Unlimited». Works on plans selected in the Project Browser, or the active view if
+  there are none. Ceiling plans and plans whose range is controlled by a view template are skipped
+  with an explanation.

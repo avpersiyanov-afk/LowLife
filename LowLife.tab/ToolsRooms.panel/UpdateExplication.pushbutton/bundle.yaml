@@ -3,3 +3,9 @@ tooltip: |
 
   Клик — все экспликации фрагментов в проекте.
   Shift+клик — только выбранные: выделенные спецификации (на листе или в диспетчере проекта), открытая экспликация, экспликации открытого плана или листа; если ничего не выбрано — список, из которого выбрать.
+title_en: "Update room\nschedule"
+tooltip_en: >-
+  Rebuilds fragment room schedules (made by «Fragment room schedule») from the current rooms and
+  settings. Click — all fragment room schedules in the project. Shift+click — only the chosen ones:
+  selected schedules (on a sheet or in the Project Browser), the open schedule, schedules of the open
+  plan or sheet; if nothing is selected — a list to choose from.

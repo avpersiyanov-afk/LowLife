@@ -1,2 +1,10 @@
 tooltip: |
   Поворачивает открытый 3D вид под ось: выберите ось сетки из списка (оси модели и загруженных связей — в 3D виде Revit их не показывает) или кликните на виде прямую линию, стену, лоток (в модели или в связи), и вид развернётся вокруг вертикали так, чтобы смотреть вдоль или поперёк этой оси (ближайший из четырёх поворотов, наклон камеры не меняется). Включённая рамка 3D вида поворачивается так же — её стороны встают параллельно оси. Ось или линия выбирается один раз — после поворота кнопка завершается; Esc — отмена. Заблокированный 3D вид сначала разблокируйте.
+title_en: "Rotate\n3D view"
+tooltip_en: >-
+  Rotates the open 3D view to an axis: pick a grid from a list (grids of the model and loaded links —
+  Revit doesn't show them in a 3D view) or click a straight line, wall or tray in the view (in the
+  model or in a link), and the view turns around the vertical to look along or across that axis (the
+  nearest of four rotations; the camera tilt doesn't change). An enabled 3D view section box turns the
+  same way — its sides become parallel to the axis. The axis or line is picked once — after rotating,
+  the button ends; Esc — cancel. Unlock a locked 3D view first.

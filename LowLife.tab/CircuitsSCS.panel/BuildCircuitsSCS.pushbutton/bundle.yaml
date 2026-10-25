@@ -2,3 +2,17 @@ tooltip: |
   Строит электрические цепи СКС между панелью и устройствами. Выберите панель и все устройства вместе, одним выбором — рамкой и/или кликами, без определённого порядка (панель определяется автоматически по категории «Электрооборудование», среди выбранного должна быть ровно одна). На каждый электрический коннектор устройства создаётся отдельная электрическая цепь, подключённая напрямую к панели («домашний прогон», без промежуточных узлов и адресации) — у обычных устройств коннектор один, у устройств с несколькими (например розетка с двумя гнёздами RJ-45 в одном экземпляре) создаётся по цепи на каждый. Тип цепи определяется автоматически по электрическому коннектору устройства (как при ручном создании цепи в Revit), Data — только запасной вариант, если определить не удалось. Проводнику каждой цепи проставляется значение, выбранное заранее в настройках (Shift+клик по этой кнопке, раздел «Проводник для цепей СКС»), а параметру «Имя нагрузки» — «Обозначение» типа устройства + «Адрес устройства» (для устройств с несколькими коннекторами — с суффиксом -1/-2 по номеру цепи).
 
   Shift+клик — настройки этой кнопки.
+title_en: "SCS\ncircuits"
+tooltip_en: >-
+  Builds SCS (structured cabling) electrical circuits between a panel and devices. Select the panel
+  and all devices together in one selection — window and/or clicks, in any order (the panel is
+  detected by the «Electrical Equipment» category; there must be exactly one among the selection). A
+  separate electrical circuit connected straight to the panel («home run», no intermediate nodes or
+  addressing) is created for every electrical connector of a device — ordinary devices have one
+  connector; devices with several (for example an outlet with two RJ-45 jacks in one instance) get a
+  circuit per connector. The circuit type is detected from the device's electrical connector (as when
+  creating a circuit by hand in Revit); Data is only the fallback if detection fails. Each circuit's
+  wire is set to the value chosen beforehand in the settings (Shift+click on this button, section
+  «Wire for SCS circuits»), and «Load Name» to the device type's «Designation» + «Device address» (for
+  devices with several connectors — with a -1/-2 suffix by circuit number). Shift+click — settings for
+  this button.

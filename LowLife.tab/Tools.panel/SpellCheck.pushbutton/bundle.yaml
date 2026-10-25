@@ -4,3 +4,10 @@ tooltip: |
   Область: выделенные заметки, текущий вид или вся модель.
 
   Shift+клик — настройки: способ подключения ИИ, модель, промпт.
+title_en: "Spell\ncheck"
+tooltip_en: >-
+  Checks spelling, grammar and punctuation in the model's text notes with AI (Claude or ChatGPT —
+  connected the same way as «Tasks from mail»). Identical texts are sent once; the corrections found
+  are shown as a «was → becomes» list, and only the ticked ones are written. Only the corrected words
+  change — the note's formatting is kept. Scope: selected notes, the current view or the whole model.
+  Shift+click — settings: how to connect the AI, model, prompt.

@@ -40,7 +40,8 @@ def test_every_registered_button_exists():
 def test_theme_names_match_combobox_members():
     with open(os.path.join(TAB, "_Themes.panel", "ThemeSelector.combobox", "bundle.yaml"),
               encoding="utf-8") as f:
-        ids = [line.split(":", 1)[1].strip() for line in f if line.strip().startswith("- id:")]
+        text = f.read().split("members_en:")[0]  # английские подписи — отдельный блок (lowlife.ribbon_language)
+        ids = [line.split(":", 1)[1].strip() for line in text.splitlines() if line.strip().startswith("- id:")]
     assert sorted(ids) == sorted(panel_themes.THEMES)
     assert sorted(panel_themes.THEME_NAMES) == sorted(panel_themes.THEMES)
 

@@ -2,3 +2,8 @@ tooltip: |
   Расставляет панели/узлы маршрута/стояки СКУД в точках трассы кабеля. Узлы СКУД — свои, отдельные от СКС: узлы СКС ведут до шкафа СКС, узлы СКУД — от устройств до контроллера. Панели/стояки распознаются только среди элементов рабочего набора СКУД.
 
   Shift+клик — настройки этой кнопки.
+title_en: "ACS route\nnodes"
+tooltip_en: >-
+  Places ACS panels/route nodes/risers at the points of a cable route. ACS nodes are separate from SCS
+  ones: SCS nodes lead to the SCS cabinet, ACS nodes from devices to the controller. Panels/risers are
+  recognised only among elements of the ACS workset. Shift+click — settings for this button.

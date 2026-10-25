@@ -2,3 +2,8 @@ tooltip: |
   Создаёт по одной электрической цепи на каждый шлейф СОУЭ и подключает её к своей панели. Шлейф определяется по адресу устройства вида "панель.шлейф.номер" (например 3.1.2).
 
   Shift+клик — настройки этой кнопки.
+title_en: "Loop\ncircuits"
+tooltip_en: >-
+  Creates one electrical circuit per voice alarm loop and connects it to its panel. A loop is
+  identified by a device address of the form "panel.loop.number" (for example 3.1.2). Shift+click —
+  settings for this button.

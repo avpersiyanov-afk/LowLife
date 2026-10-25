@@ -1,2 +1,7 @@
 tooltip: |
   Ручное построение цепей СКУД: выберите панель (контроллер), затем устройства — кнопка создаёт отдельную электрическую цепь на каждое устройство («домашний прогон» без промежуточных узлов). Тип цепи по умолчанию — Security, можно поменять в диалоге при запуске.
+title_en: "ACS\ncircuits"
+tooltip_en: >-
+  Manual ACS (access control) circuits: pick a panel (controller), then devices — the button creates a
+  separate electrical circuit for each device («home run» with no intermediate nodes). The default
+  circuit type is Security; it can be changed in the dialog at launch.

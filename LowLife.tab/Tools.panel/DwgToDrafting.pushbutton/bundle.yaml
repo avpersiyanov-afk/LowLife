@@ -4,3 +4,14 @@ tooltip: |
   Текст Revit у DWG не видит, поэтому он читается из DXF того же чертежа: DXF с тем же именем рядом с DWG, иначе DWG конвертируется бесплатным ODA File Converter (если установлен), иначе DXF указывается вручную или переносятся только линии.
 
   Shift+клик — настройки: один стиль линий или стили по слоям DWG (с цветом слоя), исходный типоразмер текста, путь к ODA File Converter.
+title_en: "DWG →\ndrafting"
+tooltip_en: >-
+  Traces a DWG underlay with annotations: DWG lines, arcs and polylines become detail lines, DWG text
+  becomes text notes (same point, rotation, alignment and height on paper). Where — your choice: into
+  a new drafting view (it opens) or onto this same view over the underlay. The DWG is the selected
+  one, otherwise the one visible in the view (several — pick from a list); layers hidden in the view
+  aren't carried over. Revit can't see DWG text, so it is read from a DXF of the same drawing: a DXF
+  with the same name next to the DWG, otherwise the DWG is converted by the free ODA File Converter
+  (if installed), otherwise the DXF is picked by hand or only lines are carried over. Shift+click —
+  settings: one line style or styles per DWG layer (with the layer colour), the source text type, the
+  path to ODA File Converter.

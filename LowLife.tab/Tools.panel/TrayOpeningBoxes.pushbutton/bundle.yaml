@@ -4,3 +4,16 @@ tooltip: |
   Если на пересечении бокс уже есть, новый не создаётся (стоящий не меняется) — кнопка предупреждает об этом.
 
   Shift+клик — настройки: слова в именах семейства/типа и рабочего набора, имена параметров размеров, запас, модель, где искать пересечения (эта / связь / все), что пересекать, точка вставки семейства.
+title_en: "Opening boxes\nfor trays"
+tooltip_en: >-
+  Places a box at every spot where the selected cable tray passes through a wall or floor of the model
+  chosen in the settings (this model, one of the links or all at once). The family is a loaded one
+  with «бокс» in the family name and «временный» in the type name (if several types fit, the button
+  asks). Boxes are created in a workset with «боксы» in its name; the box's «Comments» get the user
+  name and the creation date and time. Box size — the tray cross-section plus 50 mm (in width and
+  height), depth — the wall/floor thickness. In a wall the box is turned along the wall, in a floor —
+  along the tray. Through walls — horizontal trays only, through floors — vertical ones only. If
+  there's already a box at a crossing, no new one is created (the existing one isn't changed) — the
+  button warns about it. Shift+click — settings: words in the family/type and workset names, size
+  parameter names, clearance, the model to look for crossings in (this / link / all), what to cross,
+  the family's insertion point.

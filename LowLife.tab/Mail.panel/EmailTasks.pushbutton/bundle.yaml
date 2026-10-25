@@ -2,3 +2,10 @@ tooltip: |
   Разбирает «Входящие» классического Outlook за последние N дней и составляет список задач в Excel. Письма анализирует Claude или ChatGPT — через приложение (Claude Code / Codex CLI, под вашей подпиской) или по ключу API. Почта только читается: ничего не отправляется, не помечается прочитанным и не перемещается.
 
   Shift+клик — настройки: способ подключения ИИ (со ссылками на инструкции), модель, период, только непрочитанные, подпапка, промпт, тестовый режим.
+title_en: "Tasks\nfrom mail"
+tooltip_en: >-
+  Goes through the classic Outlook «Inbox» for the last N days and makes a task list in Excel. Emails
+  are analysed by Claude or ChatGPT — through the app (Claude Code / Codex CLI, under your
+  subscription) or with an API key. Mail is only read: nothing is sent, marked as read or moved.
+  Shift+click — settings: how to connect the AI (with links to instructions), model, period, unread
+  only, subfolder, prompt, test mode.

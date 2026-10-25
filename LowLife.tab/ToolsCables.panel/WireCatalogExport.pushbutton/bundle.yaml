@@ -1,2 +1,6 @@
 tooltip: |
   Выгружает справочник кабелей в .xlsx (Excel не нужен): столбец «Ключевое имя» и все столбцы ключевой спецификации. Файл можно править и загрузить в этот же или другой проект кнопкой «Загрузить справочник».
+title_en: "Export\ncatalog"
+tooltip_en: >-
+  Exports the cable catalog to .xlsx (no Excel needed): a «Key name» column and all columns of the key
+  schedule. The file can be edited and loaded into this or another project with «Import catalog».

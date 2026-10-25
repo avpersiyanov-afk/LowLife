@@ -4,3 +4,21 @@ tooltip: |
   На выбранных планах каждая плита над этажом заливается штриховкой по своему контуру, цвет — по высоте низа плиты от пола, внутри подпись «Пер. +4,400» и разница с типовой высотой («Δ +0,650»), так что перепад виден по смене цвета. Там, где плита меняет отметку, рисуется толстая красная линия детализации (стиль «LowLife — перепад плиты»). Помещения с подвесным потолком обводятся областью заливки с подписью «ПП +2,700» (высота потолка от пола). Лестничные клетки и машиноместа не проверяются (список слов — в настройках). Повторный запуск заменяет подписи, заливки и линии прошлого запуска на плане.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Detectors\nto slab"
+tooltip_en: >-
+  Moves fire detectors («Fire Alarm Devices» category, picked by words in the family/type name —
+  smoke, heat, etc., not manual call points) to the underside of the slab above each of them. The slab
+  is found by a ray going up from the detector's level, including architectural/structural link
+  elements, so different slab elevations in the building are handled automatically. Flush-mounted ones
+  («встраив» in the family/type name) are placed not on the slab but on the underside of the suspended
+  ceiling; without a ceiling above they aren't moved. Which detectors to move is chosen at launch: the
+  selected ones (if nothing is selected, the button offers to pick detectors in the model), all in the
+  active view, or all on the levels of the selected plans. When moving from the active plan, it is
+  labelled too. On the selected plans each slab above the floor is filled with a hatch along its
+  outline, coloured by the height of the slab underside above the floor, with a label «Пер. +4,400»
+  and the difference from the typical height («Δ +0,650») inside, so a step shows as a change of
+  colour. Where the slab changes elevation, a thick red detail line is drawn (style «LowLife — перепад
+  плиты»). Rooms with a suspended ceiling are outlined with a filled region labelled «ПП +2,700»
+  (ceiling height above the floor). Stairwells and parking spaces are not checked (the word list is in
+  the settings). Running it again replaces the previous run's labels, fills and lines on the plan.
+  Shift+click — settings for this button.

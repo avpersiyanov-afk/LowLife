@@ -8,3 +8,18 @@ tooltip: |
   В отчёте — сколько элементов не заполнено по каждому параметру и список таких элементов (ID кликабельный).
 
   Shift+клик — настройки: загрузка приложения LOI (выбор разделов); свой список — категории; список параметров построчно, затем для каждой строки — имя параметра в модели; параметр для столбца «Этаж».
+title_en: "LOI\ncheck"
+tooltip_en: >-
+  Checks whether elements of the selected categories have the parameters from the settings filled in
+  (the value is looked up on the instance, then on the type) and builds a schedule «LOI проверка —
+  <category>» per category: «Type», «Family», «Floor» columns and the selected parameters. Running it
+  again rebuilds the same schedule. Elements with empty parameters (of all selected categories) are
+  isolated in the 3D view «LOI проверка — незаполненные» — it is created or rebuilt, and after the
+  check the button asks whether to open it. If the «LOI requirements» appendix (XML from Excel) is
+  loaded in the settings, the button first asks for the check stage — stage · design/working
+  documentation · sub-stage (Б-1…, ПЭ-1…). Categories and parameters then come from the appendix, and
+  each element is checked only for the parameters of its class (by classifier code) required at that
+  sub-stage. The report shows how many elements are missing each parameter and lists them (clickable
+  IDs). Shift+click — settings: loading the LOI appendix (choice of sections); your own list —
+  categories; the parameter list line by line, then for each line the parameter name in the model; the
+  parameter for the «Floor» column.

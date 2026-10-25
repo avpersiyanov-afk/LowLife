@@ -2,3 +2,7 @@ tooltip: |
   Приветствие большими буквами: «Доброе утро/день/вечер» и имя пользователя Revit.
   Показывается само при каждом запуске Revit; эта кнопка — показать ещё раз.
   Закрыть — щелчок по окну, Enter или Esc.
+title_en: "Greeting"
+tooltip_en: >-
+  A greeting in big letters: «Good morning/afternoon/evening» and the Revit user name. It shows by
+  itself every time Revit starts; this button shows it again. Close — click the window, Enter or Esc.

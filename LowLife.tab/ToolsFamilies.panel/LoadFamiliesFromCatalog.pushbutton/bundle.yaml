@@ -1,1 +1,12 @@
 tooltip: Загружает семейства из папки-каталога .rfa в модель. Сначала — выбор разделов каталога (папок с .rfa; можно несколько, Отмена = все), затем сортируемая таблица по файлам с галочками — имя файла, папка, есть ли уже в модели, дата файла. Зелёным — новые, серым — уже загруженные (будут перезагружены с заменой параметров типов). Отмеченные загружаются в модель и получают скрытую метку даты каталога (её потом читает кнопка «Обновление/проверка семейств»). Флажок «Выбрать типоразмеры» открывает каждый отмеченный .rfa, читает список типов и даёт отметить нужные — грузятся только они (LoadFamilySymbol), иначе семейство целиком. Флажок «заменять значения параметров типоразмеров» влияет только на семейства, уже присутствующие в модели (как выбор в диалоге браузера). Путь к каталогу общий с кнопкой «Обновление/проверка семейств»; Shift+клик — сменить папку
+title_en: "Load\nfamilies"
+tooltip_en: >-
+  Loads families into the model from a .rfa catalog folder. First — choose catalog sections (folders
+  with .rfa; several allowed, Cancel = all), then a sortable table of files with checkboxes — file
+  name, folder, whether it's already in the model, file date. Green — new, grey — already loaded
+  (they'll be reloaded with type parameters replaced). The ticked ones are loaded into the model and
+  get a hidden catalog date mark (read later by «Update/check families»). «Choose types» opens each
+  ticked .rfa, reads its list of types and lets you tick the ones you need — only they are loaded
+  (LoadFamilySymbol), otherwise the whole family. «Overwrite type parameter values» only affects
+  families already in the model (like the choice in the browser dialog). The catalog path is shared
+  with «Update/check families»; Shift+click — change the folder.

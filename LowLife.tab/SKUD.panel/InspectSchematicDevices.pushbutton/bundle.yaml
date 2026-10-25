@@ -2,3 +2,8 @@ tooltip: |
   Тестовая кнопка: выберите контроллер СКУД на виде. Показывает все его цепи, все элементы каждой цепи и итоговый список устройств, которые BuildSkudSchematic поставит на структурную схему — с подсветкой дублей по ElementId.
 
   Shift+клик — настройки этой кнопки.
+title_en: "Diagnostics\nDiagram devices"
+tooltip_en: >-
+  Test button: select an ACS controller in the view. Shows all its circuits, all elements of each
+  circuit and the final list of devices BuildSkudSchematic will put on the riser diagram — with
+  duplicates by ElementId highlighted. Shift+click — settings for this button.

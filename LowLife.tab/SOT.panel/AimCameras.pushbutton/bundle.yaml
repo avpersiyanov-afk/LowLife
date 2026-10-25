@@ -6,3 +6,18 @@ tooltip: |
   Параметр наклона должен быть параметром ЭКЗЕМПЛЯРА (у каждой камеры свой) — если он окажется параметром типа, кнопка откажется писать в него, чтобы не переставить наклон сразу у всех камер этого типа. Если высота не задана на камере — используется значение по умолчанию из настроек (Shift+клик) и тоже записывается на камеру; если не нашёлся вертикальный угол (оптика не настроена) — используется значение по умолчанию только для этого расчёта, никуда не записывается.
 
   После запуска зону нужно перестроить кнопкой «Зоны обзора» — сама эта кнопка ничего не рисует, только двигает наклон.
+title_en: "Aim at\nroom"
+tooltip_en: >-
+  Picks and writes the tilt of the selected CCTV cameras so that the far edge of their field of view
+  lands on the room boundary in the viewing direction — «Fields of view» doesn't do that, it only
+  draws an already set zone. Order: first the button, then pick the cameras (the same category filter
+  as «Fields of view»). For each camera: finds its room and the distance to the wall along the viewing
+  direction, takes the mounting height and the vertical angle of view (the vertical angle is always
+  calculated from the focal length and sensor format, the same settings as «Fields of view»), computes
+  tilt = arctan(height / distance_to_wall) + vertical_angle/2 and writes the result to the tilt
+  parameter. The tilt parameter must be an INSTANCE parameter (each camera has its own) — if it turns
+  out to be a type parameter, the button refuses to write to it so as not to change the tilt of all
+  cameras of that type at once. If the height isn't set on the camera, the default from the settings
+  (Shift+click) is used and also written to the camera; if the vertical angle can't be found (optics
+  not set up), a default is used for this calculation only and isn't written anywhere. Afterwards,
+  rebuild the zone with «Fields of view» — this button draws nothing, it only changes the tilt.

@@ -1,2 +1,9 @@
 tooltip: |
   Приближает вид к элементу. Если элемент уже выбран в модели — просто зумирует к нему (к нескольким выбранным — к их общему габариту), в том числе к элементам связей, выбранным через Tab. Если ничего не выбрано — спрашивает ID элемента и ищет его в модели и во всех загруженных связях (если такой ID есть в нескольких — предлагает выбрать). Если элемента не видно на активном виде, подсказывает, на какой уровень (план/разрез/3D) переключиться, чтобы он был заметен.
+title_en: "Zoom to\nelement"
+tooltip_en: >-
+  Zooms the view to an element. If an element is already selected in the model, it just zooms to it
+  (to several selected — to their combined extent), including link elements selected with Tab. If
+  nothing is selected, it asks for an element ID and looks for it in the model and in all loaded links
+  (if the ID exists in several, it offers a choice). If the element isn't visible in the active view,
+  it tells you which level (plan/section/3D) to switch to so it can be seen.

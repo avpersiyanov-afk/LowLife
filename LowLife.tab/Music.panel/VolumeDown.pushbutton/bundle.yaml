@@ -1,2 +1,5 @@
 tooltip: |
   Уменьшает системную громкость Windows на один шаг.
+title_en: "Quieter"
+tooltip_en: >-
+  Lowers the Windows system volume by one step.

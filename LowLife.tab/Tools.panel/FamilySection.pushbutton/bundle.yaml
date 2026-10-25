@@ -4,3 +4,19 @@ tooltip: |
   Сразу назначаются шаблон вида, типоразмер разреза и имя по маске. Элементы берутся из текущего выделения, иначе предлагается выбрать их в модели. Перед построением кнопка спрашивает: при нескольких элементах — один общий разрез (границы по крайним элементам) или отдельный на каждый; и насколько опустить низ разреза ниже базового уровня (мм). Ответы запоминаются.
 
   Shift+клик — настройки: шаблон вида, типоразмер, маска имени, отступы подрезки, шаблон имени уровня, «смотреть с обратной стороны».
+title_en: "Section by\nfamily"
+tooltip_en: >-
+  Builds a section through the selected family, cropped right away (default offsets, changeable in the
+  settings): in height — from the family's base level to the next floor of the same building (by level
+  name and the pattern from the settings, by default
+  {Discipline}_{Building}_{Elevation}_{Floor}_{Comment}; levels of other buildings are hidden in the
+  section), in width — 2000 mm to the left and right of the family geometry, in depth — the cut plane
+  100 mm in front of the geometry and the far clip 1000 mm behind it. The section looks at the
+  family's front side; for wall devices (including face-hosted) — from the room side. Linear elements
+  and system families (cable trays, conduits, pipes, ducts, walls) can be picked too: the section runs
+  along their axis, viewed from the south (for north–south axes — from the west). The view template,
+  section type and a name by mask are assigned right away. Elements come from the current selection,
+  otherwise you're offered to pick them in the model. Before building, the button asks: with several
+  elements — one shared section (bounds by the outermost elements) or one per element; and how far to
+  lower the section bottom below the base level (mm). The answers are remembered. Shift+click —
+  settings: view template, type, name mask, crop offsets, level name pattern, «look from the back».

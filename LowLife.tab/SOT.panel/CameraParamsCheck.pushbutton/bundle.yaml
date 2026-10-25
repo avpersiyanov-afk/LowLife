@@ -6,3 +6,19 @@ tooltip: |
   Плюс два раздела: «Геометрия и ориентация» — откуда берётся направление взгляда этого конкретного экземпляра (FacingOrientation/BasisY/BasisX/HandOrientation), отражение, хост, уровень, итоговый азимут, который реально уйдёт в построение зоны; и «Разбор семейства» — кнопка открывает файл семейства на редактирование (без показа окна) и читает все типоразмеры со значениями параметров, формулы, вложенные семейства, тела/вырезы, опорные плоскости, разъёмы, затем закрывает без сохранения.
 
   Ничего не пишет в модель и не меняет настройки — чисто чтение и отчёт в окне вывода pyRevit.
+title_en: "Check\nparameters"
+tooltip_en: >-
+  Diagnostics for «Fields of view» / «Aim at room»: select one camera — the button reads ALL its
+  instance and type parameters and checks which of them fit the roles the field-of-view calculation
+  uses (focal length, sensor format, range, mounting height, tilt, rotation). For each role the report
+  shows whether its name is set in the «Fields of view» settings, whether such a parameter is found on
+  the camera (instance/type), whether its data type fits (Length/Angle/Text/Number), and which other
+  camera parameters of the same data type could be used instead. The camera category and the rule
+  «tilt must be an instance parameter, not a type one» are checked separately. Plus two sections:
+  «Geometry and orientation» — where this particular instance's viewing direction comes from
+  (FacingOrientation/BasisY/BasisX/HandOrientation), mirroring, host, level and the final azimuth that
+  actually goes into building the zone; and «Family breakdown» — the button opens the family file for
+  editing (without showing a window), reads all types with parameter values, formulas, nested
+  families, solids/voids, reference planes and connectors, then closes it without saving. Writes
+  nothing to the model and doesn't change settings — purely reading and a report in the pyRevit output
+  window.

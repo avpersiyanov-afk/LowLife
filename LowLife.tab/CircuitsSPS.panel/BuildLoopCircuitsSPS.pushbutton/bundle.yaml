@@ -2,3 +2,10 @@ tooltip: |
   Создаёт по одной электрической цепи на каждый шлейф СПС и подключает её к своей панели. Шлейф определяется по адресу устройства вида "панель.шлейф.номер" (например 3.1.2). Каждой созданной цепи сразу проставляется режим траектории «Все устройства» и, по получившейся длине (Revit Length x коэффициент запаса, округление до целого), «Длина проводника» и «Способ прокладки».
 
   Shift+клик — настройки этой кнопки.
+title_en: "Fire alarm\nloop circuits"
+tooltip_en: >-
+  Creates one electrical circuit per fire alarm loop and connects it to its panel. A loop is
+  identified by a device address of the form "panel.loop.number" (for example 3.1.2). Each new circuit
+  immediately gets the «All Devices» path mode and, from the resulting length (Revit Length × safety
+  factor, rounded to a whole number), «Wire length» and «Installation method». Shift+click — settings
+  for this button.

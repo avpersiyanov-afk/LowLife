@@ -4,3 +4,11 @@ tooltip: |
   Элемент без уровня и элемент, чей уровень не настроен (пустое значение в таблице настроек), пропускаются.
 
   Shift+клик — настройки: имя параметра «Этаж» и таблица «Уровень / Значение» со всеми уровнями документа.
+title_en: "Fill\nfloor"
+tooltip_en: >-
+  Writes a value by the element's level to the configured parameter (for example «Floor») — the level
+  is taken from Element.LevelId (the same as the «Level» parameter in instance properties), not from
+  the position on the plan. Goes through every element of the document's model, regardless of the
+  active view. Elements without a level and elements whose level isn't configured (empty value in the
+  settings table) are skipped. Shift+click — settings: the «Floor» parameter name and a «Level /
+  Value» table with all levels of the document.

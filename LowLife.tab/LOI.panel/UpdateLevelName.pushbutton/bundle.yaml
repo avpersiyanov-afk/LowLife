@@ -4,3 +4,13 @@ tooltip: |
   Сначала пробует просто прописать параметр «Уровень» (элемент остаётся на месте). Если Revit не даёт его менять, после подтверждения пересоздаёт экземпляр с уровнем на том же месте: тип, поворот/отражение, параметры экземпляра, рабочий набор и электрические цепи переносятся, но ID элемента меняется, а марки старого удаляются.
 
   Элементы с уровнем, на основе, вложенные и в группах пропускаются. После работы выделены получившиеся элементы.
+title_en: "Update\nlevel name"
+tooltip_en: >-
+  Assigns a reference level to selected family instances that have none at all and no host (for
+  example, placed without a level). The level is chosen from a list or by height: the nearest level
+  not above the element. First it simply tries to set the «Level» parameter (the element stays in
+  place). If Revit won't let it change, after confirmation it re-creates the instance with the level
+  in the same place: the type, rotation/mirroring, instance parameters, workset and electrical
+  circuits carry over, but the element ID changes and the old element's tags are deleted. Elements
+  with a level, hosted, nested and in groups are skipped. Afterwards the resulting elements are
+  selected.

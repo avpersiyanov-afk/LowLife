@@ -3,3 +3,4 @@ tooltip: Построение электрических цепей СПА по 
 layout:
   - BuildLoopCircuitsSPA
   - CalcLoopLengthsSPA
+title_en: "Fire automation circuits"

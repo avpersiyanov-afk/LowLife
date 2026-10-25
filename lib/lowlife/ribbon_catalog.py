@@ -15,6 +15,8 @@ BUTTON_EXTS = (u".pushbutton", u".pulldown", u".splitbutton", u".splitpushbutton
                u".linkbutton", u".invokebutton", u".urlbutton", u".combobox")
 STACK_EXTS = (u".stack",)
 
+BUNDLE_TEXT_KEYS = (u"title", u"tooltip", u"title_en", u"tooltip_en")
+
 _SCRIPT_TITLE = re.compile(r'^__title__\s*=\s*u?(["\'])(.*?)\1', re.M)
 _SCRIPT_DOC = re.compile(r'^__doc__\s*=\s*u?(["\'])(.*?)\1', re.M)
 
@@ -40,17 +42,18 @@ def _unquote(value):
 
 
 def _parse_bundle(folder):
-    """{'title', 'tooltip', 'layout'} из bundle.yaml папки (пустые, если нет).
+    """{'title', 'tooltip', 'title_en', 'tooltip_en', 'layout'} из bundle.yaml папки (пустые, если нет).
 
     Разбирает только нужное подмножество YAML: однострочные или блочные (`>-`/`|`) `title:`/`tooltip:`
-    и список `layout:`. Блочное значение склеивается в одну строку через пробел.
+    (и их английские `title_en:`/`tooltip_en:` — их pyRevit не читает, ленту переводит
+    lowlife.ribbon_language) и список `layout:`. Блочное значение склеивается в одну строку через пробел.
     """
-    result = {u"title": u"", u"tooltip": u"", u"layout": []}
+    result = {u"title": u"", u"tooltip": u"", u"title_en": u"", u"tooltip_en": u"", u"layout": []}
     lines = _read(os.path.join(folder, u"bundle.yaml")).splitlines()
     i = 0
     while i < len(lines):
         line = lines[i]
-        key = next((k for k in (u"title", u"tooltip") if line.startswith(k + u":")), None)
+        key = next((k for k in BUNDLE_TEXT_KEYS if line.startswith(k + u":")), None)
         if key:
             value = line[len(key) + 1:].strip()
             if value[:1] in (u">", u"|"):
@@ -119,6 +122,60 @@ def item_title(folder):
     return _clean(title or _script_title(folder) or _stem(os.path.basename(folder)).lstrip(u"_"))
 
 
+def raw_bundle_text(folder):
+    """{'title', 'tooltip', 'title_en', 'tooltip_en'} из bundle.yaml как есть — с `\\n` в подписи,
+    как её получает pyRevit (для перевода ленты: lowlife.ribbon_language)."""
+    bundle = _parse_bundle(folder)
+    return dict((k, bundle[k]) for k in BUNDLE_TEXT_KEYS)
+
+
+def read_members_en(folder):
+    """{id участника: {'text', 'tooltip'}} из блока `members_en:` bundle.yaml списка (.combobox) —
+    английские подписи его участников. Формат — как `members:`::
+
+        members_en:
+        - id: SCS
+          text: SCS
+          tooltip: Structured cabling
+    """
+    result = {}
+    lines = _read(os.path.join(folder, u"bundle.yaml")).splitlines()
+    inside, current = False, None
+    for line in lines:
+        if not inside:
+            inside = line.startswith(u"members_en:")
+            continue
+        if line.strip() and not (line.startswith(u" ") or line.startswith(u"-")):
+            break  # следующий ключ верхнего уровня
+        item = line.strip()
+        if item.startswith(u"-"):
+            current = {}
+            item = item[1:].strip()
+        if current is None or u":" not in item:
+            continue
+        key, value = item.split(u":", 1)
+        current[key.strip()] = _unquote(value)
+        if key.strip() == u"id":
+            result[current[u"id"]] = current
+    return result
+
+
+def item_title_en(folder):
+    """Английская подпись кнопки/панели (`title_en` из bundle.yaml) или u'', если перевода нет."""
+    return _clean(_parse_bundle(folder)[u"title_en"])
+
+
+def localized(entry, key, lang=None):
+    """Поле записи list_buttons() на выбранном языке: `title`/`panel_title`/`tooltip` → их `_en`-пара,
+    если выбран английский и перевод есть."""
+    if lang is None:
+        from lowlife import i18n
+        lang = i18n.current()
+    if lang == u"en":
+        return entry.get(key + u"_en") or entry.get(key) or u""
+    return entry.get(key) or u""
+
+
 def _buttons(folder):
     result = []
     for name in _ordered(folder, BUTTON_EXTS + STACK_EXTS):
@@ -158,14 +215,14 @@ def _script_doc(folder):
     return m.group(2) if m else u""
 
 
-def _collect(folder, panel, panel_title, path, out):
+def _collect(folder, panel, panel_title, path, out, panel_title_en=u""):
     for name in _ordered(folder, BUTTON_EXTS + STACK_EXTS):
         full = os.path.join(folder, name)
         ext = os.path.splitext(name)[1].lower()
         if ext in STACK_EXTS:
-            _collect(full, panel, panel_title, path, out)  # кнопки стека на ленте — прямо в панели
+            _collect(full, panel, panel_title, path, out, panel_title_en)  # кнопки стека на ленте — прямо в панели
         elif ext in CONTAINER_EXTS:
-            _collect(full, panel, panel_title, path + [_stem(name)], out)
+            _collect(full, panel, panel_title, path + [_stem(name)], out, panel_title_en)
         elif ext not in NOT_RUNNABLE_EXTS:
             bundle = _parse_bundle(full)
             out.append({
@@ -175,6 +232,9 @@ def _collect(folder, panel, panel_title, path, out):
                 u"path": path + [_stem(name)],  # имена папок от панели вниз (через выпадающие списки)
                 u"title": item_title(full),
                 u"tooltip": _clean(bundle[u"tooltip"] or _script_doc(full)),
+                u"title_en": _clean(bundle[u"title_en"]),
+                u"panel_title_en": panel_title_en,
+                u"tooltip_en": _clean(bundle[u"tooltip_en"]),
                 u"folder": full,  # папка кнопки на диске — её копирует «Мои панели»
             })
 
@@ -183,13 +243,14 @@ def list_buttons(root=None):
     """Все запускаемые кнопки вкладки в порядке ленты — для кнопки «Поиск».
 
     Каждая — dict: panel/button (имена папок без расширения, как их видит pyRevit),
-    path (папки от панели до кнопки), title/panel_title (подписи на ленте), tooltip.
+    path (папки от панели до кнопки), title/panel_title (подписи на ленте), tooltip и их английские
+    title_en/panel_title_en/tooltip_en (u'', если перевода нет; см. localized).
     """
     tab = os.path.join(root or extension_root(), TAB_FOLDER)
     result = []
     for name in _panels(tab):
         folder = os.path.join(tab, name)
-        _collect(folder, _stem(name), item_title(folder), [], result)
+        _collect(folder, _stem(name), item_title(folder), [], result, item_title_en(folder))
     return result
 
 
@@ -213,15 +274,18 @@ def _root(token):
 
 
 def _score(entry, query, tokens):
-    title = _norm(entry[u"title"])
+    # подписи на обоих языках: кнопку находит и русский, и английский запрос
+    titles = [t for t in (_norm(entry[u"title"]), _norm(entry.get(u"title_en") or u"")) if t]
+    title = u" ".join(titles)
     names = _norm(u" ".join(entry[u"path"]))
-    head = title + u" " + _norm(entry[u"panel_title"]) + u" " + names
-    everything = head + u" " + _norm(entry[u"tooltip"])
+    head = (title + u" " + _norm(entry[u"panel_title"]) + u" " + _norm(entry.get(u"panel_title_en") or u"")
+            + u" " + names)
+    everything = head + u" " + _norm(entry[u"tooltip"]) + u" " + _norm(entry.get(u"tooltip_en") or u"")
     if not all(t in everything for t in tokens):
         return None
-    if title.startswith(query):
+    if any(one.startswith(query) for one in titles):
         return 0
-    if all(t in title for t in tokens):
+    if any(all(t in one for t in tokens) for one in titles):
         return 1
     if all(t in head for t in tokens):
         return 2

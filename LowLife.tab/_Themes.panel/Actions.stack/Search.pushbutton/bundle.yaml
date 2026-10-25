@@ -7,3 +7,9 @@ context: zero-doc
 # Постоянный движок: мигание кнопки на ленте идёт по таймеру уже после окончания скрипта.
 engine:
   persistent: true
+title_en: "Search"
+tooltip_en: >-
+  Find a LowLife button by name: start typing a button caption, a panel name or a word from a tooltip
+  (in Russian or English; case, «ё»/«е» and the wrong keyboard layout don't matter). Enter — run the
+  found button, Ctrl+Enter — show it on the ribbon (opens the tab, and the button blinks with an
+  orange fill even if the current theme hides it).

@@ -1,2 +1,7 @@
 tooltip: |
   Ставит компаньона (РМ/АМ/МДУ и т.п.) рядом с каждым настроенным базовым объектом на активном виде — со смещением и переносом выбранных параметров. Пары "рядом с чем ставить -> что ставим" настраиваются через Shift+клик по этой кнопке.
+title_en: "Place relay,\ncontrol modules"
+tooltip_en: >-
+  Places a companion (relay/addressable/control module, etc.) next to every configured base object in
+  the active view — with an offset and the chosen parameters copied over. The "place next to what →
+  what to place" pairs are set up via Shift+click on this button.

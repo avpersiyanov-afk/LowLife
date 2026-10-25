@@ -4,3 +4,12 @@ tooltip: |
   Семейства без цепи или без значений параметров пропускаются; если в одну цепь входят несколько выбранных семейств с разными значениями, цепь не меняется — всё это перечисляется в окне вывода pyRevit.
 
   Shift+клик — настройки (параметры, маска, параметр цепи).
+title_en: "Load\nname"
+tooltip_en: >-
+  Writes electrical circuits a name built by a mask from two family parameters. Select the families
+  before running or pick them with a window/clicks — their electrical circuits are found, and the
+  circuit parameter from the settings (empty — the built-in «Load Name») gets the text by the mask:
+  {1} — the value of the first parameter, {2} — of the second (instance parameter first, then type).
+  Families without a circuit or without parameter values are skipped; if several selected families
+  with different values belong to one circuit, the circuit is left unchanged — all of this is listed
+  in the pyRevit output window. Shift+click — settings (parameters, mask, circuit parameter).

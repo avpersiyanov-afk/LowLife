@@ -621,7 +621,21 @@ def write_panel_name(c):
     c.line([(48, 32), (48, 40)], ORANGE, 3)
 
 
+def language(c):
+    """«Язык»: глобус — параллели и меридианы, один меридиан оранжевый."""
+    cx, cy, r = 48, 48, 34
+    c.circle((cx, cy), r, BLUE, WHITE, 5)
+    c.line([(cx - r + 2, cy), (cx + r - 2, cy)], BLUE, 3.5)
+    for dy in (-17, 17):
+        half = math.sqrt(r * r - dy * dy) - 2
+        c.line([(cx - half, cy + dy), (cx + half, cy + dy)], BLUE, 3)
+    c.d.ellipse([(cx - 15) * K, (cy - r) * K, (cx + 15) * K, (cy + r) * K],
+                outline=ORANGE, width=int(4 * K))
+    c.line([(cx, cy - r + 2), (cx, cy + r - 2)], BLUE, 3)
+
+
 ICONS = [
+    ("_Themes.panel/LanguageSelector.combobox", language),
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
     ("SKUD.panel/BuildSkudSchematic.pushbutton", schematic_skud),

@@ -4,3 +4,14 @@ tooltip: |
   После подсветки список открывается снова — не нужно нажимать кнопку заново, чтобы найти следующее помещение. Список собирается один раз за сеанс Revit и держится в памяти (пункт «Обновить список» наверху — если помещения в связи изменились).
 
   Shift+клик — настройки (параметры номера и группировки).
+title_en: "Find\nroom"
+tooltip_en: >-
+  Lists the rooms of the active view (from the current model and all loaded links — by the view's
+  level/bounds), sorted by number and grouped by a parameter from the settings. The number is the
+  parameter set in the settings (by default the built-in «Number»), the grouping — for example «Room
+  type». Start typing a number or name — the list filters. The item at the top switches to all rooms
+  of the project if the one you need isn't in this view. Pick + «Highlight» zooms the active view to
+  that room; if it belongs to another level, it tells you which plan to switch to. After highlighting,
+  the list opens again — no need to press the button again to find the next room. The list is
+  collected once per Revit session and kept in memory («Refresh list» at the top — if the rooms in a
+  link changed). Shift+click — settings (number and grouping parameters).
