@@ -104,6 +104,6 @@ def test_every_button_is_in_its_container_layout():
 
 
 def test_panels_are_found_by_their_ribbon_title():
-    assert panel_themes._ribbon_name(u"SCS") == u"SCS"  # без title — имя папки
+    assert panel_themes._ribbon_name(u"SCS") == u"СКС"
     assert panel_themes._ribbon_name(u"ToolsCables") == u"Кабели"
     assert panel_themes._ribbon_name(u"LOI") == u"Заполнение LOI"

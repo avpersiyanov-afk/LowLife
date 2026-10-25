@@ -32,7 +32,7 @@ SetupParameters buttons across all disciplines are grouped under their own
 listed there too, as well as under "General".
 
 The discipline-agnostic tools are split across several small panels for
-readability instead of one jumbled Tools.panel: Tools.panel ("Tools"),
+readability instead of one jumbled Tools.panel: Tools.panel ("Инструменты"),
 FilterSelection.panel ("Фильтр выбора"), Schematic.panel ("Схемы" — the
 room-based schematic draft), ToolsRooms.panel ("Помещения"),
 ToolsSchedules.panel ("Спецификации"), ToolsFamilies.panel ("Семейства"),
