@@ -9,6 +9,7 @@
 Адрес веб-приложения общий для всех пользователей, поэтому он записан здесь, в FEEDBACK_URL.
 """
 import os
+from lowlife.i18n import N_, tr
 import json
 import uuid
 import traceback
@@ -22,7 +23,8 @@ from System.Windows.Input import Key, Keyboard, ModifierKeys
 from System.Windows.Media import BrushConverter
 
 from pnotes import core
-from lowlife import about, ribbon_catalog, feedback_core
+from pnotes.localization import server_error
+from lowlife import about, ribbon_catalog, feedback_core, xaml_i18n, i18n
 
 
 # Адрес веб-приложения обратной связи (…/exec) — см. docs/feedback-panel.md.
@@ -36,13 +38,13 @@ QUEUE_FILE = os.path.join(USER_DIR, 'queue.json')
 STATE_FILE = os.path.join(USER_DIR, 'state.json')
 HISTORY_FILE = os.path.join(USER_DIR, 'sent.json')  # свои отправленные сообщения — по ним ищутся ответы
 
-KIND_PROBLEM = u'Проблема'
-KIND_IDEA = u'Предложение'
-GENERAL_PANEL = u'Общее — LowLife в целом'
-WHOLE_PANEL = u'Вся панель / не знаю'
+KIND_PROBLEM = N_(u'Проблема')
+KIND_IDEA = N_(u'Предложение')
+GENERAL_PANEL = N_(u'Общее — LowLife в целом')
+WHOLE_PANEL = N_(u'Вся панель / не знаю')
 
 MAX_TEXT = 5000
-CONSENT_REQUIRED = u'Чтобы отправить сообщение, отметьте согласие на обработку персональных данных.'
+CONSENT_REQUIRED = N_(u'Чтобы отправить сообщение, отметьте согласие на обработку персональных данных.')
 
 
 def feedback_url():
@@ -55,7 +57,7 @@ def feedback_url():
 def _call(payload, timeout_ms=15000, track=False):
     url = feedback_url()
     if not url:
-        raise core.ApiError(u'Адрес таблицы обратной связи ещё не задан.')
+        raise core.ApiError(tr(u'Адрес таблицы обратной связи ещё не задан.'))
     body = core._dumps(payload)
     try:
         try:
@@ -65,13 +67,13 @@ def _call(payload, timeout_ms=15000, track=False):
                 raise
             raw = core._post(url, body, timeout_ms, track=track)  # разовый сбой Google — один повтор
     except Exception as ex:
-        raise core.ApiError(u'Нет связи с таблицей обратной связи: ' + core.err_text(ex))
+        raise core.ApiError(tr(u'Нет связи с таблицей обратной связи: ') + core.err_text(ex))
     try:
         resp = json.loads(raw)
     except Exception:
-        raise core.ApiError(u'Таблица ответила не данными, а страницей — проверьте адрес веб-приложения.')
+        raise core.ApiError(tr(u'Таблица ответила не данными, а страницей — проверьте адрес веб-приложения.'))
     if not resp.get('ok'):
-        raise core.ApiError(resp.get('error') or u'Неизвестная ошибка')
+        raise core.ApiError(server_error(resp.get('error') or tr(u'Неизвестная ошибка')))
     return resp
 
 
@@ -178,7 +180,7 @@ def notify_unread():
         if domain.GetData(NOTIFIED_KEY) == key:
             return
         domain.SetData(NOTIFIED_KEY, key)
-        forms.toast(feedback_core.unread_notice(len(unread)), title=u'LowLife — ответ автора')
+        forms.toast(feedback_core.unread_notice(len(unread)), title=tr(u'LowLife — ответ автора'))
     except Exception:
         pass
 
@@ -273,36 +275,38 @@ def _make(cls, **props):
 # ---------------------------------------------------------------- окно
 
 class FeedbackWindow(forms.WPFWindow):
-    def __init__(self, ctx, panels):
-        forms.WPFWindow.__init__(self, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                    'xaml', 'feedback.xaml'))
+    def __init__(self, ctx, panels, display_panels=None):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xaml', 'feedback.xaml')
+        forms.WPFWindow.__init__(self, xaml_i18n.load(path), literal_string=True)
         self.ctx = ctx
         self.buttons = dict(panels)
+        self._panel_names = [GENERAL_PANEL] + [title for title, _ in panels]
+        self._display_buttons = dict((raw[0], shown[1]) for raw, shown in zip(panels, display_panels or panels))
         self.result = None  # None — отменено, True — сообщение в очереди на отправку
 
         self.txtContext.Text = u'   ·   '.join(
-            v for v in (u'Автор: ' + (ctx['user'] or ctx['windows_user'] or u'—'),
+            v for v in (tr(u'Автор: ') + (ctx['user'] or ctx['windows_user'] or u'—'),
                         u'LowLife: ' + ctx['version'],
                         ctx['revit'] and u'Revit: ' + ctx['revit']) if v)
 
-        self.cmbPanel.Items.Add(GENERAL_PANEL)
-        for title, _ in panels:
+        self.cmbPanel.Items.Add(tr(GENERAL_PANEL))
+        for title, _ in display_panels or panels:
             self.cmbPanel.Items.Add(title)
         state = _load_state()
-        names = [GENERAL_PANEL] + [t for t, _ in panels]
+        names = self._panel_names
         self.cmbPanel.SelectionChanged += self.on_panel
         self.cmbPanel.SelectedIndex = names.index(state['panel']) if state.get('panel') in names else 0
         self.txtContact.Text = state.get('contact') or u''
         self._init_consent()
 
         if not feedback_url():
-            self.txtStatus.Text = (u'Адрес таблицы обратной связи ещё не задан — сообщение сохранится '
-                                   u'на этом компьютере и отправится, когда он появится в обновлении LowLife.')
+            self.txtStatus.Text = (tr(u'Адрес таблицы обратной связи ещё не задан — сообщение сохранится '
+                                   u'на этом компьютере и отправится, когда он появится в обновлении LowLife.'))
         elif queue_size():
-            self.txtStatus.Text = u'Ещё не отправлено сообщений: {} — уйдут вместе с этим.'.format(queue_size())
+            self.txtStatus.Text = tr(u'Ещё не отправлено сообщений: {} — уйдут вместе с этим.').format(queue_size())
         try:
             from System.Windows.Markup import XmlLanguage
-            self.txtText.Language = XmlLanguage.GetLanguage('ru-RU')
+            self.txtText.Language = XmlLanguage.GetLanguage('en-US' if i18n.is_en() else 'ru-RU')
             self.txtText.SpellCheck.IsEnabled = True
         except Exception:
             pass
@@ -344,14 +348,14 @@ class FeedbackWindow(forms.WPFWindow):
         if not feedback_url() or not self.history:
             return
         self.btnRefresh.IsEnabled = False
-        self.txtHistoryInfo.Text = u'Проверяю ответы…'
+        self.txtHistoryInfo.Text = tr(u'Проверяю ответы…')
         from pnotes import ui
         ui.in_background(self, lambda: fetch_replies(15000, track=True), self._refreshed)
 
     def _refreshed(self, result, error):
         self.btnRefresh.IsEnabled = True
         if error:
-            self._render_history(u'Не удалось проверить ответы: ' + error)
+            self._render_history(tr(u'Не удалось проверить ответы: ') + error)
             return
         self.history = result[0]
         if self._history_open() and feedback_core.unread(self.history):
@@ -361,14 +365,14 @@ class FeedbackWindow(forms.WPFWindow):
 
     def _render_history(self, info=None):
         unread = len(feedback_core.unread(self.history))
-        self.tabHistory.Header = (u'Мои сообщения · новых ответов: {}'.format(unread) if unread
-                                  else u'Мои сообщения')
+        self.tabHistory.Header = (tr(u'Мои сообщения · новых ответов: {}').format(unread) if unread
+                                  else tr(u'Мои сообщения'))
         replied = len([h for h in self.history if h.get('reply')])
         if info is None:
-            info = (u'Ответы автора на ваши сообщения: {} из {}.'.format(replied, len(self.history))
+            info = (tr(u'Ответы автора на ваши сообщения: {} из {}.').format(replied, len(self.history))
                     if self.history else
-                    u'Здесь появятся ваши сообщения и ответы автора на них. Сообщения, отправленные '
-                    u'до этой версии LowLife, здесь не показываются.')
+                    tr(u'Здесь появятся ваши сообщения и ответы автора на них. Сообщения, отправленные '
+                    u'до этой версии LowLife, здесь не показываются.'))
         self.txtHistoryInfo.Text = info
         self.btnRefresh.Visibility = Visibility.Visible if self.history else Visibility.Collapsed
         queued = set(i.get('id') for i in (core._read_json(QUEUE_FILE, []) or []))
@@ -383,12 +387,12 @@ class FeedbackWindow(forms.WPFWindow):
                        CornerRadius=CornerRadius(4), BorderThickness=Thickness(1),
                        BorderBrush=brush('#DDDDDD'), Background=brush('#FAFBFC'))
         if queued:
-            status = u'Ещё не отправлено — уйдёт, когда будет связь'
+            status = tr(u'Ещё не отправлено — уйдёт, когда будет связь')
         elif h.get('delivered'):
-            status = u'Статус: ' + (h.get('status') or u'получено')
+            status = tr(u'Статус: ') + (feedback_core.status_label(h.get('status')) or tr(u'получено'))
         else:
             status = u''
-        head = u'   ·   '.join(v for v in (h.get('created'), h.get('kind'), feedback_core.where_text(h), status)
+        head = u'   ·   '.join(v for v in (h.get('created'), tr(h.get('kind')), feedback_core.where_text(h), status)
                                 if v)
         card.Children.Add(_make(TextBlock, Text=head, Foreground=brush('#666666'), FontSize=12,
                                 TextWrapping=TextWrapping.Wrap))
@@ -399,11 +403,11 @@ class FeedbackWindow(forms.WPFWindow):
 
         reply = h.get('reply') or u''
         if not reply:
-            card.Children.Add(_make(TextBlock, Text=u'Ответа пока нет.', Foreground=brush('#999999'),
+            card.Children.Add(_make(TextBlock, Text=tr(u'Ответа пока нет.'), Foreground=brush('#999999'),
                                     FontSize=12, Margin=Thickness(0, 6, 0, 0)))
             return border
         fresh = h.get('id') in self._fresh or feedback_core.is_unread(h)
-        title = u' · '.join(v for v in (u'Ответ автора', h.get('replied'), fresh and u'новый') if v)
+        title = u' · '.join(v for v in (tr(u'Ответ автора'), h.get('replied'), fresh and tr(u'новый')) if v)
         box = StackPanel()
         box.Children.Add(_make(TextBlock, Text=title, FontWeight=FontWeights.SemiBold, FontSize=12,
                                Foreground=brush('#B05A00')))
@@ -423,19 +427,24 @@ class FeedbackWindow(forms.WPFWindow):
 
         def changed(s, e):
             self.btnSend.IsEnabled = bool(self.chkConsent.IsChecked)
-            if self.chkConsent.IsChecked and self.txtStatus.Text == CONSENT_REQUIRED:
+            if self.chkConsent.IsChecked and self.txtStatus.Text == tr(CONSENT_REQUIRED):
                 self.txtStatus.Text = u''
         self.chkConsent.Checked += changed
         self.chkConsent.Unchecked += changed
 
     def on_panel(self, sender, e):
-        panel = self.cmbPanel.SelectedItem
+        panel = self._panel_value()
         self.cmbButton.Items.Clear()
-        self.cmbButton.Items.Add(WHOLE_PANEL)
-        for title in self.buttons.get(panel, []):
+        self._button_names = [WHOLE_PANEL] + self.buttons.get(panel, [])
+        self.cmbButton.Items.Add(tr(WHOLE_PANEL))
+        for title in self._display_buttons.get(panel, []):
             self.cmbButton.Items.Add(title)
         self.cmbButton.SelectedIndex = 0
         self.cmbButton.IsEnabled = panel != GENERAL_PANEL
+
+    def _panel_value(self):
+        index = self.cmbPanel.SelectedIndex
+        return self._panel_names[index] if 0 <= index < len(self._panel_names) else GENERAL_PANEL
 
     def on_key(self, sender, e):
         if e.Key == Key.Enter and Keyboard.Modifiers == ModifierKeys.Control:
@@ -445,19 +454,19 @@ class FeedbackWindow(forms.WPFWindow):
     def on_send(self, sender, e):
         text = (self.txtText.Text or u'').strip()
         if not text:
-            self.txtStatus.Text = u'Опишите проблему или предложение.'
+            self.txtStatus.Text = tr(u'Опишите проблему или предложение.')
             self.tabs.SelectedItem = self.tabNew
             self.txtText.Focus()
             return
         if not self.chkConsent.IsChecked:  # Ctrl+Enter работает и при недоступной «Отправить»
-            self.txtStatus.Text = CONSENT_REQUIRED
+            self.txtStatus.Text = tr(CONSENT_REQUIRED)
             self.tabs.SelectedItem = self.tabNew
             self.chkConsent.Focus()
             return
-        panel = self.cmbPanel.SelectedItem or GENERAL_PANEL
-        button = self.cmbButton.SelectedItem if panel != GENERAL_PANEL else u''
-        if button == WHOLE_PANEL:
-            button = u''
+        panel = self._panel_value()
+        index = self.cmbButton.SelectedIndex
+        button = (self._button_names[index]
+                  if panel != GENERAL_PANEL and 0 < index < len(self._button_names) else u'')
         kind = KIND_IDEA if self.rbIdea.IsChecked else KIND_PROBLEM
         contact = (self.txtContact.Text or u'').strip()
         _save_state(panel=panel, contact=contact)
@@ -472,23 +481,24 @@ def run(uiapp):
     try:
         _run(uiapp)
     except Exception as ex:
-        forms.alert(core.err_text(ex), title=u'Обратная связь: ошибка', expanded=traceback.format_exc())
+        forms.alert(core.err_text(ex), title=tr(u'Обратная связь: ошибка'), expanded=traceback.format_exc())
 
 
 def _run(uiapp):
-    win = FeedbackWindow(get_context(uiapp), ribbon_catalog.list_panels())
+    win = FeedbackWindow(get_context(uiapp), ribbon_catalog.list_panels(),
+                         ribbon_catalog.list_panels(lang=i18n.current()))
     win.ShowDialog()
     if not win.result:
         return
     if not feedback_url():
-        forms.alert(u'Сообщение сохранено на этом компьютере и отправится, когда в обновлении LowLife '
-                    u'появится адрес таблицы обратной связи.', title=u'Сообщение сохранено')
+        forms.alert(tr(u'Сообщение сохранено на этом компьютере и отправится, когда в обновлении LowLife '
+                    u'появится адрес таблицы обратной связи.'), title=tr(u'Сообщение сохранено'))
         return
     # не ждём таблицу: отправка идёт в фоне, Revit свободен сразу; без связи сообщение
     # остаётся в очереди и уйдёт со следующим (или при следующей проверке ответов)
     core.begin_requests()  # окно при закрытии оборвало свою проверку ответов — повтор отправки не запрещать
     send_detached()
     try:
-        forms.show_balloon(u'LowLife', u'Спасибо! Сообщение отправляется.')
+        forms.show_balloon(u'LowLife', tr(u'Спасибо! Сообщение отправляется.'))
     except Exception:
         pass

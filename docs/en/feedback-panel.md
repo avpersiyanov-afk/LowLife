@@ -2,6 +2,11 @@
 
 # Feedback — the «Feedback» button on the Help panel
 
+The window and panel/button lists follow the selected LowLife language. Messages
+keep the original panel and button names; message text, contact details and the
+author's replies are not translated. About captions and Revit support statuses
+also follow the selected language.
+
 The button next to «About». The window: **Panel** (the first line is «General — LowLife as a whole») → a **Button** of that panel (or «The whole panel / don't know») → **Problem / Suggestion** → **Description** and an optional contact. Ctrl+Enter — send. You can only send with the personal data processing consent checkbox ticked: it isn't remembered and has to be ticked again for every message; without it «Send» is disabled. The Revit and Windows user names, the LowLife version (commit), the Revit version and the open model's file name are added to the message automatically.
 
 The list of panels and buttons is built from the extension folders (`lib/lowlife/ribbon_catalog.py`: captions from `bundle.yaml`/`__title__`, order from `layout:`), so new buttons appear in it by themselves.

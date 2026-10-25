@@ -176,14 +176,14 @@ def localized(entry, key, lang=None):
     return entry.get(key) or u""
 
 
-def _buttons(folder):
+def _buttons(folder, lang=None):
     result = []
     for name in _ordered(folder, BUTTON_EXTS + STACK_EXTS):
         path = os.path.join(folder, name)
         if os.path.splitext(name)[1].lower() in STACK_EXTS:
-            result.extend(_buttons(path))  # стек — просто несколько кнопок столбиком
+            result.extend(_buttons(path, lang))  # стек — просто несколько кнопок столбиком
         else:
-            result.append(item_title(path))
+            result.append((item_title_en(path) if lang == u'en' else u'') or item_title(path))
     return result
 
 
@@ -193,14 +193,15 @@ def _panels(tab):
     return [n for n in _ordered(tab, (u".panel",)) if not favorites_core.is_slot(_stem(n))]
 
 
-def list_panels(root=None):
-    """[(подпись панели, [подписи кнопок]), ...] в порядке ленты; панели без кнопок пропускаются."""
+def list_panels(root=None, lang=None):
+    """Panel/button captions in ribbon order. Default: original values; lang='en': display labels."""
     tab = os.path.join(root or extension_root(), TAB_FOLDER)
     result = []
     for name in _panels(tab):
-        buttons = _buttons(os.path.join(tab, name))
+        folder = os.path.join(tab, name)
+        buttons = _buttons(folder, lang)
         if buttons:
-            result.append((item_title(os.path.join(tab, name)), buttons))
+            result.append(((item_title_en(folder) if lang == u'en' else u'') or item_title(folder), buttons))
     return result
 
 
