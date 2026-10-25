@@ -72,11 +72,43 @@ def is_en():
     return current() == EN
 
 
+CATALOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "locale", "en.json")
+_CATALOG = {}
+
+
+def catalog():
+    """{русская строка: английская} из ``locale/en.json`` (читается один раз за движок)."""
+    if "en" not in _CATALOG:
+        data = {}
+        try:
+            import io
+            import json
+            with io.open(CATALOG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        _CATALOG["en"] = data
+    return _CATALOG["en"]
+
+
 def tr(ru, en=None):
-    """Строка на выбранном языке: ``en``, если выбран английский и перевод есть, иначе ``ru``."""
-    if en and current() == EN:
+    """Строка на выбранном языке. Русский — как есть; при English — ``en``, если передан, иначе
+    перевод из каталога ``locale/en.json`` (нет перевода — русская строка).
+
+    Оборачивайте строку до ``.format``: ``tr(u"Найдено цепей: {}").format(n)`` — ключ каталога
+    остаётся постоянным. ``tools/i18n_tool.py extract`` собирает все ``tr(u"…")`` и ``N_(u"…")``
+    в каталог, ``tests/test_i18n.py`` проверяет, что у каждой есть перевод."""
+    if not ru or current() != EN:
+        return ru
+    if en:
         return en
-    return ru
+    return catalog().get(ru) or ru
+
+
+def N_(text):
+    """Пометка «строку перевести при показе» для строк в данных (подписи полей настроек и т. п.):
+    возвращает текст как есть, перевод — ``tr(...)`` там, где он показывается."""
+    return text
 
 
 def pick(values, lang=None):

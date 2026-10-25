@@ -66,6 +66,7 @@ WPF и pyrevit импортируются лениво (внутри функц�
 """
 
 import io
+from lowlife.i18n import tr
 import json
 import os
 
@@ -284,8 +285,8 @@ class JsonStore(object):
 
         if not _write_file(path, data):
             label = self._resolve(self._label)
-            what = u"настройки {}".format(label) if label else u"настройки"
-            _alert(u"Не удалось сохранить {} в файл:\n{}".format(what, path))
+            what = tr(u"настройки {}").format(tr(label)) if label else tr(u"настройки")
+            _alert(tr(u"Не удалось сохранить {} в файл:\n{}").format(what, path))
             return False
 
         if self._share:
@@ -339,7 +340,7 @@ class TextField(object):
 
     def title(self):
         """Как поле называется в сообщениях (require, ошибки ввода)."""
-        return self.label or self.section or self.key
+        return tr(self.label or self.section) or self.key
 
     def display(self, value):
         """Значение → текст в поле ввода."""
@@ -385,10 +386,10 @@ class NumberField(TextField):
     def parse(self, text):
         number = self._number(text)
         if number is None:
-            what = u"целое число" if self.integer else u"число"
+            what = tr(u"целое число") if self.integer else tr(u"число")
             if self.minimum is not None:
-                what += u" не меньше {}".format(self.minimum)
-            return None, u"{} — нужно {}".format(self.title(), what)
+                what += tr(u" не меньше {}").format(self.minimum)
+            return None, tr(u"{} — нужно {}").format(self.title(), what)
         return number, None
 
     def coerce(self, value):
@@ -418,20 +419,20 @@ class ChoiceField(TextField):
         self.legacy = dict(legacy or {})
 
     def labels(self):
-        return [label for _value, label in self.choices]
+        return [tr(label) for _value, label in self.choices]
 
     def display(self, value):
         value = self.coerce(value)
         for v, label in self.choices:
             if v == value:
-                return label
-        return self.choices[0][1]
+                return tr(label)
+        return tr(self.choices[0][1])
 
     def parse(self, text):
         for v, label in self.choices:
-            if label == text:
+            if tr(label) == text or label == text:
                 return v, None
-        return None, u"{} — выберите вариант из списка".format(self.title())
+        return None, tr(u"{} — выберите вариант из списка").format(self.title())
 
     def coerce(self, value):
         values = [v for v, _label in self.choices]
@@ -534,9 +535,9 @@ class TextSettings(object):
         missing = self.missing(settings, keys)
         if missing:
             _alert(
-                u"Не заполнены обязательные настройки {}:\n\n{}\n\n"
-                u"Откройте настройки: Shift+клик по кнопке «{}».".format(
-                    self.transfer_label, u"\n".join(missing), self.button_name
+                tr(u"Не заполнены обязательные настройки {}:\n\n{}\n\n"
+                u"Откройте настройки: Shift+клик по кнопке «{}».").format(
+                    tr(self.transfer_label), u"\n".join(missing), tr(self.button_name)
                 ),
                 exitscript=True
             )
@@ -572,7 +573,7 @@ class TextSettings(object):
         param_names = param_autocomplete.NameSource()
 
         win = Window()
-        win.Title = u"Настройки: {}".format(self.button_name)
+        win.Title = tr(u"Настройки: {}").format(tr(self.button_name))
         win.Width = self.width
         win.Height = self.height
         win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -584,15 +585,15 @@ class TextSettings(object):
         root.Margin = Thickness(16)
 
         title = TextBlock()
-        title.Text = self.heading
+        title.Text = tr(self.heading)
         title.FontSize = 16
         title.FontWeight = FontWeights.Bold
         title.Margin = Thickness(0, 0, 0, 4)
         root.Children.Add(title)
 
         hint = TextBlock()
-        hint.Text = (self.intro if self.intro is not None else
-                     u"Значения сохраняются и подставляются при следующих запусках.")
+        hint.Text = (tr(self.intro) if self.intro is not None else
+                     tr(u"Значения сохраняются и подставляются при следующих запусках."))
         hint.FontSize = 11
         hint.TextWrapping = TextWrapping.Wrap
         hint.Foreground = Brushes.Gray
@@ -607,7 +608,7 @@ class TextSettings(object):
 
             if field.section:
                 section = TextBlock()
-                section.Text = field.section + (u"" if field.label else star)
+                section.Text = tr(field.section) + (u"" if field.label else star)
                 section.FontWeight = FontWeights.Bold
                 section.Margin = Thickness(0, 16, 0, 2)
                 section.TextWrapping = TextWrapping.Wrap
@@ -615,7 +616,7 @@ class TextSettings(object):
 
             if field.label:
                 label = TextBlock()
-                label.Text = field.label + star
+                label.Text = tr(field.label) + star
                 # без заголовка раздела — отступ от предыдущего поля побольше
                 label.Margin = Thickness(0, 2 if field.section else 8, 0, 2)
                 label.TextWrapping = TextWrapping.Wrap
@@ -639,7 +640,7 @@ class TextSettings(object):
 
             if field.hint:
                 field_hint = TextBlock()
-                field_hint.Text = field.hint
+                field_hint.Text = tr(field.hint)
                 field_hint.FontSize = 11
                 field_hint.Foreground = Brushes.Gray
                 field_hint.TextWrapping = TextWrapping.Wrap
@@ -657,7 +658,7 @@ class TextSettings(object):
 
         if any(f.required for f in self.fields):
             required_hint = TextBlock()
-            required_hint.Text = u"* обязательные поля"
+            required_hint.Text = tr(u"* обязательные поля")
             required_hint.FontSize = 11
             required_hint.Foreground = Brushes.Gray
             required_hint.Margin = Thickness(0, 10, 0, 0)
@@ -670,12 +671,12 @@ class TextSettings(object):
         DockPanel.SetDock(buttons, Dock.Bottom)
 
         cancel_btn = Button()
-        cancel_btn.Content = u"Отмена"
+        cancel_btn.Content = tr(u"Отмена")
         cancel_btn.Padding = Thickness(10, 4, 10, 4)
         cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
         ok_btn = Button()
-        ok_btn.Content = u"Сохранить"
+        ok_btn.Content = tr(u"Сохранить")
         ok_btn.Padding = Thickness(10, 4, 10, 4)
         ok_btn.FontWeight = FontWeights.Bold
 
@@ -685,7 +686,7 @@ class TextSettings(object):
                 texts[key] = combo.SelectedItem or u""
             parsed, errors = self.parse_form(texts)
             if errors:
-                forms.alert(u"Проверьте значения:\n\n" + u"\n".join(errors))
+                forms.alert(tr(u"Проверьте значения:\n\n") + u"\n".join(errors))
                 return
             result["values"] = parsed
             win.Close()
@@ -698,7 +699,7 @@ class TextSettings(object):
 
         if self.reset_button:
             reset_btn = Button()
-            reset_btn.Content = u"Сбросить"
+            reset_btn.Content = tr(u"Сбросить")
             reset_btn.Padding = Thickness(10, 4, 10, 4)
             reset_btn.Margin = Thickness(0, 0, 8, 0)
 

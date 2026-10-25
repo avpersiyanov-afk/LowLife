@@ -18,6 +18,7 @@ except NameError:  # Python 3
 from Autodesk.Revit.DB import (
     FilteredElementCollector, BuiltInCategory, LocationCurve
 )
+from lowlife.i18n import tr
 
 from lowlife.geometry import get_point, get_document_levels
 from lowlife.params import get_string_param, set_string_param, set_param_any
@@ -240,7 +241,7 @@ def renumber_addresses(doc, view, config, renumber_existing):
     lines, points = collect_lines_and_points(doc, view, config)
 
     if not lines:
-        return {"error": u"Не найдены линейные элементы на активном виде."}
+        return {"error": tr(u"Не найдены линейные элементы на активном виде.")}
 
     for p in points:
         classify_point(p, lines, STRICT, OFFSET, MARKED_TOL, END_TOL)
@@ -253,7 +254,7 @@ def renumber_addresses(doc, view, config, renumber_existing):
     route_points = [p for p in points if p["is_route"]]
 
     if not route_points:
-        return {"error": u"Не найдены узлы маршрута выбранного типа."}
+        return {"error": tr(u"Не найдены узлы маршрута выбранного типа.")}
 
     real_nodes = [p for p in route_points
                   if p["classification"] in ("NODE_STRICT", "NODE_ON_LINE", "NODE_NEAR_ENDPOINT")]

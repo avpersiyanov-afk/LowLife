@@ -13,6 +13,7 @@
 """
 
 import time
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameter, ElementId, Line, Transaction, XYZ
 from Autodesk.Revit.DB import FilteredElementCollector
@@ -71,7 +72,7 @@ def pick_circuit(uidoc, doc, prompt):
     try:
         ref = uidoc.Selection.PickObject(ObjectType.Element, prompt)
     except OperationCanceledException:
-        forms.alert(u"Операция отменена.", exitscript=True)
+        forms.alert(tr(u"Операция отменена."), exitscript=True)
         return None, None
 
     picked = doc.GetElement(ref)
@@ -86,9 +87,9 @@ def pick_circuit(uidoc, doc, prompt):
 
     if not systems:
         forms.alert(
-            u"У выбранного элемента нет электрических цепей (или это не "
+            tr(u"У выбранного элемента нет электрических цепей (или это не "
             u"устройство, а, например, узел маршрута/панель). Выберите "
-            u"устройство, подключённое к нужной цепи.",
+            u"устройство, подключённое к нужной цепи."),
             exitscript=True
         )
         return picked, None
@@ -100,7 +101,7 @@ def pick_circuit(uidoc, doc, prompt):
     by_label = {}
     for s in systems:
         label = u"{} — {} (ID {})".format(
-            circuit_panel_name(s) or u"без панели",
+            circuit_panel_name(s) or tr(u"без панели"),
             (s.Name or u"?"),
             s.Id.IntegerValue
         )
@@ -109,12 +110,12 @@ def pick_circuit(uidoc, doc, prompt):
 
     selected_label = select_list.SelectFromList.show(
         labels,
-        title=u"У устройства несколько цепей — выберите нужную",
-        button_name=u"Показать",
+        title=tr(u"У устройства несколько цепей — выберите нужную"),
+        button_name=tr(u"Показать"),
         multiselect=False
     )
     if not selected_label:
-        forms.alert(u"Операция отменена.", exitscript=True)
+        forms.alert(tr(u"Операция отменена."), exitscript=True)
         return picked, None
 
     return picked, by_label[selected_label]

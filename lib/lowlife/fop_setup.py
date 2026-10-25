@@ -20,6 +20,7 @@ ParameterType/BuiltInParameterGroup; 2025+ — только ForgeTypeId.
 """
 
 import io
+from lowlife.i18n import tr
 import os
 
 from Autodesk.Revit.DB import (
@@ -280,9 +281,9 @@ def bind(doc, app, definition, category_names, kind):
     if existing is not None:
         is_type = isinstance(existing, TypeBinding)
         if is_type != (kind == fop_catalog.TYPE):
-            result["error"] = u"в проекте уже привязан как параметр {}, а нужен — {}".format(
-                u"типа" if is_type else u"экземпляра",
-                u"типа" if kind == fop_catalog.TYPE else u"экземпляра")
+            result["error"] = tr(u"в проекте уже привязан как параметр {}, а нужен — {}").format(
+                tr(u"типа") if is_type else tr(u"экземпляра"),
+                tr(u"типа") if kind == fop_catalog.TYPE else tr(u"экземпляра"))
             return result
 
     missing = []
@@ -319,7 +320,7 @@ def bind(doc, app, definition, category_names, kind):
         return result
 
     if not ok:
-        result["error"] = u"Revit не принял привязку"
+        result["error"] = tr(u"Revit не принял привязку")
         return result
 
     result["added"] = [title for title, _c in missing]
@@ -368,7 +369,7 @@ def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
             if definition is not None:
                 row.Name = name = definition.Name
                 label = u"{} — «{}»".format(row.Label, name)
-                report.reused.append(u"{} (уже есть в проекте, не из этого ФОП)".format(label))
+                report.reused.append(tr(u"{} (уже есть в проекте, не из этого ФОП)").format(label))
                 todo.append((row, label, definition))
                 continue
         if definition is not None:
@@ -377,11 +378,11 @@ def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
                 # настройки кнопок пойдёт имя как в ФОП.
                 row.Name = name = definition.Name
                 label = u"{} — «{}»".format(row.Label, name)
-            report.reused.append(u"{} (группа «{}»)".format(label, group))
+            report.reused.append(tr(u"{} (группа «{}»)").format(label, group))
             if type_matches(definition, row.spec.data_type) is False:
                 report.warnings.append(
-                    u"{}: в ФОП тип данных не «{}» — параметр привязан как есть, "
-                    u"проверьте, подходит ли он".format(label, row.DataType))
+                    tr(u"{}: в ФОП тип данных не «{}» — параметр привязан как есть, "
+                    u"проверьте, подходит ли он").format(label, row.DataType))
         elif not write_fop or sp_file is None:
             report.skipped.append(label)
             report.skipped_keys.add(row.key)
@@ -391,10 +392,10 @@ def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
                 definition = create_definition(sp_file, group_name, name,
                                                row.spec.data_type, row.Label)
             except Exception as ex:
-                report.errors.append(u"{}: не удалось создать в ФОП — {}".format(label, ex))
+                report.errors.append(tr(u"{}: не удалось создать в ФОП — {}").format(label, ex))
                 continue
             if definition is None:
-                report.errors.append(u"{}: не удалось создать в ФОП".format(label))
+                report.errors.append(tr(u"{}: не удалось создать в ФОП").format(label))
                 continue
             report.created.append(label)
 
@@ -411,8 +412,8 @@ def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
                 # «Запись помещения», «Заполнение этажа» — элементы любых
                 # категорий, которые выбирает сам пользователь.
                 report.warnings.append(
-                    u"{}: категории не заданы — привяжите параметр к нужным "
-                    u"категориям вручную (Управление → Параметры проекта)".format(label))
+                    tr(u"{}: категории не заданы — привяжите параметр к нужным "
+                    u"категориям вручную (Управление → Параметры проекта)").format(label))
                 continue
             result = bind(doc, app, definition, row.categories, row.spec.kind)
             if result["error"]:
@@ -422,7 +423,7 @@ def add_and_bind(doc, app, sp_file, group_name, rows, write_fop=False):
             else:
                 report.already.append(label)
             if result["skipped"]:
-                report.warnings.append(u"{}: пропущены категории {}".format(
+                report.warnings.append(tr(u"{}: пропущены категории {}").format(
                     label, u", ".join(result["skipped"])))
         t.Commit()
     except Exception:

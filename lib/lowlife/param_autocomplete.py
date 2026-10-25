@@ -23,6 +23,7 @@ WPF, есть тесты. Сбор имён (collect_parameter_names) и окн�
 """
 
 from lowlife import text_search
+from lowlife.i18n import N_, tr
 from lowlife.text_search import normalize  # noqa: F401 — реэкспорт, им же сортируются списки
 
 # --- чистая логика ------------------------------------------------------------
@@ -454,22 +455,22 @@ def _with_wait_cursor(work):
             Mouse.OverrideCursor = None
 
 
-HINT = (u"Начните вводить — появятся подходящие параметры модели "
+HINT = N_(u"Начните вводить — появятся подходящие параметры модели "
         u"(↓ или Ctrl+Пробел — весь список, Enter — подставить).")
 
 _HINTS = {
-    "views": u"виды модели",
-    "view_prefixes": u"начала имён видов модели",
-    "families": u"семейства модели",
-    "system_types": u"типы электрических цепей Revit",
-    "lines_of": u"значения из списка выше",
-    "values_of": u"значения этого параметра в модели",
+    "views": N_(u"виды модели"),
+    "view_prefixes": N_(u"начала имён видов модели"),
+    "families": N_(u"семейства модели"),
+    "system_types": N_(u"типы электрических цепей Revit"),
+    "lines_of": N_(u"значения из списка выше"),
+    "values_of": N_(u"значения этого параметра в модели"),
 }
 
 
 def _hint(what):
-    return (u"Начните вводить — появятся подходящие {} (↓ или Ctrl+Пробел — "
-            u"весь список, Enter — подставить).".format(what))
+    return tr(u"Начните вводить — появятся подходящие {} (↓ или Ctrl+Пробел — "
+              u"весь список, Enter — подставить).").format(tr(what))
 
 
 class NameSource(object):
@@ -533,7 +534,7 @@ def source_for_rule(rule, params_source, boxes=None, values=None):
     if kind == "params":
         return params_source
     doc = getattr(params_source, "doc", None)
-    hint = _hint(_HINTS.get(kind, u"значения"))
+    hint = _hint(_HINTS.get(kind, N_(u"значения")))
     if kind == "views":
         return NameSource(doc, collect=collect_view_names, hint=hint)
     if kind == "view_prefixes":
@@ -647,7 +648,7 @@ class _Completion(object):
         box.PreviewKeyDown += self.on_key
         box.LostKeyboardFocus += self.on_lost_focus
         if box.ToolTip is None:
-            box.ToolTip = getattr(source, "hint", None) or HINT
+            box.ToolTip = tr(getattr(source, "hint", None) or HINT)
 
     # --- показ ---
 

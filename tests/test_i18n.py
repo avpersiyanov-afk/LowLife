@@ -107,3 +107,56 @@ def test_language_window_marks_current_and_maps_back():
     assert language_ui.chosen_language(u"Русский", i18n.EN) == i18n.RU
     assert language_ui.chosen_language(u"✓ English", i18n.EN) == i18n.EN
     assert language_ui.chosen_language(u"Deutsch", i18n.EN) is None
+
+
+def _tool():
+    import importlib
+    import sys
+    tools = os.path.join(os.path.dirname(TAB), "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    return importlib.import_module("i18n_tool")
+
+
+def test_every_marked_string_has_an_english_translation():
+    # новая строка в tr(u"…")/N_(u"…") → python tools/i18n_tool.py extract --write и перевести в locale/en.json
+    tool = _tool()
+    assert tool.problems() == []
+
+
+def test_tr_uses_the_catalog_only_in_english(appdata):
+    assert i18n.tr(u"Сохранить") == u"Сохранить"
+    i18n.save(i18n.EN)
+    assert i18n.tr(u"Сохранить") == u"Save"
+    assert i18n.tr(u"Нет такой строки в каталоге") == u"Нет такой строки в каталоге"
+    assert i18n.tr(u"Найдено {}", u"Found {}").format(3) == u"Found 3"
+
+
+def test_choice_field_round_trip_in_english(appdata):
+    from lowlife import settings_core
+    field = settings_core.ChoiceField("mode", u"", u"Подписи в помещениях",
+                                      [("ceiling", u"только подвесные потолки (ПП)"), ("none", u"нет")])
+    i18n.save(i18n.EN)
+    assert field.labels() == [u"suspended ceilings only", u"no"]
+    assert field.display("none") == u"no"
+    assert field.parse(u"no") == ("none", None)
+    assert field.title() == u"Labels in rooms"
+
+
+def test_wrap_tool_wraps_ui_strings_but_not_data_or_metadata():
+    tool = _tool()
+    source = (u'__title__ = u"Кнопка"\n'
+              u'import os\n'
+              u'KEYWORDS = [u"стояк"]\n'
+              u'def run(n):\n'
+              u'    forms.alert(u"Найдено: {}".format(n))\n'
+              u'    box.Text = u"Подпись"\n'
+              u'    if value == u"стояк":\n'
+              u'        pass\n')
+    out, count = tool.wrap_source(source)
+    assert count == 2
+    assert u'__title__ = u"Кнопка"' in out
+    assert u'from lowlife.i18n import tr\n' in out
+    assert u'forms.alert(tr(u"Найдено: {}").format(n))' in out
+    assert u'box.Text = tr(u"Подпись")' in out
+    assert u'KEYWORDS = [u"стояк"]' in out and u'value == u"стояк"' in out

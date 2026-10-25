@@ -13,6 +13,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -63,8 +64,8 @@ def _open_settings():
         "panel_exclude_keywords", "excluded_device_keywords"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -202,7 +203,7 @@ for el in collector:
     })
 
 if not lines:
-    forms.alert(u"Не найдены линейные элементы на активном виде.", exitscript=True)
+    forms.alert(tr(u"Не найдены линейные элементы на активном виде."), exitscript=True)
 
 
 # ------------------------------------------------------------
@@ -227,7 +228,7 @@ offset_nodes = [p for p in route_points if p["classification"] == "OFFSET_MARKER
 unconnected_nodes = [p for p in route_points if p["classification"] == "UNCONNECTED"]
 
 if not route_points:
-    forms.alert(u"Не найдены узлы маршрута выбранного типа.", exitscript=True)
+    forms.alert(tr(u"Не найдены узлы маршрута выбранного типа."), exitscript=True)
 
 for line in lines:
     pts_on_line = []
@@ -593,7 +594,7 @@ if any_nearest_issues:
         except:
             return str(el.Id.IntegerValue)
 
-    output.print_md(u"### «Ближайший узел маршрута» — кому и почему не записано")
+    output.print_md(tr(u"### «Ближайший узел маршрута» — кому и почему не записано"))
 
     def _report_list(title, elements, explanation):
         if not elements:
@@ -602,26 +603,26 @@ if any_nearest_issues:
         output.print_md(u", ".join(_link_dev(el) for el in elements[:100]))
 
     _report_list(
-        u"Устройство не на активном виде",
+        tr(u"Устройство не на активном виде"),
         devices_excluded_device_not_on_view,
-        u"панель найдена (по всему документу — она может быть на другом этаже, "
+        tr(u"панель найдена (по всему документу — она может быть на другом этаже, "
         u"это нормально), но само устройство не видно на активном виде "
-        u"(другой этаж/скрыто настройками вида)"
+        u"(другой этаж/скрыто настройками вида)")
     )
     _report_list(
-        u"Нет точки расположения",
+        tr(u"Нет точки расположения"),
         nearest_failed_no_point,
-        u"get_point() не нашёл LocationPoint у элемента"
+        tr(u"get_point() не нашёл LocationPoint у элемента")
     )
     _report_list(
-        u"Нет ни одного адресованного узла маршрута",
+        tr(u"Нет ни одного адресованного узла маршрута"),
         nearest_failed_no_nearest,
-        u"segments_by_addr пуст — на активном виде нет ни одного узла с адресом"
+        tr(u"segments_by_addr пуст — на активном виде нет ни одного узла с адресом")
     )
     _report_list(
-        u"Не удалось записать параметр",
+        tr(u"Не удалось записать параметр"),
         nearest_failed_param_write,
-        u"NEAREST_SEGMENT_PARAM не найден на элементе или доступен только для чтения"
+        tr(u"NEAREST_SEGMENT_PARAM не найден на элементе или доступен только для чтения")
     )
 
     # Выделяем всё разом, чтобы посмотреть расположение целиком.
@@ -648,10 +649,10 @@ def mm(v):
 
 def category_label(n):
     if n["is_panel"]:
-        return u"Панель"
+        return tr(u"Панель")
     if n["is_riser"]:
-        return u"Стояк"
-    return u"Маршрут"
+        return tr(u"Стояк")
+    return tr(u"Маршрут")
 
 
 def parent_label(n):
@@ -662,7 +663,7 @@ def parent_label(n):
     if parent_obj is None:
         return u"ID {}".format(pid)
     return u"{} ({}, ID {})".format(
-        parent_obj.get("addr") or u"без адреса", category_label(parent_obj), pid
+        parent_obj.get("addr") or tr(u"без адреса"), category_label(parent_obj), pid
     )
 
 
@@ -694,7 +695,7 @@ def root_source_label(n):
     src = find_root_source(n)
     if src is None:
         return u"-"
-    return u"{} ({})".format(src.get("addr") or u"без адреса", category_label(src))
+    return u"{} ({})".format(src.get("addr") or tr(u"без адреса"), category_label(src))
 
 
 branch_size_by_root_id = {}
@@ -707,7 +708,7 @@ for n in real_nodes:
 from pyrevit import script as pyrevit_script
 output = pyrevit_script.get_output()
 
-output.print_md(u"## Адреса узлов — подробный отчёт")
+output.print_md(tr(u"## Адреса узлов — подробный отчёт"))
 
 far_ids = set(s["id"] for s in far_sources)
 demoted_ids = set(p["id"] for p in demoted_panels)
@@ -724,16 +725,16 @@ used_fallback_riser_ids = set(
 
 def root_status_label(n):
     if n["id"] in demoted_ids:
-        return u"Ниже приоритета слова панели — не корень"
+        return tr(u"Ниже приоритета слова панели — не корень")
     if n["id"] in far_ids:
-        return u"Слишком далеко — не корень"
+        return tr(u"Слишком далеко — не корень")
     if n["id"] in used_fallback_riser_ids:
-        return u"Запасной корень — спасена отдельная ветка"
-    return u"Корень"
+        return tr(u"Запасной корень — спасена отдельная ветка")
+    return tr(u"Корень")
 
 
 if panels or risers:
-    output.print_md(u"### Панели и стояки ({})".format(len(panels) + len(risers)))
+    output.print_md(tr(u"### Панели и стояки ({})").format(len(panels) + len(risers)))
     roots_table = []
     for n in panels + risers:
         roots_table.append([
@@ -745,10 +746,10 @@ if panels or risers:
         ])
     output.print_table(
         table_data=roots_table,
-        columns=[u"ID", u"Категория", u"X, мм", u"Y, мм", u"Адрес", u"Приоритет слова", u"Статус", u"Узлов в ветке"]
+        columns=[u"ID", tr(u"Категория"), tr(u"X, мм"), tr(u"Y, мм"), tr(u"Адрес"), tr(u"Приоритет слова"), tr(u"Статус"), tr(u"Узлов в ветке")]
     )
 
-output.print_md(u"### Узлы маршрута — в порядке нумерации ({})".format(len(ordered_routes)))
+output.print_md(tr(u"### Узлы маршрута — в порядке нумерации ({})").format(len(ordered_routes)))
 nodes_table = []
 for i, n in enumerate(ordered_routes, start=1):
     nodes_table.append([
@@ -762,14 +763,14 @@ for i, n in enumerate(ordered_routes, start=1):
 output.print_table(
     table_data=nodes_table,
     columns=[
-        u"#", u"ID", u"X, мм", u"Y, мм", u"Классификация", u"Адрес", u"Предыдущий адрес",
-        u"Родитель", u"Итоговый шкаф/стояк"
+        u"#", u"ID", tr(u"X, мм"), tr(u"Y, мм"), tr(u"Классификация"), tr(u"Адрес"), tr(u"Предыдущий адрес"),
+        tr(u"Родитель"), tr(u"Итоговый шкаф/стояк")
     ]
 )
 
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Уровень: {}\n"
     u"Код этажа: {}\n"
     u"Корень: {}\n\n"
@@ -781,10 +782,10 @@ forms.alert(
     u"Стояков — запасных корней (спасены отдельные ветки): {}\n\n"
     u"Записано «Ближайший узел маршрута» (панели/устройства): {}\n"
     u"— не записано (устройство не на активном виде): {}\n\n"
-    u"Подробности — в окне вывода pyRevit.".format(
+    u"Подробности — в окне вывода pyRevit.").format(
         level_name,
         floor_code,
-        (u"Панель" if root_sources[0]["is_panel"] else u"Стояк") if root_sources else u"Нет (все далеко)",
+        (tr(u"Панель") if root_sources[0]["is_panel"] else tr(u"Стояк")) if root_sources else tr(u"Нет (все далеко)"),
         len(route_points),
         len(changed),
         len(stray_cleared),
