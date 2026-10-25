@@ -42,6 +42,7 @@ build_scs_manual_circuits — имя нагрузки у таких цепей �
 """
 
 from Autodesk.Revit.DB import ElementId
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms
 
@@ -66,9 +67,9 @@ def get_conductor_id(doc, settings):
 
     if not id_str:
         forms.alert(
-            u"В настройках СКС не выбран проводник для цепей.\n\n"
+            tr(u"В настройках СКС не выбран проводник для цепей.\n\n"
             u"Откройте настройки (Shift+клик по этой же кнопке) и выберите его в разделе "
-            u"«Проводник для цепей СКС».",
+            u"«Проводник для цепей СКС»."),
             exitscript=True
         )
 
@@ -80,10 +81,10 @@ def get_conductor_id(doc, settings):
 
     if element_id is None or doc.GetElement(element_id) is None:
         forms.alert(
-            u"Проводник, выбранный в настройках СКС, не найден в проекте "
+            tr(u"Проводник, выбранный в настройках СКС, не найден в проекте "
             u"(возможно, был удалён). Откройте настройки (Shift+клик по этой же "
             u"кнопке) и "
-            u"выберите его заново.",
+            u"выберите его заново."),
             exitscript=True
         )
 
@@ -117,7 +118,7 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
     created = 0
     errors = []
 
-    with revit.Transaction(u"Построение цепей СКС"):
+    with revit.Transaction(tr(u"Построение цепей СКС")):
         for dev in device_els:
             system_type = detect_electrical_system_type(dev) or CIRCUIT_SYSTEM_TYPE
             connector_count = max(1, count_electrical_connectors(dev))
@@ -133,17 +134,17 @@ def build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
 
                 if circuit is None:
                     if connector_count > 1:
-                        errors.append(u"Устройство ID {} (коннектор {}/{}): {}".format(
+                        errors.append(tr(u"Устройство ID {} (коннектор {}/{}): {}").format(
                             dev.Id.IntegerValue, i + 1, connector_count, error
                         ))
                     else:
-                        errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
+                        errors.append(tr(u"Устройство ID {}: {}").format(dev.Id.IntegerValue, error))
                     continue
 
                 created += 1
 
                 if error:
-                    errors.append(u"Устройство ID {}: {}".format(dev.Id.IntegerValue, error))
+                    errors.append(tr(u"Устройство ID {}: {}").format(dev.Id.IntegerValue, error))
 
                 set_circuit_wire_type(doc, circuit, conductor_id)
 

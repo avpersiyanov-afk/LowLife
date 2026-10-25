@@ -364,17 +364,17 @@ with revit.Transaction("Calc SKUD Lengths And Marking"):
                 final_pipe_m = (horiz_pipe_m + horiz_pipe_open_m) * HORIZ_PIPE_COEF + vertical_m * VERTICAL_COEF
                 final_total_m = final_tray_m + final_pipe_m
 
-                T, tr, pi = balance_round_parts(final_total_m, [final_tray_m, final_pipe_m])
+                T, tray_m, pi = balance_round_parts(final_total_m, [final_tray_m, final_pipe_m])
 
                 set_param_any(c, WIRE_LENGTH_PARAM, T)
-                set_param_any(c, TRAY_LENGTH_PARAM, tr)
+                set_param_any(c, TRAY_LENGTH_PARAM, tray_m)
                 set_param_any(c, PIPE_LENGTH_PARAM, pi)
 
                 route_parts = []
                 if pi > 0 and ROUTE_LABEL_PIPE:
                     route_parts.append(ROUTE_LABEL_PIPE.format(pi))
-                if tr > 0 and ROUTE_LABEL_TRAY:
-                    route_parts.append(ROUTE_LABEL_TRAY.format(tr))
+                if tray_m > 0 and ROUTE_LABEL_TRAY:
+                    route_parts.append(ROUTE_LABEL_TRAY.format(tray_m))
 
                 set_param_any(c, ROUTE_METHOD_PARAM, u"; ".join(route_parts))
                 set_param_any(c, CIRCUIT_ROUTE_PARAM, u" -> ".join(path))

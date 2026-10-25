@@ -29,6 +29,7 @@ except NameError:  # Python 3
 
 
 import io
+from lowlife.i18n import tr
 import json
 
 import clr
@@ -53,8 +54,8 @@ def _export(read_all, discipline_label):
 
     if not data:
         forms.alert(
-            u"Настройки {} ещё не заданы — выгружать нечего. Сначала "
-            u"заполните параметры и нажмите «Сохранить».".format(discipline_label)
+            tr(u"Настройки {} ещё не заданы — выгружать нечего. Сначала "
+            u"заполните параметры и нажмите «Сохранить».").format(tr(discipline_label))
         )
         return
 
@@ -71,13 +72,13 @@ def _export(read_all, discipline_label):
                 data, ensure_ascii=False, indent=2, sort_keys=True
             )))
     except Exception as exc:
-        forms.alert(u"Не удалось записать файл:\n{}\n\n{}".format(path, exc))
+        forms.alert(tr(u"Не удалось записать файл:\n{}\n\n{}").format(path, exc))
         return
 
     forms.alert(
-        u"Настройки {} ({} значений) выгружены в файл:\n{}\n\n"
+        tr(u"Настройки {} ({} значений) выгружены в файл:\n{}\n\n"
         u"Файл можно передать на другой проект/компьютер и там нажать "
-        u"«Загрузить настройки…».".format(discipline_label, len(data), path)
+        u"«Загрузить настройки…».").format(tr(discipline_label), len(data), path)
     )
 
 
@@ -92,23 +93,23 @@ def _import(read_all, write_all, discipline_label, on_imported):
         imported = json.loads(text) if text.strip() else None
     except Exception as exc:
         forms.alert(
-            u"Не удалось прочитать файл настроек:\n{}\n\n{}".format(path, exc)
+            tr(u"Не удалось прочитать файл настроек:\n{}\n\n{}").format(path, exc)
         )
         return
 
     if not isinstance(imported, dict) or not imported:
         forms.alert(
-            u"Файл не похож на файл настроек LowLife (ожидался JSON-объект "
-            u"с парами «параметр: значение»)."
+            tr(u"Файл не похож на файл настроек LowLife (ожидался JSON-объект "
+            u"с парами «параметр: значение»).")
         )
         return
 
     if not forms.alert(
-        u"Загрузить {} значений настроек {} из файла?\n{}\n\n"
+        tr(u"Загрузить {} значений настроек {} из файла?\n{}\n\n"
         u"Текущие настройки будут перезаписаны загруженными (значения, "
         u"которых нет в файле, останутся). Выбор типов из проекта, скорее "
         u"всего, придётся переназначить — id элементов на другом проекте "
-        u"другие.".format(len(imported), discipline_label, path),
+        u"другие.").format(len(imported), tr(discipline_label), path),
         yes=True, no=True,
     ):
         return
@@ -118,8 +119,8 @@ def _import(read_all, write_all, discipline_label, on_imported):
     write_all(data)
 
     forms.alert(
-        u"Настройки {} загружены. Окно откроется заново с новыми "
-        u"значениями.".format(discipline_label)
+        tr(u"Настройки {} загружены. Окно откроется заново с новыми "
+        u"значениями.").format(tr(discipline_label))
     )
 
     on_imported()
@@ -138,13 +139,13 @@ def add_transfer_buttons(buttons_panel, read_all, write_all,
                          окно так, чтобы show_settings_form вернул RELOAD.
     """
     export_btn = Button()
-    export_btn.Content = u"Выгрузить настройки…"
+    export_btn.Content = tr(u"Выгрузить настройки…")
     export_btn.Padding = Thickness(10, 4, 10, 4)
     export_btn.Margin = Thickness(0, 0, 8, 0)
     export_btn.Click += lambda sender, args: _export(read_all, discipline_label)
 
     import_btn = Button()
-    import_btn.Content = u"Загрузить настройки…"
+    import_btn.Content = tr(u"Загрузить настройки…")
     import_btn.Padding = Thickness(10, 4, 10, 4)
     import_btn.Margin = Thickness(0, 0, 8, 0)
     import_btn.Click += lambda sender, args: _import(

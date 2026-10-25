@@ -7,6 +7,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -44,8 +45,8 @@ def _open_settings():
         "offset_param_names"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -102,8 +103,8 @@ for category_name, type_id in TYPE_ID_BY_CATEGORY.items():
     symbol = doc.GetElement(type_id)
     if symbol is None:
         forms.alert(
-            u"Не найден выбранный тип для категории «{}». "
-            u"Откройте настройки и выберите тип заново.".format(category_name),
+            tr(u"Не найден выбранный тип для категории «{}». "
+            u"Откройте настройки и выберите тип заново.").format(category_name),
             exitscript=True
         )
     symbols_by_category[category_name] = symbol
@@ -147,7 +148,7 @@ for el in generic:
     segments_by_id[data["id"]] = data
 
 if not segments:
-    forms.alert("Сегменты трассы не найдены.", exitscript=True)
+    forms.alert(tr("Сегменты трассы не найдены."), exitscript=True)
 
 all_endpoints = []
 for s in segments:
@@ -443,15 +444,15 @@ if large_clusters:
     output = pyrevit_script.get_output()
 
     output.print_md(
-        u"### Крупные кластеры узлов — {} и более элементов в одной точке ({})".format(
+        tr(u"### Крупные кластеры узлов — {} и более элементов в одной точке ({})").format(
             LARGE_CLUSTER_THRESHOLD, len(large_clusters)
         )
     )
     output.print_md(
-        u"«Разброс X x Y x Z» — размер условного параллелепипеда вокруг всех "
+        tr(u"«Разброс X x Y x Z» — размер условного параллелепипеда вокруг всех "
         u"узлов кластера ДО слияния в одну точку. Единицы-десятки мм — "
         u"реально одна точка, просто неточно начерчено. Метры — вероятно, "
-        u"цепочка близко идущих, но разных узлов; см. ID сегментов трассы."
+        u"цепочка близко идущих, но разных узлов; см. ID сегментов трассы.")
     )
 
     large_clusters_table = []
@@ -469,7 +470,7 @@ if large_clusters:
         segment_ids = n.get("segment_ids", [])
         segment_ids_text = u", ".join(str(sid) for sid in segment_ids[:30])
         if len(segment_ids) > 30:
-            segment_ids_text += u", ... ещё {}".format(len(segment_ids) - 30)
+            segment_ids_text += tr(u", ... ещё {}").format(len(segment_ids) - 30)
 
         large_clusters_table.append([
             _mm(n["point"].X), _mm(n["point"].Y), _mm(n["point"].Z),
@@ -484,8 +485,8 @@ if large_clusters:
     output.print_table(
         table_data=large_clusters_table,
         columns=[
-            u"X, мм", u"Y, мм", u"Z, мм", u"Элементов", u"Разброс X x Y x Z, мм",
-            u"Итог. категория", u"Источники", u"Категории членов", u"ID сегментов трассы"
+            tr(u"X, мм"), tr(u"Y, мм"), tr(u"Z, мм"), tr(u"Элементов"), tr(u"Разброс X x Y x Z, мм"),
+            tr(u"Итог. категория"), tr(u"Источники"), tr(u"Категории членов"), tr(u"ID сегментов трассы")
         ]
     )
 
@@ -532,7 +533,7 @@ created_origin_by_id = {}
 
 document_levels = get_document_levels(doc)
 if not document_levels:
-    forms.alert(u"В проекте нет ни одного уровня.", exitscript=True)
+    forms.alert(tr(u"В проекте нет ни одного уровня."), exitscript=True)
 
 with revit.Transaction("Place Route Nodes"):
 
@@ -708,12 +709,12 @@ if duplicate_pairs:
             return str(el.Id.IntegerValue)
 
     output.print_md(
-        u"### Элементы почти/точно в одной точке после расстановки — весь документ ({})".format(
+        tr(u"### Элементы почти/точно в одной точке после расстановки — весь документ ({})").format(
             len(duplicate_pairs)
         )
     )
     output.print_md(
-        u"Считано по ВСЕМУ документу (все виды/уровни), не только по активному "
+        tr(u"Считано по ВСЕМУ документу (все виды/уровни), не только по активному "
         u"виду — предупреждение Revit «идентичные экземпляры» тоже не привязано "
         u"к виду, так что числа теперь должны быть сравнимы. Из них ближе "
         u"{:.0f}мм (похоже на то, что видит сам Revit): **{}**.\n\n"
@@ -722,7 +723,7 @@ if duplicate_pairs:
         u"запуском кнопки или существовал до него. Клик по ID — выделяет и "
         u"показывает элемент в модели. Все элементы из пар ниже также сразу "
         u"выделены в модели — используйте «Zoom to Fit Selection», чтобы "
-        u"увидеть их расположение целиком.".format(
+        u"увидеть их расположение целиком.").format(
             EXACT_DUPLICATE_RADIUS_MM, len(exact_duplicate_pairs), DUPLICATE_SCAN_RADIUS_MM
         )
     )
@@ -739,7 +740,7 @@ if duplicate_pairs:
         seg_text = u", ".join(str(s) for s in seg_ids[:10])
         if len(seg_ids) > 10:
             seg_text += u", ..."
-        return u"{} узл. / сегм.: {}".format(len(node.get("source_types", [])), seg_text or u"-")
+        return tr(u"{} узл. / сегм.: {}").format(len(node.get("source_types", [])), seg_text or u"-")
 
     def _raw_distance_text(el_i, el_j):
         """Расстояние между ИСХОДНЫМИ точками (node["point"] ДО создания
@@ -762,22 +763,22 @@ if duplicate_pairs:
     for el_i, el_j, d in sorted(duplicate_pairs, key=lambda t: t[2]):
         duplicate_pairs_table.append([
             _link(el_i),
-            u"новый" if el_i.Id.IntegerValue in created_ids_set else u"уже был",
+            tr(u"новый") if el_i.Id.IntegerValue in created_ids_set else tr(u"уже был"),
             _origin_text(el_i),
             _link(el_j),
-            u"новый" if el_j.Id.IntegerValue in created_ids_set else u"уже был",
+            tr(u"новый") if el_j.Id.IntegerValue in created_ids_set else tr(u"уже был"),
             _origin_text(el_j),
             u"{:.1f}".format(d * MM_PER_FT),
             _raw_distance_text(el_i, el_j),
-            u"точно" if d <= EXACT_DUPLICATE_RADIUS_FT else u"рядом"
+            tr(u"точно") if d <= EXACT_DUPLICATE_RADIUS_FT else tr(u"рядом")
         ])
 
     output.print_table(
         table_data=duplicate_pairs_table,
         columns=[
-            u"ID 1", u"1", u"Происхождение 1",
-            u"ID 2", u"2", u"Происхождение 2",
-            u"Расстояние, мм", u"Расстояние ДО создания, мм", u"Точно/рядом"
+            u"ID 1", u"1", tr(u"Происхождение 1"),
+            u"ID 2", u"2", tr(u"Происхождение 2"),
+            tr(u"Расстояние, мм"), tr(u"Расстояние ДО создания, мм"), tr(u"Точно/рядом")
         ]
     )
 
@@ -798,7 +799,7 @@ if duplicate_pairs:
 
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Создано элементов: {}\n"
     u"Пропущено (уже стоял маркер): {}\n"
     u"Пропущено аннотаций стояка (рядом уже отмечено реальное устройство): {}\n\n"
@@ -808,7 +809,7 @@ forms.alert(
     u"Наибольший кластер (элементов слито в одну точку): {}\n"
     u"Пар маркеров рядом (весь документ, до {:.0f}мм): {}\n"
     u"— из них точных совпадений (до {:.0f}мм, как у Revit): {}\n\n"
-    u"{}".format(
+    u"{}").format(
         len(created),
         len(skipped),
         riser_annotations_skipped,
@@ -820,6 +821,6 @@ forms.alert(
         len(duplicate_pairs),
         EXACT_DUPLICATE_RADIUS_MM,
         len(exact_duplicate_pairs),
-        u"Подробности — в окне вывода pyRevit." if (large_clusters or duplicate_pairs) else u""
+        tr(u"Подробности — в окне вывода pyRevit.") if (large_clusters or duplicate_pairs) else u""
     )
 )

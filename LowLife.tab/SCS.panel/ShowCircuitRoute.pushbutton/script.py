@@ -17,6 +17,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -40,9 +41,9 @@ view = doc.ActiveView
 
 if view.ViewType == ViewType.ThreeD:
     forms.alert(
-        u"Временная линия маршрута — это Detail Line, она не поддерживается "
+        tr(u"Временная линия маршрута — это Detail Line, она не поддерживается "
         u"на 3D-виде. Переключитесь на план (или другой 2D-вид) и запустите "
-        u"кнопку заново.",
+        u"кнопку заново."),
         exitscript=True
     )
 
@@ -53,8 +54,8 @@ def _open_settings():
         "circuit_route_param", "addr_param_name", "excluded_device_keywords"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -93,7 +94,7 @@ EXCLUDED_DEVICE_KEYWORDS = settings["excluded_device_keywords"]
 # ------------------------------------------------------------
 
 picked, circuit = pick_circuit(
-    uidoc, doc, u"Выберите устройство, входящее в интересующую цепь СКС"
+    uidoc, doc, tr(u"Выберите устройство, входящее в интересующую цепь СКС")
 )
 
 
@@ -104,8 +105,8 @@ picked, circuit = pick_circuit(
 route_text = clean_text_value(get_string_param(circuit, CIRCUIT_ROUTE_PARAM))
 if not route_text:
     forms.alert(
-        u"У цепи не заполнен маршрут (параметр «{}»). Сначала запустите "
-        u"кнопку «Расчёт длины цепи» — она считает и записывает маршрут.".format(CIRCUIT_ROUTE_PARAM),
+        tr(u"У цепи не заполнен маршрут (параметр «{}»). Сначала запустите "
+        u"кнопку «Расчёт длины цепи» — она считает и записывает маршрут.").format(CIRCUIT_ROUTE_PARAM),
         exitscript=True
     )
 
@@ -171,7 +172,7 @@ for el in route_elements:
 # ПОСТРОЕНИЕ ЛИНИИ + ВЫДЕЛЕНИЕ
 # ------------------------------------------------------------
 
-with revit.Transaction(u"Показать маршрут цепи СКС"):
+with revit.Transaction(tr(u"Показать маршрут цепи СКС")):
     created_ids = create_route_lines(doc, view, points)
 
 select_elements(uidoc, route_elements, created_ids)
@@ -179,17 +180,17 @@ zoom_to_fit_points(uidoc, view, points)
 schedule_preview_cleanup(uidoc.Application, doc, created_ids)
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Цепь: {}\n"
     u"Элементов в маршруте: {}\n"
     u"Построено отрезков линии: {}\n"
     u"Не найдено узлов по адресу: {}\n\n"
     u"{}"
-    u"Устройство, узлы и панель выделены в модели.".format(
+    u"Устройство, узлы и панель выделены в модели.").format(
         norm(circuit.Name) or circuit.Id.IntegerValue,
         len(route_elements),
         len(created_ids),
         len(missing_addrs),
-        (u"Не найдены (удалены/на другом виде): {}\n\n".format(u", ".join(missing_addrs)) if missing_addrs else u"")
+        (tr(u"Не найдены (удалены/на другом виде): {}\n\n").format(u", ".join(missing_addrs)) if missing_addrs else u"")
     )
 )

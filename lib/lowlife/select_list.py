@@ -16,9 +16,24 @@ pyRevit оставлен как есть. `CommandSwitchWindow` — то же д
 from pyrevit import forms
 
 from lowlife import text_search
+from lowlife.i18n import N_, tr
+
+_TEXT_KWARGS = ("title", "button_name", "message")
+
+
+def _translated(kwargs):
+    """Подписи окна (title=, button_name=, message=) на выбранном языке."""
+    for key in _TEXT_KWARGS:
+        if kwargs.get(key):
+            kwargs[key] = tr(kwargs[key])
+    return kwargs
 
 
 class SelectFromList(forms.SelectFromList):
+    @classmethod
+    def show(cls, context, *args, **kwargs):
+        return super(SelectFromList, cls).show(context, *args, **_translated(kwargs))
+
     def _list_options(self, option_filter=None):
         # базовый метод заодно переключает подписи кнопок «Отметить все»/«Отметить»
         forms.SelectFromList._list_options(self, option_filter)
@@ -30,6 +45,10 @@ class SelectFromList(forms.SelectFromList):
 
 
 class CommandSwitchWindow(forms.CommandSwitchWindow):
+    @classmethod
+    def show(cls, context, *args, **kwargs):
+        return super(CommandSwitchWindow, cls).show(context, *args, **_translated(kwargs))
+
     def _filter_options(self, option_filter=None):
         forms.CommandSwitchWindow._filter_options(self, option_filter)
         if not option_filter:
@@ -40,7 +59,7 @@ class CommandSwitchWindow(forms.CommandSwitchWindow):
             button.Visibility = Visibility.Visible if visible else Visibility.Collapsed
 
 
-def select_views(title=u"Выбор видов", button_name=u"Выбрать", multiple=True, filterfunc=None, doc=None):
+def select_views(title=N_(u"Выбор видов"), button_name=N_(u"Выбрать"), multiple=True, filterfunc=None, doc=None):
     """Как forms.select_views (без use_selection): виды модели в списке с поиском LowLife."""
     from pyrevit import revit
     doc = doc or revit.doc

@@ -9,6 +9,7 @@
 """
 
 from Autodesk.Revit.DB import BuiltInCategory, BuiltInParameterGroup
+from lowlife.i18n import N_
 
 CAT_MARKERS = [BuiltInCategory.OST_GenericModel]
 
@@ -41,46 +42,46 @@ NATIVE = "native"
 #  для необязательных кнопок (например структурной схемы), поэтому не
 #  должны блокировать "Параметры СКС" для тех, кто ими не пользуется)
 PARAM_SPECS = [
-    ("cable_param_name", u"Тип прокладки кабеля (узлы)",
+    ("cable_param_name", N_(u"Тип прокладки кабеля (узлы)"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
-    ("route_param_name", u"Тип трассы (узлы)",
+    ("route_param_name", N_(u"Тип трассы (узлы)"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
-    ("addr_param_name", u"Адрес узла",
+    ("addr_param_name", N_(u"Адрес узла"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
-    ("addr_prev_param_name", u"Предыдущий адрес",
+    ("addr_prev_param_name", N_(u"Предыдущий адрес"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
-    ("segment_loads_param", u"Список цепей (узел маршрута)",
+    ("segment_loads_param", N_(u"Список цепей (узел маршрута)"),
         False, CAT_MARKERS, INSTANCE, TEXT, FOP, True),
-    ("offset_param_names", u"Отметка (узлы/устройства/панели/стояки)",
+    ("offset_param_names", N_(u"Отметка (узлы/устройства/панели/стояки)"),
         True, CAT_MARKERS + CAT_DEVICES_AND_PANELS, INSTANCE, NUMBER, FOP, True),
-    ("nearest_segment_param", u"Ближайший узел маршрута (панель/устройство)",
+    ("nearest_segment_param", N_(u"Ближайший узел маршрута (панель/устройство)"),
         False, CAT_DEVICES_AND_PANELS, INSTANCE, TEXT, FOP, True),
-    ("device_address_param", u"Адрес устройства",
+    ("device_address_param", N_(u"Адрес устройства"),
         False, CAT_DEVICES_ONLY, INSTANCE, TEXT, FOP, True),
-    ("designation_param", u"Обозначение (тип устройства)",
+    ("designation_param", N_(u"Обозначение (тип устройства)"),
         False, CAT_DEVICES_ONLY, TYPE, TEXT, FOP, True),
-    ("circuit_name_type_param", u"Наименование (цепь)",
+    ("circuit_name_type_param", N_(u"Наименование (цепь)"),
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
-    ("circuit_number_param", u"Номер цепи",
+    ("circuit_number_param", N_(u"Номер цепи"),
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
-    ("circuit_route_param", u"Маршрут цепи",
+    ("circuit_route_param", N_(u"Маршрут цепи"),
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
-    ("wire_length_param", u"Длина проводника",
+    ("wire_length_param", N_(u"Длина проводника"),
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
-    ("tray_length_param", u"Длина проводника в лотке",
+    ("tray_length_param", N_(u"Длина проводника в лотке"),
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
-    ("pipe_length_param", u"Длина проводника в трубе",
+    ("pipe_length_param", N_(u"Длина проводника в трубе"),
         False, CAT_CIRCUITS, INSTANCE, NUMBER, FOP, True),
-    ("route_method_param", u"Способ прокладки",
+    ("route_method_param", N_(u"Способ прокладки"),
         False, CAT_CIRCUITS, INSTANCE, TEXT, FOP, True),
 
     # --- структурная схема (BuildScsSchematic) — необязательные для
     # остальных кнопок СКС, не должны блокировать "Параметры СКС" ---
-    ("layout_param_name", u"Раскладка структурной схемы (вид)",
+    ("layout_param_name", N_(u"Раскладка структурной схемы (вид)"),
         False, CAT_VIEWS, INSTANCE, TEXT, FOP, False),
-    ("room_param_name", u"Помещение (устройство/панель)",
+    ("room_param_name", N_(u"Помещение (устройство/панель)"),
         False, CAT_DEVICES_AND_PANELS, INSTANCE, TEXT, FOP, False),
-    ("device_uid_param_name", u"UniqueId исходного устройства (схемное семейство)",
+    ("device_uid_param_name", N_(u"UniqueId исходного устройства (схемное семейство)"),
         False, CAT_SCHEMATIC_SYMBOLS, INSTANCE, TEXT, FOP, False),
 ]
 

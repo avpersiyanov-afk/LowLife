@@ -8,6 +8,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
@@ -47,8 +48,8 @@ def _open_settings():
         "route_method_param", "segment_loads_param"
     ])
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -173,8 +174,8 @@ for e in all_generic:
 
     if sid in segments:
         duplicate_addr_report.append(
-            u"Адрес «{}»: элементы {} и {} — оставлен первый, второй проигнорирован. "
-            u"Запустите «Адреса узлов» заново.".format(
+            tr(u"Адрес «{}»: элементы {} и {} — оставлен первый, второй проигнорирован. "
+            u"Запустите «Адреса узлов» заново.").format(
                 sid, segments[sid]["el"].Id.IntegerValue, e.Id.IntegerValue
             )
         )
@@ -190,7 +191,7 @@ for e in all_generic:
     parents_by_id[sid] = parents
 
 if not segments:
-    forms.alert(u"Не найдено ни одного адресованного узла маршрута (сначала запустите «Адреса узлов»).", exitscript=True)
+    forms.alert(tr(u"Не найдено ни одного адресованного узла маршрута (сначала запустите «Адреса узлов»)."), exitscript=True)
 
 graph, broken_parent_links = build_graph(segments, parents_by_id)
 
@@ -209,7 +210,7 @@ target_panel_names = set(norm(p.Name) for p in target_panels if norm(p.Name))
 
 if not target_panels:
     forms.alert(
-        u"Не найдено ни одной панели с рабочим набором, содержащим «{}».".format(WORKSET_FILTER_KEY),
+        tr(u"Не найдено ни одной панели с рабочим набором, содержащим «{}».").format(WORKSET_FILTER_KEY),
         exitscript=True
     )
 
@@ -338,8 +339,8 @@ with revit.Transaction("Sync Circuits And Lengths"):
                 near_a, near_b, gap = find_closest_pair_between_sets(segments, start_component, end_component)
 
                 no_path_report.append(
-                    u"Цепь «{}» (панель {}): {} -> {} — путь не найден. "
-                    u"Ближайший разрыв: {} <-> {} (зазор {:.2f} м)".format(
+                    tr(u"Цепь «{}» (панель {}): {} -> {} — путь не найден. "
+                    u"Ближайший разрыв: {} <-> {} (зазор {:.2f} м)").format(
                         norm(c.Name) or c.Id.IntegerValue, panel_name,
                         panel_start, end_sid,
                         near_a, near_b,
@@ -388,11 +389,11 @@ with revit.Transaction("Sync Circuits And Lengths"):
             final_pipe_open_m = horiz_pipe_open_m * HORIZ_PIPE_COEF
             final_total_m = final_tray_m + final_pipe_m + final_pipe_open_m
 
-            T, tr, pi, po = balance_round_parts(final_total_m, [final_tray_m, final_pipe_m, final_pipe_open_m])
+            T, tray_m, pi, po = balance_round_parts(final_total_m, [final_tray_m, final_pipe_m, final_pipe_open_m])
             pipe_total_for_param = pi + po
 
             set_param_any(c, WIRE_LENGTH_PARAM, T)
-            set_param_any(c, TRAY_LENGTH_PARAM, tr)
+            set_param_any(c, TRAY_LENGTH_PARAM, tray_m)
             set_param_any(c, PIPE_LENGTH_PARAM, pipe_total_for_param)
 
             route_parts = []
@@ -400,8 +401,8 @@ with revit.Transaction("Sync Circuits And Lengths"):
                 route_parts.append(ROUTE_LABEL_PIPE.format(pi))
             if po > 0 and ROUTE_LABEL_PIPE_OPEN:
                 route_parts.append(ROUTE_LABEL_PIPE_OPEN.format(po))
-            if tr > 0 and ROUTE_LABEL_TRAY:
-                route_parts.append(ROUTE_LABEL_TRAY.format(tr))
+            if tray_m > 0 and ROUTE_LABEL_TRAY:
+                route_parts.append(ROUTE_LABEL_TRAY.format(tray_m))
 
             set_param_any(c, ROUTE_METHOD_PARAM, u"; ".join(route_parts))
             set_param_any(c, CIRCUIT_ROUTE_PARAM, route_path_text)
@@ -456,22 +457,22 @@ if broken_parent_links or no_path_report or duplicate_addr_report:
     output = pyrevit_script.get_output()
 
     if duplicate_addr_report:
-        output.print_md(u"### Дублирующиеся адреса узлов ({})".format(len(duplicate_addr_report)))
+        output.print_md(tr(u"### Дублирующиеся адреса узлов ({})").format(len(duplicate_addr_report)))
         for line in duplicate_addr_report:
             output.print_md(u"- {}".format(line))
 
     if broken_parent_links:
-        output.print_md(u"### Разорванные ссылки «предыдущий адрес» ({})".format(len(broken_parent_links)))
+        output.print_md(tr(u"### Разорванные ссылки «предыдущий адрес» ({})").format(len(broken_parent_links)))
         for line in broken_parent_links[:100]:
             output.print_md(u"- {}".format(line))
 
     if no_path_report:
-        output.print_md(u"### Цепи без найденного пути ({})".format(len(no_path_report)))
+        output.print_md(tr(u"### Цепи без найденного пути ({})").format(len(no_path_report)))
         for line in no_path_report:
             output.print_md(u"- {}".format(line))
 
 forms.alert(
-    u"Готово.\n\n"
+    tr(u"Готово.\n\n"
     u"Целевых панелей: {}\n"
     u"Обработано цепей: {}\n"
     u"Путь найден: {}\n"
@@ -486,7 +487,7 @@ forms.alert(
     u"Пронумеровано FO: {}\n"
     u"Пронумеровано силовых: {}\n"
     u"Записано узлов со списком цепей: {}\n\n"
-    u"{}".format(
+    u"{}").format(
         processed_panels,
         processed_circuits,
         ok_paths,
@@ -501,6 +502,6 @@ forms.alert(
         fo_number_written,
         power_number_written,
         segments_written,
-        u"Подробности — в окне вывода pyRevit." if (broken_parent_links or no_path_report or duplicate_addr_report) else u""
+        tr(u"Подробности — в окне вывода pyRevit.") if (broken_parent_links or no_path_report or duplicate_addr_report) else u""
     )
 )
