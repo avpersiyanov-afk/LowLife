@@ -1,0 +1,9 @@
+title: Язык / Language
+title_en: "Language / Язык"
+tooltip: >-
+  Язык интерфейса LowLife: русский или английский. Подписи и подсказки кнопок на ленте
+  переключаются сразу, без перезагрузки pyRevit; выбор запоминается.
+tooltip_en: >-
+  LowLife interface language: Russian or English. Button captions and tooltips on the ribbon
+  switch at once, without reloading pyRevit; the choice is remembered.
+context: zero-doc

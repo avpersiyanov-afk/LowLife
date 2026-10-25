@@ -4,7 +4,7 @@
 
 ## The LowLife panel
 
-The first panel of the tab, visible under any theme: the small «Search» and «Create my panel» buttons one above the other, and the «Theme» and «Language» lists.
+The first panel of the tab, visible under any theme: the small «Search», «Create my panel» and «Language» buttons one above the other, and the «Theme» list.
 
 ### Search
 
@@ -34,7 +34,7 @@ Panels with no buttons left under the selected theme are hidden too. A hidden bu
 
 ### Language
 
-The «Язык / Language» list switches the ribbon between Russian and English: panel names, button captions and tooltips, and the theme names. The switch is instant, no pyRevit reload; the choice is remembered. Windows and messages are being translated panel by panel — until then some of them are still in Russian.
+The small «Language / Язык» button under «Create my panel» opens a window to choose Russian or English and switches the ribbon between Russian and English: panel names, button captions and tooltips, and the theme names. The switch is instant, no pyRevit reload; the choice is remembered. Windows and messages are being translated panel by panel — until then some of them are still in Russian.
 
 ## My panels
 

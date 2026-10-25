@@ -200,7 +200,7 @@ def apply_language(lang=None, capture=False):
 
 
 def switch(lang):
-    """Из списка «Язык»: запомнить язык и перевести ленту. Возвращает применённый язык."""
+    """Из окна кнопки «Язык / Language»: запомнить язык и перевести ленту. Возвращает применённый язык."""
     saved = i18n.save(lang)
     if saved is None:
         return None
@@ -209,7 +209,7 @@ def switch(lang):
 
 def restore_on_idle(app):
     """Из startup.py: при первом простое Revit (лента достроена) запомнить её русские подписи,
-    перевести на выбранный язык и выставить его в списке «Язык». app — UIApplication или
+    перевести на выбранный язык. app — UIApplication или
     UIControlledApplication."""
     state = {"done": False}
 
@@ -222,25 +222,8 @@ def restore_on_idle(app):
         except Exception:
             pass
         try:
-            lang = apply_language(capture=True)
-            _select_in_combobox(sender, lang)
+            apply_language(capture=True)
         except Exception:
             pass
 
     app.Idling += on_idle
-
-
-def _select_in_combobox(uiapp, lang):
-    """Выставить язык в списке «Язык» на панели LowLife (обработчик списка вызовет switch — тот же язык)."""
-    from Autodesk.Revit.UI import ComboBox
-    for panel in uiapp.GetRibbonPanels(TAB_NAME):
-        for item in panel.GetItems():
-            if not isinstance(item, ComboBox) or item.Name != u"LanguageSelector":
-                continue
-            current = item.Current
-            if current is not None and current.Name == lang:
-                return
-            for member in item.GetItems():
-                if member.Name == lang:
-                    item.Current = member
-                    return
