@@ -35,6 +35,7 @@ from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, ElementId, ElementOwnerViewFilter,
     FilteredElementCollector, SectionType, StorageType, ViewSchedule,
 )
+from lowlife.i18n import tr
 
 from lowlife.schedule_excel import _param_to_text, _set_param_text
 
@@ -336,7 +337,7 @@ def write_row(row, values, writable):
                 if _set_key_name(row, text):
                     changed += 1
                 else:
-                    errors.append(u"«{}»: не удалось задать ключевое имя".format(text))
+                    errors.append(tr(u"«{}»: не удалось задать ключевое имя").format(text))
             continue
         if not writable.get(name):
             continue
@@ -350,7 +351,7 @@ def write_row(row, values, writable):
         if _set_param_text(p, text):
             changed += 1
         else:
-            errors.append(u"«{}», {}: не записалось значение «{}»".format(
+            errors.append(tr(u"«{}», {}: не записалось значение «{}»").format(
                 key_name(row) or row.Id.IntegerValue, name, text))
     return changed, errors
 
@@ -377,10 +378,10 @@ def apply_entries(doc, ks, entries):
         if not name and el is not None:
             name = key_name(el) or u""
         if not name:
-            stats["errors"].append(u"Строка без ключевого имени пропущена")
+            stats["errors"].append(tr(u"Строка без ключевого имени пропущена"))
             continue
         if name.lower() in names:
-            stats["errors"].append(u"Ключевое имя «{}» повторяется — строка пропущена".format(name))
+            stats["errors"].append(tr(u"Ключевое имя «{}» повторяется — строка пропущена").format(name))
             continue
         names.add(name.lower())
         ok_entries.append((el, values))
@@ -390,7 +391,7 @@ def apply_entries(doc, ks, entries):
             el = add_row(doc, ks)
             if el is None:
                 stats["errors"].append(
-                    u"«{}»: Revit не дал добавить строку в спецификацию «{}»".format(
+                    tr(u"«{}»: Revit не дал добавить строку в спецификацию «{}»").format(
                         values.get(KEY_COLUMN), ks.name))
                 continue
             stats["added"] += 1
@@ -417,10 +418,10 @@ def table_to_entries(ks, table):
     которых нет в спецификации, пропускаются.
     """
     if not table:
-        raise ValueError(u"Файл пустой или не прочитался.")
+        raise ValueError(tr(u"Файл пустой или не прочитался."))
     header = [(c or u"").strip() for c in table[0]]
     if KEY_COLUMN not in header:
-        raise ValueError(u"В первой строке файла нет столбца «{}».".format(KEY_COLUMN))
+        raise ValueError(tr(u"В первой строке файла нет столбца «{}».").format(KEY_COLUMN))
     fields = set(ks.field_names())
     unknown = [h for h in header if h and h != KEY_COLUMN and h not in fields]
 

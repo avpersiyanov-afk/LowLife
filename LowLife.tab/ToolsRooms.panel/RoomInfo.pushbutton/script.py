@@ -15,6 +15,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 from lowlife import select_list
 
 from lowlife import room_info_settings
@@ -37,12 +38,12 @@ def report(results, target_param_name, head=u""):
 
     forms.alert(
         head +
-        u"Готово.\n\n"
+        tr(u"Готово.\n\n"
         u"Записано: {}\n"
         u"Помещение не найдено: {}\n"
         u"Нет точки расположения: {}\n"
         u"Нет параметра «{}»: {}\n"
-        u"Ошибка записи: {}".format(
+        u"Ошибка записи: {}").format(
             len(written), len(not_found), len(no_point),
             target_param_name, len(no_param), len(write_error)
         )
@@ -52,8 +53,8 @@ def report(results, target_param_name, head=u""):
 def open_settings():
     edited = room_info_settings.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
 
 
@@ -73,21 +74,21 @@ def run_by_views(settings):
     views = views_with_name_prefix(doc, prefixes)
     if not views:
         forms.alert(
-            u"Не найдено видов с именем, начинающимся на: {}\n\n"
-            u"Поправьте префиксы в настройках (Shift+клик → «Настройки»).".format(
-                u", ".join(prefixes) if prefixes else u"(пусто — показываются все)"
+            tr(u"Не найдено видов с именем, начинающимся на: {}\n\n"
+            u"Поправьте префиксы в настройках (Shift+клик → «Настройки»).").format(
+                u", ".join(prefixes) if prefixes else tr(u"(пусто — показываются все)")
             ),
             exitscript=True
         )
 
     picked = select_list.SelectFromList.show(
         [ViewOption(v) for v in views],
-        title=u"Виды: назначить помещение всем элементам на них",
-        button_name=u"Назначить",
+        title=tr(u"Виды: назначить помещение всем элементам на них"),
+        button_name=tr(u"Назначить"),
         multiselect=True
     )
     if not picked:
-        forms.alert(u"Отменено.", exitscript=True)
+        forms.alert(tr(u"Отменено."), exitscript=True)
 
     by_id = {}
     for opt in picked:
@@ -96,16 +97,16 @@ def run_by_views(settings):
     elements = list(by_id.values())
 
     if not elements:
-        forms.alert(u"На выбранных видах нет подходящих элементов.", exitscript=True)
+        forms.alert(tr(u"На выбранных видах нет подходящих элементов."), exitscript=True)
 
-    with revit.Transaction(u"Запись номера помещения (по видам)"):
+    with revit.Transaction(tr(u"Запись номера помещения (по видам)")):
         results = apply_room_info(
             doc, elements, settings["room_param_name"], settings["room_mask"]
         )
 
     report(
         results, settings["room_param_name"],
-        head=u"Видов: {}. Элементов обработано: {}\n\n".format(len(picked), len(elements))
+        head=tr(u"Видов: {}. Элементов обработано: {}\n\n").format(len(picked), len(elements))
     )
 
 
@@ -116,12 +117,12 @@ except Exception:
 
 if config_mode:
     choice = forms.alert(
-        u"Запись номера помещения — Shift+клик",
-        options=[u"Настройки", u"Прогон по видам"]
+        tr(u"Запись номера помещения — Shift+клик"),
+        options=[tr(u"Настройки"), tr(u"Прогон по видам")]
     )
-    if choice == u"Настройки":
+    if choice == tr(u"Настройки"):
         open_settings()
-    elif choice == u"Прогон по видам":
+    elif choice == tr(u"Прогон по видам"):
         run_by_views(room_info_settings.get_settings_silent())
     script.exit()
 
@@ -131,13 +132,13 @@ room_info_settings.require(settings, ["room_param_name", "room_mask"])
 
 elements = pick_model_elements(
     uidoc, doc,
-    prompt=u"Выберите элементы для простановки помещения "
-           u"(рамкой и/или кликами), Enter — готово",
-    cancel_message=u"Выбор отменён, ничего не записано.",
-    empty_message=u"Не выбрано ни одного элемента."
+    prompt=tr(u"Выберите элементы для простановки помещения "
+           u"(рамкой и/или кликами), Enter — готово"),
+    cancel_message=tr(u"Выбор отменён, ничего не записано."),
+    empty_message=tr(u"Не выбрано ни одного элемента.")
 )
 
-with revit.Transaction(u"Запись номера помещения"):
+with revit.Transaction(tr(u"Запись номера помещения")):
     results = apply_room_info(
         doc, elements,
         settings["room_param_name"],

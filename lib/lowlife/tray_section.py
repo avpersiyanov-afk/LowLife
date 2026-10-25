@@ -51,6 +51,7 @@ except NameError:  # Python 3
 
 
 import math
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     Arc, ElementId, ElementTypeGroup, HorizontalTextAlignment, Line,
@@ -186,7 +187,7 @@ def read_cables(path, sheet_name=None):
     rows = read_xlsx(path, sheet_name=sheet_name)
 
     if not rows or len(rows) < 2:
-        return [], u"Лист пустой или не прочитался."
+        return [], tr(u"Лист пустой или не прочитался.")
 
     def cell(row, i):
         return row[i] if i < len(row) else None

@@ -5,6 +5,7 @@ __doc__ = u"Импорт правок из .xlsx обратно в модель:
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('RevitAPI')
@@ -25,37 +26,37 @@ try:
 
     rows = read_xlsx(path)
     if not rows:
-        forms.alert(u"Файл пустой или не прочитался.", exitscript=True)
+        forms.alert(tr(u"Файл пустой или не прочитался."), exitscript=True)
 
-    with revit.Transaction(u"Импорт спецификации из Excel"):
+    with revit.Transaction(tr(u"Импорт спецификации из Excel")):
         res = rows_to_model(doc, rows)
 
     parts = [
-        u"Готово.",
+        tr(u"Готово."),
         u"",
-        u"Изменено значений: {}".format(res["changed"]),
+        tr(u"Изменено значений: {}").format(res["changed"]),
     ]
     if res["unchanged"]:
-        parts.append(u"Без изменений: {}".format(res["unchanged"]))
+        parts.append(tr(u"Без изменений: {}").format(res["unchanged"]))
     if res["read_only"]:
-        parts.append(u"Пропущено (только чтение / ссылка): {}".format(res["read_only"]))
+        parts.append(tr(u"Пропущено (только чтение / ссылка): {}").format(res["read_only"]))
     if res.get("skipped_cols"):
-        parts.append(u"Столбцы не из модели (пропущены целиком): {}".format(
+        parts.append(tr(u"Столбцы не из модели (пропущены целиком): {}").format(
             u", ".join(res["skipped_cols"])))
     if res["no_param"]:
-        parts.append(u"Параметр не найден у отдельных элементов: {}".format(res["no_param"]))
+        parts.append(tr(u"Параметр не найден у отдельных элементов: {}").format(res["no_param"]))
     if res["no_element"]:
-        parts.append(u"Элемент не найден по ID: {}".format(res["no_element"]))
+        parts.append(tr(u"Элемент не найден по ID: {}").format(res["no_element"]))
     if res["errors"]:
         parts.append(u"")
-        parts.append(u"Ошибки записи ({}):".format(len(res["errors"])))
+        parts.append(tr(u"Ошибки записи ({}):").format(len(res["errors"])))
         parts.extend(res["errors"][:20])
         if len(res["errors"]) > 20:
-            parts.append(u"… и ещё {}".format(len(res["errors"]) - 20))
+            parts.append(tr(u"… и ещё {}").format(len(res["errors"]) - 20))
 
     forms.alert(u"\n".join(parts))
 except Exception:
     forms.alert(
-        u"Сбой при импорте:\n\n{}".format(traceback.format_exc()),
-        title=u"Импорт из Эксель"
+        tr(u"Сбой при импорте:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Импорт из Эксель")
     )

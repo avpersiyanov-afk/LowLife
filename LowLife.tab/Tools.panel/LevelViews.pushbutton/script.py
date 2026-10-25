@@ -4,12 +4,13 @@ __title__ = u"Виды по\nуровням"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms
 
 doc = revit.doc
 
-TITLE = u"Виды по уровням"
+TITLE = tr(u"Виды по уровням")
 _ALERT_MAX_LINES = 30
 
 
@@ -21,10 +22,10 @@ def _report(results, align_range=False):
     failed = [r for r in results if r.error is not None]
     created = len([r for r in done if r.action == u"создан"])
 
-    lines = [u"Создано видов: {}, уже были (назначен шаблон): {}.".format(
+    lines = [tr(u"Создано видов: {}, уже были (назначен шаблон): {}.").format(
         created, len(done) - created)]
     if failed:
-        lines.append(u"Не получилось: {}.".format(len(failed)))
+        lines.append(tr(u"Не получилось: {}.").format(len(failed)))
         lines.append(u"")
         for r in failed:
             lines.append(u"  • {} ({} / {}): {}".format(
@@ -33,7 +34,7 @@ def _report(results, align_range=False):
         with_view = [r for r in results if r.view is not None]
         skipped = [r for r in with_view if r.range_note]
         lines.append(u"")
-        lines.append(u"Секущий диапазон выровнен: {} из {}.".format(
+        lines.append(tr(u"Секущий диапазон выровнен: {} из {}.").format(
             len(with_view) - len(skipped), len(with_view)))
         for r in skipped:
             lines.append(u"  • {}: {}".format(r.name, r.range_note))
@@ -47,7 +48,7 @@ def _report(results, align_range=False):
     output.set_title(TITLE)
     for line in lines:
         print(line)
-    forms.alert(lines[0] + u"\n\nПодробности — в окне вывода.", title=TITLE)
+    forms.alert(lines[0] + tr(u"\n\nПодробности — в окне вывода."), title=TITLE)
 
 
 def main():
@@ -57,11 +58,11 @@ def main():
 
     templates = level_views.list_plan_templates(doc)
     if not templates:
-        forms.alert(u"В проекте нет шаблонов видов для планов.", title=TITLE)
+        forms.alert(tr(u"В проекте нет шаблонов видов для планов."), title=TITLE)
         return
     levels = level_views.document_levels(doc)
     if not levels:
-        forms.alert(u"В проекте нет уровней.", title=TITLE)
+        forms.alert(tr(u"В проекте нет уровней."), title=TITLE)
         return
 
     from lowlife import settings_transfer
@@ -74,7 +75,7 @@ def main():
     if state is None:
         return
     if state["action"] == "save":
-        forms.alert(u"Настройки сохранены.", title=TITLE)
+        forms.alert(tr(u"Настройки сохранены."), title=TITLE)
         return
     mask, items, align_range = state["mask"], state["items"], state["align"]
     lvs.save(mask, state["values"], state["checked"], align_range, state["pick_levels"])
@@ -87,7 +88,7 @@ def main():
         for name in state["checked"]:
             chosen = level_views_dialog.pick_levels(name, levels, remembered.get(name))
             if chosen is None:
-                forms.alert(u"Отменено — виды не созданы.", title=TITLE)
+                forms.alert(tr(u"Отменено — виды не созданы."), title=TITLE)
                 return
             levels_by_template[name] = chosen
         lvs.remember_template_levels(dict(
@@ -95,11 +96,11 @@ def main():
 
     if align_range and not lvs.view_range_configured():
         from lowlife import view_range_settings
-        forms.alert(u"Секущий диапазон ещё не настроен — сейчас откроется настройка "
+        forms.alert(tr(u"Секущий диапазон ещё не настроен — сейчас откроется настройка "
                     u"кнопки «Секущий диапазон» (шаблон имени уровня, по нему ищется "
-                    u"следующий этаж).", title=TITLE)
+                    u"следующий этаж)."), title=TITLE)
         if view_range_settings.get_settings_interactive() is None:
-            forms.alert(u"Отменено — виды не созданы.", title=TITLE)
+            forms.alert(tr(u"Отменено — виды не созданы."), title=TITLE)
             return
         level_template = lvs.level_template()
 
@@ -117,6 +118,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «{}»:\n\n{}".format(TITLE, traceback.format_exc()),
+        tr(u"Сбой в «{}»:\n\n{}").format(TITLE, traceback.format_exc()),
         title=TITLE
     )

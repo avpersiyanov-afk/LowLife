@@ -30,6 +30,7 @@ from Autodesk.Revit.DB import (
     BuiltInParameter, ElementId, PlanViewPlane, PlanViewRange, ViewPlan,
     ViewType
 )
+from lowlife.i18n import tr
 
 from lowlife import family_section, geometry
 
@@ -98,12 +99,12 @@ def align_view_range(doc, view, level_template=None):
 
     level = view.GenLevel
     if level is None:
-        result.error = u"у вида нет уровня"
+        result.error = tr(u"у вида нет уровня")
         return result
 
     template_name = _range_controlled_by_template(doc, view)
     if template_name is not None:
-        result.error = u"секущий диапазон задаёт шаблон вида «{}»".format(template_name)
+        result.error = tr(u"секущий диапазон задаёт шаблон вида «{}»").format(template_name)
         return result
 
     above, note = family_section.level_above(doc, level, level_template)
@@ -135,10 +136,10 @@ def align_view_range(doc, view, level_template=None):
     try:
         view.SetViewRange(vr)
     except Exception as ex:
-        result.error = u"Revit не принял диапазон: {}".format(ex)
+        result.error = tr(u"Revit не принял диапазон: {}").format(ex)
         if height_mm is not None and height_mm + TOP_OFFSET_MM <= cut_mm:
-            result.error = (u"до уровня «{}» всего {:.0f} мм — секущая плоскость "
-                            u"{:.0f} мм выше верха диапазона".format(
+            result.error = (tr(u"до уровня «{}» всего {:.0f} мм — секущая плоскость "
+                            u"{:.0f} мм выше верха диапазона").format(
                                 geometry.level_name(above), float(height_mm),
                                 float(cut_mm)))
     return result

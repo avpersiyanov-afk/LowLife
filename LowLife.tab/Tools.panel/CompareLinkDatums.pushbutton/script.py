@@ -11,6 +11,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
@@ -18,13 +19,13 @@ from lowlife import link_datums, link_datums_core, link_datums_settings, select_
 from lowlife.link_datums_core import OK, format_angle, format_mm
 
 doc = revit.doc
-TITLE = u"Оси и уровни КФП"
+TITLE = tr(u"Оси и уровни КФП")
 
 
 def pick_link(keyword):
     links = link_datums.loaded_links(doc)
     if not links:
-        forms.alert(u"В модели нет загруженных связей Revit.", title=TITLE, exitscript=True)
+        forms.alert(tr(u"В модели нет загруженных связей Revit."), title=TITLE, exitscript=True)
     found = link_datums.matching_links(links, keyword) if keyword else []
     if len(found) == 1:
         return found[0]
@@ -35,8 +36,8 @@ def pick_link(keyword):
         by_name[u"{} [{}]".format(link_datums.link_label(link), link.Id)] = link
     chosen = select_list.SelectFromList.show(
         sorted(by_name.keys()),
-        title=u"С какой связью сравнить оси и уровни",
-        button_name=u"Сравнить",
+        title=tr(u"С какой связью сравнить оси и уровни"),
+        button_name=tr(u"Сравнить"),
         multiselect=False,
     )
     if not chosen:
@@ -66,7 +67,7 @@ def _ok_names(rows):
 
 def report_levels(output, rows):
     counts = link_datums_core.count_by_status(rows)
-    output.print_md(u"## Уровни — {}".format(link_datums_core.summary_text(counts)))
+    output.print_md(tr(u"## Уровни — {}").format(link_datums_core.summary_text(counts)))
     bad = link_datums_core.problems_first([r for r in rows if r.status != OK])
     if bad:
         output.print_table(
@@ -74,24 +75,24 @@ def report_levels(output, rows):
                          format_mm(r.model and r.model["elevation"]),
                          format_mm(r.link and r.link["elevation"]),
                          format_mm(r.delta)] for r in bad],
-            columns=[u"Статус", u"В модели", u"В связи", u"Отметка в модели, мм",
-                     u"Отметка в связи, мм", u"Разница, мм"])
+            columns=[tr(u"Статус"), tr(u"В модели"), tr(u"В связи"), tr(u"Отметка в модели, мм"),
+                     tr(u"Отметка в связи, мм"), tr(u"Разница, мм")])
     if counts.get(OK):
-        output.print_md(u"**Совпадают:** {}".format(_ok_names(rows)))
+        output.print_md(tr(u"**Совпадают:** {}").format(_ok_names(rows)))
 
 
 def report_grids(output, rows):
     counts = link_datums_core.count_by_status(rows)
-    output.print_md(u"## Оси — {}".format(link_datums_core.summary_text(counts)))
+    output.print_md(tr(u"## Оси — {}").format(link_datums_core.summary_text(counts)))
     bad = link_datums_core.problems_first([r for r in rows if r.status != OK])
     if bad:
         output.print_table(
             table_data=[[r.status_text, _model_cell(output, r.model), _link_cell(r.link),
                          format_mm(r.delta), format_angle(r.angle), r.note] for r in bad],
-            columns=[u"Статус", u"В модели", u"В связи", u"Расхождение, мм",
-                     u"Поворот", u"Примечание"])
+            columns=[tr(u"Статус"), tr(u"В модели"), tr(u"В связи"), tr(u"Расхождение, мм"),
+                     tr(u"Поворот"), tr(u"Примечание")])
     if counts.get(OK):
-        output.print_md(u"**Совпадают:** {}".format(_ok_names(rows)))
+        output.print_md(tr(u"**Совпадают:** {}").format(_ok_names(rows)))
 
 
 def main():
@@ -101,8 +102,8 @@ def main():
         config_mode = False
     if config_mode:
         edited = link_datums_settings.get_settings_interactive()
-        forms.alert(u"Отменено, настройки не изменены." if edited is None
-                    else u"Настройки сохранены.", title=TITLE)
+        forms.alert(tr(u"Отменено, настройки не изменены.") if edited is None
+                    else tr(u"Настройки сохранены."), title=TITLE)
         return
 
     settings = link_datums_settings.get_settings_silent()
@@ -115,11 +116,11 @@ def main():
     levels, grids = link_datums.compare(doc, link, float(tolerance))
 
     output = script.get_output()
-    output.print_md(u"# Оси и уровни: модель ↔ связь")
+    output.print_md(tr(u"# Оси и уровни: модель ↔ связь"))
     output.print_md(
-        u"Связь: **{}** · допуск {} мм · отметки — от базовой точки проекта "
+        tr(u"Связь: **{}** · допуск {} мм · отметки — от базовой точки проекта "
         u"модели. Ссылки в столбце «В модели» выделяют элемент; в «В связи» — "
-        u"ID в связанном файле.".format(
+        u"ID в связанном файле.").format(
             _cell(link_datums.link_label(link)), format_mm(tolerance, 1)))
     report_levels(output, levels)
     report_grids(output, grids)
@@ -130,4 +131,4 @@ try:
 except SystemExit:
     raise
 except Exception:
-    forms.alert(u"Сбой при сравнении:\n\n{}".format(traceback.format_exc()), title=TITLE)
+    forms.alert(tr(u"Сбой при сравнении:\n\n{}").format(traceback.format_exc()), title=TITLE)

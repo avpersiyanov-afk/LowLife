@@ -20,6 +20,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
+from lowlife.i18n import tr
 from lowlife import select_list
 
 from lowlife import room_finder, room_finder_settings
@@ -30,16 +31,16 @@ uidoc = revit.uidoc
 
 class RefreshOption(object):
     def __str__(self):
-        return u"↻ Обновить список помещений"
+        return tr(u"↻ Обновить список помещений")
 
 
 class ToggleScopeOption(object):
     def __init__(self, show_all, all_count, view_count):
         self.target_show_all = not show_all
         if show_all:
-            self.label = u"▤ Только помещения активного вида ({})".format(view_count)
+            self.label = tr(u"▤ Только помещения активного вида ({})").format(view_count)
         else:
-            self.label = u"▤ Показать все помещения проекта ({})".format(all_count)
+            self.label = tr(u"▤ Показать все помещения проекта ({})").format(all_count)
 
     def __str__(self):
         return self.label
@@ -51,11 +52,11 @@ class RoomOption(object):
         self.number_display = number_display
         if group:
             self.label = u"[{}]  {} — {}".format(
-                group, number_display or u"?", record.name or u"без имени"
+                group, number_display or u"?", record.name or tr(u"без имени")
             )
         else:
             self.label = u"{} — {}".format(
-                number_display or u"?", record.name or u"без имени"
+                number_display or u"?", record.name or tr(u"без имени")
             )
 
     def __str__(self):
@@ -87,8 +88,8 @@ except Exception:
 if config_mode:
     edited = room_finder_settings.get_settings_interactive()
     forms.alert(
-        u"Отменено, настройки не изменены." if edited is None
-        else u"Настройки сохранены."
+        tr(u"Отменено, настройки не изменены.") if edited is None
+        else tr(u"Настройки сохранены.")
     )
     script.exit()
 
@@ -99,14 +100,14 @@ type_param_name = settings.get("room_type_param_name", u"")
 
 view = doc.ActiveView
 if view is None:
-    forms.alert(u"Нет активного вида.", exitscript=True)
+    forms.alert(tr(u"Нет активного вида."), exitscript=True)
 
 records = room_finder.get_records(doc)
 if not records:
     forms.alert(
-        u"Помещений не найдено — ни в текущей модели, ни в подключённых "
+        tr(u"Помещений не найдено — ни в текущей модели, ни в подключённых "
         u"связях. Убедитесь, что связь с АР загружена и в ней расставлены "
-        u"помещения.",
+        u"помещения."),
         exitscript=True
     )
 
@@ -122,11 +123,11 @@ while True:
 
     picked = select_list.SelectFromList.show(
         options,
-        title=u"Найти помещение — {} ({})".format(
-            u"весь проект" if (show_all or not narrowed) else u"активный вид",
+        title=tr(u"Найти помещение — {} ({})").format(
+            tr(u"весь проект") if (show_all or not narrowed) else tr(u"активный вид"),
             len(current)
         ),
-        button_name=u"Подсветить",
+        button_name=tr(u"Подсветить"),
         multiselect=False
     )
 
@@ -137,9 +138,9 @@ while True:
         records = room_finder.get_records(doc, force_refresh=True)
         if not records:
             forms.alert(
-                u"Помещений не найдено — ни в текущей модели, ни в "
-                u"подключённых связях.",
-                title=u"Найти помещение"
+                tr(u"Помещений не найдено — ни в текущей модели, ни в "
+                u"подключённых связях."),
+                title=tr(u"Найти помещение")
             )
             break
         view_records, narrowed = room_finder.filter_for_view(records, doc, view)
@@ -154,13 +155,13 @@ while True:
 
     hint = room_finder.level_mismatch_hint(record, view, number_display)
     if hint:
-        forms.alert(hint, title=u"Найти помещение")
+        forms.alert(hint, title=tr(u"Найти помещение"))
         continue
 
     if not room_finder.zoom_to_bbox(uidoc, view, record.bbox):
         forms.alert(
-            u"Не удалось приблизить вид к помещению {} — возможно, вид "
+            tr(u"Не удалось приблизить вид к помещению {} — возможно, вид "
             u"открыт не в отдельном окне (например, на листе), либо у "
-            u"помещения нет корректного габарита.".format(number_display or u"?"),
-            title=u"Найти помещение"
+            u"помещения нет корректного габарита.").format(number_display or u"?"),
+            title=tr(u"Найти помещение")
         )

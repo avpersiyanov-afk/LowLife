@@ -17,6 +17,7 @@ from Autodesk.Revit.DB import (
     FilteredElementCollector, Level, View, ViewFamily, ViewFamilyType,
     ViewPlan, ViewType
 )
+from lowlife.i18n import N_, tr
 
 from lowlife import family_section, geometry
 from lowlife import level_views_core as core
@@ -28,9 +29,9 @@ _FAMILY_BY_VIEW_TYPE = {
 }
 
 KIND_LABELS = {
-    ViewType.FloorPlan: u"План этажа",
-    ViewType.CeilingPlan: u"План потолка",
-    ViewType.EngineeringPlan: u"План несущих конструкций",
+    ViewType.FloorPlan: N_(u"План этажа"),
+    ViewType.CeilingPlan: N_(u"План потолка"),
+    ViewType.EngineeringPlan: N_(u"План несущих конструкций"),
 }
 
 
@@ -138,42 +139,42 @@ def build_views(doc, levels, items, mask, level_template, levels_by_template=Non
 
 def _build_one(doc, level, template, vft, view_type, name, existing, taken, result):
     if not name:
-        result.error = u"по маске получилось пустое имя"
+        result.error = tr(u"по маске получилось пустое имя")
         return
     if vft is None:
-        result.error = u"в проекте нет типа вида «{}»".format(KIND_LABELS.get(view_type, u"?"))
+        result.error = u"в проекте нет типа вида «{}»".format(tr(KIND_LABELS.get(view_type, u"?")))
         return
 
     key = (view_type, name)
     if key in taken:
-        result.error = (u"такое имя уже получил другой вид в этом запуске — добавьте в "
-                        u"маску {Группа вида и назначение} или {Шаблон}")
+        result.error = (tr(u"такое имя уже получил другой вид в этом запуске — добавьте в "
+                        u"маску {Группа вида и назначение} или {Шаблон}"))
         return
     taken.add(key)
     view = existing.get(key)
     if view is not None:
         gen = view.GenLevel
         if gen is None or not gen.Id.Equals(level.Id):
-            result.error = u"имя занято видом другого уровня ({})".format(
+            result.error = tr(u"имя занято видом другого уровня ({})").format(
                 geometry.level_name(gen) if gen is not None else u"?")
             return
-        result.action = u"обновлён"
+        result.action = N_(u"обновлён")
     else:
         view = ViewPlan.Create(doc, vft.Id, level.Id)
         try:
             view.Name = name
         except Exception as ex:
             doc.Delete(view.Id)
-            result.error = u"не удалось задать имя: {}".format(ex)
+            result.error = tr(u"не удалось задать имя: {}").format(ex)
             return
         existing[key] = view
-        result.action = u"создан"
+        result.action = N_(u"создан")
 
     result.view = view
     try:
         view.ViewTemplateId = template.Id
     except Exception as ex:
-        result.error = u"вид {}, но шаблон не назначен: {}".format(result.action, ex)
+        result.error = tr(u"вид {}, но шаблон не назначен: {}").format(tr(result.action), ex)
 
 
 def align_ranges(doc, results, level_template):
@@ -190,7 +191,7 @@ def align_ranges(doc, results, level_template):
         if view is None:
             continue
         if not view_range.is_plan(view):
-            result.range_note = u"план потолка — диапазон не выравнивается"
+            result.range_note = tr(u"план потолка — диапазон не выравнивается")
             continue
         try:
             aligned = view_range.align_view_range(doc, view, level_template)

@@ -2,6 +2,7 @@
 """Общие хелперы работы с выделением элементов в Revit UI."""
 
 from pyrevit import forms
+from lowlife.i18n import N_, tr
 
 from Autodesk.Revit.DB import (
     BuiltInCategory, CategoryType, FilteredElementCollector, View, ViewType
@@ -13,17 +14,17 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 def get_single_selection(
     doc,
     uidoc,
-    empty_message=u"Сначала выберите элемент в Revit, потом запустите кнопку.",
-    multiple_message=u"Выберите только один элемент."
+    empty_message=N_(u"Сначала выберите элемент в Revit, потом запустите кнопку."),
+    multiple_message=N_(u"Выберите только один элемент.")
 ):
     """Возвращает единственный выбранный элемент либо останавливает скрипт."""
     selected_ids = uidoc.Selection.GetElementIds()
 
     if not selected_ids:
-        forms.alert(empty_message, exitscript=True)
+        forms.alert(tr(empty_message), exitscript=True)
 
     if len(selected_ids) > 1:
-        forms.alert(multiple_message, exitscript=True)
+        forms.alert(tr(multiple_message), exitscript=True)
 
     el_id = list(selected_ids)[0]
     return doc.GetElement(el_id)
@@ -223,10 +224,10 @@ def pick_elements_by_categories(
     uidoc,
     doc,
     category_ids,
-    prompt=(u"Выделяйте элементы кликом и/или рамкой. Enter (или ПКМ — "
-            u"«Готово») — завершить, Esc — отмена."),
-    cancel_message=u"Выбор отменён.",
-    empty_message=u"Не выбрано ни одного элемента.",
+    prompt=N_(u"Выделяйте элементы кликом и/или рамкой. Enter (или ПКМ — "
+              u"«Готово») — завершить, Esc — отмена."),
+    cancel_message=N_(u"Выбор отменён."),
+    empty_message=N_(u"Не выбрано ни одного элемента."),
 ):
     """
     Интерактивный выбор, отфильтрованный по категориям (category_ids —
@@ -246,9 +247,9 @@ def pick_elements_by_categories(
     порядки меньше кандидатов под рамкой).
     """
     try:
-        refs = uidoc.Selection.PickObjects(ObjectType.Element, prompt)
+        refs = uidoc.Selection.PickObjects(ObjectType.Element, tr(prompt))
     except OperationCanceledException:
-        forms.alert(cancel_message, exitscript=True)
+        forms.alert(tr(cancel_message), exitscript=True)
         return []
 
     category_ids = set(category_ids)
@@ -267,24 +268,24 @@ def pick_elements_by_categories(
         raw_by_cat = {}
         for el in raw_els:
             try:
-                nm = el.Category.Name if el.Category is not None else u"<без категории>"
+                nm = el.Category.Name if el.Category is not None else tr(u"<без категории>")
             except Exception:
-                nm = u"<ошибка категории>"
+                nm = tr(u"<ошибка категории>")
             raw_by_cat[nm] = raw_by_cat.get(nm, 0) + 1
         breakdown = u"\n".join(
             u"  {} — {}".format(nm, cnt) for nm, cnt in sorted(raw_by_cat.items())
         )
         forms.alert(
-            u"Диагностика: после фильтра осталось столько же элементов, "
+            tr(u"Диагностика: после фильтра осталось столько же элементов, "
             u"сколько было выбрано рамкой ({}) — фильтр ничего не "
             u"отсеял. category_ids (числа категорий, которые ищем): "
-            u"{}\n\nКатегории в сыром выборе:\n{}".format(
+            u"{}\n\nКатегории в сыром выборе:\n{}").format(
                 len(raw_els), sorted(category_ids), breakdown),
-            title=u"Фильтр выбора — диагностика"
+            title=tr(u"Фильтр выбора — диагностика")
         )
 
     if not els:
-        forms.alert(empty_message, exitscript=True)
+        forms.alert(tr(empty_message), exitscript=True)
 
     return els
 
@@ -292,9 +293,9 @@ def pick_elements_by_categories(
 def pick_model_elements(
     uidoc,
     doc,
-    prompt=u"Выберите элементы (рамкой и/или кликами), подтвердите Enter",
-    cancel_message=u"Выбор отменён.",
-    empty_message=u"Не выбрано ни одного элемента.",
+    prompt=N_(u"Выберите элементы (рамкой и/или кликами), подтвердите Enter"),
+    cancel_message=N_(u"Выбор отменён."),
+    empty_message=N_(u"Не выбрано ни одного элемента."),
 ):
     """
     Интерактивный выбор элементов модели: PickObjects с фильтром
@@ -305,16 +306,16 @@ def pick_model_elements(
     """
     try:
         refs = uidoc.Selection.PickObjects(
-            ObjectType.Element, ModelElementSelectionFilter(), prompt
+            ObjectType.Element, ModelElementSelectionFilter(), tr(prompt)
         )
     except OperationCanceledException:
-        forms.alert(cancel_message, exitscript=True)
+        forms.alert(tr(cancel_message), exitscript=True)
         return []
 
     els = [doc.GetElement(r) for r in refs]
     els = [el for el in els if el is not None]
 
     if not els:
-        forms.alert(empty_message, exitscript=True)
+        forms.alert(tr(empty_message), exitscript=True)
 
     return els

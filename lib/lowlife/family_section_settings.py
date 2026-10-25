@@ -19,6 +19,7 @@ except NameError:  # Python 3
 
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -209,7 +210,7 @@ def show_settings_form(doc, values):
     _label(root, u"Имя разреза", bold=True)
     mask_box = _textbox(root, values.get(NAME_MASK_KEY) or u"")
     _hint(root, u"Подстановки: " + u"; ".join(
-        u"{} — {}".format(k, d) for k, d in family_section.NAME_PLACEHOLDERS
+        u"{} — {}".format(k, tr(d)) for k, d in family_section.NAME_PLACEHOLDERS
     ) + u". Если имя уже занято, добавляется « (2)», « (3)», ...")
 
     _label(root, u"Подрезка, мм", bold=True, top=14)

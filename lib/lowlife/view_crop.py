@@ -10,6 +10,7 @@
 Чистая часть (`crop_rect`, `copy_name`, `MODES`) работает на кортежах/строках
 и покрыта `tests/test_view_crop.py`; остальное — Revit API.
 """
+from lowlife.i18n import N_, tr
 
 MM_IN_FOOT = 304.8
 
@@ -26,10 +27,10 @@ ANNOTATION_OFFSET_FT = 1.0 / MM_IN_FOOT
 # Что обрезать: (ключ, подпись в окне, имя ViewDuplicateOption или None).
 MODE_SELF = "self"
 MODES = (
-    (MODE_SELF, u"Обрезать этот вид", None),
-    ("copy", u"Копировать вид", "Duplicate"),
-    ("detailing", u"Копировать с детализацией", "WithDetailing"),
-    ("dependent", u"Копировать как зависимый", "AsDependent"),
+    (MODE_SELF, N_(u"Обрезать этот вид"), None),
+    ("copy", N_(u"Копировать вид"), "Duplicate"),
+    ("detailing", N_(u"Копировать с детализацией"), "WithDetailing"),
+    ("dependent", N_(u"Копировать как зависимый"), "AsDependent"),
 )
 DEFAULT_MODE = "copy"
 DEFAULT_SUFFIX = u" - Фрагмент"
@@ -61,7 +62,7 @@ def crop_rect(p1, p2, min_size=MIN_SIZE_FT):
     xmin, xmax = min(x1, x2), max(x1, x2)
     ymin, ymax = min(y1, y2), max(y1, y2)
     if xmax - xmin < min_size or ymax - ymin < min_size:
-        raise ValueError(u"Рамка слишком мала: укажите два противоположных угла.")
+        raise ValueError(tr(u"Рамка слишком мала: укажите два противоположных угла."))
     return xmin, ymin, xmax, ymax
 
 
@@ -79,12 +80,12 @@ def _view_types():
 def unsupported_reason(view):
     """None, если вид можно обрезать этой кнопкой, иначе текст причины."""
     if view is None:
-        return u"Нет активного вида."
+        return tr(u"Нет активного вида.")
     if view.IsTemplate:
-        return u"Активный вид — шаблон вида."
+        return tr(u"Активный вид — шаблон вида.")
     if view.ViewType not in _view_types():
-        return (u"Обрезка по двум точкам работает на планах, разрезах, "
-                u"фасадах и узлах. Активный вид: {}.".format(view.ViewType))
+        return (tr(u"Обрезка по двум точкам работает на планах, разрезах, "
+                u"фасадах и узлах. Активный вид: {}.").format(view.ViewType))
     return None
 
 
@@ -163,8 +164,8 @@ def apply_crop(view, pt1, pt2):
 
     ann = view.get_Parameter(BuiltInParameter.VIEWER_ANNOTATION_CROP_ACTIVE)
     if ann is None or ann.IsReadOnly:
-        warnings.append(u"Подрезку аннотаций включить нельзя (параметр "
-                        u"недоступен или задан шаблоном вида).")
+        warnings.append(tr(u"Подрезку аннотаций включить нельзя (параметр "
+                        u"недоступен или задан шаблоном вида)."))
     else:
         ann.Set(1)
         manager = view.GetCropRegionShapeManager()

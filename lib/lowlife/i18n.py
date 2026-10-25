@@ -91,6 +91,11 @@ def catalog():
     return _CATALOG["en"]
 
 
+# Номера разделов окон настроек («① …»): у tr() перевод подписи после номера, если вся строка
+# (номер + подпись, собранные в коде) в каталог не попала
+NUMBER_MARKS = u"①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳⓪"
+
+
 def tr(ru, en=None):
     """Строка на выбранном языке. Русский — как есть; при English — ``en``, если передан, иначе
     перевод из каталога ``locale/en.json`` (нет перевода — русская строка).
@@ -102,7 +107,15 @@ def tr(ru, en=None):
         return ru
     if en:
         return en
-    return catalog().get(ru) or ru
+    found = catalog().get(ru)
+    if found:
+        return found
+    if len(ru) > 2 and ru[0] in NUMBER_MARKS and ru[1] == u" ":
+        # «② Раздел» собран в коде из номера и подписи — переводится подпись
+        rest = catalog().get(ru[2:])
+        if rest:
+            return ru[:2] + rest
+    return ru
 
 
 def N_(text):

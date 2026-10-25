@@ -5,6 +5,7 @@ __doc__ = u"Выгрузка справочника кабелей в .xlsx."
 __author__ = "Pipers"
 
 import re
+from lowlife.i18n import tr
 import traceback
 
 import clr
@@ -18,7 +19,7 @@ from lowlife.wire_catalog_ui import choose_catalog
 from lowlife.xlsx_io import write_xlsx
 
 doc = revit.doc
-TITLE = u"Выгрузка справочника кабелей"
+TITLE = tr(u"Выгрузка справочника кабелей")
 
 ks = choose_catalog(doc, TITLE)
 path = forms.save_file(file_ext='xlsx', default_name=re.sub(r'[\\/:*?"<>|]', u'_', ks.name))
@@ -28,6 +29,6 @@ if not path:
 try:
     rows, widths = catalog_to_table(ks)
     write_xlsx(path, rows, sheet_name=u"Справочник", col_widths=widths)
-    forms.alert(u"Выгружено строк: {}\n\n{}".format(len(rows) - 1, path), title=TITLE)
+    forms.alert(tr(u"Выгружено строк: {}\n\n{}").format(len(rows) - 1, path), title=TITLE)
 except Exception:
-    forms.alert(u"Сбой при выгрузке:\n\n{}".format(traceback.format_exc()), title=TITLE)
+    forms.alert(tr(u"Сбой при выгрузке:\n\n{}").format(traceback.format_exc()), title=TITLE)

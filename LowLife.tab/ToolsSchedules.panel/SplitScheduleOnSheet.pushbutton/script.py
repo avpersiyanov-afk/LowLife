@@ -11,6 +11,7 @@ __doc__ = u"Разбивает выбранную спецификацию на 
 __author__ = "Pipers"
 
 import math
+from lowlife.i18n import tr
 import traceback
 
 import clr
@@ -80,7 +81,7 @@ def get_target_schedule():
 
 
 def ask(prompt, default):
-    answer = Interaction.InputBox(prompt, u"Разбить спецификацию", unicode(default))
+    answer = Interaction.InputBox(prompt, tr(u"Разбить спецификацию"), unicode(default))
     if answer is None or not answer.strip():
         raise Cancelled()
     return answer
@@ -95,9 +96,9 @@ def to_float_mm(raw):
     try:
         v = float(raw)
     except ValueError:
-        raise Stop(u"Не понял число: «{}».".format(raw))
+        raise Stop(tr(u"Не понял число: «{}».").format(raw))
     if v <= 0:
-        raise Stop(u"Значение должно быть больше нуля.")
+        raise Stop(tr(u"Значение должно быть больше нуля."))
     return v
 
 
@@ -148,7 +149,7 @@ def probe_total_border_ft(sched):
     отдельно прибавлять/вычитать шапку.
     """
     h0 = None
-    t = Transaction(doc, u"Замер спецификации")
+    t = Transaction(doc, tr(u"Замер спецификации"))
     t.Start()
     try:
         sched.Split(2)
@@ -284,32 +285,32 @@ def main():
     sched, sched_inst, distinct = get_target_schedule()
 
     if sched is None:
-        raise Stop(u"Сначала выберите на листе спецификацию, потом запустите кнопку.")
+        raise Stop(tr(u"Сначала выберите на листе спецификацию, потом запустите кнопку."))
     if distinct > 1:
-        raise Stop(u"Выбрано несколько разных спецификаций. Оставьте одну.")
+        raise Stop(tr(u"Выбрано несколько разных спецификаций. Оставьте одну."))
     if getattr(sched, "IsTitleblockRevisionSchedule", False):
-        raise Stop(u"Спецификацию изменений в штампе разбить нельзя.")
+        raise Stop(tr(u"Спецификацию изменений в штампе разбить нельзя."))
     if sched_inst is None:
         raise Stop(
-            u"Выберите экземпляр спецификации на листе (щёлкните по таблице "
-            u"на листе), а не спецификацию в диспетчере проекта."
+            tr(u"Выберите экземпляр спецификации на листе (щёлкните по таблице "
+            u"на листе), а не спецификацию в диспетчере проекта.")
         )
 
     try:
         already_split = sched.IsSplit()
     except AttributeError:
-        raise Stop(u"Эта сборка Revit не поддерживает разбиение спецификаций через API.")
+        raise Stop(tr(u"Эта сборка Revit не поддерживает разбиение спецификаций через API."))
 
     if already_split:
         if not forms.alert(
-            u"Спецификация уже разбита на {} участков. Собрать обратно "
-            u"и разбить заново?".format(sched.GetSegmentCount()),
+            tr(u"Спецификация уже разбита на {} участков. Собрать обратно "
+            u"и разбить заново?").format(sched.GetSegmentCount()),
             yes=True, no=True
         ):
             raise Cancelled()
 
     raw = ask(
-        u"Высота одного участка спецификации на листе, мм (например  180).",
+        tr(u"Высота одного участка спецификации на листе, мм (например  180)."),
         180
     )
     amount = parse_height_ft(raw)
@@ -321,12 +322,12 @@ def main():
     header_ft = header_height_ft(sched)
     detected_mm = header_ft * MM_IN_FOOT
     r3 = ask(
-        u"Высота повторяющейся шапки спецификации в мм "
+        tr(u"Высота повторяющейся шапки спецификации в мм "
         u"(заголовок + строка названий граф).\n"
         u"{}\n"
-        u"Исправьте, если определилось неверно; 0 — не учитывать:".format(
-            u"Определено автоматически: {:.0f} мм.".format(detected_mm)
-            if header_ft > 0 else u"Определить автоматически не удалось."
+        u"Исправьте, если определилось неверно; 0 — не учитывать:").format(
+            tr(u"Определено автоматически: {:.0f} мм.").format(detected_mm)
+            if header_ft > 0 else tr(u"Определить автоматически не удалось.")
         ),
         int(round(detected_mm)) if header_ft > 0 else 0
     ).strip().lower().replace(",", ".")
@@ -338,8 +339,8 @@ def main():
 
     if amount <= header_ft:
         raise Stop(
-            u"Высота участка {:.0f} мм не больше шапки таблицы (~{:.0f} мм). "
-            u"Задайте больше.".format(amount * MM_IN_FOOT, header_ft * MM_IN_FOOT)
+            tr(u"Высота участка {:.0f} мм не больше шапки таблицы (~{:.0f} мм). "
+            u"Задайте больше.").format(amount * MM_IN_FOOT, header_ft * MM_IN_FOOT)
         )
 
     # Полная высота спецификации (шапка + всё тело) — та же величина, что
@@ -348,20 +349,20 @@ def main():
     # запасные варианты. Автоопределение здесь и раньше ошибалось, поэтому
     # значение ВСЕГДА показывается для проверки/правки, как высота шапки.
     guess_ft = 0.0 if already_split else probe_total_border_ft(sched)
-    guess_src = u"проба Split(2)"
+    guess_src = tr(u"проба Split(2)")
     if guess_ft <= 0:
         rows_ft = body_rows_total_ft(sched)
         if rows_ft > 0:
             guess_ft = rows_ft + header_ft
-            guess_src = u"сумма строк + шапка"
+            guess_src = tr(u"сумма строк + шапка")
     guess_mm = guess_ft * MM_IN_FOOT
     rv = ask(
-        u"Полная высота спецификации на листе — шапка + все строки, мм.\n"
+        tr(u"Полная высота спецификации на листе — шапка + все строки, мм.\n"
         u"{}\n"
         u"Проверьте по факту (например, в свойствах вида) и исправьте, если "
-        u"не совпадает:".format(
-            u"Определено автоматически: {:.0f} мм ({}).".format(guess_mm, guess_src)
-            if guess_ft > 0 else u"Определить автоматически не удалось."
+        u"не совпадает:").format(
+            tr(u"Определено автоматически: {:.0f} мм ({}).").format(guess_mm, guess_src)
+            if guess_ft > 0 else tr(u"Определить автоматически не удалось.")
         ),
         int(round(guess_mm)) if guess_ft > 0 else 2000
     )
@@ -374,17 +375,17 @@ def main():
     count = max(2, int(math.ceil(total_ft / amount - 0.02)))
     if count >= MAX_SEGMENTS:
         raise Stop(
-            u"Получается слишком много участков ({}+). Увеличьте высоту "
-            u"участка.".format(MAX_SEGMENTS)
+            tr(u"Получается слишком много участков ({}+). Увеличьте высоту "
+            u"участка.").format(MAX_SEGMENTS)
         )
 
     if not forms.alert(
-        u"Участков: {}\n"
+        tr(u"Участков: {}\n"
         u"Шапка (на каждом участке): {:.0f} мм\n"
         u"Полная высота таблицы: {:.0f} мм\n"
         u"Первые {} участка(ов) — по {:.0f} мм (насколько позволит целое "
         u"число строк), последний — остаток.\n\n"
-        u"Разбить?".format(
+        u"Разбить?").format(
             count,
             header_ft * MM_IN_FOOT,
             total_ft * MM_IN_FOOT,
@@ -395,14 +396,14 @@ def main():
     ):
         raise Cancelled()
 
-    with revit.Transaction(u"Разбить спецификацию на листе"):
+    with revit.Transaction(tr(u"Разбить спецификацию на листе")):
         if sched.GetSegmentCount() > 1:
             unsplit(sched)
             doc.Regenerate()
             if sched.GetSegmentCount() > 1:
                 raise Stop(
-                    u"Не удалось собрать спецификацию в одну (сейчас {} "
-                    u"участков). Соберите вручную и повторите.\n\n{}".format(
+                    tr(u"Не удалось собрать спецификацию в одну (сейчас {} "
+                    u"участков). Соберите вручную и повторите.\n\n{}").format(
                         sched.GetSegmentCount(), u"\n".join(_debug)
                     )
                 )
@@ -428,11 +429,11 @@ def main():
 
     if count > 2 and pinned == 0:
         forms.alert(
-            u"Высоту участков задать через API не удалось — Revit разбил на {} "
-            u"равные части. Проверьте результат.\n\n{}".format(
+            tr(u"Высоту участков задать через API не удалось — Revit разбил на {} "
+            u"равные части. Проверьте результат.\n\n{}").format(
                 count, u"\n".join(_debug)
             ),
-            title=u"Разбить спецификацию"
+            title=tr(u"Разбить спецификацию")
         )
     # Иначе успех — без итогового окна.
 
@@ -444,9 +445,9 @@ except Cancelled:
 except Stop as ex:
     forms.alert(unicode(ex))
 except Exception:
-    tail = (u"\n\nДиагностика:\n" + u"\n".join(_debug)) if _debug else u""
+    tail = (tr(u"\n\nДиагностика:\n") + u"\n".join(_debug)) if _debug else u""
     forms.alert(
-        u"Сбой при разбиении спецификации:\n\n{}{}".format(
+        tr(u"Сбой при разбиении спецификации:\n\n{}{}").format(
             traceback.format_exc(), tail),
-        title=u"Разбить спецификацию"
+        title=tr(u"Разбить спецификацию")
     )

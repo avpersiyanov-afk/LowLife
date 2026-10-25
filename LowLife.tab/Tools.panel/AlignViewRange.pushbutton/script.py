@@ -4,13 +4,14 @@ __title__ = u"Секущий\nдиапазон"
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, EXEC_PARAMS
 
 doc = revit.doc
 uidoc = revit.uidoc
 
-TITLE = u"Секущий диапазон"
+TITLE = tr(u"Секущий диапазон")
 
 
 def _target_views():
@@ -24,8 +25,8 @@ def _target_views():
     active = doc.ActiveView
     if view_range.is_plan(active):
         return [active]
-    forms.alert(u"Откройте план этажа (или выделите планы в Диспетчере проекта) — "
-                u"секущий диапазон выравнивается только у планов.", title=TITLE)
+    forms.alert(tr(u"Откройте план этажа (или выделите планы в Диспетчере проекта) — "
+                u"секущий диапазон выравнивается только у планов."), title=TITLE)
     return []
 
 
@@ -41,8 +42,8 @@ def main():
     if config_mode:
         edited = vrs.get_settings_interactive()
         forms.alert(
-            u"Отменено, настройки не изменены." if edited is None
-            else u"Настройки сохранены.",
+            tr(u"Отменено, настройки не изменены.") if edited is None
+            else tr(u"Настройки сохранены."),
             title=TITLE
         )
         return
@@ -61,18 +62,18 @@ def main():
     failed = [r for r in results if r.error is not None]
     notes = sorted(set(r.note for r in done if r.note))
 
-    lines = [u"Выровнено видов: {}".format(len(done))]
+    lines = [tr(u"Выровнено видов: {}").format(len(done))]
     for r in done:
-        top = level_name(r.top_level) if r.top_level is not None else u"неограниченно"
-        lines.append(u"  • {} — секущая {:.0f} мм, верх: {}".format(
+        top = level_name(r.top_level) if r.top_level is not None else tr(u"неограниченно")
+        lines.append(tr(u"  • {} — секущая {:.0f} мм, верх: {}").format(
             r.view_name(), float(r.cut_mm), top))
     if failed:
         lines.append(u"")
-        lines.append(u"Пропущено:")
+        lines.append(tr(u"Пропущено:"))
         lines.extend(u"  • {}: {}".format(r.view_name(), r.error) for r in failed)
     if notes:
         lines.append(u"")
-        lines.append(u"Примечания:")
+        lines.append(tr(u"Примечания:"))
         lines.extend(u"  • {}".format(n) for n in notes)
     forms.alert(u"\n".join(lines), title=TITLE)
 
@@ -83,6 +84,6 @@ except SystemExit:
     pass
 except Exception:
     forms.alert(
-        u"Сбой в «{}»:\n\n{}".format(TITLE, traceback.format_exc()),
+        tr(u"Сбой в «{}»:\n\n{}").format(TITLE, traceback.format_exc()),
         title=TITLE
     )

@@ -132,6 +132,12 @@ def test_tr_uses_the_catalog_only_in_english(appdata):
     assert i18n.tr(u"Найдено {}", u"Found {}").format(3) == u"Found 3"
 
 
+def test_tr_translates_the_label_after_a_section_number(appdata):
+    i18n.save(i18n.EN)
+    assert i18n.tr(u"⑨ Сохранить") == u"⑨ Save"
+    assert i18n.tr(u"⑨ Нет такой строки") == u"⑨ Нет такой строки"
+
+
 def test_choice_field_round_trip_in_english(appdata):
     from lowlife import settings_core
     field = settings_core.ChoiceField("mode", u"", u"Подписи в помещениях",

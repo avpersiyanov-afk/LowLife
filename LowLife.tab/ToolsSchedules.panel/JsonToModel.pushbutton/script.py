@@ -14,6 +14,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import traceback
+from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script
 from lowlife import select_list
@@ -31,21 +32,21 @@ def _tail(title, items, fmt):
     out = [u"", u"{} ({}):".format(title, len(items))]
     out.extend(fmt(x) for x in items[:MAX_LISTED])
     if len(items) > MAX_LISTED:
-        out.append(u"… и ещё {}".format(len(items) - MAX_LISTED))
+        out.append(tr(u"… и ещё {}").format(len(items) - MAX_LISTED))
     return out
 
 
 def _problems_text(plan):
     lines = []
-    lines += _tail(u"Элемент не найден в модели", plan["no_element"],
+    lines += _tail(tr(u"Элемент не найден в модели"), plan["no_element"],
                    lambda x: u"  {}".format(x))
-    lines += _tail(u"Нет такого параметра у элемента", plan["no_param"],
+    lines += _tail(tr(u"Нет такого параметра у элемента"), plan["no_param"],
                    lambda x: u"  ID {} / «{}»".format(*x))
-    lines += _tail(u"Параметр только для чтения — пропущен", plan["read_only"],
+    lines += _tail(tr(u"Параметр только для чтения — пропущен"), plan["read_only"],
                    lambda x: u"  ID {} / «{}»".format(*x))
-    lines += _tail(u"Значение не записать", plan["bad_value"],
+    lines += _tail(tr(u"Значение не записать"), plan["bad_value"],
                    lambda x: u"  ID {} / «{}»: {}".format(*x))
-    lines += _tail(u"Не создано — такой же элемент уже стоит в этой точке",
+    lines += _tail(tr(u"Не создано — такой же элемент уже стоит в этой точке"),
                    plan["exists"], lambda x: u"  " + x)
     return lines
 
@@ -62,9 +63,9 @@ try:
     src_title = (data.get("document") or {}).get("title")
     if src_title and src_title != doc.Title:
         if not forms.alert(
-            u"Снимок выгружен из другого документа:\n«{}»\n\nТекущий: «{}»\n\n"
+            tr(u"Снимок выгружен из другого документа:\n«{}»\n\nТекущий: «{}»\n\n"
             u"Элементы ищутся по UniqueId/Id — в другом файле они, скорее "
-            u"всего, не найдутся или окажутся не теми. Продолжить?".format(
+            u"всего, не найдутся или окажутся не теми. Продолжить?").format(
                 src_title, doc.Title),
             yes=True, no=True
         ):
@@ -75,21 +76,21 @@ try:
 
     if not changes:
         forms.alert(u"\n".join(
-            [u"Нечего загружать: все значения совпадают с моделью "
-             u"(совпало {}).".format(plan["unchanged"])]
+            [tr(u"Нечего загружать: все значения совпадают с моделью "
+             u"(совпало {}).").format(plan["unchanged"])]
             + _problems_text(plan)
         ))
         script.exit()
 
     n_conflicts = sum(1 for ch in changes if ch.conflict)
     items = [forms.TemplateListItem(ch, checked=not ch.conflict) for ch in changes]
-    title = u"Правки для записи: {}".format(len(changes))
+    title = tr(u"Правки для записи: {}").format(len(changes))
     if n_conflicts:
-        title += u" (⚠ конфликтов: {} — не отмечены)".format(n_conflicts)
+        title += tr(u" (⚠ конфликтов: {} — не отмечены)").format(n_conflicts)
     chosen = select_list.SelectFromList.show(
         items,
         title=title,
-        button_name=u"Записать отмеченные",
+        button_name=tr(u"Записать отмеченные"),
         multiselect=True,
         width=1000,
         height=700,
@@ -97,24 +98,24 @@ try:
     if not chosen:
         script.exit()
 
-    with revit.Transaction(u"Загрузка правок из JSON"):
+    with revit.Transaction(tr(u"Загрузка правок из JSON")):
         done, errors = json_snapshot.apply_changes(chosen)
 
     parts = [
-        u"Готово.",
+        tr(u"Готово."),
         u"",
-        u"Записано значений: {}".format(done),
-        u"Не выбрано в списке: {}".format(len(changes) - len(chosen)),
-        u"Без изменений: {}".format(plan["unchanged"]),
+        tr(u"Записано значений: {}").format(done),
+        tr(u"Не выбрано в списке: {}").format(len(changes) - len(chosen)),
+        tr(u"Без изменений: {}").format(plan["unchanged"]),
     ]
     if plan["not_edited"]:
-        parts.append(u"Не правили в файле, но изменили в модели — оставлено "
-                     u"как в модели: {}".format(plan["not_edited"]))
-    parts += _tail(u"Ошибки и замечания", errors, lambda x: u"  " + x)
+        parts.append(tr(u"Не правили в файле, но изменили в модели — оставлено "
+                     u"как в модели: {}").format(plan["not_edited"]))
+    parts += _tail(tr(u"Ошибки и замечания"), errors, lambda x: u"  " + x)
     parts += _problems_text(plan)
     forms.alert(u"\n".join(parts))
 except Exception:
     forms.alert(
-        u"Сбой при загрузке:\n\n{}".format(traceback.format_exc()),
-        title=u"JSON → модель"
+        tr(u"Сбой при загрузке:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"JSON → модель")
     )

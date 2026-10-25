@@ -21,6 +21,7 @@ from Autodesk.Revit.DB import (
     FilteredElementCollector, Level,
     LocationCurve, LocationPoint, Reference, RevitLinkInstance, Transform, XYZ,
 )
+from lowlife.i18n import tr
 from System.Collections.Generic import List
 
 MM_IN_FOOT = 304.8
@@ -100,9 +101,9 @@ class Item(object):
         except Exception:
             cat = u""
         name = _safe_name(el)
-        what = u" — ".join(x for x in (cat, name) if x) or u"Элемент"
-        where = (u"связь «{}»".format(self.link_name) if self.link is not None
-                 else u"текущая модель")
+        what = u" — ".join(x for x in (cat, name) if x) or tr(u"Элемент")
+        where = (tr(u"связь «{}»").format(self.link_name) if self.link is not None
+                 else tr(u"текущая модель"))
         return u"{} (ID {}, {})".format(what, _id_int(el.Id), where)
 
 

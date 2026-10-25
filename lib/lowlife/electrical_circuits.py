@@ -7,6 +7,7 @@
 """
 
 from Autodesk.Revit.DB import ElementId, Domain
+from lowlife.i18n import tr
 from Autodesk.Revit.DB.Electrical import ElectricalSystem, ElectricalSystemType
 
 
@@ -98,7 +99,7 @@ def resolve_system_type(name):
     value = (name or u"").strip()
 
     if not value:
-        return None, u"тип цепи не задан в настройках"
+        return None, tr(u"тип цепи не задан в настройках")
 
     system_type = getattr(ElectricalSystemType, value, None)
 
@@ -111,7 +112,7 @@ def resolve_system_type(name):
             a for a in dir(ElectricalSystemType)
             if not a.startswith("_") and isinstance(getattr(ElectricalSystemType, a, None), ElectricalSystemType)
         ]
-        return None, u"неизвестный тип цепи «{}». Доступные: {}".format(
+        return None, tr(u"неизвестный тип цепи «{}». Доступные: {}").format(
             value, u", ".join(sorted(available))
         )
 
@@ -122,10 +123,10 @@ def _try_create(doc, ids, system_type, system_type_name):
     try:
         system = ElectricalSystem.Create(doc, ids, system_type)
     except Exception as ex:
-        return None, u"не удалось создать цепь типа «{}»: {}".format(system_type_name, ex)
+        return None, tr(u"не удалось создать цепь типа «{}»: {}").format(system_type_name, ex)
 
     if system is None:
-        return None, u"Revit не создал цепь"
+        return None, tr(u"Revit не создал цепь")
 
     return system, None
 
@@ -206,6 +207,6 @@ def create_circuit(doc, panel_el, device_els, system_type_name):
     try:
         system.SelectPanel(panel_el)
     except Exception as ex:
-        return system, u"цепь создана, но не подключена к панели: {}".format(ex)
+        return system, tr(u"цепь создана, но не подключена к панели: {}").format(ex)
 
     return system, None

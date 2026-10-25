@@ -11,6 +11,7 @@ settings_core.TextSettings (Shift+клик по кнопке). Умолчани�
 """
 
 from lowlife import settings_core
+from lowlife.i18n import N_
 from lowlife.room_explication_core import (
     COLUMNS, HEADER_HEIGHT_MM, KIND_HEADER, KIND_KEY, OLD_DEFAULT_WIDTHS,
     ROW_HEIGHT_MM, SORT_LEVELS, TITLE)
@@ -19,25 +20,25 @@ ORDER_ASC = "asc"
 ORDER_DESC = "desc"
 
 _LABELS = {
-    "number": u"Номер помещения",
-    "name": u"Наименование",
-    "area": u"Площадь",
-    "category": u"Категория",
+    "number": N_(u"Столбец «Номер помещения»"),
+    "name": N_(u"Столбец «Наименование»"),
+    "area": N_(u"Столбец «Площадь»"),
+    "category": N_(u"Столбец «Категория»"),
 }
 
 
 def _column_fields():
     fields = []
     for i, (key, heading, width) in enumerate(COLUMNS):
-        section = u"{} Столбец «{}»".format(u"①②③④"[i], _LABELS[key])
+        section = u"{} {}".format(u"①②③④"[i], _LABELS[key])
         fields.append(settings_core.TextField(
             "header_" + key, section, u"Заголовок",
-            hint=u"Текст в шапке таблицы. Пусто — по умолчанию: «{}».".format(heading),
+            hint=N_(u"Текст в шапке таблицы. Пусто — заголовок по умолчанию."),
             default=heading, required=False,
         ))
         fields.append(settings_core.NumberField(
             "width_" + key, u"", u"Ширина, мм",
-            hint=u"Ширина графы на листе. По умолчанию {:g} мм.".format(width),
+            hint=N_(u"Ширина графы на листе. «Сбросить» вернёт ширину по умолчанию."),
             default=width, minimum=3.0,
         ))
     return fields
@@ -51,11 +52,11 @@ def _sort_fields():
         first = n == 1
         fields.append(settings_core.TextField(
             "room_sort{}_param".format(n),
-            u"⑥ Сортировка/группировка" if first else u"",
-            u"Сортировать по" if first else u"Затем по",
-            hint=(u"Имя параметра помещения. Пусто — уровень не используется; "
+            N_(u"⑥ Сортировка/группировка") if first else u"",
+            N_(u"Сортировать по") if first else N_(u"Затем по"),
+            hint=(N_(u"Имя параметра помещения. Пусто — уровень не используется; "
                   u"если пусты все — по номеру помещения. Последним ключом "
-                  u"всегда идёт номер помещения по возрастанию."
+                  u"всегда идёт номер помещения по возрастанию.")
                   if first else u""),
             default=u"", required=False,
         ))
@@ -67,9 +68,9 @@ def _sort_fields():
         fields.append(settings_core.ChoiceField(
             "room_sort{}_header".format(n), u"", u"",
             [("no", u"Без заголовка"), ("yes", u"Заголовок группы")],
-            hint=(u"Заголовок группы — строка на всю ширину таблицы перед "
+            hint=(N_(u"Заголовок группы — строка на всю ширину таблицы перед "
                   u"помещениями с новым значением параметра (пустое значение — "
-                  u"«Без группы», такие помещения — в конце)."
+                  u"«Без группы», такие помещения — в конце).")
                   if first else u""),
             default="no",
         ))
@@ -182,7 +183,7 @@ SETTINGS = settings_core.TextSettings(
         ),
         settings_core.TextField(
             "title", u"Таблица", u"Название над таблицей",
-            hint=u"Пусто — «{}».".format(TITLE),
+            hint=N_(u"Пусто — «Экспликация помещений»."),
             default=TITLE, required=False,
         ),
     ] + _column_fields() + [

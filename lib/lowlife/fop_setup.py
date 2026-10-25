@@ -20,7 +20,7 @@ ParameterType/BuiltInParameterGroup; 2025+ — только ForgeTypeId.
 """
 
 import io
-from lowlife.i18n import tr
+from lowlife.i18n import N_, tr
 import os
 
 from Autodesk.Revit.DB import (
@@ -288,7 +288,7 @@ def bind(doc, app, definition, category_names, kind):
 
     missing = []
     for name in category_names:
-        title = fop_catalog.CATEGORY_TITLES.get(name, name)
+        title = tr(fop_catalog.CATEGORY_TITLES.get(name, name))
         category = _category(doc, name)
         if category is None or not category.AllowsBoundParameters:
             result["skipped"].append(title)

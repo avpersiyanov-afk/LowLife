@@ -38,6 +38,7 @@
 """
 
 import clr
+from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 
@@ -67,49 +68,49 @@ ROOM_PARAMS_KEY = "room_param_names_text"
 
 # (ключ, подпись, пояснение, по умолчанию)
 FLAGS = [
-    ("include_readonly", u"Параметры только для чтения",
-     u"Параметры, которые Revit не даёт менять вручную (длины, вычисляемые "
+    ("include_readonly", N_(u"Параметры только для чтения"),
+     N_(u"Параметры, которые Revit не даёт менять вручную (длины, вычисляемые "
      u"значения, ссылки на элементы). Попадают в раздел \"readonly\" — их видно "
-     u"при анализе, но при загрузке файла обратно в модель они не меняются.", True),
-    ("include_type_params", u"Параметры типа",
-     u"Добавляет параметры типоразмера в раздел \"type_params\" — только для "
+     u"при анализе, но при загрузке файла обратно в модель они не меняются."), True),
+    ("include_type_params", N_(u"Параметры типа"),
+     N_(u"Добавляет параметры типоразмера в раздел \"type_params\" — только для "
      u"просмотра: параметр типа общий для всех экземпляров этого типа, поэтому "
-     u"при загрузке файла обратно он не меняется.", False),
-    ("include_empty", u"Пустые значения",
-     u"Выгружать и незаполненные параметры. Включите, если в снимке нужно "
-     u"ЗАПОЛНЯТЬ пустые параметры (например LOI) — так их имена видны сразу.",
+     u"при загрузке файла обратно он не меняется."), False),
+    ("include_empty", N_(u"Пустые значения"),
+     N_(u"Выгружать и незаполненные параметры. Включите, если в снимке нужно "
+     u"ЗАПОЛНЯТЬ пустые параметры (например LOI) — так их имена видны сразу."),
      False),
-    ("include_circuits", u"Электрические цепи выгружаемых элементов",
-     u"Добавляет цепи, в которые входят элементы (как устройство или как "
+    ("include_circuits", N_(u"Электрические цепи выгружаемых элементов"),
+     N_(u"Добавляет цепи, в которые входят элементы (как устройство или как "
      u"панель), с панелью и составом цепи в \"circuit\". Параметры цепи "
-     u"(имя нагрузки, номер и т.п.) можно править так же, как у элементов.",
+     u"(имя нагрузки, номер и т.п.) можно править так же, как у элементов."),
      True),
-    ("include_location", u"Координаты и поворот элементов (можно править)",
-     u"Точка вставки и поворот или начало/конец линейного элемента, в мм. "
+    ("include_location", N_(u"Координаты и поворот элементов (можно править)"),
+     N_(u"Точка вставки и поворот или начало/конец линейного элемента, в мм. "
      u"Изменённые в файле координаты при загрузке перемещают и поворачивают "
-     u"элемент (с предпросмотром).", False),
-    ("include_tags", u"Марки выгружаемых элементов (положение можно править)",
-     u"Марки этих элементов — на активном виде (если выгружается активный "
+     u"элемент (с предпросмотром)."), False),
+    ("include_tags", N_(u"Марки выгружаемых элементов (положение можно править)"),
+     N_(u"Марки этих элементов — на активном виде (если выгружается активный "
      u"вид) или на всех видах. Изменённое \"tag_head_mm\" при загрузке "
-     u"переносит голову марки.", False),
-    ("include_rooms", u"Помещения и пространства (в т.ч. из связей)",
-     u"Раздел \"rooms\": номер, имя, уровень, площадь, объём, высота и "
+     u"переносит голову марки."), False),
+    ("include_rooms", N_(u"Помещения и пространства (в т.ч. из связей)"),
+     N_(u"Раздел \"rooms\": номер, имя, уровень, площадь, объём, высота и "
      u"контур каждого помещения/пространства на уровнях выгружаемых "
      u"элементов, плюс у каждого элемента — в каком помещении и "
      u"пространстве он стоит. Только для анализа. Параметры помещений — "
-     u"список ниже.", False),
-    ("include_catalog", u"Каталог загруженных типоразмеров (для создания новых)",
-     u"Раздел \"catalog\": семейства и типоразмеры выбранных категорий (или "
+     u"список ниже."), False),
+    ("include_catalog", N_(u"Каталог загруженных типоразмеров (для создания новых)"),
+     N_(u"Раздел \"catalog\": семейства и типоразмеры выбранных категорий (или "
      u"категорий выгружаемых элементов), способ размещения, сколько уже "
      u"расставлено и пример экземпляра. Из него выбираются \"family\"/"
-     u"\"type\" (или \"copy_of\") для новых элементов в разделе \"new\".",
+     u"\"type\" (или \"copy_of\") для новых элементов в разделе \"new\"."),
      False),
 ]
 
 SCOPE_LABELS = [
-    (json_snapshot.SCOPE_VIEW, u"Элементы активного вида"),
-    (json_snapshot.SCOPE_SELECTION, u"Выделенные элементы"),
-    (json_snapshot.SCOPE_ALL, u"Весь документ"),
+    (json_snapshot.SCOPE_VIEW, N_(u"Элементы активного вида")),
+    (json_snapshot.SCOPE_SELECTION, N_(u"Выделенные элементы")),
+    (json_snapshot.SCOPE_ALL, N_(u"Весь документ")),
 ]
 
 
@@ -226,7 +227,7 @@ def show_settings_form(doc, values):
     result = {"values": None}
 
     win = Window()
-    win.Title = u"Настройки: Модель → JSON"
+    win.Title = tr(u"Настройки: Модель → JSON")
     win.Width = 760
     win.Height = 820
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -238,15 +239,15 @@ def show_settings_form(doc, values):
     root.Margin = Thickness(16)
 
     title = TextBlock()
-    title.Text = u"Что выгружать в снимок модели"
+    title.Text = tr(u"Что выгружать в снимок модели")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     title.Margin = Thickness(0, 0, 0, 4)
     root.Children.Add(title)
 
     hint = TextBlock()
-    hint.Text = (u"Значения сохраняются и подставляются при следующих запусках. "
-                 u"Чем уже выгрузка, тем меньше файл и тем легче его разобрать.")
+    hint.Text = (tr(u"Значения сохраняются и подставляются при следующих запусках. "
+                 u"Чем уже выгрузка, тем меньше файл и тем легче его разобрать."))
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.TextWrapping = TextWrapping.Wrap
@@ -254,39 +255,39 @@ def show_settings_form(doc, values):
     root.Children.Add(hint)
 
     # --- ① область ---------------------------------------------------------
-    _section(root, u"① Какие элементы")
+    _section(root, tr(u"① Какие элементы"))
     scope_buttons = {}
     for key, label in SCOPE_LABELS:
         rb = RadioButton()
-        rb.Content = label
+        rb.Content = tr(label)
         rb.GroupName = "json_snapshot_scope"
         rb.Margin = Thickness(0, 2, 0, 2)
         rb.IsChecked = (values.get(SCOPE_KEY) == key)
         root.Children.Add(rb)
         scope_buttons[key] = rb
-    _hint(root, u"Активный вид — то, что видно на текущем плане/3D-виде или в "
+    _hint(root, tr(u"Активный вид — то, что видно на текущем плане/3D-виде или в "
                 u"текущей спецификации. Электрические цепи на виде не видны — "
-                u"их добавляет флажок «Электрические цепи» ниже.")
+                u"их добавляет флажок «Электрические цепи» ниже."))
 
     # --- ② категории -------------------------------------------------------
-    _section(root, u"② Категории (по одной на строке)")
+    _section(root, tr(u"② Категории (по одной на строке)"))
     cat_box = _multiline_box(root, values.get(CATEGORIES_KEY, u""))
-    cat_btn = _pick_button(root, u"Выбрать из модели…")
-    _hint(root, u"Имена категорий как в Revit. Пусто — все категории модели "
-                u"(без аннотаций, осей, уровней и видов).")
+    cat_btn = _pick_button(root, tr(u"Выбрать из модели…"))
+    _hint(root, tr(u"Имена категорий как в Revit. Пусто — все категории модели "
+                u"(без аннотаций, осей, уровней и видов)."))
 
     def on_pick_categories(sender, args):
         names = json_snapshot.list_model_category_names(doc)
         if not names:
-            forms.alert(u"В документе не найдено элементов модели.")
+            forms.alert(tr(u"В документе не найдено элементов модели."))
             return
         checked = set(_lines(cat_box.Text))
         items = [forms.TemplateListItem(_NameOption(n), checked=(n in checked))
                  for n in names]
         chosen = select_list.SelectFromList.show(
             items,
-            title=u"Категории для выгрузки",
-            button_name=u"Выбрать",
+            title=tr(u"Категории для выгрузки"),
+            button_name=tr(u"Выбрать"),
             multiselect=True
         )
         if chosen is None:
@@ -296,18 +297,18 @@ def show_settings_form(doc, values):
     cat_btn.Click += on_pick_categories
 
     # --- ③ параметры -------------------------------------------------------
-    _section(root, u"③ Параметры (по одному на строке)")
+    _section(root, tr(u"③ Параметры (по одному на строке)"))
     param_box = _multiline_box(root, values.get(PARAMS_KEY, u""))
-    param_btn = _pick_button(root, u"Выбрать из модели…")
-    _hint(root, u"Имена параметров экземпляра (и типа, если включено ниже). "
+    param_btn = _pick_button(root, tr(u"Выбрать из модели…"))
+    _hint(root, tr(u"Имена параметров экземпляра (и типа, если включено ниже). "
                 u"Пусто — все параметры. Список «Выбрать из модели» берётся по "
-                u"категориям из пункта ②; «✎» — параметр можно править.")
+                u"категориям из пункта ②; «✎» — параметр можно править."))
 
     def on_pick_params(sender, args):
         pairs = json_snapshot.list_param_names(doc, _lines(cat_box.Text))
         if not pairs:
-            forms.alert(u"Не найдено ни одного параметра у элементов "
-                        u"выбранных категорий.")
+            forms.alert(tr(u"Не найдено ни одного параметра у элементов "
+                        u"выбранных категорий."))
             return
         checked = set(_lines(param_box.Text))
         items = [
@@ -318,8 +319,8 @@ def show_settings_form(doc, values):
         ]
         chosen = select_list.SelectFromList.show(
             items,
-            title=u"Параметры для выгрузки",
-            button_name=u"Выбрать",
+            title=tr(u"Параметры для выгрузки"),
+            button_name=tr(u"Выбрать"),
             multiselect=True
         )
         if chosen is None:
@@ -329,31 +330,31 @@ def show_settings_form(doc, values):
     param_btn.Click += on_pick_params
 
     # --- ④ дополнительно ---------------------------------------------------
-    _section(root, u"④ Дополнительно")
+    _section(root, tr(u"④ Дополнительно"))
     flag_boxes = {}
     for key, label, hint_text, _default in FLAGS:
         cb = CheckBox()
-        cb.Content = label
+        cb.Content = tr(label)
         cb.IsChecked = bool(values.get(key))
         cb.Margin = Thickness(0, 8, 0, 0)
         root.Children.Add(cb)
         flag_boxes[key] = cb
-        _hint(root, hint_text)
+        _hint(root, tr(hint_text))
 
     # --- ⑤ параметры помещений ---------------------------------------------
-    _section(root, u"⑤ Параметры помещений и пространств (по одному на строке)")
+    _section(root, tr(u"⑤ Параметры помещений и пространств (по одному на строке)"))
     room_box = _multiline_box(root, values.get(ROOM_PARAMS_KEY, u""))
-    room_btn = _pick_button(root, u"Выбрать из модели…")
-    _hint(root, u"Добавляются в раздел \"rooms\", если включён флажок "
+    room_btn = _pick_button(root, tr(u"Выбрать из модели…"))
+    _hint(root, tr(u"Добавляются в раздел \"rooms\", если включён флажок "
                 u"«Помещения и пространства». Номер, имя, уровень, площадь, "
                 u"объём, высота и контур выгружаются всегда. Для воздушного "
-                u"баланса — параметры расходов пространств.")
+                u"баланса — параметры расходов пространств."))
 
     def on_pick_room_params(sender, args):
         pairs = json_snapshot_rooms.list_room_param_names(doc)
         if not pairs:
-            forms.alert(u"Не найдено ни одного размещённого помещения или "
-                        u"пространства ни в модели, ни в связях.")
+            forms.alert(tr(u"Не найдено ни одного размещённого помещения или "
+                        u"пространства ни в модели, ни в связях."))
             return
         checked = set(_lines(room_box.Text))
         items = [
@@ -364,8 +365,8 @@ def show_settings_form(doc, values):
         ]
         chosen = select_list.SelectFromList.show(
             items,
-            title=u"Параметры помещений/пространств",
-            button_name=u"Выбрать",
+            title=tr(u"Параметры помещений/пространств"),
+            button_name=tr(u"Выбрать"),
             multiselect=True
         )
         if chosen is None:
@@ -382,12 +383,12 @@ def show_settings_form(doc, values):
     DockPanel.SetDock(buttons, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"Сохранить"
+    ok_btn.Content = tr(u"Сохранить")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
@@ -420,7 +421,7 @@ def show_settings_form(doc, values):
         win.Close()
 
     settings_transfer.add_transfer_buttons(
-        buttons, _read_all, _write_all, u"выгрузки JSON", _on_settings_imported
+        buttons, _read_all, _write_all, tr(u"выгрузки JSON"), _on_settings_imported
     )
 
     scroll = ScrollViewer()

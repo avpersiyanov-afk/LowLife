@@ -19,6 +19,7 @@ Application.DocumentChanged ради одной кнопки — overkill).
 """
 
 import re
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, FilteredElementCollector,
@@ -298,9 +299,9 @@ def level_mismatch_hint(record, view, number_display=None):
         number_display = record.number
 
     return (
-        u"Помещение {} «{}» относится к уровню «{}», а на активном виде — "
+        tr(u"Помещение {} «{}» относится к уровню «{}», а на активном виде — "
         u"уровень «{}». Переключитесь на план уровня «{}» и выберите "
-        u"помещение снова.".format(
+        u"помещение снова.").format(
             number_display or u"?", record.name or u"",
             record.level_name, active_level_name, record.level_name
         )

@@ -15,6 +15,7 @@ except NameError:  # Python 3
 
 
 import hashlib
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import Element, ElementId, XYZ
 
@@ -59,7 +60,7 @@ def mm_xyz(values):
     u"""[x, y, z] в мм (числа или строки-числа) -> XYZ в футах.
     ValueError, если это не три числа."""
     if not isinstance(values, (list, tuple)) or len(values) != 3:
-        raise ValueError(u"ожидались три числа [x, y, z]")
+        raise ValueError(tr(u"ожидались три числа [x, y, z]"))
     x, y, z = [float(unicode(v).replace(u",", u".")) for v in values]
     return XYZ(x / MM_IN_FOOT, y / MM_IN_FOOT, z / MM_IN_FOOT)
 
@@ -103,7 +104,7 @@ class Change(object):
         self.label = label
         self.conflict = conflict
         self._apply_fn = apply_fn
-        prefix = u"⚠ в модели изменён после выгрузки · " if conflict else u""
+        prefix = tr(u"⚠ в модели изменён после выгрузки · ") if conflict else u""
         self.name = prefix + label
 
     def apply(self):

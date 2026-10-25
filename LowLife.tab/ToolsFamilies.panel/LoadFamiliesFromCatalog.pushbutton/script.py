@@ -5,6 +5,7 @@ __doc__ = u"Загружает семейства из папки-каталог
 __author__ = "Pipers"
 
 import os
+from lowlife.i18n import tr
 import traceback
 
 import clr
@@ -23,7 +24,7 @@ output = script.get_output()
 class FolderOption(object):
     def __init__(self, rel):
         self.rel = rel
-        self.name = rel if rel != u"." else u"(корень каталога)"
+        self.name = rel if rel != u"." else tr(u"(корень каталога)")
 
     def __str__(self):
         return self.name
@@ -42,7 +43,7 @@ try:
     entries = fc.scan_catalog(root)
     if not entries:
         forms.alert(
-            u"В каталоге не найдено ни одного .rfa:\n{}".format(root),
+            tr(u"В каталоге не найдено ни одного .rfa:\n{}").format(root),
             exitscript=True
         )
 
@@ -52,8 +53,8 @@ try:
     if len(folders) > 1:
         chosen = select_list.SelectFromList.show(
             [FolderOption(f) for f in folders],
-            title=u"Разделы каталога — можно несколько (Отмена = все)",
-            button_name=u"Далее",
+            title=tr(u"Разделы каталога — можно несколько (Отмена = все)"),
+            button_name=tr(u"Далее"),
             multiselect=True
         )
         if chosen:
@@ -61,7 +62,7 @@ try:
             entries = [e for e in entries if (os.path.dirname(e.rel) or u".") in keep]
 
     if not entries:
-        forms.alert(u"В выбранных разделах нет .rfa.", exitscript=True)
+        forms.alert(tr(u"В выбранных разделах нет .rfa."), exitscript=True)
 
     present = fc.project_family_names(doc)
 
@@ -93,20 +94,20 @@ try:
             jobs.append((e, None if set(chosen) == set(names) else sorted(chosen)))
 
     if not jobs:
-        forms.alert(u"Нечего загружать.", exitscript=True)
+        forms.alert(tr(u"Нечего загружать."), exitscript=True)
 
     result = fc.apply_loads(doc, jobs, present, overwrite_params)
     fc.render_load_result_md(output, result)
 
-    summary = [u"Готово.", u""] + fc.load_summary_lines(result)
+    summary = [tr(u"Готово."), u""] + fc.load_summary_lines(result)
     summary += [
         u"",
-        u"Подробности — в окне вывода. Каждая загрузка — отдельный шаг отмены (Ctrl+Z).",
+        tr(u"Подробности — в окне вывода. Каждая загрузка — отдельный шаг отмены (Ctrl+Z)."),
     ]
-    forms.alert(u"\n".join(summary), title=u"Загрузить семейства")
+    forms.alert(u"\n".join(summary), title=tr(u"Загрузить семейства"))
 
 except Exception:
     forms.alert(
-        u"Сбой при загрузке семейств:\n\n{}".format(traceback.format_exc()),
-        title=u"Загрузить семейства"
+        tr(u"Сбой при загрузке семейств:\n\n{}").format(traceback.format_exc()),
+        title=tr(u"Загрузить семейства")
     )

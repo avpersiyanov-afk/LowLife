@@ -19,6 +19,7 @@
 """
 
 import math
+from lowlife.i18n import tr
 import re
 
 Z_AXIS = (0.0, 0.0, 1.0)
@@ -31,7 +32,7 @@ MIN_PLAN_LENGTH = 1e-6
 def _norm(v):
     length = math.sqrt(sum(c * c for c in v))
     if length < 1e-12:
-        raise ValueError(u"Нулевое направление.")
+        raise ValueError(tr(u"Нулевое направление."))
     return tuple(c / length for c in v)
 
 
@@ -52,7 +53,7 @@ def align_angle(current, axis):
     a = plan_angle(current)
     b = plan_angle(axis)
     if a is None or b is None:
-        raise ValueError(u"Направление вертикально — в плане его нет.")
+        raise ValueError(tr(u"Направление вертикально — в плане его нет."))
     quarter = math.pi / 2
     delta = math.fmod(b - a, quarter)
     if delta > quarter / 2:
@@ -113,11 +114,11 @@ def unsupported_reason(view):
     """Текст причины, почему активный вид не повернуть, или None."""
     from Autodesk.Revit.DB import View3D
     if not isinstance(view, View3D) or view.IsTemplate:
-        return u"Откройте 3D вид, который нужно повернуть, и запустите кнопку на нём."
+        return tr(u"Откройте 3D вид, который нужно повернуть, и запустите кнопку на нём.")
     try:
         if view.IsLocked:
-            return (u"3D вид заблокирован (ориентация сохранена). Разблокируйте "
-                    u"его на панели вида и повторите.")
+            return (tr(u"3D вид заблокирован (ориентация сохранена). Разблокируйте "
+                    u"его на панели вида и повторите."))
     except Exception:
         pass
     return None
@@ -184,13 +185,13 @@ def picked_direction(doc, reference):
         element = element.GetLinkDocument().GetElement(reference.LinkedElementId)
     line = element_line(element) if element is not None else None
     if line is None:
-        raise ValueError(u"Выбранный элемент — не прямая ось: выберите ось сетки, "
-                         u"линию или прямую стену/лоток.")
+        raise ValueError(tr(u"Выбранный элемент — не прямая ось: выберите ось сетки, "
+                         u"линию или прямую стену/лоток."))
     direction = line.Direction
     if transform is not None:
         direction = transform.OfVector(direction)
     if plan_angle(_xyz_tuple(direction)) is None:
-        raise ValueError(u"Выбранная линия вертикальна — под неё вид в плане не повернуть.")
+        raise ValueError(tr(u"Выбранная линия вертикальна — под неё вид в плане не повернуть."))
     try:
         name = Element.Name.GetValue(element)
     except Exception:
@@ -218,7 +219,7 @@ def list_grid_axes(doc):
         transform = link.GetTotalTransform()
         link_name = Element.Name.GetValue(link).split(u" : ")[0]
         for name, d in grids(link_doc):
-            items.append((name, u"{}  (связь: {})".format(name, link_name), transform.OfVector(d)))
+            items.append((name, tr(u"{}  (связь: {})").format(name, link_name), transform.OfVector(d)))
     items.sort(key=lambda it: (natural_key(it[0]), it[1]))
     return [(label, d) for _name, label, d in items]
 

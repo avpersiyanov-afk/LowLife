@@ -23,6 +23,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import tr
 
 import clr
 clr.AddReference('System')
@@ -69,9 +70,9 @@ def _pick_two_subfolders(root):
     subs = _subfolders(root)
     if len(subs) < 2:
         forms.alert(
-            u"В папке:\n{}\n\nдолжно быть минимум две подпапки с файлами. "
-            u"Найдено: {}.".format(root, len(subs)),
-            title=u"Переименование по списку",
+            tr(u"В папке:\n{}\n\nдолжно быть минимум две подпапки с файлами. "
+            u"Найдено: {}.").format(root, len(subs)),
+            title=tr(u"Переименование по списку"),
         )
         return None
     if len(subs) == 2:
@@ -80,13 +81,13 @@ def _pick_two_subfolders(root):
     names = [os.path.basename(p) for p in subs]
     picked = select_list.SelectFromList.show(
         names,
-        title=u"В папке больше двух подпапок — выберите ровно две с парными файлами",
-        button_name=u"Выбрать",
+        title=tr(u"В папке больше двух подпапок — выберите ровно две с парными файлами"),
+        button_name=tr(u"Выбрать"),
         multiselect=True,
     )
     if not picked or len(picked) != 2:
-        forms.alert(u"Нужно выбрать ровно две подпапки.",
-                    title=u"Переименование по списку")
+        forms.alert(tr(u"Нужно выбрать ровно две подпапки."),
+                    title=tr(u"Переименование по списку"))
         return None
     return [os.path.join(root, n) for n in picked]
 
@@ -117,8 +118,8 @@ def collect_names(root):
     stems = _stems(folder_a) | _stems(folder_b)
     if not stems:
         forms.alert(
-            u"В подпапках:\n{}\n{}\n\nне найдено файлов.".format(folder_a, folder_b),
-            title=u"Переименование по списку",
+            tr(u"В подпапках:\n{}\n{}\n\nне найдено файлов.").format(folder_a, folder_b),
+            title=tr(u"Переименование по списку"),
         )
         return None
     return sorted(stems, key=lambda s: s.lower()), folder_a, folder_b
@@ -192,7 +193,7 @@ def _show_rename_dialog(stems, folder_a, folder_b):
     result = {"mapping": None}
 
     win = Window()
-    win.Title = u"Переименование по списку"
+    win.Title = tr(u"Переименование по списку")
     win.Width = 640
     win.Height = 620
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
@@ -205,17 +206,17 @@ def _show_rename_dialog(stems, folder_a, folder_b):
     DockPanel.SetDock(header, Dock.Top)
 
     title = TextBlock()
-    title.Text = u"Список имён (без расширения)"
+    title.Text = tr(u"Список имён (без расширения)")
     title.FontSize = 16
     title.FontWeight = FontWeights.Bold
     header.Children.Add(title)
 
     info = TextBlock()
     info.Text = (
-        u"Папка A: {}\nПапка B: {}\n\n"
+        tr(u"Папка A: {}\nПапка B: {}\n\n"
         u"Во втором столбце впишите новое имя. Пустые и неизменённые строки "
         u"пропускаются. ОК переименует файлы с таким именем (без учёта "
-        u"расширения) во всей выбранной папке и её подпапках.".format(
+        u"расширения) во всей выбранной папке и её подпапках.").format(
             folder_a, folder_b)
     )
     info.FontSize = 11
@@ -236,7 +237,7 @@ def _show_rename_dialog(stems, folder_a, folder_b):
     grid.ItemsSource = data
 
     old_col = DataGridTextColumn()
-    old_col.Header = u"Текущее имя"
+    old_col.Header = tr(u"Текущее имя")
     old_col.Binding = Binding("OldName")
     old_col.IsReadOnly = True
     old_col.Width = _star(1)
@@ -246,7 +247,7 @@ def _show_rename_dialog(stems, folder_a, folder_b):
     new_binding.Mode = BindingMode.TwoWay
     new_binding.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
     new_col = DataGridTextColumn()
-    new_col.Header = u"Новое имя"
+    new_col.Header = tr(u"Новое имя")
     new_col.Binding = new_binding
     new_col.Width = _star(1)
     grid.Columns.Add(new_col)
@@ -258,12 +259,12 @@ def _show_rename_dialog(stems, folder_a, folder_b):
     DockPanel.SetDock(bottom, Dock.Bottom)
 
     cancel_btn = Button()
-    cancel_btn.Content = u"Отмена"
+    cancel_btn.Content = tr(u"Отмена")
     cancel_btn.Padding = Thickness(10, 4, 10, 4)
     cancel_btn.Margin = Thickness(0, 0, 8, 0)
 
     ok_btn = Button()
-    ok_btn.Content = u"ОК"
+    ok_btn.Content = tr(u"ОК")
     ok_btn.Padding = Thickness(10, 4, 10, 4)
     ok_btn.FontWeight = FontWeights.Bold
 
@@ -288,10 +289,10 @@ def _show_rename_dialog(stems, folder_a, folder_b):
             mapping[old_name] = new_name
         if bad:
             forms.alert(
-                u"Недопустимые символы в новом имени для: {}\n\n"
-                u"Нельзя использовать: {}".format(
+                tr(u"Недопустимые символы в новом имени для: {}\n\n"
+                u"Нельзя использовать: {}").format(
                     u", ".join(bad), INVALID_FILENAME_CHARS),
-                title=u"Переименование по списку",
+                title=tr(u"Переименование по списку"),
             )
             return
         result["mapping"] = mapping
@@ -317,7 +318,7 @@ def _show_rename_dialog(stems, folder_a, folder_b):
 
 def run():
     try:
-        root = forms.pick_folder(title=u"Папка с двумя подпапками для переименования")
+        root = forms.pick_folder(title=tr(u"Папка с двумя подпапками для переименования"))
     except TypeError:
         root = forms.pick_folder()
     if not root or not os.path.isdir(root):
@@ -332,8 +333,8 @@ def run():
     if mapping is None:
         return
     if not mapping:
-        forms.alert(u"Ни одно имя не изменено — переименовывать нечего.",
-                    title=u"Переименование по списку")
+        forms.alert(tr(u"Ни одно имя не изменено — переименовывать нечего."),
+                    title=tr(u"Переименование по списку"))
         return
 
     plans = plan_renames(root, mapping)
@@ -341,20 +342,20 @@ def run():
     collisions = [p for p in plans if p[2] == "collision"]
 
     if not ok:
-        msg = u"Файлов для переименования не найдено."
+        msg = tr(u"Файлов для переименования не найдено.")
         if collisions:
-            msg += u"\n\nПропущено (целевое имя уже занято): {}".format(len(collisions))
-        forms.alert(msg, title=u"Переименование по списку")
+            msg += tr(u"\n\nПропущено (целевое имя уже занято): {}").format(len(collisions))
+        forms.alert(msg, title=tr(u"Переименование по списку"))
         return
 
     renamed, errors = apply_renames(ok)
 
-    msg = u"Переименовано файлов: {}".format(renamed)
+    msg = tr(u"Переименовано файлов: {}").format(renamed)
     if collisions:
-        msg += u"\nПропущено (имя уже занято): {}".format(len(collisions))
+        msg += tr(u"\nПропущено (имя уже занято): {}").format(len(collisions))
     if errors:
-        msg += u"\nОшибок: {}\n{}".format(
+        msg += tr(u"\nОшибок: {}\n{}").format(
             len(errors),
             u"\n".join(u"  {} — {}".format(os.path.basename(s), m)
                        for s, _d, m in errors[:8]))
-    forms.alert(msg, title=u"Переименование по списку")
+    forms.alert(msg, title=tr(u"Переименование по списку"))

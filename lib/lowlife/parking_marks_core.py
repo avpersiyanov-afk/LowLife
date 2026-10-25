@@ -10,6 +10,7 @@ Revit-часть — parking_marks.py, настройки — parking_marks_sett
 """
 
 from lowlife.slab_marks_core import split_words, has_word, format_height
+from lowlife.i18n import N_
 
 __all__ = ["split_words", "has_word", "format_height", "GROUPS", "OTHER", "classify",
            "label", "overlaps", "cluster", "floor_range", "group_boxes", "outer_boxes"]
@@ -31,14 +32,14 @@ class Group(object):
 # Порядок важен: элемент относится к первой группе, чьё слово нашлось
 # (в «Комментариях» зоны светильников бывает «...в зоне проезда»).
 GROUPS = [
-    Group("lights", u"Зона светильников", u"светильн",
+    Group("lights", N_(u"Зона светильников"), u"светильн",
           u"Светильники: низ {bottom}, верх {top}", "yes", (240, 140, 40)),
-    Group("drive", u"Проезд", u"проезд",
+    Group("drive", N_(u"Проезд"), u"проезд",
           u"Проезд: верх {top}", "yes", (60, 150, 220)),
-    Group("parking", u"Машиноместо", u"машиномест, машино-мест",
+    Group("parking", N_(u"Машиноместо"), u"машиномест, машино-мест",
           u"М/м: верх {top}", "yes", (120, 180, 70)),
 ]
-OTHER = Group("other", u"Прочее", u"", u"Верх {top}", "no", (150, 150, 150))
+OTHER = Group("other", N_(u"Прочее"), u"", u"Верх {top}", "no", (150, 150, 150))
 
 
 def classify(text, groups_words):

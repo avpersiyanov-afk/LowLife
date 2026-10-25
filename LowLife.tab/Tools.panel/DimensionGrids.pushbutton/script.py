@@ -5,6 +5,7 @@ __doc__ = u"Образмеривает выбранные оси на виде"
 __author__ = "Pipers"
 
 import clr
+from lowlife.i18n import tr
 clr.AddReference('RevitAPI')
 clr.AddReference('RevitAPIUI')
 
@@ -100,7 +101,7 @@ def choose_dimension_type():
 
     if not dim_types:
         forms.alert(
-            "В проекте не найдены линейные стили размеров.",
+            tr("В проекте не найдены линейные стили размеров."),
             exitscript=True
         )
 
@@ -109,13 +110,13 @@ def choose_dimension_type():
 
     selected = select_list.SelectFromList.show(
         options,
-        title="Выберите стиль размеров",
-        button_name="Создать размеры",
+        title=tr("Выберите стиль размеров"),
+        button_name=tr("Создать размеры"),
         multiselect=False
     )
 
     if not selected:
-        forms.alert("Операция отменена.", exitscript=True)
+        forms.alert(tr("Операция отменена."), exitscript=True)
 
     return selected.dim_type
 
@@ -289,13 +290,13 @@ grids = get_selected_grids()
 
 if not grids:
     forms.alert(
-        "Сначала выберите оси в Revit, потом запустите кнопку.",
+        tr("Сначала выберите оси в Revit, потом запустите кнопку."),
         exitscript=True
     )
 
 if len(grids) < 2:
     forms.alert(
-        "Выберите минимум две оси.",
+        tr("Выберите минимум две оси."),
         exitscript=True
     )
 
@@ -365,11 +366,11 @@ with revit.Transaction("Create Grid Dimensions"):
 
 
 forms.alert(
-    "Готово.\n\n"
+    tr("Готово.\n\n"
     "Размерных цепочек: {}\n"
     "Общих размеров: {}\n\n"
     "Отступ цепочки: {} мм\n"
-    "Отступ общего размера: {} мм".format(
+    "Отступ общего размера: {} мм").format(
         len(created_chain),
         len(created_total),
         int(OFFSET_MM),

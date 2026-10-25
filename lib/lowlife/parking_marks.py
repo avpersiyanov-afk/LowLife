@@ -19,6 +19,7 @@
 """
 
 import math
+from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
     XYZ, Line, CurveLoop, ElementId, FilteredElementCollector, BuiltInCategory,
@@ -236,7 +237,7 @@ class ParkingItem(object):
 
     @property
     def label(self):
-        part = u", часть {}".format(self.part) if self.part else u""
+        part = tr(u", часть {}").format(self.part) if self.part else u""
         return u"{}: {} (Id {}{})".format(self.link_name, _family_and_type(self.element) or u"",
                                          self.element.Id.IntegerValue, part)
 
@@ -372,7 +373,7 @@ def collect(doc, view, settings):
     words = group_words(settings)
     bottom, top = view_z_range(doc, view)
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        name = safe_element_name(link) or u"связь {}".format(link.Id.IntegerValue)
+        name = safe_element_name(link) or tr(u"связь {}").format(link.Id.IntegerValue)
         try:
             link_doc = link.GetLinkDocument()
         except Exception:
@@ -399,9 +400,9 @@ def collect(doc, view, settings):
             for item in items:
                 reason = None
                 if not core.overlaps(item.bottom_z, item.top_z, bottom, top):
-                    reason = u"не на этом этаже"
+                    reason = tr(u"не на этом этаже")
                 elif not _in_crop(view, item):
-                    reason = u"вне подрезки вида"
+                    reason = tr(u"вне подрезки вида")
                 if reason is not None:
                     level_z = view.GenLevel.ProjectElevation
                     result.skipped.append((group, item.label, mm(item.bottom_z - level_z),
@@ -428,7 +429,7 @@ def fill_type(doc, group):
             return candidate, None
     base = slab_marks.region_type(doc, None)
     if base is None:
-        return None, u"в проекте нет ни одного типа области заливки"
+        return None, tr(u"в проекте нет ни одного типа области заливки")
     created = base.Duplicate(name)
     try:
         pattern = slab_marks.hatch_pattern(doc)
@@ -510,12 +511,12 @@ def annotate_view(doc, view, items, settings, note_type):
             fill_types[group.key] = fill_type(doc, group)
         region_type, error = fill_types[group.key]
         if region_type is None:
-            if u"штриховка: " + error not in result.errors:
-                result.errors.append(u"штриховка: " + error)
+            if tr(u"штриховка: ") + error not in result.errors:
+                result.errors.append(tr(u"штриховка: ") + error)
             continue
         regions, error = _regions(doc, view, item, region_type, level_z)
         if not regions:
-            result.errors.append(u"{}: штриховка — {}".format(item.label, error))
+            result.errors.append(tr(u"{}: штриховка — {}").format(item.label, error))
             continue
         for region in regions:
             try:
@@ -539,7 +540,7 @@ def annotate_view(doc, view, items, settings, note_type):
                             u"\r".join(t.replace(u"\n", u"\r") for t in texts), note_type.Id)
             result.texts += 1
         except Exception as ex:
-            result.errors.append(u"подпись — {}".format(ex))
+            result.errors.append(tr(u"подпись — {}").format(ex))
     return result
 
 

@@ -17,6 +17,7 @@ __doc__ = (
 __author__ = "Pipers"
 
 import os
+from lowlife.i18n import tr
 import io
 import datetime
 
@@ -30,7 +31,7 @@ from lowlife import select_list
 from lowlife import spellcheck_core as core
 from lowlife import spellcheck, spellcheck_settings, email_ai
 
-TITLE = u"Проверка орфографии"
+TITLE = tr(u"Проверка орфографии")
 BUNDLE_DIR = os.path.dirname(__file__)
 PROMPT_FILE = os.path.join(BUNDLE_DIR, "prompt.txt")
 
@@ -52,7 +53,7 @@ default_prompt = _read_default_prompt()
 
 if config_mode:
     saved = spellcheck_settings.edit_interactive(default_prompt)
-    forms.alert(u"Настройки сохранены." if saved else u"Отменено, настройки не изменены.")
+    forms.alert(tr(u"Настройки сохранены.") if saved else tr(u"Отменено, настройки не изменены."))
     script.exit()
 
 
@@ -62,9 +63,9 @@ uidoc = revit.uidoc
 settings = spellcheck_settings.load()
 prompt_text = spellcheck_settings.effective_prompt(settings, default_prompt)
 if not prompt_text.strip():
-    forms.alert(u"Промпт пуст: в настройках нет своего текста, а стандартный "
+    forms.alert(tr(u"Промпт пуст: в настройках нет своего текста, а стандартный "
                 u"файл не прочитался:\n{}\n\nВпишите промпт в настройках "
-                u"(Shift+клик по кнопке).".format(PROMPT_FILE),
+                u"(Shift+клик по кнопке).").format(PROMPT_FILE),
                 exitscript=True)
 
 try:
@@ -77,10 +78,10 @@ except email_ai.AIError as ex:
 selected = spellcheck.selected_text_notes(doc, uidoc)
 scopes = []
 if selected:
-    scopes.append((u"Выделенные ({})".format(len(selected)), spellcheck.SCOPE_SELECTION))
-scopes.append((u"Текущий вид", spellcheck.SCOPE_VIEW))
-scopes.append((u"Вся модель", spellcheck.SCOPE_MODEL))
-choice = forms.alert(u"Какие текстовые заметки проверить?", title=TITLE,
+    scopes.append((tr(u"Выделенные ({})").format(len(selected)), spellcheck.SCOPE_SELECTION))
+scopes.append((tr(u"Текущий вид"), spellcheck.SCOPE_VIEW))
+scopes.append((tr(u"Вся модель"), spellcheck.SCOPE_MODEL))
+choice = forms.alert(tr(u"Какие текстовые заметки проверить?"), title=TITLE,
                      options=[label for label, _scope in scopes])
 if not choice:
     script.exit()
@@ -98,9 +99,9 @@ for note in all_notes:
 
 items = core.collect_items([(i, spellcheck.plain_text(note)) for i, note in enumerate(notes)])
 if not items:
-    forms.alert(u"Нет текстовых заметок с текстом для проверки ({}).{}".format(
+    forms.alert(tr(u"Нет текстовых заметок с текстом для проверки ({}).{}").format(
         choice.lower(),
-        u"\n\nПропущено заметок (в группах / заняты): {}".format(len(skipped)) if skipped else u""),
+        tr(u"\n\nПропущено заметок (в группах / заняты): {}").format(len(skipped)) if skipped else u""),
         title=TITLE, exitscript=True)
 
 
@@ -139,11 +140,11 @@ batch_errors = []
 fatal_error = None
 cancelled = False
 
-with forms.ProgressBar(title=u"Проверка орфографии…", cancellable=True) as pb:
+with forms.ProgressBar(title=tr(u"Проверка орфографии…"), cancellable=True) as pb:
     batches = core.make_batches(items)
     total = len(batches)
     for part, batch in enumerate(batches, start=1):
-        pb.title = u"Проверка текста в {}: часть {} из {} (надписей: {})".format(
+        pb.title = tr(u"Проверка текста в {}: часть {} из {} (надписей: {})").format(
             engine.name, part, total, len(batch))
         pb.update_progress(part - 1, total)
         _set_indeterminate(pb, True)
@@ -161,19 +162,19 @@ with forms.ProgressBar(title=u"Проверка орфографии…", cancel
         except email_ai.AIError as ex:
             text = ex.message
             if ex.details:
-                text += u"\n\nПодробности:\n" + ex.details[:1500]
+                text += tr(u"\n\nПодробности:\n") + ex.details[:1500]
             if ex.fatal:
                 fatal_error = text
                 break
-            batch_errors.append(u"Часть {} из {}: {}".format(part, total, text))
+            batch_errors.append(tr(u"Часть {} из {}: {}").format(part, total, text))
             continue
 
         try:
             fixes = core.parse_fixes(answer)
         except core.ParseError as ex:
             raw_path = _save_raw_answer(part, answer)
-            batch_errors.append(u"Часть {} из {}: не удалось разобрать ответ {} ({}). "
-                                u"Ответ сохранён: {}".format(part, total, engine.name, ex, raw_path))
+            batch_errors.append(tr(u"Часть {} из {}: не удалось разобрать ответ {} ({}). "
+                                u"Ответ сохранён: {}").format(part, total, engine.name, ex, raw_path))
             continue
 
         batch_ids = set(item["id"] for item in batch)
@@ -192,7 +193,7 @@ with forms.ProgressBar(title=u"Проверка орфографии…", cancel
     pb.update_progress(total, total)
 
 if cancelled:
-    forms.alert(u"Отменено пользователем. В модели ничего не изменено.", title=TITLE, exitscript=True)
+    forms.alert(tr(u"Отменено пользователем. В модели ничего не изменено."), title=TITLE, exitscript=True)
 if fatal_error:
     forms.alert(fatal_error, title=TITLE, exitscript=True)
 
@@ -213,14 +214,14 @@ chosen = []
 if proposals:
     picked = select_list.SelectFromList.show(
         [forms.TemplateListItem(FixOption(p), checked=True, name_attr="name") for p in proposals],
-        title=u"Исправления ИИ — снимите отметку с ненужных",
-        button_name=u"Исправить отмеченные",
+        title=tr(u"Исправления ИИ — снимите отметку с ненужных"),
+        button_name=tr(u"Исправить отмеченные"),
         multiselect=True,
         width=1000,
         height=650,
     )
     if picked is None:
-        forms.alert(u"Отменено. В модели ничего не изменено.", title=TITLE, exitscript=True)
+        forms.alert(tr(u"Отменено. В модели ничего не изменено."), title=TITLE, exitscript=True)
     chosen = [getattr(option, "proposal", None) for option in picked]
     chosen = [p for p in chosen if p]
 
@@ -256,51 +257,51 @@ if chosen:
 
 # --- Отчёт
 output = script.get_output()
-output.print_md(u"## Проверка орфографии — {}".format(
+output.print_md(tr(u"## Проверка орфографии — {}").format(
     datetime.datetime.now().strftime("%d.%m.%Y %H:%M")))
-output.print_md(u"Область: **{}**, заметок: **{}**, уникальных надписей: **{}**, "
-                u"с исправлениями: **{}**. ИИ: {}.".format(
+output.print_md(tr(u"Область: **{}**, заметок: **{}**, уникальных надписей: **{}**, "
+                u"с исправлениями: **{}**. ИИ: {}.").format(
                     choice, len(all_notes), len(items), len(proposals), engine.description))
 
 if commit_error:
-    output.print_md(u"> ⚠ Revit не сохранил изменения, модель не изменена: " + commit_error)
-    forms.alert(u"Revit не сохранил изменения, модель не изменена:\n\n" + commit_error, title=TITLE)
+    output.print_md(tr(u"> ⚠ Revit не сохранил изменения, модель не изменена: ") + commit_error)
+    forms.alert(tr(u"Revit не сохранил изменения, модель не изменена:\n\n") + commit_error, title=TITLE)
 
 if applied:
-    output.print_md(u"### Исправлено")
+    output.print_md(tr(u"### Исправлено"))
     rows = []
     for proposal, ids in applied:
         rows.append([proposal["changes"], proposal["new_body"].replace(u"\n", u" ↵ "),
                      output.linkify(ids)])
-    output.print_table(table_data=rows, columns=[u"Что исправлено", u"Текст", u"Заметки"])
+    output.print_table(table_data=rows, columns=[tr(u"Что исправлено"), tr(u"Текст"), tr(u"Заметки")])
 elif not proposals and not batch_errors:
-    output.print_md(u"Ошибок не найдено.")
+    output.print_md(tr(u"Ошибок не найдено."))
 elif proposals and not chosen:
-    output.print_md(u"Ни одно исправление не отмечено — модель не изменена.")
+    output.print_md(tr(u"Ни одно исправление не отмечено — модель не изменена."))
 
 if plain_notes:
-    output.print_md(u"> ⚠ В этих заметках текст записан целиком, форматирование "
-                    u"(жирный/курсив/списки) сброшено: " + output.linkify(plain_notes))
+    output.print_md(tr(u"> ⚠ В этих заметках текст записан целиком, форматирование "
+                    u"(жирный/курсив/списки) сброшено: ") + output.linkify(plain_notes))
 
 if failed:
-    output.print_md(u"### Не удалось записать")
+    output.print_md(tr(u"### Не удалось записать"))
     for element_id, reason in failed:
         output.print_md(u"- {} — {}".format(output.linkify(element_id), reason))
 
 if skipped:
-    output.print_md(u"### Пропущены, не проверялись")
+    output.print_md(tr(u"### Пропущены, не проверялись"))
     for note, reason in skipped:
         output.print_md(u"- {} — {}".format(output.linkify(note.Id), reason))
 
 if rejected:
-    output.print_md(u"### Отклонено: ИИ переписал текст, а не исправил ошибки")
+    output.print_md(tr(u"### Отклонено: ИИ переписал текст, а не исправил ошибки"))
     for item, new_body in rejected:
         output.print_md(u"- «{}» → «{}»".format(item["text"], new_body))
 
 if batch_errors:
-    output.print_md(u"### Ошибки")
+    output.print_md(tr(u"### Ошибки"))
     for err in batch_errors:
         output.print_md(u"- " + err.replace(u"\n", u" "))
     if not proposals:
-        forms.alert(u"Не удалось проверить текст:\n\n" + u"\n\n".join(batch_errors)[:3000],
+        forms.alert(tr(u"Не удалось проверить текст:\n\n") + u"\n\n".join(batch_errors)[:3000],
                     title=TITLE)

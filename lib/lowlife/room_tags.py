@@ -53,6 +53,7 @@ from Autodesk.Revit.DB import (
     LinkElementId, ElementId, UV, LocationPoint, Element, Family,
     View, ViewPlan, ViewType, Transform,
 )
+from lowlife.i18n import N_, tr
 
 MM_IN_FOOT = 304.8
 
@@ -90,10 +91,10 @@ def get_room_tag_types(doc):
 
 
 _VIEW_TYPE_RU = {
-    ViewType.FloorPlan: u"План этажа",
-    ViewType.CeilingPlan: u"План потолка",
-    ViewType.EngineeringPlan: u"Инж. план",
-    ViewType.AreaPlan: u"План зоны",
+    ViewType.FloorPlan: N_(u"План этажа"),
+    ViewType.CeilingPlan: N_(u"План потолка"),
+    ViewType.EngineeringPlan: N_(u"Инж. план"),
+    ViewType.AreaPlan: N_(u"План зоны"),
 }
 
 
@@ -120,7 +121,7 @@ def view_label(view):
         except Exception:
             name = unicode(view.Id.IntegerValue)
     try:
-        prefix = _VIEW_TYPE_RU.get(view.ViewType)
+        prefix = tr(_VIEW_TYPE_RU.get(view.ViewType))
     except Exception:
         prefix = None
     return u"{} — {}".format(prefix, name) if prefix else name

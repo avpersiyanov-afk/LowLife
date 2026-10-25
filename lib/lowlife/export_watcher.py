@@ -52,6 +52,7 @@ except NameError:  # Python 3
 
 
 import os
+from lowlife.i18n import N_, tr
 import io
 import sys
 import time
@@ -398,13 +399,13 @@ def _msgbox(text, title, yesno=False):
         return None
 
 
-def _pick_folder(start, desc=u"Папка, куда ModPlus сложил файлы"):
+def _pick_folder(start, desc=N_(u"Папка, куда ModPlus сложил файлы")):
     try:
         import clr
         clr.AddReference("System.Windows.Forms")
         from System.Windows.Forms import FolderBrowserDialog, DialogResult
         dlg = FolderBrowserDialog()
-        dlg.Description = desc
+        dlg.Description = tr(desc)
         if start and os.path.isdir(start):
             dlg.SelectedPath = start
         if dlg.ShowDialog() == DialogResult.OK and os.path.isdir(dlg.SelectedPath):
@@ -582,8 +583,8 @@ def _poll_and_rename(cfg, armed_at, token=None):
         _log(u"poll: ни export_root, ни last_folder — спрашиваю корневую папку")
         picked = _pick_folder(
             u"",
-            desc=u"Корневая папка выгрузки ModPlus — та, ВНУТРИ которой ModPlus "
-                 u"создаёт папку с датой-временем. Запомню её (export_root).")
+            desc=tr(u"Корневая папка выгрузки ModPlus — та, ВНУТРИ которой ModPlus "
+                 u"создаёт папку с датой-временем. Запомню её (export_root)."))
         if not picked:
             _log(u"poll: корневая папка не выбрана — выхожу")
             return
@@ -695,32 +696,32 @@ def _do_rename(folder, cfg):
     if not ok and not coll:
         _log(u"_do_rename: файлов с «{}» нет".format(cfg["from_token"]))
         if cfg.get("notify_nothing", False):
-            _msgbox(u"Папка: {}\n\nВ выгрузке нет файлов с «{}» — "
-                    u"переименовывать нечего.".format(folder, cfg["from_token"]),
-                    u"Переименование выгрузки")
+            _msgbox(tr(u"Папка: {}\n\nВ выгрузке нет файлов с «{}» — "
+                    u"переименовывать нечего.").format(folder, cfg["from_token"]),
+                    tr(u"Переименование выгрузки"))
         return
 
     if not ok:
         clist = u"\n".join(u"  {}".format(os.path.basename(s)) for s, _d, _ in coll[:20])
         _msgbox(
-            u"Папка: {}\n\nПереименовать нечего: у всех {} файла(ов) с «{}» "
+            tr(u"Папка: {}\n\nПереименовать нечего: у всех {} файла(ов) с «{}» "
             u"целевое имя «{}…» уже занято другим файлом в этой папке "
             u"(перезаписывать не стал — потеряется второй лист):\n{}\n\n"
-            u"Если это два РАЗНЫХ листа — дайте им разные имена листа.".format(
+            u"Если это два РАЗНЫХ листа — дайте им разные имена листа.").format(
                 folder, len(coll), cfg["from_token"], cfg["to_token"], clist),
-            u"Переименование выгрузки")
+            tr(u"Переименование выгрузки"))
         return
 
     sample = u"\n".join(u"  {}  →  {}".format(
         os.path.basename(s), os.path.basename(d)) for s, d, _ in ok[:15])
     if len(ok) > 15:
-        sample += u"\n  … ещё {}".format(len(ok) - 15)
-    msg = u"Папка: {}\n\nПереименовать «{}» → «{}» в {} файле(ах)?\n{}".format(
+        sample += tr(u"\n  … ещё {}").format(len(ok) - 15)
+    msg = tr(u"Папка: {}\n\nПереименовать «{}» → «{}» в {} файле(ах)?\n{}").format(
         folder, cfg["from_token"], cfg["to_token"], len(ok), sample)
     if coll:
-        msg += u"\n\nПропущу {} (целевое имя занято).".format(len(coll))
+        msg += tr(u"\n\nПропущу {} (целевое имя занято).").format(len(coll))
 
-    if not _msgbox(msg, u"Переименование выгрузки", yesno=True):
+    if not _msgbox(msg, tr(u"Переименование выгрузки"), yesno=True):
         _log(u"_do_rename: пользователь отказался")
         return
 
@@ -741,12 +742,12 @@ def _do_rename(folder, cfg):
     except Exception:
         pass
     _log(u"_do_rename: переименовано {} ошибок {}".format(renamed, len(errors)))
-    res = u"Переименовано: {}".format(renamed)
+    res = tr(u"Переименовано: {}").format(renamed)
     if coll:
-        res += u"\nПропущено (имя занято): {}".format(len(coll))
+        res += tr(u"\nПропущено (имя занято): {}").format(len(coll))
     if errors:
-        res += u"\nОшибок: {}".format(len(errors))
-    _msgbox(res, u"Переименование выгрузки")
+        res += tr(u"\nОшибок: {}").format(len(errors))
+    _msgbox(res, tr(u"Переименование выгрузки"))
 
 
 def status_text():
