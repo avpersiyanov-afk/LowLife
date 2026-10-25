@@ -6,13 +6,14 @@ pyRevit строит ленту по-русски (``title``/``tooltip`` из bu
 у кнопок и панелей, ``members_en`` у списков (.combobox) — pyRevit их не читает.
 ``apply_language("en")`` ставит их на ленту, ``apply_language("ru")`` возвращает русские.
 
-Русские подписи берутся с самой ленты при первом переводе и хранятся в AppDomain
+Русские подписи кнопок берутся с самой ленты при первом переводе и хранятся в AppDomain
 (у движка каждой кнопки своя копия модуля, а вернуть их должен любой, кто переключает язык);
 после перезагрузки pyRevit лента снова русская, и ``restore_on_idle`` из startup.py
 запоминает их заново.
 
-Переименование панели меняет её заголовок (``RibbonPanel.Title``), но не имя (``Name``):
-панели по-прежнему ищутся по русскому имени (panel_themes._ribbon_name). Только
+Панели распознаются по русскому или английскому имени: новый pyRevit-wrapper может
+получить уже переведённое имя. Ключ хранилища всегда русский, а исходный заголовок панели
+берётся из bundle.yaml, чтобы вернуть русский даже после ошибочного запоминания английского.
 pyRevit-овский ``get_adwindows_object()`` панели сверяет заголовок с именем — вместо него
 ``adwindows_panel(panel)``.
 """
@@ -97,13 +98,15 @@ def _originals():
     return store
 
 
-def _apply_text(store, key, obj, attr, english, lang, capture):
+def _apply_text(store, key, obj, attr, english, lang, capture, original=None):
     try:
         current = getattr(obj, attr)
     except Exception:
         return
     current = current or u""
-    if capture or not store.ContainsKey(key):
+    if original is not None:
+        store[key] = original
+    elif capture or not store.ContainsKey(key):
         store[key] = current
     original = store[key]
     target = english(original) if lang == i18n.EN else original
@@ -172,16 +175,25 @@ def apply_language(lang=None, capture=False):
     lang = lang or i18n.current()
     store = _originals()
     index = panel_index()
+    # A newly built pyRevit wrapper can use the translated panel Name. Resolve
+    # either caption, but always keep the original caption in the storage key.
+    aliases = dict(index)
+    for info in index.values():
+        english = _ribbon_text(ribbon_catalog.raw_bundle_text(info[0])[u"title_en"])
+        if english:
+            aliases.setdefault(english, info)
     for tab in get_current_ui().get_pyrevit_tabs():
         for panel in tab:
-            info = index.get(panel.name)
+            info = aliases.get(panel.name)
             if info is None:
                 continue
             panel_folder, buttons = info
-            pkey = u"panel|" + panel.name
+            panel_ru = _ribbon_text(ribbon_catalog.item_title(panel_folder))
+            pkey = u"panel|" + panel_ru
             panel_en = ribbon_catalog.raw_bundle_text(panel_folder)[u"title_en"]
             _apply_text(store, pkey, panel.get_rvtapi_object(), "Title",
-                        lambda _o, t=panel_en: _ribbon_text(t), lang, capture)
+                        lambda _o, t=panel_en: _ribbon_text(t), lang, capture,
+                        original=panel_ru)
             for item in _walk(panel):
                 folder = buttons.get(getattr(item, "name", None))
                 if folder is None:
