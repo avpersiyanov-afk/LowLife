@@ -26,6 +26,7 @@ from System.Windows.Input import Key
 from System.Windows.Media import Brushes, Color, FontFamily, SolidColorBrush
 
 from lowlife import greeting, settings_core
+from lowlife.i18n import tr
 
 ORANGE = SolidColorBrush(Color.FromRgb(0xF0, 0x8C, 0x28))
 RED = SolidColorBrush(Color.FromRgb(0xE5, 0x1C, 0x23))
@@ -81,7 +82,7 @@ def show(uiapp=None):
     if tail:
         stack.Children.Add(_text(tail, 96, ORANGE))
     if warning:
-        note = _text(warning, 28, Brushes.White)
+        note = _text(tr(warning), 28, Brushes.White)
         note.FontWeight = FontWeights.Normal
         note.TextWrapping = TextWrapping.Wrap
         note.MaxWidth = 720
@@ -89,7 +90,7 @@ def show(uiapp=None):
         stack.Children.Add(note)
     shout = greeting.shout_for([_user_name(uiapp), Environment.UserName])
     if shout:
-        line = _text(shout, 80, RED)
+        line = _text(tr(shout), 80, RED)
         line.FontWeight = FontWeights.Black
         line.Margin = Thickness(0, 24, 0, 0)
         stack.Children.Add(line)

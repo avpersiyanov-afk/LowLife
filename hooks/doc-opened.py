@@ -17,6 +17,7 @@
 путь и дату из его скрытой метки и делает один stat по файлу
 (check_stale_against_catalog). Дёшево даже на сетевой библиотеке.
 """
+from lowlife.i18n import tr
 
 try:
     from pyrevit import forms, EXEC_PARAMS
@@ -76,18 +77,18 @@ def _run():
     if stale <= 0:
         return
 
-    msg = u"{} семейств(а) устарели относительно каталога.".format(stale)
+    msg = tr(u"{} семейств(а) устарели относительно каталога.").format(stale)
     if names:
         msg += u"\n" + u", ".join(names[:8])
         if stale > 8:
             msg += u" …"
-    msg += u"\nЗапустите «Обновление/проверка семейств» для обновления."
+    msg += tr(u"\nЗапустите «Обновление/проверка семейств» для обновления.")
 
     try:
-        forms.toast(msg, title=u"Каталог семейств")
+        forms.toast(msg, title=tr(u"Каталог семейств"))
     except Exception:
         try:
-            forms.alert(msg, title=u"Каталог семейств")
+            forms.alert(msg, title=tr(u"Каталог семейств"))
         except Exception:
             pass
 

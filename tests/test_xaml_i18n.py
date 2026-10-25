@@ -61,3 +61,20 @@ def test_server_errors_translate_without_translating_status_values(monkeypatch):
     assert localization.server_error(unknown) == unknown
     monkeypatch.setattr(i18n, 'current', lambda: i18n.RU)
     assert localization.server_error(question) == question
+
+
+def test_ribbon_windows_translate_and_keep_control_names(monkeypatch):
+    folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib', 'lowlife', 'xaml')
+    for name, title in [('ribbon_search', 'Find a LowLife button'), ('favorites_ui', 'My LowLife panels')]:
+        path = os.path.join(folder, name + '.xaml')
+        with io.open(path, encoding='utf-8') as stream:
+            source = stream.read()
+        monkeypatch.setattr(i18n, 'current', lambda: i18n.EN)
+        translated = xaml_i18n.load(path)
+        root = ET.fromstring(translated)
+        assert root.get('Title') == title
+        names = '{http://schemas.microsoft.com/winfx/2006/xaml}Name'
+        assert [el.get(names) for el in root.iter()] == [el.get(names) for el in ET.fromstring(source).iter()]
+        assert not any(i18n.tr(text) != text for text in xaml_i18n.strings(translated))
+        monkeypatch.setattr(i18n, 'current', lambda: i18n.RU)
+        assert xaml_i18n.load(path) == source

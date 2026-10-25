@@ -15,6 +15,8 @@ except NameError:  # Python 3
     unicode = str
 
 import copy
+from lowlife.i18n import N_, tr
+import os
 import traceback
 
 from pyrevit import forms
@@ -24,82 +26,19 @@ from System.Windows.Controls import ListBoxItem, TextBlock
 from System.Windows.Input import MouseButtonState
 from System.Windows.Media import SolidColorBrush, Color, Visual, VisualTreeHelper
 
-from lowlife import favorites, favorites_core, ribbon_catalog, ribbon_search, select_list
+from lowlife import xaml_i18n, favorites, favorites_core, ribbon_catalog, ribbon_search, select_list
 
-NEW_PANEL = u"＋ Новая панель…"
-_TOO_MANY = u"Своих панелей может быть не больше {} — добавьте кнопки в уже созданную.".format(
-    favorites_core.MAX_PANELS)
+NEW_PANEL = N_(u"＋ Новая панель…")
+_TOO_MANY = N_(u"Своих панелей может быть не больше {} — добавьте кнопки в уже созданную.")
 
-_XAML = u'''
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Мои панели LowLife" Width="1100" Height="660" MinWidth="820" MinHeight="400"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="False"
-        FontFamily="Segoe UI" FontSize="13" Background="White">
-    <DockPanel Margin="14">
-        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#555555" Margin="0,0,0,10"
-                   Text="Соберите свои панели из кнопок LowLife: они появятся на вкладке LowLife сразу за панелью LowLife и видны при любой теме (после «Сохранить» нужна перезагрузка pyRevit; своих панелей — до 8). Кнопка на своей панели — копия исходной: та же команда, Shift+клик и настройки. Кнопки и панели можно перетаскивать мышью: из списка справа — на панель, внутри панели — на другое место, обратно вправо — убрать."/>
-        <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock x:Name="txtStatus" Grid.Column="0" Foreground="#555555" TextWrapping="Wrap"
-                       VerticalAlignment="Center" Margin="0,0,12,0"/>
-            <Button x:Name="btnCancel" Grid.Column="1" Content="Отмена" Padding="16,6" MinWidth="100"/>
-            <Button x:Name="btnSave" Grid.Column="2" Content="Сохранить" FontWeight="SemiBold"
-                    Padding="16,6" MinWidth="100" Margin="8,0,0,0"/>
-        </Grid>
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="230"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="1.3*"/>
-            </Grid.ColumnDefinitions>
-            <DockPanel Grid.Column="0" Margin="0,0,10,0">
-                <TextBlock DockPanel.Dock="Top" Text="Мои панели" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                    <Button x:Name="btnNewPanel" Content="Новая…" Padding="8,3" Margin="0,0,4,4"/>
-                    <Button x:Name="btnRenamePanel" Content="Переименовать…" Padding="8,3" Margin="0,0,4,4"/>
-                    <Button x:Name="btnDeletePanel" Content="Удалить" Padding="8,3" Margin="0,0,4,4"/>
-                    <Button x:Name="btnPanelUp" Content="▲" ToolTip="Левее на ленте" Padding="8,3" Margin="0,0,4,4"/>
-                    <Button x:Name="btnPanelDown" Content="▼" ToolTip="Правее на ленте" Padding="8,3" Margin="0,0,4,4"/>
-                </WrapPanel>
-                <ListBox x:Name="lstPanels" AllowDrop="True"/>
-            </DockPanel>
-            <DockPanel Grid.Column="1" Margin="0,0,10,0">
-                <TextBlock x:Name="txtButtonsHeader" DockPanel.Dock="Top" Text="Кнопки панели"
-                           FontWeight="SemiBold" Margin="0,0,0,4" TextTrimming="CharacterEllipsis"/>
-                <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                    <Button x:Name="btnRemove" Content="Убрать" Padding="8,3" Margin="0,0,4,4"/>
-                    <Button x:Name="btnUp" Content="▲" ToolTip="Раньше на панели" Padding="8,3" Margin="0,0,4,4"/>
-                    <Button x:Name="btnDown" Content="▼" ToolTip="Позже на панели" Padding="8,3" Margin="0,0,4,4"/>
-                </WrapPanel>
-                <ListBox x:Name="lstButtons" AllowDrop="True" HorizontalContentAlignment="Stretch"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
-            </DockPanel>
-            <DockPanel Grid.Column="2">
-                <TextBlock DockPanel.Dock="Top" Text="Кнопки LowLife — поиск" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <TextBox x:Name="txtQuery" DockPanel.Dock="Top" Padding="5,4"/>
-                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
-                    <Button x:Name="btnAdd" Content="← Добавить на панель" FontWeight="SemiBold" Padding="10,3"/>
-                    <TextBlock Text="или перетащите мышью / двойной щелчок" Foreground="#888888" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                </StackPanel>
-                <ListBox x:Name="lstAll" AllowDrop="True" Margin="0,6,0,0" HorizontalContentAlignment="Stretch"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
-            </DockPanel>
-        </Grid>
-    </DockPanel>
-</Window>
-'''
+_XAML = os.path.join(os.path.dirname(__file__), "xaml", "favorites_ui.xaml")
 
 _GREY = SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99))
 
 
 def _missing_row(ref):
     text = TextBlock()
-    text.Text = u"{} — кнопки больше нет".format(favorites_core.button_key(ref))
+    text.Text = tr(u"{} — кнопки больше нет").format(favorites_core.button_key(ref))
     text.Foreground = _GREY
     text.Margin = Thickness(2, 3, 2, 3)
     item = ListBoxItem()
@@ -111,19 +50,19 @@ def ask_title(default=u"", others=(), reserved=()):
     """Название панели у пользователя (с проверкой) или None — отменил."""
     title = default
     while True:
-        title = forms.ask_for_string(default=title, prompt=u"Название панели на ленте:",
-                                     title=u"Моя панель")
+        title = forms.ask_for_string(default=title, prompt=tr(u"Название панели на ленте:"),
+                                     title=tr(u"Моя панель"))
         if title is None:
             return None
         problem = favorites_core.title_problem(title, others, reserved)
         if problem is None:
             return u" ".join(title.split())
-        forms.alert(problem, title=u"Мои панели")
+        forms.alert(problem, title=tr(u"Мои панели"))
 
 
 class FavoritesWindow(forms.WPFWindow):
     def __init__(self, data, entries, reserved):
-        forms.WPFWindow.__init__(self, _XAML, literal_string=True)
+        forms.WPFWindow.__init__(self, xaml_i18n.load(_XAML), literal_string=True)
         self.data = copy.deepcopy(favorites_core.normalize(data))
         self.entries = entries
         self.reserved = reserved
@@ -173,9 +112,9 @@ class FavoritesWindow(forms.WPFWindow):
         panel = self.current_panel()
         self.lstButtons.Items.Clear()
         if panel is None:
-            self.txtButtonsHeader.Text = u"Кнопки панели — создайте панель слева"
+            self.txtButtonsHeader.Text = tr(u"Кнопки панели — создайте панель слева")
         else:
-            self.txtButtonsHeader.Text = u"Кнопки панели «{}»".format(panel[u"title"])
+            self.txtButtonsHeader.Text = tr(u"Кнопки панели «{}»").format(panel[u"title"])
             for ref in panel[u"buttons"]:
                 entry = favorites_core.find_entry(self.entries, ref)
                 self.lstButtons.Items.Add(ribbon_search.button_row(entry) if entry else _missing_row(ref))
@@ -201,7 +140,7 @@ class FavoritesWindow(forms.WPFWindow):
             button.IsEnabled = has_button
         self.btnAdd.IsEnabled = self.lstAll.SelectedItem is not None
         count = sum(len(p[u"buttons"]) for p in self.panels())
-        self.txtStatus.Text = u"Панелей: {}, кнопок: {}".format(len(self.panels()), count)
+        self.txtStatus.Text = tr(u"Панелей: {}, кнопок: {}").format(len(self.panels()), count)
 
     # ------------------------------------------------------------ действия
 
@@ -210,7 +149,7 @@ class FavoritesWindow(forms.WPFWindow):
 
     def new_panel(self):
         if len(self.panels()) >= favorites_core.MAX_PANELS:
-            forms.alert(_TOO_MANY, title=u"Мои панели")
+            forms.alert(tr(_TOO_MANY).format(favorites_core.MAX_PANELS), title=tr(u"Мои панели"))
             return None
         title = ask_title(u"", self._titles_except(), self.reserved)
         if title is None:
@@ -233,8 +172,8 @@ class FavoritesWindow(forms.WPFWindow):
         if panel is None:
             return
         if panel[u"buttons"] and not forms.alert(
-                u"Удалить панель «{}» вместе с её кнопками ({})?\nСами кнопки LowLife останутся на своих панелях."
-                .format(panel[u"title"], len(panel[u"buttons"])), title=u"Избранное", yes=True, no=True):
+                tr(u"Удалить панель «{}» вместе с её кнопками ({})?\nСами кнопки LowLife останутся на своих панелях.")
+                .format(panel[u"title"], len(panel[u"buttons"])), title=tr(u"Избранное"), yes=True, no=True):
             return
         index = self.lstPanels.SelectedIndex
         self.panels().remove(panel)
@@ -269,7 +208,7 @@ class FavoritesWindow(forms.WPFWindow):
         panel = self.current_panel()
         ref = favorites_core.button_ref(item.Tag)
         if any(favorites_core.button_key(r) == favorites_core.button_key(ref) for r in panel[u"buttons"]):
-            self.txtStatus.Text = u"«{}» уже есть на панели «{}».".format(item.Tag[u"title"], panel[u"title"])
+            self.txtStatus.Text = tr(u"«{}» уже есть на панели «{}».").format(ribbon_catalog.localized(item.Tag, u"title"), panel[u"title"])
             return
         panel[u"buttons"].append(ref)
         self.show_panels(self.lstPanels.SelectedIndex)
@@ -282,8 +221,8 @@ class FavoritesWindow(forms.WPFWindow):
 
     def _already(self, ref, panel):
         entry = favorites_core.find_entry(self.entries, ref)
-        title = entry[u"title"] if entry else favorites_core.button_key(ref)
-        self.txtStatus.Text = u"«{}» уже есть на панели «{}».".format(title, panel[u"title"])
+        title = ribbon_catalog.localized(entry, u"title") if entry else favorites_core.button_key(ref)
+        self.txtStatus.Text = tr(u"«{}» уже есть на панели «{}».").format(title, panel[u"title"])
 
     def drop_new_button(self, entry, panel_index=None, at=None):
         """Кнопка из общего списка — в панель panel_index (по умолчанию выбранную) на место at."""
@@ -457,13 +396,13 @@ def _apply(data, offer_reload=True):
         return False
     changed, problems = favorites.write_panels(data)
     if problems:
-        forms.alert(u"\n".join(problems), title=u"Мои панели: не всё получилось")
+        forms.alert(u"\n".join(problems), title=tr(u"Мои панели: не всё получилось"))
     if not changed:
         return True
-    message = u"Свои панели сохранены. На ленте они появятся после перезагрузки pyRevit."
+    message = tr(u"Свои панели сохранены. На ленте они появятся после перезагрузки pyRevit.")
     if not offer_reload:
-        forms.alert(message + u"\nНажмите pyRevit → «Reload», когда будет удобно.", title=u"Мои панели")
-    elif forms.alert(message + u"\n\nПерезагрузить pyRevit сейчас?", title=u"Мои панели", yes=True, no=True):
+        forms.alert(message + tr(u"\nНажмите pyRevit → «Reload», когда будет удобно."), title=tr(u"Мои панели"))
+    elif forms.alert(message + tr(u"\n\nПерезагрузить pyRevit сейчас?"), title=tr(u"Мои панели"), yes=True, no=True):
         favorites.reload_pyrevit()
     return True
 
@@ -476,29 +415,29 @@ def run(uiapp):
         if win.saved:
             _apply(win.data)
     except Exception as ex:
-        forms.alert(unicode(ex), title=u"Мои панели: ошибка", expanded=traceback.format_exc())
+        forms.alert(unicode(ex), title=tr(u"Мои панели: ошибка"), expanded=traceback.format_exc())
 
 
 def add_to_favorites(uiapp, entry):
     """«На мою панель» из окна «Поиск»: выбрать панель (или создать новую) и добавить в неё кнопку."""
     if not favorites_core.can_add(entry):
-        forms.alert(u"Кнопку «{}» на свою панель не положить.".format(entry[u"title"]), title=u"Мои панели")
+        forms.alert(tr(u"Кнопку «{}» на свою панель не положить.").format(ribbon_catalog.localized(entry, u"title")), title=tr(u"Мои панели"))
         return
     data = favorites.load()
     titles = [p[u"title"] for p in data[u"panels"]]
     choice = select_list.CommandSwitchWindow.show(
-        titles + [NEW_PANEL], message=u"На какую свою панель добавить «{}»?".format(entry[u"title"]))
+        titles + [tr(NEW_PANEL)], message=tr(u"На какую свою панель добавить «{}»?").format(ribbon_catalog.localized(entry, u"title")))
     if not choice:
         return
-    if choice == NEW_PANEL:
+    if choice == tr(NEW_PANEL):
         if len(titles) >= favorites_core.MAX_PANELS:
-            forms.alert(_TOO_MANY, title=u"Мои панели")
+            forms.alert(tr(_TOO_MANY).format(favorites_core.MAX_PANELS), title=tr(u"Мои панели"))
             return
         choice = ask_title(u"", titles, favorites.reserved_titles())
         if choice is None:
             return
     data, added = favorites_core.add_button(data, choice, favorites_core.button_ref(entry))
     if not added:
-        forms.alert(u"«{}» уже есть на панели «{}».".format(entry[u"title"], choice), title=u"Мои панели")
+        forms.alert(tr(u"«{}» уже есть на панели «{}».").format(ribbon_catalog.localized(entry, u"title"), choice), title=tr(u"Мои панели"))
         return
     _apply(data, offer_reload=False)
