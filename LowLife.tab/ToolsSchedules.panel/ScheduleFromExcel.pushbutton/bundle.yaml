@@ -1,8 +1,10 @@
-tooltip: Загружает правки из .xlsx обратно в модель. По столбцу «Revit ID» находит элементы, по заголовкам столбцов — параметры (LookupParameter), и пишет изменившиеся значения. Пустые ячейки пропускаются (не затирают). Только параметры экземпляров, не read-only, не ссылки на элементы. Числа с единицами пишутся строкой в текущих единицах проекта (как в Excel видно). Всё в одной транзакции, в конце — отчёт.
+tooltip: Загружает правки из .xlsx обратно в обычные, ключевые и ручные спецификации по автоматически добавленной привязке «Revit ID». Записывает параметры экземпляров и типов ([Type]), текст ручной шапки ([Cell]). Изменение типа затронет все его экземпляры. Конфликты, пустые ячейки, параметры только для чтения и ссылки пропускаются. Всё в одной транзакции, в конце — отчёт.
 title_en: "Import\nfrom Excel"
 tooltip_en: >-
   Loads edits from .xlsx back into the model. Finds elements by the «Revit ID» column and parameters
   by column headers (LookupParameter), and writes the changed values. Empty cells are skipped (they
-  don't erase anything). Instance parameters only, not read-only, not element references. Numbers with
+  don't erase anything). Writable instance and type parameters ([Type]) are supported. Type edits affect
+  all instances; conflicting values are skipped. Manual header text ([Cell]) is also imported.
+  Read-only parameters and element references are skipped. Numbers with
   units are written as a string in the project's current units (as seen in Excel). Everything in one
   transaction, with a report at the end.

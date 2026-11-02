@@ -1,7 +1,8 @@
-tooltip: Выгружает спецификацию в файл .xlsx (openpyxl и Excel не нужны). Первый столбец — «Revit ID» (связь со строкой, не трогать), дальше значения параметров по столбцам. Активная спецификация берётся сама, иначе спросит какую. Выгружаются параметры экземпляров. Правьте в Excel и грузите обратно кнопкой «Импорт из Эксель».
+tooltip: Выгружает спецификации, включая ключевые и ручные таблицы в шапке, в .xlsx. Поле ID в спецификации не требуется — служебная привязка добавляется автоматически. Параметры типов отмечены [Type], ячейки ручной таблицы — [Cell]. Правьте в Excel и загружайте обратно кнопкой «Импорт из Эксель».
 title_en: "Export\nto Excel"
 tooltip_en: >-
   Exports a schedule to a .xlsx file (neither openpyxl nor Excel needed). The first column is «Revit
   ID» (the link to the row — don't touch it), then parameter values in columns. The active schedule is
-  taken automatically, otherwise it asks which one. Instance parameters are exported. Edit in Excel
+  taken automatically, otherwise it asks which one. Key schedules, manual header tables ([Cell]) and type parameters ([Type] prefix)
+  are supported. No ID field is required in the schedule. Edit in Excel
   and load back with «Import from Excel».

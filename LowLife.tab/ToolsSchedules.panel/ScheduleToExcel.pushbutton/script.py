@@ -28,7 +28,7 @@ def pick_schedule():
     av = doc.ActiveView
     if isinstance(av, ViewSchedule):
         try:
-            if not av.IsTemplate and not av.Definition.IsKeySchedule:
+            if not av.IsTemplate and not av.IsTitleblockRevisionSchedule:
                 return av
         except Exception:
             pass

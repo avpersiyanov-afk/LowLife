@@ -4,8 +4,8 @@
 
 Ключ связи строки Excel с элементом — «Revit ID» (первый столбец).
 Столбцы — параметры по именам полей спецификации; на загрузке ищем
-параметр по имени столбца через LookupParameter. Только параметры
-экземпляра, только записываемые (не read-only, не ссылки на элементы).
+параметр по имени столбца. Параметры экземпляров и типов, только
+записываемые (не read-only, не ссылки на элементы).
 
 Порядок строк повторяет спецификацию: воспроизводим её поля
 сортировки/группировки (`GetSortGroupField`), строки — по одному
@@ -20,6 +20,8 @@ except NameError:  # Python 3
 
 
 import re
+import base64
+import json
 from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
@@ -38,6 +40,9 @@ from lowlife.params import param_to_text as _param_to_text
 from lowlife.params import set_param_text as _set_param_text
 
 ID_HEADER = u"Revit ID"
+TYPE_PREFIX = u"[Type] "
+HEADER_PREFIX = u"LLH:"
+CELL_PREFIX = u"[Cell] "
 _ID_ALIASES = (u"revit id", u"id", u"ид", u"элемент id", u"elementid")
 
 _DIGITS = re.compile(r"(\d+)")
@@ -72,14 +77,14 @@ def schedule_name(el):
 
 
 def list_schedules(doc):
-    u"""Обычные спецификации проекта (без шаблонов, ключевых и штамповых)."""
+    u"""Спецификации проекта, включая ключевые (без шаблонов и штамповых)."""
     out = []
     for v in FilteredElementCollector(doc).OfClass(ViewSchedule):
         try:
             if v.IsTemplate:
                 continue
             d = v.Definition
-            if d is None or d.IsKeySchedule:
+            if d is None:
                 continue
             if getattr(v, "IsTitleblockRevisionSchedule", False):
                 continue
@@ -116,9 +121,9 @@ def _natural_key(s):
     return key
 
 
-def _sort_value(el, name):
+def _sort_value(doc, el, name):
     u"""Значение параметра элемента для сортировки, повторяющей спецификацию."""
-    p = el.LookupParameter(name)
+    p = _parameter_map(doc, el).get(name)
     if p is None or not p.HasValue:
         return (2, 0.0, [])          # пустые — в конец
     st = p.StorageType
@@ -156,7 +161,7 @@ def _ordered_elements(doc, sched):
     for i in range(cnt):
         try:
             sgf = d.GetSortGroupField(i)
-            name = d.GetField(sgf.FieldId).GetName()
+            name = _field_name(d.GetField(sgf.FieldId))
             ascending = (sgf.SortOrder == ScheduleSortOrder.Ascending)
             keys.append((name, ascending))
         except Exception:
@@ -164,7 +169,7 @@ def _ordered_elements(doc, sched):
 
     # многоключевая устойчивая сортировка: от последнего поля к первому
     for name, ascending in reversed(keys):
-        els.sort(key=lambda e, nm=name: _sort_value(e, nm), reverse=not ascending)
+        els.sort(key=lambda e, nm=name: _sort_value(doc, e, nm), reverse=not ascending)
 
     return els
 
@@ -182,17 +187,37 @@ def _instance_param_map(el):
     return m
 
 
+def _parameter_map(doc, el):
+    u"""Параметры типа имеют отдельные заголовки: одинаковые имена безопасны."""
+    result = _instance_param_map(el)
+    try:
+        type_el = doc.GetElement(el.GetTypeId())
+    except Exception:
+        type_el = None
+    if type_el is not None:
+        for name, param in _instance_param_map(type_el).items():
+            result[TYPE_PREFIX + name] = param
+    return result
+
+
+def _field_name(field):
+    name = field.GetName()
+    if field.FieldType == ScheduleFieldType.ElementType:
+        return TYPE_PREFIX + name
+    return name
+
+
 def _is_calc_field(f):
     u"""Поле спеки, которое НЕ читается как параметр экземпляра: вычисляемое
-    значение (формула), объединённый параметр, счётчик, процент, параметр
-    типа. Значение таких столбцов берём из отрисованной таблицы (GetCellText)."""
+    значение (формула), объединённый параметр, счётчик, процент.
+    Значение таких столбцов берём из отрисованной таблицы (GetCellText)."""
     try:
-        return f.FieldType != ScheduleFieldType.Instance
+        return f.FieldType not in (ScheduleFieldType.Instance, ScheduleFieldType.ElementType)
     except Exception:
         return False
 
 
-def _calc_cell_texts(sched, els, names, calc_flags):
+def _calc_cell_texts(doc, sched, els, names, calc_flags):
     u"""
     {индекс элемента в els: {индекс столбца: текст}} для расчётных столбцов, а также
     (все столбцы) для строк, где элемент — сам RevitLinkInstance: элемент
@@ -236,7 +261,7 @@ def _calc_cell_texts(sched, els, names, calc_flags):
 
     sig_els = {}
     for idx, el in enumerate(els):
-        pmap = _instance_param_map(el)
+        pmap = _parameter_map(doc, el)
         sig = tuple(norm(_param_to_text(pmap.get(names[j]))) for j in plain)
         sig_els.setdefault(sig, []).append(idx)
 
@@ -269,7 +294,7 @@ def schedule_to_rows(doc, sched):
     (первый — под «Revit ID», дальше — из ширин граф спецификации).
     """
     fields = _visible_fields(sched)
-    names = [f.GetName() for f in fields]
+    names = [_field_name(f) for f in fields]
     calc_flags = [_is_calc_field(f) for f in fields]
 
     widths = [_ID_COL_WIDTH]
@@ -283,14 +308,14 @@ def schedule_to_rows(doc, sched):
     link_rows = [isinstance(el, RevitLinkInstance) for el in els]
 
     calc_map = (
-        _calc_cell_texts(sched, els, names, calc_flags)
+        _calc_cell_texts(doc, sched, els, names, calc_flags)
         if any(calc_flags) or any(link_rows)
         else {}
     )
 
     rows = [[ID_HEADER] + names]
     for idx, (el, is_link) in enumerate(zip(els, link_rows)):
-        pmap = _instance_param_map(el)
+        pmap = _parameter_map(doc, el)
         eid = el.Id.IntegerValue
         cm = calc_map.get(idx, {})
         row = [eid]
@@ -301,7 +326,35 @@ def schedule_to_rows(doc, sched):
                 row.append(_param_to_text(pmap.get(nm)))
         rows.append(row)
 
-    return rows, len(els), len(names), widths
+    # Ручные таблицы (в том числе экспликации LowLife) живут в Header,
+    # а не в параметрах элементов. Обычное название из одной строки не трогаем.
+    header = sched.GetTableData().GetSectionData(SectionType.Header)
+    if header.NumberOfRows > 1:
+        count = header.NumberOfColumns
+        if not els:
+            rows = [[ID_HEADER]]
+            widths = [_ID_COL_WIDTH]
+            names = []
+        offset = len(names)
+        rows[0].extend(CELL_PREFIX + unicode(j + 1) for j in range(count))
+        for row in rows[1:]:
+            row.extend([u""] * count)
+        for j in range(count):
+            widths.append(_excel_col_width(header.GetColumnWidth(header.FirstColumnNumber + j)))
+        for r in range(header.FirstRowNumber, header.LastRowNumber + 1):
+            texts, spans = [], []
+            for c in range(header.FirstColumnNumber, header.LastColumnNumber + 1):
+                span = header.GetMergedCell(r, c)
+                anchor = (span.Top == r and span.Left == c)
+                texts.append(sched.GetCellText(SectionType.Header, r, c) if anchor else u"")
+                spans.append([span.Top, span.Left, span.Bottom, span.Right])
+            target = [sched.UniqueId, r, header.NumberOfRows, count,
+                      header.FirstRowNumber, header.FirstColumnNumber, texts, spans]
+            token = HEADER_PREFIX + base64.urlsafe_b64encode(
+                json.dumps(target, ensure_ascii=True).encode('utf-8')).decode('ascii')
+            rows.append([token] + [u""] * offset + texts)
+
+    return rows, len(rows) - 1, len(rows[0]) - 1, widths
 
 
 def _cell_int(row, idx):
@@ -314,6 +367,62 @@ def _cell_int(row, idx):
         return int(float(s))
     except ValueError:
         return None
+
+
+def _row_key(row, idx):
+    if idx is not None and idx < len(row) and unicode(row[idx]).startswith(HEADER_PREFIX):
+        try:
+            data = json.loads(base64.urlsafe_b64decode(unicode(row[idx])[len(HEADER_PREFIX):].encode('ascii')).decode('utf-8'))
+            return (data[0], data[1])
+        except Exception:
+            return None
+    return _cell_int(row, idx)
+
+
+def _import_header_row(doc, row, id_col, cols, res):
+    u"""True для служебной строки шапки. Проверяем снимок до первой записи."""
+    if id_col >= len(row) or not unicode(row[id_col]).startswith(HEADER_PREFIX):
+        return False
+    try:
+        data = json.loads(base64.urlsafe_b64decode(unicode(row[id_col])[len(HEADER_PREFIX):].encode('ascii')).decode('utf-8'))
+        uid, r, nrows, ncols, first_r, first_c, texts, spans = data
+        sched = doc.GetElement(uid)
+        if sched is None:
+            raise ValueError('Schedule not found')
+        header = sched.GetTableData().GetSectionData(SectionType.Header)
+        if [header.NumberOfRows, header.NumberOfColumns, header.FirstRowNumber,
+                header.FirstColumnNumber] != [nrows, ncols, first_r, first_c]:
+            raise ValueError('Schedule structure changed; export again')
+        pending = []
+        for ci, name in cols:
+            if not name.startswith(CELL_PREFIX) or ci >= len(row) or row[ci] is None:
+                continue
+            text = unicode(row[ci])
+            if not text.strip():
+                continue
+            j = int(name[len(CELL_PREFIX):]) - 1
+            if j < 0 or j >= ncols:
+                raise ValueError('Invalid cell column')
+            c = first_c + j
+            span = header.GetMergedCell(r, c)
+            if [span.Top, span.Left, span.Bottom, span.Right] != spans[j]:
+                raise ValueError('Merged cells changed; export again')
+            if span.Top != r or span.Left != c:
+                continue
+            current = sched.GetCellText(SectionType.Header, r, c)
+            if current != texts[j] and current != text:
+                raise ValueError('Schedule row changed; export again')
+            pending.append((c, text, current))
+        for c, text, current in pending:
+            if current == text:
+                res['unchanged'] += 1
+            else:
+                header.SetCellText(r, c, text)
+                res['changed'] += 1
+    except Exception as ex:
+        res['errors'].append(tr(u"Ручная строка спецификации: {}",
+                                u"Manual schedule row: {}").format(ex))
+    return True
 
 
 def merge_export(new_rows, new_widths, existing_rows, existing_widths=None):
@@ -379,7 +488,7 @@ def merge_export(new_rows, new_widths, existing_rows, existing_widths=None):
     ex_by_id = {}
     manual_rows = []
     for r in existing_rows[hidx + 1:]:
-        rid = _cell_int(r, ex_id_col)
+        rid = _row_key(r, ex_id_col)
         if rid is None:
             if any(c is not None and unicode(c).strip() for c in r):
                 manual_rows.append(r)
@@ -392,7 +501,7 @@ def merge_export(new_rows, new_widths, existing_rows, existing_widths=None):
     out = [merged_header]
     seen = set()
     for nr in new_rows[1:]:
-        nid = _cell_int(nr, 0)
+        nid = _row_key(nr, 0)
         er = ex_by_id.get(nid)
         if er is not None:
             stats["matched"] += 1
@@ -476,8 +585,35 @@ def rows_to_model(doc, rows):
     hit = {}
     miss = {}
 
+    type_values = {}
+    conflicts = set()
+    for r in rows[hidx + 1:]:
+        eid = _cell_int(r, id_col)
+        if eid is None:
+            continue
+        el = get_el(ElementId(eid))
+        if el is None or isinstance(el, RevitLinkInstance):
+            continue
+        pmap = _parameter_map(doc, el)
+        for ci, h in cols:
+            if not h.startswith(TYPE_PREFIX) or ci >= len(r) or r[ci] is None:
+                continue
+            value = unicode(r[ci]).strip()
+            p = pmap.get(h)
+            if not value or p is None:
+                continue
+            key = (p.Element.Id.IntegerValue, h)
+            if key in type_values and type_values[key] != value:
+                conflicts.add(key)
+            type_values[key] = value
+    for type_id, name in sorted(conflicts):
+        errors.append(tr(u"Тип {} / «{}»: разные значения в строках Excel; параметр пропущен.",
+                         u"Type {} / '{}': conflicting Excel values; parameter skipped.").format(type_id, name))
+
     for r in rows[hidx + 1:]:
         n = len(r)
+        if _import_header_row(doc, r, id_col, cols, res):
+            continue
         if id_col >= n or r[id_col] is None:
             continue
         raw_id = unicode(r[id_col]).strip()
@@ -489,7 +625,7 @@ def rows_to_model(doc, rows):
             continue
 
         el = get_el(ElementId(eid))
-        if el is None:
+        if el is None or isinstance(el, RevitLinkInstance):
             no_element += 1
             continue
 
@@ -505,7 +641,7 @@ def rows_to_model(doc, rows):
         if not pending:
             continue
 
-        pmap = _instance_param_map(el)
+        pmap = _parameter_map(doc, el)
 
         for h, new_text in pending:
             p = pmap.get(h)
@@ -513,6 +649,8 @@ def rows_to_model(doc, rows):
                 miss[h] = miss.get(h, 0) + 1
                 continue
             hit[h] = hit.get(h, 0) + 1
+            if h.startswith(TYPE_PREFIX) and (p.Element.Id.IntegerValue, h) in conflicts:
+                continue
             if p.IsReadOnly or p.StorageType == eid_type:
                 read_only += 1
                 continue
@@ -532,8 +670,8 @@ def rows_to_model(doc, rows):
     skipped_cols = sorted(h for h in miss if h not in hit)
     no_param = sum(c for h, c in miss.items() if h in hit)
 
-    res["changed"] = changed
-    res["unchanged"] = unchanged
+    res["changed"] += changed
+    res["unchanged"] += unchanged
     res["no_element"] = no_element
     res["no_param"] = no_param
     res["read_only"] = read_only
