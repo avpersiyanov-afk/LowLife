@@ -110,9 +110,9 @@ def wall_box(center, tray_dir, wall_dir, crossing_len, tray_width, tray_height,
         return None, SKIP_ANGLE
     tan_a = math.sqrt(max(0.0, 1.0 - cos_a * cos_a)) / cos_a
     thickness = crossing_len * cos_a
-    width = tray_width / cos_a + thickness * tan_a + extra
+    width = tray_width / cos_a + thickness * tan_a + 2.0 * extra
     return Box(WALL, center, w, width, thickness + depth_extra,
-               tray_height + extra, thickness), None
+               tray_height + 2.0 * extra, thickness), None
 
 
 def floor_box(center, tray_dir, width_dir, crossing_len, tray_width, tray_height,
@@ -127,8 +127,40 @@ def floor_box(center, tray_dir, width_dir, crossing_len, tray_width, tray_height
         return None, SKIP_SLOPED
     x_dir = horizontal(width_dir) or (1.0, 0.0, 0.0)
     thickness = crossing_len * abs(d[2])
-    return Box(FLOOR, center, x_dir, tray_width + extra, tray_height + extra,
+    return Box(FLOOR, center, x_dir, tray_width + 2.0 * extra, tray_height + 2.0 * extra,
                thickness + depth_extra, thickness), None
+
+
+def opening_sides(box):
+    u"""Две стороны отверстия; толщина конструкции не участвует."""
+    return (box.width, box.height if box.kind == WALL else box.depth)
+
+
+def recommended_increase_mm(side_mm):
+    u"""Добавка ко всей большей стороне уже рассчитанного отверстия."""
+    # Допуск только против погрешности перевода футов в миллиметры.
+    if side_mm > 600.0 + 1e-7:
+        return 150.0
+    if side_mm > 300.0 + 1e-7:
+        return 100.0
+    return 50.0
+
+
+def enlarge_opening(box, increase):
+    u"""Копия с увеличенной большей стороной (при равенстве — ширина).
+    Единицы increase — те же, что у Box. Центр и толщина сохраняются.
+    """
+    if increase < 0:
+        raise ValueError("increase must be non-negative")
+    width, depth, height = box.width, box.depth, box.height
+    a, b = opening_sides(box)
+    if a >= b:
+        width += increase
+    elif box.kind == WALL:
+        height += increase
+    else:
+        depth += increase
+    return Box(box.kind, box.center, box.x_dir, width, depth, height, box.thickness)
 
 
 def sized_type_name(base, width_mm, depth_mm, height_mm):

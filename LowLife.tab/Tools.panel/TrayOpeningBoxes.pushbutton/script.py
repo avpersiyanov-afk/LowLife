@@ -3,9 +3,10 @@ __title__ = u"Боксы\nна лотки"
 __doc__ = (
     u"Ставит бокс (семейство с «бокс» в имени, тип с «временный») на каждое "
     u"пересечение выбранных кабельных лотков со стенами и перекрытиями "
-    u"(модели и связей). Размер — сечение лотка плюс 50 мм, глубина — по "
+    u"(модели и связей). Размер — сечение лотка плюс 50 мм с каждой стороны, глубина — по "
     u"толщине стены/перекрытия. Где бокс уже есть — новый не "
     u"создаётся, кнопка предупреждает.\n\n"
+    u"После расстановки — выбор увеличения большей стороны и схема размеров.\n\n"
     u"Shift+клик — настройки."
 )
 __author__ = "Pipers"
@@ -17,7 +18,7 @@ from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
-from lowlife import select_list, tray_boxes, tray_boxes_settings, tray_tags
+from lowlife import select_list, tray_boxes, tray_boxes_settings, tray_boxes_result, tray_tags
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -122,6 +123,21 @@ except Exception:
         traceback.format_exc()), title=TITLE, exitscript=True)
 
 
+increase_applied = False
+increase_mm = 0
+if result.boxes:
+    apply_increase, increase_mm = tray_boxes_result.show(result, settings.get("size_extra_mm") or 0.0)
+    if apply_increase and increase_mm != 0:
+        try:
+            with revit.Transaction(tr(u"Увеличить отверстия лотков", u"Enlarge tray openings")):
+                new_types = tray_boxes.enlarge_created(doc, result, symbol, settings, increase_mm)
+            result.new_types.extend(new_types)
+            increase_applied = True
+        except Exception:
+            forms.alert(tr(u"Увеличение отменено. Исходные боксы сохранены.\n\n{}",
+                           u"Enlargement rolled back. Originally placed boxes are kept.\n\n{}").format(
+                               traceback.format_exc()), title=TITLE)
+
 output = script.get_output()
 output.print_md(u"## " + TITLE)
 output.print_md(tr(u"- лотков: {}").format(len(trays)))
@@ -142,6 +158,22 @@ for state, entries in ((tr(u"новый"), result.created), (tr(u"уже был 
         rows.append([output.linkify(tray.Id), crossing.host_label(), output.linkify(inst.Id), state])
 if rows:
     output.print_table(rows, columns=[tr(u"Лоток"), tr(u"Пересекает"), tr(u"Бокс"), u""])
+if result.boxes:
+    from lowlife import tray_boxes_core
+    dimension_rows = []
+    for inst, original in result.boxes:
+        a, b = tray_boxes_core.opening_sides(original)
+        amount = (tray_boxes_core.recommended_increase_mm(tray_boxes.mm(max(a, b)))
+                  if increase_mm is None else increase_mm) if increase_applied else 0.0
+        enlarged = tray_boxes_core.enlarge_opening(original, tray_boxes.ft(amount))
+        x, y = tray_boxes_core.opening_sides(enlarged)
+        dimension_rows.append([output.linkify(inst.Id),
+                               u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(a)), float(tray_boxes.mm(b))),
+                               u"+{:.0f}".format(float(amount)),
+                               u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(x)), float(tray_boxes.mm(y)))])
+    output.print_table(dimension_rows, columns=[tr(u"Бокс"),
+        tr(u"Исходное отверстие, мм", u"Original opening, mm"),
+        tr(u"Добавка, мм", u"Increase, mm"), tr(u"Итоговое отверстие, мм", u"Final opening, mm")])
 if result.skipped:
     output.print_md(tr(u"### Пропущено"))
     for tray, crossing, reason in result.skipped:
