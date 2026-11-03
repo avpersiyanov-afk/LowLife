@@ -126,7 +126,7 @@ except Exception:
 increase_applied = False
 increase_mm = 0
 if result.boxes:
-    apply_increase, increase_mm = tray_boxes_result.show(result, settings.get("size_extra_mm") or 0.0)
+    apply_increase, increase_mm = tray_boxes_result.show(result, settings.get("size_extra_mm") or 0.0, uidoc)
     if apply_increase and increase_mm != 0:
         try:
             with revit.Transaction(tr(u"Увеличить отверстия лотков", u"Enlarge tray openings")):

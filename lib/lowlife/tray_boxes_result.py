@@ -5,10 +5,14 @@ from lowlife.i18n import tr
 from lowlife import tray_boxes_core as core
 
 
-def show(result, clearance_mm):
+def show(result, clearance_mm, uidoc):
     u"""(нужно применить, добавка в мм); None — автоматический выбор."""
     from pyrevit import forms
+    from System.Windows import Thickness, TextWrapping
     from System.Windows.Controls import Canvas, TextBlock
+    from System.Windows.Documents import Hyperlink, Run
+    from System.Collections.Generic import List
+    from Autodesk.Revit.DB import ElementId
     from System.Windows.Media import Brushes, DoubleCollection
     from System.Windows.Shapes import Line, Rectangle
 
@@ -31,8 +35,9 @@ def show(result, clearance_mm):
                 <ComboBox x:Name="increase" Grid.Row="2" Margin="0,0,0,10"/>
                 <Canvas x:Name="diagram" Grid.Row="3" ClipToBounds="True"/>
                 <TextBlock x:Name="rules" Grid.Row="4" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                <TextBox x:Name="preview" Grid.Row="5" IsReadOnly="True"
-                    VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto">
+                  <StackPanel x:Name="preview"/>
+                </ScrollViewer>
                 <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
                   <Button x:Name="apply" MinWidth="160" Padding="12,6" Margin="0,0,10,0"/>
                   <Button x:Name="close" MinWidth="160" Padding="12,6" IsCancel="True"/>
@@ -73,15 +78,27 @@ def show(result, clearance_mm):
                     if value is None else value)
 
         def update(self, sender, event):
-            lines = []
+            self.preview.Children.Clear()
+            trays_by_box = {inst.Id: tray for tray, crossing, inst in result.created}
             for inst, box in result.boxes:
                 a, b = [v * 304.8 for v in core.opening_sides(box)]
                 enlarged = core.enlarge_opening(box, self.amount(box) / 304.8)
                 x, y = [v * 304.8 for v in core.opening_sides(enlarged)]
-                lines.append(tr(u"Бокс {}: {:.0f} × {:.0f} → {:.0f} × {:.0f} мм (+{:.0f})",
+                tray = trays_by_box[inst.Id]
+                row = TextBlock()
+                row.TextWrapping = TextWrapping.Wrap
+                row.Margin = Thickness(0, 0, 0, 10)
+                link = Hyperlink()
+                link.Inlines.Add(Run(tr(u"Лоток {}", u"Tray {}").format(tray.Id)))
+                link.Click += lambda sender, event, eid=tray.Id: uidoc.Selection.SetElementIds(List[ElementId]([eid]))
+                row.Inlines.Add(link)
+                row.Inlines.Add(Run(tr(u" — сечение {:.0f} × {:.0f} мм\n",
+                                      u" — cross-section {:.0f} × {:.0f} mm\n").format(
+                                          float(tray.Width * 304.8), float(tray.Height * 304.8))))
+                row.Inlines.Add(Run(tr(u"Бокс {}: {:.0f} × {:.0f} → {:.0f} × {:.0f} мм (+{:.0f})",
                                 u"Box {}: {:.0f} × {:.0f} → {:.0f} × {:.0f} mm (+{:.0f})").format(
-                                    inst.Id, float(a), float(b), float(x), float(y), float(self.amount(box))))
-            self.preview.Text = u"\n".join(lines)
+                                    inst.Id, float(a), float(b), float(x), float(y), float(self.amount(box)))))
+                self.preview.Children.Add(row)
             self.draw()
 
         def label(self, x, y, text):
