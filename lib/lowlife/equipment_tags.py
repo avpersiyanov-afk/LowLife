@@ -77,6 +77,7 @@ from Autodesk.Revit.UI.Selection import ISelectionFilter
 import System
 
 from lowlife import tag_layout, tag_leader_follow
+from lowlife.equipment_tags_core import merge_existing_entries
 from lowlife.equipment_tags_links import (
     LinkedEquipment, equipment_key, equipment_reference, tagged_equipment,
     visible_equipment
@@ -232,6 +233,14 @@ def resolve_tag_pairs(doc, view, picked):
             for tag in by_element.get(equipment_key(item), []):
                 add(item, tag)
     return result
+
+
+def include_existing_tags(doc, view, entries):
+    """Все одиночные марки оборудования на активном виде участвуют вместе
+    с новыми. Закреплённые и многоссылочные остаются препятствиями."""
+    tags = list(FilteredElementCollector(doc, view.Id).OfClass(IndependentTag))
+    pairs = resolve_tag_pairs(doc, view, tags)
+    return merge_existing_entries(entries, pairs, id_int)
 
 
 def family_group(el):

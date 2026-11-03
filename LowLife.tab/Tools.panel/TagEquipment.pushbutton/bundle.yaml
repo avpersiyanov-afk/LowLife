@@ -1,8 +1,8 @@
 tooltip: |
   Ставит и раскладывает марки оборудования на активном виде ровно и без пересечений. Три режима (кнопка спрашивает; если выделены только марки — сразу первый):
   «Разложить выбранные марки» — двигаются только выбранные марки (у выбранного оборудования — все его марки на виде), новые не создаются.
-  «Поставить марки на оборудование» — для выбранного оборудования без марки открывается таблица по семействам: что маркировать и каким типом марки (выбор запоминается). Новые марки сразу раскладываются, стоящие не трогаются.
-  «Маркировать оборудование смежной модели» — выберите экземпляр связи: маркируется его оборудование, видимое на текущем виде (Revit 2024+). Типы марок выбираются по семействам; существующие марки пропускаются. Выноски связей привязаны к семействам.
+  «Поставить марки на оборудование» — для выбранного оборудования без марки открывается таблица по семействам: что маркировать и каким типом марки (выбор запоминается). Новые и существующие одиночные марки оборудования на текущем виде раскладываются совместно; закреплённые остаются на месте.
+  «Маркировать оборудование смежной модели» — выберите несколько экземпляров связей: маркируется их оборудование, видимое на текущем виде (Revit 2024+). Типы марок выбираются по семействам; существующие марки участвуют в общей раскладке без создания дублей. Выноски связей привязаны к семействам.
   Выноска идёт к УГО (в том числе к вложенной аннотации), а не к 3D-семейству, и следует за прибором при его сдвиге/повороте; полка выноски — ровно на уровне марки.
 
   Shift+клик — настройки: отступ, зазор между марками, длина полки, что считать «рядом» (мм на листе).
@@ -12,9 +12,9 @@ tooltip_en: >-
   button asks; if only tags are selected — the first one right away): «Arrange selected tags» — only
   the selected tags move (for selected equipment — all its tags in the view), no new ones are created.
   «Tag equipment» — for selected equipment without a tag, a table by family opens: what to tag and
-  with which tag type (the choice is remembered). New tags are arranged right away; existing ones are
-  left alone. «Tag equipment in a linked model» — choose a link instance to tag its equipment visible
-  in the current view (Revit 2024+). Choose tag types by family; existing tags are skipped. Linked
+  with which tag type (the choice is remembered). New and existing single-target equipment tags in the view are arranged together; pinned tags
+  stay in place. «Tag equipment in a linked model» — choose multiple link instances to tag their equipment visible
+  in the current view (Revit 2024+). Choose tag types by family; existing tags join the layout without duplicates. Linked
   equipment leaders attach to families. The leader goes to the symbol (including a nested annotation), not to the 3D family, and
   follows the device when it is moved/rotated; the leader shoulder is exactly level with the tag.
   Shift+click — settings: offset, gap between tags, shoulder length, what counts as «nearby» (mm on
