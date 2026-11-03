@@ -3,11 +3,14 @@
 «Боксы на лотки» (Tools.panel/TrayOpeningBoxes)."""
 
 import math
+import pytest
 from datetime import datetime
 
 from lowlife.tray_boxes_core import (merge_intervals, wall_box, floor_box, sized_type_name,
                                      name_has, split_words, creation_comment,
                                      SKIP_SLOPED, SKIP_ANGLE)
+from lowlife.tray_boxes_core import (Box, WALL, FLOOR, opening_sides,
+                                     recommended_increase_mm, enlarge_opening)
 
 
 def _close(a, b, tol=1e-9):
@@ -26,12 +29,12 @@ def test_wall_box_perpendicular():
     box, why = wall_box((0, 0, 3000), (1, 0, 0), (0, 1, 0), 200.0, 300.0, 100.0,
                         50.0, 0.0, 1.0, 60.0)
     assert why is None
-    assert _close(box.width, 350.0)
-    assert _close(box.height, 150.0)
+    assert _close(box.width, 400.0)
+    assert _close(box.height, 200.0)
     assert _close(box.depth, 200.0)
     assert _close(box.thickness, 200.0)
     assert _close(abs(box.angle()), math.pi / 2)
-    assert box.origin(True) == (0, 0, 3000 - 75.0)
+    assert box.origin(True) == (0, 0, 3000 - 100.0)
     assert box.origin(False) == (0, 0, 3000)
 
 
@@ -44,7 +47,7 @@ def test_wall_box_oblique_widens_along_wall():
     assert why is None
     assert _close(box.thickness, 200.0, 1e-6)
     assert _close(box.depth, 210.0, 1e-6)
-    assert _close(box.width, 300.0 / math.cos(a) + 200.0 * math.tan(a) + 50.0, 1e-6)
+    assert _close(box.width, 300.0 / math.cos(a) + 200.0 * math.tan(a) + 100.0, 1e-6)
 
 
 def test_wall_box_skips():
@@ -59,8 +62,8 @@ def test_floor_box():
     box, why = floor_box((1, 2, 3), (0, 0, -1), (0, 1, 0), 250.0, 400.0, 80.0,
                          50.0, 0.0, 1.0)
     assert why is None
-    assert _close(box.width, 450.0)
-    assert _close(box.depth, 130.0)
+    assert _close(box.width, 500.0)
+    assert _close(box.depth, 180.0)
     assert _close(box.height, 250.0)
     assert _close(box.angle(), math.pi / 2)
     assert floor_box((0, 0, 0), (1, 0, 0), (0, 1, 0), 250, 400, 80, 50, 0, 1)[1] == SKIP_SLOPED
@@ -78,3 +81,43 @@ def test_names():
     assert not name_has(u"Отверстие", [u"бокс"])
     assert name_has(u"что угодно", [])
     assert split_words(u" бокс, , box ") == [u"бокс", u"box"]
+
+
+@pytest.mark.parametrize("side, expected", [(100, 50), (300, 50), (300.001, 100),
+                                            (600, 100), (600.001, 150), (1200, 150)])
+def test_recommended_increase_boundaries(side, expected):
+    assert recommended_increase_mm(side) == expected
+    # Размер проходит перевод мм → футы → мм.
+    assert recommended_increase_mm(side / 304.8 * 304.8) == expected
+
+
+@pytest.mark.parametrize("kind, dimensions, expected", [
+    (WALL, (400, 900, 200), (500, 900, 200)),
+    (WALL, (200, 900, 400), (200, 900, 500)),
+    (FLOOR, (400, 200, 900), (500, 200, 900)),
+    (FLOOR, (200, 400, 900), (200, 500, 900)),
+    (WALL, (400, 900, 400), (500, 900, 400)),
+])
+def test_enlarge_larger_opening_side_only(kind, dimensions, expected):
+    original = Box(kind, (10, 20, 30), (0, 1, 0), *dimensions, thickness=900)
+    enlarged = enlarge_opening(original, 100)
+    assert (enlarged.width, enlarged.depth, enlarged.height) == expected
+    assert (original.width, original.depth, original.height) == dimensions
+    assert enlarged.center == original.center
+    assert enlarged.x_dir == original.x_dir
+    assert enlarged.thickness == original.thickness
+    assert enlarge_opening(original, 0).origin(True) == original.origin(True)
+
+
+def test_auto_uses_opening_after_clearances_and_preserves_center():
+    box, _ = wall_box((0, 0, 1000), (1, 0, 0), (0, 1, 0), 900, 100, 250,
+                      50, 0, 1, 60)
+    assert opening_sides(box) == (200, 350)
+    amount = recommended_increase_mm(max(opening_sides(box)))
+    enlarged = enlarge_opening(box, amount)
+    assert opening_sides(enlarged) == (200, 450)
+    assert enlarged.depth == 900  # Толщина стены не считается стороной отверстия.
+    assert enlarged.origin(True)[2] - box.origin(True)[2] == -50
+    assert enlarged.origin(True)[2] + enlarged.height / 2 == box.center[2]
+    with pytest.raises(ValueError):
+        enlarge_opening(box, -1)

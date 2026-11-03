@@ -9,7 +9,7 @@ tray_boxes_settings.py.
 пересекается с телами элементов (Solid.IntersectWithCurve). В середину
 каждого пересечения ставится экземпляр семейства бокса (в имени семейства —
 «бокс», в имени типа — «временный», по настройкам), повёрнутый по стене /
-по лотку, с размерами сечения лотка плюс запас (по умолчанию 50 мм) и
+по лотку, с размерами сечения лотка плюс запас с каждой стороны (по умолчанию 50 мм) и
 глубиной по толщине стены/перекрытия.
 
 В «Комментарии» нового бокса пишется имя пользователя Revit, дата и время
@@ -337,6 +337,7 @@ class Result(object):
         self.failed = []    # (лоток, Crossing или None, текст ошибки)
         self.missing_params = set()
         self.new_types = []
+        self.boxes = []     # (экземпляр, исходный Box) — только новые
 
 
 def _levels(doc):
@@ -493,6 +494,33 @@ class BoxPlacer(object):
             self.result.failed.append((tray, crossing, u"{}".format(ex)))
             return
         self.result.created.append((tray, crossing, inst))
+        self.result.boxes.append((inst, box))
+
+
+def enlarge_created(doc, result, symbol, settings, increase_mm):
+    u"""Дополнительное увеличение новых отверстий. В открытой транзакции.
+    None — автоматически по большей стороне исходного отверстия.
+    Типы копируются, поэтому ранее стоящие экземпляры не меняются.
+    """
+    placer = BoxPlacer(doc, symbol, settings)
+    for inst, original in result.boxes:
+        amount = (core.recommended_increase_mm(mm(max(core.opening_sides(original))))
+                  if increase_mm is None else increase_mm)
+        box = core.enlarge_opening(original, ft(amount))
+        # Не допускаем частично применённого размера: вызывающий откатит транзакцию.
+        for _role, pname in placer.params:
+            p = inst.LookupParameter(pname) if pname else None
+            if p is None or p.StorageType != StorageType.Double or p.IsReadOnly:
+                p = symbol.LookupParameter(pname) if pname else None
+            if p is None or p.StorageType != StorageType.Double or p.IsReadOnly:
+                raise ValueError(tr(u"Нельзя изменить параметр размера: {}",
+                                    u"Cannot change size parameter: {}").format(pname))
+        placer._apply_sizes(inst, box)
+        if placer.at_bottom:
+            shift = _xyz(box.origin(True)).Subtract(_xyz(original.origin(True)))
+            if shift.GetLength() > 1e-9:
+                ElementTransformUtils.MoveElement(doc, inst.Id, shift)
+    return placer.result.new_types
 
 
 def run(doc, trays, symbol, settings, progress=None, workset=None):
@@ -515,4 +543,3 @@ def run(doc, trays, symbol, settings, progress=None, workset=None):
         for crossing in crossings:
             placer.place(tray, crossing)
     return placer.result
-

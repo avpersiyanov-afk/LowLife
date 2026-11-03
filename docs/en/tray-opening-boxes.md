@@ -14,8 +14,8 @@ The box sits in the middle of the crossing of the tray axis with the wall/floor:
 
 | Where | Width (family X axis) | Depth (Y axis) | Height (Z axis) |
 |---|---|---|---|
-| in a wall | the tray's footprint on the wall + 50 mm (for a tray at a right angle — tray width + 50) | wall thickness | tray height + 50 mm |
-| in a floor | tray width + 50 mm | tray height + 50 mm | floor thickness |
+| in a wall | the tray's footprint on the wall + 100 mm (for a tray at a right angle — tray width + 100) | wall thickness | tray height + 100 mm |
+| in a floor | tray width + 100 mm | tray height + 100 mm | floor thickness |
 
 In a wall, the box's X axis runs along the wall, in a floor — along the tray width; the box always stands level (it only rotates around the vertical). Through walls — only horizontal trays, through floors — only vertical ones; sloped trays and those passing through a wall at too sharp an angle are skipped (in the report).
 
@@ -23,7 +23,7 @@ The «Comments» parameter of each new box gets the Revit user name and the crea
 
 Sizes are written to the box's instance parameters. If a size parameter in the family is a type parameter, the button creates a type «<type> WxDxH» (or takes an identical one already created).
 
-If there's already a box at the crossing (any family with «бокс» in its name: its insertion point is close by or it covers the middle of the crossing), no new one is created there and the existing one isn't changed — the button shows a warning with the number of such spots, and the output window lists them. Everything is done in one transaction (Ctrl+Z undoes it all at once). The report is in the pyRevit output window.
+If there's already a box at the crossing (any family with «бокс» in its name: its insertion point is close by or it covers the middle of the crossing), no new one is created there and the existing one isn't changed — the button shows a warning with the number of such spots, and the output window lists them. Placement and optional enlargement use separate transactions (Ctrl+Z first undoes enlargement, then placement). The report is in the pyRevit output window.
 
 ## Settings (Shift+click)
 
@@ -31,7 +31,7 @@ If there's already a box at the crossing (any family with «бокс» in its na
 - words in the box workset name (by default «боксы»; empty — the active workset);
 - where the family's insertion point is — the middle of the box or the middle of its bottom;
 - the width/depth/height parameter names (by default «Ширина», «Глубина», «Высота»);
-- how much bigger than the tray cross-section the box is (50 mm by default — in total, not per side) and thicker than the wall/floor (0 by default);
+- how much bigger than the tray cross-section the box is (50 mm per side by default) and thicker than the wall/floor (0 by default);
 - the model to look for crossings in: only this one, one of the loaded links (the list of links comes from the open model; for a link placed several times, all instances are taken) or this model together with all links;
 - what to cross (walls and/or floors);
 - the tray slope tolerance and the largest angle of passing through a wall.
@@ -39,3 +39,8 @@ If there's already a box at the crossing (any family with «бокс» in its na
 ## Testing
 
 The pure geometry (`lib/lowlife/tray_boxes_core.py`) is covered by `tests/test_tray_boxes_core.py`; the Revit part (`tray_boxes.py`) has only been checked by reading the code.
+
+
+## Additional enlargement
+
+After placement, the results window shows a dimension diagram and a preview for every new opening. Choose no increase, +50, +100, +150 mm, or automatic: larger opening side (including clearances) ≤300 mm → +50 mm; >300 and ≤600 mm → +100 mm; >600 mm → +150 mm. The increase applies to the whole larger dimension, equally at both ends. Host thickness stays unchanged. Equal sides enlarge along the width. Existing boxes stay unchanged.

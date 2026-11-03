@@ -1,6 +1,6 @@
 tooltip: |
   Ставит бокс на каждое место, где выбранный кабельный лоток проходит сквозь стену или перекрытие модели, выбранной в настройках (эта модель, одна из связей или все сразу). Семейство — загруженное, в имени семейства есть «бокс», в имени типа — «временный» (если подходящих типов несколько — кнопка спросит). Боксы создаются в рабочем наборе, в имени которого есть «боксы»; в «Комментарии» бокса пишутся имя пользователя, дата и время создания.
-  Размер бокса — сечение лотка плюс 50 мм (по ширине и по высоте), глубина — по толщине стены/перекрытия. В стене бокс повёрнут вдоль стены, в перекрытии — вдоль лотка. Сквозь стены — только горизонтальные лотки, сквозь перекрытия — только вертикальные.
+  Размер бокса — сечение лотка плюс 50 мм с каждой стороны (по ширине и по высоте), глубина — по толщине стены/перекрытия. В стене бокс повёрнут вдоль стены, в перекрытии — вдоль лотка. Сквозь стены — только горизонтальные лотки, сквозь перекрытия — только вертикальные.
   Если на пересечении бокс уже есть, новый не создаётся (стоящий не меняется) — кнопка предупреждает об этом.
 
   Shift+клик — настройки: слова в именах семейства/типа и рабочего набора, имена параметров размеров, запас, модель, где искать пересечения (эта / связь / все), что пересекать, точка вставки семейства.
@@ -10,7 +10,7 @@ tooltip_en: >-
   chosen in the settings (this model, one of the links or all at once). The family is a loaded one
   with «бокс» in the family name and «временный» in the type name (if several types fit, the button
   asks). Boxes are created in a workset with «боксы» in its name; the box's «Comments» get the user
-  name and the creation date and time. Box size — the tray cross-section plus 50 mm (in width and
+  name and the creation date and time. Box size — the tray cross-section plus 50 mm on each side (in width and
   height), depth — the wall/floor thickness. In a wall the box is turned along the wall, in a floor —
   along the tray. Through walls — horizontal trays only, through floors — vertical ones only. If
   there's already a box at a crossing, no new one is created (the existing one isn't changed) — the
