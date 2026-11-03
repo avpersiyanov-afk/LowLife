@@ -44,3 +44,5 @@ The pure geometry (`lib/lowlife/tray_boxes_core.py`) is covered by `tests/test_t
 ## Additional enlargement
 
 After placement, the results window shows a dimension diagram and a preview for every new opening. Choose no increase, +50, +100, +150 mm, or automatic: larger opening side (including clearances) ≤300 mm → +50 mm; >300 and ≤600 mm → +100 mm; >600 mm → +150 mm. The increase applies to both opening dimensions, equally at opposite ends. For example, +100 mm changes a 400×200 mm opening to 500×300 mm. Host thickness stays unchanged. Existing boxes stay unchanged.
+
+Set the host filter parameter in settings (Shift+click); its name has no project-specific default. Choose a text instance parameter: new wall boxes receive «стена», floor boxes receive «перекрытие».
