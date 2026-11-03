@@ -135,6 +135,13 @@ def _make_settings(titles):
                 ),
                 default=u"Высота",
             ),
+            settings_core.TextField(
+                "box_host_filter_param",
+                u"",
+                u"Параметр фильтра по конструкции",
+                hint=u"Текстовый параметр экземпляра бокса: в стене записывается «стена», в перекрытии — «перекрытие».",
+                default=u"", required=True,
+            ),
             settings_core.NumberField(
                 "size_extra_mm",
                 u"③ Размеры",

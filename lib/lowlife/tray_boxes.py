@@ -479,12 +479,13 @@ class BoxPlacer(object):
     def _set_host_filter(self, inst, kind):
         u"""Классификация только нового экземпляра, без изменения параметров типа."""
         try:
-            param = inst.LookupParameter(u"smnx_фильтр")
+            name = self.settings.get("box_host_filter_param") or u""
+            param = inst.LookupParameter(name) if name else None
             if param is None or param.IsReadOnly or param.StorageType != StorageType.String:
-                raise ValueError(tr(u"Параметр smnx_фильтр отсутствует, недоступен для записи или не является текстовым параметром экземпляра.",
-                                    u"smnx_фильтр is missing, read-only, or is not a text instance parameter."))
+                raise ValueError(tr(u"Параметр «{}» отсутствует, недоступен для записи или не является текстовым параметром экземпляра.",
+                                    u"Parameter '{}' is missing, read-only, or is not a text instance parameter.").format(name))
             if not param.Set(u"стена" if kind == core.WALL else u"перекрытие"):
-                raise ValueError(tr(u"Не удалось записать smnx_фильтр.", u"Could not write smnx_фильтр."))
+                raise ValueError(tr(u"Не удалось записать параметр «{}».", u"Could not write parameter '{}'.").format(name))
         except Exception as ex:
             self.result.filter_errors.append((inst, u"{}".format(ex)))
 
