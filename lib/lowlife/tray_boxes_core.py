@@ -137,7 +137,7 @@ def opening_sides(box):
 
 
 def recommended_increase_mm(side_mm):
-    u"""Добавка ко всей большей стороне уже рассчитанного отверстия."""
+    u"""Добавка к обеим сторонам отверстия, выбранная по большей стороне."""
     # Допуск только против погрешности перевода футов в миллиметры.
     if side_mm > 600.0 + 1e-7:
         return 150.0
@@ -147,16 +147,14 @@ def recommended_increase_mm(side_mm):
 
 
 def enlarge_opening(box, increase):
-    u"""Копия с увеличенной большей стороной (при равенстве — ширина).
+    u"""Копия с увеличенными обеими сторонами отверстия.
     Единицы increase — те же, что у Box. Центр и толщина сохраняются.
     """
     if increase < 0:
         raise ValueError("increase must be non-negative")
     width, depth, height = box.width, box.depth, box.height
-    a, b = opening_sides(box)
-    if a >= b:
-        width += increase
-    elif box.kind == WALL:
+    width += increase
+    if box.kind == WALL:
         height += increase
     else:
         depth += increase

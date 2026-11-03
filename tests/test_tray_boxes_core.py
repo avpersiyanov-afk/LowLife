@@ -92,13 +92,13 @@ def test_recommended_increase_boundaries(side, expected):
 
 
 @pytest.mark.parametrize("kind, dimensions, expected", [
-    (WALL, (400, 900, 200), (500, 900, 200)),
-    (WALL, (200, 900, 400), (200, 900, 500)),
-    (FLOOR, (400, 200, 900), (500, 200, 900)),
-    (FLOOR, (200, 400, 900), (200, 500, 900)),
-    (WALL, (400, 900, 400), (500, 900, 400)),
+    (WALL, (400, 900, 200), (500, 900, 300)),
+    (WALL, (200, 900, 400), (300, 900, 500)),
+    (FLOOR, (400, 200, 900), (500, 300, 900)),
+    (FLOOR, (200, 400, 900), (300, 500, 900)),
+    (WALL, (400, 900, 400), (500, 900, 500)),
 ])
-def test_enlarge_larger_opening_side_only(kind, dimensions, expected):
+def test_enlarge_both_opening_sides(kind, dimensions, expected):
     original = Box(kind, (10, 20, 30), (0, 1, 0), *dimensions, thickness=900)
     enlarged = enlarge_opening(original, 100)
     assert (enlarged.width, enlarged.depth, enlarged.height) == expected
@@ -115,7 +115,7 @@ def test_auto_uses_opening_after_clearances_and_preserves_center():
     assert opening_sides(box) == (200, 350)
     amount = recommended_increase_mm(max(opening_sides(box)))
     enlarged = enlarge_opening(box, amount)
-    assert opening_sides(enlarged) == (200, 450)
+    assert opening_sides(enlarged) == (300, 450)
     assert enlarged.depth == 900  # Толщина стены не считается стороной отверстия.
     assert enlarged.origin(True)[2] - box.origin(True)[2] == -50
     assert enlarged.origin(True)[2] + enlarged.height / 2 == box.center[2]

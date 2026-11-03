@@ -6,7 +6,7 @@ __doc__ = (
     u"(модели и связей). Размер — сечение лотка плюс 50 мм с каждой стороны, глубина — по "
     u"толщине стены/перекрытия. Где бокс уже есть — новый не "
     u"создаётся, кнопка предупреждает.\n\n"
-    u"После расстановки — выбор увеличения большей стороны и схема размеров.\n\n"
+    u"После расстановки — выбор увеличения обеих сторон и схема размеров.\n\n"
     u"Shift+клик — настройки."
 )
 __author__ = "Pipers"
@@ -152,14 +152,20 @@ if result.missing_params:
     output.print_md(tr(u"- **нет параметров размера в семействе** (размер не задан): ") +
                     u", ".join(sorted(result.missing_params)))
 
+def tray_size(tray):
+    return u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(tray.Width)),
+                                     float(tray_boxes.mm(tray.Height)))
+
+
 rows = []
 for state, entries in ((tr(u"новый"), result.created), (tr(u"уже был — не ставился"), result.existing)):
     for tray, crossing, inst in entries:
-        rows.append([output.linkify(tray.Id), crossing.host_label(), output.linkify(inst.Id), state])
+        rows.append([output.linkify(tray.Id), tray_size(tray), crossing.host_label(), output.linkify(inst.Id), state])
 if rows:
-    output.print_table(rows, columns=[tr(u"Лоток"), tr(u"Пересекает"), tr(u"Бокс"), u""])
+    output.print_table(rows, columns=[tr(u"Лоток"), tr(u"Сечение лотка, мм", u"Tray cross-section, mm"), tr(u"Пересекает"), tr(u"Бокс"), u""])
 if result.boxes:
     from lowlife import tray_boxes_core
+    trays_by_box = {inst.Id: tray for tray, crossing, inst in result.created}
     dimension_rows = []
     for inst, original in result.boxes:
         a, b = tray_boxes_core.opening_sides(original)
@@ -167,11 +173,12 @@ if result.boxes:
                   if increase_mm is None else increase_mm) if increase_applied else 0.0
         enlarged = tray_boxes_core.enlarge_opening(original, tray_boxes.ft(amount))
         x, y = tray_boxes_core.opening_sides(enlarged)
-        dimension_rows.append([output.linkify(inst.Id),
+        tray = trays_by_box[inst.Id]
+        dimension_rows.append([output.linkify(tray.Id), tray_size(tray), output.linkify(inst.Id),
                                u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(a)), float(tray_boxes.mm(b))),
                                u"+{:.0f}".format(float(amount)),
                                u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(x)), float(tray_boxes.mm(y)))])
-    output.print_table(dimension_rows, columns=[tr(u"Бокс"),
+    output.print_table(dimension_rows, columns=[tr(u"Лоток"), tr(u"Сечение лотка, мм", u"Tray cross-section, mm"), tr(u"Бокс"),
         tr(u"Исходное отверстие, мм", u"Original opening, mm"),
         tr(u"Добавка, мм", u"Increase, mm"), tr(u"Итоговое отверстие, мм", u"Final opening, mm")])
 if result.skipped:

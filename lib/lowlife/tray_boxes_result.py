@@ -47,16 +47,16 @@ def show(result, clearance_mm):
                 u"Placed: {}. Already present: {}. Skipped: {}. Errors: {}.").format(
                     len(result.created), len(result.existing), len(result.skipped), len(result.failed))
             self.prompt.Text = tr(
-                u"Дополнительно увеличить большую сторону новых отверстий на:",
-                u"Additionally increase the larger side of new openings by:")
+                u"Дополнительно увеличить обе стороны новых отверстий на:",
+                u"Additionally increase both sides of new openings by:")
             for label in [tr(u"Без увеличения", u"No increase"),
                           tr(u"Автоматически: +50 / +100 / +150 мм", u"Automatic: +50 / +100 / +150 mm"),
                           tr(u"+50 мм", u"+50 mm"), tr(u"+100 мм", u"+100 mm"),
                           tr(u"+150 мм", u"+150 mm")]:
                 self.increase.Items.Add(label)
             self.rules.Text = tr(
-                u"Авто: большая сторона до 300 мм включительно → +50 мм; свыше 300 до 600 мм включительно → +100 мм; свыше 600 мм → +150 мм. Размер берётся после запасов. Добавка — ко всему размеру, поровну с двух сторон. Толщина конструкции не увеличивается.",
-                u"Auto: larger side up to 300 mm inclusive → +50 mm; over 300 up to 600 mm inclusive → +100 mm; over 600 mm → +150 mm. Based on the opening including clearances. The increase is total, split equally between both ends. Host thickness stays unchanged.")
+                u"Авто: большая сторона до 300 мм включительно → +50 мм; свыше 300 до 600 мм включительно → +100 мм; свыше 600 мм → +150 мм. Размер берётся после запасов. Добавка — к каждому из двух размеров, поровну с противоположных сторон. Толщина конструкции не увеличивается.",
+                u"Auto: larger side up to 300 mm inclusive → +50 mm; over 300 up to 600 mm inclusive → +100 mm; over 600 mm → +150 mm. Based on the opening including clearances. The increase applies to each of the two dimensions, split equally between opposite sides. Host thickness stays unchanged.")
             self.apply.Content = tr(u"Применить и закрыть", u"Apply and close")
             self.close.Content = tr(u"Оставить как есть", u"Keep as placed")
             self.apply.IsEnabled = not bool(result.missing_params)
@@ -118,7 +118,7 @@ def show(result, clearance_mm):
             self.rect(85, 65, 280, 105, Brushes.Gray, True)
             self.rect(110, 85, 230, 65, Brushes.Black)
             pad = 20 if delta else 0
-            self.rect(85 - pad, 65, 280 + 2 * pad, 105, Brushes.DarkOrange)
+            self.rect(85 - pad, 65 - pad, 280 + 2 * pad, 105 + 2 * pad, Brushes.DarkOrange)
             self.label(125, 105, tr(u"Сечение лотка", u"Tray cross-section"))
             self.line(85, 50, 365, 50)
             self.label(95, 28, tr(u"Отверстие A = {:.0f} мм", u"Opening A = {:.0f} mm").format(float(a)))
@@ -129,7 +129,7 @@ def show(result, clearance_mm):
             self.label(410, 78, tr(u"Оранжевый — после увеличения", u"Orange — enlarged opening"))
             self.label(410, 108, tr(u"Запас s = {:.0f} мм с каждой стороны", u"Clearance s = {:.0f} mm on each side").format(float(clearance_mm)))
             self.label(410, 138, tr(u"Дополнительно Δ/2 = {:.0f} мм с двух сторон", u"Additional Δ/2 = {:.0f} mm at both ends").format(delta / 2.0))
-            self.label(410, 168, tr(u"Вторая сторона B = {:.0f} мм", u"Other side B = {:.0f} mm").format(float(b)))
+            self.label(410, 168, tr(u"B + Δ = {:.0f} + {:.0f} = {:.0f} мм", u"B + Δ = {:.0f} + {:.0f} = {:.0f} mm").format(float(b), delta, float(b + delta)))
             self.label(65, 5, tr(u"Схема первого нового отверстия (условно)", u"First new opening (schematic)"))
 
         def accept(self, sender, event):
