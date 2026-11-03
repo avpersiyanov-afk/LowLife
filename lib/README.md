@@ -2969,6 +2969,18 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
   `lowlife/feedback_core.py` (тесты `tests/test_feedback_core.py`). Подробности —
   `docs/feedback-panel.md`.
 
+## link_views.py / link_views_dialog.py
+
+Кнопка `Tools.panel/LinkViews` («Виды связей»), Revit 2024+: настройка нескольких
+экземпляров связей для одного текущего вида. `availability(doc, view)` объясняет
+ограничения API, вида и шаблона; `collect_rows` возвращает связи, текущее отображение
+и доступные виды того же типа; `link_views_dialog.show(view, rows)` возвращает
+`[(RevitLinkInstance, View)]` или `None` при отмене. `apply(doc, view, choices)`
+проверяет набор и сам открывает единую транзакцию с полным откатом при ошибке.
+Настройки пишутся на экземпляры, с сохранением прочих свойств существующих
+переопределений; типы связей и документы связей не изменяются.
+Тесты без Revit — `tests/test_link_views.py`; ручная проверка — [инструкция](../docs/link-views.md).
+
 ## Куда добавлять новое
 
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
