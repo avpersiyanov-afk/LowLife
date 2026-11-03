@@ -137,11 +137,11 @@ def show_groups(groups, skipped_tagged=0):
     hint = TextBlock()
     hint.Text = (
         tr(u"Для каждого семейства выберите тип марки или «не маркировать». "
-        u"Выбор запоминается по семейству. Уже стоящие марки не трогаются — "
-        u"чтобы переложить их, запустите кнопку в режиме «Разложить марки».")
+        u"Выбор запоминается по семейству. Новые и уже стоящие марки оборудования "
+        u"на текущем виде раскладываются совместно. Закреплённые марки не двигаются.")
     )
     if skipped_tagged:
-        hint.Text += tr(u" Уже с маркой на этом виде (пропущено): {}.").format(skipped_tagged)
+        hint.Text += tr(u" Уже с маркой на этом виде (без создания дублей): {}.").format(skipped_tagged)
     hint.FontSize = 11
     hint.Foreground = Brushes.Gray
     hint.TextWrapping = TextWrapping.Wrap

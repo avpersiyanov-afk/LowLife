@@ -8,8 +8,8 @@ __doc__ = (
     u"таблице по семействам укажите, что маркировать и каким типом марки "
     u"(выбор запоминается); новые марки сразу раскладываются. Выноска "
     u"идёт к УГО, а не к семейству.\n\n"
-    u"«Маркировать оборудование смежной модели» — выбрать связь и поставить "
-    u"марки на её оборудование, видимое на текущем виде (Revit 2024+).\n\n"
+    u"«Маркировать оборудование смежной модели» — выбрать связи и поставить "
+    u"марки на их оборудование, видимое на текущем виде (Revit 2024+).\n\n"
     u"Shift+клик — настройки (отступ, зазор, полка, что считать «рядом»)."
 )
 __author__ = "Pipers"
@@ -97,9 +97,7 @@ def choose_tag_entries(view, elements):
     untagged = [el for el in elements if equipment_tags.equipment_key(el) not in tagged]
     skipped = len(elements) - len(untagged)
     if not untagged:
-        forms.alert(tr(u"У всего выбранного оборудования ({}) уже есть марки на этом "
-                    u"виде. Чтобы переложить их — режим «{}».").format(skipped, MODE_LAYOUT),
-                    exitscript=True)
+        return []  # Новых нет: уже стоящие марки всё равно участвуют в раскладке.
 
     by_group = {}
     for el in untagged:
@@ -171,15 +169,20 @@ elif mode == MODE_LINK:
     if not labels:
         forms.alert(tr(u"На текущем виде нет загруженных видимых связанных моделей."), exitscript=True)
     selected = select_list.SelectFromList.show(
-        sorted(labels), title=tr(u"Выберите смежную модель"), multiselect=False)
+        sorted(labels), title=tr(u"Выберите смежные модели"), multiselect=True)
     if not selected:
         forms.alert(tr(u"Отменено."), exitscript=True)
-    elements = equipment_tags_links.visible_equipment(doc, view, labels[selected])
+    elements = []
+    for label in selected:
+        elements.extend(equipment_tags_links.visible_equipment(doc, view, labels[label]))
     if not elements:
-        forms.alert(tr(u"В выбранной модели нет оборудования, видимого на текущем виде."), exitscript=True)
+        forms.alert(tr(u"В выбранных моделях нет оборудования, видимого на текущем виде."), exitscript=True)
     entries = create_entries(view, [], elements=elements)
 else:
     entries = create_entries(view, picked)
+
+if mode in (MODE_CREATE, MODE_LINK):
+    entries = equipment_tags.include_existing_tags(doc, view, entries)
 
 # слежение выноски за УГО (обычно уже зарегистрировано хуком app-init)
 following_ok = False

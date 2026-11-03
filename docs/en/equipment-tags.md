@@ -6,10 +6,10 @@ Places and arranges equipment tags (`IndependentTag`) on the active plan/section
 
 ## How to use
 
-The button has two modes. It asks which one you need; if only tags are selected beforehand, the first one starts right away.
+The button has three modes. It asks which one you need; if only tags are selected beforehand, the first one starts right away.
 
 - **«Arrange selected tags»** — select tags (or equipment: then all its tags in this view are taken), or pick them with a window after pressing. Only these tags move, no new ones are created, and the other tags in the view are obstacles.
-- **«Tag equipment»** — select equipment (or pick it with a window after pressing). A table opens: a row for every family without a tag in this view, with a tag type from the matching category or «— don't tag —». The choice is remembered per family until the next run. Tags are placed only for the ticked rows and arranged right away; existing tags are left alone.
+- **«Tag equipment»** — select equipment (or pick it with a window after pressing). A table opens: a row for every family without a tag in this view, with a tag type from the matching category or «— don't tag —». The choice is remembered per family until the next run. Tags are placed only for the ticked rows and arranged right away; existing single-target equipment tags in the view join the layout.
 
 Everything is done in one transaction (Ctrl+Z undoes it all at once).
 
@@ -49,11 +49,11 @@ Revit brings the leader to the middle of the tag's full height. For a tag with o
 
 ## Equipment in linked discipline models
 
-Choose **Tag equipment in a linked model**, then select a loaded link instance.
-The family table includes equipment from that instance visible in the active
+Choose **Tag equipment in a linked model**, then select one or more loaded link instances.
+The family table includes equipment from the selected instances visible in the active
 view. Choose which families to tag and the tag types loaded in the host model.
 Tags are created in the host; the linked model is unchanged. Existing tags in
-this view are skipped. Separate instances of the same link are handled separately.
+this view join the layout without creating duplicates. Separate instances of the same link are handled separately.
 
 Requires Revit 2024+ and uses the native host-view linked-element collector.
 Link translation, rotation and reflection are applied before arranging tags
@@ -64,3 +64,8 @@ scale inside the linked document. Select existing linked tags and use
 
 This mode has not been run in Revit yet. Adapter tests outside Revit check
 references, link-instance identity and coordinate transforms.
+
+Both creation modes arrange new tags together with all existing single-target
+equipment tags in the active view, including other links. Their positions may
+change. Pinned and multi-target tags remain obstacles. If the selected equipment
+is already tagged, existing tags are rearranged without creating new ones.
