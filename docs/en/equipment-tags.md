@@ -45,3 +45,22 @@ Revit brings the leader to the middle of the tag's full height. For a tag with o
   - if the symbol moved inside the family (by an offset parameter) while the device itself stayed in place, the leader end won't follow — run «Arrange tags» again.
 - The tag size is taken from its extent in the view, so tags with long text spread apart correctly. Where Revit brings the leader to the tag is decided by the tag family.
 - The layout logic is covered by tests outside Revit (`tests/test_tag_layout.py`); the Revit part (`equipment_tags.py`) has only been checked by reading the code.
+
+
+## Equipment in linked discipline models
+
+Choose **Tag equipment in a linked model**, then select a loaded link instance.
+The family table includes equipment from that instance visible in the active
+view. Choose which families to tag and the tag types loaded in the host model.
+Tags are created in the host; the linked model is unchanged. Existing tags in
+this view are skipped. Separate instances of the same link are handled separately.
+
+Requires Revit 2024+ and uses the native host-view linked-element collector.
+Link translation, rotation and reflection are applied before arranging tags
+with the usual settings. Linked equipment uses the family bounding box and an
+attached leader; nested symbols cannot be isolated by changing a host view's
+scale inside the linked document. Select existing linked tags and use
+**Arrange selected tags** to rearrange them.
+
+This mode has not been run in Revit yet. Adapter tests outside Revit check
+references, link-instance identity and coordinate transforms.

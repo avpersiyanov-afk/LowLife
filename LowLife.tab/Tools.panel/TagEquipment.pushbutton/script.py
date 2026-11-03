@@ -2,12 +2,14 @@
 
 __title__ = u"Марки\nоборудования"
 __doc__ = (
-    u"Два режима. «Разложить марки» — выберите марки (или оборудование, "
+    u"Три режима. «Разложить марки» — выберите марки (или оборудование, "
     u"чьи марки двигать): они раскладываются ровно и без пересечений, "
     u"новые не создаются. «Поставить марки» — выберите оборудование: в "
     u"таблице по семействам укажите, что маркировать и каким типом марки "
     u"(выбор запоминается); новые марки сразу раскладываются. Выноска "
     u"идёт к УГО, а не к семейству.\n\n"
+    u"«Маркировать оборудование смежной модели» — выбрать связь и поставить "
+    u"марки на её оборудование, видимое на текущем виде (Revit 2024+).\n\n"
     u"Shift+клик — настройки (отступ, зазор, полка, что считать «рядом»)."
 )
 __author__ = "Pipers"
@@ -28,6 +30,7 @@ uidoc = revit.uidoc
 
 MODE_LAYOUT = tr(u"Разложить выбранные марки")
 MODE_CREATE = tr(u"Поставить марки на оборудование")
+MODE_LINK = tr(u"Маркировать оборудование смежной модели")
 
 
 def preselected():
@@ -42,7 +45,7 @@ def choose_mode(picked):
     if has_tags and not has_equipment:
         return MODE_LAYOUT
     mode = select_list.CommandSwitchWindow.show(
-        [MODE_LAYOUT, MODE_CREATE],
+        [MODE_LAYOUT, MODE_CREATE, MODE_LINK],
         message=tr(u"Марки оборудования — что сделать?")
     )
     if not mode:
@@ -71,11 +74,14 @@ def layout_entries(view, picked):
     return [(el, tag, None) for el, tag in pairs]
 
 
-def create_entries(view, picked):
+def create_entries(view, picked, elements=None):
     """Режим «Поставить»: оборудование без марки на виде → таблица по
     семействам (что маркировать и каким типом) → новые марки."""
-    elements = equipment_tags.resolve_elements(
-        doc, [e for e in picked if equipment_tags.is_equipment(e)])
+    if elements is None:
+        elements = equipment_tags.resolve_elements(
+            doc, [e for e in picked if equipment_tags.is_equipment(e)])
+    else:
+        return choose_tag_entries(view, elements)
     if not elements:
         elements = equipment_tags.resolve_elements(doc, pick(
             equipment_tags.EquipmentFilter(),
@@ -83,8 +89,12 @@ def create_entries(view, picked):
     if not elements:
         forms.alert(tr(u"Не выбрано ни одного элемента оборудования."), exitscript=True)
 
+    return choose_tag_entries(view, elements)
+
+
+def choose_tag_entries(view, elements):
     tagged = equipment_tags.tags_by_element(doc, view)
-    untagged = [el for el in elements if equipment_tags.id_int(el.Id) not in tagged]
+    untagged = [el for el in elements if equipment_tags.equipment_key(el) not in tagged]
     skipped = len(elements) - len(untagged)
     if not untagged:
         forms.alert(tr(u"У всего выбранного оборудования ({}) уже есть марки на этом "
@@ -150,6 +160,24 @@ picked = preselected()
 mode = choose_mode(picked)
 if mode == MODE_LAYOUT:
     entries = layout_entries(view, picked)
+elif mode == MODE_LINK:
+    from lowlife import equipment_tags_links
+    if int(doc.Application.VersionNumber) < 2024:
+        forms.alert(tr(u"Маркировка видимого оборудования связей требует Revit 2024 или новее."),
+                    exitscript=True)
+    links = equipment_tags_links.visible_links(doc, view)
+    labels = dict((u"{} [Id {}]".format(equipment_tags._safe_name(link),
+                                       equipment_tags.id_int(link.Id)), link) for link in links)
+    if not labels:
+        forms.alert(tr(u"На текущем виде нет загруженных видимых связанных моделей."), exitscript=True)
+    selected = select_list.SelectFromList.show(
+        sorted(labels), title=tr(u"Выберите смежную модель"), multiselect=False)
+    if not selected:
+        forms.alert(tr(u"Отменено."), exitscript=True)
+    elements = equipment_tags_links.visible_equipment(doc, view, labels[selected])
+    if not elements:
+        forms.alert(tr(u"В выбранной модели нет оборудования, видимого на текущем виде."), exitscript=True)
+    entries = create_entries(view, [], elements=elements)
 else:
     entries = create_entries(view, picked)
 
@@ -171,7 +199,7 @@ except Exception:
     )
 
 lines = [tr(u"Разложено марок: {}").format(stats["moved"])]
-if mode == MODE_CREATE:
+if mode in (MODE_CREATE, MODE_LINK):
     lines.append(tr(u"Из них новых: {}").format(stats["created"]))
 if stats["failed"]:
     lines.append(tr(u"Не удалось поставить/сдвинуть: {} (нет подходящей марки "
@@ -193,3 +221,4 @@ if stats["overlaps"] or stats["crossings"]:
                  u"отступ в настройках (Shift+клик) либо выбрать "
                  u"оборудование частями.").format(stats["overlaps"], stats["crossings"]))
 forms.alert(u"\n".join(lines), title=tr(u"Марки оборудования"))
+
