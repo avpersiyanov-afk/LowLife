@@ -1,0 +1,12 @@
+title: Виды\nсвязей
+title_en: Linked\nviews
+tooltip: |
+  Для текущего вида выбрать виды сразу нескольких связанных моделей.
+  Отметьте связи, выберите вид для каждой и нажмите «Применить».
+  Неотмеченные связи не меняются. Требуется Revit 2024 или новее.
+tooltip_en: |
+  Choose views for several linked models on the current host view.
+  Check the links, choose a view for each and click Apply.
+  Unchecked links remain unchanged. Requires Revit 2024 or later.
+author: LowLife
+min_revit_version: 2024

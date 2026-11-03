@@ -186,6 +186,7 @@ THEMES = {
         (u"Tools", u"FamilySection"),
         (u"Tools", u"AlignViewRange"),
         (u"Tools", u"LevelViews"),
+        (u"Tools", u"LinkViews"),
         (u"Tools", u"Rotate3DView"),
         (u"Tools", u"Greeting"),
         (u"Tools", u"SpellCheck"),

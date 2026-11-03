@@ -634,7 +634,21 @@ def language(c):
     c.line([(cx, cy - r + 2), (cx, cy + r - 2)], BLUE, 3)
 
 
+def link_views(c):
+    """One host view connected to three linked model views."""
+    c.rect((6, 30, 36, 68), BLUE, WHITE, 4, 3)
+    c.line([(12, 42), (29, 42)], BLUE, 3)
+    c.line([(12, 52), (26, 52)], BLUE, 3)
+    c.line([(36, 49), (48, 49)], ORANGE, 4)
+    c.line([(48, 19), (48, 79)], ORANGE, 4)
+    for y in (19, 49, 79):
+        c.line([(48, y), (60, y)], ORANGE, 4)
+        c.rect((60, y - 11, 89, y + 11), BLUE, WHITE, 3, 2)
+        c.line([(66, y), (82, y)], ORANGE, 3)
+
+
 ICONS = [
+    ("Tools.panel/LinkViews.pushbutton", link_views),
     ("_Themes.panel/Actions.stack/Language.pushbutton", language),
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
