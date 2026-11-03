@@ -77,6 +77,10 @@ from Autodesk.Revit.UI.Selection import ISelectionFilter
 import System
 
 from lowlife import tag_layout, tag_leader_follow
+from lowlife.equipment_tags_links import (
+    LinkedEquipment, equipment_key, equipment_reference, tagged_equipment,
+    visible_equipment
+)
 
 MM_TO_FT = 1.0 / 304.8
 
@@ -120,6 +124,8 @@ def is_taggable_view(view):
 def is_equipment(el):
     """Экземпляр семейства модели (любая категория оборудования/устройств/
     обобщённых моделей) — то, на что ставим марку."""
+    if isinstance(el, LinkedEquipment):
+        el = el.element
     if not isinstance(el, FamilyInstance):
         return False
     cat = el.Category
@@ -172,13 +178,13 @@ def resolve_elements(doc, picked):
     seen = set()
     for el in picked:
         if isinstance(el, IndependentTag):
-            targets = [doc.GetElement(ElementId(i)) for i in tagged_local_ids(el)]
+            targets = tagged_equipment(doc, el)
         else:
             targets = [el]
         for t in targets:
             if t is None or not is_equipment(t):
                 continue
-            k = id_int(t.Id)
+            k = equipment_key(t)
             if k in seen:
                 continue
             seen.add(k)
@@ -190,8 +196,10 @@ def tags_by_element(doc, view):
     """{id элемента: [марки на этом виде, которые на него смотрят]}."""
     result = {}
     for tag in FilteredElementCollector(doc, view.Id).OfClass(IndependentTag):
-        for i in tagged_local_ids(tag):
-            result.setdefault(i, []).append(tag)
+        for el in tagged_equipment(doc, tag):
+            if not is_equipment(el):
+                continue
+            result.setdefault(equipment_key(el), []).append(tag)
     return result
 
 
@@ -215,13 +223,13 @@ def resolve_tag_pairs(doc, view, picked):
 
     for item in picked:
         if isinstance(item, IndependentTag):
-            ids = tagged_local_ids(item)
-            if len(ids) == 1:  # марка сразу на несколько элементов — не трогаем
-                add(doc.GetElement(ElementId(ids[0])), item)
+            targets = tagged_equipment(doc, item)
+            if len(targets) == 1:  # марка сразу на несколько элементов — не трогаем
+                add(targets[0], item)
         elif is_equipment(item):
             if by_element is None:
                 by_element = tags_by_element(doc, view)
-            for tag in by_element.get(id_int(item.Id), []):
+            for tag in by_element.get(equipment_key(item), []):
                 add(item, tag)
     return result
 
@@ -430,7 +438,7 @@ def probe_annotation_rects(doc, view, frame, elements):
     и смена масштаба делаются в подтранзакции и откатываются, в модели
     ничего не остаётся. Почему так — в докстринге модуля.
     """
-    elements = list(elements)
+    elements = [el for el in elements if not isinstance(el, LinkedEquipment)]
     if not elements:
         return {}
     k0 = int(view.Scale or 1)
@@ -449,7 +457,7 @@ def probe_annotation_rects(doc, view, frame, elements):
                         r = frame.rect(el.get_BoundingBox(target))
                     except Exception:
                         r = None
-                    measured.setdefault(id_int(el.Id), []).append(r)
+                    measured.setdefault(equipment_key(el), []).append(r)
     except Exception:
         measured = {}
     finally:
@@ -457,7 +465,7 @@ def probe_annotation_rects(doc, view, frame, elements):
 
     result = {}
     for el in elements:
-        rs = measured.get(id_int(el.Id))
+        rs = measured.get(equipment_key(el))
         if not rs or len(rs) != 2:
             continue
         rect = tag_layout.extrapolate_rect(rs[0], k1, rs[1], k2, k0)
@@ -468,7 +476,7 @@ def probe_annotation_rects(doc, view, frame, elements):
         if shown is not None:
             rect = tag_layout.rect_intersection(rect, tag_layout.rect_inflate(shown, 1e-3))
         if rect is not None:
-            result[id_int(el.Id)] = rect
+            result[equipment_key(el)] = rect
     return result
 
 
@@ -481,6 +489,8 @@ def symbol_info(el, view, frame, scaled=None):
     отсутствии — видимое тело) и False — такую марку ставим к самому
     семейству (см. :func:`run`).
     """
+    if isinstance(el, LinkedEquipment):
+        return frame.rect(el.get_BoundingBox(view)), False
     curve_pts, body_pts = [], []
     try:
         opts = Options()
@@ -494,7 +504,7 @@ def symbol_info(el, view, frame, scaled=None):
     if rect is not None:
         return rect, True
     if scaled:
-        rect = scaled.get(id_int(el.Id))
+        rect = scaled.get(equipment_key(el))
         if rect is not None:
             return rect, True
     rect = frame.rect(el.get_BoundingBox(view))
@@ -572,17 +582,20 @@ def _tag_reference(tag, el):
     try:
         refs = list(tag.GetTaggedReferences())  # 2022+
         for r in refs:
-            if r.ElementId == el.Id:
+            if isinstance(el, LinkedEquipment):
+                if r.ElementId == el.link.Id and r.LinkedElementId == el.Id:
+                    return r
+            elif r.ElementId == el.Id:
                 return r
         if refs:
             return refs[0]
     except AttributeError:
         pass
-    return Reference(el)
+    return equipment_reference(el)
 
 
 def _create_tag(doc, view, el, type_id, point):
-    ref = Reference(el)
+    ref = equipment_reference(el)
     if type_id is not None:
         sym = doc.GetElement(type_id)
         if sym is not None and not sym.IsActive:
@@ -604,7 +617,7 @@ def _other_equipment(doc, view, own_ids, category_ids):
     """Прочее оборудование тех же категорий на виде."""
     result = []
     for el in FilteredElementCollector(doc, view.Id).OfClass(FamilyInstance):
-        if id_int(el.Id) in own_ids or el.Category is None:
+        if equipment_key(el) in own_ids or el.Category is None:
             continue
         if id_int(el.Category.Id) in category_ids:
             result.append(el)
@@ -621,7 +634,7 @@ def _obstacle_rects(doc, view, frame, own_ids, others, scaled):
             rects.append(r)
     for cls in (IndependentTag, TextNote):
         for el in FilteredElementCollector(doc, view.Id).OfClass(cls):
-            if id_int(el.Id) in own_ids:
+            if equipment_key(el) in own_ids:
                 continue
             r = frame.rect(el.get_BoundingBox(view))
             if r is not None:
@@ -659,11 +672,19 @@ def run(doc, view, entries, settings):
     elements = []
     own_ids = set()
     for el, _tag, _type in entries:
-        if id_int(el.Id) not in own_ids:
-            own_ids.add(id_int(el.Id))
+        if equipment_key(el) not in own_ids:
+            own_ids.add(equipment_key(el))
             elements.append(el)
     category_ids = set(id_int(el.Category.Id) for el in elements)
     others = _other_equipment(doc, view, own_ids, category_ids)
+    # Семейства связи, которые пользователь оставил без марки, тоже препятствия.
+    links = dict((id_int(el.link.Id), el.link) for el in elements
+                 if isinstance(el, LinkedEquipment))
+    if int(doc.Application.VersionNumber) >= 2024:
+        for link in links.values():
+            others.extend(el for el in visible_equipment(doc, view, link)
+                          if equipment_key(el) not in own_ids
+                          and id_int(el.Category.Id) in category_ids)
     scaled = probe_annotation_rects(doc, view, frame, elements + others)
 
     # 1. УГО элементов: {id: (габарит, точка выноски, марка к семейству)}
@@ -673,15 +694,15 @@ def run(doc, view, entries, settings):
         if rect is None:
             stats["no_bbox"] += 1
         elif has_symbol:
-            symbols[id_int(el.Id)] = (rect, tag_layout.rect_center(rect), False)
+            symbols[equipment_key(el)] = (rect, tag_layout.rect_center(rect), False)
         else:
-            symbols[id_int(el.Id)] = (rect, family_anchor(el, frame, rect), True)
+            symbols[equipment_key(el)] = (rect, family_anchor(el, frame, rect), True)
             stats["no_symbol"] += 1
 
     # недостающие марки
     work = []  # (el, tag, rect, anchor, attached)
     for el, tag, type_id in entries:
-        sym = symbols.get(id_int(el.Id))
+        sym = symbols.get(equipment_key(el))
         if sym is None:
             continue
         rect, anchor, attached = sym
@@ -767,3 +788,4 @@ def run(doc, view, entries, settings):
             pass
 
     return stats
+

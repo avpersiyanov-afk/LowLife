@@ -3496,5 +3496,10 @@
  "✎ Изменить": "✎ Edit",
  "✓ Выполнено": "✓ Completed",
  "✓ Связь есть, таблица «{}», ответ за {:.1f} с.": "✓ Connected to sheet «{}», response in {:.1f} s.",
- "＋ Новая панель…": "＋ New panel…"
+ "＋ Новая панель…": "＋ New panel…",
+  "Маркировать оборудование смежной модели": "Tag equipment in a linked model",
+  "Маркировка видимого оборудования связей требует Revit 2024 или новее.": "Tagging visible equipment in links requires Revit 2024 or newer.",
+  "На текущем виде нет загруженных видимых связанных моделей.": "There are no loaded visible linked models in the current view.",
+  "Выберите смежную модель": "Select a linked model",
+  "В выбранной модели нет оборудования, видимого на текущем виде.": "The selected model has no equipment visible in the current view."
 }
