@@ -190,8 +190,15 @@ if result.failed:
     for tray, crossing, error in result.failed:
         where = crossing.host_label() if crossing is not None else u""
         output.print_md(u"- {} {}: {}".format(output.linkify(tray.Id), where, error))
+if result.filter_errors:
+    output.print_md(tr(u"### Не заполнен smnx_фильтр", u"### smnx_фильтр was not filled"))
+    for inst, error in result.filter_errors:
+        output.print_md(u"- {}: {}".format(output.linkify(inst.Id), error))
 
 lines = [tr(u"Поставлено боксов: {}").format(len(result.created))]
+if result.filter_errors:
+    lines.append(tr(u"Не заполнен smnx_фильтр у боксов: {}. Подробности — в окне вывода.",
+                    u"smnx_фильтр was not filled for {} boxes. See the output window.").format(len(result.filter_errors)))
 if result.existing:
     lines.append(tr(u"\nВНИМАНИЕ: на {} пересечениях бокс уже есть — новые там не "
                  u"создавались, стоящие боксы не изменены.\n").format(len(result.existing)))

@@ -336,6 +336,7 @@ class Result(object):
         self.skipped = []   # (лоток, Crossing, причина)
         self.failed = []    # (лоток, Crossing или None, текст ошибки)
         self.missing_params = set()
+        self.filter_errors = []  # (новый бокс, ошибка записи фильтра)
         self.new_types = []
         self.boxes = []     # (экземпляр, исходный Box) — только новые
 
@@ -475,6 +476,18 @@ class BoxPlacer(object):
                     sym.Activate()
                 inst.ChangeTypeId(sym.Id)
 
+    def _set_host_filter(self, inst, kind):
+        u"""Классификация только нового экземпляра, без изменения параметров типа."""
+        try:
+            param = inst.LookupParameter(u"smnx_фильтр")
+            if param is None or param.IsReadOnly or param.StorageType != StorageType.String:
+                raise ValueError(tr(u"Параметр smnx_фильтр отсутствует, недоступен для записи или не является текстовым параметром экземпляра.",
+                                    u"smnx_фильтр is missing, read-only, or is not a text instance parameter."))
+            if not param.Set(u"стена" if kind == core.WALL else u"перекрытие"):
+                raise ValueError(tr(u"Не удалось записать smnx_фильтр.", u"Could not write smnx_фильтр."))
+        except Exception as ex:
+            self.result.filter_errors.append((inst, u"{}".format(ex)))
+
     # --- один лоток -----------------------------------------------------
 
     def place(self, tray, crossing):
@@ -490,6 +503,7 @@ class BoxPlacer(object):
         try:
             inst = self._create(origin, box)
             self._apply_sizes(inst, box)
+            self._set_host_filter(inst, crossing.kind)
         except Exception as ex:
             self.result.failed.append((tray, crossing, u"{}".format(ex)))
             return
