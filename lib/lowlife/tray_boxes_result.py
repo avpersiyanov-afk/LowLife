@@ -13,7 +13,7 @@ def show(result, clearance_mm, uidoc):
     from System.Windows.Documents import Hyperlink, Run
     from System.Collections.Generic import List
     from Autodesk.Revit.DB import ElementId
-    from System.Windows.Media import Brushes, DoubleCollection
+    from System.Windows.Media import Brushes, DoubleCollection, RotateTransform
     from System.Windows.Shapes import Line, Rectangle
 
     class ResultWindow(forms.WPFWindow):
@@ -103,10 +103,12 @@ def show(result, clearance_mm, uidoc):
                 self.preview.Children.Add(row)
             self.draw()
 
-        def label(self, x, y, text):
+        def label(self, x, y, text, vertical=False):
             block = TextBlock()
             block.Text = text
             block.FontSize = 13
+            if vertical:
+                block.LayoutTransform = RotateTransform(-90.0)
             Canvas.SetLeft(block, x)
             Canvas.SetTop(block, y)
             self.diagram.Children.Add(block)
@@ -157,10 +159,17 @@ def show(result, clearance_mm, uidoc):
             self.line(115, 105, 68, 105)
             self.line(115, 235, 68, 235)
             self.dimension(75, 105, 75, 235)
-            self.label(0, 145, u"B")
-            self.label(0, 168, u"{:.0f}".format(float(b)))
-            self.label(0, 190, tr(u"мм", u"mm"))
+            self.label(78 if delta else 35, 105,
+                       tr(u"B = {:.0f} мм (по EIR)", u"B = {:.0f} mm (per EIR)").format(float(b)),
+                       vertical=True)
             if delta:
+                # Отдельная вертикальная размерная линия итогового отверстия.
+                self.line(95, 85, 28, 85)
+                self.line(95, 255, 28, 255)
+                self.dimension(35, 85, 35, 255)
+                self.label(8, 85, tr(u"B + Δ = {:.0f} мм (по ЗНП)",
+                                     u"B + Δ = {:.0f} mm (per ZNP)").format(float(b + delta)),
+                           vertical=True)
                 self.line(95, 255, 95, 295)
                 self.line(385, 255, 385, 295)
                 self.dimension(95, 285, 385, 285)
