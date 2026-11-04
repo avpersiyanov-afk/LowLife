@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Настроить виды нескольких связанных моделей для текущего вида."""
+"""Настроить виды связанных моделей сразу на нескольких основных видах."""
 from pyrevit import forms, revit, script
-from lowlife import link_views, link_views_dialog
+from lowlife import link_views, link_views_dialog, select_list
 from lowlife.i18n import tr
 
 __title__ = u"Виды\nсвязей"
-__doc__ = u"Выбрать виды нескольких связанных моделей для текущего вида и применить вместе."
+__doc__ = u"Выбрать основные виды одного типа и применить к ним настройки видов связей вместе."
 
 
 def main():
@@ -16,19 +16,27 @@ def main():
         forms.alert(tr(u"Откройте модель и вид.", u"Open a model and a view."), title=title)
         return
     try:
-        problem = link_views.availability(doc, view)
-        if problem:
-            forms.alert(problem, title=title)
+        views = select_list.select_views(
+            title=tr(u"Выберите виды того же типа, что и текущий", u"Select views of the same type as the current view"),
+            multiple=True, doc=doc,
+            filterfunc=lambda v: not v.IsTemplate and v.ViewType == view.ViewType)
+        if not views:
             return
-        rows = link_views.collect_rows(doc, view)
+        for host in views:
+            problem = link_views.availability(doc, host)
+            if problem:
+                forms.alert(u"{}: {}".format(link_views.safe_name(host), problem), title=title)
+                return
+        rows = link_views.collect_many_rows(doc, views)
         if not rows:
             forms.alert(tr(u"В модели нет связей Revit.", u"The model has no Revit links."), title=title)
             return
-        choices = link_views_dialog.show(view, rows)
+        choices = link_views_dialog.show(views, rows)
         if choices is None:
             return
-        count = link_views.apply(doc, view, choices)
-        forms.alert(tr(u"Настроено связей: {}", u"Links configured: {}").format(count), title=title)
+        count = link_views.apply_many(doc, views, choices)
+        forms.alert(tr(u"Настроено видов: {}. Применено настроек связей: {}",
+                       u"Views configured: {}. Link settings applied: {}").format(len(views), count), title=title)
     except Exception as ex:
         script.get_logger().exception('Linked model view settings failed')
         forms.alert(tr(u"Не удалось настроить связи. Изменения не сохранены.\n{}",

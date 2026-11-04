@@ -1,11 +1,13 @@
-title: Виды\nсвязей
-title_en: Linked\nviews
+title: "Виды\nсвязей"
+title_en: "Linked\nviews"
 tooltip: |
-  Для текущего вида выбрать виды сразу нескольких связанных моделей.
+  Выберите один или несколько основных видов того же типа, что и текущий.
+  Настройте виды связанных моделей сразу для всех выбранных видов.
   Отметьте связи, выберите вид для каждой и нажмите «Применить».
   Неотмеченные связи не меняются. Требуется Revit 2024 или новее.
 tooltip_en: |
-  Choose views for several linked models on the current host view.
+  Select one or more host views of the same type as the current view.
+  Configure linked model views for all selected host views together.
   Check the links, choose a view for each and click Apply.
   Unchecked links remain unchanged. Requires Revit 2024 or later.
 author: LowLife

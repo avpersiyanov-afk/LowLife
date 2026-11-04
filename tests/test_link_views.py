@@ -42,6 +42,7 @@ def model(monkeypatch):
     linked_doc = Obj()
     doc = Obj(GetElement=lambda key: None)
     transactions = []
+    hosts = [host]
 
     class Transaction(object):
         def __init__(self, doc, name):
@@ -50,7 +51,7 @@ def model(monkeypatch):
             transactions.append(self)
 
         def Start(self):
-            self.before = copy.deepcopy(host.overrides)
+            self.before = [copy.deepcopy(v.overrides) for v in hosts]
             self.status = 'started'
 
         def Commit(self):
@@ -61,7 +62,8 @@ def model(monkeypatch):
             return self.status
 
         def RollBack(self):
-            host.overrides = self.before
+            for view, before in zip(hosts, self.before):
+                view.overrides = before
             self.status = 'rolledback'
 
         def Dispose(self):
@@ -80,7 +82,7 @@ def model(monkeypatch):
         return link, view
 
     return Obj(host=host, doc=doc, linked_doc=linked_doc, pair=pair,
-               transactions=transactions, db=db)
+               transactions=transactions, db=db, hosts=hosts)
 
 
 def test_batch_changes_instances_preserving_type_and_unselected_links(model):
@@ -101,6 +103,46 @@ def test_existing_instance_settings_take_priority_over_type(model):
     model.host.overrides[1].other_graphics = 'instance'
     lv.apply(model.doc, model.host, [model.pair(1)])
     assert model.host.overrides[1].other_graphics == 'instance'
+
+
+def test_multiple_hosts_keep_their_own_graphics_in_one_transaction(model):
+    second = Host()
+    second.overrides[100].other_graphics = 'second host'
+    model.hosts.append(second)
+    assert lv.apply_many(model.doc, model.hosts, [model.pair(1)]) == 2
+    assert model.host.overrides[1].LinkedViewId == 200
+    assert second.overrides[1].LinkedViewId == 200
+    assert second.overrides[1].other_graphics == 'second host'
+    assert model.host.overrides[1].other_graphics == 'keep'
+    assert len(model.transactions) == 1
+
+
+def test_failure_on_later_host_rolls_back_earlier_host(model):
+    second = Host()
+    second.fail_on = 1
+    model.hosts.append(second)
+    with pytest.raises(ValueError, match='API rejected'):
+        lv.apply_many(model.doc, model.hosts, [model.pair(1)])
+    assert 1 not in model.host.overrides
+    assert 1 not in second.overrides
+    assert model.transactions[0].status == 'rolledback'
+
+
+def test_incompatible_later_host_is_rejected_before_transaction(model):
+    second = Host()
+    second.ViewType = 'section'
+    with pytest.raises(ValueError):
+        lv.apply_many(model.doc, [model.host, second], [model.pair(1)])
+    assert model.transactions == []
+
+
+def test_mixed_current_values_are_labelled(model, monkeypatch):
+    second = Host()
+    link, _ = model.pair(1)
+    monkeypatch.setattr(lv, 'collect_rows', lambda doc, view: [
+        dict(link=link, current='first' if view is model.host else 'second')])
+    rows = lv.collect_many_rows(model.doc, [model.host, second])
+    assert rows[0]['current'] == lv.tr(u'Разные значения', u'Mixed values')
 
 
 def test_api_rejection_rolls_back_the_whole_batch(model):

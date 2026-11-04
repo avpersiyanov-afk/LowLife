@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""One modal batch editor for the current host view's link instances."""
+"""One modal batch editor shared by the selected host views."""
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -37,7 +37,7 @@ def _text(value):
     return block
 
 
-def show(host_view, rows):
+def show(host_views, rows):
     result = {'choices': None}
     states = []
     win = Window()
@@ -47,8 +47,9 @@ def show(host_view, rows):
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     outer = DockPanel()
     outer.Margin = Thickness(16)
-    header = _text(tr(u"Текущий вид: {}\nОтметьте связи и выберите вид для каждой. Неотмеченные связи не меняются.",
-                      u"Current view: {}\nCheck the links and choose a view for each. Unchecked links remain unchanged.").format(link_views.safe_name(host_view)))
+    header = _text(tr(u"Выбрано видов: {}\nВыбранные виды связей будут применены ко всем отмеченным основным видам. Неотмеченные связи не меняются.",
+                      u"Selected views: {}\nThe linked views you choose will apply to all selected host views. Unchecked links remain unchanged.").format(len(host_views)))
+    header.ToolTip = u'\n'.join(link_views.safe_name(v) for v in host_views)
     header.Margin = Thickness(0, 0, 0, 12)
     DockPanel.SetDock(header, Dock.Top)
     outer.Children.Add(header)

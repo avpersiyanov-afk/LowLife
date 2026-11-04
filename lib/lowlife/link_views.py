@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Display several Revit link instances by their own views on one host view.
+"""Display Revit link instances by their own views on multiple host views.
 
 Revit imports are deferred so validation and transaction behaviour can be
 tested without Revit. No changes are made to linked documents or link types.
@@ -86,7 +86,22 @@ def collect_rows(doc, host_view):
     return sorted(rows, key=lambda row: row['name'].lower())
 
 
+def collect_many_rows(doc, host_views):
+    """Show shared settings, or an explicit mixed value across host views."""
+    rows = collect_rows(doc, host_views[0])
+    for host in host_views[1:]:
+        other = dict((unicode(r['link'].Id), r) for r in collect_rows(doc, host))
+        for row in rows:
+            if row['current'] != other[unicode(row['link'].Id)]['current']:
+                row['current'] = tr(u"Разные значения", u"Mixed values")
+    return rows
+
+
 def apply(doc, host_view, choices):
+    return apply_many(doc, [host_view], choices)
+
+
+def apply_many(doc, host_views, choices):
     """Apply (instance, linked view) pairs atomically; one Revit Undo step.
 
     Read the existing settings so other supported graphics properties survive.
@@ -94,9 +109,12 @@ def apply(doc, host_view, choices):
     rolls back the entire batch, including failures during commit.
     """
     db = _db()
-    problem = availability(doc, host_view)
-    if problem:
-        raise ValueError(problem)
+    host_views = list(host_views)
+    choices = list(choices)
+    for host_view in host_views:
+        problem = availability(doc, host_view)
+        if problem:
+            raise ValueError(u"{}: {}".format(safe_name(host_view), problem))
     seen = set()
     for link, linked_view in choices:
         key = unicode(link.Id)
@@ -105,20 +123,22 @@ def apply(doc, host_view, choices):
         seen.add(key)
         linked_doc = link.GetLinkDocument()
         if (linked_doc is None or linked_view.Document != linked_doc
-                or linked_view.IsTemplate or linked_view.ViewType != host_view.ViewType):
+                or linked_view.IsTemplate
+                or any(linked_view.ViewType != v.ViewType for v in host_views)):
             raise ValueError(tr(u"Вид не подходит для связи: {}", u"View is incompatible with link: {}").format(safe_name(link)))
-    if not choices:
+    if not choices or not host_views:
         return 0
     transaction = db.Transaction(doc, tr(u"Виды связанных моделей", u"Linked model views"))
     try:
         transaction.Start()
-        for link, linked_view in choices:
-            settings = current_settings(host_view, link)
-            if settings is None:
-                settings = db.RevitLinkGraphicsSettings()
-            settings.LinkVisibilityType = db.LinkVisibility.ByLinkView
-            settings.LinkedViewId = linked_view.Id
-            host_view.SetLinkOverrides(link.Id, settings)
+        for host_view in host_views:
+            for link, linked_view in choices:
+                settings = current_settings(host_view, link)
+                if settings is None:
+                    settings = db.RevitLinkGraphicsSettings()
+                settings.LinkVisibilityType = db.LinkVisibility.ByLinkView
+                settings.LinkedViewId = linked_view.Id
+                host_view.SetLinkOverrides(link.Id, settings)
         status = transaction.Commit()
         if status != db.TransactionStatus.Committed:
             raise RuntimeError(tr(u"Revit не сохранил настройки связей.", u"Revit did not commit the link settings."))
@@ -128,4 +148,4 @@ def apply(doc, host_view, choices):
         raise
     finally:
         transaction.Dispose()
-    return len(choices)
+    return len(choices) * len(host_views)
