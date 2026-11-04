@@ -117,6 +117,41 @@ def test_multiple_hosts_keep_their_own_graphics_in_one_transaction(model):
     assert len(model.transactions) == 1
 
 
+def test_independent_assignments_and_untouched_hosts(model):
+    second, untouched = Host(), Host()
+    model.hosts.extend([second, untouched])
+    assert lv.apply_assignments(model.doc, [
+        (model.host, [model.pair(1, 200)]),
+        (second, [model.pair(1, 201), model.pair(2, 202)])]) == 3
+    assert model.host.overrides[1].LinkedViewId == 200
+    assert second.overrides[1].LinkedViewId == 201
+    assert second.overrides[2].LinkedViewId == 202
+    assert 2 not in model.host.overrides
+    assert 1 not in untouched.overrides
+    assert len(model.transactions) == 1
+
+
+def test_independent_assignments_roll_back_together(model):
+    second = Host()
+    second.fail_on = 2
+    model.hosts.append(second)
+    with pytest.raises(ValueError):
+        lv.apply_assignments(model.doc, [
+            (model.host, [model.pair(1, 200)]),
+            (second, [model.pair(2, 201)])])
+    assert 1 not in model.host.overrides
+    assert 2 not in second.overrides
+    assert model.transactions[0].status == 'rolledback'
+
+
+def test_duplicate_host_link_pair_is_rejected(model):
+    with pytest.raises(ValueError):
+        lv.apply_assignments(model.doc, [
+            (model.host, [model.pair(1, 200)]),
+            (model.host, [model.pair(1, 201)])])
+    assert model.transactions == []
+
+
 def test_failure_on_later_host_rolls_back_earlier_host(model):
     second = Host()
     second.fail_on = 1

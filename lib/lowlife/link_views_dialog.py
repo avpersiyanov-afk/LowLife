@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""One modal batch editor shared by the selected host views."""
+"""Independent linked-view assignments, grouped by host view."""
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -37,7 +37,7 @@ def _text(value):
     return block
 
 
-def show(host_views, rows):
+def show(host_views, rows_by_host):
     result = {'choices': None}
     states = []
     win = Window()
@@ -47,8 +47,8 @@ def show(host_views, rows):
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     outer = DockPanel()
     outer.Margin = Thickness(16)
-    header = _text(tr(u"Выбрано видов: {}\nВыбранные виды связей будут применены ко всем отмеченным основным видам. Неотмеченные связи не меняются.",
-                      u"Selected views: {}\nThe linked views you choose will apply to all selected host views. Unchecked links remain unchanged.").format(len(host_views)))
+    header = _text(tr(u"Выбрано видов: {}. Настройте связи отдельно для каждого основного вида. Галочка означает изменение; снятая галочка сохраняет текущее отображение.",
+                      u"Selected views: {}. Configure links separately for each host view. Checked links will change; unchecked links keep their current display.").format(len(host_views)))
     header.ToolTip = u'\n'.join(link_views.safe_name(v) for v in host_views)
     header.Margin = Thickness(0, 0, 0, 12)
     DockPanel.SetDock(header, Dock.Top)
@@ -86,8 +86,49 @@ def show(host_views, rows):
                 state['check'].IsChecked = True
         return on_click
 
-    for i, row in enumerate(rows, 1):
+    def copy_picker(source_host):
+        def on_click(sender, args):
+            source = [s for s in states if s['host'] == source_host
+                      and s['check'].IsChecked and s['view'] is not None]
+            if not source:
+                forms.alert(tr(u"Сначала выберите виды связей в этом блоке.",
+                               u"Choose linked views in this section first."), title=win.Title)
+                return
+            targets = select_list.SelectFromList.show(
+                [_ViewOption(v) for v in host_views if v != source_host],
+                name_attr='label', multiselect=True,
+                title=tr(u"Копировать настройки на виды", u"Copy settings to views"),
+                button_name=tr(u"Копировать", u"Copy"))
+            for target in targets or []:
+                for dest in states:
+                    if dest['host'] != target.view or dest['row']['reason']:
+                        continue
+                    for item in source:
+                        if dest['row']['link'].Id == item['row']['link'].Id:
+                            dest['view'] = item['view']
+                            dest['button'].Content = link_views.safe_name(item['view'])
+                            dest['button'].ToolTip = dest['button'].Content
+                            dest['check'].IsChecked = True
+        return on_click
+
+    entries = []
+    for host, rows in zip(host_views, rows_by_host):
+        entries.append((host, None))
+        entries.extend((host, row) for row in rows)
+    for i, (host, row) in enumerate(entries, 1):
         grid.RowDefinitions.Add(RowDefinition())
+        if row is None:
+            label = _text(link_views.safe_name(host))
+            label.FontSize = 16
+            _place(grid, label, i, 0)
+            Grid.SetColumnSpan(label, 2)
+            copy_button = Button()
+            copy_button.Content = tr(u"Копировать на другие виды…", u"Copy to other views…")
+            copy_button.Padding = Thickness(8, 5, 8, 5)
+            copy_button.IsEnabled = len(host_views) > 1
+            copy_button.Click += copy_picker(host)
+            _place(grid, copy_button, i, 2)
+            continue
         check = CheckBox()
         check.Content = _text(row['name'])
         check.IsEnabled = row['reason'] is None
@@ -99,7 +140,7 @@ def show(host_views, rows):
         button.IsEnabled = row['reason'] is None
         button.Padding = Thickness(8, 5, 8, 5)
         _place(grid, button, i, 2)
-        state = dict(row=row, view=None, check=check, button=button)
+        state = dict(host=host, row=row, view=None, check=check, button=button)
         states.append(state)
         button.Click += picker(state)
 
@@ -113,11 +154,14 @@ def show(host_views, rows):
         if not chosen:
             forms.alert(tr(u"Отметьте хотя бы одну связь.", u"Check at least one link."), title=win.Title)
             return
-        missing = [s['row']['name'] for s in chosen if s['view'] is None]
+        missing = [u"{} / {}".format(link_views.safe_name(s['host']), s['row']['name'])
+                   for s in chosen if s['view'] is None]
         if missing:
             forms.alert(tr(u"Выберите вид для связей:\n{}", u"Choose a view for these links:\n{}").format(u'\n'.join(missing)), title=win.Title)
             return
-        result['choices'] = [(s['row']['link'], s['view']) for s in chosen]
+        result['choices'] = [(host, [(s['row']['link'], s['view']) for s in chosen
+                                     if s['host'] == host]) for host in host_views
+                             if any(s['host'] == host for s in chosen)]
         win.Close()
 
     cancel = Button()
