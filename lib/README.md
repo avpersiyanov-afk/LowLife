@@ -2972,10 +2972,12 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 ## link_views.py / link_views_dialog.py
 
 Кнопка `Tools.panel/LinkViews` («Виды связей»), Revit 2024+: настройка нескольких
-экземпляров связей для одного текущего вида. `availability(doc, view)` объясняет
+экземпляров связей отдельно для каждого выбранного основного вида. `availability(doc, view)` объясняет
 ограничения API, вида и шаблона; `collect_rows` возвращает связи, текущее отображение
-и доступные виды того же типа; `link_views_dialog.show(view, rows)` возвращает
-`[(RevitLinkInstance, View)]` или `None` при отмене. `apply(doc, view, choices)`
+и доступные виды того же типа; `link_views_dialog.show(host_views, rows_by_host)` возвращает
+`[(host_view, [(RevitLinkInstance, View)])]` или `None` при отмене.
+В окне отдельные блоки основных видов и копирование отмеченных назначений на другие виды.
+`apply_assignments(doc, assignments)`
 проверяет набор и сам открывает единую транзакцию с полным откатом при ошибке.
 Настройки пишутся на экземпляры, с сохранением прочих свойств существующих
 переопределений; типы связей и документы связей не изменяются.

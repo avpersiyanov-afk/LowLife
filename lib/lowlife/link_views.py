@@ -102,6 +102,11 @@ def apply(doc, host_view, choices):
 
 
 def apply_many(doc, host_views, choices):
+    choices = list(choices)
+    return apply_assignments(doc, [(host, choices) for host in host_views])
+
+
+def apply_assignments(doc, assignments):
     """Apply (instance, linked view) pairs atomically; one Revit Undo step.
 
     Read the existing settings so other supported graphics properties survive.
@@ -109,29 +114,28 @@ def apply_many(doc, host_views, choices):
     rolls back the entire batch, including failures during commit.
     """
     db = _db()
-    host_views = list(host_views)
-    choices = list(choices)
-    for host_view in host_views:
+    assignments = [(host, list(choices)) for host, choices in assignments]
+    seen = set()
+    for host_view, choices in assignments:
         problem = availability(doc, host_view)
         if problem:
             raise ValueError(u"{}: {}".format(safe_name(host_view), problem))
-    seen = set()
-    for link, linked_view in choices:
-        key = unicode(link.Id)
-        if key in seen:
-            raise ValueError(tr(u"Связь выбрана повторно: {}", u"Link selected twice: {}").format(safe_name(link)))
-        seen.add(key)
-        linked_doc = link.GetLinkDocument()
-        if (linked_doc is None or linked_view.Document != linked_doc
-                or linked_view.IsTemplate
-                or any(linked_view.ViewType != v.ViewType for v in host_views)):
-            raise ValueError(tr(u"Вид не подходит для связи: {}", u"View is incompatible with link: {}").format(safe_name(link)))
-    if not choices or not host_views:
+        for link, linked_view in choices:
+            key = (host_view, unicode(link.Id))
+            if key in seen:
+                raise ValueError(tr(u"Связь выбрана повторно: {}", u"Link selected twice: {}").format(safe_name(link)))
+            seen.add(key)
+            linked_doc = link.GetLinkDocument()
+            if (linked_doc is None or linked_view.Document != linked_doc
+                    or linked_view.IsTemplate
+                    or linked_view.ViewType != host_view.ViewType):
+                raise ValueError(tr(u"Вид не подходит для связи: {}", u"View is incompatible with link: {}").format(safe_name(link)))
+    if not seen:
         return 0
     transaction = db.Transaction(doc, tr(u"Виды связанных моделей", u"Linked model views"))
     try:
         transaction.Start()
-        for host_view in host_views:
+        for host_view, choices in assignments:
             for link, linked_view in choices:
                 settings = current_settings(host_view, link)
                 if settings is None:
@@ -148,4 +152,4 @@ def apply_many(doc, host_views, choices):
         raise
     finally:
         transaction.Dispose()
-    return len(choices) * len(host_views)
+    return len(seen)

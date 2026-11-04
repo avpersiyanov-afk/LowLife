@@ -5,7 +5,7 @@ from lowlife import link_views, link_views_dialog, select_list
 from lowlife.i18n import tr
 
 __title__ = u"Виды\nсвязей"
-__doc__ = u"Выбрать основные виды одного типа и применить к ним настройки видов связей вместе."
+__doc__ = u"Выбрать основные виды одного типа и настроить виды связей отдельно для каждого."
 
 
 def main():
@@ -27,16 +27,16 @@ def main():
             if problem:
                 forms.alert(u"{}: {}".format(link_views.safe_name(host), problem), title=title)
                 return
-        rows = link_views.collect_many_rows(doc, views)
-        if not rows:
+        rows = [link_views.collect_rows(doc, host) for host in views]
+        if not any(rows):
             forms.alert(tr(u"В модели нет связей Revit.", u"The model has no Revit links."), title=title)
             return
         choices = link_views_dialog.show(views, rows)
         if choices is None:
             return
-        count = link_views.apply_many(doc, views, choices)
+        count = link_views.apply_assignments(doc, choices)
         forms.alert(tr(u"Настроено видов: {}. Применено настроек связей: {}",
-                       u"Views configured: {}. Link settings applied: {}").format(len(views), count), title=title)
+                       u"Views configured: {}. Link settings applied: {}").format(len(choices), count), title=title)
     except Exception as ex:
         script.get_logger().exception('Linked model view settings failed')
         forms.alert(tr(u"Не удалось настроить связи. Изменения не сохранены.\n{}",
