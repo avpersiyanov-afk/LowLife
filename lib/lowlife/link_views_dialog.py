@@ -8,11 +8,11 @@ from System.Windows import (Window, WindowStartupLocation, Thickness,
                             GridLength, GridUnitType, HorizontalAlignment,
                             VerticalAlignment, TextWrapping, Visibility)
 from System.Windows.Controls import (DockPanel, Dock, StackPanel, Orientation,
-                                     TextBlock, Button, CheckBox, ComboBox, Grid,
+                                     TextBlock, TextBox, Button, CheckBox, ComboBox, Grid,
                                      ColumnDefinition, RowDefinition,
                                      ScrollViewer, ScrollBarVisibility)
 from pyrevit import forms
-from lowlife import link_views, select_list
+from lowlife import link_views, select_list, text_search
 from lowlife.i18n import tr
 
 
@@ -87,6 +87,19 @@ def show(host_views, rows_by_host):
                 state['view'] = picked.view
                 state['combo'].ToolTip = picked.label
                 state['check'].IsChecked = True
+            else:
+                state['view'] = None
+                state['check'].IsChecked = False
+        return on_change
+
+    def search_changed(state):
+        def on_change(sender, args):
+            combo = state['combo']
+            picked = combo.SelectedItem
+            matches = text_search.rank(state['options'], state['search'].Text,
+                                       key=lambda option: option.label)
+            combo.ItemsSource = matches
+            combo.SelectedItem = picked if picked in matches else None
         return on_change
 
     def copy_picker(source_host):
@@ -109,6 +122,7 @@ def show(host_views, rows_by_host):
                         continue
                     for item in source:
                         if dest['row']['link'].Id == item['row']['link'].Id:
+                            dest['search'].Text = u''
                             for option in dest['combo'].ItemsSource:
                                 if option.view.Id == item['view'].Id:
                                     dest['combo'].SelectedItem = option
@@ -145,17 +159,32 @@ def show(host_views, rows_by_host):
         _place(grid, current, i, 1)
         combo = ComboBox()
         combo.DisplayMemberPath = 'label'
-        combo.ItemsSource = [_ViewOption(v) for v in row['views']]
+        options = [_ViewOption(v) for v in row['views']]
+        combo.ItemsSource = options
         combo.IsTextSearchEnabled = True
         combo.MaxDropDownHeight = 320
         combo.ToolTip = row['reason'] or tr(u"Выбрать вид…", u"Choose view…")
         combo.IsEnabled = row['reason'] is None
-        control = _text(row['reason']) if row['reason'] else combo
+        search = TextBox()
+        search.ToolTip = tr(u"Поиск видов: часть имени, слова в любом порядке.",
+                            u"Search views: part of a name, words in any order.")
+        search.Margin = Thickness(4, 0, 0, 4)
+        search_line = DockPanel()
+        search_label = _text(tr(u"Поиск", u"Search"))
+        DockPanel.SetDock(search_label, Dock.Left)
+        search_line.Children.Add(search_label)
+        search_line.Children.Add(search)
+        editor = StackPanel()
+        editor.Children.Add(search_line)
+        editor.Children.Add(combo)
+        control = _text(row['reason']) if row['reason'] else editor
         _place(grid, control, i, 2)
         state = dict(host=host, row=row, view=None, check=check, combo=combo,
+                     search=search, options=options,
                      controls=(check, current, control))
         states.append(state)
         combo.SelectionChanged += selection_changed(state)
+        search.TextChanged += search_changed(state)
 
     models = StackPanel()
     models.Children.Add(_text(tr(
