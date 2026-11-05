@@ -5,7 +5,7 @@
 1. Open the host model view whose link display you want to configure.
 2. Click **Linked views** and select host views of the same type as the current view.
    Use the model checkboxes at the top of the dialog to choose which linked models
-   to configure on all selected host views. All models are checked initially.
+   to configure on all selected host views. All models are unchecked initially; check only the models you need.
    Unchecking a model hides its instances and excludes them from applying and copying
    settings. Assignments remain in the dialog if you check the model again.
    Each host view has its own section showing selected link instances and their current display settings.
