@@ -19,7 +19,12 @@ from lowlife.i18n import tr
 class _ViewOption(object):
     def __init__(self, view):
         self.view = view
-        self.label = link_views.safe_name(view)
+        self.label = (tr(u"Пользовательские настройки", u"Custom settings")
+                      if view == link_views.CUSTOM_VIEW else link_views.safe_name(view))
+
+
+def _view_key(view):
+    return link_views.CUSTOM_VIEW if view == link_views.CUSTOM_VIEW else u'{}'.format(view.Id)
 
 
 def _place(grid, control, row, col):
@@ -58,6 +63,10 @@ def show(host_views, rows_by_host):
     header = _text(tr(u"Выбрано видов: {}. Настройте связи отдельно для каждого основного вида. Галочка у экземпляра связи означает изменение; снятая галочка сохраняет текущее отображение.",
                       u"Selected views: {}. Configure links separately for each host view. Checked link instances will change; unchecked instances keep their current display.").format(len(host_views)))
     header.ToolTip = u'\n'.join(link_views.safe_name(v) for v in host_views)
+    if not any(row.get('custom_available') for rows in rows_by_host for row in rows):
+        header.Text += u'\n' + tr(
+            u"Пользовательские настройки связей доступны через API только с Revit 2025.",
+            u"Custom link settings are available through the API only in Revit 2025 or later.")
     header.Margin = Thickness(0, 0, 0, 12)
     DockPanel.SetDock(header, Dock.Top)
     outer.Children.Add(header)
@@ -124,7 +133,7 @@ def show(host_views, rows_by_host):
                         if dest['row']['link'].Id == item['row']['link'].Id:
                             dest['search'].Text = u''
                             for option in dest['combo'].ItemsSource:
-                                if option.view.Id == item['view'].Id:
+                                if _view_key(option.view) == _view_key(item['view']):
                                     dest['combo'].SelectedItem = option
                                     dest['check'].IsChecked = True
                                     break
@@ -160,6 +169,8 @@ def show(host_views, rows_by_host):
         combo = ComboBox()
         combo.DisplayMemberPath = 'label'
         options = [_ViewOption(v) for v in row['views']]
+        if row.get('custom_available'):
+            options.insert(0, _ViewOption(link_views.CUSTOM_VIEW))
         combo.ItemsSource = options
         combo.IsTextSearchEnabled = True
         combo.MaxDropDownHeight = 320

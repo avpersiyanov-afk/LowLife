@@ -12,6 +12,13 @@ except NameError:
 
 from lowlife.i18n import tr
 
+CUSTOM_VIEW = '__custom__'
+
+
+def supports_custom(doc):
+    """SetLinkOverrides supports Custom only starting with Revit 2025."""
+    return int(doc.Application.VersionNumber) >= 2025
+
 
 def _db():
     from Autodesk.Revit import DB
@@ -63,6 +70,7 @@ def current_settings(host_view, link):
 
 def collect_rows(doc, host_view):
     db = _db()
+    custom_available = supports_custom(doc)
     rows = []
     for link in db.FilteredElementCollector(doc).OfClass(db.RevitLinkInstance):
         linked_doc = link.GetLinkDocument()
@@ -70,7 +78,7 @@ def collect_rows(doc, host_view):
         reason = None
         if linked_doc is None:
             reason = tr(u"Связь не загружена", u"Link is unloaded")
-        elif not views:
+        elif not views and not custom_available:
             reason = tr(u"Нет видов такого же типа", u"No views of the same type")
         settings = current_settings(host_view, link) if linked_doc else None
         current = tr(u"По основному виду", u"By host view")
@@ -82,7 +90,8 @@ def collect_rows(doc, host_view):
             elif settings.LinkVisibilityType == db.LinkVisibility.Custom:
                 current = tr(u"Пользовательские настройки", u"Custom settings")
         rows.append(dict(link=link, name=u"{} [Id {}]".format(safe_name(link), link.Id),
-                         views=views, reason=reason, current=current))
+                         views=views, reason=reason, current=current,
+                         custom_available=custom_available and linked_doc is not None))
     return sorted(rows, key=lambda row: row['name'].lower())
 
 
@@ -126,6 +135,13 @@ def apply_assignments(doc, assignments):
                 raise ValueError(tr(u"Связь выбрана повторно: {}", u"Link selected twice: {}").format(safe_name(link)))
             seen.add(key)
             linked_doc = link.GetLinkDocument()
+            if linked_view == CUSTOM_VIEW:
+                if not supports_custom(doc):
+                    raise ValueError(tr(u"Пользовательские настройки связей требуют Revit 2025 или новее.",
+                                        u"Custom link settings require Revit 2025 or later."))
+                if linked_doc is None:
+                    raise ValueError(tr(u"Связь не загружена", u"Link is unloaded"))
+                continue
             if (linked_doc is None or linked_view.Document != linked_doc
                     or linked_view.IsTemplate
                     or linked_view.ViewType != host_view.ViewType):
@@ -140,8 +156,11 @@ def apply_assignments(doc, assignments):
                 settings = current_settings(host_view, link)
                 if settings is None:
                     settings = db.RevitLinkGraphicsSettings()
-                settings.LinkVisibilityType = db.LinkVisibility.ByLinkView
-                settings.LinkedViewId = linked_view.Id
+                if linked_view == CUSTOM_VIEW:
+                    settings.LinkVisibilityType = db.LinkVisibility.Custom
+                else:
+                    settings.LinkVisibilityType = db.LinkVisibility.ByLinkView
+                    settings.LinkedViewId = linked_view.Id
                 host_view.SetLinkOverrides(link.Id, settings)
         status = transaction.Commit()
         if status != db.TransactionStatus.Committed:
@@ -153,3 +172,4 @@ def apply_assignments(doc, assignments):
     finally:
         transaction.Dispose()
     return len(seen)
+
