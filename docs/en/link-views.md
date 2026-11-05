@@ -10,6 +10,9 @@
    settings. Assignments remain in the dialog if you check the model again.
    Each host view has its own section showing selected link instances and their current display settings.
 3. For each link, choose a view from the **New view** dropdown in the same dialog.
+   The **Search** field above the dropdown filters views by part of a name or words
+   in any order, ignoring case and supporting the wrong keyboard layout. Clear the
+   search to restore all views. If the selected view no longer matches, its assignment is cleared.
    Choosing a view checks that instance automatically; uncheck it to leave it unchanged.
 4. Use **Copy to other views…** in a section to copy its checked assignments to
    selected host views. This replaces assignments for the same links in those sections;
