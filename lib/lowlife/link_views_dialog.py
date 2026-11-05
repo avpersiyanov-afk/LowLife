@@ -19,12 +19,11 @@ from lowlife.i18n import tr
 class _ViewOption(object):
     def __init__(self, view):
         self.view = view
-        self.label = (tr(u"Пользовательские настройки", u"Custom settings")
-                      if view == link_views.CUSTOM_VIEW else link_views.safe_name(view))
+        self.label = link_views.safe_name(view)
 
 
 def _view_key(view):
-    return link_views.CUSTOM_VIEW if view == link_views.CUSTOM_VIEW else u'{}'.format(view.Id)
+    return u'{}'.format(view.Id)
 
 
 def _place(grid, control, row, col):
@@ -98,7 +97,12 @@ def show(host_views, rows_by_host):
                 state['check'].IsChecked = True
             else:
                 state['view'] = None
-                state['check'].IsChecked = False
+                state['check'].IsChecked = bool(state['custom'].IsChecked)
+        return on_change
+
+    def mode_changed(state):
+        def on_change(sender, args):
+            state['check'].IsChecked = bool(state['custom'].IsChecked or state['view'] is not None)
         return on_change
 
     def search_changed(state):
@@ -114,7 +118,8 @@ def show(host_views, rows_by_host):
     def copy_picker(source_host):
         def on_click(sender, args):
             source = [s for s in states if s['host'] == source_host and model_selected(s)
-                      and s['check'].IsChecked and s['view'] is not None]
+                      and s['check'].IsChecked
+                      and (s['view'] is not None or s['custom'].IsChecked)]
             if not source:
                 forms.alert(tr(u"Сначала выберите виды связей в этом блоке.",
                                u"Choose linked views in this section first."), title=win.Title)
@@ -132,11 +137,13 @@ def show(host_views, rows_by_host):
                     for item in source:
                         if dest['row']['link'].Id == item['row']['link'].Id:
                             dest['search'].Text = u''
+                            dest['combo'].SelectedItem = None
                             for option in dest['combo'].ItemsSource:
-                                if _view_key(option.view) == _view_key(item['view']):
+                                if item['view'] is not None and _view_key(option.view) == _view_key(item['view']):
                                     dest['combo'].SelectedItem = option
-                                    dest['check'].IsChecked = True
                                     break
+                            dest['custom'].IsChecked = bool(item['custom'].IsChecked)
+                            dest['check'].IsChecked = True
         return on_click
 
     entries = []
@@ -169,8 +176,6 @@ def show(host_views, rows_by_host):
         combo = ComboBox()
         combo.DisplayMemberPath = 'label'
         options = [_ViewOption(v) for v in row['views']]
-        if row.get('custom_available'):
-            options.insert(0, _ViewOption(link_views.CUSTOM_VIEW))
         combo.ItemsSource = options
         combo.IsTextSearchEnabled = True
         combo.MaxDropDownHeight = 320
@@ -188,14 +193,27 @@ def show(host_views, rows_by_host):
         editor = StackPanel()
         editor.Children.Add(search_line)
         editor.Children.Add(combo)
+        custom = CheckBox()
+        custom.Content = tr(u"Пользовательские настройки", u"Custom settings")
+        custom.ToolTip = tr(u"Включить пользовательский режим, сохранив выбранный связанный вид. Снимите галочку для режима «По связанному виду».",
+                            u"Enable Custom mode while keeping the selected linked view. Uncheck for By linked view mode.")
+        custom.IsChecked = False
+        custom.IsEnabled = bool(row.get('custom_available'))
+        custom.Margin = Thickness(0, 6, 0, 0)
+        if not row.get('custom_available'):
+            custom.Visibility = Visibility.Collapsed
+        editor.Children.Add(custom)
         control = _text(row['reason']) if row['reason'] else editor
         _place(grid, control, i, 2)
         state = dict(host=host, row=row, view=None, check=check, combo=combo,
                      search=search, options=options,
+                     custom=custom,
                      controls=(check, current, control))
         states.append(state)
         combo.SelectionChanged += selection_changed(state)
         search.TextChanged += search_changed(state)
+        custom.Checked += mode_changed(state)
+        custom.Unchecked += mode_changed(state)
 
     models = StackPanel()
     models.Children.Add(_text(tr(
@@ -248,11 +266,12 @@ def show(host_views, rows_by_host):
             forms.alert(tr(u"Отметьте хотя бы одну связь.", u"Check at least one link."), title=win.Title)
             return
         missing = [u"{} / {}".format(link_views.safe_name(s['host']), s['row']['name'])
-                   for s in chosen if s['view'] is None]
+                   for s in chosen if s['view'] is None and not s['custom'].IsChecked]
         if missing:
             forms.alert(tr(u"Выберите вид для связей:\n{}", u"Choose a view for these links:\n{}").format(u'\n'.join(missing)), title=win.Title)
             return
-        result['choices'] = [(host, [(s['row']['link'], s['view']) for s in chosen
+        result['choices'] = [(host, [(s['row']['link'], link_views.CustomView(s['view'])
+                                      if s['custom'].IsChecked else s['view']) for s in chosen
                                      if s['host'] == host]) for host in host_views
                              if any(s['host'] == host for s in chosen)]
         win.Close()

@@ -282,6 +282,44 @@ def test_custom_without_existing_override_does_not_require_linked_view(model):
     assert model.host.overrides[1].LinkedViewId == -1
 
 
+def test_custom_with_selected_view_keeps_mode_view_and_existing_graphics(model):
+    link, view = model.pair(1, 222)
+    model.host.overrides[100].other_graphics = 'preserved'
+    lv.apply(model.doc, model.host, [(link, lv.CustomView(view))])
+    settings = model.host.overrides[1]
+    assert settings.LinkVisibilityType == 'custom'
+    assert settings.LinkedViewId == 222
+    assert settings.other_graphics == 'preserved'
+    # Switching back to By linked view still uses the explicitly selected view.
+    lv.apply(model.doc, model.host, [(link, view)])
+    assert model.host.overrides[1].LinkVisibilityType == 'linked'
+    assert model.host.overrides[1].LinkedViewId == 222
+
+
+@pytest.mark.parametrize('invalid', ['type', 'template', 'document', 'old_api'])
+def test_custom_with_view_is_validated_before_transaction(model, invalid):
+    link, view = model.pair(1)
+    if invalid == 'type':
+        view.ViewType = 'section'
+    elif invalid == 'template':
+        view.IsTemplate = True
+    elif invalid == 'document':
+        view.Document = Obj(other=True)
+    else:
+        model.doc.Application.VersionNumber = '2024'
+    with pytest.raises(ValueError):
+        lv.apply(model.doc, model.host, [(link, lv.CustomView(view))])
+    assert model.transactions == []
+
+
+def test_custom_without_selected_view_keeps_current_linked_view(model):
+    model.host.overrides[100].LinkedViewId = 333
+    link, _ = model.pair(1)
+    lv.apply(model.doc, model.host, [(link, lv.CustomView())])
+    assert model.host.overrides[1].LinkVisibilityType == 'custom'
+    assert model.host.overrides[1].LinkedViewId == 333
+
+
 @pytest.mark.parametrize('invalid', ['old_api', 'unloaded'])
 def test_custom_rejected_before_transaction_when_unavailable(model, invalid):
     link, _ = model.pair(1)
