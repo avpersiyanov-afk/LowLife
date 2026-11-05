@@ -181,7 +181,7 @@ def show(host_views, rows_by_host):
     for label, key, group in sorted(labelled, key=lambda item: item[0].lower()):
         check = CheckBox()
         check.Content = _text(label)
-        check.IsChecked = True
+        check.IsChecked = False
         check.Margin = Thickness(4, 4, 8, 4)
         model_checks[key] = check
         model_list.Children.Add(check)
