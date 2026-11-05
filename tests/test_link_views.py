@@ -40,7 +40,7 @@ class Host(object):
 def model(monkeypatch):
     host = Host()
     linked_doc = Obj()
-    doc = Obj(GetElement=lambda key: None)
+    doc = Obj(GetElement=lambda key: None, Application=Obj(VersionNumber='2025'))
     transactions = []
     hosts = [host]
 
@@ -259,3 +259,58 @@ def test_graphics_unavailable_and_old_api_are_explained(model):
     assert lv.availability(model.doc, model.host)
     del model.db.RevitLinkGraphicsSettings
     assert lv.availability(model.doc, model.host)
+
+
+def test_custom_preserves_existing_graphics_and_linked_view(model):
+    settings = model.host.overrides[100]
+    settings.LinkVisibilityType = 'linked'
+    settings.LinkedViewId = 200
+    settings.other_graphics = 'custom graphics'
+    link, _ = model.pair(1)
+    assert lv.apply(model.doc, model.host, [(link, lv.CUSTOM_VIEW)]) == 1
+    assert model.host.overrides[1].LinkVisibilityType == 'custom'
+    assert model.host.overrides[1].LinkedViewId == 200
+    assert model.host.overrides[1].other_graphics == 'custom graphics'
+    assert model.host.overrides[100].LinkVisibilityType == 'linked'
+
+
+def test_custom_without_existing_override_does_not_require_linked_view(model):
+    model.host.overrides = {}
+    link, _ = model.pair(1)
+    lv.apply(model.doc, model.host, [(link, lv.CUSTOM_VIEW)])
+    assert model.host.overrides[1].LinkVisibilityType == 'custom'
+    assert model.host.overrides[1].LinkedViewId == -1
+
+
+@pytest.mark.parametrize('invalid', ['old_api', 'unloaded'])
+def test_custom_rejected_before_transaction_when_unavailable(model, invalid):
+    link, _ = model.pair(1)
+    if invalid == 'old_api':
+        model.doc.Application.VersionNumber = '2024'
+    else:
+        link.GetLinkDocument = lambda: None
+    with pytest.raises(ValueError):
+        lv.apply(model.doc, model.host, [(link, lv.CUSTOM_VIEW)])
+    assert model.transactions == []
+
+
+def test_custom_and_linked_assignments_roll_back_together(model):
+    link, _ = model.pair(1)
+    model.host.fail_on = 2
+    with pytest.raises(ValueError):
+        lv.apply(model.doc, model.host, [(link, lv.CUSTOM_VIEW), model.pair(2)])
+    assert 1 not in model.host.overrides
+    assert model.transactions[0].status == 'rolledback'
+
+
+@pytest.mark.parametrize('version, available', [('2024', False), ('2025', True), ('2026', True)])
+def test_custom_available_even_without_compatible_views(model, monkeypatch, version, available):
+    model.doc.Application.VersionNumber = version
+    link, _ = model.pair(1)
+    model.db.RevitLinkInstance = object
+    model.db.FilteredElementCollector = lambda doc: Obj(OfClass=lambda cls: [link])
+    monkeypatch.setattr(lv, 'compatible_views', lambda doc, view: [])
+    row = lv.collect_rows(model.doc, model.host)[0]
+    assert row['custom_available'] is available
+    assert (row['reason'] is None) is available
+
