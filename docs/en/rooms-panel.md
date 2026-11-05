@@ -29,10 +29,6 @@ Only link rooms are taken (not the model's own); several instances of one link c
 
 Settings (Shift+click): the room parameter **«Lot name»** (required) and **«Section number»** (optional — the second sort key and a report column).
 
-## Tag diagnostics
-
-Temporary diagnostics for the [«Room tags»](room-tags.md) button: select one room tag and press — the button shows what the «Room tags» logic sees for it (the tag's room, its area and point, the tag's position relative to the room boundaries). Needed to work out why a particular tag stays «?». Doesn't change the model.
-
 ## Fragment room schedule
 
 A room schedule for a **cropped plan** (a fragment; the «Crop view» button on the Tools panel is handy for cropping). The button takes rooms of the model and visible links whose location point falls inside the active plan's crop region and which Revit shows on this plan, and creates a table: number, name, area, category. Rooms with zero area are skipped. If the plan already has a room schedule, it is updated.

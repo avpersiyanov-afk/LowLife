@@ -210,17 +210,6 @@ def door_room(c):
     c.circle((cx, cy), 5, None, WHITE)
 
 
-def diag_tag(c):
-    """«Диагностика марки»: помещение с маркой (как «Марки помещений») под лупой."""
-    c.rect((10, 30, 50, 80), BLUE, None, 5, 2)
-    c.line([(44, 36), (60, 22)], BLUE, 3)
-    c.rect((56, 12, 86, 28), None, BLUE, 0, 4)
-    c.line([(62, 20), (72, 20)], WHITE, 3)
-    c.circle((79, 20), 3, None, ORANGE)
-    c.magnifier((58, 60), 14, 14)
-    c.circle((58, 60), 5, None, ORANGE)
-
-
 def feedback(c):
     """«Обратная связь»: облачко сообщения с оранжевым восклицательным знаком."""
     c.rect((12, 16, 84, 64), BLUE, WHITE, 5, 12)
@@ -672,7 +661,6 @@ ICONS = [
     ("SOT.panel/CameraPreviewView.pushbutton", camera_view),
     ("SKUD.panel/InspectSchematicDevices.pushbutton", diag_schematic),
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
-    ("ToolsRooms.panel/DiagnoseRoomTag.pushbutton", diag_tag),
     ("Info.panel/Info.stack/Feedback.pushbutton", feedback),
     ("_Themes.panel/Actions.stack/Search.pushbutton", ribbon_search),
     ("_Themes.panel/Actions.stack/MyPanels.pushbutton", favorites),
