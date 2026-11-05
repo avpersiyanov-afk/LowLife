@@ -10,14 +10,18 @@
    settings. Assignments remain in the dialog if you check the model again.
    Each host view has its own section showing selected link instances and their current display settings.
 3. For each link, choose a view from the **New view** dropdown in the same dialog.
-   Revit 2025 and later also offer **Custom settings**. This switches the link display
-   mode while retaining its existing graphics settings and assigned linked view.
+   Revit 2025 and later show a **Custom settings** checkbox below the dropdown.
+   Select a linked view, then check it to apply both Custom mode and that view.
+   Uncheck it to return to **By linked view** without losing the selected view.
+   You can also enable Custom without selecting a new view, retaining the view
+   already assigned in Revit. Enabling Custom preserves existing graphics settings.
    Edit individual settings in Revit's **Visibility/Graphics → Revit Links** dialog.
    The **Search** field above the dropdown filters views by part of a name or words
    in any order, ignoring case and supporting the wrong keyboard layout. Clear the
-   search to restore all views. If the selected view no longer matches, its assignment is cleared.
+   search to restore all views. If the selected view no longer matches, its selection
+   is cleared; the Custom mode checkbox is unchanged.
    Choosing a view checks that instance automatically; uncheck it to leave it unchanged.
-4. Use **Copy to other views…** in a section to copy its checked assignments to
+4. Use **Copy to other views…** in a section to copy the mode and linked view of its checked assignments to
    selected host views. This replaces assignments for the same links in those sections;
    other assignments are preserved.
 5. Click **Apply** to switch checked instances to **By linked view** or **Custom settings**
