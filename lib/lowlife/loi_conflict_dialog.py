@@ -30,11 +30,11 @@ from System.Collections.Generic import List
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
-    HorizontalAlignment, TextWrapping
+    HorizontalAlignment, TextWrapping, Style, Setter
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, Button, Orientation, DockPanel, Dock,
-    DataGrid, DataGridTextColumn, DataGridComboBoxColumn, DataGridLength,
+    DataGrid, DataGridTextColumn, DataGridComboBoxColumn, DataGridLength, ComboBox,
     DataGridLengthUnitType, DataGridHeadersVisibility,
     DataGridGridLinesVisibility, DataGridSelectionMode, DataGridSelectionUnit
 )
@@ -155,7 +155,14 @@ def show_conflict_dialog(doc, uidoc, matches, param_names):
 
     source_col = DataGridComboBoxColumn()
     source_col.Header = tr(u"Форма-источник")
-    source_col.ItemsSourceBinding = Binding("Candidates")
+    # The column has no ItemsSourceBinding or row DataContext. Bind the
+    # generated ComboBoxes instead, in both display and editing modes.
+    for style_property, base_style in (
+            ("ElementStyle", DataGridComboBoxColumn.DefaultElementStyle),
+            ("EditingElementStyle", DataGridComboBoxColumn.DefaultEditingElementStyle)):
+        style = Style(ComboBox, base_style)
+        style.Setters.Add(Setter(ComboBox.ItemsSourceProperty, Binding("Candidates")))
+        setattr(source_col, style_property, style)
     selected_binding = Binding("SelectedCandidate")
     selected_binding.Mode = BindingMode.TwoWay
     selected_binding.UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged

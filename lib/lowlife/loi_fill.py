@@ -2,7 +2,8 @@
 """
 Логика кнопки «Заполнение LOI» (LOI.panel): клонирование значений
 параметров из элементов категории «Форма» (FORM_CATEGORY_NAME — она всегда
-одна и та же, не настраивается) во все элементы активного вида, физически
+одна и та же, не настраивается) в выбранные объекты или элементы выбранного
+3D-вида, физически
 находящиеся внутри солида конкретной «Формы».
 
 Проверка «элемент внутри формы» — точно по солиду формы (не по bounding
@@ -25,8 +26,8 @@ loi_conflict_dialog.py). Элемент, попавший ровно в одну
 автоматически.
 
 Какие именно элементы вообще проверяются на попадание в форму — определяет
-SELECTION_MODE_* (см. collect_candidates): весь документ, только активный
-вид, либо только выбранные в настройках типы семейств.
+диалог запуска: выбранные объекты или элементы выбранного 3D-вида.
+Прежние SELECTION_MODE_* сохранены для совместимости библиотечных вызовов.
 
 «Формы» обычно лежат в отдельной связанной архитектурной модели — какие
 именно модели просматривать (текущий файл-хост и/или конкретные загруженные
@@ -69,7 +70,7 @@ FORM_CATEGORY_NAME = u"Формы"
 # имена загруженных связей (RevitLinkInstance), см. list_search_locations.
 HOST_LOCATION_KEY = u"HOST"
 
-# Режимы отбора кандидатов (loi_settings.MODE_KEY) — какие элементы вообще
+# Прежние режимы отбора кандидатов — для совместимости библиотечных вызовов:
 # проверяются на попадание в «Формы»:
 #   view  — модельные элементы активного вида (исходное поведение);
 #   all   — все модельные элементы документа, без привязки к виду;
@@ -465,18 +466,24 @@ def list_search_locations(doc):
 
 
 def collect_candidates(doc, view, exclude_category_name,
-                        mode=SELECTION_MODE_VIEW, type_ids=None):
+                        mode=SELECTION_MODE_VIEW, type_ids=None, selected_ids=None):
     """
     Элементы модели — кандидаты на попадание в «Формы», кроме самих
     «Форм» и не-модельных категорий. mode (см. SELECTION_MODE_*):
-      view  — только элементы активного вида (исходное поведение, view.Id);
+      view  — только элементы переданного вида (view.Id);
       all   — все элементы документа, вид не учитывается;
       types — все элементы документа, чей GetTypeId() входит в type_ids
               (набор int — ElementId.IntegerValue типов, см.
               list_candidate_types); пустой/None type_ids -> пустой
               результат (нечего искать).
+    selected_ids, если передан (включая пустой список), ограничивает результат
+    конкретными объектами текущего документа, независимо от вида и mode.
     """
-    if mode == SELECTION_MODE_TYPES:
+    if selected_ids is not None:
+        # An empty selection must never fall back to the view/document.
+        wanted_type_ids = None
+        collector = [doc.GetElement(eid) for eid in selected_ids]
+    elif mode == SELECTION_MODE_TYPES:
         wanted_type_ids = set(type_ids or [])
         if not wanted_type_ids:
             return []
@@ -490,6 +497,8 @@ def collect_candidates(doc, view, exclude_category_name,
 
     result = []
     for el in collector:
+        if el is None:
+            continue
         cat = el.Category
         if cat is None:
             continue
