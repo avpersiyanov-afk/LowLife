@@ -4,7 +4,11 @@
 
 1. Open the host model view whose link display you want to configure.
 2. Click **Linked views** and select host views of the same type as the current view.
-   Each host view has its own section showing link instances and their current display settings.
+   Use the model checkboxes at the top of the dialog to choose which linked models
+   to configure on all selected host views. All models are checked initially.
+   Unchecking a model hides its instances and excludes them from applying and copying
+   settings. Assignments remain in the dialog if you check the model again.
+   Each host view has its own section showing selected link instances and their current display settings.
 3. Click **Choose view…** for each link and search for its view by name.
    Choosing a view checks that instance automatically; uncheck it to leave it unchanged.
 4. Use **Copy to other views…** in a section to copy its checked assignments to
@@ -13,8 +17,9 @@
 5. Click **Apply** to switch the checked instances to **By linked view** together.
 
 The same link can use different linked views on different host views.
-Each model can use a different view. Multiple instances of one model are listed
-separately with their IDs. Only non-template views of the same type as the host
+Each model can use a different view. One model checkbox covers all its instances,
+which are listed separately with their IDs for view assignment.
+Only non-template views of the same type as the host
 view are offered. Revit performs the final compatibility validation.
 Unloaded links and links without matching view types are listed but disabled.
 
@@ -28,5 +33,8 @@ linked documents are not edited.
 Manual Revit validation: assign different views to two links, including two
 instances of the same model, and inspect **Visibility/Graphics → Revit Links**.
 Check Undo, cancellation, unloaded links, template control and reopening the dialog.
+Also uncheck a model after assigning a view: its instances must remain unchanged
+on all host views, including after copying settings.
 
 [Русский](../link-views.md)
+
