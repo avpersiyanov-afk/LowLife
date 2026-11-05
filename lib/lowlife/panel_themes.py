@@ -208,7 +208,6 @@ THEMES = {
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),
         (u"ToolsRooms", u"RoomLots"),
-        (u"ToolsRooms", u"DiagnoseRoomTag"),
         (u"ToolsRooms", u"FragmentExplication"),
         (u"ToolsRooms", u"UpdateExplication"),
         (u"ToolsSchedules", u"SplitScheduleOnSheet"),

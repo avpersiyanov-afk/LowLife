@@ -5,7 +5,6 @@ layout:
   - RoomTags
   - FindRoom
   - RoomLots
-  - DiagnoseRoomTag
   - FragmentExplication
   - UpdateExplication
 title_en: "Rooms"
