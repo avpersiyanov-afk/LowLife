@@ -8,7 +8,7 @@ from System.Windows import (Window, WindowStartupLocation, Thickness,
                             GridLength, GridUnitType, HorizontalAlignment,
                             VerticalAlignment, TextWrapping, Visibility)
 from System.Windows.Controls import (DockPanel, Dock, StackPanel, Orientation,
-                                     TextBlock, Button, CheckBox, Grid,
+                                     TextBlock, Button, CheckBox, ComboBox, Grid,
                                      ColumnDefinition, RowDefinition,
                                      ScrollViewer, ScrollBarVisibility)
 from pyrevit import forms
@@ -80,19 +80,14 @@ def show(host_views, rows_by_host):
                                    tr(u"Новый вид", u"New view"))):
         _place(grid, _text(caption), 0, col)
 
-    def picker(state):
-        def on_click(sender, args):
-            options = [_ViewOption(v) for v in state['row']['views']]
-            picked = select_list.SelectFromList.show(
-                options, name_attr='label', multiselect=False,
-                title=tr(u"Вид связи: {}", u"Linked view: {}").format(state['row']['name']),
-                button_name=tr(u"Выбрать", u"Select"), width=650, height=650)
+    def selection_changed(state):
+        def on_change(sender, args):
+            picked = state['combo'].SelectedItem
             if picked is not None:
                 state['view'] = picked.view
-                state['button'].Content = picked.label
-                state['button'].ToolTip = picked.label
+                state['combo'].ToolTip = picked.label
                 state['check'].IsChecked = True
-        return on_click
+        return on_change
 
     def copy_picker(source_host):
         def on_click(sender, args):
@@ -114,10 +109,11 @@ def show(host_views, rows_by_host):
                         continue
                     for item in source:
                         if dest['row']['link'].Id == item['row']['link'].Id:
-                            dest['view'] = item['view']
-                            dest['button'].Content = link_views.safe_name(item['view'])
-                            dest['button'].ToolTip = dest['button'].Content
-                            dest['check'].IsChecked = True
+                            for option in dest['combo'].ItemsSource:
+                                if option.view.Id == item['view'].Id:
+                                    dest['combo'].SelectedItem = option
+                                    dest['check'].IsChecked = True
+                                    break
         return on_click
 
     entries = []
@@ -147,15 +143,19 @@ def show(host_views, rows_by_host):
         _place(grid, check, i, 0)
         current = _text(row['current'])
         _place(grid, current, i, 1)
-        button = Button()
-        button.Content = row['reason'] or tr(u"Выбрать вид…", u"Choose view…")
-        button.IsEnabled = row['reason'] is None
-        button.Padding = Thickness(8, 5, 8, 5)
-        _place(grid, button, i, 2)
-        state = dict(host=host, row=row, view=None, check=check, button=button,
-                     controls=(check, current, button))
+        combo = ComboBox()
+        combo.DisplayMemberPath = 'label'
+        combo.ItemsSource = [_ViewOption(v) for v in row['views']]
+        combo.IsTextSearchEnabled = True
+        combo.MaxDropDownHeight = 320
+        combo.ToolTip = row['reason'] or tr(u"Выбрать вид…", u"Choose view…")
+        combo.IsEnabled = row['reason'] is None
+        control = _text(row['reason']) if row['reason'] else combo
+        _place(grid, control, i, 2)
+        state = dict(host=host, row=row, view=None, check=check, combo=combo,
+                     controls=(check, current, control))
         states.append(state)
-        button.Click += picker(state)
+        combo.SelectionChanged += selection_changed(state)
 
     models = StackPanel()
     models.Children.Add(_text(tr(

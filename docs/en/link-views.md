@@ -9,7 +9,7 @@
    Unchecking a model hides its instances and excludes them from applying and copying
    settings. Assignments remain in the dialog if you check the model again.
    Each host view has its own section showing selected link instances and their current display settings.
-3. Click **Choose view…** for each link and search for its view by name.
+3. For each link, choose a view from the **New view** dropdown in the same dialog.
    Choosing a view checks that instance automatically; uncheck it to leave it unchanged.
 4. Use **Copy to other views…** in a section to copy its checked assignments to
    selected host views. This replaces assignments for the same links in those sections;
