@@ -6,7 +6,7 @@ __author__ = "Pipers"
 import traceback
 from lowlife.i18n import tr
 
-from pyrevit import revit, forms, script, EXEC_PARAMS
+from pyrevit import revit, forms, EXEC_PARAMS
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -19,29 +19,24 @@ def main():
         config_mode = bool(EXEC_PARAMS.config_mode)
     except Exception:
         config_mode = False
-
     if config_mode:
-        edited = loi_settings.get_settings_interactive(doc)
-        forms.alert(
-            tr(u"Отменено, настройки не изменены.") if edited is None
-            else tr(u"Настройки сохранены.")
-        )
+        loi_settings.get_settings_interactive(doc)
         return
 
     settings = loi_settings.get_settings_silent()
     loi_settings.require(settings, ["param_names_text"])
-    loi_settings.require_selection_mode(settings)
+    scope = loi_settings.show_scope_dialog(
+        doc, selected_ids=list(uidoc.Selection.GetElementIds())
+    )
+    if scope is None:
+        return
 
     category_name = loi_fill.FORM_CATEGORY_NAME
     param_names = loi_settings.get_param_names(settings)
     search_locations = loi_settings.get_search_locations(settings)
-    selection_mode = loi_settings.get_selection_mode(settings)
-    selected_type_ids = loi_settings.get_selected_type_ids(settings)
     split_enabled = loi_settings.get_split_enabled(settings)
-
-    view = doc.ActiveView
-    if view is None:
-        forms.alert(tr(u"Нет активного вида."), exitscript=True)
+    view = scope["_view"]
+    selected_ids = scope["_selected_ids"]
 
     form_records = loi_fill.find_forms(doc, category_name, locations=search_locations)
     if not form_records:
@@ -57,8 +52,11 @@ def main():
         )
 
     candidates = loi_fill.collect_candidates(
-        doc, view, category_name, mode=selection_mode, type_ids=selected_type_ids
+        doc, view, category_name, selected_ids=selected_ids
     )
+    if not candidates:
+        forms.alert(tr(u"В выбранной области нет модельных элементов для заполнения LOI."))
+        return
     matches = loi_fill.classify_elements(form_records, candidates)
 
     singles = [m for m in matches.values() if len(m.forms) == 1]

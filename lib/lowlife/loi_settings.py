@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Окно настроек для кнопки «Заполнение LOI» (LOI.panel) + их хранение между
+Настройки кнопки «Заполнение LOI» (LOI.panel) + хранение параметров между
 запусками.
 
 Хранится в JSON-файле %APPDATA%\\pyRevit\\LowLifeLOI_settings.json — тот же
@@ -11,7 +11,7 @@
 Категория «Формы» одна и та же во всех проектах (loi_fill.FORM_CATEGORY_NAME,
 не настраивается) — а вот список клонируемых параметров и то, в каких
 именно моделях искать «Формы», соглашение конкретного проекта, поэтому
-задаётся только через это окно (Shift+клик по кнопке). Настройки:
+задаётся в настройках (Shift+клик). Настройки:
   - param_names_text — параметры, которые клонируются из «Формы» в
     содержащиеся в ней элементы (по имени, см. get_param_names);
   - search_locations/search_locations_configured — в каких моделях искать
@@ -20,10 +20,6 @@
     лежат в отдельной связанной архитектурной модели, а не в текущем файле —
     пока эта настройка не тронута (search_locations_configured=False),
     ищем везде (хост + все связи), как было раньше;
-  - selection_mode/selected_type_ids — какие элементы вообще проверяются на
-    попадание в форму (см. loi_fill.SELECTION_MODE_*): весь документ, только
-    активный вид (по умолчанию, как было раньше) или только отмеченные типы
-    семейств;
   - split_multi_form_boundary — пробовать ли физически разрезать прямой
     линейный элемент (лоток и т.п.), попавший сразу в несколько форм, по их
     границе, прежде чем показывать его в диалоге конфликтов (см. loi_split.py).
@@ -47,11 +43,12 @@ from lowlife import param_autocomplete, settings_core, settings_transfer
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness,
-    FontWeights, HorizontalAlignment, VerticalAlignment, TextWrapping
+    FontWeights, HorizontalAlignment, VerticalAlignment, TextWrapping,
+    SizeToContent, ResizeMode
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, TextBox, Button, CheckBox, RadioButton,
-    Orientation, DockPanel, Dock, ScrollViewer, ScrollBarVisibility
+    Orientation, DockPanel, Dock, ScrollViewer, ScrollBarVisibility, ComboBox
 )
 from System.Windows.Media import Brushes
 
@@ -76,14 +73,6 @@ PLAIN_LABELS = {key: label for key, _section, label, _hint, _default, _multiline
 SEARCH_LOCATIONS_KEY = "search_locations"
 SEARCH_LOCATIONS_CONFIGURED_KEY = "search_locations_configured"
 
-MODE_KEY = "selection_mode"
-MODE_VIEW = "view"     # lowlife.loi_fill.SELECTION_MODE_VIEW
-MODE_ALL = "all"        # lowlife.loi_fill.SELECTION_MODE_ALL
-MODE_TYPES = "types"    # lowlife.loi_fill.SELECTION_MODE_TYPES
-MODE_DEFAULT = MODE_VIEW
-
-TYPE_IDS_KEY = "selected_type_ids"
-
 SPLIT_KEY = "split_multi_form_boundary"
 SPLIT_DEFAULT = True
 
@@ -96,8 +85,7 @@ _write_all = _STORE.write
 
 def load_saved_values():
     """Значения настроек: из JSON-файла, иначе — значения по умолчанию.
-    Текстовые поля — строки, selected_type_ids — список int, остальное —
-    как есть (mode-строка/bool)."""
+    Область заполнения выбирается при запуске и не сохраняется."""
     saved = _read_all()
     values = {key: saved.get(key, default)
               for key, _section, _label, _hint, default, _multiline, _required in TEXT_FIELDS}
@@ -108,20 +96,6 @@ def load_saved_values():
     )
     values[SEARCH_LOCATIONS_CONFIGURED_KEY] = bool(saved.get(SEARCH_LOCATIONS_CONFIGURED_KEY, False))
 
-    values[MODE_KEY] = saved.get(MODE_KEY, MODE_DEFAULT)
-
-    raw_ids = saved.get(TYPE_IDS_KEY, [])
-    if isinstance(raw_ids, list):
-        parsed_ids = []
-        for x in raw_ids:
-            try:
-                parsed_ids.append(int(x))
-            except:
-                pass
-        values[TYPE_IDS_KEY] = parsed_ids
-    else:
-        values[TYPE_IDS_KEY] = []
-
     values[SPLIT_KEY] = bool(saved.get(SPLIT_KEY, SPLIT_DEFAULT))
 
     return values
@@ -129,7 +103,9 @@ def load_saved_values():
 
 def save_values(values):
     data = _read_all()
-    data.update(values)
+    for key in ("selection_mode", "selected_type_ids"):
+        data.pop(key, None)
+    data.update({key: value for key, value in values.items() if not key.startswith("_")})
     _write_all(data)
 
 
@@ -156,18 +132,6 @@ def get_search_locations(settings):
     if not bool(settings.get(SEARCH_LOCATIONS_CONFIGURED_KEY, False)):
         return None
     return list(settings.get(SEARCH_LOCATIONS_KEY) or [])
-
-
-def get_selection_mode(settings):
-    """SELECTION_MODE_* (см. loi_fill) из настроек, с запасным значением MODE_DEFAULT."""
-    mode = settings.get(MODE_KEY, MODE_DEFAULT)
-    return mode if mode in (MODE_VIEW, MODE_ALL, MODE_TYPES) else MODE_DEFAULT
-
-
-def get_selected_type_ids(settings):
-    """Список int ElementId.IntegerValue отмеченных типов семейств (может быть пустым)."""
-    ids = settings.get(TYPE_IDS_KEY) or []
-    return [int(x) for x in ids]
 
 
 def get_split_enabled(settings):
@@ -200,35 +164,6 @@ def require(settings, keys):
         )
 
 
-def require_selection_mode(settings):
-    """
-    Отдельная проверка для режима «Только выбранные типы семейств»: если он
-    включён, но ни один тип не отмечен — останавливает скрипт с понятным
-    сообщением (в отличие от require() выше, эта настройка необязательна
-    для остальных режимов, поэтому проверяется отдельно, после чтения mode).
-    """
-    if get_selection_mode(settings) == MODE_TYPES and not get_selected_type_ids(settings):
-        forms.alert(
-            tr(u"В настройках выбран режим «Только выбранные типы семейств», "
-            u"но ни один тип не отмечен.\n\n"
-            u"Откройте настройки (Shift+клик по кнопке «Заполнение LOI») и "
-            u"нажмите «Выбрать типы…», либо переключитесь на другой режим "
-            u"отбора элементов."),
-            exitscript=True
-        )
-
-
-def _types_label_text(ids, options):
-    if not ids:
-        return tr(u"Типы не выбраны.")
-    by_id = {o.type_id.IntegerValue: o.name for o in options} if options else {}
-    names = [by_id.get(i, u"?(ID {})".format(i)) for i in ids]
-    preview = u"; ".join(names[:5])
-    if len(names) > 5:
-        preview += u"; …"
-    return tr(u"Выбрано типов: {}. {}").format(len(ids), preview)
-
-
 def _locations_label_text(configured, keys, options):
     if not configured:
         return tr(u"Не настроено — ищутся все: текущий файл и все загруженные связи.")
@@ -244,13 +179,11 @@ def _locations_label_text(configured, keys, options):
 
 def show_settings_form(doc, values):
     """Модальное окно редактирования настроек. Возвращает словарь значений
-    (строки TEXT_FIELDS + SEARCH_LOCATIONS_KEY/_CONFIGURED_KEY/MODE_KEY/
-    TYPE_IDS_KEY/SPLIT_KEY) или None, если пользователь отменил."""
+    или None, если пользователь отменил."""
     from lowlife import loi_fill
 
     result = {"values": None}
     state = {
-        "type_ids": list(values.get(TYPE_IDS_KEY) or []),
         "locations": list(values.get(SEARCH_LOCATIONS_KEY) or []),
         "locations_configured": bool(values.get(SEARCH_LOCATIONS_CONFIGURED_KEY, False)),
     }
@@ -380,98 +313,10 @@ def show_settings_form(doc, values):
         field_hint.Margin = Thickness(0, 2, 0, 0)
         root.Children.Add(field_hint)
 
-    # --- ③ какие элементы проверять -----------------------------------
-
-    mode_section = TextBlock()
-    mode_section.Text = tr(u"③ Какие элементы проверять на попадание в форму")
-    mode_section.FontWeight = FontWeights.Bold
-    mode_section.Margin = Thickness(0, 16, 0, 2)
-    root.Children.Add(mode_section)
-
-    current_mode = values.get(MODE_KEY, MODE_DEFAULT)
-
-    rb_view = RadioButton()
-    rb_view.Content = tr(u"Все элементы на активном виде")
-    rb_view.GroupName = u"loi_selection_mode"
-    rb_view.Margin = Thickness(0, 4, 0, 2)
-    rb_view.IsChecked = (current_mode == MODE_VIEW)
-    root.Children.Add(rb_view)
-
-    rb_all = RadioButton()
-    rb_all.Content = tr(u"Все элементы документа (без учёта вида)")
-    rb_all.GroupName = u"loi_selection_mode"
-    rb_all.Margin = Thickness(0, 2, 0, 2)
-    rb_all.IsChecked = (current_mode == MODE_ALL)
-    root.Children.Add(rb_all)
-
-    rb_types = RadioButton()
-    rb_types.Content = tr(u"Только выбранные типы семейств")
-    rb_types.GroupName = u"loi_selection_mode"
-    rb_types.Margin = Thickness(0, 2, 0, 2)
-    rb_types.IsChecked = (current_mode == MODE_TYPES)
-    root.Children.Add(rb_types)
-
-    types_row = StackPanel()
-    types_row.Orientation = Orientation.Horizontal
-    types_row.Margin = Thickness(20, 6, 0, 0)
-
-    types_pick_btn = Button()
-    types_pick_btn.Content = tr(u"Выбрать типы…")
-    types_pick_btn.Padding = Thickness(8, 2, 8, 2)
-    types_row.Children.Add(types_pick_btn)
-
-    types_label = TextBlock()
-    types_label.Text = _types_label_text(state["type_ids"], None)
-    types_label.VerticalAlignment = VerticalAlignment.Center
-    types_label.Margin = Thickness(8, 0, 0, 0)
-    types_label.TextWrapping = TextWrapping.Wrap
-    types_row.Children.Add(types_label)
-
-    root.Children.Add(types_row)
-
-    def on_pick_types(sender, args):
-        options = loi_fill.list_candidate_types(doc, loi_fill.FORM_CATEGORY_NAME)
-        if not options:
-            forms.alert(
-                tr(u"В документе не найдено модельных элементов с типами (кроме "
-                u"категории «{}»).").format(loi_fill.FORM_CATEGORY_NAME)
-            )
-            return
-
-        checked_ids = set(state["type_ids"])
-        items = [forms.TemplateListItem(o, checked=(o.type_id.IntegerValue in checked_ids))
-                 for o in options]
-
-        chosen = select_list.SelectFromList.show(
-            items,
-            title=tr(u"Типы семейств — кандидаты для заполнения LOI"),
-            button_name=tr(u"Сохранить"),
-            multiselect=True
-        )
-        if chosen is None:
-            return
-
-        state["type_ids"] = [o.type_id.IntegerValue for o in chosen]
-        types_label.Text = _types_label_text(state["type_ids"], options)
-        rb_types.IsChecked = True
-
-    types_pick_btn.Click += on_pick_types
-
-    types_hint = TextBlock()
-    types_hint.Text = (
-        tr(u"Учитываются только при выбранном режиме «Только выбранные типы "
-        u"семейств» — поиск идёт по всему документу, без привязки к виду.")
-    )
-    types_hint.FontSize = 11
-    types_hint.Foreground = Brushes.Gray
-    types_hint.TextWrapping = TextWrapping.Wrap
-    types_hint.Margin = Thickness(0, 4, 0, 0)
-    root.Children.Add(types_hint)
-
     # --- ④ разбиение элементов на границе форм --------------------------
 
     split_section = TextBlock()
-    split_section.Text = tr(u"④ Элемент сразу в нескольких формах")
+    split_section.Text = tr(u"Элемент сразу в нескольких формах")
     split_section.FontWeight = FontWeights.Bold
     split_section.Margin = Thickness(0, 16, 0, 2)
     root.Children.Add(split_section)
@@ -519,13 +364,9 @@ def show_settings_form(doc, values):
 
     def on_ok(sender, args):
         combined = {key: box.Text for key, box in boxes.items()}
-        if rb_all.IsChecked:
-            combined[MODE_KEY] = MODE_ALL
-        elif rb_types.IsChecked:
-            combined[MODE_KEY] = MODE_TYPES
-        else:
-            combined[MODE_KEY] = MODE_VIEW
-        combined[TYPE_IDS_KEY] = list(state["type_ids"])
+        if not get_param_names(combined):
+            forms.alert(tr(u"Укажите хотя бы один параметр для заполнения LOI."))
+            return
         combined[SPLIT_KEY] = bool(split_cb.IsChecked)
         combined[SEARCH_LOCATIONS_KEY] = list(state["locations"])
         combined[SEARCH_LOCATIONS_CONFIGURED_KEY] = bool(state["locations_configured"])
@@ -591,5 +432,108 @@ def get_settings_interactive(doc):
 
 def get_settings_silent():
     """Настройки без показа окна — уже сохранённые значения (или значения
-    по умолчанию, если ещё не настроено). Используется кнопкой «Заполнение LOI»."""
+    по умолчанию, если ещё не настроено). Используется «СС1-8Mile»."""
     return load_saved_values()
+
+
+def show_scope_dialog(doc, selected_ids):
+    """Choose selected objects or a 3D view for this run. Cancel returns None."""
+    result = {"scope": None}
+    win = Window()
+    win.Title = tr(u"Заполнение LOI")
+    win.Width = 520
+    win.SizeToContent = SizeToContent.Height
+    win.ResizeMode = ResizeMode.NoResize
+    win.WindowStartupLocation = WindowStartupLocation.CenterScreen
+    root = StackPanel()
+    root.Margin = Thickness(16)
+
+    # Runtime scope is chosen on every launch; document IDs are never saved.
+    from Autodesk.Revit.DB import FilteredElementCollector, View3D
+
+    selected_ids = list(selected_ids or [])
+    views = sorted(
+        [v for v in FilteredElementCollector(doc).OfClass(View3D) if not v.IsTemplate],
+        key=lambda v: unicode(v.Name).lower()
+    )
+    scope_title = TextBlock()
+    scope_title.Text = tr(u"Где заполнять LOI")
+    scope_title.FontWeight = FontWeights.Bold
+    root.Children.Add(scope_title)
+
+    rb_selected = RadioButton()
+    rb_selected.Content = tr(u"Выбранные объекты ({})").format(len(selected_ids))
+    rb_selected.GroupName = "loi_scope"
+    rb_selected.Margin = Thickness(0, 6, 0, 4)
+    rb_selected.IsEnabled = bool(selected_ids)
+    rb_selected.IsChecked = bool(selected_ids)
+    root.Children.Add(rb_selected)
+
+    rb_view = RadioButton()
+    rb_view.Content = tr(u"Объекты на выбранном 3D-виде")
+    rb_view.GroupName = "loi_scope"
+    rb_view.Margin = Thickness(0, 2, 0, 4)
+    rb_view.IsChecked = not bool(selected_ids)
+    root.Children.Add(rb_view)
+
+    view_combo = ComboBox()
+    view_combo.Margin = Thickness(20, 0, 0, 12)
+    for view in views:
+        view_combo.Items.Add(unicode(view.Name))
+    view_combo.SelectedIndex = 0 if views else -1
+    active = doc.ActiveView
+    for index, view in enumerate(views):
+        if active is not None and view.Id == active.Id:
+            view_combo.SelectedIndex = index
+            break
+    view_combo.IsEnabled = bool(rb_view.IsChecked)
+
+    def on_scope_changed(sender, args):
+        view_combo.IsEnabled = bool(rb_view.IsChecked)
+
+    rb_view.Checked += on_scope_changed
+    rb_selected.Checked += on_scope_changed
+    root.Children.Add(view_combo)
+
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    buttons.HorizontalAlignment = HorizontalAlignment.Right
+    cancel_btn = Button()
+    cancel_btn.Content = tr(u"Отмена")
+    cancel_btn.Padding = Thickness(10, 4, 10, 4)
+    cancel_btn.Margin = Thickness(0, 0, 8, 0)
+    cancel_btn.IsCancel = True
+    ok_btn = Button()
+    ok_btn.Content = tr(u"Заполнить LOI")
+    ok_btn.Padding = Thickness(10, 4, 10, 4)
+    ok_btn.IsDefault = True
+
+    def on_ok(sender, args):
+        combined = {}
+        if rb_selected.IsChecked:
+            if not selected_ids:
+                forms.alert(tr(u"Сначала выделите объекты в Revit."))
+                return
+            combined["_selected_ids"] = selected_ids
+            combined["_view"] = None
+        else:
+            index = view_combo.SelectedIndex
+            if index < 0:
+                forms.alert(tr(u"Выберите 3D-вид для заполнения LOI."))
+                return
+            combined["_selected_ids"] = None
+            combined["_view"] = views[index]
+        result["scope"] = combined
+        win.Close()
+
+    def on_cancel(sender, args):
+        win.Close()
+
+    ok_btn.Click += on_ok
+    cancel_btn.Click += on_cancel
+    buttons.Children.Add(cancel_btn)
+    buttons.Children.Add(ok_btn)
+    root.Children.Add(buttons)
+    win.Content = root
+    win.ShowDialog()
+    return result["scope"]

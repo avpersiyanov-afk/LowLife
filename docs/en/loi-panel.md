@@ -11,12 +11,15 @@ Copies parameter values from elements of the **«Masses»** category to every ch
 - An element in exactly one mass is filled in right away.
 - An element in several masses at once (usually a linear one on a border) is **split** along the mass border by default, and each piece gets the values of its mass. Whatever couldn't be split goes to a conflict table where a source mass is chosen for each.
 
+At launch, choose only the scope: **selected objects** (selected in Revit
+before launch) or **objects in a selected 3D view**. View templates are excluded;
+the chosen view does not need to be active.
+
 Settings (Shift+click):
 
 1. **Which models to search for «Masses»** — the current file and/or specific loaded links (masses usually live in a separate architectural model).
 2. **Parameters to copy** — one per line. The name must be the same on the «Mass» and on the target element.
-3. **Which elements to check** — all in the active view, all in the document or only chosen family types.
-4. **An element in several masses at once** — split it along the border or send it straight to the conflict table.
+3. **An element in several masses at once** — split it along the border or send it straight to the conflict table.
 
 The [«SS1-8Mile»](ss1.md) button uses the same settings to fill LOI on the equipment it places.
 
