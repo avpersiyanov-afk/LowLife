@@ -1,0 +1,5 @@
+title: Скрыть\nв связи
+title_en: Hide in\nlink
+tooltip: Скрыть элементы выбранных связей на текущем виде по имени семейства, типу, параметру или рабочему набору. Перед скрытием показывается список совпадений. Shift+клик — настройки. Revit 2024+.
+tooltip_en: Hide elements of selected links in the current view by family, type, parameter or workset. Review matches before hiding. Shift+click opens settings. Revit 2024+.
+min_revit_version: 2024

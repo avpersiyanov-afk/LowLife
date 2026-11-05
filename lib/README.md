@@ -2988,3 +2988,17 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 - Новый хелпер, полезный **вне зависимости от дисциплины** (геометрия, параметры, UI) → существующий общий модуль (`geometry.py`, `params.py`, `selection.py`) или новый общий модуль рядом с ними.
 - Логика, специфичная **для одной дисциплины/панели** (СКС, потом — например, ОПС/СБ) → отдельный модуль по образцу `scs.py` (например `fire_alarm.py`, `security.py`).
 - Скрипт кнопки (`script.py`) должен остаться последовательностью вызовов этих функций, без копирования их тел.
+
+
+## link_hide_core.py / link_hide.py / link_hide_settings.py
+
+«Скрыть в связи» (`Tools.panel/HideLinkedElements`, Revit 2024+):
+пользовательское текстовое условие по семейству, типу, параметру или рабочему
+набору, выбор экземпляров связей и категорий, просмотр совпадений перед скрытием.
+`link_hide_core` — проверка условия и сравнение без Revit; `link_hide` — сбор
+элементов связей на текущем виде, чтение параметров и постановка штатной команды
+`HideElements` в очередь через ссылки `CreateLinkReference`/`SetReferences`.
+`link_hide_settings.SETTINGS` — общий `TextSettings`, JSON
+`LowLifeLinkHide_settings.json`. Это разовое скрытие, не живой фильтр; документы
+связей не изменяются. Тесты — `tests/test_link_hide.py`, инструкция и ручная
+проверка — [docs/hide-linked-elements.md](../docs/hide-linked-elements.md).

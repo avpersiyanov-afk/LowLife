@@ -298,3 +298,6 @@ A new button or panel needs an English caption next to the Russian one in its `b
 ## Logo
 
 The mark is the «⅃Γ» monogram (a mirrored L from «Low» and an upside-down orange L from «Life»); the name is LowLife's own artwork with the same orange «Γ»; in the «About» window the name is set in a font. Files and the generator are in [`docs/brand/`](docs/brand/) (`python docs/brand/make_brand.py` rebuilds the logo PNG/SVG, the name image and the «About» button icon). All button icons share the palette, separately for Revit's light theme (`icon.png`: light background, black drawing) and dark theme (`icon.dark.png`: black background, white drawing), with an orange accent (`docs/brand/restyle_icons.py`).
+
+
+[Hide linked elements by criterion](docs/en/hide-linked-elements.md) — Revit 2024+, current view, link/category selection and match preview before hiding.
