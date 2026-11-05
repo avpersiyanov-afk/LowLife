@@ -15,6 +15,18 @@ from lowlife.i18n import tr
 CUSTOM_VIEW = '__custom__'
 
 
+class CustomView(object):
+    """Custom display with an explicitly selected linked view (or keep current)."""
+    def __init__(self, view=None):
+        self.view = view
+
+
+def _choice(choice):
+    if isinstance(choice, CustomView):
+        return True, choice.view
+    return (True, None) if choice == CUSTOM_VIEW else (False, choice)
+
+
 def supports_custom(doc):
     """SetLinkOverrides supports Custom only starting with Revit 2025."""
     return int(doc.Application.VersionNumber) >= 2025
@@ -116,7 +128,7 @@ def apply_many(doc, host_views, choices):
 
 
 def apply_assignments(doc, assignments):
-    """Apply (instance, linked view) pairs atomically; one Revit Undo step.
+    """Apply (instance, linked view or CustomView) pairs in one Revit Undo step.
 
     Read the existing settings so other supported graphics properties survive.
     Revit validates the actual compatibility in SetLinkOverrides. Any rejection
@@ -129,19 +141,21 @@ def apply_assignments(doc, assignments):
         problem = availability(doc, host_view)
         if problem:
             raise ValueError(u"{}: {}".format(safe_name(host_view), problem))
-        for link, linked_view in choices:
+        for link, choice in choices:
+            custom, linked_view = _choice(choice)
             key = (host_view, unicode(link.Id))
             if key in seen:
                 raise ValueError(tr(u"Связь выбрана повторно: {}", u"Link selected twice: {}").format(safe_name(link)))
             seen.add(key)
             linked_doc = link.GetLinkDocument()
-            if linked_view == CUSTOM_VIEW:
+            if custom:
                 if not supports_custom(doc):
                     raise ValueError(tr(u"Пользовательские настройки связей требуют Revit 2025 или новее.",
                                         u"Custom link settings require Revit 2025 or later."))
                 if linked_doc is None:
                     raise ValueError(tr(u"Связь не загружена", u"Link is unloaded"))
-                continue
+                if linked_view is None:
+                    continue
             if (linked_doc is None or linked_view.Document != linked_doc
                     or linked_view.IsTemplate
                     or linked_view.ViewType != host_view.ViewType):
@@ -152,14 +166,16 @@ def apply_assignments(doc, assignments):
     try:
         transaction.Start()
         for host_view, choices in assignments:
-            for link, linked_view in choices:
+            for link, choice in choices:
+                custom, linked_view = _choice(choice)
                 settings = current_settings(host_view, link)
                 if settings is None:
                     settings = db.RevitLinkGraphicsSettings()
-                if linked_view == CUSTOM_VIEW:
+                if custom:
                     settings.LinkVisibilityType = db.LinkVisibility.Custom
                 else:
                     settings.LinkVisibilityType = db.LinkVisibility.ByLinkView
+                if linked_view is not None:
                     settings.LinkedViewId = linked_view.Id
                 host_view.SetLinkOverrides(link.Id, settings)
         status = transaction.Commit()
