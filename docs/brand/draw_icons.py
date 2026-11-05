@@ -647,7 +647,18 @@ def link_views(c):
         c.line([(66, y), (82, y)], ORANGE, 3)
 
 
+def hide_linked_elements(c):
+    """Linked model, filter funnel and orange hide slash."""
+    c.rect((8, 18, 53, 76), BLUE, WHITE, 4, 3)
+    c.rect((18, 9, 63, 67), BLUE, WHITE, 4, 3)
+    c.line([(25, 24), (52, 24)], BLUE, 3)
+    c.line([(25, 36), (45, 36)], BLUE, 3)
+    c.line([(51, 45), (87, 45), (74, 62), (74, 78), (64, 84), (64, 62), (51, 45)], BLUE, 4)
+    c.line([(40, 82), (87, 27)], ORANGE, 6)
+
+
 ICONS = [
+    ("Tools.panel/HideLinkedElements.pushbutton", hide_linked_elements),
     ("Tools.panel/LinkViews.pushbutton", link_views),
     ("_Themes.panel/Actions.stack/Language.pushbutton", language),
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
