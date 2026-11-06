@@ -1,0 +1,4 @@
+title: Лотки в короб
+title_en: Trays in enclosure
+tooltip: Выберите участки короба и соединительные детали. Создать внутри лотки выбранного типа по сохранённой схеме и отметить их параметром Да/Нет. Повторная вставка блокируется. Shift+клик — настройки.
+tooltip_en: Select enclosure segments and fittings. Create internal trays of the chosen type using the saved layout and set their Yes/No flag. Duplicate insertion is blocked. Shift+click opens settings.

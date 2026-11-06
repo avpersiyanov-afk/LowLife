@@ -659,7 +659,36 @@ def route_quantities(c):
     c.line([(65, 74), (78, 74)], ORANGE, 3)
 
 
+def fire_enclosure(c):
+    c.rect((12, 17, 84, 78), ORANGE, WHITE, 6, 3)
+    for y in (37, 60):
+        c.line([(27, y - 8), (27, y), (68, y), (68, y - 8)], BLUE, 4)
+
+
+def fire_trays(c):
+    fire_enclosure(c)
+    c.line([(48, 5), (48, 27)], ORANGE, 5)
+    c.line([(39, 19), (48, 28), (57, 19)], ORANGE, 4)
+
+
+def fire_mark(c):
+    fire_enclosure(c)
+    c.rect((53, 55, 88, 87), BLUE, WHITE, 3, 3)
+    c.line([(59, 70), (68, 79), (82, 62)], ORANGE, 5)
+
+
+def fire_settings(c):
+    fire_enclosure(c)
+    for x, y in ((28, 83), (49, 86), (71, 83)):
+        c.line([(x, 70), (x, 92)], BLUE, 3)
+        c.circle((x, y), 5, ORANGE, WHITE, 3)
+
+
 ICONS = [
+    ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),
+    ("FireBoxes.panel/AddInternalTrays.pushbutton", fire_trays),
+    ("FireBoxes.panel/MarkInsideFireBox.pushbutton", fire_mark),
+    ("FireBoxes.panel/FireBoxSettings.pushbutton", fire_settings),
     ("ToolsCables.panel/RouteQuantities.pushbutton", route_quantities),
     ("Tools.panel/HideLinkedElements.pushbutton", hide_linked_elements),
     ("Tools.panel/LinkViews.pushbutton", link_views),

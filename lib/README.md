@@ -3022,3 +3022,13 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 ## grid_dimensions.py / grid_dimensions_settings.py
 
 «Размеры осей» (`Tools.panel/DimensionGrids`): автоматический сбор прямых осей текущей модели на плане по маске имени (`*`, `?`, диапазоны `[]`, альтернативы через `;`). `collect_groups` использует координаты вида и видовые концы осей, разделяет параллельные направления; дуги пропускаются. `GridGroup.chain` сортирует по положению, `extremes` — по естественному порядку маркировки (2 < 10). `create_dimensions` создаёт цепочки и общие размеры в транзакции. Настройки `TextSettings`: `LowLifeGridDimensions_settings.json`, маска, отступ цепочки и общего размера; Shift+клик. Маски и геометрия покрыты `tests/test_grid_dimensions.py`.
+
+## Огнезащитные короба
+
+`lowlife/fire_boxes_core.py` — расчёт сечений FIREBOX/ОСК, компоновка
+внутренних лотков, проверка габаритов и геометрия пересечения смещённых осей.
+`fire_boxes_settings.py` — локальные настройки через `JsonStore`.
+`fire_boxes_ui.py` — редактор с вкладками и размерной схемой.
+`fire_boxes.py` — построение трассы короба, внутренних лотков и деталей,
+признак Да/Нет, примечание, Extensible Storage и защита от повторной вставки.
+Руководство: [docs/fire-enclosures.md](../docs/fire-enclosures.md).

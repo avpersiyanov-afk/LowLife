@@ -1,0 +1,7 @@
+title: Огнезащитные короба
+title_en: Fire enclosures
+layout:
+  - DrawFireBox
+  - AddInternalTrays
+  - MarkInsideFireBox
+  - FireBoxSettings
