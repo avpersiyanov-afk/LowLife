@@ -3055,3 +3055,10 @@ snapshot assembly plus lazy Windows DPAPI credential storage through a non-share
 JsonStore. Settings are visible only to persiyanov; Apps Script separately enforces
 project/role/model token grants. Captures Revit data in ExternalEvent and sends it
 on a background .NET thread. Server and provisioning: docs/opening-journal/.
+
+### opening_tasks_parts.py
+
+Google catalog cache and model/role-scoped selection for НЧ/ПЧ and building/section
+labels. Loads the authenticated project's catalog asynchronously, reuses cached
+choices offline and validates placement/release selections. Project Information
+uses the existing Notes parameter reader and locally cached mapping.

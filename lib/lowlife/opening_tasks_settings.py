@@ -8,7 +8,8 @@ from lowlife import opening_tasks_manifest as manifest
 def make(role, doc=None):
     manifest.validate_role(role)
     common = [
-        sc.TextField('opening_project', u'Обмен заданиями', u'Код проекта', required=True),
+        sc.TextField('opening_project_param', u'Обмен заданиями', u'Параметр шифра объекта',
+                     hint=u'Пусто — параметр шифра из настройки «Заметок», затем стандартный «Номер проекта».'),
         sc.TextField('opening_json_param', u'', u'JSON-параметр задания',
                      hint=u'Текстовый параметр экземпляра бокса. Имя задаётся для проекта.', required=(role == 'VIS')),
     ]
@@ -38,3 +39,21 @@ def make(role, doc=None):
                            u'Задания ВИС' if role == 'VIS' else u'Задания КР' if role=='KR' else u'Задания АР',
                            u'Задания на отверстия', u'заданий на отверстия', fields,
                            width=780, height=700)
+
+
+def project_code(doc,settings):
+    # Reuse Notes references: custom parameter names and built-ins [BIP_NAME].
+    # Reading the Notes cache is local and must never initiate a network request.
+    from pnotes import core as notes
+    ref=settings.get('opening_project_param','').strip()
+    if not ref:
+        ref=notes.get_settings(online=False)[0].get('key_param','')
+    if ref and ref!=notes.FILE_KEY:
+        return notes.read_param(doc,ref)
+    return (doc.ProjectInformation.Number or '').strip()
+
+
+def for_document(settings,doc):
+    value=dict(settings)
+    value['opening_project']=project_code(doc,value)
+    return value

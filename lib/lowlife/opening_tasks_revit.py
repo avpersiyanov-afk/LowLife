@@ -121,6 +121,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 sub.Start()
                 if previous:
                     inst, data = previous
+                    if data.get('object_part') and data['object_part']!=settings.get('opening_object_part',''):
+                        raise ValueError(tr(u'Бокс относится к другой части объекта',u'Draft belongs to another object part'))
                     if not isinstance(inst.Location, LocationPoint):
                         raise ValueError(tr(u'У бокса нет точки вставки',u'Draft has no point location'))
                     target = boxes._xyz(box.origin(placer.at_bottom))
@@ -138,7 +140,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if placer.result.missing_params:
                     raise ValueError(tr(u'Нет параметров размеров бокса',u'Missing box size parameters'))
                 placer._set_host_filter(inst, crossing.kind)
-                data = dict(data, recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
+                data = dict(data, object_part=settings.get('opening_object_part',''), recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
                             host_uid=crossing.host.UniqueId, host_model=store.model_id(source.GetLinkDocument()),
                             host_link_uid=source.UniqueId, kind=crossing.kind,
                             origin_bottom=placer.at_bottom,
@@ -187,7 +189,9 @@ def prepare_drafts(doc, elements, settings):
             raise ValueError(tr(u'Конструкция удалена: пересоздайте задание',u'Target host was deleted; regenerate the draft'))
         if data['host_model'] != store.model_id(link.GetLinkDocument()):
             raise ValueError(tr(u'Связь заменена: пересоздайте задание',u'Target link was replaced; regenerate the draft'))
-        drafts.append(dict(task_id=data['task_id'], source_model=data['source_model'], source_uid=data['source_uid'],
+        if data.get('object_part') and data['object_part']!=settings.get('opening_object_part',''):
+            raise ValueError(tr(u'Бокс относится к другой части объекта',u'Draft belongs to another object part'))
+        drafts.append(dict(object_part=settings.get('opening_object_part',''), task_id=data['task_id'], source_model=data['source_model'], source_uid=data['source_uid'],
                            owner_uid=inst.UniqueId, recipient=data.get('recipient','KR'), geometry=host_geometry(inst,data,link)))
     return drafts
 
@@ -198,6 +202,10 @@ def publish(doc, elements, settings):
                                    settings['opening_discipline'],doc.Application.Username,now(),settings.get('opening_recipient','KR'))
     by_id = {d['task_id']: e for d,e in zip(drafts,elements)}
     for record in changes:
+        inst=by_id[record['task_id']]
+        data=metadata(inst)
+        data['object_part']=record.get('object_part','')
+        store.write(inst,data)
         store.set_parameter(by_id[record['task_id']],settings['opening_json_param'],record)
         visible_issue(by_id[record['task_id']],settings,record)
     if changes:
@@ -377,6 +385,7 @@ def accept(doc, records, settings):
     core.check_recipient(records,settings.get('opening_recipient','KR'),settings['opening_project'],store.model_id(doc))
     registry = store.registry(doc)
     receipts=core.receipts(registry,settings.get('opening_recipient','KR'))
+    core.common_part(records)
     keys = set(core.task_key(r) for r in records)
     if any(r['status'] != 'issued' for r in records):
         raise ValueError(tr(u'Нельзя принять отозванное задание',u'Withdrawn tasks cannot be accepted'))
@@ -411,7 +420,7 @@ def accept(doc, records, settings):
         opening=create_native_opening(doc,g)
     opening_id = (list(old_receipts.values())[0]['opening_id'] if len(old_receipts)==1 and
                   set(list(old_receipts.values())[0]['revisions'])==keys else core.guid())
-    receipt = dict(schema=1,role='receipt',recipient=settings.get('opening_recipient','KR'),opening_id=opening_id, opening_uid=opening.UniqueId,
+    receipt = dict(schema=1,role='receipt',object_part=records[0].get('object_part',''),recipient=settings.get('opening_recipient','KR'),opening_id=opening_id, opening_uid=opening.UniqueId,
                    revisions={core.task_key(r):r['revision'] for r in records}, status='accepted',
                    geometry=g,issued_tasks=copy.deepcopy(records),project=settings['opening_project'],author=doc.Application.Username,at=now())
     # Native Opening categories may not support project text parameters. ES is authoritative here.
@@ -435,7 +444,7 @@ def reject(doc, records, settings, comment):
         previous = receipts.get(key)
         if previous and previous.get('opening_uid'):
             raise ValueError(tr(u'Для реализованного отверстия нужно отдельное решение: отклонение его не удаляет',u'An implemented opening must be reviewed explicitly, not silently rejected'))
-        receipt = dict(schema=1,status='rejected',recipient=settings.get('opening_recipient','KR'),revisions={key:record['revision']},comment=comment,
+        receipt = dict(schema=1,status='rejected',object_part=record.get('object_part',''),recipient=settings.get('opening_recipient','KR'),revisions={key:record['revision']},comment=comment,
                        author=doc.Application.Username,at=now(),project=settings['opening_project'])
         receipts[key] = receipt
         registry.setdefault('decisions' if settings.get('opening_recipient','KR')=='KR' else 'ar_decisions',[]).append(copy.deepcopy(receipt))
@@ -521,7 +530,7 @@ def confirm_results(doc, results, settings):
     for task,receipt,link in results:
         if registry['tasks'][task['task_id']]['revision'] != task['revision']:
             raise ValueError(tr(u'Ревизия задания изменилась',u'Task revision changed'))
-        confirmation = dict(recipient=task.get('recipient','KR'),task_id=task['task_id'],revision=task['revision'],
+        confirmation = dict(object_part=task.get('object_part',''),recipient=task.get('recipient','KR'),task_id=task['task_id'],revision=task['revision'],
                             opening_id=receipt['opening_id'],kr_model=store.model_id(link.GetLinkDocument()),
                             author=doc.Application.Username,at=now())
         registry['tasks'][task['task_id']]['confirmation'] = confirmation

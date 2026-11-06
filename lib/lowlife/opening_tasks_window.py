@@ -25,6 +25,7 @@ from lowlife import opening_tasks_settings as cfg
 from lowlife import opening_tasks_manifest as manifest
 from lowlife import text_search
 from lowlife import opening_tasks_browser as browser
+from lowlife import opening_tasks_parts as parts
 
 _WINDOWS = {}
 
@@ -54,14 +55,21 @@ class Handler(IExternalEventHandler):
                 w.refresh()
                 return
             settings_form=cfg.make(w.role)
-            settings=settings_form.get_settings_silent()
+            settings=cfg.for_document(settings_form.get_settings_silent(),w.document)
+            settings['opening_object_part']=w.object_part
             settings['opening_recipient']=w.role if w.role in ('KR','AR') else ('AR' if action.endswith('_ar') else 'KR')
             if action in ('place_ar','issue_ar','confirm_ar'):
                 action=action[:-3]
             if w.role=='AR' and action.startswith('ar_'):
                 action=action[3:]
+            if not settings['opening_project']:
+                raise ValueError(tr(u'Заполните шифр объекта в «Сведениях о проекте» и проверьте выбранный параметр в настройках «Заметок».',u'Fill the project code in Project Information and check the parameter selected in Notes settings.'))
             settings_form.require(settings,['opening_project'])
             before_registry=api.core.dumps(store.registry(w.document))
+            if action=='parts_refresh':
+                if not w.parts_loading:
+                    parts.fetch(w,settings)
+                return
             if action=='journal_open':
                 from lowlife import opening_tasks_journal as journal
                 journal.open_sheet(w.document,w.role,settings['opening_project'])
@@ -171,9 +179,14 @@ class TaskWindow(forms.WPFWindow):
             <TextBlock x:Name="heading" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
             <WrapPanel x:Name="actions" Grid.Row="1" Margin="0,0,0,8"/>
             <StackPanel Grid.Row="2" Margin="0,0,0,10">
+              <WrapPanel Margin="0,0,0,8">
+                <TextBlock x:Name="project_label" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <ComboBox x:Name="part_choice" Width="180"/>
+              </WrapPanel>
               <TextBlock x:Name="exchange_hint" TextWrapping="Wrap" Margin="0,0,0,8"/>
               <TextBox x:Name="search" Height="28" Margin="0,0,0,8"/>
               <WrapPanel>
+                <ComboBox x:Name="part_filter" Width="180" Margin="0,0,8,6"/>
                 <ComboBox x:Name="state" Width="190" Margin="0,0,8,6"/>
                 <ComboBox x:Name="discipline_filter" Width="145" Margin="0,0,8,6"/>
                 <ComboBox x:Name="level_filter" Width="170" Margin="0,0,8,6"/>
@@ -196,6 +209,12 @@ class TaskWindow(forms.WPFWindow):
         self.pending=None
         self.closed=False
         self.rows=[]
+        self.object_part=''
+        self.project_code=''
+        self.model_uid=store.model_id(doc)
+        self.parts_loading=False
+        self.parts_updating=False
+        self.part_choice.SelectionChanged+=self.part_changed
         self.updating=False
         self.visible={}
         self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks') if role=='KR' else tr(u'Задания АР',u'AR tasks')
@@ -203,7 +222,8 @@ class TaskWindow(forms.WPFWindow):
         self.heading.Text=self.Title+u' — '+purpose+u' | '+doc.Title
         self.heading.ToolTip=tr(u'Обмен: сохраните/синхронизируйте свою модель, обновите связь смежника в Revit, затем нажмите «Обновить обмен». Данные показаны по последней загруженной версии связи.',u'Exchange: save/synchronize your model, reload the other discipline link in Revit, then click Refresh exchange. Results reflect the last loaded link version.')
         self.exchange_hint.Text=tr(u'Обмен: сохранить модель → обновить связь смежника в Revit → «Обновить обмен». Ответы показаны по загруженной версии связи.',u'Exchange: save model → reload recipient link in Revit → Refresh exchange. Responses reflect the loaded link version.')
-        self.filter_controls=[('status',self.state,tr(u'Все статусы',u'All statuses')),
+        self.filter_controls=[('object_part',self.part_filter,tr(u'Все части объекта',u'All object parts')),
+            ('status',self.state,tr(u'Все статусы',u'All statuses')),
             ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
             ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
             ('kind',self.kind_filter,tr(u'Все конструкции',u'All hosts')),
@@ -213,7 +233,7 @@ class TaskWindow(forms.WPFWindow):
         self.attention.Content=tr(u'Требуют внимания',u'Need attention')
         self.reset.Content=tr(u'Сбросить фильтры',u'Reset filters')
         self.search.ToolTip=tr(u'Поиск по номеру, GUID, модели, уровню и размерам',u'Search number, GUID, model, level and sizes')
-        self.columns=[('Number',tr(u'Задание',u'Task'),150),('Status',tr(u'Статус',u'Status'),170),
+        self.columns=[('ObjectPart',tr(u'Часть объекта',u'Object part'),100),('Number',tr(u'Задание',u'Task'),150),('Status',tr(u'Статус',u'Status'),170),
             ('Recipient',tr(u'Получатель',u'Recipient'),90),('Discipline',tr(u'Дисциплина',u'Discipline'),95),('Model',tr(u'Модель',u'Model'),140),
             ('Level',tr(u'Уровень',u'Level'),120),('Kind',tr(u'Конструкция',u'Host'),100),
             ('Issue',tr(u'Выпуск',u'Issue'),90),('Revision',tr(u'Ревизия',u'Revision'),75),
@@ -232,6 +252,7 @@ class TaskWindow(forms.WPFWindow):
         self.add('refresh',tr(u'Обновить обмен',u'Refresh exchange'))
         self.add('settings',tr(u'Настройки',u'Settings'))
         self.add('journal_open',tr(u'Открыть таблицу',u'Open spreadsheet'))
+        self.add('parts_refresh',tr(u'Обновить части объекта',u'Refresh object parts'))
         from lowlife import opening_tasks_journal as journal
         if journal.is_admin():
             self.add('journal_setup',tr(u'Подключение таблицы',u'Sheet connection'))
@@ -254,6 +275,30 @@ class TaskWindow(forms.WPFWindow):
         self.Closed+=self.on_closed
         self.refresh()
         journal.retry_pending(self)
+        try:
+            parts.fetch(self,cfg.for_document(cfg.make(self.role).get_settings_silent(),self.document))
+        except Exception:
+            pass
+
+    def load_parts(self):
+        self.parts_updating=True
+        self.part_choice.Items.Clear()
+        placeholder=tr(u'Выберите часть объекта',u'Select object part')
+        self.part_choice.Items.Add(placeholder)
+        values=parts.catalog(self.project_code)
+        for value in values:
+            self.part_choice.Items.Add(value)
+        selected=parts.selection(self.project_code,self.role,self.model_uid)
+        self.object_part=selected if selected in values else ''
+        self.part_choice.SelectedItem=self.object_part or placeholder
+        self.parts_updating=False
+
+    def part_changed(self,sender,event):
+        if self.parts_updating:
+            return
+        selected=unicode(self.part_choice.SelectedItem or '')
+        self.object_part=selected if selected in parts.catalog(self.project_code) else ''
+        parts.select(self.project_code,self.role,self.model_uid,self.object_part)
 
     def add(self,action,label):
         button=Button()
@@ -285,7 +330,10 @@ class TaskWindow(forms.WPFWindow):
             self.Show()
 
     def refresh(self):
-        settings=cfg.make(self.role).get_settings_silent()
+        settings=cfg.for_document(cfg.make(self.role).get_settings_silent(),self.document)
+        self.project_code=settings.get('opening_project','')
+        self.project_label.Text=tr(u'Объект: {}',u'Project: {}').format(self.project_code or u'—')
+        self.load_parts()
         registry=store.registry(self.document)
         self.rows=[]
         if self.role=='VIS':
@@ -294,8 +342,10 @@ class TaskWindow(forms.WPFWindow):
                 data=api.metadata(inst)
                 if not data or data['owner_uid']!=inst.UniqueId:
                     continue
-                found.add(data['task_id'])
                 r=registry['tasks'].get(data['task_id'])
+                if r and r['project']!=self.project_code:
+                    continue
+                found.add(data['task_id'])
                 self.rows.append(self.row(data['task_id'],inst.UniqueId,r,settings))
             for tid,r in registry['tasks'].items():
                 if tid not in found and r['project']==settings.get('opening_project'):
@@ -392,6 +442,7 @@ class TaskWindow(forms.WPFWindow):
                 except Exception:
                     pass
         return dict(task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
+                    object_part=(r.get('object_part','') if r else data.get('object_part','') if data else ''),
                     result='',next_action='',reply_revision='',number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
                     level=level.Name if level else u'—',
                     kind=tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
@@ -433,7 +484,7 @@ class TaskWindow(forms.WPFWindow):
         filters={key:unicode(control.SelectedItem) for key,control,label in self.filter_controls if control.SelectedIndex>0}
         for row in self.rows:
             row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
-                ('number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
+                ('object_part','number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
         visible=browser.select_rows(self.rows,filters,self.search.Text,bool(self.attention.IsChecked))
         table=DataTable()
         table.Columns.Add('Key',String)
@@ -443,7 +494,7 @@ class TaskWindow(forms.WPFWindow):
         for row in visible:
             item=table.NewRow()
             item['Key']=row['key']
-            for column,key in [('Number','number'),('Status','status'),('Recipient','recipient'),('Discipline','discipline'),('Model','model'),
+            for column,key in [('ObjectPart','object_part'),('Number','number'),('Status','status'),('Recipient','recipient'),('Discipline','discipline'),('Model','model'),
                                ('Result','result'),('ReplyRevision','reply_revision'),('Comment','comment'),('NextAction','next_action'),
                                ('Level','level'),('Kind','kind'),('Issue','issue'),('Revision','revision'),('Date','date'),('Sizes','sizes')]:
                 item[column]=row[key]
