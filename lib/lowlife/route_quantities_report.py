@@ -10,8 +10,15 @@ def print_report(output, package, total, processed, parameter_names, sections):
         [tr(u"Всего электрических цепей в проекте", u"Electrical circuits in project"), total],
         [tr(u"Цепей выбранного комплекта", u"Circuits in selected package"), processed],
     ], columns=[tr(u"Показатель", u"Metric"), tr(u"Значение", u"Value")])
-    titles = [tr(u"С запасом", u"With reserve"), tr(u"Без запаса", u"Without reserve")]
-    for title, parameter_name, data in zip(titles, parameter_names, sections):
+    titles = [
+        tr(u"1. Подсчёт по параметру «Способ прокладки»",
+           u"1. Calculation using the Route method parameter"),
+        tr(u"2. Подсчёт по параметру «Способ прокладки с запасом»",
+           u"2. Calculation using the Route method with reserve parameter"),
+    ]
+    # Input sections arrive with reserve first; show the base quantities first.
+    for title, index in zip(titles, (1, 0)):
+        parameter_name, data = parameter_names[index], sections[index]
         output.print_md(u"## " + title)
         output.print_md(tr(u"**Параметр:** {}", u"**Parameter:** {}").format(parameter_name))
         output.print_table(table_data=[
