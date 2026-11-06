@@ -12,7 +12,19 @@ def defaults():
     return dict(product='OSK', rating=180, arrangement='vertical', gap_mm=100.0,
                 clearance_mm=0.0, elevation_mm=3000.0, box_type_uid='',
                 system_type_uid='', tray_type_uid='', inside_flag_param='',
-                enclosure_note_param='', trays=[dict(width_mm=300.0, height_mm=100.0)])
+                enclosure_note_param='', support_bottom_mm=0.0,
+                rod_inset_mm=25.0, ceiling_gap_mm=200.0,
+                trays=[dict(width_mm=300.0, height_mm=100.0, tray_type_uid='')])
+
+
+def normalize(values):
+    """Migrate the old single tray type without replacing explicit row types."""
+    result = defaults()
+    result.update(copy.deepcopy(values))
+    for row in result['trays']:
+        if not row.get('tray_type_uid'):
+            row['tray_type_uid'] = result.get('tray_type_uid', '')
+    return result
 
 
 def load():
@@ -20,11 +32,11 @@ def load():
     values = defaults()
     for key in values:
         values[key] = copy.deepcopy(saved.get(key, values[key]))
-    return values
+    return normalize(values)
 
 
 def validate(values):
-    core.layout(values)
+    core.mounting_section(values)
     core.number(values['elevation_mm'], minimum=-1000000)
     if not values.get('box_type_uid'):
         raise ValueError(tr(u'Выберите тип короба.', u'Select enclosure type.'))

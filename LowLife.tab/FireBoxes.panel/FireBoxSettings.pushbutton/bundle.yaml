@@ -1,4 +1,4 @@
 title: Настройки короба
 title_en: Enclosure settings
-tooltip: FIREBOX или ОСК, огнестойкость, тип короба, тип лотка, количество, размеры и расположение внутренних лотков. Схема с размерами обновляется при редактировании.
-tooltip_en: FIREBOX or OSK, fire resistance, enclosure and tray types, number, dimensions and arrangement of internal trays. The dimensioned diagram updates as you edit.
+tooltip: FIREBOX или ОСК, огнестойкость и тип короба. В каждой строке — тип, ширина и высота лотка. Разрез показывает размещение лотков, размеры, шпильки и траверсы по АТР ОСК-90/180.
+tooltip_en: FIREBOX or OSK, fire resistance and enclosure type. Each row contains tray type, width and height. The section shows tray positions, dimensions, rods and crossbars using the OSK-90/180 ATRs.
