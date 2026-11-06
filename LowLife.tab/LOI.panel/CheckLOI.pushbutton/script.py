@@ -26,18 +26,18 @@ def _cell(text):
     return unicode(text or u"").replace(u"|", u"/")
 
 
-def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0, hidden_cats=0):
+def _report(output, results, missing_categories, views_3d, stage):
     output.print_md(tr(u"# Проверка LOI"))
     output.print_md(tr(u"Этап: **{}**").format(stage.title) if stage is not None
                     else tr(u"Проверка по своему списку параметров."))
-    if view_3d is not None:
-        output.print_md(
-            tr(u"3D-вид с незаполненными элементами: {} (оставлено {}; заполненные — {} — "
-            u"спрятаны фильтром вида; выключено других категорий: {})").format(
-                output.linkify(view_3d.Id, view_3d.Name),
-                sum(len(r.incomplete_rows) for r in results), hidden_3d, hidden_cats))
+    if views_3d:
+        for param, view, count, hidden, hidden_cats in views_3d:
+            output.print_md(
+                tr(u"Параметр «{}»: 3D-вид {} (элементов: {}; скрыто фильтром: {}; "
+                   u"выключено категорий: {})").format(
+                    _cell(param), output.linkify(view.Id, view.Name), count, hidden, hidden_cats))
     else:
-        output.print_md(tr(u"Незаполненных элементов нет — 3D-вид не обновлялся (если он есть, на нём результат прошлого запуска)."))
+        output.print_md(tr(u"3D-виды не созданы. Виды прошлых запусков сохраняют прежний результат."))
     if missing_categories:
         output.print_md(tr(u"**Категории не найдены в документе:** {}").format(
             u", ".join(missing_categories)))
@@ -87,7 +87,7 @@ def _report(output, results, missing_categories, view_3d, stage, hidden_3d=0, hi
 
 
 def main():
-    from lowlife import loi_check_settings, loi_check
+    from lowlife import loi_check_settings, loi_check, select_list
 
     try:
         config_mode = bool(EXEC_PARAMS.config_mode)
@@ -133,26 +133,23 @@ def main():
         # категории приложения без единого проверенного элемента — без спецификаций
         results = [r for r in results if r.summary.total or r.unknown_codes]
 
-    incomplete = [row.element for res in results for row in res.incomplete_rows]
-
-    with revit.Transaction(u"Проверка LOI — спецификации и 3D-вид"):
+    with revit.Transaction(u"Проверка LOI — спецификации и 3D-виды"):
         for res in results:
             if stage is not None and not res.summary.total:
                 continue
             res.schedule, res.missing_fields = loi_check.build_schedule(
                 doc, res.category, res.rows, floor_param)
-        view_3d, hidden_3d, hidden_cats = loi_check.build_3d_view(
-            doc, incomplete, [res.category for res in results])
+        views_3d = loi_check.build_3d_views(doc, results)
 
-    _report(script.get_output(), results, missing_categories, view_3d, stage, hidden_3d, hidden_cats)
+    _report(script.get_output(), results, missing_categories, views_3d, stage)
 
-    if view_3d is not None:
-        total = len(incomplete)
-        if forms.alert(
-                tr(u"Элементов с незаполненными параметрами: {}.\n\n"
-                u"Открыть 3D-вид «{}»?").format(total, view_3d.Name),
-                title=TITLE, yes=True, no=True):
-            _open(view_3d)
+    if views_3d:
+        chosen = select_list.SelectFromList.show(
+            [view for _param, view, _count, _hidden, _cats in views_3d],
+            name_attr="Name", title=tr(u"Открыть 3D-вид по параметру"),
+            button_name=tr(u"Открыть"), multiselect=False)
+        if chosen is not None:
+            _open(chosen)
         return
 
     _open(next((r.schedule for r in results if r.schedule is not None), None))

@@ -39,7 +39,7 @@ Elements without a level are skipped. The report says how much was written and w
 Checks whether elements of the chosen categories have the required parameters filled in (the value is looked up on the instance, then on the type), and builds:
 
 - a schedule **«LOI проверка — <category>»** per category: «Type», «Family», «Floor» columns and the checked parameters, sorted floor → family → type. Running it again rebuilds the same schedule;
-- **a 3D view «LOI проверка — незаполненные»** showing only elements with empty parameters (after the check the button asks whether to open it);
+- **a separate 3D view «LOI проверка — незаполненные — <parameter name>»** for each required empty or absent parameter, showing elements across the checked categories missing that specific parameter. After the check, choose a view to open. Subsequent runs update the corresponding views; views without current failures retain their previous results;
 - **a report**: how many elements are missing each parameter and a list of them (clickable IDs).
 
 Two modes:

@@ -25,10 +25,10 @@
 обязательны только параметры его класса на выбранном этапе
 (loi_check_core.CategoryPlan).
 
-Незаполненные элементы всех категорий показываются на 3D-виде
-VIEW_3D_NAME (build_3d_view): изометрия без шаблона вида, где выключены все
-категории, кроме проверяемых, а остальные элементы проверяемых категорий
-спрятаны фильтром вида FILLED_FILTER_NAME (сохранённый выбор). Поштучного
+Незаполненные элементы всех категорий группируются по имени параметра
+(build_3d_views): для каждого параметра создаётся отдельный 3D-вид —
+изометрия без шаблона вида, где выключены все категории, кроме проверяемых, а остальные элементы проверяемых категорий
+спрятаны собственным фильтром вида (сохранённый выбор). Поштучного
 «Скрыть элементы» нет — скрытие тысяч элементов по одному роняло Revit.
 """
 
@@ -224,12 +224,13 @@ def floor_text(doc, el, floor_param, el_type=None):
 
 
 class ElementRow(object):
-    def __init__(self, element, type_name, family_name, floor, cells):
+    def __init__(self, element, type_name, family_name, floor, cells, missing_params):
         self.element = element
         self.type_name = type_name
         self.family_name = family_name
         self.floor = floor
         self.cells = cells  # тексты ячеек по строкам списка
+        self.missing_params = missing_params  # обязательные пустые/отсутствующие параметры
 
 
 class CategoryResult(object):
@@ -284,7 +285,8 @@ def check_category(doc, category, rows, floor_param, plan=None, code_param=None)
         if summary.add(statuses):
             result.incomplete_rows.append(ElementRow(
                 el, type_name, family_name,
-                floor_text(doc, el, floor_param, el_type), cells))
+                floor_text(doc, el, floor_param, el_type), cells,
+                core.incomplete_params(rows, statuses)))
 
     result.incomplete_rows.sort(key=lambda r: (r.floor, r.family_name, r.type_name))
     return result
@@ -594,11 +596,11 @@ def _selection_filter(doc, name):
     return SelectionFilterElement.Create(doc, name)
 
 
-def _hide_by_filter(doc, view, element_ids):
-    """Фильтр вида FILLED_FILTER_NAME (сохранённый выбор element_ids) с
+def _hide_by_filter(doc, view, element_ids, filter_name):
+    """Фильтр вида filter_name (сохранённый выбор element_ids) с
     выключенной видимостью. Возвращает число элементов в нём."""
     from System.Collections.Generic import List
-    flt = _selection_filter(doc, FILLED_FILTER_NAME)
+    flt = _selection_filter(doc, filter_name)
     if flt is None:
         return 0
     ids = List[ElementId]()
@@ -611,15 +613,15 @@ def _hide_by_filter(doc, view, element_ids):
     return ids.Count
 
 
-def build_3d_view(doc, elements, categories):
+def build_3d_view(doc, elements, categories, view_name, filter_name):
     """
-    3D-вид VIEW_3D_NAME, на котором видны только elements (незаполненные) и
+    3D-вид view_name, на котором видны только elements (незаполненные) и
     их вложенные семейства. Вызывать внутри транзакции.
 
     Без поштучного «Скрыть элементы» (скрытие тысяч элементов по одному
     роняло Revit): категории, кроме проверяемых (categories), выключены на
     виде целиком, а остальные элементы проверяемых категорий спрятаны
-    фильтром вида — сохранённым выбором FILLED_FILTER_NAME.
+    фильтром вида — сохранённым выбором filter_name.
 
     Возвращает (вид, сколько спрятано фильтром, сколько категорий выключено)
     или (None, 0, 0) — нет элементов / нет типа 3D-вида.
@@ -629,7 +631,7 @@ def build_3d_view(doc, elements, categories):
     if not elements:
         return None, 0, 0
 
-    view = _find_3d_view(doc, VIEW_3D_NAME)
+    view = _find_3d_view(doc, view_name)
     if view is not None:
         active = doc.ActiveView
         if active is None or active.Id != view.Id:
@@ -648,7 +650,7 @@ def build_3d_view(doc, elements, categories):
         if vft is None:
             return None, 0, 0
         view = View3D.CreateIsometric(doc, vft.Id)
-        view.Name = VIEW_3D_NAME
+        view.Name = view_name
 
     try:
         view.ViewTemplateId = ElementId.InvalidElementId
@@ -668,7 +670,7 @@ def build_3d_view(doc, elements, categories):
         for el in collect_elements(doc, cat):
             if el.Id.IntegerValue not in keep:
                 others.append(el.Id.IntegerValue)
-    hidden = _hide_by_filter(doc, view, others)
+    hidden = _hide_by_filter(doc, view, others, filter_name)
     return view, hidden, hidden_categories
 
 
@@ -680,3 +682,37 @@ def _temporary_modes():
         if mode is not None:
             modes.append(mode)
     return modes
+
+
+def build_3d_views(doc, results):
+    """По одному виду и независимому фильтру на незаполненный параметр.
+
+    Возвращает [(параметр, вид, элементов, скрыто, выключено категорий)].
+    Вызывать внутри транзакции. Элементы объединяются по всем категориям;
+    повторяющиеся строки настроек не дублируют элементы.
+    """
+    groups, order = {}, []
+    for result in results:
+        for _label, param in result.rows:
+            if param not in order:
+                order.append(param)
+        for row in result.incomplete_rows:
+            for param in row.missing_params:
+                if param not in groups:
+                    groups[param] = {}
+                groups[param][row.element.Id.IntegerValue] = row.element
+    names = core.parameter_view_names(VIEW_3D_NAME, order)
+    categories = [result.category for result in results]
+    views = []
+    for param, view_name in zip(order, names):
+        if param not in groups:
+            continue
+        elements = list(groups[param].values())
+        # Имя фильтра связано с уникальным именем вида, а не только с
+        # очищенным именем параметра: запрещённые символы могут совпасть.
+        filter_name = FILLED_FILTER_NAME + view_name[len(VIEW_3D_NAME):]
+        view, hidden, hidden_cats = build_3d_view(
+            doc, elements, categories, view_name, filter_name)
+        if view is not None:
+            views.append((param, view, len(elements), hidden, hidden_cats))
+    return views

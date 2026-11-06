@@ -52,3 +52,16 @@ def test_status_text():
 def test_schedule_name_strips_forbidden_chars():
     assert core.schedule_name(u"LOI проверка", u"Лотки: [кабельные]") == \
         u"LOI проверка — Лотки_ _кабельные_"
+
+
+def test_incomplete_params_excludes_filled_and_not_required_and_deduplicates():
+    rows = [(u"A", u"p1"), (u"B", u"p2"), (u"C", u"p3"),
+            (u"D", u"p4"), (u"Alias", u"p1")]
+    assert core.incomplete_params(rows, [core.EMPTY, core.ABSENT, core.FILLED,
+                                         None, core.EMPTY]) == [u"p1", u"p2"]
+
+
+def test_parameter_view_names_handles_invalid_characters_and_collisions():
+    names = core.parameter_view_names(u"LOI", [u"A:B", u"A?B", u"a_b", u"A_B (2)"])
+    assert names == [u"LOI — A_B", u"LOI — A_B (2)",
+                     u"LOI — a_b (3)", u"LOI — A_B (2) (2)"]
