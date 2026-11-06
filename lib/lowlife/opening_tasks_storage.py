@@ -7,8 +7,8 @@ except NameError:
 
 from System import Guid, String
 from lowlife.i18n import tr
-from Autodesk.Revit.DB import DataStorage, FilteredElementCollector, StorageType
-from Autodesk.Revit.DB.ExtensibleStorage import Schema, SchemaBuilder, AccessLevel, Entity
+from Autodesk.Revit.DB import FilteredElementCollector, StorageType
+from Autodesk.Revit.DB.ExtensibleStorage import DataStorage, Schema, SchemaBuilder, AccessLevel, Entity
 from lowlife import opening_tasks_core as core
 
 SCHEMA_ID = Guid('12d35d7d-c051-4f57-bd4b-829e67b6bd72')
