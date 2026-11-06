@@ -4,7 +4,7 @@ from System.Collections.Generic import List
 from Autodesk.Revit.DB import (Color, ElementId, ElementParameterFilter, FamilyInstance,
     FillPatternElement, FilteredElementCollector, LogicalAndFilter, ElementFilter,
     OverrideGraphicSettings, ParameterFilterElement, ParameterFilterRuleFactory,
-    ScheduleFilter, ScheduleFilterType, StorageType, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
+    ScheduleFilter, ScheduleFilterType, StorageType, Level, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
 from pyrevit import revit, forms, script
 from lowlife.i18n import tr
 from lowlife import opening_tasks_storage as store
@@ -102,6 +102,31 @@ def build(doc, settings):
                     view.AddFilter(hidden.Id)
                 view.SetFilterVisibility(hidden.Id,False)
             output.append(view)
+        plan_type = next((t for t in FilteredElementCollector(doc).OfClass(ViewFamilyType)
+                          if t.ViewFamily==ViewFamily.FloorPlan),None)
+        if plan_type is not None:
+            levels=sorted(FilteredElementCollector(doc).OfClass(Level),key=lambda l:l.ProjectElevation)
+            for i,level in enumerate(levels):
+                key=root+'/plan/'+level.UniqueId
+                plan=existing(key,ViewPlan)
+                if plan is None:
+                    plan=remember(key,ViewPlan.Create(doc,plan_type.Id,level.Id))
+                    plan.Name=unique_name(doc,prefix+u' | План | '+level.Name)
+                # Full storey visibility; normal plan cut plane at 1.2 m.
+                vr=plan.GetViewRange()
+                top=max(1201.0,api.boxes.mm(levels[i+1].ProjectElevation-level.ProjectElevation)) if i+1<len(levels) else 4000.0
+                for plane,offset in [(PlanViewPlane.TopClipPlane,api.boxes.ft(top)),
+                                     (PlanViewPlane.CutPlane,api.boxes.ft(1200)),
+                                     (PlanViewPlane.BottomClipPlane,0.0),(PlanViewPlane.ViewDepthPlane,0.0)]:
+                    vr.SetLevelId(plane,level.Id)
+                    vr.SetOffset(plane,offset)
+                plan.SetViewRange(vr)
+                for f,ogs in colors:
+                    if not plan.IsFilterApplied(f.Id):
+                        plan.AddFilter(f.Id)
+                    plan.SetFilterOverrides(f.Id,ogs)
+                    plan.SetFilterVisibility(f.Id,True)
+                output.append(plan)
         schedule = existing(root+'/schedule',ViewSchedule)
         fresh = schedule is None
         if fresh:

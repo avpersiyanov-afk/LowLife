@@ -11,3 +11,5 @@ layout:
   - KRReject
   - KRWithdraw
   - VISControl
+  - VISFocus
+  - KRStructures

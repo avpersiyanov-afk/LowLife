@@ -185,6 +185,8 @@ THEMES = {
     u"General": [
         (u"OpeningTasks", u"VISPlace"),
         (u"OpeningTasks", u"VISControl"),
+        (u"OpeningTasks", u"KRStructures"),
+        (u"OpeningTasks", u"VISFocus"),
         (u"OpeningTasks", u"VISIssue"),
         (u"OpeningTasks", u"VISWithdraw"),
         (u"OpeningTasks", u"VISConfirm"),
