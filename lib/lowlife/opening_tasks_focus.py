@@ -44,6 +44,15 @@ def structures_view(doc):
     return view
 
 
+def link_visibility(settings, structure):
+    if structure is not None:
+        settings.LinkVisibilityType=LinkVisibility.ByLinkView
+        settings.LinkedViewId=structure.Id
+    else:
+        settings.LinkVisibilityType=LinkVisibility.ByHostView
+    return settings
+
+
 def focus(doc, inst):
     data = api.metadata(inst)
     if not data or data.get('owner_uid')!=inst.UniqueId:
@@ -55,9 +64,6 @@ def focus(doc, inst):
     linked = link.GetLinkDocument()
     structure = next((v for v in FilteredElementCollector(linked).OfClass(View3D)
                       if not v.IsTemplate and (store.read(v) or {}).get('role')=='structural_preview'),None)
-    if structure is None:
-        raise ValueError(tr(u'В модели КР сначала выполните «Вид конструкций», сохраните модель и обновите связь в ВИС.',
-                            u'Run Structural view in KR, save the model and reload its link in VIS first.'))
     registry=store.registry(doc)
     previews=registry.setdefault('box_previews',{})
     view=doc.GetElement(previews[inst.UniqueId]) if inst.UniqueId in previews else None
@@ -79,8 +85,12 @@ def focus(doc, inst):
     if others:
         view.HideElements(List[ElementId](others))
     linked_settings=RevitLinkGraphicsSettings()
-    linked_settings.LinkVisibilityType=LinkVisibility.ByLinkView
-    linked_settings.LinkedViewId=structure.Id
+    link_visibility(linked_settings,structure)
+    allowed=structural_categories() | set([api.boxes._id_int(inst.Category.Id),
+        api.boxes._id_int(source.Category.Id),int(BuiltInCategory.OST_RvtLinks)])
+    for category in doc.Settings.Categories:
+        if view.CanCategoryBeHidden(category.Id):
+            view.SetCategoryHidden(category.Id,api.boxes._id_int(category.Id) not in allowed)
     view.SetLinkOverrides(link.Id,linked_settings)
     view.SetElementOverrides(link.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
     blue=Color(30,100,240)
