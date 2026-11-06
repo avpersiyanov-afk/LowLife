@@ -12,8 +12,8 @@ except NameError:
 
 def show(doc, values=None, preview_path=None, preview_tab=1):
     from pyrevit import forms
-    from System.Windows import Thickness, TextWrapping, VerticalAlignment, HorizontalAlignment, FontWeights
-    from System.Windows.Controls import StackPanel, TextBlock, TextBox, Button, Grid, ColumnDefinition
+    from System.Windows import Thickness, TextWrapping, VerticalAlignment, HorizontalAlignment, FontWeights, Visibility
+    from System.Windows.Controls import StackPanel, TextBlock, TextBox, Button, Grid, ColumnDefinition, Canvas
     from lowlife import fire_boxes, param_autocomplete, select_list, settings_transfer
 
     class Editor(forms.WPFWindow):
@@ -70,6 +70,44 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             self.loading = True
             self.rows = []
             self.boxes = {}
+            self.custom_side_spacing = self.values.get('rod_to_tray_mm') is not None
+            self.spacing_updating = False
+            self.diagram_editors = {}
+            editor_panel = StackPanel()
+            editor_panel.Width = 230
+            for key, caption in [
+                    ('rod_inset_mm', tr(u'Стенка → ось шпильки, мм *', u'Wall → rod axis, mm *')),
+                    ('rod_to_tray_mm', tr(u'Ось шпильки → лоток, мм *', u'Rod axis → tray, mm *'))]:
+                label = TextBlock()
+                label.Text, label.TextWrapping = caption, TextWrapping.Wrap
+                label.Margin = Thickness(0, 14 if key == 'rod_to_tray_mm' else 0, 0, 4)
+                editor_panel.Children.Add(label)
+                box = TextBox()
+                box.Width, box.Height, box.FontSize = 110, 34, 16
+                box.HorizontalAlignment = HorizontalAlignment.Left
+                value = self.values.get(key)
+                box.Text = unicode(value) if value is not None else ''
+                box.ToolTip = caption + u'\n' + tr(u'Введите размер в мм. Ширина короба и разрез обновляются сразу.',
+                                  u'Enter a dimension in mm. Enclosure width and section update immediately.')
+                box.TextChanged += self.spacing_changed
+                self.diagram_editors[key] = box
+                editor_panel.Children.Add(box)
+            self.boxes['rod_inset_mm'] = self.diagram_editors['rod_inset_mm']
+            reset_spacing = Button()
+            reset_spacing.Content = tr(u'По калькулятору 2Ф', u'Use 2F calculator')
+            reset_spacing.HorizontalAlignment = HorizontalAlignment.Left
+            reset_spacing.Margin = Thickness(0, 16, 0, 8)
+            reset_spacing.Click += self.reset_spacing
+            self.diagram_editors['reset'] = reset_spacing
+            editor_panel.Children.Add(reset_spacing)
+            hint = TextBlock()
+            hint.Text = tr(u'Ширина меняется сразу', u'Width updates immediately')
+            editor_panel.Children.Add(hint)
+            self.diagram_editors['panel'] = editor_panel
+            Canvas.SetLeft(editor_panel,560)
+            Canvas.SetTop(editor_panel,250)
+            Canvas.SetZIndex(editor_panel,10)
+            self.diagram.Children.Add(editor_panel)
             from System.Windows.Controls import TabItem, ScrollViewer
             from System.Windows.Controls import ScrollBarVisibility
             self.pages = []
@@ -124,7 +162,6 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 self.choose_buttons[key] = button
             for key, label in [
                 ('support_bottom_mm', tr(u'От днища в свету до низа лотков, мм (0 — авто)', u'Clear floor to tray bottom, mm (0 — auto)')),
-                ('rod_inset_mm', tr(u'От внутренней стенки до оси шпильки, мм *', u'Inner wall to rod axis, mm *')),
                 ('ceiling_gap_mm', tr(u'От крышки до перекрытия, мм *', u'Lid to slab, mm *'))]:
                 self.boxes[key] = self.field(label, self.values[key])
             self.fields = self.pages[2]
@@ -285,6 +322,16 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             self.update_wall_controls()
             self.refresh(None, None)
 
+        def spacing_changed(self, sender, event):
+            if self.loading or self.spacing_updating:
+                return
+            self.custom_side_spacing = True
+            self.refresh(None, None)
+
+        def reset_spacing(self, sender, event):
+            self.custom_side_spacing = False
+            self.refresh(None, None)
+
         def rebuild_rows(self, sizes):
             from System.Windows import GridLength, GridUnitType, VerticalAlignment, TextTrimming
             from System.Windows.Controls import Grid, ColumnDefinition
@@ -366,8 +413,14 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             if doc.IsWorkshared:
                 for key, box in self.workset_boxes.items():
                     values[key] = unicode(box.SelectedItem) if box.SelectedIndex > 0 else ''
+            spacing_supported = values['product'] == 'OSK' and values['rating'] in (90, 180)
             for key, box in self.boxes.items():
+                if key == 'rod_inset_mm' and not spacing_supported:
+                    continue
                 values[key] = box.Text.strip() if key.endswith('_param') else core.number(box.Text, minimum=-1000000 if key == 'elevation_mm' else 0)
+            if spacing_supported:
+                values['rod_to_tray_mm'] = (core.number(self.diagram_editors['rod_to_tray_mm'].Text, positive=True)
+                                            if self.custom_side_spacing else None)
             values['trays'] = [dict(width_mm=core.number(row['width_mm'].Text, positive=True),
                                    height_mm=core.number(row['height_mm'].Text, positive=True),
                                    tray_type_uid=row['uid']) for row in self.rows]
@@ -403,9 +456,18 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
         def refresh(self, sender, event):
             if self.loading:
                 return
+            spacing_supported = unicode(self.product.SelectedItem) == 'OSK' and self.rating.SelectedItem in (90, 180)
+            for editor in self.diagram_editors.values():
+                editor.Visibility = Visibility.Visible if spacing_supported else Visibility.Collapsed
             try:
                 values = self.read()
                 section = core.mounting_section(values)
+                if section['mounting_supported'] and not self.custom_side_spacing:
+                    self.spacing_updating = True
+                    try:
+                        self.diagram_editors['rod_to_tray_mm'].Text = u'{:g}'.format(float(section['rod_to_tray']))
+                    finally:
+                        self.spacing_updating = False
                 summary = (tr(u'Короб: {:.0f} × {:.0f} мм\nПространство для кабелей: {:.0f} × {:.0f} мм',
                               u'Enclosure: {:.0f} × {:.0f} mm\nCable space: {:.0f} × {:.0f} mm')
                            if values['product'] == 'FIREBOX' else
@@ -420,10 +482,14 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                            tr(u'ОСК: позиции и размеры лотков совпадают с построением в модели.\n',
                               u'OSK: tray positions and dimensions match model placement.\n'))
                 self.explanation.Text = caption + tr(
-                    u'Габарит — по калькулятору 2Ф. Стенки, каркас и траверсы ОСК-90/180 — по АТР. '
+                    u'Исходный габарит — по калькулятору 2Ф. Стенки, каркас и траверсы ОСК-90/180 — по АТР. '
                     u'* Отступы шпилек и высота подвеса уточняются проектом. Подвесы показаны на схеме и не создаются в модели.',
-                    u'Overall dimensions follow the 2F calculator. OSK-90/180 walls, frame and crossbars follow the ATR. '
+                    u'The initial envelope follows the 2F calculator. OSK-90/180 walls, frame and crossbars follow the ATR. '
                     u'* Rod insets and suspension height are project inputs. Supports are previewed and are not created in the model.')
+                if section['custom_side_spacing']:
+                    self.explanation.Text += u'\n' + tr(
+                        u'Ширина задана размерами на схеме; высота — по калькулятору 2Ф. Боковые расстояния применяются с двух сторон. Дополнительный запас задаёт минимальный боковой зазор.',
+                        u'Width follows the diagram dimensions; height follows the 2F calculator. Side distances apply on both sides. Extra clearance sets the minimum side gap.')
                 if section['mounting_supported']:
                     self.explanation.Text += u'\n' + tr(u'АТР ОСК-{}, лист {}. Стенка: {:g} мм. Траверса: 30×30 мм.',
                         u'ATR OSK-{}, sheet {}. Wall: {:g} mm. Crossbar: 30×30 mm.').format(values['rating'], section['source_sheet'], float(section['wall']))
@@ -442,10 +508,11 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 if values['product'] == 'OSK' and values['rating'] == 180 and values['wall_configuration'] != 'no_top' and section['top_clear'] < 100:
                     self.explanation.Text += u'\n' + tr(u'До крышки менее рекомендованных АТР 100 мм.', u'Less than the 100 mm lid clearance recommended by the ATR.')
                 from lowlife.fire_boxes_diagram import draw
-                draw(self.diagram, values, section)
+                draw(self.diagram, values, section, editors=self.diagram_editors)
             except Exception as exc:
                 self.summary.Text = tr(u'Проверьте сечение:\n{}', u'Check cross-section:\n{}').format(exc)
-                self.diagram.Children.Clear()
+                # Keep the last valid preview and its live controls while a
+                # number is temporarily blank/invalid; do not steal typing focus.
 
         def accept(self, sender, event):
             try:

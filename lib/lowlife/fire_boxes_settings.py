@@ -16,6 +16,7 @@ def defaults():
                 rod_inset_mm=25.0, ceiling_gap_mm=200.0,
                 box_workset_name='', tray_workset_name='',
                 wall_configuration='closed',
+                rod_to_tray_mm=None,
                 trays=[dict(width_mm=300.0, height_mm=100.0, tray_type_uid='')])
 
 
