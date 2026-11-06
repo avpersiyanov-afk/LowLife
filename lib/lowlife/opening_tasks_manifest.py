@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=11
+VERSION=12
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 COMMON=('refresh','settings','journal_setup','journal_open','parts_refresh')
 ACTIONS={
@@ -52,3 +52,18 @@ def validate_action(role,action):
     if action not in allowed:
         raise ValueError(tr(u'Действие «{}» недоступно роли {}.',u'Action {} is not available to role {}.').format(action,role))
     return action
+
+
+def action_hint(action):
+    return {
+        'refresh':tr(u'Перечитать задания и ответы из уже загруженных связей. Перед этим обновите связи штатной командой Revit.',
+                     u'Read tasks and responses from the currently loaded links. Reload links in Revit first.'),
+        'settings':tr(u'Настройки текущей роли. Под каждым полем есть пояснение; имена параметров выбираются с подсказками.',
+                      u'Settings for the current role. Each field has an explanation; parameter names have suggestions.'),
+        'journal_setup':tr(u'Подключение Google-журнала: адрес Apps Script и токен модели. Доступно только persiyanov. Внутри есть инструкция.',
+                           u'Google journal connection: Apps Script URL and model token. Available only to persiyanov. Includes a setup guide.'),
+        'journal_open':tr(u'Открыть Google-журнал в браузере. Задания отправляются автоматически; для просмотра нужен доступ к таблице.',
+                          u'Open the Google journal in your browser. Tasks are sent automatically; viewing requires sheet access.'),
+        'parts_refresh':tr(u'Загрузить из Google НЧ/ПЧ и номера корпусов или секций текущего объекта. Без сети используется сохранённый список.',
+                           u'Load the current project parts and building or section numbers from Google. Cached choices are used offline.'),
+    }.get(action,'')

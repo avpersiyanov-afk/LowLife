@@ -1,5 +1,6 @@
+title: КР
 title_en: KR
-tooltip: Окно заданий на отверстия. Shift+клик — настройки.
-tooltip_en: Opening task interface. Shift+click for settings.
+tooltip: Приём заданий ВИС в модели КР, создание отверстий и замечания. Shift+клик — настройки с пояснениями.
+tooltip_en: Accept VIS tasks in the KR model, create openings and add comments. Shift+click for settings with explanations.
 engine:
   persistent: true

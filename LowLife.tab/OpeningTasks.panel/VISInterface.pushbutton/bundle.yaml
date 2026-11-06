@@ -1,5 +1,6 @@
+title: ВИС
 title_en: VIS
-tooltip: Окно заданий на отверстия. Shift+клик — настройки.
-tooltip_en: Opening task interface. Shift+click for settings.
+tooltip: Подготовка и выдача заданий КР/АР, контроль ответов и автоматический Google-журнал. Shift+клик — настройки с пояснениями.
+tooltip_en: Prepare and issue KR/AR tasks, review replies and update the Google journal automatically. Shift+click for settings with explanations.
 engine:
   persistent: true

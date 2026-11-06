@@ -303,6 +303,7 @@ class TaskWindow(forms.WPFWindow):
     def add(self,action,label):
         button=Button()
         button.Content=label
+        button.ToolTip=manifest.action_hint(action)
         button.Padding=Thickness(10,6,10,6)
         button.Margin=Thickness(0,0,8,8)
         button.Click+=lambda s,e,a=action:self.dispatch(a)
