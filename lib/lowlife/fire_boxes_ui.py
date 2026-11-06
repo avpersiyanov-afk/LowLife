@@ -10,10 +10,10 @@ except NameError:
     unicode = str
 
 
-def show(doc, values=None, preview_path=None):
+def show(doc, values=None, preview_path=None, preview_tab=1):
     from pyrevit import forms
-    from System.Windows import Thickness, TextWrapping
-    from System.Windows.Controls import StackPanel, TextBlock, TextBox, Button
+    from System.Windows import Thickness, TextWrapping, VerticalAlignment, HorizontalAlignment, FontWeights
+    from System.Windows.Controls import StackPanel, TextBlock, TextBox, Button, Grid, ColumnDefinition
     from lowlife import fire_boxes, param_autocomplete, select_list, settings_transfer
 
     class Editor(forms.WPFWindow):
@@ -22,21 +22,49 @@ def show(doc, values=None, preview_path=None):
               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
               Width="1360" Height="900" MinWidth="1200" MinHeight="780" Background="White" Foreground="#202020"
+              FontFamily="Segoe UI" FontSize="13"
               WindowStartupLocation="CenterScreen">
-              <Grid Margin="18" Background="White">
-                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="530"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <TabControl x:Name="tabs" Margin="0,0,18,0"/>
-                <Grid Grid.Column="1">
+              <Window.Resources>
+                <Style TargetType="TextBox">
+                  <Setter Property="Padding" Value="7,5"/>
+                  <Setter Property="MinHeight" Value="32"/>
+                  <Setter Property="VerticalContentAlignment" Value="Center"/>
+                </Style>
+                <Style TargetType="ComboBox">
+                  <Setter Property="Padding" Value="7,5"/>
+                  <Setter Property="MinHeight" Value="32"/>
+                  <Setter Property="VerticalContentAlignment" Value="Center"/>
+                </Style>
+                <Style TargetType="Button">
+                  <Setter Property="Padding" Value="10,4"/>
+                  <Setter Property="MinHeight" Value="32"/>
+                  <Setter Property="VerticalContentAlignment" Value="Center"/>
+                </Style>
+                <Style TargetType="TabItem">
+                  <Setter Property="Padding" Value="16,8"/>
+                </Style>
+              </Window.Resources>
+              <Grid Margin="18" Background="White" TextElement.FontFamily="Segoe UI" TextElement.FontSize="13" UseLayoutRounding="True">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="570"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="heading" Grid.ColumnSpan="2" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+                <TabControl x:Name="tabs" Grid.Row="1" Margin="0,0,18,0" BorderBrush="#D8DCE0" Background="White"/>
+                <Border Grid.Row="1" Grid.Column="1" BorderBrush="#D8DCE0" BorderThickness="1" CornerRadius="4" Padding="16" Background="#FAFBFC">
+                <Grid>
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                  <TextBlock x:Name="summary" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                  <Viewbox Grid.Row="1" Stretch="Uniform"><Canvas x:Name="diagram" Width="800" Height="650"/></Viewbox>
-                  <TextBlock x:Name="explanation" Grid.Row="2" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                  <TextBlock x:Name="summary" FontSize="16" FontWeight="Bold" TextWrapping="Wrap"/>
+                  <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,12,0,12"><Canvas x:Name="diagram" Width="800" Height="650"/></Viewbox>
+                  <TextBlock x:Name="explanation" Grid.Row="2" FontSize="12" Foreground="#606770" TextWrapping="Wrap"/>
                 </Grid>
-                <StackPanel x:Name="footer" Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0"/>
+                </Border>
+                <DockPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,16,0,0" LastChildFill="False">
+                  <StackPanel x:Name="transfer" DockPanel.Dock="Left" Orientation="Horizontal"/>
+                  <StackPanel x:Name="footer" DockPanel.Dock="Right" Orientation="Horizontal"/>
+                </DockPanel>
               </Grid>
             </Window>''', literal_string=True)
             self.Title = tr(u'Огнезащитные короба — настройки', u'Fire enclosures — settings')
+            self.heading.Text = self.Title
             self.values = cfg.normalize(values if values is not None else cfg.load())
             self.result = None
             self.loading = True
@@ -51,7 +79,7 @@ def show(doc, values=None, preview_path=None):
                 scroll = ScrollViewer()
                 scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
                 page = StackPanel()
-                page.Margin = Thickness(8)
+                page.Margin = Thickness(16)
                 scroll.Content, tab.Content = page, scroll
                 self.tabs.Items.Add(tab)
                 self.pages.append(page)
@@ -77,6 +105,12 @@ def show(doc, values=None, preview_path=None):
                 self.fields = self.pages[1] if kind == 'tray' else self.pages[0]
                 self.label(label)
                 button = self.button(self.fields, self.type_label(key), lambda s, e, k=key, t=kind: self.pick_type(k, t))
+                button.Margin = Thickness(0, 0, 0, 12)
+                button.HorizontalContentAlignment = HorizontalAlignment.Stretch
+                caption = TextBlock()
+                caption.Text = self.type_label(key)
+                caption.TextWrapping = TextWrapping.Wrap
+                button.Content = caption
                 self.choose_buttons[key] = button
             for key, label in [
                 ('support_bottom_mm', tr(u'От днища в свету до низа лотков, мм (0 — авто)', u'Clear floor to tray bottom, mm (0 — auto)')),
@@ -93,11 +127,14 @@ def show(doc, values=None, preview_path=None):
             self.label(tr(u'Каждая строка — отдельный лоток. Размеры в мм.', u'Each row is a separate tray. Dimensions are in mm.'))
             self.row_panel = StackPanel()
             self.fields.Children.Add(self.row_panel)
-            self.button(self.fields, tr(u'+ Добавить лоток', u'+ Add tray'), self.add_row)
-            self.button(self.footer, tr(u'Сохранить', u'Save'), self.accept)
+            add = self.button(self.fields, tr(u'+ Добавить лоток', u'+ Add tray'), self.add_row)
+            add.HorizontalAlignment = HorizontalAlignment.Left
             cancel = self.button(self.footer, tr(u'Отмена', u'Cancel'), lambda s, e: self.Close())
             cancel.IsCancel = True
-            settings_transfer.add_transfer_buttons(self.footer, cfg.STORE.read, cfg.STORE.write,
+            save = self.button(self.footer, tr(u'Сохранить', u'Save'), self.accept)
+            save.FontWeight = FontWeights.Bold
+            save.Margin = Thickness(0)
+            settings_transfer.add_transfer_buttons(self.transfer, cfg.STORE.read, cfg.STORE.write,
                                                   tr(u'огнезащитных коробов', u'fire enclosures'), self.reload)
             self.rebuild_rows(self.values['trays'])
             self.update_ratings(self.values['rating'])
@@ -116,34 +153,54 @@ def show(doc, values=None, preview_path=None):
             block = TextBlock()
             block.Text = text
             block.TextWrapping = TextWrapping.Wrap
-            block.Margin = Thickness(0, 12, 0, 4)
+            block.Margin = Thickness(0, 12, 0, 8)
+            block.FontWeight = FontWeights.SemiBold
             self.fields.Children.Add(block)
 
+        def field_row(self, label, control):
+            from System.Windows import GridLength, GridUnitType
+            panel = Grid()
+            panel.Margin = Thickness(0, 0, 0, 12)
+            for width in (230, None):
+                column = ColumnDefinition()
+                column.Width = GridLength(1, GridUnitType.Star) if width is None else GridLength(width)
+                panel.ColumnDefinitions.Add(column)
+            caption = TextBlock()
+            caption.Text = label
+            caption.TextWrapping = TextWrapping.Wrap
+            caption.VerticalAlignment = VerticalAlignment.Center
+            caption.Margin = Thickness(0, 0, 16, 0)
+            panel.Children.Add(caption)
+            Grid.SetColumn(control, 1)
+            panel.Children.Add(control)
+            self.fields.Children.Add(panel)
+
         def field(self, label, value):
-            self.label(label)
             box = TextBox()
             box.Text = unicode(value)
-            box.Padding = Thickness(5)
             box.TextChanged += self.refresh
-            self.fields.Children.Add(box)
+            if self.fields == self.pages[2]:
+                self.label(label)
+                self.fields.Children.Add(box)
+            else:
+                self.field_row(label, box)
             return box
 
         def combo(self, label, choices, value):
             from System.Windows.Controls import ComboBox
-            self.label(label)
             box = ComboBox()
             for item in choices:
                 box.Items.Add(item)
             if value in choices:
                 box.SelectedIndex = choices.index(value)
-            self.fields.Children.Add(box)
+            self.field_row(label, box)
             return box
 
         def button(self, panel, label, handler):
             button = Button()
             button.Content = label
-            button.Padding = Thickness(10, 6, 10, 6)
-            button.Margin = Thickness(0, 4, 8, 0)
+            button.Margin = Thickness(0, 0, 8, 0)
+            button.MinWidth = 90
             button.ToolTip = label
             button.Click += handler
             panel.Children.Add(button)
@@ -159,7 +216,7 @@ def show(doc, values=None, preview_path=None):
                                                       title=tr(u'Выберите тип', u'Select type'))
             if choice:
                 self.values[key] = options[choice].UniqueId
-                self.choose_buttons[key].Content = choice
+                self.choose_buttons[key].Content.Text = choice
                 self.choose_buttons[key].ToolTip = choice
 
         def update_ratings(self, selected):
@@ -187,7 +244,7 @@ def show(doc, values=None, preview_path=None):
                     column = ColumnDefinition()
                     column.Width = GridLength(1, GridUnitType.Star) if width is None else GridLength(width)
                     panel.ColumnDefinitions.Add(column)
-                panel.Margin = Thickness(0, 3, 0, 3)
+                panel.Margin = Thickness(0, 0, 0, 8)
                 self.row_panel.Children.Add(panel)
                 return panel
             header = grid()
@@ -195,6 +252,8 @@ def show(doc, values=None, preview_path=None):
                                             tr(u'Ш, мм', u'W, mm'), tr(u'В, мм', u'H, mm')]):
                 label = TextBlock()
                 label.Text = title
+                label.FontWeight = FontWeights.SemiBold
+                label.Margin = Thickness(0, 8, 0, 4)
                 Grid.SetColumn(label, index)
                 header.Children.Add(label)
             for index, size in enumerate(sizes):
@@ -211,7 +270,8 @@ def show(doc, values=None, preview_path=None):
                 caption.TextTrimming = TextTrimming.CharacterEllipsis
                 button.Content = caption
                 button.ToolTip = fire_boxes.type_label(element) if element is not None else caption.Text
-                button.Padding = Thickness(5)
+                button.Padding = Thickness(7, 5, 7, 5)
+                button.HorizontalContentAlignment = HorizontalAlignment.Left
                 button.Margin = Thickness(0, 0, 6, 0)
                 Grid.SetColumn(button, 1)
                 panel.Children.Add(button)
@@ -221,7 +281,7 @@ def show(doc, values=None, preview_path=None):
                     box = TextBox()
                     box.Text = unicode(size[key])
                     box.Margin = Thickness(0, 0, 6, 0)
-                    box.Padding = Thickness(5)
+                    box.HorizontalContentAlignment = HorizontalAlignment.Right
                     box.TextChanged += self.refresh
                     Grid.SetColumn(box, column_index)
                     panel.Children.Add(box)
@@ -347,6 +407,7 @@ def show(doc, values=None, preview_path=None):
     while True:
         window = Editor()
         if preview_path:
+            window.tabs.SelectedIndex = preview_tab
             from System.Windows import Size, Rect
             from System.Windows.Media import PixelFormats
             from System.Windows.Media.Imaging import RenderTargetBitmap, PngBitmapEncoder, BitmapFrame
