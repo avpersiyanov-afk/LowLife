@@ -162,6 +162,7 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 self.choose_buttons[key] = button
             for key, label in [
                 ('support_bottom_mm', tr(u'От днища в свету до низа лотков, мм (0 — авто)', u'Clear floor to tray bottom, mm (0 — auto)')),
+                ('top_clearance_mm', tr(u'Запас над верхним лотком, мм (пусто — авто)', u'Gap above the top tray, mm (blank — auto)')),
                 ('ceiling_gap_mm', tr(u'От крышки до перекрытия, мм *', u'Lid to slab, mm *'))]:
                 self.boxes[key] = self.field(label, self.values[key])
             self.fields = self.pages[2]
@@ -226,7 +227,7 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
 
         def field(self, label, value):
             box = TextBox()
-            box.Text = unicode(value)
+            box.Text = unicode(value) if value is not None else ''
             box.TextChanged += self.refresh
             if self.fields == self.pages[2]:
                 self.label(label)
@@ -305,6 +306,10 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                                                  u'Three-sided OSK-90/180 configurations from the ATR. Left and right follow the preview.')
             if not supported:
                 self.wall_configuration.SelectedIndex = 0
+            self.boxes['top_clearance_mm'].IsEnabled = supported
+            self.boxes['top_clearance_mm'].ToolTip = tr(
+                u'Для ОСК-90/180. Пусто — прежняя высота по калькулятору 2Ф. Число, включая 0, задаёт зазор до крышки или перекрытия и пересчитывает высоту, сохраняя нижний отступ.',
+                u'For OSK-90/180. Blank keeps the 2F calculator height. A number, including 0, sets the gap to the lid or slab and recalculates height while preserving the bottom clearance.')
             self.boxes['ceiling_gap_mm'].IsEnabled = self.wall_configuration.SelectedIndex != 1
             self.boxes['ceiling_gap_mm'].ToolTip = tr(
                 u'Без верхней стенки короб примыкает к перекрытию: на схеме зазор равен 0. Для остальных конфигураций используется введённое значение.',
@@ -417,6 +422,10 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             for key, box in self.boxes.items():
                 if key == 'rod_inset_mm' and not spacing_supported:
                     continue
+                if key == 'top_clearance_mm':
+                    if spacing_supported:
+                        values[key] = core.number(box.Text) if box.Text.strip() else None
+                    continue
                 values[key] = box.Text.strip() if key.endswith('_param') else core.number(box.Text, minimum=-1000000 if key == 'elevation_mm' else 0)
             if spacing_supported:
                 values['rod_to_tray_mm'] = (core.number(self.diagram_editors['rod_to_tray_mm'].Text, positive=True)
@@ -488,8 +497,12 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                     u'* Rod insets and suspension height are project inputs. Supports are previewed and are not created in the model.')
                 if section['custom_side_spacing']:
                     self.explanation.Text += u'\n' + tr(
-                        u'Ширина задана размерами на схеме; высота — по калькулятору 2Ф. Боковые расстояния применяются с двух сторон. Дополнительный запас задаёт минимальный боковой зазор.',
-                        u'Width follows the diagram dimensions; height follows the 2F calculator. Side distances apply on both sides. Extra clearance sets the minimum side gap.')
+                        u'Ширина задана размерами на схеме. Боковые расстояния применяются с двух сторон. Дополнительный запас задаёт минимальный боковой зазор.',
+                        u'Width follows the diagram dimensions. Side distances apply on both sides. Extra clearance sets the minimum side gap.')
+                if section['custom_top_clearance']:
+                    self.explanation.Text += u'\n' + tr(
+                        u'Высота пересчитана по заданному запасу над лотком: {:g} мм. Нижний отступ сохранён.',
+                        u'Height follows the specified top gap: {:g} mm. Bottom clearance is preserved.').format(float(section['top_clear']))
                 if section['mounting_supported']:
                     self.explanation.Text += u'\n' + tr(u'АТР ОСК-{}, лист {}. Стенка: {:g} мм. Траверса: 30×30 мм.',
                         u'ATR OSK-{}, sheet {}. Wall: {:g} mm. Crossbar: 30×30 mm.').format(values['rating'], section['source_sheet'], float(section['wall']))

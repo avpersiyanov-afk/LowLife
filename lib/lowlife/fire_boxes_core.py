@@ -111,6 +111,25 @@ def layout(settings):
     section['tray_top'] = max(r['z'] + r['height']/2 for r in placements)
     section['bottom_clear'] = section['tray_bottom'] + section['cavity_height']/2
     section['top_clear'] = section['cavity_height']/2 - section['tray_top']
+    custom_top = (settings['product'] == 'OSK' and wall is not None
+                  and settings.get('top_clearance_mm') is not None)
+    section['custom_top_clearance'] = custom_top
+    if custom_top:
+        top = number(settings['top_clearance_mm'])
+        if top < clearance:
+            raise ValueError(tr(u'Запас над лотком меньше дополнительного запаса. Уменьшите дополнительный запас или увеличьте верхний зазор.',
+                                u'The top gap is smaller than the extra clearance. Reduce the extra clearance or increase the top gap.'))
+        # Change only the headroom. Keep the lower mounting clearance and move
+        # the tray group with the floor relative to the new enclosure axis.
+        delta = top - section['top_clear']
+        section['height'] += delta
+        section['cavity_height'] += delta
+        section['allowance_height'] += delta
+        for row in placements:
+            row['z'] -= delta/2
+        section['tray_bottom'] -= delta/2
+        section['tray_top'] -= delta/2
+        section['top_clear'] = top
     section['side_clear'] = (section['cavity_width'] - width)/2
     section['rod_to_tray'] = section['side_clear'] - number(settings.get('rod_inset_mm', 25), positive=True)
     if section['top_clear'] < -0.001:
