@@ -86,8 +86,12 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             self.fields = self.pages[0]
             self.product = self.combo(tr(u'Конструкция', u'Construction'), ['FIREBOX', 'OSK'], self.values['product'])
             self.rating = self.combo(tr(u'Огнестойкость, мин', u'Fire resistance, min'), [], None)
+            self.worksets = fire_boxes.workset_options(doc)
+            self.workset_boxes = {}
+            self.workset_field('box_workset_name', tr(u'Рабочий набор коробов', u'Enclosure workset'))
             self.arrangement_page = self.pages[1]
             self.fields = self.arrangement_page
+            self.workset_field('tray_workset_name', tr(u'Рабочий набор новых лотков', u'New tray workset'))
             self.arrangement = self.combo(tr(u'Расположение лотков', u'Tray arrangement'),
                                           [tr(u'Ярусами снизу вверх', u'Stacked bottom to top'),
                                            tr(u'Рядом слева направо', u'Side by side, left to right')], None)
@@ -206,6 +210,21 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             panel.Children.Add(button)
             return button
 
+        def workset_field(self, key, label):
+            active = tr(u'Активный рабочий набор', u'Active workset')
+            names = sorted(self.worksets, key=lambda name: name.lower())
+            selected = self.values.get(key, '')
+            # Keep a missing saved choice visible; never silently substitute a set.
+            if selected and selected not in names:
+                names.append(selected)
+            box = self.combo(label, [active] + names, selected or active)
+            box.IsEnabled = doc.IsWorkshared
+            box.ToolTip = (tr(u'Назначается новым участкам и соединительным деталям.',
+                              u'Assigned to new segments and fittings.') if doc.IsWorkshared else
+                           tr(u'В этой модели рабочие наборы не включены.',
+                              u'Worksharing is not enabled in this model.'))
+            self.workset_boxes[key] = box
+
         def type_label(self, key):
             el = doc.GetElement(self.values.get(key, '')) if self.values.get(key) else None
             return fire_boxes.type_label(el) if el is not None else tr(u'Выбрать…', u'Choose…')
@@ -310,6 +329,9 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             values['product'] = unicode(self.product.SelectedItem)
             values['rating'] = int(self.rating.SelectedItem)
             values['arrangement'] = 'vertical' if self.arrangement.SelectedIndex == 0 else 'horizontal'
+            if doc.IsWorkshared:
+                for key, box in self.workset_boxes.items():
+                    values[key] = unicode(box.SelectedItem) if box.SelectedIndex > 0 else ''
             for key, box in self.boxes.items():
                 values[key] = box.Text.strip() if key.endswith('_param') else core.number(box.Text, minimum=-1000000 if key == 'elevation_mm' else 0)
             values['trays'] = [dict(width_mm=core.number(row['width_mm'].Text, positive=True),
@@ -389,6 +411,8 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             try:
                 values = self.read()
                 cfg.validate(values)
+                for key in self.workset_boxes:
+                    fire_boxes.resolve_workset(doc, values.get(key, ''))
                 for index, row in enumerate(values['trays']):
                     uid = row.get('tray_type_uid')
                     if not uid or doc.GetElement(uid) is None:

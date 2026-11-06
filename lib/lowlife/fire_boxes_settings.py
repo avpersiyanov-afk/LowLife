@@ -14,6 +14,7 @@ def defaults():
                 system_type_uid='', tray_type_uid='', inside_flag_param='',
                 enclosure_note_param='', support_bottom_mm=0.0,
                 rod_inset_mm=25.0, ceiling_gap_mm=200.0,
+                box_workset_name='', tray_workset_name='',
                 trays=[dict(width_mm=300.0, height_mm=100.0, tray_type_uid='')])
 
 

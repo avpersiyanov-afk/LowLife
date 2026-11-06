@@ -79,6 +79,36 @@ def type_options(doc, kind):
     return dict((type_label(t), t) for t in types)
 
 
+def workset_options(doc):
+    """Persist names rather than document-local workset ids."""
+    if not doc.IsWorkshared:
+        return {}
+    return dict((unicode(w.Name), w.Id) for w in
+                DB.FilteredWorksetCollector(doc).OfKind(DB.WorksetKind.UserWorkset))
+
+
+def resolve_workset(doc, name):
+    if not doc.IsWorkshared:
+        return None
+    if not name:
+        return doc.GetWorksetTable().GetActiveWorksetId()
+    workset = workset_options(doc).get(name)
+    if workset is None:
+        raise ValueError(tr(u'Рабочий набор «{}» не найден. Выберите рабочий набор в настройках.',
+                            u'Workset "{}" was not found. Select a workset in settings.').format(name))
+    return workset
+
+
+def assign_workset(element, workset_id):
+    if workset_id is None:
+        return
+    parameter = element.get_Parameter(DB.BuiltInParameter.ELEM_PARTITION_PARAM)
+    if (parameter is None or parameter.IsReadOnly or
+            not parameter.Set(eid(workset_id))):
+        raise ValueError(tr(u'Не удалось назначить рабочий набор элементу {}.',
+                            u'Could not assign a workset to element {}.').format(eid(element.Id)))
+
+
 def connectors(element):
     manager = getattr(element, 'ConnectorManager', None)
     if manager is None:
@@ -397,6 +427,8 @@ def _junctions(curves, fittings, shifted):
 
 
 def add_trays(doc, elements, fallback, tray_type=None):
+    # Newly created contents always use the current choice, even for old boxes.
+    workset_id = resolve_workset(doc, fallback.get('tray_workset_name', ''))
     curves, fittings = resolve_route(elements)
     if not curves:
         raise ValueError(tr(u'Выберите короб или его соединительные детали.', u'Select an enclosure or its fittings.'))
@@ -463,6 +495,7 @@ def add_trays(doc, elements, fallback, tray_type=None):
                                     u'Segment {} is too short for this tray arrangement.').format(key))
             level = source.ReferenceLevel
             lane[key] = create_curve(doc, row_type, None, level.Id, xyz(shifted[key][0]), xyz(shifted[key][1]), row['width'], row['height'])
+            assign_workset(lane[key], workset_id)
             # Match cross-section roll (important for vertical enclosures).
             doc.Regenerate()
             port = connectors(lane[key])[0]
@@ -481,6 +514,7 @@ def add_trays(doc, elements, fallback, tray_type=None):
             if fitting is not None:
                 doc.Regenerate()
                 for member in fitting_members(fitting).values():
+                    assign_workset(member, workset_id)
                     mark(member, fallback)
                     created.append(member)
                     for key, _index in pairs:
@@ -576,6 +610,7 @@ def mark_targets(doc, elements, settings):
 
 
 def draw(doc, uidoc, settings):
+    workset_id = resolve_workset(doc, settings.get('box_workset_name', ''))
     box_type = doc.GetElement(settings['box_type_uid'])
     system_type = doc.GetElement(settings['system_type_uid']) if settings.get('system_type_uid') else None
     if box_type is None:
@@ -603,6 +638,7 @@ def draw(doc, uidoc, settings):
             transaction.Start()
             try:
                 segment = create_curve(doc, box_type, system_type, level.Id, last_point, point, section['width'], section['height'])
+                assign_workset(segment, workset_id)
                 note(segment, settings)
                 write_data(segment, dict(version=1, settings=settings))
                 doc.Regenerate()
@@ -611,6 +647,7 @@ def draw(doc, uidoc, settings):
                     if fitting is not None:
                         doc.Regenerate()
                         for member in fitting_members(fitting).values():
+                            assign_workset(member, workset_id)
                             note(member, settings)
                             write_data(member, dict(version=1, settings=settings))
                             created.append(member)
