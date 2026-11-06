@@ -691,6 +691,7 @@ def kr_opening_tasks(c):
 
 
 ICONS = [
+    ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
     ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),
     ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),

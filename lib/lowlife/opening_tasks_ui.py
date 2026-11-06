@@ -81,8 +81,8 @@ def place(settings):
              for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance)
              if link.GetLinkDocument() is not None}
     if not links:
-        raise ValueError(tr(u'Нет загруженной связи КР.',u'No loaded structural link.'))
-    link = choose(links,tr(u'Модель конструкций КР',u'Structural model'))
+        raise ValueError(tr(u'Нет загруженной связи получателя {}.',u'No loaded link for recipient {}.').format(settings.get('opening_recipient','KR')))
+    link = choose(links,tr(u'Модель-получатель: {}',u'Target model: {}').format(settings.get('opening_recipient','KR')))
     if link is None:
         return
     types = boxes.find_box_types(doc,settings)
@@ -119,6 +119,7 @@ def place(settings):
 
 def publish(settings, elements=None):
     doc = revit.doc
+    target=settings.get('opening_recipient','KR')
     elements = selected_elements() if elements is None else elements
     drafts = api.prepare_drafts(doc,elements,settings)
     registry = store.registry(doc)
@@ -127,7 +128,7 @@ def publish(settings, elements=None):
             record = registry['tasks'].get(draft['task_id'])
             api.visible_issue(inst,settings,record,bool(record and record['status']=='issued' and not core.geometry_equal(record['geometry'],draft['geometry'])))
     _registry, changes = core.issue(store.registry(doc),drafts,settings['opening_project'],
-                                    settings['opening_discipline'],doc.Application.Username,api.now())
+                                    settings['opening_discipline'],doc.Application.Username,api.now(),settings.get('opening_recipient','KR'))
     if not changes:
         forms.alert(tr(u'Изменений относительно последней выдачи нет.',u'No changes since the last issue.'))
         return
@@ -136,10 +137,10 @@ def publish(settings, elements=None):
     out.print_table([[r['task_id'],r['revision'],u', '.join(state_label(k) for k in core.change_kinds(old_tasks.get(r['task_id']),r)),
                       unicode(r['geometry']['center_mm']),u' × '.join(u'{:.0f}'.format(float(v)) for v in r['geometry']['size_mm'])]
                      for r in changes],columns=[tr(u'Задание',u'Task'),tr(u'Ревизия',u'Revision'),tr(u'Изменения',u'Changes'),
-                             tr(u'Центр в модели КР, мм',u'Center in KR model, mm'),tr(u'Размеры, мм',u'Sizes, mm')])
-    if forms.alert(tr(u'Выдать выбранные задания КР: {}? Получатель увидит выпуск после сохранения модели и обновления связи.',
-                      u'Issue {} selected tasks to KR? Save the model and reload its link to deliver the release.').format(len(changes)),yes=True,no=True):
-        with revit.Transaction(tr(u'Выдать задания КР',u'Issue tasks to KR')):
+                             tr(u'Центр в модели получателя, мм',u'Center in recipient model, mm'),tr(u'Размеры, мм',u'Sizes, mm')])
+    if forms.alert(tr(u'Выдать задания получателю {}: {}? Сохраните модель и обновите связь у получателя.',
+                      u'Issue tasks to {}: {}? Save the model and reload its link at the recipient.').format(target,len(changes)),yes=True,no=True):
+        with revit.Transaction(tr(u'Выдать задания: {}',u'Issue tasks: {}').format(target)):
             api.publish(doc,elements,settings)
 
 
@@ -158,8 +159,8 @@ def withdraw(settings, task_ids=None):
             api.retract(revit.doc,selected,settings)
 
 
-def receipt_state(record, registry, doc):
-    receipt = registry['receipts'].get(core.task_key(record))
+def receipt_state(record, registry, doc, recipient='KR'):
+    receipt = core.receipts(registry,recipient).get(core.task_key(record))
     exists = bool(receipt and receipt.get('opening_uid') and doc.GetElement(receipt['opening_uid']))
     if exists and not api.opening_matches(doc.GetElement(receipt['opening_uid']),receipt):
         return 'opening_modified'
@@ -173,17 +174,17 @@ def kr(settings, action=None, selected=None):
         if link.GetLinkDocument() is None:
             script.get_output().print_md(tr(u'Связь не загружена: {}. Её задания не проверены.',
                                            u'Link is unloaded: {}. Its tasks were not checked.').format(link.Name))
-    incoming = api.incoming(doc,settings['opening_project'])
+    incoming = api.incoming(doc,settings['opening_project'],settings.get('opening_recipient','KR'))
     if not incoming:
-        forms.alert(tr(u'Нет выданных заданий для этой модели КР. Проверьте связи и код проекта.',
-                       u'No issued tasks for this KR model. Check links and project code.'))
+        forms.alert(tr(u'Нет выданных заданий для модели получателя {}. Проверьте связи и код проекта.',
+                       u'No issued tasks for recipient model {}. Check links and project code.').format(settings.get('opening_recipient','KR')))
         return
     out = script.get_output()
     options = {}
     for record,link in incoming:
         g = record['geometry']
-        receipt = registry['receipts'].get(core.task_key(record))
-        state = state_label(receipt_state(record,registry,doc))
+        receipt = core.receipts(registry,settings.get('opening_recipient','KR')).get(core.task_key(record))
+        state = state_label(receipt_state(record,registry,doc,settings.get('opening_recipient','KR')))
         label = u'{} | {} | {} | r{} | {} | {} | {}'.format(link.Name,record['discipline'],record['task_id'],record['revision'],state,
                     u' × '.join(u'{:.0f}'.format(float(v)) for v in g['size_mm']),record['issued_at'])
         options[label] = record
@@ -191,7 +192,7 @@ def kr(settings, action=None, selected=None):
         out.print_md(u'- {} | {} | {} | {}'.format(record['task_id'],state,
                        out.linkify(link.Id),out.linkify(inst.Id) if inst and link.GetLinkDocument()==doc else record['owner_uid']))
     if selected is None:
-        selected = choose(options,tr(u'Входящие задания КР: выберите задания',u'Incoming KR tasks: select tasks'),True)
+        selected = choose(options,tr(u'Входящие задания {}: выберите задания',u'Incoming {} tasks: select tasks').format(settings.get('opening_recipient','KR')),True)
     if not selected:
         return
     actions = {tr(u'Принять отдельно',u'Accept separately'):'accept',
@@ -200,7 +201,7 @@ def kr(settings, action=None, selected=None):
                tr(u'Удалить отверстия отозванных заданий',u'Remove openings of withdrawn tasks'):'remove',
                tr(u'Показать конструкцию',u'Show host'):'show'}
     if action is None:
-        action = choose(actions,tr(u'Действие КР',u'KR action'))
+        action = choose(actions,tr(u'Действие получателя {}',u'Recipient action: {}').format(settings.get('opening_recipient','KR')))
     if action == 'show':
         host = doc.GetElement(selected[0]['geometry']['host_uid'])
         if host:
@@ -212,7 +213,7 @@ def kr(settings, action=None, selected=None):
     if action == 'reject':
         comment = forms.ask_for_string(prompt=tr(u'Причина / замечание',u'Reason / comment'))
         if comment:
-            with revit.Transaction(tr(u'Решение КР',u'KR decision')):
+            with revit.Transaction(tr(u'Решение получателя {}',u'Recipient decision: {}').format(settings.get('opening_recipient','KR'))):
                 api.reject(doc,selected,settings,comment)
         return
     if action == 'remove':
@@ -237,23 +238,23 @@ def kr(settings, action=None, selected=None):
     if not forms.alert(question,yes=True,no=True):
         return
     groups = [selected] if action=='merge' else [[r] for r in selected]
-    with revit.Transaction(tr(u'Принять задания КР',u'Accept KR tasks')):
+    with revit.Transaction(tr(u'Принять задания {}',u'Accept {} tasks').format(settings.get('opening_recipient','KR'))):
         for group in groups:
             opening = api.accept(doc,group,settings)
             out.print_md(tr(u'Создано отверстие: {}',u'Created opening: {}').format(out.linkify(opening.Id)))
 
 
 def confirm(settings, task_ids=None):
-    results = api.structural_results(revit.doc,settings['opening_project'])
+    results = api.structural_results(revit.doc,settings['opening_project'],settings.get('opening_recipient','KR'))
     options = {u'{} | r{} | {}'.format(task['task_id'],task['revision'],receipt['opening_id']):
                (task,receipt,link) for task,receipt,link in results}
     if not options:
-        forms.alert(tr(u'Нет актуальных принятых отверстий КР для подтверждения. Обновите связи.',
-                       u'No current accepted KR openings to confirm. Reload links.'))
+        forms.alert(tr(u'Нет актуальных принятых отверстий получателя {}. Обновите связи.',
+                       u'No current accepted openings from recipient {}. Reload links.').format(settings.get('opening_recipient','KR')))
         return
     selected = ([value for value in options.values() if value[0]['task_id'] in task_ids]
-                if task_ids is not None else choose(options,tr(u'Подтвердить результат КР',u'Confirm KR results'),True))
-    if selected and forms.alert(tr(u'Подтвердить выбранные отверстия КР: {}?',u'Confirm {} selected KR openings?').format(len(selected)),yes=True,no=True):
+                if task_ids is not None else choose(options,tr(u'Подтвердить результат {}',u'Confirm {} results').format(settings.get('opening_recipient','KR')),True))
+    if selected and forms.alert(tr(u'Подтвердить отверстия получателя {}: {}?',u'Confirm openings from recipient {}: {}?').format(settings.get('opening_recipient','KR'),len(selected)),yes=True,no=True):
         with revit.Transaction(tr(u'Подтверждение ВИС',u'VIS confirmation')):
             api.confirm_results(revit.doc,selected,settings)
 
@@ -269,7 +270,8 @@ def run(role, config_mode=False, action=None):
         if role=='VIS':
             required += ['opening_discipline','opening_json_param']
         settings_form.require(settings,required)
-        if role=='KR':
+        if role in ('KR','AR'):
+            settings['opening_recipient']=role
             kr(settings, action)
             return
         if action=='place':

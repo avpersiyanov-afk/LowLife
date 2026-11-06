@@ -10,7 +10,7 @@ ROOT=Path(__file__).parents[1]
 def test_roles_have_disjoint_business_actions():
     vis={key for key,label in m.actions('VIS')}
     kr={key for key,label in m.actions('KR')}
-    assert vis=={'place','issue','withdraw','confirm','focus','control'}
+    assert vis=={'place','place_ar','issue','issue_ar','confirm_ar','withdraw','confirm','focus','control'}
     assert kr=={'show','accept','merge','reject','remove','structures','kr_plans','kr_sections'}
     assert not vis.intersection(kr)
     for key in kr:
@@ -51,3 +51,13 @@ def test_interface_reads_manifest_and_checks_both_dispatch_boundaries():
     window=next(cls for cls in tree.body if isinstance(cls,ast.ClassDef) and cls.name=='TaskWindow')
     ctor=next(n for n in window.body if isinstance(n,ast.FunctionDef) and n.name=='__init__')
     assert calls(ctor,'actions')
+
+
+def test_ar_receiving_actions_are_separate_from_kr():
+    ar={key for key,label in m.actions('AR')}
+    assert ar=={'ar_show','ar_accept','ar_merge','ar_reject','ar_remove'}
+    for role in ('VIS','KR'):
+        for key in ar:
+            with pytest.raises(ValueError):m.validate_action(role,key)
+    assert dict(m.actions('KR'))['accept']==u'Принять задания КР'
+    assert dict(m.actions('VIS'))['issue']==u'Выдать задания ВИС-КР'

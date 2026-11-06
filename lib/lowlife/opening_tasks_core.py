@@ -52,8 +52,9 @@ def geometry_equal(a, b, tolerance_mm=0.1):
             and all(abs(x-y) < 1e-8 for x, y in zip(a['x_dir'], b['x_dir'])))
 
 
-def issue(registry, drafts, project, discipline, author, when):
+def issue(registry, drafts, project, discipline, author, when, recipient='KR'):
     """Explicit selected scope. Missing tasks NEVER become withdrawn implicitly."""
+    validate_recipient(recipient)
     if not project.strip() or not discipline.strip():
         raise ValueError(tr(u'Заполните код проекта и дисциплину',u'Project and discipline are required'))
     result = copy.deepcopy(registry)
@@ -67,7 +68,11 @@ def issue(registry, drafts, project, discipline, author, when):
             raise ValueError(tr(u'Повторяется GUID задания',u'Duplicate task GUID'))
         seen.add(tid)
         validate_geometry(draft['geometry'])
+        if draft.get('recipient',recipient)!=recipient:
+            raise ValueError(tr(u'Получатель бокса не соответствует команде выдачи.',u'Box recipient does not match the issue action.'))
         old = result['tasks'].get(tid)
+        if old and old.get('recipient','KR')!=recipient:
+            raise ValueError(tr(u'Нельзя изменить получателя выданного задания. Создайте отдельное задание.',u'Cannot change the recipient of an issued task. Create a separate task.'))
         if old and (old['source_model'] != draft['source_model'] or old['project'] != project):
             raise ValueError(tr(u'Конфликт идентификатора задания или кода проекта',u'Task identity or project conflict'))
         if (old and old['status'] == 'issued' and geometry_equal(old['geometry'], draft['geometry'])
@@ -79,7 +84,7 @@ def issue(registry, drafts, project, discipline, author, when):
             number = next_task_number
             next_task_number += 1
         record['task_number'] = number
-        record.update(schema=VERSION, project=project, discipline=discipline, recipient='KR', status='issued',
+        record.update(schema=VERSION, project=project, discipline=discipline, recipient=recipient, status='issued',
                       revision=old['revision']+1 if old else 1, issue_id=issue_id, issue_number=issue_number,
                       created_at=old['created_at'] if old else when, issued_at=when, author=author)
         result['tasks'][tid] = record
@@ -172,3 +177,21 @@ def translation_only(old, new, tolerance_mm=0.1):
     return (all(old[k]==new[k] for k in ('host_uid','host_model','kind')) and
             all(abs(a-b)<=tolerance_mm for a,b in zip(old['size_mm'],new['size_mm'])) and
             all(abs(a-b)<1e-8 for a,b in zip(old['x_dir'],new['x_dir'])))
+
+
+def validate_recipient(recipient):
+    if recipient not in ('KR','AR'):
+        raise ValueError(tr(u'Неизвестный получатель задания: {}',u'Unknown task recipient: {}').format(recipient))
+    return recipient
+
+
+def receipts(registry,recipient='KR'):
+    validate_recipient(recipient)
+    return registry.setdefault('receipts' if recipient=='KR' else 'ar_receipts',{})
+
+
+def check_recipient(records,recipient,project,model):
+    validate_recipient(recipient)
+    for record in records:
+        if record.get('recipient','KR')!=recipient or record['project']!=project or record['geometry']['host_model']!=model:
+            raise ValueError(tr(u'Задание адресовано другой роли, модели или проекту.',u'Task belongs to a different role, model or project.'))

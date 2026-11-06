@@ -6,6 +6,23 @@ The “Opening tasks” panel in the General theme has two commands: VIS tasks a
 KR tasks. No server or SQL is used. Save/synchronize models and reload links to
 exchange releases and decisions.
 
+## Separate AR exchange
+
+The VIS action is “Issue VIS-KR tasks”; the KR action is “Accept KR tasks”.
+For architecture, use “Drafts for AR”, select the AR model link, then select
+the new drafts and choose “Issue VIS-AR tasks”. Save VIS and reload its link
+in AR. Open the separate AR interface, configure the same project code and
+use “Accept AR tasks”. AR also supports showing hosts, merging compatible
+tasks, comments and withdrawal processing. Save AR, reload its link in VIS
+and use “Confirm AR results”.
+
+The VIS table has a recipient column and filter. AR has independent settings,
+receipts and decision history. Only released tasks addressed to the current
+recipient model are received. Legacy drafts default to KR; create new AR
+drafts rather than readdressing an issued KR task. Direct rectangular wall/floor
+openings are supported; automatic finish cutting from linked KR openings is
+a separate workflow and is not implemented by this action.
+
 ## Setup
 
 Shift-click each command. Set the same project code, and a writable text instance
