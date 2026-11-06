@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """MEP adapter for the proven tray intersection/box geometry pipeline."""
+import math
+from Autodesk.Revit.UI.Selection import ISelectionFilter
 from Autodesk.Revit.DB import (BuiltInCategory, ConnectorProfileType, InsulationLiningBase,
                                 Line, LocationCurve)
 from lowlife import tray_boxes as boxes
@@ -49,3 +51,27 @@ class Route(object):
 
     def __getattr__(self, name):
         return getattr(self.element, name)
+
+
+class RouteSelectionFilter(ISelectionFilter):
+    """Only supported, straight, unrolled routes with a permitted slope."""
+    def __init__(self, settings):
+        self.settings=settings
+        self.cache={}
+    def AllowReference(self, reference, point):
+        return False
+    def AllowElement(self, element):
+        if not supported(element):
+            return False
+        key=boxes._id_int(element.Id)
+        if key not in self.cache:
+            try:
+                route=Route(element)
+                z=abs(route.Location.Curve.Direction.Z)
+                angle=math.radians(float(self.settings.get('max_slope_deg',1)))
+                hosts=self.settings.get('box_hosts','walls_floors')
+                self.cache[key]=((hosts in ('walls','walls_floors') and z<=math.sin(angle)) or
+                                 (hosts in ('floors','walls_floors') and z>=math.cos(angle)))
+            except Exception:
+                self.cache[key]=False
+        return self.cache[key]

@@ -9,7 +9,7 @@ import copy
 from lowlife.i18n import tr
 import math
 from datetime import datetime
-from Autodesk.Revit.DB import (CurveArray, ElementTransformUtils, FamilyInstance, FilteredElementCollector,
+from Autodesk.Revit.DB import (CurveArray, ElementTransformUtils, FamilyInstance, CategoryType, IndependentTag, Dimension, FilteredElementCollector,
                                Floor, Line, LocationPoint, Opening, Options, RevitLinkInstance, StorageType,
                                SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ)
 from lowlife import opening_tasks_core as core
@@ -269,6 +269,101 @@ def create_native_opening(doc, g):
     return doc.Create.NewOpening(host,profile,True)
 
 
+def protected_annotations(doc, opening):
+    """Find explicit annotations that cannot safely survive delete/recreate."""
+    result=set()
+    for eid in opening.GetDependentElements(None):
+        el=doc.GetElement(eid)
+        if el is not None and el.Category is not None and el.Category.CategoryType==CategoryType.Annotation:
+            result.add(eid)
+    for tag in FilteredElementCollector(doc).OfClass(IndependentTag):
+        if opening.Id in list(tag.GetTaggedLocalElementIds()):
+            result.add(tag.Id)
+    for dimension in FilteredElementCollector(doc).OfClass(Dimension):
+        try:
+            if any(ref.ElementId==opening.Id for ref in dimension.References):
+                result.add(dimension.Id)
+        except Exception:
+            # Dependency enumeration above still protects owned dimensions.
+            pass
+    return result
+
+
+def annotation_states(doc):
+    result={}
+    for cls in (Dimension,IndependentTag):
+        for el in FilteredElementCollector(doc).OfClass(cls):
+            values=[]
+            for name in ('IsOrphaned','AreReferencesAvailable','NumberOfSegments','ValueString'):
+                try:
+                    values.append(getattr(el,name,None))
+                except Exception:
+                    values.append(None)
+            result[el.Id]=tuple(values)
+    return result
+
+
+def assert_safe_replacement(doc, opening):
+    opening_eid=opening.Id
+    protected=protected_annotations(doc,opening)
+    before=annotation_states(doc)
+    probe=SubTransaction(doc)
+    probe.Start()
+    try:
+        deleted=list(doc.Delete(opening_eid))
+        doc.Regenerate()
+        after=annotation_states(doc)
+        protected.update(eid for eid,state in before.items() if after.get(eid)!=state)
+    finally:
+        probe.RollBack()
+    for eid in deleted:
+        el=doc.GetElement(eid)
+        if eid!=opening_eid and el is not None and el.Category is not None and el.Category.CategoryType==CategoryType.Annotation:
+            protected.add(eid)
+    if protected:
+        raise ValueError(tr(u'Замена/удаление отверстия Id {} остановлены: связанные марки/размеры {}. Сначала согласуйте ручное обновление оформления.',
+                            u'Replacement/removal of opening Id {} blocked: linked tags/dimensions {}. Review annotation updates manually first.').format(
+                                boxes._id_int(opening_eid),u', '.join(unicode(boxes._id_int(eid)) for eid in protected)))
+
+
+def try_translate(doc, opening, previous, target):
+    if not core.translation_only(previous['geometry'],target) or not opening_matches(opening,previous):
+        return None
+    annotation_ids=protected_annotations(doc,opening)
+    all_before=annotation_states(doc)
+    before={eid: (bool(getattr(doc.GetElement(eid),'IsOrphaned',False)),
+                  bool(getattr(doc.GetElement(eid),'AreReferencesAvailable',True)),
+                  getattr(doc.GetElement(eid),'NumberOfSegments',0)) for eid in annotation_ids}
+    sub=SubTransaction(doc)
+    sub.Start()
+    try:
+        delta=boxes._xyz([boxes.ft(a-b) for a,b in zip(target['center_mm'],previous['geometry']['center_mm'])])
+        if delta.GetLength()>1e-9:
+            ElementTransformUtils.MoveElement(doc,opening.Id,delta)
+        doc.Regenerate()
+        if not opening_matches(opening,dict(previous,geometry=target)):
+            raise ValueError('Updated opening geometry does not match the issued snapshot')
+        all_after=annotation_states(doc)
+        for eid,state in all_before.items():
+            current=all_after.get(eid)
+            if (current is None or (not state[0] and current[0]) or
+                    (state[1] and not current[1]) or state[2]!=current[2]):
+                raise ValueError('Opening translation would damage annotation references')
+        for eid in annotation_ids:
+            annotation=doc.GetElement(eid)
+            if (annotation is None or (not before[eid][0] and bool(getattr(annotation,'IsOrphaned',False))) or
+                    (before[eid][1] and not bool(getattr(annotation,'AreReferencesAvailable',True))) or
+                    before[eid][2]!=getattr(annotation,'NumberOfSegments',0)):
+                raise ValueError('Opening translation would orphan an annotation')
+        if sub.Commit()!=TransactionStatus.Committed:
+            return None
+        return opening
+    except Exception:
+        if sub.GetStatus()==TransactionStatus.Started:
+            sub.RollBack()
+        return None
+
+
 def accept(doc, records, settings):
     """One selected group -> one opening; replacements only after explicit UI confirmation."""
     registry = store.registry(doc)
@@ -288,11 +383,22 @@ def accept(doc, records, settings):
                 previous['revisions'] == {core.task_key(r):r['revision'] for r in records} and
                 core.geometry_equal(previous['geometry'],g)):
             return existing
-    for uid in old_receipts:
-        old = doc.GetElement(uid)
-        if old:
-            doc.Delete(old.Id)
-    opening = create_native_opening(doc,g)
+    opening=None
+    if len(old_receipts)==1:
+        previous=list(old_receipts.values())[0]
+        old=doc.GetElement(previous['opening_uid'])
+        if old is not None and set(previous['revisions'])==keys:
+            opening=try_translate(doc,old,previous,g)
+    if opening is None:
+        for uid in old_receipts:
+            old=doc.GetElement(uid)
+            if old:
+                assert_safe_replacement(doc,old)
+        for uid in old_receipts:
+            old=doc.GetElement(uid)
+            if old:
+                doc.Delete(old.Id)
+        opening=create_native_opening(doc,g)
     opening_id = (list(old_receipts.values())[0]['opening_id'] if len(old_receipts)==1 and
                   set(list(old_receipts.values())[0]['revisions'])==keys else core.guid())
     receipt = dict(schema=1,role='receipt',opening_id=opening_id, opening_uid=opening.UniqueId,
@@ -339,6 +445,7 @@ def remove_withdrawn(doc, records, settings):
             raise ValueError(tr(u'Объединённое отверстие содержит другие задания: рассмотрите всю группу',u'Merged opening still includes other tasks; review the entire group'))
         element = doc.GetElement(uid)
         if element:
+            assert_safe_replacement(doc,element)
             doc.Delete(element.Id)
         for key in receipt['revisions']:
             updated = dict(receipt,status='withdrawn',opening_uid=None,at=now(),author=doc.Application.Username,

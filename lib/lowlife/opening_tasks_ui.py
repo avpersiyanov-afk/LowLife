@@ -42,10 +42,17 @@ def choose(options, title, multiple=False):
     return [options[label] for label in selected] if multiple else options[selected]
 
 
-def selected_elements():
+def selected_elements(selection_filter=None):
     doc, uidoc = revit.doc, revit.uidoc
     result = [doc.GetElement(eid) for eid in uidoc.Selection.GetElementIds()]
-    if not result:
+    if selection_filter is not None:
+        result=[e for e in result if selection_filter.AllowElement(e)]
+    if not result and selection_filter is not None:
+        refs=uidoc.Selection.PickObjects(ObjectType.Element,selection_filter,
+             tr(u'Выберите прямые лотки, воздуховоды, трубы или кабельные трубы',
+                u'Select straight trays, ducts, pipes or conduits'))
+        result=[doc.GetElement(r) for r in refs]
+    elif not result:
         refs = uidoc.Selection.PickObjects(ObjectType.Element,
                 tr(u'Выберите элементы текущей модели',u'Select elements in the current model'))
         result = [doc.GetElement(r) for r in refs]
@@ -60,7 +67,7 @@ def report_errors(errors):
 
 def place(settings):
     doc = revit.doc
-    raw = selected_elements()
+    raw = selected_elements(mep.RouteSelectionFilter(settings))
     routes, errors = [], []
     for el in raw:
         try:
@@ -217,13 +224,16 @@ def kr(settings, action=None, selected=None):
     if action not in ('accept','merge'):
         return
     if action=='merge':
+        from lowlife.opening_tasks_merge_preview import show
+        if not show(selected):
+            return
         g = core.merge_geometry([r['geometry'] for r in selected])
         question = tr(u'Объединить в одно отверстие размером {} мм?',u'Merge into one opening sized {} mm?').format(
                        u' × '.join(u'{:.0f}'.format(float(v)) for v in g['size_mm']))
     else:
         question = tr(u'Создать/обновить отдельные отверстия: {}?',u'Create/update {} separate openings?').format(len(selected))
-    question += u'\n' + tr(u'Ранее принятые отверстия выбранных заданий будут заменены. Продолжить?',
-                            u'Previously accepted openings of selected tasks will be replaced. Continue?')
+    question += u'\n' + tr(u'Сдвиг без изменения габарита обновляется с сохранением элемента. Замена с марками/размерами будет остановлена. Продолжить?',
+                            u'Translation without size changes preserves the element. Replacement affecting tags/dimensions is blocked. Continue?')
     if not forms.alert(question,yes=True,no=True):
         return
     groups = [selected] if action=='merge' else [[r] for r in selected]

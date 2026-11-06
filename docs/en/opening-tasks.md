@@ -85,3 +85,9 @@ to the extent supported by native Opening graphics. Revit runtime validation is 
 ## Table and filters
 
 Role windows now use a sortable table with task number, status, discipline, source model, host level, host kind, issue, revision, date and sizes. Status/discipline/level/host/issue filters combine with search and the attention-only checkbox. Reset restores the full list. Select visible selects only currently filtered rows. Filtering never changes releases or withdraws hidden tasks. Double-click opens VIS box preview or the KR host. The detail card compares issued/previously accepted and current dimensions, VIS displacement and KR comments. Newly issued tasks have stable model-local numbers; legacy releases retain their short-GUID alias until a changed reissue.
+
+## Selection, merge preview and annotations
+
+Placement now uses an ISelectionFilter for supported straight trays, ducts, pipes and conduits with permitted slope and profile. Actual host intersections are computed after selection; eligibility does not guarantee a crossing. Merge shows blue source rectangles and an orange combined envelope, in wall X/Z or floor X/Y projection, before any model change.
+
+Translation-only updates attempt to retain the existing Opening and its IDs in a subtransaction, checking the resulting geometry and annotations. Replacement checks tagged elements, dimension references, dependencies and a rolled-back trial deletion. Replacement affecting annotations is blocked for manual review. Automatic rebuilding of dimension references after contour changes is not provided. Protocol scenarios and substitute-API annotation checks do not replace a real Revit pilot.
