@@ -240,23 +240,41 @@ def setup(doc,role,project):
     class ConnectionWindow(forms.WPFWindow):
         def __init__(self):
             forms.WPFWindow.__init__(self,u'''<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="720" Height="370"
-              WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="760" Height="530" MinHeight="430"
+              WindowStartupLocation="CenterScreen">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
               <StackPanel Margin="20">
                 <TextBox x:Name="info" TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0" Margin="0,0,0,16"/>
+                <TextBlock x:Name="info_hint" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"/>
                 <TextBlock x:Name="url_label"/>
-                <TextBox x:Name="url" Margin="0,6,0,12"/>
+                <TextBox x:Name="url" Margin="0,6,0,2"/>
+                <TextBlock x:Name="url_hint" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"/>
                 <TextBlock x:Name="token_label"/>
-                <PasswordBox x:Name="token" Margin="0,6,0,18"/>
+                <PasswordBox x:Name="token" Margin="0,6,0,2"/>
+                <TextBlock x:Name="token_hint" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                <Button x:Name="guide" Padding="12,7" Margin="0,0,0,8"/>
                 <Button x:Name="save" Padding="12,7"/>
-              </StackPanel></Window>''',literal_string=True)
+              </StackPanel></ScrollViewer></Window>''',literal_string=True)
             self.Title=tr(u'Подключение журнала — persiyanov',u'Journal connection — persiyanov')
-            self.info.Text=tr(u'Проект: {} | Роль: {}\nID модели: {}\nСоздайте токен для этих значений в меню Google-таблицы LowLife.',
-                              u'Project: {} | Role: {}\nModel ID: {}\nCreate a token for these values in the Google sheet LowLife menu.').format(project,role,model)
+            self.info.Text=tr(u'Проект: {} | Роль: {}\nID модели: {}',
+                              u'Project: {} | Role: {}\nModel ID: {}').format(project,role,model)
             self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')
             self.token_label.Text=tr(u'Токен',u'Token')
+            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. Для этих шифра, роли и ID модели выдайте токен через меню LowLife в Google-таблице.',
+                                   u'The code comes from Project Information. Issue a token for this code, role and model ID in the Google sheet LowLife menu.')
+            self.url_hint.Text=tr(u'Вставьте адрес развёрнутого веб-приложения Apps Script с окончанием /exec. Ссылка на саму Google-таблицу сюда не подходит.',
+                                  u'Paste the deployed Apps Script web app URL ending in /exec. The spreadsheet URL cannot be used here.')
+            self.token_hint.Text=tr(u'Персональный токен для текущих проекта, роли и модели. Хранится зашифрованным в вашем профиле Windows; в модель не записывается.',
+                                    u'A personal token for this project, role and model. Stored encrypted in your Windows profile; never written to the model.')
+            self.guide.Content=tr(u'Инструкция подключения Google',u'Google connection guide')
+            self.guide.Click+=self.open_guide
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
+            self.save.ToolTip=tr(u'Проверяет доступ в фоне. Сохраняет подключение только после успешного ответа Google.',
+                                 u'Checks access in the background. Saves the connection only after Google responds successfully.')
             self.save.Click+=self.on_save
+        def open_guide(self,sender,event):
+            from pyrevit import script
+            script.open_url('https://github.com/avpersiyanov-afk/LowLife/blob/main/docs/opening-journal/README.md')
         def on_save(self,sender,event):
             try:
                 url=validate_url(unicode(self.url.Text).strip())
