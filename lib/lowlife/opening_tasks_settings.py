@@ -35,6 +35,6 @@ def make(role, doc=None):
     else:
         fields = common
     return sc.TextSettings('LowLifeOpeningTasks' + role + '_settings.json',
-                           u'Задания ВИС' if role == 'VIS' else u'Задания КР',
+                           u'Задания ВИС' if role == 'VIS' else u'Задания КР' if role=='KR' else u'Задания АР',
                            u'Задания на отверстия', u'заданий на отверстия', fields,
                            width=780, height=700)

@@ -2,21 +2,31 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=2
-INTERFACES={'VIS':'VISInterface','KR':'KRInterface'}
+VERSION=3
+INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 COMMON=('refresh','settings')
 ACTIONS={
     'VIS': (
         ('place',N_(u'Расставить боксы')),
-        ('issue',N_(u'Выдать задания')),
+        ('issue',N_(u'Выдать задания ВИС-КР')),
+        ('place_ar',N_(u'Боксы для АР')),
+        ('issue_ar',N_(u'Выдать задания ВИС-АР')),
+        ('confirm_ar',N_(u'Подтвердить результат АР')),
         ('withdraw',N_(u'Отозвать')),
         ('confirm',N_(u'Подтвердить результат')),
         ('focus',N_(u'Бокс в 3D')),
         ('control',N_(u'Виды и реестр')),
     ),
+    'AR': (
+        ('ar_show',N_(u'Показать конструкцию АР')),
+        ('ar_accept',N_(u'Принять задания АР')),
+        ('ar_merge',N_(u'Объединить АР')),
+        ('ar_reject',N_(u'Замечание АР')),
+        ('ar_remove',N_(u'Отработать отзыв АР')),
+    ),
     'KR': (
         ('show',N_(u'Показать конструкцию')),
-        ('accept',N_(u'Принять отдельно')),
+        ('accept',N_(u'Принять задания КР')),
         ('merge',N_(u'Объединить')),
         ('reject',N_(u'Замечание')),
         ('remove',N_(u'Отработать отзыв')),

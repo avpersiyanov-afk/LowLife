@@ -19,3 +19,11 @@ def test_kr_settings_do_not_require_a_box_family_or_json_binding():
     kr=settings.make('KR')
     assert {f.key for f in kr.fields}=={'opening_project','opening_json_param'}
     assert {f.key for f in kr.fields if f.required}=={'opening_project'}
+
+
+def test_ar_has_its_own_settings_store_and_only_receiver_fields(tmp_path,monkeypatch):
+    monkeypatch.setenv('APPDATA',str(tmp_path))
+    ar=settings.make('AR');kr=settings.make('KR')
+    assert {f.key for f in ar.fields}=={'opening_project','opening_json_param'}
+    assert ar.store.path()!=kr.store.path()
+    assert ar.load_saved_values()['opening_project']==''

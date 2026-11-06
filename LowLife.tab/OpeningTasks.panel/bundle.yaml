@@ -3,3 +3,4 @@ title_en: Opening tasks
 layout:
   - VISInterface
   - KRInterface
+  - ARInterface

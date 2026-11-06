@@ -77,12 +77,17 @@ def coalesce_crossings(route, crossings):
 
 def place(doc, routes, source, symbol, settings, workset, progress=None):
     """Updates own drafts by source/host identity, never touches issued snapshots."""
+    recipient = settings.get('opening_recipient','KR')
+    core.validate_recipient(recipient)
     placer = boxes.BoxPlacer(doc, symbol, settings, workset)
+    # Different recipients may need independent boxes at the same position.
+    placer.existing = [inst for inst in placer.existing
+                       if not metadata(inst) or metadata(inst).get('recipient','KR') == recipient]
     managed = {}
     for inst in FilteredElementCollector(doc).OfClass(FamilyInstance):
         data = metadata(inst)
         if data and data.get('owner_uid') == inst.UniqueId:
-            key = (data['source_uid'], data['host_uid'], data['host_link_uid'])
+            key = (data['source_uid'], data['host_uid'], data['host_link_uid'],data.get('recipient','KR'))
             if key in managed:
                 raise ValueError(tr(u'Найдены дубли идентификатора чернового задания',u'Duplicate managed draft identity'))
             managed[key] = (inst, data)
@@ -111,7 +116,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                     amount = (geometry.recommended_increase_mm(boxes.mm(max(geometry.opening_sides(box))))
                               if settings['opening_increase'] == 'auto' else float(settings['opening_increase']))
                     box = geometry.enlarge_opening(box, boxes.ft(amount))
-                key = (route.UniqueId, crossing.host.UniqueId, source.UniqueId)
+                key = (route.UniqueId, crossing.host.UniqueId, source.UniqueId,settings.get('opening_recipient','KR'))
                 previous = managed.get(key)
                 sub.Start()
                 if previous:
@@ -133,7 +138,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if placer.result.missing_params:
                     raise ValueError(tr(u'Нет параметров размеров бокса',u'Missing box size parameters'))
                 placer._set_host_filter(inst, crossing.kind)
-                data = dict(data, source_model=store.model_id(doc), source_uid=route.UniqueId,
+                data = dict(data, recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
                             host_uid=crossing.host.UniqueId, host_model=store.model_id(source.GetLinkDocument()),
                             host_link_uid=source.UniqueId, kind=crossing.kind,
                             origin_bottom=placer.at_bottom,
@@ -169,6 +174,8 @@ def prepare_drafts(doc, elements, settings):
         data = metadata(inst)
         if not data:
             raise ValueError(tr(u'Выберите только боксы заданий ВИС',u'Select only VIS opening drafts'))
+        if data.get('recipient','KR') != settings.get('opening_recipient','KR'):
+            raise ValueError(tr(u'Получатель бокса не совпадает с командой выдачи',u'Draft recipient does not match the issue command'))
         if data['owner_uid'] != inst.UniqueId or data['source_model'] != store.model_id(doc):
             raise ValueError(tr(u'Задание скопировано: создайте новый бокс командой расстановки',u'Copied task: create a new draft with the placement command'))
         if doc.GetElement(data['source_uid']) is None:
@@ -181,14 +188,14 @@ def prepare_drafts(doc, elements, settings):
         if data['host_model'] != store.model_id(link.GetLinkDocument()):
             raise ValueError(tr(u'Связь заменена: пересоздайте задание',u'Target link was replaced; regenerate the draft'))
         drafts.append(dict(task_id=data['task_id'], source_model=data['source_model'], source_uid=data['source_uid'],
-                           owner_uid=inst.UniqueId, geometry=host_geometry(inst,data,link)))
+                           owner_uid=inst.UniqueId, recipient=data.get('recipient','KR'), geometry=host_geometry(inst,data,link)))
     return drafts
 
 
 def publish(doc, elements, settings):
     drafts = prepare_drafts(doc,elements,settings)
     registry, changes = core.issue(store.registry(doc), drafts, settings['opening_project'],
-                                   settings['opening_discipline'],doc.Application.Username,now())
+                                   settings['opening_discipline'],doc.Application.Username,now(),settings.get('opening_recipient','KR'))
     by_id = {d['task_id']: e for d,e in zip(drafts,elements)}
     for record in changes:
         store.set_parameter(by_id[record['task_id']],settings['opening_json_param'],record)
@@ -210,15 +217,16 @@ def retract(doc, task_ids, settings):
     return changes
 
 
-def incoming(doc, project):
+def incoming(doc, project, recipient='KR'):
     """Only issued registry snapshots; NEVER the live linked box geometry."""
+    core.validate_recipient(recipient)
     records = {}
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         linked = link.GetLinkDocument()
         if linked is None:
             continue
         for record in store.registry(linked)['tasks'].values():
-            if (record['project'] != project or record['recipient'] != 'KR' or
+            if (record['project'] != project or record.get('recipient','KR') != recipient or
                     record['geometry']['host_model'] != store.model_id(doc)):
                 continue
             key = core.task_key(record)
@@ -232,7 +240,7 @@ def create_native_opening(doc, g):
     """Rectangular native wall/floor opening. Host identity is from the issued snapshot."""
     core.validate_geometry(g)
     if g['host_model'] != store.model_id(doc):
-        raise ValueError(tr(u'Отверстие адресовано другой модели КР',u'Opening belongs to another structural model'))
+        raise ValueError(tr(u'Отверстие адресовано другой модели-получателю',u'Opening belongs to another recipient model'))
     host = doc.GetElement(g['host_uid'])
     center = boxes._xyz([boxes.ft(v) for v in g['center_mm']])
     x = boxes._xyz(g['x_dir'])
@@ -366,12 +374,14 @@ def try_translate(doc, opening, previous, target):
 
 def accept(doc, records, settings):
     """One selected group -> one opening; replacements only after explicit UI confirmation."""
+    core.check_recipient(records,settings.get('opening_recipient','KR'),settings['opening_project'],store.model_id(doc))
     registry = store.registry(doc)
+    receipts=core.receipts(registry,settings.get('opening_recipient','KR'))
     keys = set(core.task_key(r) for r in records)
     if any(r['status'] != 'issued' for r in records):
         raise ValueError(tr(u'Нельзя принять отозванное задание',u'Withdrawn tasks cannot be accepted'))
-    old_receipts = {registry['receipts'][key]['opening_uid']: registry['receipts'][key]
-                    for key in keys if key in registry['receipts'] and registry['receipts'][key].get('opening_uid')}
+    old_receipts = {receipts[key]['opening_uid']: receipts[key]
+                    for key in keys if key in receipts and receipts[key].get('opening_uid')}
     for receipt in old_receipts.values():
         if not set(receipt['revisions']).issubset(keys):
             raise ValueError(tr(u'Выберите все задания существующего объединённого отверстия',u'Select every task belonging to the existing merged opening'))
@@ -401,7 +411,7 @@ def accept(doc, records, settings):
         opening=create_native_opening(doc,g)
     opening_id = (list(old_receipts.values())[0]['opening_id'] if len(old_receipts)==1 and
                   set(list(old_receipts.values())[0]['revisions'])==keys else core.guid())
-    receipt = dict(schema=1,role='receipt',opening_id=opening_id, opening_uid=opening.UniqueId,
+    receipt = dict(schema=1,role='receipt',recipient=settings.get('opening_recipient','KR'),opening_id=opening_id, opening_uid=opening.UniqueId,
                    revisions={core.task_key(r):r['revision'] for r in records}, status='accepted',
                    geometry=g,issued_tasks=copy.deepcopy(records),project=settings['opening_project'],author=doc.Application.Username,at=now())
     # Native Opening categories may not support project text parameters. ES is authoritative here.
@@ -410,37 +420,41 @@ def accept(doc, records, settings):
     if param is not None:
         store.set_parameter(opening,settings['opening_json_param'],receipt)
     for key in keys:
-        registry['receipts'][key] = receipt
-    registry.setdefault('decisions',[]).append(copy.deepcopy(receipt))
+        receipts[key] = receipt
+    registry.setdefault('decisions' if settings.get('opening_recipient','KR')=='KR' else 'ar_decisions',[]).append(copy.deepcopy(receipt))
     store.save_registry(doc,registry)
     return opening
 
 
 def reject(doc, records, settings, comment):
+    core.check_recipient(records,settings.get('opening_recipient','KR'),settings['opening_project'],store.model_id(doc))
     registry = store.registry(doc)
+    receipts=core.receipts(registry,settings.get('opening_recipient','KR'))
     for record in records:
         key = core.task_key(record)
-        previous = registry['receipts'].get(key)
+        previous = receipts.get(key)
         if previous and previous.get('opening_uid'):
             raise ValueError(tr(u'Для реализованного отверстия нужно отдельное решение: отклонение его не удаляет',u'An implemented opening must be reviewed explicitly, not silently rejected'))
-        receipt = dict(schema=1,status='rejected',revisions={key:record['revision']},comment=comment,
+        receipt = dict(schema=1,status='rejected',recipient=settings.get('opening_recipient','KR'),revisions={key:record['revision']},comment=comment,
                        author=doc.Application.Username,at=now(),project=settings['opening_project'])
-        registry['receipts'][key] = receipt
-        registry.setdefault('decisions',[]).append(copy.deepcopy(receipt))
+        receipts[key] = receipt
+        registry.setdefault('decisions' if settings.get('opening_recipient','KR')=='KR' else 'ar_decisions',[]).append(copy.deepcopy(receipt))
     store.save_registry(doc,registry)
 
 
 def remove_withdrawn(doc, records, settings):
+    core.check_recipient(records,settings.get('opening_recipient','KR'),settings['opening_project'],store.model_id(doc))
     registry = store.registry(doc)
+    receipts=core.receipts(registry,settings.get('opening_recipient','KR'))
     selected = {core.task_key(r):r for r in records}
     if any(r['status'] != 'withdrawn' for r in records):
         raise ValueError(tr(u'Выберите только отозванные задания',u'Select withdrawn tasks only'))
-    receipts = {}
+    groups = {}
     for key in selected:
-        receipt = registry['receipts'].get(key)
+        receipt = receipts.get(key)
         if receipt and receipt.get('opening_uid'):
-            receipts[receipt['opening_uid']] = receipt
-    for uid,receipt in receipts.items():
+            groups[receipt['opening_uid']] = receipt
+    for uid,receipt in groups.items():
         if not set(receipt['revisions']).issubset(set(selected)):
             raise ValueError(tr(u'Объединённое отверстие содержит другие задания: рассмотрите всю группу',u'Merged opening still includes other tasks; review the entire group'))
         element = doc.GetElement(uid)
@@ -450,8 +464,8 @@ def remove_withdrawn(doc, records, settings):
         for key in receipt['revisions']:
             updated = dict(receipt,status='withdrawn',opening_uid=None,at=now(),author=doc.Application.Username,
                            revisions={k:selected[k]['revision'] for k in receipt['revisions']})
-            registry['receipts'][key] = updated
-        registry.setdefault('decisions',[]).append(updated)
+            receipts[key] = updated
+        registry.setdefault('decisions' if settings.get('opening_recipient','KR')=='KR' else 'ar_decisions',[]).append(updated)
     store.save_registry(doc,registry)
 
 
@@ -481,7 +495,7 @@ def opening_matches(opening, receipt, tolerance_mm=1.0):
         return False
 
 
-def structural_results(doc, project):
+def structural_results(doc, project, recipient='KR'):
     local = store.registry(doc)
     results = []
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
@@ -489,9 +503,9 @@ def structural_results(doc, project):
         if kr_doc is None:
             continue
         for tid,task in local['tasks'].items():
-            if task['project'] != project or task['status'] != 'issued' or task['geometry']['host_model'] != store.model_id(kr_doc):
+            if task.get('recipient','KR')!=recipient or task['project'] != project or task['status'] != 'issued' or task['geometry']['host_model'] != store.model_id(kr_doc):
                 continue
-            receipt = store.registry(kr_doc)['receipts'].get(core.task_key(task))
+            receipt = core.receipts(store.registry(kr_doc),recipient).get(core.task_key(task))
             if not receipt or receipt['status'] != 'accepted':
                 continue
             if receipt['revisions'].get(core.task_key(task)) != task['revision']:
@@ -507,7 +521,7 @@ def confirm_results(doc, results, settings):
     for task,receipt,link in results:
         if registry['tasks'][task['task_id']]['revision'] != task['revision']:
             raise ValueError(tr(u'Ревизия задания изменилась',u'Task revision changed'))
-        confirmation = dict(task_id=task['task_id'],revision=task['revision'],
+        confirmation = dict(recipient=task.get('recipient','KR'),task_id=task['task_id'],revision=task['revision'],
                             opening_id=receipt['opening_id'],kr_model=store.model_id(link.GetLinkDocument()),
                             author=doc.Application.Username,at=now())
         registry['tasks'][task['task_id']]['confirmation'] = confirmation

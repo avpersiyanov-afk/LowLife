@@ -1,0 +1,6 @@
+title: АР
+title_en: AR
+tooltip: Независимый приём заданий ВИС в модели АР. Shift+клик — настройки.
+tooltip_en: Independent VIS task acceptance in AR. Shift+click for settings.
+engine:
+  persistent: true

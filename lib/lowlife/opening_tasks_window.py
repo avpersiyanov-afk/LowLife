@@ -53,6 +53,11 @@ class Handler(IExternalEventHandler):
                 return
             settings_form=cfg.make(w.role)
             settings=settings_form.get_settings_silent()
+            settings['opening_recipient']=w.role if w.role in ('KR','AR') else ('AR' if action.endswith('_ar') else 'KR')
+            if action in ('place_ar','issue_ar','confirm_ar'):
+                action=action[:-3]
+            if w.role=='AR' and action.startswith('ar_'):
+                action=action[3:]
             settings_form.require(settings,['opening_project'])
             if action in ('kr_plans','kr_sections'):
                 from lowlife.opening_tasks_kr_views import build
@@ -98,9 +103,9 @@ class Handler(IExternalEventHandler):
                         if ui.ViewId==view.Id:
                             ui.ZoomToFit()
                             break
-                elif w.role=='KR':
+                elif w.role in ('KR','AR'):
                     # Reload records before acting: cached rows must never apply stale revisions.
-                    fresh={api.core.task_key(r):r for r,link in api.incoming(w.document,settings['opening_project'])}
+                    fresh={api.core.task_key(r):r for r,link in api.incoming(w.document,settings['opening_project'],w.role)}
                     selected=[]
                     for row in rows:
                         record=fresh.get(api.core.task_key(row['record']))
@@ -148,6 +153,7 @@ class TaskWindow(forms.WPFWindow):
                 <ComboBox x:Name="discipline_filter" Width="145" Margin="0,0,8,6"/>
                 <ComboBox x:Name="level_filter" Width="170" Margin="0,0,8,6"/>
                 <ComboBox x:Name="kind_filter" Width="150" Margin="0,0,8,6"/>
+                <ComboBox x:Name="recipient_filter" Width="145" Margin="0,0,8,6"/>
                 <ComboBox x:Name="issue_filter" Width="130" Margin="0,0,8,6"/>
                 <CheckBox x:Name="attention" VerticalAlignment="Center" Margin="0,0,8,6"/>
                 <Button x:Name="reset" Padding="10,4"/>
@@ -166,19 +172,20 @@ class TaskWindow(forms.WPFWindow):
         self.rows=[]
         self.updating=False
         self.visible={}
-        self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks')
+        self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks') if role=='KR' else tr(u'Задания АР',u'AR tasks')
         purpose=tr(u'Подготовка и выдача заданий',u'Prepare and issue tasks') if role=='VIS' else tr(u'Рассмотрение и создание отверстий',u'Review and create openings')
         self.heading.Text=self.Title+u' — '+purpose+u' | '+doc.Title
         self.filter_controls=[('status',self.state,tr(u'Все статусы',u'All statuses')),
             ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
             ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
             ('kind',self.kind_filter,tr(u'Все конструкции',u'All hosts')),
-            ('issue',self.issue_filter,tr(u'Все выпуски',u'All issues'))]
+            ('issue',self.issue_filter,tr(u'Все выпуски',u'All issues')),
+            ('recipient',self.recipient_filter,tr(u'Все получатели',u'All recipients'))]
         self.attention.Content=tr(u'Требуют внимания',u'Need attention')
         self.reset.Content=tr(u'Сбросить фильтры',u'Reset filters')
         self.search.ToolTip=tr(u'Поиск по номеру, GUID, модели, уровню и размерам',u'Search number, GUID, model, level and sizes')
         self.columns=[('Number',tr(u'Задание',u'Task'),150),('Status',tr(u'Статус',u'Status'),170),
-            ('Discipline',tr(u'Дисциплина',u'Discipline'),95),('Model',tr(u'Модель',u'Model'),140),
+            ('Recipient',tr(u'Получатель',u'Recipient'),90),('Discipline',tr(u'Дисциплина',u'Discipline'),95),('Model',tr(u'Модель',u'Model'),140),
             ('Level',tr(u'Уровень',u'Level'),120),('Kind',tr(u'Конструкция',u'Host'),100),
             ('Issue',tr(u'Выпуск',u'Issue'),90),('Revision',tr(u'Ревизия',u'Revision'),75),
             ('Date',tr(u'Дата выдачи',u'Issue date'),155),('Sizes',tr(u'Размеры, мм',u'Sizes, mm'),150)]
@@ -253,13 +260,13 @@ class TaskWindow(forms.WPFWindow):
                 if tid not in found and r['project']==settings.get('opening_project'):
                     self.rows.append(self.row(tid,r['owner_uid'],r,settings,True))
         elif settings.get('opening_project'):
-            for r,link in api.incoming(self.document,settings['opening_project']):
+            for r,link in api.incoming(self.document,settings['opening_project'],self.role):
                 row=self.row(r['task_id'],r['owner_uid'],r,settings)
-                row['status']=flow.state_label(flow.receipt_state(r,registry,self.document))
+                row['status']=flow.state_label(flow.receipt_state(r,registry,self.document,self.role))
                 row['record']=r
                 row['model']=link.Name
-                row['attention']=flow.receipt_state(r,registry,self.document) not in ('accepted','withdrawn')
-                receipt=registry['receipts'].get(api.core.task_key(r))
+                row['attention']=flow.receipt_state(r,registry,self.document,self.role) not in ('accepted','withdrawn')
+                receipt=api.core.receipts(registry,self.role).get(api.core.task_key(r))
                 row['comment']=receipt.get('comment','') if receipt else ''
                 if receipt:
                     prior=next((t for t in receipt.get('issued_tasks',[]) if api.core.task_key(t)==api.core.task_key(r)),None)
@@ -332,7 +339,7 @@ class TaskWindow(forms.WPFWindow):
                 except Exception:
                     pass
         return dict(task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
-                    number=number,discipline=discipline,model=self.document.Title,
+                    number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
                     level=level.Name if level else u'—',
                     kind=tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
                     issue=unicode(r.get('issue_number',r.get('issue_id',''))) if r else '',
@@ -352,7 +359,7 @@ class TaskWindow(forms.WPFWindow):
             return
         if node is not None and self.selected_rows():
             event.Handled=True
-            self.dispatch('focus' if self.role=='VIS' else 'show')
+            self.dispatch('focus' if self.role=='VIS' else 'ar_show' if self.role=='AR' else 'show')
 
     def selected_rows(self):
         return [self.visible[item['Key']] for item in self.tasks.SelectedItems if item['Key'] in self.visible]
@@ -373,7 +380,7 @@ class TaskWindow(forms.WPFWindow):
         filters={key:unicode(control.SelectedItem) for key,control,label in self.filter_controls if control.SelectedIndex>0}
         for row in self.rows:
             row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
-                ('number','task_id','status','discipline','model','level','kind','issue','date','sizes'))
+                ('number','task_id','status','recipient','discipline','model','level','kind','issue','date','sizes'))
         visible=browser.select_rows(self.rows,filters,self.search.Text,bool(self.attention.IsChecked))
         table=DataTable()
         table.Columns.Add('Key',String)
@@ -383,7 +390,7 @@ class TaskWindow(forms.WPFWindow):
         for row in visible:
             item=table.NewRow()
             item['Key']=row['key']
-            for column,key in [('Number','number'),('Status','status'),('Discipline','discipline'),('Model','model'),
+            for column,key in [('Number','number'),('Status','status'),('Recipient','recipient'),('Discipline','discipline'),('Model','model'),
                                ('Level','level'),('Kind','kind'),('Issue','issue'),('Revision','revision'),('Date','date'),('Sizes','sizes')]:
                 item[column]=row[key]
             table.Rows.Add(item)
