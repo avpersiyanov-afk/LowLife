@@ -154,7 +154,7 @@ def receipt_state(record, registry, doc):
     return core.incoming_state(record,receipt,exists)
 
 
-def kr(settings):
+def kr(settings, action=None):
     doc = revit.doc
     registry = store.registry(doc)
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
@@ -186,7 +186,8 @@ def kr(settings):
                tr(u'Замечание / отклонить',u'Comment / reject'):'reject',
                tr(u'Удалить отверстия отозванных заданий',u'Remove openings of withdrawn tasks'):'remove',
                tr(u'Показать конструкцию',u'Show host'):'show'}
-    action = choose(actions,tr(u'Действие КР',u'KR action'))
+    if action is None:
+        action = choose(actions,tr(u'Действие КР',u'KR action'))
     if action == 'show':
         host = doc.GetElement(selected[0]['geometry']['host_uid'])
         if host:
@@ -240,7 +241,7 @@ def confirm(settings):
             api.confirm_results(revit.doc,selected,settings)
 
 
-def run(role, config_mode=False):
+def run(role, config_mode=False, action=None):
     try:
         settings_form = cfg.make(role,revit.doc if role=='VIS' else None)
         if config_mode:
@@ -252,13 +253,8 @@ def run(role, config_mode=False):
             required += ['opening_discipline','opening_json_param']
         settings_form.require(settings,required)
         if role=='KR':
-            kr(settings)
+            kr(settings, action)
             return
-        action = choose({tr(u'Расставить / обновить боксы',u'Place / update boxes'):'place',
-                         tr(u'Выдать выбранные боксы КР',u'Issue selected boxes to KR'):'issue',
-                         tr(u'Отозвать задания',u'Withdraw tasks'):'withdraw',
-                         tr(u'Подтвердить результат КР',u'Confirm KR results'):'confirm'},
-                         tr(u'Задания ВИС',u'VIS tasks'))
         if action=='place':
             settings_form.require(settings,['box_width_param','box_depth_param','box_height_param','box_host_filter_param'])
             place(settings)
