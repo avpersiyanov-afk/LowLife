@@ -117,3 +117,70 @@ def test_manual_publish_is_removed_from_manifest():
     from lowlife import opening_tasks_manifest as m
     for role in ('VIS','KR','AR'):
         with pytest.raises(ValueError):m.validate_action(role,'journal')
+
+
+def test_background_drain_keeps_failed_items_and_concurrent_additions():
+    from contextlib import nullcontext
+    data=j.snapshot(registry(),'P','VIS','vis','Name')
+    first=j.enqueue([],data)[0]
+    second=dict(first,id='next')
+    class Store:
+        data={'items':[first]}
+        def read(self):return copy.deepcopy(self.data)
+        def write(self,value,notify=True):
+            assert notify is False
+            self.data=copy.deepcopy(value)
+            return True
+    store=Store()
+    sent,blocked=j.drain_pending(store,lambda item:(_ for _ in ()).throw(IOError('offline')),nullcontext)
+    assert sent==[] and blocked
+    assert store.data['items']==[first]
+    def success(item):
+        store.data['items'].append(second)
+    sent,blocked=j.drain_pending(store,success,nullcontext)
+    assert sent==[first['id']] and not blocked
+    assert store.data['items']==[second]
+
+
+def test_failed_background_acknowledgement_leaves_item_for_idempotent_retry():
+    from contextlib import nullcontext
+    item=j.enqueue([],j.snapshot(registry(),'P','VIS','vis','Name'))[0]
+    class Store:
+        def read(self):return {'items':[item]}
+        def write(self,value,notify=True):
+            assert notify is False
+            return False
+    store=Store()
+    calls=[]
+    j.drain_pending(store,lambda i:calls.append(i['id']),nullcontext)
+    j.drain_pending(store,lambda i:calls.append(i['id']),nullcontext)
+    assert calls==[item['id'],item['id']]
+    assert store.read()['items']==[item]
+
+
+def test_process_timer_is_singleton_and_retries_without_window(monkeypatch):
+    import sys
+    import types
+    from contextlib import nullcontext
+    class Domain:
+        data={}
+        def GetData(self,key):return self.data.get(key)
+        def SetData(self,key,value):self.data[key]=value
+    domain=Domain()
+    timers=[]
+    def timer(callback,state,due,period):
+        timers.append((callback,state,due,period))
+        return object()
+    monkeypatch.setitem(sys.modules,'System',types.SimpleNamespace(AppDomain=types.SimpleNamespace(CurrentDomain=domain)))
+    monkeypatch.setitem(sys.modules,'System.Threading',types.SimpleNamespace(Timer=timer,TimerCallback=lambda f:f))
+    monkeypatch.setitem(sys.modules,'pnotes.core',types.SimpleNamespace(_QueueLock=lambda key:nullcontext()))
+    j.install_sender()
+    j.install_sender()
+    assert len(timers)==1
+    callback,state,due,period=timers[0]
+    assert due==period==60000
+    attempts=[]
+    monkeypatch.setattr(j,'retry_pending',lambda:attempts.append(True))
+    callback(None)
+    callback(None)
+    assert attempts==[True,True]

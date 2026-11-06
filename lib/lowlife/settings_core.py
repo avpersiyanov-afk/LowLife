@@ -277,16 +277,17 @@ class JsonStore(object):
         data = rename_keys(_read_file(self.path()), self._renames)
         return SavedSettings(data, read_shared() if self._share else None)
 
-    def write(self, data):
-        """Перезаписывает файл целиком. True — записано; иначе alert и False."""
+    def write(self, data, notify=True):
+        """Write settings; notify=False keeps background failures silent."""
         path = self.path()
         data = rename_keys(dict(data), self._renames)
         old = rename_keys(_read_file(path), self._renames) if self._share else None
 
         if not _write_file(path, data):
-            label = self._resolve(self._label)
-            what = tr(u"настройки {}").format(tr(label)) if label else tr(u"настройки")
-            _alert(tr(u"Не удалось сохранить {} в файл:\n{}").format(what, path))
+            if notify:
+                label = self._resolve(self._label)
+                what = tr(u"настройки {}").format(tr(label)) if label else tr(u"настройки")
+                _alert(tr(u"Не удалось сохранить {} в файл:\n{}").format(what, path))
             return False
 
         if self._share:
