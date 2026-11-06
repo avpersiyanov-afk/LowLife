@@ -3070,3 +3070,7 @@ or downward solid intersection with floors from the same selected source.
 Name and transformed project-elevation matching, no nearest-level fallback.
 Checks and updates actual instance level while preserving position; provenance
 enters task JSON and level corrections participate in reissue detection.
+
+Opening box placement reuses level_assign.create_on_level / assign_by_param.
+Opening level rays reuse slab_marks.SlabProbe with optional sources/categories
+scope and floor_hits_below. Defaults for existing detector tools are unchanged.
