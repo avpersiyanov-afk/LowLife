@@ -66,3 +66,5 @@ model backups; JSON is not protected against deliberate manual edits.
 
 Protocol tests run without Revit; connector adapter tests use a substitute API.
 Native openings, UI and worksharing still require a Revit 2024 pilot on model copies.
+
+Actions have separate ribbon buttons: VIS boxes, Issue to KR, Withdraw tasks, Confirm KR, KR inbox, Accept separately, Merge openings, KR comments, Process withdrawal.

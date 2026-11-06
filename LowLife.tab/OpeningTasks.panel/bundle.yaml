@@ -1,5 +1,12 @@
 title: Задания отверстий
 title_en: Opening tasks
 layout:
-  - VISOpeningTasks
-  - KROpeningTasks
+  - VISPlace
+  - VISIssue
+  - VISWithdraw
+  - VISConfirm
+  - KRInbox
+  - KRAccept
+  - KRMerge
+  - KRReject
+  - KRWithdraw
