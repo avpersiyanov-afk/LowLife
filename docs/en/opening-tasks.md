@@ -169,3 +169,18 @@ and remembers the selection per model and role. Placement/release require a
 catalog selection; issued part assignments are immutable. Legacy assignments
 create a new revision. Separate parts cannot be merged. Tables and the GIP
 summary expose the part so НЧ/ПЧ and buildings/sections can be controlled separately.
+
+## Box level from the intersected host
+
+Floor openings use the pierced slab's level. Wall openings cast a vertical
+downward ray against actual floor solids in the same selected KR or AR link;
+other links and VIS geometry are excluded. A ray through a hole continues to
+the next physical hit. Linked levels map to VIS by name and transformed project
+elevation (1 mm tolerance), never by the nearest lower level. Missing/ambiguous
+levels or hits and tilted links are reported as skipped boxes.
+
+Repeated placement checks existing instance levels and changes them while
+preserving location and ID. An unsupported family change is rolled back.
+Resolution provenance is stored in box/task JSON and shown in the table;
+a corrected issued level creates a new revision on reissue. The same rules
+apply to the standalone tray box tool.

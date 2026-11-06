@@ -3062,3 +3062,11 @@ Google catalog cache and model/role-scoped selection for НЧ/ПЧ and building/
 labels. Loads the authenticated project's catalog asynchronously, reuses cached
 choices offline and validates placement/release selections. Project Information
 uses the existing Notes parameter reader and locally cached mapping.
+
+### opening_levels.py / opening_levels_core.py
+
+Shared box-level resolver for VIS/KR/AR tasks and tray boxes. Pierced floor level
+or downward solid intersection with floors from the same selected source.
+Name and transformed project-elevation matching, no nearest-level fallback.
+Checks and updates actual instance level while preserving position; provenance
+enters task JSON and level corrections participate in reissue detection.
