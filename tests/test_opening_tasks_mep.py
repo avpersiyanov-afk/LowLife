@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Adapter checks with a tiny connector API substitute (no Revit installed)."""
 import ast
+import math
 from pathlib import Path
 from types import SimpleNamespace as NS
 import pytest
@@ -31,7 +32,7 @@ def adapter():
     def insulation(doc,eid):
         calls.append(eid)
         return ['insulation']
-    ns=dict(tr=lambda ru,en=None:ru,BuiltInCategory=bic,ConnectorProfileType=NS(Round=1,Rectangular=2,Oval=3),
+    ns=dict(ISelectionFilter=object,math=math,tr=lambda ru,en=None:ru,BuiltInCategory=bic,ConnectorProfileType=NS(Round=1,Rectangular=2,Oval=3),
             InsulationLiningBase=NS(GetInsulationIds=insulation),Line=Line,LocationCurve=LocationCurve,
             boxes=NS(_id_int=lambda v:v))
     exec(compile(ast.Module(body=body,type_ignores=[]),str(path),'exec'),ns)
@@ -76,3 +77,27 @@ def test_rolled_and_fitting_routes_are_explicitly_rejected(adapter):
     el=element();el.Location=NS(Curve=Line())
     with pytest.raises(ValueError):
         Route(el)
+
+
+def test_selection_filter_rejects_wrong_categories_and_slope(adapter):
+    # Load the filter with the same substitute API used by adapter tests.
+    import ast
+    path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_mep.py'
+    tree=ast.parse(path.read_text())
+    fn=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='RouteSelectionFilter')
+    Route,calls=adapter
+    ns=dict(ISelectionFilter=object,math=math,Route=Route,boxes=NS(_id_int=lambda v:v),
+            supported=lambda el:el.Category.Id in (1,2,3,4))
+    exec(compile(ast.Module(body=[fn],type_ignores=[]),str(path),'exec'),ns)
+    Filter=ns['RouteSelectionFilter']
+    f=Filter(dict(box_hosts='walls',max_slope_deg=1))
+    assert f.AllowElement(element(1))
+    assert not f.AllowElement(element(99))
+    assert not f.AllowReference(None,None)
+    tilted=element();tilted.Id='tilted'
+    tilted.Location=LocationCurve();tilted.Location.Curve=Line()
+    tilted.Location.Curve.Direction=Vector(math.sqrt(.5),0,math.sqrt(.5))
+    tilted.ConnectorManager.Connectors[0].CoordinateSystem.BasisZ=tilted.Location.Curve.Direction
+    assert not f.AllowElement(tilted)
+    floor_only=Filter(dict(box_hosts='floors',max_slope_deg=1))
+    assert not floor_only.AllowElement(element(1))

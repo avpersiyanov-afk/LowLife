@@ -164,3 +164,11 @@ def change_kinds(old, new, tolerance_mm=0.1):
     if old['status']=='withdrawn' and new['status']=='issued':
         changes.append('reissued')
     return changes
+
+
+def translation_only(old, new, tolerance_mm=0.1):
+    validate_geometry(old)
+    validate_geometry(new)
+    return (all(old[k]==new[k] for k in ('host_uid','host_model','kind')) and
+            all(abs(a-b)<=tolerance_mm for a,b in zip(old['size_mm'],new['size_mm'])) and
+            all(abs(a-b)<1e-8 for a,b in zip(old['x_dir'],new['x_dir'])))
