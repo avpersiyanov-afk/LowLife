@@ -1207,6 +1207,7 @@
  "Извещатели на перекрытие и отметки перекрытий": "Detectors to slab and slab elevations",
  "Изменения ещё отправляются в таблицу — окно закроется, как только они сохранятся.": "Changes are still being sent to the sheet. The window will close once they are saved.",
  "Изменено значений: {}": "Values changed: {}",
+ "Изменено после выдачи": "Changed since issue",
  "Изменено строк: {} (значений: {})": "Rows changed: {} (values: {})",
  "Имена вписаны в настройки: {}": "Names written into the settings: {}",
  "Имена категорий как в Revit. Пусто — все категории модели (без аннотаций, осей, уровней и видов).": "Category names as in Revit. Empty — all model categories (without annotations, grids, levels and views).",

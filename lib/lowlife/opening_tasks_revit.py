@@ -550,3 +550,39 @@ def visible_issue(inst, settings, record=None, changed=False):
         if param is None or param.IsReadOnly or param.StorageType != StorageType.String:
             raise ValueError(tr(u'Нужен текстовый параметр экземпляра: {}',u'Text instance parameter required: {}').format(name))
         param.Set(value)
+
+
+def recipient_feedback(doc, project):
+    """Read each linked registry once. Missing/replaced/unloaded models stay unavailable."""
+    from lowlife import opening_tasks_feedback as feedback
+    models={}
+    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+        linked=link.GetLinkDocument()
+        if linked is not None:
+            models[store.model_id(linked)]=(linked,store.registry(linked))
+    result={}
+    for task in store.registry(doc)['tasks'].values():
+        if task['project']!=project:
+            continue
+        target=models.get(task['geometry']['host_model'])
+        receipt=None
+        opening=None
+        if target:
+            linked,registry=target
+            receipt=core.receipts(registry,task.get('recipient','KR')).get(core.task_key(task))
+            if receipt and receipt.get('project')!=project:
+                receipt=None
+            if receipt and receipt.get('opening_uid'):
+                opening=linked.GetElement(receipt['opening_uid'])
+        state=feedback.evaluate(task,receipt,bool(target),opening is not None,
+                                bool(opening is not None and receipt and opening_matches(opening,receipt)))
+        label,action=feedback.describe(state)
+        confirmation=task.get('confirmation',{})
+        if state=='accepted' and confirmation.get('revision')==task['revision'] and confirmation.get('opening_id')==receipt.get('opening_id'):
+            label=tr(u'Результат подтверждён ВИС',u'Result confirmed by VIS')
+            action=tr(u'Действий не требуется',u'No action required')
+        result[core.task_key(task)]=dict(result=label,next_action=action,
+            comment=receipt.get('comment','') if receipt else '',
+            reply_revision=unicode(receipt.get('revisions',{}).get(core.task_key(task),'')) if receipt else '',
+            attention=state not in ('accepted','withdrawn'))
+    return result

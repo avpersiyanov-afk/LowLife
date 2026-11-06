@@ -116,3 +116,16 @@ VIS 3D preview no longer requires a prepared KR structural view. It uses that vi
 ## Role manifest
 
 `opening_tasks_manifest.py` defines ribbon entry points and each role's allowed actions. VIS: place, issue, withdraw, confirm result, box 3D, views/register. KR: show host, accept, merge, comment, process withdrawal, structural view, slab plans, wall sections. Refresh/settings are common. Dispatch and execution both reject cross-role actions. Unknown roles do not fall back to KR. VIS labels now read Issue tasks and Confirm result. Close old windows and restart Revit after updating persistent interfaces.
+
+## Exchange between separate models
+
+VIS saves/synchronizes after issue. KR/AR reloads the VIS link, reviews tasks
+and saves its own model. VIS then reloads the recipient link in Revit and
+clicks “Refresh exchange”. The button reads loaded links; it does not reload
+files from disk. The VIS table shows recipient response, reply revision,
+comment and next action. Filter responses or select “Need attention” to find
+outdated replies, comments, missing/modified openings and pending withdrawals.
+An unavailable model is not treated as a deleted opening. Responses apply to
+released revisions. Re-run placement after changing routes, review draft changes
+and reissue. Confirm matching results after review. No separate database or
+JSON file transfer is required.

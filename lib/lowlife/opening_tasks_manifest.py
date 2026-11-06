@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=3
+VERSION=4
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 COMMON=('refresh','settings')
 ACTIONS={

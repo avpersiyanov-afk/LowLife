@@ -147,12 +147,14 @@ class TaskWindow(forms.WPFWindow):
             <TextBlock x:Name="heading" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
             <WrapPanel x:Name="actions" Grid.Row="1" Margin="0,0,0,8"/>
             <StackPanel Grid.Row="2" Margin="0,0,0,10">
+              <TextBlock x:Name="exchange_hint" TextWrapping="Wrap" Margin="0,0,0,8"/>
               <TextBox x:Name="search" Height="28" Margin="0,0,0,8"/>
               <WrapPanel>
                 <ComboBox x:Name="state" Width="190" Margin="0,0,8,6"/>
                 <ComboBox x:Name="discipline_filter" Width="145" Margin="0,0,8,6"/>
                 <ComboBox x:Name="level_filter" Width="170" Margin="0,0,8,6"/>
                 <ComboBox x:Name="kind_filter" Width="150" Margin="0,0,8,6"/>
+                <ComboBox x:Name="result_filter" Width="220" Margin="0,0,8,6"/>
                 <ComboBox x:Name="recipient_filter" Width="145" Margin="0,0,8,6"/>
                 <ComboBox x:Name="issue_filter" Width="130" Margin="0,0,8,6"/>
                 <CheckBox x:Name="attention" VerticalAlignment="Center" Margin="0,0,8,6"/>
@@ -175,12 +177,15 @@ class TaskWindow(forms.WPFWindow):
         self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks') if role=='KR' else tr(u'Задания АР',u'AR tasks')
         purpose=tr(u'Подготовка и выдача заданий',u'Prepare and issue tasks') if role=='VIS' else tr(u'Рассмотрение и создание отверстий',u'Review and create openings')
         self.heading.Text=self.Title+u' — '+purpose+u' | '+doc.Title
+        self.heading.ToolTip=tr(u'Обмен: сохраните/синхронизируйте свою модель, обновите связь смежника в Revit, затем нажмите «Обновить обмен». Данные показаны по последней загруженной версии связи.',u'Exchange: save/synchronize your model, reload the other discipline link in Revit, then click Refresh exchange. Results reflect the last loaded link version.')
+        self.exchange_hint.Text=tr(u'Обмен: сохранить модель → обновить связь смежника в Revit → «Обновить обмен». Ответы показаны по загруженной версии связи.',u'Exchange: save model → reload recipient link in Revit → Refresh exchange. Responses reflect the loaded link version.')
         self.filter_controls=[('status',self.state,tr(u'Все статусы',u'All statuses')),
             ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
             ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
             ('kind',self.kind_filter,tr(u'Все конструкции',u'All hosts')),
             ('issue',self.issue_filter,tr(u'Все выпуски',u'All issues')),
-            ('recipient',self.recipient_filter,tr(u'Все получатели',u'All recipients'))]
+            ('recipient',self.recipient_filter,tr(u'Все получатели',u'All recipients')),
+            ('result',self.result_filter,tr(u'Все ответы',u'All responses'))]
         self.attention.Content=tr(u'Требуют внимания',u'Need attention')
         self.reset.Content=tr(u'Сбросить фильтры',u'Reset filters')
         self.search.ToolTip=tr(u'Поиск по номеру, GUID, модели, уровню и размерам',u'Search number, GUID, model, level and sizes')
@@ -188,6 +193,9 @@ class TaskWindow(forms.WPFWindow):
             ('Recipient',tr(u'Получатель',u'Recipient'),90),('Discipline',tr(u'Дисциплина',u'Discipline'),95),('Model',tr(u'Модель',u'Model'),140),
             ('Level',tr(u'Уровень',u'Level'),120),('Kind',tr(u'Конструкция',u'Host'),100),
             ('Issue',tr(u'Выпуск',u'Issue'),90),('Revision',tr(u'Ревизия',u'Revision'),75),
+            ('Result',tr(u'Ответ получателя',u'Recipient response'),200),
+            ('ReplyRevision',tr(u'Ревизия ответа',u'Reply revision'),100),
+            ('Comment',tr(u'Замечание',u'Comment'),220),('NextAction',tr(u'Что делать',u'Next action'),300),
             ('Date',tr(u'Дата выдачи',u'Issue date'),155),('Sizes',tr(u'Размеры, мм',u'Sizes, mm'),150)]
         for key,label,width in self.columns:
             column=DataGridTextColumn()
@@ -197,7 +205,7 @@ class TaskWindow(forms.WPFWindow):
             self.tasks.Columns.Add(column)
         self.handler=Handler(self)
         self.event=ExternalEvent.Create(self.handler)
-        self.add('refresh',tr(u'Обновить',u'Refresh'))
+        self.add('refresh',tr(u'Обновить обмен',u'Refresh exchange'))
         self.add('settings',tr(u'Настройки',u'Settings'))
         select_button=Button()
         select_button.Content=tr(u'Выбрать показанные',u'Select visible')
@@ -273,6 +281,18 @@ class TaskWindow(forms.WPFWindow):
                     if prior:
                         row['previous_sizes']=self.sizes(prior['geometry']['size_mm'])
                 self.rows.append(row)
+        if self.role=='VIS':
+            replies=api.recipient_feedback(self.document,settings.get('opening_project'))
+            for row in self.rows:
+                reply=replies.get(row['key'])
+                if reply:
+                    needs_attention=row['attention'] or reply['attention']
+                    row.update(reply)
+                    row['attention']=needs_attention
+                    if row['status']==tr(u'Бокс удалён',u'Box deleted'):
+                        row['next_action']=tr(u'ВИС: согласовать отзыв задания',u'VIS: agree task withdrawal')
+                    elif row['status']==tr(u'Изменено после выдачи'):
+                        row['next_action']=tr(u'ВИС: проверить изменения и перевыдать задание',u'VIS: review changes and reissue the task')
         self.updating=True
         for key,control,label in self.filter_controls:
             previous=control.SelectedItem
@@ -339,7 +359,7 @@ class TaskWindow(forms.WPFWindow):
                 except Exception:
                     pass
         return dict(task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
-                    number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
+                    result='',next_action='',reply_revision='',number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
                     level=level.Name if level else u'—',
                     kind=tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
                     issue=unicode(r.get('issue_number',r.get('issue_id',''))) if r else '',
@@ -380,7 +400,7 @@ class TaskWindow(forms.WPFWindow):
         filters={key:unicode(control.SelectedItem) for key,control,label in self.filter_controls if control.SelectedIndex>0}
         for row in self.rows:
             row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
-                ('number','task_id','status','recipient','discipline','model','level','kind','issue','date','sizes'))
+                ('number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
         visible=browser.select_rows(self.rows,filters,self.search.Text,bool(self.attention.IsChecked))
         table=DataTable()
         table.Columns.Add('Key',String)
@@ -391,6 +411,7 @@ class TaskWindow(forms.WPFWindow):
             item=table.NewRow()
             item['Key']=row['key']
             for column,key in [('Number','number'),('Status','status'),('Recipient','recipient'),('Discipline','discipline'),('Model','model'),
+                               ('Result','result'),('ReplyRevision','reply_revision'),('Comment','comment'),('NextAction','next_action'),
                                ('Level','level'),('Kind','kind'),('Issue','issue'),('Revision','revision'),('Date','date'),('Sizes','sizes')]:
                 item[column]=row[key]
             table.Rows.Add(item)
@@ -405,8 +426,8 @@ class TaskWindow(forms.WPFWindow):
         rows=self.selected_rows()
         if rows:
             row=rows[0]
-            self.details.Text=tr(u'Выбрано: {} | {} | {}\nВыданные / ранее принятые размеры: {} мм → Текущие: {} мм\nСмещение XYZ от выдачи, мм: {}\nGUID: {} | Элемент: {}\nЗамечание КР: {}',
-                                u'Selected: {} | {} | {}\nIssued / previously accepted sizes: {} mm → Current: {} mm\nXYZ movement since issue, mm: {}\nGUID: {} | Element: {}\nKR comment: {}').format(
+            self.details.Text=tr(u'Выбрано: {} | {} | {}\nВыданные / ранее принятые размеры: {} мм → Текущие: {} мм\nСмещение XYZ от выдачи, мм: {}\nGUID: {} | Элемент: {}\nЗамечание получателя: {}',
+                                u'Selected: {} | {} | {}\nIssued / previously accepted sizes: {} mm → Current: {} mm\nXYZ movement since issue, mm: {}\nGUID: {} | Element: {}\nRecipient comment: {}').format(
                 len(rows),row['number'],row['status'],row['previous_sizes'],row['sizes'],row['displacement'],row['task_id'],row['uid'],row.get('comment','') or u'—')
 
     def on_closed(self,sender,event):
