@@ -91,3 +91,7 @@ Role windows now use a sortable table with task number, status, discipline, sour
 Placement now uses an ISelectionFilter for supported straight trays, ducts, pipes and conduits with permitted slope and profile. Actual host intersections are computed after selection; eligibility does not guarantee a crossing. Merge shows blue source rectangles and an orange combined envelope, in wall X/Z or floor X/Y projection, before any model change.
 
 Translation-only updates attempt to retain the existing Opening and its IDs in a subtransaction, checking the resulting geometry and annotations. Replacement checks tagged elements, dimension references, dependencies and a rolled-back trial deletion. Replacement affecting annotations is blocked for manual review. Automatic rebuilding of dimension references after contour changes is not provided. Protocol scenarios and substitute-API annotation checks do not replace a real Revit pilot.
+
+## Preview fallback and valid names
+
+VIS 3D preview no longer requires a prepared KR structural view. It uses that view when present, otherwise ByHostView with category restrictions, transparency and section box. In fallback mode, linked elements in the permitted box/source categories may also appear; a prepared structural view remains optional for strict linked category control. Generated view/schedule/filter names are sanitized, including the prohibited pipe character, before collision checks.

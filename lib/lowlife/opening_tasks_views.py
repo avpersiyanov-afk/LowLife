@@ -7,6 +7,7 @@ from Autodesk.Revit.DB import (Color, ElementId, ElementParameterFilter, FamilyI
     ScheduleFilter, ScheduleFilterType, StorageType, Level, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
 from pyrevit import revit, forms, script
 from lowlife.i18n import tr
+from lowlife.opening_tasks_names import safe_name
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
 from lowlife import opening_tasks_settings as cfg
@@ -18,6 +19,7 @@ KEYS = ['opening_status_param','opening_issue_param','opening_revision_param','o
 
 def unique_name(doc, base):
     from Autodesk.Revit.DB import View
+    base = safe_name(base)
     names = set(v.Name for v in FilteredElementCollector(doc).OfClass(View))
     name, i = base, 1
     while name in names:
@@ -73,7 +75,7 @@ def build(doc, settings):
             f = existing(root+key,ParameterFilterElement)
             if f is None:
                 # Filter names share a separate namespace; use a GUID suffix on first creation.
-                f = remember(root+key,ParameterFilterElement.Create(doc,prefix+u' | '+label+u' | '+api.core.guid()[:8],List[ElementId]([category]),rule_filter))
+                f = remember(root+key,ParameterFilterElement.Create(doc,safe_name(prefix,120)+u' - '+safe_name(label,50)+u' - '+api.core.guid()[:8],List[ElementId]([category]),rule_filter))
             else:
                 f.SetElementFilter(rule_filter)
             return f
