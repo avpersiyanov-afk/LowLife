@@ -132,11 +132,20 @@ JSON file transfer is required.
 
 ## Google journal
 
-VIS/KR/AR now have an explicit “Publish journal” action. A background upload
-publishes the selected project's released records, decisions, history and current
-diagnostics to Google Sheets. It never issues or accepts model tasks.
-Only Windows user persiyanov sees the connection settings. Each token is
-server-scoped to a project, role and model and stored with Windows DPAPI.
+Release, reissue, withdrawal, KR/AR decisions and VIS confirmation automatically
+enqueue a snapshot after the Revit transaction commits. Each project code gets
+a separate object tab with current status and full event history. Cancelled
+operations and unchanged registries do not enqueue anything. The durable local
+queue retries on window opening, Refresh exchange or the next model decision.
+A failed earlier revision blocks later revisions of that model; other models
+can still publish. Tokens never enter the queue.
+
+Only Windows user persiyanov sees connection settings. Each token is scoped
+to project, role and model and protected with Windows DPAPI. “Open spreadsheet”
+is available to engineers. Google link sharing can grant Viewer access; a tab
+link grants access to the entire spreadsheet, not just one project. Separate
+Google files are needed when project visibility must be isolated.
+
 See [deployment guide and Apps Script](../opening-journal/README.md).
-Google deployment and credentials must be provisioned separately. Reloading RVT
-links remains required; journal rows are observations at publication time.
+The Google deployment still requires setup by its owner. Saving/synchronizing
+RVT files and reloading links remain required even after automatic publication.

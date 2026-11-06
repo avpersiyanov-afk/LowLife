@@ -176,9 +176,10 @@ function doPost(e) {
     if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl()});
     if (typeof body.payload!=='string' || body.payload.length>LL.maxPayload) fail_('PAYLOAD_TOO_LARGE');
     const hash=sha_(body.payload);
-    if (previous && previous[5]===hash) {
+    const already=rows.find(r=>scope_({project:r[1],role:r[2],model:r[3]})===scope_(grant) && r[5]===hash);
+    if (already) {
       rebuild_(ss);
-      return output_({ok:true,version:previous[4],unchanged:true,sheet_url:ss.getUrl()});
+      return output_({ok:true,version:already[4],unchanged:true,sheet_url:ss.getUrl()});
     }
     const version=previous ? Number(previous[4]) : 0;
     if (body.base_version!==version) fail_('PUBLICATION_CONFLICT');
@@ -225,6 +226,10 @@ function rebuildJournal() {
   admin_();
   const lock=LockService.getScriptLock();lock.waitLock(10000);
   try { rebuild_(book_()); } finally { lock.releaseLock(); }
+}
+function objectTab_(project) {
+  const clean=String(project).replace(/[\\/?:*\[\]]/g,'_').trim().slice(0,65) || 'Без имени';
+  return 'Объект '+clean+' '+sha_(String(project)).slice(0,8);
 }
 function rebuild_(ss) {
   const all=ledger_(ss),latest={};
@@ -293,6 +298,35 @@ function rebuild_(ss) {
     s.confirmations.forEach(c=>history.push([s.project,s.role,s.model,c.at || '',c.author || '',
       'confirmed',c.task_id,c.revision,'',c.opening_id || '']));
   });
+  const objects=Object.create(null);
+  function objectRow(project,row) {
+    if (!objects[project]) objects[project]=[];
+    objects[project].push(row);
+  }
+  overview.forEach(r=>objectRow(r[0],['Текущее состояние',r[12],''].concat(r)));
+  snapshots.forEach(({row,s})=>{
+    s.issues.forEach(i=>i.tasks.forEach(t=>{
+      const g=t.geometry;
+      objectRow(s.project,[t.status==='withdrawn' ? 'Отзыв' : t.revision>1 ? 'Перевыдача' : 'Выдача',
+        i.at || '',i.author || '',s.project,t.discipline,t.recipient || 'KR',t.task_number,t.task_id,
+        t.status,t.revision,'','','','',t.issued_at,row[0],'',g.host_model,g.host_uid,
+        JSON.stringify(g.size_mm),s.model_title]);
+    }));
+    s.decisions.forEach(r=>Object.keys(r.revisions).forEach(k=>{
+      const g=r.geometry || {};
+      objectRow(s.project,['Решение '+s.role,r.at || '',r.author || '',s.project,'',s.role,'',k,
+        r.status,'',r.revisions[k],r.status,r.comment || '','',r.at || '','',row[0],
+        s.model,g.host_uid || '',g.size_mm ? JSON.stringify(g.size_mm) : '',s.model_title]);
+    }));
+    s.confirmations.forEach(c=>objectRow(s.project,['Подтверждение ВИС',c.at || '',c.author || '',
+      s.project,'',c.recipient || 'KR','',c.task_id,'confirmed',c.revision,c.revision,
+      'Подтверждено ВИС','','',c.at || '',row[0],'',c.kr_model || '','','',s.model_title]));
+  });
+  Object.keys(objects).sort().forEach(project=>project_(ss,objectTab_(project),
+    ['Запись','Дата события','Автор','Проект','Дисциплина','Получатель','Номер','GUID задания','Статус выдачи',
+     'Выданная ревизия','Ревизия ответа','Результат','Замечание','Что делать','Дата выдачи',
+     'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС'],
+    objects[project]));
   project_(ss,LL.overview,['Проект','Дисциплина','Получатель','Номер','GUID задания','Статус выдачи',
     'Выданная ревизия','Ревизия ответа','Результат','Замечание','Что делать','Дата выдачи',
     'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС'],overview);

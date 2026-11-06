@@ -109,48 +109,117 @@ def request(connection, action, payload):
                 timeout_ms=25000,retries=0,track=False)
 
 
-def publish_async(window,settings):
-    # Capture all model data in the ExternalEvent, then release Revit for network IO.
+def queue_store():
+    from lowlife.settings_core import JsonStore
+    return JsonStore('LowLifeOpeningJournal_pending.json',share=False)
+
+
+def enqueue(items, data):
+    """Keep every changed snapshot in order, without credentials."""
+    payload=core.dumps(data)
+    scope=dict(project=data['project'],role=data['role'],model=data['model'])
+    if any(item['scope']==scope and item['payload']==payload for item in items):
+        return list(items)
+    return list(items)+[dict(id=core.guid(),scope=scope,payload=payload)]
+
+
+def deliver(items, send):
+    """A failed scope blocks its later revisions, but not other models."""
+    sent,blocked=[],set()
+    for item in items:
+        key=scope_key(**item['scope'])
+        if key in blocked:
+            continue
+        try:
+            send(item)
+            sent.append(item['id'])
+        except Exception:
+            blocked.add(key)
+    return sent,blocked
+
+
+def capture(window,settings):
     from lowlife import opening_tasks_storage as storage
-    from System.Threading import Thread, ThreadStart
-    from System import Action
-    from pyrevit import forms
     doc=window.document
-    project=settings['opening_project']
-    model=storage.model_id(doc)
-    connection=load_connection(project,window.role,model)
-    data=snapshot(storage.registry(doc),project,window.role,model,unicode(doc.Title),window.rows)
+    data=snapshot(storage.registry(doc),settings['opening_project'],window.role,
+                  storage.model_id(doc),unicode(doc.Title),window.rows)
     if window.role in ('KR','AR'):
         from lowlife import opening_tasks_revit as api
         for key,receipt in data['receipts'].items():
             opening=doc.GetElement(receipt['opening_uid']) if receipt.get('opening_uid') else None
             data['observations'][key]=dict(exists=opening is not None,
                 matches=bool(opening is not None and api.opening_matches(opening,receipt)))
-    payload=core.dumps(data)
-    scope=dict(project=project,role=window.role,model=model)
-    window.journal_busy=True
-    window.exchange_hint.Text=tr(u'Публикация журнала… Можно продолжать работу в модели.',
-                                 u'Publishing journal… You can continue working in the model.')
-    def worker():
-        message=None
-        try:
+    # The transaction is committed; saving/synchronizing the RVT remains explicit.
+    return data
+
+
+def auto_publish(window,settings):
+    from pnotes.core import _QueueLock
+    with _QueueLock('lowlife_opening_journal_queue'):
+        store=queue_store()
+        data=store.read()
+        data['items']=enqueue(data.get('items',[]),capture(window,settings))
+        if not store.write(data):
+            raise ValueError(tr(u'Изменения в модели зафиксированы, но очередь журнала не сохранена. Обратитесь к администратору.',
+                                u'Model changes were committed, but the journal queue was not saved. Contact the administrator.'))
+    retry_pending(window)
+
+
+def retry_pending(window):
+    """Detached network operation; durable acknowledgements run on the UI thread."""
+    from pnotes.core import _QueueLock
+    from System import Action, AppDomain
+    from System.Threading import Thread, ThreadStart
+    domain=AppDomain.CurrentDomain
+    flag='lowlife_opening_journal_sending'
+    with _QueueLock('lowlife_opening_journal_queue'):
+        items=queue_store().read().get('items',[])
+        if not items or domain.GetData(flag):
+            return
+        domain.SetData(flag,True)
+    window.exchange_hint.Text=tr(u'Изменения зафиксированы в Revit. Журнал отправляется автоматически; сохраните/синхронизируйте модель.',
+                                 u'Changes committed in Revit. Sending journal automatically; save/synchronize the model.')
+    def flush():
+        def send(item):
+            scope=item['scope']
+            connection=load_connection(scope['project'],scope['role'],scope['model'])
             status=request(connection,'status',scope)
-            result=request(connection,'publish',dict(scope,base_version=status['version'],payload=payload))
-            message=tr(u'Журнал опубликован. Версия публикации: {}. Выдача заданий и решения в модели не изменены.',
-                       u'Journal published. Publication version: {}. Model releases and decisions are unchanged.').format(result['version'])
-        except Exception:
-            # Never echo HTTP bodies/credentials. A retry uses the same content hash.
-            message=tr(u'Не удалось подтвердить публикацию журнала. Проверьте сеть и подключение. Повторная публикация не создаёт дубликат неизменённого снимка. При откате модели обратитесь к администратору.',
-                       u'Journal publication could not be confirmed. Check the network and connection. Republishing an unchanged snapshot does not create duplicates. Contact the administrator if the model was rolled back.')
+            request(connection,'publish',dict(scope,base_version=status['version'],payload=item['payload']))
+        sent,blocked=deliver(items,send)
         def done():
-            window.journal_busy=False
+            with _QueueLock('lowlife_opening_journal_queue'):
+                store=queue_store()
+                data=store.read()
+                data['items']=[i for i in data.get('items',[]) if i['id'] not in set(sent)]
+                saved=store.write(data)
+                remaining=len(data['items']) if saved else len(store.read().get('items',[]))
             if not window.closed:
-                window.exchange_hint.Text=message
-                forms.alert(message)
+                window.exchange_hint.Text=(
+                    tr(u'Журнал обновлён автоматически. Сохраните/синхронизируйте модель для обмена связями.',
+                       u'Journal updated automatically. Save/synchronize the model for linked-model exchange.')
+                    if not remaining and saved else
+                    tr(u'Журнал ожидает отправки: {}. Проверьте подключение. Повтор — при «Обновить обмен», открытии окна или следующем изменении.',
+                       u'Journal entries awaiting delivery: {}. Check the connection. Retry on Refresh exchange, window opening or next change.').format(remaining))
+            if not blocked and saved and remaining:
+                retry_pending(window)
+        # Release the sender before the UI acknowledgement can resume queued work.
+        with _QueueLock('lowlife_opening_journal_queue'):
+            domain.SetData(flag,None)
         window.Dispatcher.BeginInvoke(Action(done))
-    thread=Thread(ThreadStart(worker))
+    def safe_worker():
+        try:
+            flush()
+        except Exception:
+            with _QueueLock('lowlife_opening_journal_queue'):
+                domain.SetData(flag,None)
+    thread=Thread(ThreadStart(safe_worker))
     thread.IsBackground=True
-    thread.Start()
+    try:
+        thread.Start()
+    except Exception:
+        with _QueueLock('lowlife_opening_journal_queue'):
+            domain.SetData(flag,None)
+        raise
 
 
 def setup(doc,role,project):
