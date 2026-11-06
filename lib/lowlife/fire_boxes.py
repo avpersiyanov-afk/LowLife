@@ -675,7 +675,7 @@ def run(doc, uidoc, action):
     from lowlife import fire_boxes_ui, select_list
     settings = cfg.load()
     try:
-        if action == 'settings' or EXEC_PARAMS.config_mode:
+        if EXEC_PARAMS.config_mode:
             fire_boxes_ui.show(doc)
             return
         if action in ('draw', 'add') and (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None):

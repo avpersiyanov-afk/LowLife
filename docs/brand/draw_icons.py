@@ -677,18 +677,10 @@ def fire_mark(c):
     c.line([(59, 70), (68, 79), (82, 62)], ORANGE, 5)
 
 
-def fire_settings(c):
-    fire_enclosure(c)
-    for x, y in ((28, 83), (49, 86), (71, 83)):
-        c.line([(x, 70), (x, 92)], BLUE, 3)
-        c.circle((x, y), 5, ORANGE, WHITE, 3)
-
-
 ICONS = [
     ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),
     ("FireBoxes.panel/AddInternalTrays.pushbutton", fire_trays),
     ("FireBoxes.panel/MarkInsideFireBox.pushbutton", fire_mark),
-    ("FireBoxes.panel/FireBoxSettings.pushbutton", fire_settings),
     ("ToolsCables.panel/RouteQuantities.pushbutton", route_quantities),
     ("Tools.panel/HideLinkedElements.pushbutton", hide_linked_elements),
     ("Tools.panel/LinkViews.pushbutton", link_views),
