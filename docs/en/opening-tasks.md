@@ -81,3 +81,7 @@ views. Existing managed views are updated by UniqueId. If a wall rotates or move
 behind the old section plane, delete the outdated section and run again. Accepted
 openings receive blue overrides; manually modified openings receive orange overrides,
 to the extent supported by native Opening graphics. Revit runtime validation is required.
+
+## Table and filters
+
+Role windows now use a sortable table with task number, status, discipline, source model, host level, host kind, issue, revision, date and sizes. Status/discipline/level/host/issue filters combine with search and the attention-only checkbox. Reset restores the full list. Select visible selects only currently filtered rows. Filtering never changes releases or withdraws hidden tasks. Double-click opens VIS box preview or the KR host. The detail card compares issued/previously accepted and current dimensions, VIS displacement and KR comments. Newly issued tasks have stable model-local numbers; legacy releases retain their short-GUID alias until a changed reissue.

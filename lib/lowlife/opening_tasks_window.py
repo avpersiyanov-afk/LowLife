@@ -8,7 +8,13 @@ except NameError:
 from Autodesk.Revit.UI import ExternalEvent, IExternalEventHandler
 from Autodesk.Revit.DB import FamilyInstance, FilteredElementCollector, ElementId
 from System.Collections.Generic import List
-from System.Windows.Controls import Button, ListBoxItem
+import clr
+clr.AddReference("System.Data")
+from System.Windows.Controls import Button, DataGridTextColumn, DataGridLength, DataGridRow
+from System.Windows.Media import VisualTreeHelper
+from System.Windows.Data import Binding
+from System.Data import DataTable
+from System import String, Int32
 from System.Windows import Thickness
 from pyrevit import forms
 from lowlife.i18n import tr
@@ -17,6 +23,7 @@ from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
 from lowlife import opening_tasks_settings as cfg
 from lowlife import text_search
+from lowlife import opening_tasks_browser as browser
 
 _WINDOWS = {}
 
@@ -131,28 +138,61 @@ class TaskWindow(forms.WPFWindow):
               <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <TextBlock x:Name="heading" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
             <WrapPanel x:Name="actions" Grid.Row="1" Margin="0,0,0,8"/>
-            <DockPanel Grid.Row="2" Margin="0,0,0,10">
-              <ComboBox x:Name="state" Width="220" DockPanel.Dock="Right" Margin="12,0,0,0"/>
-              <TextBox x:Name="search" Height="28"/>
-            </DockPanel>
-            <ListBox x:Name="tasks" Grid.Row="3" SelectionMode="Extended" FontFamily="Consolas" FontSize="13"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
-            <TextBlock x:Name="details" Grid.Row="4" TextWrapping="Wrap" Margin="0,12,0,0"/>
+            <StackPanel Grid.Row="2" Margin="0,0,0,10">
+              <TextBox x:Name="search" Height="28" Margin="0,0,0,8"/>
+              <WrapPanel>
+                <ComboBox x:Name="state" Width="190" Margin="0,0,8,6"/>
+                <ComboBox x:Name="discipline_filter" Width="145" Margin="0,0,8,6"/>
+                <ComboBox x:Name="level_filter" Width="170" Margin="0,0,8,6"/>
+                <ComboBox x:Name="kind_filter" Width="150" Margin="0,0,8,6"/>
+                <ComboBox x:Name="issue_filter" Width="130" Margin="0,0,8,6"/>
+                <CheckBox x:Name="attention" VerticalAlignment="Center" Margin="0,0,8,6"/>
+                <Button x:Name="reset" Padding="10,4"/>
+              </WrapPanel>
+            </StackPanel>
+            <DataGrid x:Name="tasks" Grid.Row="3" SelectionMode="Extended" SelectionUnit="FullRow"
+                 IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                 CanUserSortColumns="True" CanUserReorderColumns="True"/>
+            <ScrollViewer Grid.Row="4" MaxHeight="170" VerticalScrollBarVisibility="Auto"><TextBlock x:Name="details" TextWrapping="Wrap" Margin="0,12,0,0"/></ScrollViewer>
           </Grid>
         </Window>''',literal_string=True)
         self.role,self.document=role,doc
         self.pending=None
         self.closed=False
         self.rows=[]
+        self.updating=False
+        self.visible={}
         self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks')
         self.heading.Text=self.Title+u' | '+doc.Title
-        self.tasks.ToolTip=tr(u'Статус | GUID | Дисциплина | Выпуск | Ревизия | Дата | Размеры, мм | Элемент',
-                             u'Status | GUID | Discipline | Issue | Revision | Date | Sizes, mm | Element')
-        self.search.ToolTip=tr(u'Поиск по GUID, статусу, дисциплине, выпуску и размерам',u'Search GUID, status, discipline, issue and sizes')
+        self.filter_controls=[('status',self.state,tr(u'Все статусы',u'All statuses')),
+            ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
+            ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
+            ('kind',self.kind_filter,tr(u'Все конструкции',u'All hosts')),
+            ('issue',self.issue_filter,tr(u'Все выпуски',u'All issues'))]
+        self.attention.Content=tr(u'Требуют внимания',u'Need attention')
+        self.reset.Content=tr(u'Сбросить фильтры',u'Reset filters')
+        self.search.ToolTip=tr(u'Поиск по номеру, GUID, модели, уровню и размерам',u'Search number, GUID, model, level and sizes')
+        self.columns=[('Number',tr(u'Задание',u'Task'),150),('Status',tr(u'Статус',u'Status'),170),
+            ('Discipline',tr(u'Дисциплина',u'Discipline'),95),('Model',tr(u'Модель',u'Model'),140),
+            ('Level',tr(u'Уровень',u'Level'),120),('Kind',tr(u'Конструкция',u'Host'),100),
+            ('Issue',tr(u'Выпуск',u'Issue'),90),('Revision',tr(u'Ревизия',u'Revision'),75),
+            ('Date',tr(u'Дата выдачи',u'Issue date'),155),('Sizes',tr(u'Размеры, мм',u'Sizes, mm'),150)]
+        for key,label,width in self.columns:
+            column=DataGridTextColumn()
+            column.Header=label
+            column.Binding=Binding(key)
+            column.Width=DataGridLength(float(width))
+            self.tasks.Columns.Add(column)
         self.handler=Handler(self)
         self.event=ExternalEvent.Create(self.handler)
         self.add('refresh',tr(u'Обновить',u'Refresh'))
         self.add('settings',tr(u'Настройки',u'Settings'))
+        select_button=Button()
+        select_button.Content=tr(u'Выбрать показанные',u'Select visible')
+        select_button.Padding=Thickness(10,6,10,6)
+        select_button.Margin=Thickness(0,0,8,8)
+        select_button.Click+=lambda s,e:self.tasks.SelectAll()
+        self.actions.Children.Add(select_button)
         if role=='VIS':
             actions=[('place',tr(u'Расставить боксы',u'Place boxes')),('issue',tr(u'Выдать КР',u'Issue to KR')),
                      ('withdraw',tr(u'Отозвать',u'Withdraw')),('confirm',tr(u'Подтвердить КР',u'Confirm KR')),
@@ -166,8 +206,13 @@ class TaskWindow(forms.WPFWindow):
         for action,label in actions:
             self.add(action,label)
         self.search.TextChanged+=lambda s,e:self.render()
-        self.state.SelectionChanged+=lambda s,e:self.render()
+        for key,control,label in self.filter_controls:
+            control.SelectionChanged+=lambda s,e:self.render()
+        self.attention.Checked+=lambda s,e:self.render()
+        self.attention.Unchecked+=lambda s,e:self.render()
+        self.reset.Click+=self.reset_filters
         self.tasks.SelectionChanged+=self.selection_changed
+        self.tasks.MouseDoubleClick+=self.open_row
         self.Closed+=self.on_closed
         self.refresh()
 
@@ -182,7 +227,7 @@ class TaskWindow(forms.WPFWindow):
     def dispatch(self,action):
         if self.pending:
             return
-        self.pending=(action,[item.Tag for item in self.tasks.SelectedItems])
+        self.pending=(action,self.selected_rows())
         self.IsEnabled=False
         self.Hide()
         result=self.event.Raise()
@@ -212,14 +257,25 @@ class TaskWindow(forms.WPFWindow):
                 row=self.row(r['task_id'],r['owner_uid'],r,settings)
                 row['status']=flow.state_label(flow.receipt_state(r,registry,self.document))
                 row['record']=r
+                row['model']=link.Name
+                row['attention']=flow.receipt_state(r,registry,self.document) not in ('accepted','withdrawn')
+                receipt=registry['receipts'].get(api.core.task_key(r))
+                row['comment']=receipt.get('comment','') if receipt else ''
+                if receipt:
+                    prior=next((t for t in receipt.get('issued_tasks',[]) if api.core.task_key(t)==api.core.task_key(r)),None)
+                    if prior:
+                        row['previous_sizes']=self.sizes(prior['geometry']['size_mm'])
                 self.rows.append(row)
-        previous=self.state.SelectedItem
-        self.state.Items.Clear()
-        all_label=tr(u'Все статусы',u'All statuses')
-        self.state.Items.Add(all_label)
-        for status in sorted(set(row['status'] for row in self.rows)):
-            self.state.Items.Add(status)
-        self.state.SelectedItem=previous if previous in list(self.state.Items) else all_label
+        self.updating=True
+        for key,control,label in self.filter_controls:
+            previous=control.SelectedItem
+            control.Items.Clear()
+            control.Items.Add(label)
+            for value in sorted(set(row.get(key,'') for row in self.rows)):
+                if value:
+                    control.Items.Add(value)
+            control.SelectedItem=previous if previous in list(control.Items) else label
+        self.updating=False
         self.render()
 
     def row(self,tid,uid,r,settings,missing=False):
@@ -240,6 +296,10 @@ class TaskWindow(forms.WPFWindow):
                         status=u'Изменено после выдачи'
                 except Exception:
                     status=tr(u'Нужна проверка геометрии',u'Geometry requires review')
+        if inst and r and r['status']=='issued' and (link is None or link.GetLinkDocument() is None):
+            status=tr(u'Связь не загружена',u'Link unloaded')
+        raw_status=status
+        status=tr(status)
         dimensions=u' × '.join(u'{:.0f}'.format(float(v)) for v in r['geometry']['size_mm']) if r else u'—'
         if inst:
             try:
@@ -247,31 +307,100 @@ class TaskWindow(forms.WPFWindow):
                 dimensions=u' × '.join(u'{:.0f}'.format(float(api.boxes.mm(api.read_size(inst,name)))) for name in data['size_params'])
             except Exception:
                 pass
-        return dict(task_id=tid,uid=uid,status=status,record=r,
-                    info=u'{} | {} | {} | r{} | {} | {} | {}'.format(tid,r.get('discipline','') if r else '',
-                         r.get('issue_number',r.get('issue_id','')) if r else '',r['revision'] if r else '—',
-                         r['issued_at'] if r else '',dimensions,uid))
+        data=api.metadata(inst) if inst else None
+        geometry=r['geometry'] if r else None
+        host_doc=self.document
+        host=None
+        if self.role=='VIS' and data:
+            link=self.document.GetElement(data['host_link_uid'])
+            host_doc=link.GetLinkDocument() if link else None
+            host=host_doc.GetElement(data['host_uid']) if host_doc else None
+        elif geometry:
+            host=self.document.GetElement(geometry['host_uid'])
+        level=host_doc.GetElement(host.LevelId) if host is not None else None
+        kind=geometry['kind'] if geometry else data.get('kind','') if data else ''
+        discipline=r.get('discipline','') if r else settings.get('opening_discipline','')
+        number=(u'{}-ОТВ-{:05d}'.format(discipline,r['task_number']) if r and r.get('task_number') else
+                u'{}-{}'.format(discipline,tid[:8]))
+        displacement=u'—'
+        if inst and r and data:
+            link=self.document.GetElement(data['host_link_uid'])
+            if link and link.GetLinkDocument():
+                try:
+                    current=api.host_geometry(inst,data,link)['center_mm']
+                    displacement=u' / '.join(u'{:+.1f}'.format(float(a-b)) for a,b in zip(current,r['geometry']['center_mm']))
+                except Exception:
+                    pass
+        return dict(task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
+                    number=number,discipline=discipline,model=self.document.Title,
+                    level=level.Name if level else u'—',
+                    kind=tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
+                    issue=unicode(r.get('issue_number',r.get('issue_id',''))) if r else '',
+                    revision=r['revision'] if r else 0,date=r['issued_at'] if r else '',sizes=dimensions,
+                    previous_sizes=self.sizes(r['geometry']['size_mm']) if r else u'—',comment='',
+                    attention=missing or raw_status not in (u'Выдано',u'Отозвано'))
+
+    def sizes(self,values):
+        return u' × '.join(u'{:.0f}'.format(float(v)) for v in values)
+
+    def open_row(self,sender,event):
+        node=event.OriginalSource
+        try:
+            while node is not None and not isinstance(node,DataGridRow):
+                node=VisualTreeHelper.GetParent(node)
+        except Exception:
+            return
+        if node is not None and self.selected_rows():
+            event.Handled=True
+            self.dispatch('focus' if self.role=='VIS' else 'show')
+
+    def selected_rows(self):
+        return [self.visible[item['Key']] for item in self.tasks.SelectedItems if item['Key'] in self.visible]
+
+    def reset_filters(self,sender,event):
+        self.updating=True
+        self.search.Text=''
+        for key,control,label in self.filter_controls:
+            control.SelectedIndex=0
+        self.attention.IsChecked=False
+        self.updating=False
+        self.render()
 
     def render(self):
-        selected=set(item.Tag['task_id'] for item in self.tasks.SelectedItems)
-        self.tasks.Items.Clear()
+        if self.updating:
+            return
+        selected=set(row['key'] for row in self.selected_rows())
+        filters={key:unicode(control.SelectedItem) for key,control,label in self.filter_controls if control.SelectedIndex>0}
         for row in self.rows:
-            text=row['status']+u' | '+row['info']
-            if self.state.SelectedIndex>0 and self.state.SelectedItem!=row['status']:
-                continue
-            if not text_search.matches(text,self.search.Text):
-                continue
-            item=ListBoxItem()
-            item.Content=text
-            item.Tag=row
-            item.IsSelected=row['task_id'] in selected
-            self.tasks.Items.Add(item)
-        self.details.Text=tr(u'Всего: {}. Показано: {}. Выберите строки и действие. Окно можно оставить открытым при работе в модели.',
-                             u'Total: {}. Shown: {}. Select rows and an action. This window can stay open while working in the model.').format(len(self.rows),self.tasks.Items.Count)
+            row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
+                ('number','task_id','status','discipline','model','level','kind','issue','date','sizes'))
+        visible=browser.select_rows(self.rows,filters,self.search.Text,bool(self.attention.IsChecked))
+        table=DataTable()
+        table.Columns.Add('Key',String)
+        for key,label,width in self.columns:
+            table.Columns.Add(key,Int32 if key=='Revision' else String)
+        self.visible={row['key']:row for row in visible}
+        for row in visible:
+            item=table.NewRow()
+            item['Key']=row['key']
+            for column,key in [('Number','number'),('Status','status'),('Discipline','discipline'),('Model','model'),
+                               ('Level','level'),('Kind','kind'),('Issue','issue'),('Revision','revision'),('Date','date'),('Sizes','sizes')]:
+                item[column]=row[key]
+            table.Rows.Add(item)
+        self.tasks.ItemsSource=table.DefaultView
+        for item in self.tasks.Items:
+            if item['Key'] in selected:
+                self.tasks.SelectedItems.Add(item)
+        self.details.Text=tr(u'Всего: {}. По фильтрам: {}. Ctrl/Shift — выбор нескольких строк. Фильтры не меняют данные заданий.',
+                             u'Total: {}. Filtered: {}. Ctrl/Shift selects multiple rows. Filters do not change task data.').format(len(self.rows),len(visible))
 
     def selection_changed(self,sender,event):
-        if self.tasks.SelectedItem:
-            self.details.Text=self.tasks.SelectedItem.Content
+        rows=self.selected_rows()
+        if rows:
+            row=rows[0]
+            self.details.Text=tr(u'Выбрано: {} | {} | {}\nВыданные / ранее принятые размеры: {} мм → Текущие: {} мм\nСмещение XYZ от выдачи, мм: {}\nGUID: {} | Элемент: {}\nЗамечание КР: {}',
+                                u'Selected: {} | {} | {}\nIssued / previously accepted sizes: {} mm → Current: {} mm\nXYZ movement since issue, mm: {}\nGUID: {} | Element: {}\nKR comment: {}').format(
+                len(rows),row['number'],row['status'],row['previous_sizes'],row['sizes'],row['displacement'],row['task_id'],row['uid'],row.get('comment','') or u'—')
 
     def on_closed(self,sender,event):
         self.closed=True
