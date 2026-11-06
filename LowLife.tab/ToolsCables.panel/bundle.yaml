@@ -5,4 +5,5 @@ layout:
   - WireCatalogEdit
   - WireCatalogExport
   - WireCatalogImport
+  - RouteQuantities
 title_en: "Cables"
