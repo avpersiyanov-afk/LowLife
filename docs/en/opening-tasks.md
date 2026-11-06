@@ -129,3 +129,14 @@ An unavailable model is not treated as a deleted opening. Responses apply to
 released revisions. Re-run placement after changing routes, review draft changes
 and reissue. Confirm matching results after review. No separate database or
 JSON file transfer is required.
+
+## Google journal
+
+VIS/KR/AR now have an explicit “Publish journal” action. A background upload
+publishes the selected project's released records, decisions, history and current
+diagnostics to Google Sheets. It never issues or accepts model tasks.
+Only Windows user persiyanov sees the connection settings. Each token is
+server-scoped to a project, role and model and stored with Windows DPAPI.
+See [deployment guide and Apps Script](../opening-journal/README.md).
+Google deployment and credentials must be provisioned separately. Reloading RVT
+links remains required; journal rows are observations at publication time.
