@@ -5,17 +5,17 @@ Enclosures are rectangular DuctType or CableTrayType system families.
 Model-specific parameter/type names live only in per-user settings.
 Every route operation is atomic: a failed fitting rolls the entire operation back.
 """
+try:
+    unicode
+except NameError:
+    unicode = str
+
 import copy
 import json
 import math
 
 from lowlife.i18n import tr
 from lowlife import fire_boxes_core as core, fire_boxes_settings as cfg
-
-try:
-    unicode
-except NameError:
-    unicode = str
 
 from Autodesk.Revit import DB
 from Autodesk.Revit.DB.Electrical import CableTray, CableTrayType

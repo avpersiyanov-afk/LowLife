@@ -5,14 +5,14 @@ Allowances reproduce 2fpro.com/d3dcont/calc-{fire,osk}.js (2026-11-06).
 OSK values are TOTAL allowances, not panel thicknesses. Clearances are
 explicit project inputs and are never represented as manufacturer's minima.
 """
-import math
-from collections import OrderedDict
-from lowlife.i18n import tr
-
 try:
     unicode
 except NameError:
     unicode = str
+
+import math
+from collections import OrderedDict
+from lowlife.i18n import tr
 
 FIREBOX_WALLS = {90: 50, 150: 75, 180: 90, 240: 120}
 OSK_ALLOWANCES = {90: (260, 290), 180: (280, 290), 240: (310, 270)}

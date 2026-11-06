@@ -3,6 +3,7 @@
 from lowlife import settings_core as sc
 from lowlife import tray_boxes_settings as trays
 from lowlife import opening_tasks_manifest as manifest
+from lowlife.i18n import N_
 
 
 def make(role, doc=None):
@@ -20,10 +21,10 @@ def make(role, doc=None):
                      ('50', u'+50 мм'), ('100', u'+100 мм'), ('150', u'+150 мм')])]
         fields += [sc.TextField(key, u'Фиксация выдачи', label, required=True)
                    for key,label in [
-                       ('opening_status_param',u'Параметр статуса выдачи'),
-                       ('opening_issue_param',u'Параметр номера выпуска'),
-                       ('opening_revision_param',u'Параметр ревизии задания'),
-                       ('opening_date_param',u'Параметр даты выдачи')]]
+                       ('opening_status_param',N_(u'Параметр статуса выдачи')),
+                       ('opening_issue_param',N_(u'Параметр номера выпуска')),
+                       ('opening_revision_param',N_(u'Параметр ревизии задания')),
+                       ('opening_date_param',N_(u'Параметр даты выдачи'))]]
         replacements = {
             'size_extra_mm': sc.NumberField('size_extra_mm', u'③ Размеры', u'Запас по EIR с каждой стороны, мм',
                                             hint=u'Запас добавляется к габариту элемента ВИС с каждой стороны.', default=50.0, minimum=0.0),
@@ -36,7 +37,7 @@ def make(role, doc=None):
     else:
         fields = common
     return sc.TextSettings('LowLifeOpeningTasks' + role + '_settings.json',
-                           u'Задания ВИС' if role == 'VIS' else u'Задания КР' if role=='KR' else u'Задания АР',
+                           N_(u'Задания ВИС') if role == 'VIS' else N_(u'Задания КР') if role=='KR' else N_(u'Задания АР'),
                            u'Задания на отверстия', u'заданий на отверстия', fields,
                            width=780, height=700)
 
