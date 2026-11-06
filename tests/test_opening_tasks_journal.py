@@ -1,0 +1,79 @@
+# -*- coding: utf-8 -*-
+import copy
+import pytest
+from lowlife import opening_tasks_journal as j
+from lowlife import opening_tasks_core as c
+
+
+def registry():
+    t=dict(project='P',source_model='vis',task_id='a',recipient='KR',revision=1)
+    other=dict(t,project='OTHER',task_id='b')
+    return dict(tasks={'a':t,'b':other},issues=[dict(id='i',tasks=[t,other])],
+                receipts={'vis/a':dict(project='P',status='accepted',revisions={'vis/a':1})},
+                ar_receipts={'vis/c':dict(project='P',recipient='AR',status='rejected',comment='AR')},
+                decisions=[dict(project='P',status='accepted')],
+                ar_decisions=[dict(project='P',recipient='AR',status='rejected')],
+                confirmations=[dict(task_id='a',revision=1),dict(task_id='b',revision=1)])
+
+
+def test_vis_snapshot_scopes_project_and_model_without_secrets_or_foreign_receipts():
+    r=registry()
+    original=copy.deepcopy(r)
+    s=j.snapshot(r,'P','VIS','vis','Name',[dict(task_id='a',status='changed',record={'secret':'hidden'}),
+                                         dict(task_id='b',status='issued')])
+    assert set(s['tasks'])=={'a'}
+    assert len(s['issues'][0]['tasks'])==1
+    assert s['receipts']=={}
+    assert s['decisions']==[]
+    assert s['confirmations']==[dict(task_id='a',revision=1)]
+    assert s['working']==[dict(task_id='a',status='changed')]
+    assert r==original
+    assert j.snapshot(r,'P','VIS','other','Name')['tasks']=={}
+
+
+@pytest.mark.parametrize('role,key',[('KR','vis/a'),('AR','vis/c')])
+def test_receiver_snapshot_is_separate_from_issuer(role,key):
+    s=j.snapshot(registry(),'P',role,'model','Name')
+    assert s['tasks']=={}
+    assert s['issues']==[]
+    assert set(s['receipts'])=={key}
+    assert len(s['decisions'])==1
+    assert s['confirmations']==[]
+
+
+def test_only_named_admin_sees_configuration():
+    assert j.is_admin('persiyanov')
+    assert j.is_admin('PERSIYANOV')
+    assert not j.is_admin('engineer')
+    assert not j.is_admin('persiyanov2')
+
+
+@pytest.mark.parametrize('url',[
+    'http://script.google.com/macros/s/abc/exec',
+    'https://example.com/macros/s/abc/exec',
+    'https://script.google.com.evil/macros/s/abc/exec',
+    'https://script.google.com/macros/s/abc/exec?token=secret',
+    'https://script.google.com/macros/s/abc/dev',
+])
+def test_token_can_only_be_sent_to_deployed_google_endpoint(url):
+    with pytest.raises(ValueError):j.validate_url(url)
+
+
+def test_canonical_scope_and_url():
+    assert j.scope_key('P','KR','model')=='{"model":"model","project":"P","role":"KR"}'
+    assert j.validate_url('https://script.google.com/macros/s/abc-123_X/exec')
+
+
+def test_plaintext_token_is_never_saved(monkeypatch):
+    class Store:
+        data={}
+        def read(self):return copy.deepcopy(self.data)
+        def write(self,v):
+            self.data=v
+            return True
+    store=Store()
+    monkeypatch.setattr(j,'connection_store',lambda:store)
+    monkeypatch.setattr(j,'crypt',lambda text,decrypt=False:'cipher' if not decrypt else 'secret')
+    j.save_connection('P','VIS','vis','https://script.google.com/macros/s/abc/exec','secret')
+    assert 'secret' not in c.dumps(store.data)
+    assert j.load_connection('P','VIS','vis')['token']=='secret'

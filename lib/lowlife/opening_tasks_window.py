@@ -59,6 +59,21 @@ class Handler(IExternalEventHandler):
             if w.role=='AR' and action.startswith('ar_'):
                 action=action[3:]
             settings_form.require(settings,['opening_project'])
+            if action=='journal_open':
+                from lowlife import opening_tasks_journal as journal
+                journal.open_sheet(w.document,w.role,settings['opening_project'])
+                return
+            if action=='journal_setup':
+                from lowlife import opening_tasks_journal as journal
+                journal.setup(w.document,w.role,settings['opening_project'])
+                return
+            if action=='journal':
+                if w.document.IsModified:
+                    raise ValueError(tr(u'Перед публикацией журнала сохраните/синхронизируйте модель.',u'Save/synchronize the model before publishing the journal.'))
+                w.refresh()
+                from lowlife import opening_tasks_journal as journal
+                journal.publish_async(w,settings)
+                return
             if action in ('kr_plans','kr_sections'):
                 from lowlife.opening_tasks_kr_views import build
                 from pyrevit import revit, script
@@ -172,6 +187,7 @@ class TaskWindow(forms.WPFWindow):
         self.pending=None
         self.closed=False
         self.rows=[]
+        self.journal_busy=False
         self.updating=False
         self.visible={}
         self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks') if role=='KR' else tr(u'Задания АР',u'AR tasks')
@@ -207,6 +223,11 @@ class TaskWindow(forms.WPFWindow):
         self.event=ExternalEvent.Create(self.handler)
         self.add('refresh',tr(u'Обновить обмен',u'Refresh exchange'))
         self.add('settings',tr(u'Настройки',u'Settings'))
+        self.add('journal',tr(u'Опубликовать журнал',u'Publish journal'))
+        self.add('journal_open',tr(u'Открыть таблицу',u'Open spreadsheet'))
+        from lowlife import opening_tasks_journal as journal
+        if journal.is_admin():
+            self.add('journal_setup',tr(u'Подключение таблицы',u'Sheet connection'))
         select_button=Button()
         select_button.Content=tr(u'Выбрать показанные',u'Select visible')
         select_button.Padding=Thickness(10,6,10,6)
@@ -237,10 +258,14 @@ class TaskWindow(forms.WPFWindow):
     def dispatch(self,action):
         try:
             manifest.validate_action(self.role,action)
+            if action=='journal_setup':
+                from lowlife import opening_tasks_journal as journal
+                if not journal.is_admin():
+                    raise ValueError(tr(u'Настройка журнала доступна только persiyanov',u'Only persiyanov can configure the journal'))
         except ValueError as ex:
             forms.alert(unicode(ex))
             return
-        if self.pending:
+        if self.pending or (action=='journal' and self.journal_busy):
             return
         self.pending=(action,self.selected_rows())
         self.IsEnabled=False

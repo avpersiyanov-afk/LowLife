@@ -3044,3 +3044,11 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 `opening_tasks_revit.py` — draft placement, publication, native KR openings and VIS confirmations.
 `opening_tasks_settings.py` / `opening_tasks_ui.py` — scoped settings and two ribbon commands.
 See [workflow](../docs/opening-tasks.md).
+
+### opening_tasks_journal.py
+
+Explicit Google journal publication from the VIS/KR/AR interface. Pure project/model
+snapshot assembly plus lazy Windows DPAPI credential storage through a non-shared
+JsonStore. Settings are visible only to persiyanov; Apps Script separately enforces
+project/role/model token grants. Captures Revit data in ExternalEvent and sends it
+on a background .NET thread. Server and provisioning: docs/opening-journal/.
