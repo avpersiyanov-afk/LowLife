@@ -47,6 +47,10 @@ Key architectural points that aren't obvious from any single file:
 - `scs.py`'s default parameter/family-name constants are intentionally blank strings/lists — these are per-project conventions (e.g. a project's own prefixed shared parameters) and must never be hardcoded into tracked files. Classification *keywords* (коннектор, розетка, панель, стояк, ...) are treated as generic vocabulary and do get sensible defaults.
 - `PlaceRouteNodes` and `RenumberAddresses`/`SyncCircuitsAndLengths` guard against stale data: `clear_stray_address_params` wipes address parameters left on elements that are no longer route/riser-typed (e.g. after a device's family got split out of a shared marker family in an earlier project iteration), and `SyncCircuitsAndLengths` reports (rather than silently overwrites) duplicate addresses.
 
+## Ribbon caption formatting
+
+Never show literal escape sequences such as `\n` in button captions or other UI text. Prefer single-line `title`, `title_en` and `__title__` captions (for example, `title: Скрыть в связи`); when a line break is needed, use a real newline supported by the consuming format, such as a YAML double-quoted string, and check both interface languages. Plain or single-quoted YAML strings do not decode `\n`.
+
 ## IronPython/Revit-API gotchas already worked around here
 
 - `el.Name` throws an ambiguous-binding error on some element types (notably `Family`/`FamilySymbol`) under IronPython; use `Element.Name.GetValue(el)` instead (see `_safe_element_name` in `scs_settings.py`).
@@ -116,6 +120,10 @@ pyRevit устанавливает расширения, добавленные 
 - **Логика, специфичная для СКС** (`scs.py`, `scs_addressing.py`, `scs_circuits.py`, `scs_settings.py`) — всё для набора инструментов `SCS.panel` (структурированная кабельная система). Новые дисциплины (ОПС, СБ) должны получать свой модуль в стиле `scs_*`, а не подмешиваться в существующие.
 
 Скрипты кнопок (`script.py`) должны оставаться тонкой оркестрацией — собрать элементы, вызвать функции библиотеки, записать результат в транзакции. Не давайте бизнес-логике снова разрастаться внутри скрипта кнопки — выносите её в `lib/lowlife/`, по уже устоявшемуся образцу.
+
+## Формат подписей ленты
+
+В подписях кнопок и другом тексте интерфейса не должны отображаться буквальные escape-последовательности вроде `\n`. Предпочитайте однострочные `title`, `title_en` и `__title__` (например, `title: Скрыть в связи`); если нужен перенос, используйте настоящий перевод строки, поддерживаемый форматом, например YAML-строку в двойных кавычках, и проверяйте оба языка интерфейса. YAML-строки без кавычек или в одинарных кавычках не преобразуют `\n` в перенос.
 
 ## Конвейер SCS.panel
 
