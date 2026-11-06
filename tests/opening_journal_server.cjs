@@ -128,3 +128,52 @@ assert(entries.some(r=>r[0]==='Выдача' && r[9]===1));
 assert(entries.some(r=>r[0]==='Перевыдача' && r[9]===3));
 assert.equal(pub(data,0).unchanged,true); // Retry of a previously committed revision.
 assert.equal(call({...scope,action:'status'}).version,4);
+
+// GIP summary groups models by object, discipline and recipient; revisions reopen review.
+function gipTask(id,role='KR',discipline='OV',project='GIP'){
+  return {project,discipline,task_id:id,source_model:'vis',recipient:role,status:'issued',revision:1,
+    created_at:'2026-01-01T09:00:00Z',issued_at:'2026-01-01T09:00:00Z',
+    geometry:{host_model:role==='KR' ? 'kr' : 'ar'}};
+}
+function gipSnapshot(tasks){
+  return {row:['2026-01-01T10:00:00Z'],s:{tasks:Object.fromEntries(tasks.map(t=>[t.task_id,t])),
+    issues:[],decisions:[],project:'GIP',role:'VIS',model:'vis'}};
+}
+function answerFor(t,status='accepted',at='2026-01-02T10:00:00Z',revision=t.revision){
+  return [JSON.stringify([t.project,t.recipient,t.geometry.host_model,'vis/'+t.task_id]),
+    {receipt:{status,at,revisions:{['vis/'+t.task_id]:revision}},
+      observed:{exists:true,matches:true},at:'2026-01-02T11:00:00Z'}];
+}
+const g1=gipTask('1'),g2=gipTask('2');
+let gipAnswers=Object.fromEntries([answerFor(g1),answerFor(g2,'rejected','2026-01-02T12:00:00Z')]);
+let gip=sandbox.gipRows_([gipSnapshot([g1,g2])],gipAnswers);
+assert.equal(gip.length,1);
+assert.equal(gip[0][3],'Есть замечания');
+assert.equal(gip[0][4],2);assert.equal(gip[0][5],1);assert.equal(gip[0][7],1);
+assert.equal(gip[0][13],'2026-01-02T12:00:00Z');assert.equal(gip[0][15],'');
+gipAnswers=Object.fromEntries([answerFor(g1),answerFor(g2,'accepted','2026-01-03T10:00:00Z')]);
+gip=sandbox.gipRows_([gipSnapshot([g1,g2])],gipAnswers);
+assert.equal(gip[0][3],'Все отверстия приняты');
+assert.equal(gip[0][15],'2026-01-03T10:00:00Z');
+const reissued={...g2,revision:2,issued_at:'2026-01-04T09:00:00Z'};
+gip=sandbox.gipRows_([gipSnapshot([g1,reissued])],gipAnswers);
+assert.equal(gip[0][3],'На рассмотрении');assert.equal(gip[0][15],'');
+assert.equal(gip[0][11],'2026-01-04T09:00:00Z');
+// Neither a missing/changed opening nor an unverified receipt closes the group.
+gipAnswers[answerFor(g1)[0]].observed.exists=false;
+gip=sandbox.gipRows_([gipSnapshot([g1,g2])],gipAnswers);
+assert.equal(gip[0][3],'Требуется проверка проёмов');assert.equal(gip[0][15],'');
+const withdrawn={...g2,status:'withdrawn',revision:2};
+gip=sandbox.gipRows_([gipSnapshot([withdrawn])],{});
+assert.equal(gip[0][3],'Есть неотработанные отзывы');assert.equal(gip[0][15],'');
+gip=sandbox.gipRows_([gipSnapshot([withdrawn])],Object.fromEntries([answerFor(withdrawn,'withdrawn')]));
+assert.equal(gip[0][3],'Нет действующих заданий');assert.equal(gip[0][15],'');
+// The AR recipient, another discipline and another object get independent rows.
+gip=sandbox.gipRows_([gipSnapshot([g1,gipTask('3','AR'),gipTask('4','KR','VK'),gipTask('5','KR','OV','OTHER')])],{});
+assert.equal(gip.length,4);
+// Past comments remain visible as activity dates after acceptance.
+const receiver={row:['2026-01-05T11:00:00Z'],s:{project:'GIP',role:'KR',model:'kr',tasks:{},issues:[],
+  decisions:[{status:'rejected',at:'2026-01-01T13:00:00Z',revisions:{'vis/1':1}}]}};
+gip=sandbox.gipRows_([gipSnapshot([g1]),receiver],Object.fromEntries([answerFor(g1)]));
+assert.equal(gip[0][7],0);assert.equal(gip[0][13],'2026-01-01T13:00:00Z');
+assert(sheets['ГИП'].rows.length>1);

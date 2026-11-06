@@ -151,3 +151,9 @@ Google files are needed when project visibility must be isolated.
 See [deployment guide and Apps Script](../opening-journal/README.md).
 The Google deployment still requires setup by its owner. Saving/synchronizing
 RVT files and reloading links remain required even after automatic publication.
+
+The “ГИП” tab summarizes each project, issuing discipline and KR/AR recipient:
+release/review/comment dates, decision authors, current counts and completion.
+Completion requires accepted current revisions, verified openings and processed
+withdrawals. A new revision reopens review; a fully withdrawn group is not
+reported as accepted. Publication dates show how current each side's data is.
