@@ -646,7 +646,21 @@ def hide_linked_elements(c):
     c.line([(40, 82), (87, 27)], ORANGE, 6)
 
 
+def route_quantities(c):
+    """Pipe routes above a measuring ruler and a quantity table."""
+    c.line([(13, 14), (13, 39), (48, 39), (48, 17), (80, 17)], BLUE, 6)
+    c.line([(24, 14), (24, 28), (59, 28), (59, 39), (82, 39)], ORANGE, 5)
+    c.rect((10, 52, 86, 83), BLUE, WHITE, 3, 2)
+    c.line([(10, 64), (86, 64)], BLUE, 3)
+    for x in (24, 38, 52, 66, 80):
+        c.line([(x, 53), (x, 59)], ORANGE, 2)
+    c.line([(57, 65), (57, 82)], BLUE, 3)
+    c.line([(17, 74), (47, 74)], BLUE, 3)
+    c.line([(65, 74), (78, 74)], ORANGE, 3)
+
+
 ICONS = [
+    ("ToolsCables.panel/RouteQuantities.pushbutton", route_quantities),
     ("Tools.panel/HideLinkedElements.pushbutton", hide_linked_elements),
     ("Tools.panel/LinkViews.pushbutton", link_views),
     ("_Themes.panel/Actions.stack/Language.pushbutton", language),
