@@ -80,7 +80,8 @@ def issue(registry, drafts, project, discipline, author, when, recipient='KR'):
             raise ValueError(tr(u'Конфликт идентификатора задания или кода проекта',u'Task identity or project conflict'))
         if (old and old['status'] == 'issued' and geometry_equal(old['geometry'], draft['geometry'])
                 and old['source_uid'] == draft['source_uid'] and old['discipline'] == discipline
-                and old.get('object_part','')==draft.get('object_part','')):
+                and old.get('object_part','')==draft.get('object_part','')
+                and old.get('level')==draft.get('level')):
             continue
         record = copy.deepcopy(draft)
         number = old.get('task_number') if old else None
@@ -170,6 +171,8 @@ def change_kinds(old, new, tolerance_mm=0.1):
         changes.append('rotated')
     if any(a[k]!=b[k] for k in ('host_uid','host_model','kind')):
         changes.append('rehosted')
+    if old.get('level')!=new.get('level'):
+        changes.append('level')
     if old.get('object_part','')!=new.get('object_part',''):
         changes.append('object_part')
     if old['status']=='withdrawn' and new['status']=='issued':

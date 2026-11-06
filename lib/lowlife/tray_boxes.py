@@ -36,7 +36,7 @@ from Autodesk.Revit.DB import (
     ElementTransformUtils, Family, FamilyInstance, FamilyPlacementType,
     FilteredElementCollector, FilteredWorksetCollector, GeometryInstance, Level, Line, LocationCurve, LocationPoint,
     Options, Outline, RevitLinkInstance, Solid, SolidCurveIntersectionOptions, StorageType,
-    ViewDetailLevel, WorksetKind, XYZ,
+    ViewDetailLevel, WorksetKind, XYZ, SubTransaction, TransactionStatus,
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
@@ -341,19 +341,6 @@ class Result(object):
         self.boxes = []     # (экземпляр, исходный Box) — только новые
 
 
-def _levels(doc):
-    levels = list(FilteredElementCollector(doc).OfClass(Level))
-    levels.sort(key=lambda lv: lv.ProjectElevation)
-    return levels
-
-
-def _level_below(levels, z):
-    below = [lv for lv in levels if lv.ProjectElevation <= z + 1e-6]
-    if below:
-        return below[-1]
-    return levels[0] if levels else None
-
-
 class BoxPlacer(object):
     def __init__(self, doc, symbol, settings, workset=None):
         self.doc = doc
@@ -362,7 +349,8 @@ class BoxPlacer(object):
         self.symbol = symbol
         self.family = symbol.Family
         self.settings = settings
-        self.levels = _levels(doc)
+        from lowlife.opening_levels import Resolver
+        self.level_resolver = Resolver(doc)
         self.at_bottom = settings.get("box_origin") == cfg.ORIGIN_BOTTOM
         self.params = [
             ("width", settings.get("box_width_param")),
@@ -403,17 +391,16 @@ class BoxPlacer(object):
 
     # --- вставка --------------------------------------------------------
 
-    def _create(self, origin, box):
+    def _create(self, origin, box, level):
         doc = self.doc
-        level = _level_below(self.levels, origin.Z)
+        if level is None:
+            raise ValueError(tr(u'Не определён уровень конструкции.',u'Host level could not be resolved.'))
         x_dir = XYZ(box.x_dir[0], box.x_dir[1], 0.0)
-        if self.family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased and level is not None:
+        if self.family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased:
             on_plane = XYZ(origin.X, origin.Y, level.ProjectElevation)
             inst = doc.Create.NewFamilyInstance(level.GetPlaneReference(), on_plane, x_dir, self.symbol)
-        elif level is not None:
-            inst = doc.Create.NewFamilyInstance(origin, self.symbol, level, StructuralType.NonStructural)
         else:
-            inst = doc.Create.NewFamilyInstance(origin, self.symbol, StructuralType.NonStructural)
+            inst = doc.Create.NewFamilyInstance(origin, self.symbol, level, StructuralType.NonStructural)
         doc.Regenerate()
         loc = inst.Location
         delta = box.angle() - loc.Rotation
@@ -431,6 +418,8 @@ class BoxPlacer(object):
         param = inst.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
         if param is not None and not param.IsReadOnly:
             param.Set(self.comment)
+        from lowlife.opening_levels import assign_level
+        assign_level(doc,inst,level)
         self.existing.append(inst)
         return inst
 
@@ -498,18 +487,34 @@ class BoxPlacer(object):
             return
         origin = _xyz(box.origin(self.at_bottom))
         existing = self._existing_at(origin, _xyz(box.center))
-        if existing is not None:
-            self.result.existing.append((tray, crossing, existing))
-            return
+        sub=SubTransaction(self.doc)
+        count=len(self.existing)
         try:
-            inst = self._create(origin, box)
-            self._apply_sizes(inst, box)
-            self._set_host_filter(inst, crossing.kind)
+            level,info=self.level_resolver.resolve(crossing)
+            sub.Start()
+            if existing is not None:
+                from lowlife.opening_levels import assign_level
+                assign_level(self.doc,existing,level)
+                inst=existing
+            else:
+                inst = self._create(origin, box, level)
+                self._apply_sizes(inst, box)
+                from lowlife.opening_levels import assign_level
+                assign_level(self.doc,inst,level)
+                self._set_host_filter(inst, crossing.kind)
+            if sub.Commit()!=TransactionStatus.Committed:
+                raise ValueError(tr(u'Изменение бокса не зафиксировано.',u'Box update was not committed.'))
         except Exception as ex:
+            if sub.GetStatus()==TransactionStatus.Started:
+                sub.RollBack()
+            del self.existing[count:]
             self.result.failed.append((tray, crossing, u"{}".format(ex)))
             return
-        self.result.created.append((tray, crossing, inst))
-        self.result.boxes.append((inst, box))
+        if existing is not None:
+            self.result.existing.append((tray,crossing,existing))
+        else:
+            self.result.created.append((tray, crossing, inst))
+            self.result.boxes.append((inst, box))
 
 
 def enlarge_created(doc, result, symbol, settings, increase_mm):

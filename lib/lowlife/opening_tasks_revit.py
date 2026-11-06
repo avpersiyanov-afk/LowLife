@@ -118,6 +118,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                     box = geometry.enlarge_opening(box, boxes.ft(amount))
                 key = (route.UniqueId, crossing.host.UniqueId, source.UniqueId,settings.get('opening_recipient','KR'))
                 previous = managed.get(key)
+                level,level_info=placer.level_resolver.resolve(crossing)
                 sub.Start()
                 if previous:
                     inst, data = previous
@@ -125,6 +126,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                         raise ValueError(tr(u'Бокс относится к другой части объекта',u'Draft belongs to another object part'))
                     if not isinstance(inst.Location, LocationPoint):
                         raise ValueError(tr(u'У бокса нет точки вставки',u'Draft has no point location'))
+                    from lowlife.opening_levels import assign_level
+                    assign_level(doc,inst,level)
                     target = boxes._xyz(box.origin(placer.at_bottom))
                     angle = box.angle() - inst.Location.Rotation
                     ElementTransformUtils.RotateElement(doc, inst.Id,
@@ -133,14 +136,16 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 else:
                     if placer._existing_at(boxes._xyz(box.origin(placer.at_bottom)), boxes._xyz(box.center)):
                         raise ValueError(tr(u'На пересечении уже есть бокс, не связанный с заданием',u'An unmanaged box already exists at this crossing'))
-                    inst = placer._create(boxes._xyz(box.origin(placer.at_bottom)), box)
+                    inst = placer._create(boxes._xyz(box.origin(placer.at_bottom)), box,level)
                     data = dict(schema=1, role='draft', task_id=core.guid(), owner_uid=inst.UniqueId)
                 placer.result.missing_params.clear()
                 placer._apply_sizes(inst, box)
+                from lowlife.opening_levels import assign_level
+                assign_level(doc,inst,level)
                 if placer.result.missing_params:
                     raise ValueError(tr(u'Нет параметров размеров бокса',u'Missing box size parameters'))
                 placer._set_host_filter(inst, crossing.kind)
-                data = dict(data, object_part=settings.get('opening_object_part',''), recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
+                data = dict(data, level=level_info, object_part=settings.get('opening_object_part',''), recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
                             host_uid=crossing.host.UniqueId, host_model=store.model_id(source.GetLinkDocument()),
                             host_link_uid=source.UniqueId, kind=crossing.kind,
                             origin_bottom=placer.at_bottom,
@@ -155,7 +160,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                         dict(data, status='draft', geometry=host_geometry(inst,data,source)))
                 issued = store.registry(doc)['tasks'].get(data['task_id'])
                 visible_issue(inst,settings,issued, bool(issued and issued['status']=='issued' and
-                    not core.geometry_equal(issued['geometry'],host_geometry(inst,data,source))))
+                    (not core.geometry_equal(issued['geometry'],host_geometry(inst,data,source)) or
+                     issued.get('level')!=data.get('level'))))
                 store.write(inst, data)
                 if sub.Commit() != TransactionStatus.Committed:
                     raise ValueError(tr(u'Транзакция бокса не зафиксирована',u'Draft transaction was not committed'))
@@ -191,7 +197,7 @@ def prepare_drafts(doc, elements, settings):
             raise ValueError(tr(u'Связь заменена: пересоздайте задание',u'Target link was replaced; regenerate the draft'))
         if data.get('object_part') and data['object_part']!=settings.get('opening_object_part',''):
             raise ValueError(tr(u'Бокс относится к другой части объекта',u'Draft belongs to another object part'))
-        drafts.append(dict(object_part=settings.get('opening_object_part',''), task_id=data['task_id'], source_model=data['source_model'], source_uid=data['source_uid'],
+        drafts.append(dict(level=data.get('level'), object_part=settings.get('opening_object_part',''), task_id=data['task_id'], source_model=data['source_model'], source_uid=data['source_uid'],
                            owner_uid=inst.UniqueId, recipient=data.get('recipient','KR'), geometry=host_geometry(inst,data,link)))
     return drafts
 

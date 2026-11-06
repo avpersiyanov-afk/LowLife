@@ -402,7 +402,8 @@ class TaskWindow(forms.WPFWindow):
             link=self.document.GetElement(data['host_link_uid'])
             if link and link.GetLinkDocument():
                 try:
-                    if not api.core.geometry_equal(r['geometry'],api.host_geometry(inst,data,link)):
+                    if (not api.core.geometry_equal(r['geometry'],api.host_geometry(inst,data,link)) or
+                            r.get('level')!=data.get('level')):
                         status=u'Изменено после выдачи'
                 except Exception:
                     status=tr(u'Нужна проверка геометрии',u'Geometry requires review')
@@ -428,6 +429,7 @@ class TaskWindow(forms.WPFWindow):
         elif geometry:
             host=self.document.GetElement(geometry['host_uid'])
         level=host_doc.GetElement(host.LevelId) if host is not None else None
+        resolved_level=(data.get('level') if data else None) if self.role=='VIS' else (r.get('level') if r else None)
         kind=geometry['kind'] if geometry else data.get('kind','') if data else ''
         discipline=r.get('discipline','') if r else settings.get('opening_discipline','')
         number=(u'{}-ОТВ-{:05d}'.format(discipline,r['task_number']) if r and r.get('task_number') else
@@ -444,7 +446,7 @@ class TaskWindow(forms.WPFWindow):
         return dict(task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
                     object_part=(r.get('object_part','') if r else data.get('object_part','') if data else ''),
                     result='',next_action='',reply_revision='',number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
-                    level=level.Name if level else u'—',
+                    level=resolved_level['name'] if resolved_level else level.Name if level else u'—',
                     kind=tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
                     issue=unicode(r.get('issue_number',r.get('issue_id',''))) if r else '',
                     revision=r['revision'] if r else 0,date=r['issued_at'] if r else '',sizes=dimensions,
