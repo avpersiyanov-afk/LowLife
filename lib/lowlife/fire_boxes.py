@@ -481,11 +481,11 @@ def add_trays(doc, elements, fallback, tray_type=None):
                                 u'Enclosure {} is smaller than the required section. Resize it or edit settings.').format(key))
     signature = lambda settings: (settings['product'], settings['rating'], settings['arrangement'],
                                   settings['gap_mm'], settings['clearance_mm'], settings['trays'],
-                                  settings.get('support_bottom_mm'))
+                                  settings.get('support_bottom_mm'), settings.get('wall_configuration', 'closed'))
     sample = configs[next(iter(configs))]
     if any(signature(c) != signature(sample) for c in configs.values()):
-        raise ValueError(tr(u'Выберите короба с одинаковым составом лотков и огнестойкостью.',
-                            u'Select enclosures with the same tray layout and fire resistance.'))
+        raise ValueError(tr(u'Выберите короба с одинаковым составом лотков, огнестойкостью и конфигурацией стенок.',
+                            u'Select enclosures with the same tray layout, fire resistance and wall configuration.'))
     ends, frames = _route_frames(curves, fittings)
     created, by_source = [], dict((key, []) for key in curves)
     section = core.layout(sample)
@@ -498,8 +498,8 @@ def add_trays(doc, elements, fallback, tray_type=None):
             actual_w, actual_h = dimensions(curves[key])
             if not core.section_fits_axes(row, right, up, coords(port.CoordinateSystem.BasisX),
                                           coords(port.CoordinateSystem.BasisY),
-                                          actual_w - (2*section['wall'] if section['wall'] is not None else section['allowance_width']),
-                                          actual_h - (2*section['wall'] if section['wall'] is not None else section['allowance_height'])):
+                                          actual_w - section['wall_width'], actual_h - section['wall_height'],
+                                          cavity_center=(section['cavity_x'], section['cavity_z'])):
                 raise ValueError(tr(u'В участке {} повёрнуто сечение короба: лотки выходят за внутренний габарит. Разделите трассу или выровняйте сечения.',
                                     u'Enclosure {} has a rolled cross-section: trays exceed its inner bounds. Split the run or align the sections.').format(key))
             offset = core.add(core.mul(right, row['x']/304.8), core.mul(up, row['z']/304.8))
