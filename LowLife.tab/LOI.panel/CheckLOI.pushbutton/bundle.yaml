@@ -1,7 +1,7 @@
 tooltip: |
   Проверяет, заполнены ли у элементов выбранных категорий параметры из настроек (значение ищется у экземпляра, потом у типа), и строит по каждой категории спецификацию «LOI проверка — <категория>»: столбцы «Тип», «Семейство», «Этаж» и выбранные параметры. Повторный запуск пересобирает ту же спецификацию.
 
-  Элементы с незаполненными параметрами (всех выбранных категорий) изолируются на 3D-виде «LOI проверка — незаполненные» — он создаётся или пересобирается, после проверки кнопка спрашивает, открыть ли его.
+  Для каждого обязательного пустого или отсутствующего параметра создаётся отдельный 3D-вид «LOI проверка — незаполненные — <имя параметра>». На нём показаны элементы всех выбранных категорий с пропуском этого параметра. После проверки можно выбрать вид для открытия.
 
   Если в настройках загружено приложение «Требования к LOI» (XML из Excel), кнопка сначала спрашивает этап проверки — стадия · ПЧ/НЧ · подэтап (Б-1…, ПЭ-1…). Категории и параметры берутся из приложения, у каждого элемента проверяются только параметры его класса (по коду классификатора), обязательные к этому подэтапу.
 
@@ -13,9 +13,9 @@ tooltip_en: >-
   Checks whether elements of the selected categories have the parameters from the settings filled in
   (the value is looked up on the instance, then on the type) and builds a schedule «LOI проверка —
   <category>» per category: «Type», «Family», «Floor» columns and the selected parameters. Running it
-  again rebuilds the same schedule. Elements with empty parameters (of all selected categories) are
-  isolated in the 3D view «LOI проверка — незаполненные» — it is created or rebuilt, and after the
-  check the button asks whether to open it. If the «LOI requirements» appendix (XML from Excel) is
+  again rebuilds the same schedule. Each required empty or absent parameter gets a separate 3D view
+  «LOI проверка — незаполненные — <parameter name>», showing elements across the selected categories
+  missing that specific parameter. After the check, choose a view to open. If the «LOI requirements» appendix (XML from Excel) is
   loaded in the settings, the button first asks for the check stage — stage · design/working
   documentation · sub-stage (Б-1…, ПЭ-1…). Categories and parameters then come from the appendix, and
   each element is checked only for the parameters of its class (by classifier code) required at that

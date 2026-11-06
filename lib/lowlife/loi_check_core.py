@@ -265,3 +265,26 @@ def plans_for_stage(appendix, stage):
         if plan.columns:
             plans.append(plan)
     return plans
+
+
+def incomplete_params(rows, statuses):
+    """Уникальные имена обязательных пустых/отсутствующих параметров."""
+    names = []
+    for (_label, param), status in zip(rows, statuses):
+        if status in (EMPTY, ABSENT) and param not in names:
+            names.append(param)
+    return names
+
+
+def parameter_view_names(prefix, params):
+    """Имена видов с параметром; совпадения после очистки получают номер."""
+    used, names = set(), []
+    for param in params:
+        base = schedule_name(prefix, param)
+        name, number = base, 2
+        while name.lower() in used:
+            name = u"{} ({})".format(base, number)
+            number += 1
+        used.add(name.lower())
+        names.append(name)
+    return names
