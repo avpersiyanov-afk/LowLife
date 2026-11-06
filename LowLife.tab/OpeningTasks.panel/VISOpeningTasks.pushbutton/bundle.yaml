@@ -1,0 +1,3 @@
+title_en: "VIS\ntasks"
+tooltip: "Расстановка боксов по лоткам, воздуховодам, трубам и кабельным трубам. Явная выдача и отзыв заданий КР. JSON в параметре бокса, история выпусков в модели. Shift+клик — настройки."
+tooltip_en: "Place boxes on trays, ducts, pipes and conduits. Explicit issue/withdrawal to KR. JSON in box parameters, issue history in the model. Shift+click: settings."

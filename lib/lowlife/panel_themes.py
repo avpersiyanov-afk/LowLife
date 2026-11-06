@@ -183,6 +183,8 @@ THEMES = {
         (u"Tools", u"FopParameters"),
     ],
     u"General": [
+        (u"OpeningTasks", u"VISOpeningTasks"),
+        (u"OpeningTasks", u"KROpeningTasks"),
         (u"FireBoxes", u"DrawFireBox"),
         (u"FireBoxes", u"AddInternalTrays"),
         (u"FireBoxes", u"MarkInsideFireBox"),

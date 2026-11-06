@@ -3035,3 +3035,12 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 `fire_boxes.py` — построение трассы короба, внутренних лотков и деталей,
 признак Да/Нет, примечание, Extensible Storage и защита от повторной вставки.
 Руководство: [docs/fire-enclosures.md](../docs/fire-enclosures.md).
+
+### Opening tasks (VIS → KR)
+
+`opening_tasks_core.py` — versioned issue/withdrawal snapshots, comparison, merge geometry.
+`opening_tasks_mep.py` — trays/ducts/pipes/conduits envelope adapter for `tray_boxes` geometry.
+`opening_tasks_storage.py` — JSON parameter writes and model DataStorage/Extensible Storage.
+`opening_tasks_revit.py` — draft placement, publication, native KR openings and VIS confirmations.
+`opening_tasks_settings.py` / `opening_tasks_ui.py` — scoped settings and two ribbon commands.
+See [workflow](../docs/opening-tasks.md).
