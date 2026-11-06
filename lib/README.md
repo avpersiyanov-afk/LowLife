@@ -3047,7 +3047,8 @@ See [workflow](../docs/opening-tasks.md).
 
 ### opening_tasks_journal.py
 
-Explicit Google journal publication from the VIS/KR/AR interface. Pure project/model
+Automatic Google journal publication after committed VIS/KR/AR decisions. Durable
+local queue preserves release order and retries on refresh/open/next change. Pure project/model
 snapshot assembly plus lazy Windows DPAPI credential storage through a non-shared
 JsonStore. Settings are visible only to persiyanov; Apps Script separately enforces
 project/role/model token grants. Captures Revit data in ExternalEvent and sends it

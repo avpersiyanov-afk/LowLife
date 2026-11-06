@@ -46,6 +46,8 @@ class Handler(IExternalEventHandler):
             manifest.validate_action(w.role,action)
             if action=='refresh':
                 w.refresh()
+                from lowlife import opening_tasks_journal as journal
+                journal.retry_pending(w)
                 return
             if action=='settings':
                 cfg.make(w.role).get_settings_interactive()
@@ -59,6 +61,7 @@ class Handler(IExternalEventHandler):
             if w.role=='AR' and action.startswith('ar_'):
                 action=action[3:]
             settings_form.require(settings,['opening_project'])
+            before_registry=api.core.dumps(store.registry(w.document))
             if action=='journal_open':
                 from lowlife import opening_tasks_journal as journal
                 journal.open_sheet(w.document,w.role,settings['opening_project'])
@@ -66,13 +69,6 @@ class Handler(IExternalEventHandler):
             if action=='journal_setup':
                 from lowlife import opening_tasks_journal as journal
                 journal.setup(w.document,w.role,settings['opening_project'])
-                return
-            if action=='journal':
-                if w.document.IsModified:
-                    raise ValueError(tr(u'Перед публикацией журнала сохраните/синхронизируйте модель.',u'Save/synchronize the model before publishing the journal.'))
-                w.refresh()
-                from lowlife import opening_tasks_journal as journal
-                journal.publish_async(w,settings)
                 return
             if action in ('kr_plans','kr_sections'):
                 from lowlife.opening_tasks_kr_views import build
@@ -140,7 +136,21 @@ class Handler(IExternalEventHandler):
                     if any(row['task_id'] not in tasks or tasks[row['task_id']]['status']!='issued' for row in rows):
                         raise ValueError(tr(u'Для отзыва выберите только выданные задания.',u'Select issued tasks only for withdrawal.'))
                     flow.withdraw(settings,[row['task_id'] for row in rows])
-            w.refresh()
+            changed=before_registry!=api.core.dumps(store.registry(w.document))
+            if changed:
+                # A display failure must not prevent journaling a committed release.
+                try:
+                    w.refresh()
+                except Exception:
+                    w.rows=[]
+                from lowlife import opening_tasks_journal as journal
+                try:
+                    journal.auto_publish(w,settings)
+                except Exception:
+                    forms.alert(tr(u'Действие в Revit выполнено. Журнал не поставлен в очередь: проверьте доступ к локальному профилю и обратитесь к администратору.',
+                                   u'Revit action completed. Journal could not be queued: check local profile access and contact the administrator.'))
+            else:
+                w.refresh()
         except Exception as ex:
             forms.alert(tr(u'Действие не выполнено: {}',u'Action failed: {}').format(unicode(ex)))
         finally:
@@ -187,7 +197,6 @@ class TaskWindow(forms.WPFWindow):
         self.pending=None
         self.closed=False
         self.rows=[]
-        self.journal_busy=False
         self.updating=False
         self.visible={}
         self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks') if role=='KR' else tr(u'Задания АР',u'AR tasks')
@@ -223,7 +232,6 @@ class TaskWindow(forms.WPFWindow):
         self.event=ExternalEvent.Create(self.handler)
         self.add('refresh',tr(u'Обновить обмен',u'Refresh exchange'))
         self.add('settings',tr(u'Настройки',u'Settings'))
-        self.add('journal',tr(u'Опубликовать журнал',u'Publish journal'))
         self.add('journal_open',tr(u'Открыть таблицу',u'Open spreadsheet'))
         from lowlife import opening_tasks_journal as journal
         if journal.is_admin():
@@ -246,6 +254,7 @@ class TaskWindow(forms.WPFWindow):
         self.tasks.MouseDoubleClick+=self.open_row
         self.Closed+=self.on_closed
         self.refresh()
+        journal.retry_pending(self)
 
     def add(self,action,label):
         button=Button()
@@ -265,7 +274,7 @@ class TaskWindow(forms.WPFWindow):
         except ValueError as ex:
             forms.alert(unicode(ex))
             return
-        if self.pending or (action=='journal' and self.journal_busy):
+        if self.pending:
             return
         self.pending=(action,self.selected_rows())
         self.IsEnabled=False

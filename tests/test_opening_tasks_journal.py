@@ -77,3 +77,43 @@ def test_plaintext_token_is_never_saved(monkeypatch):
     j.save_connection('P','VIS','vis','https://script.google.com/macros/s/abc/exec','secret')
     assert 'secret' not in c.dumps(store.data)
     assert j.load_connection('P','VIS','vis')['token']=='secret'
+
+
+def test_queue_preserves_each_release_and_reissue_without_tokens():
+    data=j.snapshot(registry(),'P','VIS','vis','Name')
+    items=j.enqueue([],data)
+    assert j.enqueue(items,data)==items
+    data['tasks']['a']['revision']=2
+    items=j.enqueue(items,data)
+    assert len(items)==2
+    assert [c.loads(i['payload'])['tasks']['a']['revision'] for i in items]==[1,2]
+    assert all('token' not in i for i in items)
+    assert items[0]['id']!=items[1]['id']
+
+
+def test_failed_revision_blocks_later_revisions_but_not_other_models():
+    data=j.snapshot(registry(),'P','VIS','vis','Name')
+    items=j.enqueue([],data)
+    data['tasks']['a']['revision']=2
+    items=j.enqueue(items,data)
+    other=j.snapshot(registry(),'P','KR','kr','KR')
+    items=j.enqueue(items,other)
+    attempts=[]
+    def send(item):
+        attempts.append(item['id'])
+        if item['scope']['role']=='VIS':
+            raise IOError('offline')
+    sent,blocked=j.deliver(items,send)
+    assert attempts==[items[0]['id'],items[2]['id']]
+    assert sent==[items[2]['id']]
+    assert len(blocked)==1
+    retry=[]
+    sent,blocked=j.deliver(items[:2],lambda i:retry.append(i['id']))
+    assert retry==[items[0]['id'],items[1]['id']]
+    assert sent==retry and not blocked
+
+
+def test_manual_publish_is_removed_from_manifest():
+    from lowlife import opening_tasks_manifest as m
+    for role in ('VIS','KR','AR'):
+        with pytest.raises(ValueError):m.validate_action(role,'journal')

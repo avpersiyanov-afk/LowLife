@@ -73,7 +73,10 @@ assert.equal(sheets['Публикации'].rows.length,2);
 data=base();data.tasks.a.revision=2;
 assert.equal(pub(data,0).error,'PUBLICATION_CONFLICT');
 assert.equal(pub(data,1).version,2);
-assert.equal(pub(base(),2).error,'REVISION_ROLLBACK');
+assert.equal(pub(base(),2).unchanged,true); // A delayed acknowledgement of an older sent item.
+assert.equal(sheets['Публикации'].rows.length,3);
+const rollback=base();rollback.model_title='Recovered copy';
+assert.equal(pub(rollback,2).error,'REVISION_ROLLBACK');
 const changed=structuredClone(data);changed.tasks.a.geometry.size_mm=[300,100,100];
 assert.equal(pub(changed,2).error,'REVISION_CONFLICT');
 const missing=base();missing.tasks={};
@@ -103,3 +106,25 @@ delete properties['TOKEN_'+sandbox.sha_(krToken)];
 assert.equal(call({token:krToken,project:'P',role:'KR',model:'kr',action:'status'}).error,'UNAUTHORIZED');
 assert.equal(call({...scope,action:'status'}).version,3);
 console.log('Opening journal Apps Script protocol checks passed');
+
+// Separate project tabs are stable, valid and do not merge similar names.
+const projectData=base();projectData.project='Other/Object';
+projectData.tasks.a.project='Other/Object';
+properties['TOKEN_'+sandbox.sha_('p'.repeat(64))]=JSON.stringify({actor:'user',project:'Other/Object',role:'VIS',model:'vis'});
+assert.equal(pub(projectData,0,{token:'p'.repeat(64),project:'Other/Object',role:'VIS',model:'vis'}).version,1);
+const tab1=sandbox.objectTab_('P'),tab2=sandbox.objectTab_('Other/Object');
+assert.notEqual(tab1,tab2);
+assert.notEqual(sandbox.objectTab_('A/B'),sandbox.objectTab_('A:B'));
+assert(!/[\/?:*\[\]]/.test(tab2));
+assert(sheets[tab1].rows.slice(1).every(r=>r[3]==='P'));
+assert(sheets[tab2].rows.slice(1).every(r=>r[3]==='Other/Object'));
+// Both release revisions remain as separate object-history rows.
+const event=structuredClone(data);
+event.issues=[{at:'t1',author:'VIS',tasks:[base().tasks.a]},
+              {at:'t3',author:'VIS',tasks:[structuredClone(data.tasks.a)]}];
+assert.equal(pub(event,3).version,4);
+const entries=sheets[tab1].rows.slice(1);
+assert(entries.some(r=>r[0]==='Выдача' && r[9]===1));
+assert(entries.some(r=>r[0]==='Перевыдача' && r[9]===3));
+assert.equal(pub(data,0).unchanged,true); // Retry of a previously committed revision.
+assert.equal(call({...scope,action:'status'}).version,4);
