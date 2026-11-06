@@ -4,16 +4,23 @@ from lowlife.i18n import tr
 from lowlife import fire_boxes_core as core
 
 
-def draw(canvas, settings, section=None):
+def draw(canvas, settings, section=None, editors=None):
     from System import Double
-    from System.Windows import Size
+    from System.Windows import Size, Visibility
     from System.Windows.Controls import Canvas, TextBlock
     from System.Windows.Media import Brushes, RotateTransform
     from System.Windows.Shapes import Rectangle, Line
 
     section = section or core.mounting_section(settings)
-    canvas.Children.Clear()
+    editors = editors or {}
+    # Reuse focused TextBoxes: removing/recreating them on each TextChanged
+    # would interrupt typing and move the caret.
+    for child in list(canvas.Children):
+        if child not in editors.values():
+            canvas.Children.Remove(child)
     supported = section['mounting_supported']
+    for editor in editors.values():
+        editor.Visibility = Visibility.Visible if supported else Visibility.Collapsed
     gap = section['ceiling_gap'] if supported else 0
     scale = min(390.0/section['width'], 350.0/(section['height']+gap+60))
     cx, cy = 300.0, 360.0
@@ -140,9 +147,9 @@ def draw(canvas, settings, section=None):
             text(560,199,tr(u'В свету: {} × {}',u'Clear: {} × {}').format(fmt(cw),fmt(ch)),size=13)
             if profile:
                 text(560,221,tr(u'Каркас днища: 50×40',u'Floor frame: 50×40'),size=13)
-            text(560,250,tr(u'Стенка → шпилька: {} *',u'Wall → rod: {} *').format(fmt(section['rod_inset'])),size=12)
-            tray_left = min(row['x']-row['width']/2 for row in section['trays'])
-            text(560,271,tr(u'Шпилька → лоток: {}',u'Rod → tray: {}').format(fmt(tray_left-section['rods'][0])),size=12)
+            if not editors:
+                text(560,250,tr(u'Стенка → шпилька: {} *',u'Wall → rod: {} *').format(fmt(section['rod_inset'])),size=12)
+                text(560,271,tr(u'Шпилька → лоток: {}',u'Rod → tray: {}').format(fmt(section['rod_to_tray'])),size=12)
         for row in section['trays']:
             left,right = row['x']-row['width']/2,row['x']+row['width']/2
             bottom,top = row['z']-row['height']/2,row['z']+row['height']/2

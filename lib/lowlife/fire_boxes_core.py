@@ -79,12 +79,21 @@ def layout(settings):
         cursor += (w if direction == 'horizontal' else h) + gap
     inner_w, inner_h = width + 2 * clearance, height + 2 * clearance
     dw, dh = allowances(settings['product'], int(settings['rating']))
+    wall = (OSK_PANELS.get(int(settings['rating'])) if settings['product'] == 'OSK'
+            else float(FIREBOX_WALLS[int(settings['rating'])]))
+    custom_spacing = (settings['product'] == 'OSK' and wall is not None
+                      and settings.get('rod_to_tray_mm') is not None)
+    if custom_spacing:
+        side = number(settings.get('rod_inset_mm', 25), positive=True) + number(settings['rod_to_tray_mm'], positive=True)
+        if side < clearance:
+            raise ValueError(tr(u'Боковые расстояния меньше дополнительного запаса. Уменьшите запас или увеличьте расстояния на схеме.',
+                                u'Side distances are smaller than the extra clearance. Reduce the clearance or increase the diagram distances.'))
+        dw = 2*(wall + side - clearance)
     section = dict(trays=placements, inner_width=inner_w, inner_height=inner_h,
                 width=inner_w + dw, height=inner_h + dh,
                 allowance_width=dw, allowance_height=dh)
-    wall = (OSK_PANELS.get(int(settings['rating'])) if settings['product'] == 'OSK'
-            else float(FIREBOX_WALLS[int(settings['rating'])]))
     section['wall'] = wall
+    section['custom_side_spacing'] = custom_spacing
     section['cavity_width'] = section['width'] - 2*wall if wall is not None else inner_w
     section['cavity_height'] = section['height'] - 2*wall if wall is not None else inner_h
     if settings['product'] == 'OSK' and wall is not None and 'support_bottom_mm' in settings:
@@ -103,6 +112,7 @@ def layout(settings):
     section['bottom_clear'] = section['tray_bottom'] + section['cavity_height']/2
     section['top_clear'] = section['cavity_height']/2 - section['tray_top']
     section['side_clear'] = (section['cavity_width'] - width)/2
+    section['rod_to_tray'] = section['side_clear'] - number(settings.get('rod_inset_mm', 25), positive=True)
     if section['top_clear'] < -0.001:
         raise ValueError(tr(u'Лотки выходят за крышку короба: уменьшите нижний отступ.',
                             u'Trays exceed the enclosure lid: reduce the bottom clearance.'))
@@ -148,6 +158,9 @@ def mounting_section(settings, section=None):
     half_cavity = section['cavity_width']/2
     left, right = section['cavity_x'] - half_cavity + inset, section['cavity_x'] + half_cavity - inset
     radius = 5.0  # M8/M10 envelope: use the larger diameter for clearance checks.
+    if inset < radius:
+        raise ValueError(tr(u'Ось шпильки слишком близко к стенке: шпилька выходит за внутреннее пространство.',
+                            u'The rod axis is too close to the wall: the rod extends outside the clear interior.'))
     if left >= right:
         raise ValueError(tr(u'Шпильки не помещаются в сечении.', u'The rods do not fit the cross-section.'))
     def clear(x):
