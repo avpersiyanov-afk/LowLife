@@ -60,6 +60,7 @@ def issue(registry, drafts, project, discipline, author, when):
     seen, changes = set(), []
     issue_id = guid()
     issue_number = len(result['issues']) + 1
+    next_task_number = max([r.get('task_number',0) for r in result['tasks'].values()]+[len(result['tasks'])])+1
     for draft in drafts:
         tid = draft['task_id']
         if tid in seen:
@@ -73,6 +74,11 @@ def issue(registry, drafts, project, discipline, author, when):
                 and old['source_uid'] == draft['source_uid'] and old['discipline'] == discipline):
             continue
         record = copy.deepcopy(draft)
+        number = old.get('task_number') if old else None
+        if not number:
+            number = next_task_number
+            next_task_number += 1
+        record['task_number'] = number
         record.update(schema=VERSION, project=project, discipline=discipline, recipient='KR', status='issued',
                       revision=old['revision']+1 if old else 1, issue_id=issue_id, issue_number=issue_number,
                       created_at=old['created_at'] if old else when, issued_at=when, author=author)

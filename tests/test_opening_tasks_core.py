@@ -149,3 +149,12 @@ def test_change_report_distinguishes_movement_and_size():
     new['geometry']['size_mm'][0]+=100
     assert c.change_kinds(old,new)==['moved','resized']
     assert c.change_kinds(None,new)==['new']
+
+
+def test_human_numbers_are_unique_and_stable_across_revisions():
+    registry,changes=issued([draft('a'),draft('b')])
+    assert [r['task_number'] for r in changes]==[1,2]
+    changed=draft('a',geometry(center=(10,0,1000)))
+    updated,changes=issued([changed,draft('c')],registry,'t2')
+    assert [r['task_number'] for r in changes]==[1,3]
+    assert updated['tasks']['b']['task_number']==2
