@@ -29,6 +29,7 @@ def state_label(state):
         'opening_modified':tr(u'Отверстие изменено вручную',u'Opening manually modified'),
         'moved':tr(u'Перемещено',u'Moved'), 'resized':tr(u'Изменены размеры',u'Resized'),
         'rotated':tr(u'Повёрнуто',u'Rotated'), 'rehosted':tr(u'Изменена конструкция',u'Host changed'),
+        'object_part':tr(u'Назначена часть объекта',u'Object part assigned'),
         'reissued':tr(u'Повторная выдача после отзыва',u'Reissued after withdrawal'),
     }.get(state,state)
 
@@ -66,6 +67,8 @@ def report_errors(errors):
 
 
 def place(settings):
+    from lowlife import opening_tasks_parts as parts
+    parts.require_choice(settings['opening_project'],settings.get('opening_object_part',''))
     doc = revit.doc
     raw = selected_elements(mep.RouteSelectionFilter(settings))
     routes, errors = [], []
@@ -118,6 +121,8 @@ def place(settings):
 
 
 def publish(settings, elements=None):
+    from lowlife import opening_tasks_parts as parts
+    parts.require_choice(settings['opening_project'],settings.get('opening_object_part',''))
     doc = revit.doc
     target=settings.get('opening_recipient','KR')
     elements = selected_elements() if elements is None else elements
@@ -225,6 +230,7 @@ def kr(settings, action=None, selected=None):
     if action not in ('accept','merge'):
         return
     if action=='merge':
+        core.common_part(selected)
         from lowlife.opening_tasks_merge_preview import show
         if not show(selected):
             return
@@ -265,7 +271,9 @@ def run(role, config_mode=False, action=None):
         if config_mode:
             settings_form.get_settings_interactive()
             return
-        settings = settings_form.get_settings_silent()
+        settings = cfg.for_document(settings_form.get_settings_silent(),revit.doc)
+        from lowlife import opening_tasks_parts as parts
+        settings['opening_object_part']=parts.selection(settings['opening_project'],role,store.model_id(revit.doc))
         required = ['opening_project']
         if role=='VIS':
             required += ['opening_discipline','opening_json_param']

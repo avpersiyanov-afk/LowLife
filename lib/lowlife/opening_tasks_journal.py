@@ -97,7 +97,7 @@ def snapshot(registry,project,role,model,title,rows=None):
         if role=='VIS' and row.get('task_id') not in value['tasks']:
             continue
         value['working'].append({key:copy.deepcopy(row[key]) for key in (
-            'key','number','task_id','status','result','recipient','discipline','level','kind',
+            'key','number','object_part','task_id','status','result','recipient','discipline','level','kind',
             'revision','date','sizes','previous_sizes','displacement','comment','next_action','attention') if key in row})
     return value
 

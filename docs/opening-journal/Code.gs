@@ -3,7 +3,7 @@
  * Only the sheet owner/admin edits settings and issues/revokes credentials.
  */
 const LL = {
-  ledger: 'Публикации', blobs: 'Снимки JSON',
+  parts: 'Части объектов', ledger: 'Публикации', blobs: 'Снимки JSON',
   gip: 'ГИП', overview: 'Обзор', tasks: 'Задания', replies: 'Ответы КР АР', working: 'Контроль в Revit', history: 'История',
   maxPayload: 1500000, chunk: 40000
 };
@@ -80,8 +80,21 @@ function sheet_(ss,name,headers) {
   return sh;
 }
 function init_(ss) {
+  sheet_(ss,LL.parts,['Шифр объекта','Часть (НЧ/ПЧ)','Корпус/секция','Использовать']);
   sheet_(ss,LL.ledger,['Время сервера UTC','Проект','Роль','ID модели','Версия публикации','SHA256','Снимок','Частей','Кто опубликовал']);
   sheet_(ss,LL.blobs,['Снимок','Часть','JSON']);
+}
+function catalog_(ss,project) {
+  const values=[];
+  rows_(ss.getSheetByName(LL.parts)).forEach(r=>{
+    if (String(r[0]).trim()!==project) return;
+    const enabled=r[3]==='' || r[3]===true || ['true','да','1'].includes(String(r[3]).trim().toLowerCase());
+    const part=String(r[1]).trim(),number=String(r[2]).trim();
+    if (!enabled || !['НЧ','ПЧ'].includes(part)) return;
+    const label=part+(number ? '-'+number : '');
+    if (label.length<=100 && !values.includes(label)) values.push(label);
+  });
+  return values.sort();
 }
 function rows_(sh) {
   return sh.getLastRow()>1 ? sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues() : [];
@@ -168,11 +181,12 @@ function doPost(e) {
   try {
     if (!e || !e.postData || e.postData.contents.length>2*LL.maxPayload+10000) fail_('PAYLOAD_TOO_LARGE');
     const body=JSON.parse(e.postData.contents),grant=auth_(body);
-    if (!['status','publish'].includes(body.action)) fail_('INVALID_ACTION');
+    if (!['status','publish','catalog'].includes(body.action)) fail_('INVALID_ACTION');
     lock=LockService.getScriptLock();
     if (!lock.tryLock(10000)) fail_('BUSY_RETRY');
     const ss=book_();init_(ss);
     const rows=ledger_(ss),previous=latest_(rows,scope_(grant));
+    if (body.action==='catalog') return output_({ok:true,parts:catalog_(ss,grant.project)});
     if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl()});
     if (typeof body.payload!=='string' || body.payload.length>LL.maxPayload) fail_('PAYLOAD_TOO_LARGE');
     const hash=sha_(body.payload);
@@ -184,7 +198,14 @@ function doPost(e) {
     const version=previous ? Number(previous[4]) : 0;
     if (body.base_version!==version) fail_('PUBLICATION_CONFLICT');
     const data=JSON.parse(body.payload);
-    validate_(data,grant,decode_(ss,previous));
+    const priorData=decode_(ss,previous);
+    validate_(data,grant,priorData);
+    const allowedParts=catalog_(ss,grant.project);
+    Object.values(data.tasks).forEach(t=>{
+      const old=priorData && priorData.tasks[t.task_id];
+      if (t.object_part && (!old || old.object_part!==t.object_part) && !allowedParts.includes(t.object_part)) fail_('INVALID_OBJECT_PART');
+      if (old && old.object_part && old.object_part!==t.object_part) fail_('INVALID_OBJECT_PART');
+    });
     const blob=Utilities.getUuid(),parts=[];
     for (let i=0;i<body.payload.length;) {
       let end=Math.min(i+LL.chunk,body.payload.length);
@@ -205,7 +226,7 @@ function doPost(e) {
     const code=String(ex.message || '');
     const allowed=['UNAUTHORIZED','SCOPE_DENIED','INVALID_ACTION','NOT_INITIALIZED','BUSY_RETRY',
       'PAYLOAD_TOO_LARGE','INVALID_SNAPSHOT','INVALID_TASK','INVALID_ISSUE','INVALID_RECEIPT',
-      'REVISION_ROLLBACK','REVISION_CONFLICT','PUBLICATION_CONFLICT','SNAPSHOT_INCOMPLETE','SNAPSHOT_CORRUPT'];
+      'INVALID_OBJECT_PART','REVISION_ROLLBACK','REVISION_CONFLICT','PUBLICATION_CONFLICT','SNAPSHOT_INCOMPLETE','SNAPSHOT_CORRUPT'];
     return output_({ok:false,error:allowed.includes(code) ? code : 'SERVER_ERROR_RETRY'});
   } finally { if (lock) lock.releaseLock(); }
 }
@@ -233,7 +254,7 @@ function objectTab_(project) {
 }
 function gipRows_(snapshots,answers) {
   const groups=Object.create(null);
-  const key=t=>JSON.stringify([t.project,t.discipline || '',t.recipient || 'KR']);
+  const key=t=>JSON.stringify([t.project,t.discipline || '',t.recipient || 'KR',t.object_part || '']);
   const max=(a,b)=>a && b ? (a>b ? a : b) : (a || b || '');
   const min=(a,b)=>a && b ? (a<b ? a : b) : (a || b || '');
   const activity=Object.create(null);
@@ -254,7 +275,7 @@ function gipRows_(snapshots,answers) {
   function group(t) {
     const k=key(t);
     if (!groups[k]) groups[k]={project:t.project,discipline:t.discipline || '',role:t.recipient || 'KR',
-      active:0,accepted:0,remarks:0,review:0,withdrawPending:0,first:'',last:'',
+      part:t.object_part || '',active:0,accepted:0,remarks:0,review:0,withdrawPending:0,first:'',last:'',
       lastAccept:'',lastRemark:'',lastDecision:'',completeAt:'',visPublished:'',replyPublished:''};
     return groups[k];
   }
@@ -299,7 +320,7 @@ function gipRows_(snapshots,answers) {
     s.issues.forEach(i=>{
       if (i.action==='withdraw') return;
       i.tasks.forEach(t=>{
-        const g=group(t);
+        const g=group(s.tasks[t.task_id] || t);
         g.first=min(g.first,i.at || t.issued_at);
         g.last=max(g.last,i.at || t.issued_at);
       });
@@ -316,7 +337,7 @@ function gipRows_(snapshots,answers) {
       g.active-g.accepted-g.remarks,g.remarks,g.review,g.withdrawPending,
       g.first,g.last,g.lastAccept,g.lastRemark,g.lastDecision,complete ? g.completeAt : '',
       g.visPublished,g.replyPublished,g.lastDecisionAuthor || '',g.lastRemarkAuthor || '',
-      String(g.lastRemarkText || '').slice(0,250)];
+      String(g.lastRemarkText || '').slice(0,250),g.part];
   });
 }
 function rebuild_(ss) {
@@ -335,7 +356,7 @@ function rebuild_(ss) {
     'Принято актуальных','Требуют рассмотрения','Замечаний','Проёмы требуют проверки','Неотработанных отзывов',
     'Первая выдача','Последняя выдача','Последнее принятие','Последнее замечание','Последнее решение',
     'Все отверстия приняты — дата','Публикация ВИС','Публикация КР/АР',
-    'Автор последнего решения','Автор последнего замечания','Последнее замечание — кратко'],gipRows_(snapshots,answers));
+    'Автор последнего решения','Автор последнего замечания','Последнее замечание — кратко','Часть объекта'],gipRows_(snapshots,answers));
   const overview=[];
   snapshots.forEach(({row,s})=>{
     Object.values(s.tasks).forEach(t=>{
@@ -365,7 +386,7 @@ function rebuild_(ss) {
       overview.push([s.project,t.discipline,t.recipient || 'KR',t.task_number,t.task_id,
         t.status,t.revision,revision,state,r ? r.comment || '' : '',next,
         t.issued_at,row[0],a ? a.at : '',t.geometry.host_model,t.geometry.host_uid,
-        JSON.stringify(t.geometry.size_mm),s.model_title]);
+        JSON.stringify(t.geometry.size_mm),s.model_title,t.object_part || '']);
     });
     Object.values(s.tasks).forEach(t=>{
       const g=t.geometry;
@@ -373,23 +394,23 @@ function rebuild_(ss) {
         s.model_title,t.source_uid,t.owner_uid,t.status,t.revision,t.issue_number || '',t.issue_id,
         t.created_at,t.issued_at,t.author,g.host_model,g.host_uid,g.kind,
         JSON.stringify(g.center_mm),JSON.stringify(g.size_mm),JSON.stringify(g.x_dir),
-        t.confirmation ? JSON.stringify(t.confirmation) : '',row[0]]);
+        t.confirmation ? JSON.stringify(t.confirmation) : '',row[0],t.object_part || '']);
     });
     Object.keys(s.receipts).forEach(key=>{
       const r=s.receipts[key];
       replies.push([s.project,s.role,s.model,s.model_title,key,r.revisions[key],r.status,
         r.comment || '',r.opening_id || '',r.opening_uid || '',r.author || '',r.at || '',
-        JSON.stringify(r.revisions),r.geometry ? JSON.stringify(r.geometry) : '',row[0]]);
+        JSON.stringify(r.revisions),r.geometry ? JSON.stringify(r.geometry) : '',row[0],r.object_part || '']);
     });
     s.working.forEach(w=>working.push([s.project,s.role,s.model,w.number || '',w.task_id || '',
       w.recipient || '',w.level || '',w.kind || '',w.status || '',w.result || '',w.sizes || '',
-      w.previous_sizes || '',w.displacement || '',w.comment || '',w.next_action || '',row[0]]));
+      w.previous_sizes || '',w.displacement || '',w.comment || '',w.next_action || '',row[0],w.object_part || '']));
     s.issues.forEach(i=>i.tasks.forEach(t=>history.push([s.project,s.role,s.model,i.at || '',
-      i.author || '',i.action || '',t.task_id,t.revision,t.status,t.issue_id || ''])));
+      i.author || '',i.action || '',t.task_id,t.revision,t.status,t.issue_id || '',t.object_part || ''])));
     s.decisions.forEach(r=>Object.keys(r.revisions).forEach(k=>history.push([s.project,s.role,s.model,
-      r.at || '',r.author || '',r.status,k,r.revisions[k],r.comment || '',r.opening_id || ''])));
+      r.at || '',r.author || '',r.status,k,r.revisions[k],r.comment || '',r.opening_id || '',r.object_part || ''])));
     s.confirmations.forEach(c=>history.push([s.project,s.role,s.model,c.at || '',c.author || '',
-      'confirmed',c.task_id,c.revision,'',c.opening_id || '']));
+      'confirmed',c.task_id,c.revision,'',c.opening_id || '',c.object_part || '']));
   });
   const objects=Object.create(null);
   function objectRow(project,row) {
@@ -403,32 +424,32 @@ function rebuild_(ss) {
       objectRow(s.project,[t.status==='withdrawn' ? 'Отзыв' : t.revision>1 ? 'Перевыдача' : 'Выдача',
         i.at || '',i.author || '',s.project,t.discipline,t.recipient || 'KR',t.task_number,t.task_id,
         t.status,t.revision,'','','','',t.issued_at,row[0],'',g.host_model,g.host_uid,
-        JSON.stringify(g.size_mm),s.model_title]);
+        JSON.stringify(g.size_mm),s.model_title,t.object_part || '']);
     }));
     s.decisions.forEach(r=>Object.keys(r.revisions).forEach(k=>{
       const g=r.geometry || {};
       objectRow(s.project,['Решение '+s.role,r.at || '',r.author || '',s.project,'',s.role,'',k,
         r.status,'',r.revisions[k],r.status,r.comment || '','',r.at || '','',row[0],
-        s.model,g.host_uid || '',g.size_mm ? JSON.stringify(g.size_mm) : '',s.model_title]);
+        s.model,g.host_uid || '',g.size_mm ? JSON.stringify(g.size_mm) : '',s.model_title,r.object_part || '']);
     }));
     s.confirmations.forEach(c=>objectRow(s.project,['Подтверждение ВИС',c.at || '',c.author || '',
       s.project,'',c.recipient || 'KR','',c.task_id,'confirmed',c.revision,c.revision,
-      'Подтверждено ВИС','','',c.at || '',row[0],'',c.kr_model || '','','',s.model_title]));
+      'Подтверждено ВИС','','',c.at || '',row[0],'',c.kr_model || '','','',s.model_title,c.object_part || '']));
   });
   Object.keys(objects).sort().forEach(project=>project_(ss,objectTab_(project),
     ['Запись','Дата события','Автор','Проект','Дисциплина','Получатель','Номер','GUID задания','Статус выдачи',
      'Выданная ревизия','Ревизия ответа','Результат','Замечание','Что делать','Дата выдачи',
-     'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС'],
+     'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС','Часть объекта'],
     objects[project]));
   project_(ss,LL.overview,['Проект','Дисциплина','Получатель','Номер','GUID задания','Статус выдачи',
     'Выданная ревизия','Ревизия ответа','Результат','Замечание','Что делать','Дата выдачи',
-    'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС'],overview);
+    'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС','Часть объекта'],overview);
   project_(ss,LL.tasks,['Проект','Дисциплина','Получатель','Номер','GUID задания','Модель ВИС ID','Модель ВИС',
     'Исходный элемент UID','Бокс UID','Статус выдачи','Ревизия','Номер выпуска','ID выпуска','Создано','Выдано',
-    'Автор','Модель получателя ID','Конструкция UID','Тип','Центр XYZ мм','Размеры XYZ мм','Ось X','Подтверждение ВИС','Опубликовано'],tasks);
+    'Автор','Модель получателя ID','Конструкция UID','Тип','Центр XYZ мм','Размеры XYZ мм','Ось X','Подтверждение ВИС','Опубликовано','Часть объекта'],tasks);
   project_(ss,LL.replies,['Проект','Роль','Модель ID','Модель','Ключ задания','Ревизия ответа','Решение','Замечание',
-    'Проём ID','Проём UID','Автор','Дата решения','Состав объединения','Геометрия','Опубликовано'],replies);
+    'Проём ID','Проём UID','Автор','Дата решения','Состав объединения','Геометрия','Опубликовано','Часть объекта'],replies);
   project_(ss,LL.working,['Проект','Роль','Модель ID','Задание','GUID','Получатель','Уровень','Конструкция',
-    'Статус в модели','Ответ по связи','Размеры мм','Предыдущие размеры мм','Смещение мм','Замечание','Что делать','Опубликовано'],working);
-  project_(ss,LL.history,['Проект','Роль','Модель ID','Дата','Автор','Действие','Задание','Ревизия','Результат','Выпуск/проём ID'],history);
+    'Статус в модели','Ответ по связи','Размеры мм','Предыдущие размеры мм','Смещение мм','Замечание','Что делать','Опубликовано','Часть объекта'],working);
+  project_(ss,LL.history,['Проект','Роль','Модель ID','Дата','Автор','Действие','Задание','Ревизия','Результат','Выпуск/проём ID','Часть объекта'],history);
 }

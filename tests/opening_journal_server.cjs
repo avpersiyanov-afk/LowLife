@@ -177,3 +177,21 @@ const receiver={row:['2026-01-05T11:00:00Z'],s:{project:'GIP',role:'KR',model:'k
 gip=sandbox.gipRows_([gipSnapshot([g1]),receiver],Object.fromEntries([answerFor(g1)]));
 assert.equal(gip[0][7],0);assert.equal(gip[0][13],'2026-01-01T13:00:00Z');
 assert(sheets['ГИП'].rows.length>1);
+
+// Object part catalog comes only from rows for the authorized project.
+sandbox.append_(sheets['Части объектов'],[
+  ['P','НЧ','01',true],['P','ПЧ','',true],['P','НЧ','2',false],
+  ['OTHER','НЧ','9',true],['P','НЧ','01',true],['P','wrong','3',true]]);
+assert.deepEqual(call({...scope,action:'catalog'}).parts,['НЧ-01','ПЧ']);
+assert.equal(call({...scope,project:'OTHER',action:'catalog'}).error,'SCOPE_DENIED');
+assert.equal(call({...scope,token:'bad',action:'catalog'}).error,'UNAUTHORIZED');
+const withPart=structuredClone(event);withPart.tasks.a.revision=4;withPart.tasks.a.object_part='НЧ-01';
+assert.equal(pub(withPart,4).version,5);
+assert.equal(sheets['Задания'].rows.find(r=>r[0]==='P').at(-1),'НЧ-01');
+assert.equal(sheets['ГИП'].rows.find(r=>r[0]==='P').at(-1),'НЧ-01');
+const relabel=structuredClone(withPart);relabel.tasks.a.revision=5;relabel.tasks.a.object_part='ПЧ';
+assert.equal(pub(relabel,5).error,'INVALID_OBJECT_PART');
+const invalidPart=structuredClone(withPart);invalidPart.tasks.a.revision=5;invalidPart.tasks.a.object_part='НЧ-99';
+assert.equal(pub(invalidPart,5).error,'INVALID_OBJECT_PART');
+const separated=sandbox.gipRows_([gipSnapshot([{...g1,object_part:'НЧ-1'},{...g2,object_part:'ПЧ-1'}])],{});
+assert.equal(separated.length,2);

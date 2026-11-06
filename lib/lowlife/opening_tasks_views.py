@@ -163,7 +163,7 @@ def run(config_mode=False):
     if config_mode:
         settings_form.get_settings_interactive()
         return
-    settings = settings_form.get_settings_silent()
+    settings = cfg.for_document(settings_form.get_settings_silent(),revit.doc)
     settings_form.require(settings,['opening_project']+KEYS)
     try:
         with revit.Transaction(tr(u'Контроль заданий ВИС',u'VIS task control')):

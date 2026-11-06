@@ -157,3 +157,15 @@ release/review/comment dates, decision authors, current counts and completion.
 Completion requires accepted current revisions, verified openings and processed
 withdrawals. A new revision reopens review; a fully withdrawn group is not
 reported as accepted. Publication dates show how current each side's data is.
+
+Project codes now come from Project Information using the parameter mapping
+already configured in Notes (cached locally, no network wait). A configurable
+override supports the same built-in reference syntax. If no parameter is mapped,
+the standard Project Number is used; stale manual codes are not used.
+
+The Google “Части объектов” catalog lists project, НЧ/ПЧ, building/section
+number and enabled flag. Revit asynchronously loads only that project's choices
+and remembers the selection per model and role. Placement/release require a
+catalog selection; issued part assignments are immutable. Legacy assignments
+create a new revision. Separate parts cannot be merged. Tables and the GIP
+summary expose the part so НЧ/ПЧ and buildings/sections can be controlled separately.

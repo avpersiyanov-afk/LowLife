@@ -73,10 +73,14 @@ def issue(registry, drafts, project, discipline, author, when, recipient='KR'):
         old = result['tasks'].get(tid)
         if old and old.get('recipient','KR')!=recipient:
             raise ValueError(tr(u'Нельзя изменить получателя выданного задания. Создайте отдельное задание.',u'Cannot change the recipient of an issued task. Create a separate task.'))
+        if old and old.get('object_part') and old['object_part']!=draft.get('object_part',''):
+            raise ValueError(tr(u'Нельзя изменить часть объекта выданного задания. Создайте отдельное задание.',
+                                u'Cannot change the object part of an issued task. Create a separate task.'))
         if old and (old['source_model'] != draft['source_model'] or old['project'] != project):
             raise ValueError(tr(u'Конфликт идентификатора задания или кода проекта',u'Task identity or project conflict'))
         if (old and old['status'] == 'issued' and geometry_equal(old['geometry'], draft['geometry'])
-                and old['source_uid'] == draft['source_uid'] and old['discipline'] == discipline):
+                and old['source_uid'] == draft['source_uid'] and old['discipline'] == discipline
+                and old.get('object_part','')==draft.get('object_part','')):
             continue
         record = copy.deepcopy(draft)
         number = old.get('task_number') if old else None
@@ -166,6 +170,8 @@ def change_kinds(old, new, tolerance_mm=0.1):
         changes.append('rotated')
     if any(a[k]!=b[k] for k in ('host_uid','host_model','kind')):
         changes.append('rehosted')
+    if old.get('object_part','')!=new.get('object_part',''):
+        changes.append('object_part')
     if old['status']=='withdrawn' and new['status']=='issued':
         changes.append('reissued')
     return changes
@@ -195,3 +201,10 @@ def check_recipient(records,recipient,project,model):
     for record in records:
         if record.get('recipient','KR')!=recipient or record['project']!=project or record['geometry']['host_model']!=model:
             raise ValueError(tr(u'Задание адресовано другой роли, модели или проекту.',u'Task belongs to a different role, model or project.'))
+
+
+def common_part(records):
+    parts=set(r.get('object_part','') for r in records)
+    if len(parts)>1:
+        raise ValueError(tr(u'Нельзя объединить задания разных частей объекта',u'Cannot merge tasks from different object parts'))
+    return next(iter(parts)) if parts else ''
