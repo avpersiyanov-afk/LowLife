@@ -691,18 +691,8 @@ def kr_opening_tasks(c):
 
 
 ICONS = [
-    ("OpeningTasks.panel/KRStructures.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/VISFocus.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/VISControl.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/VISPlace.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/VISIssue.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/VISWithdraw.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/VISConfirm.pushbutton", vis_opening_tasks),
-    ("OpeningTasks.panel/KRInbox.pushbutton", kr_opening_tasks),
-    ("OpeningTasks.panel/KRAccept.pushbutton", kr_opening_tasks),
-    ("OpeningTasks.panel/KRMerge.pushbutton", kr_opening_tasks),
-    ("OpeningTasks.panel/KRReject.pushbutton", kr_opening_tasks),
-    ("OpeningTasks.panel/KRWithdraw.pushbutton", kr_opening_tasks),
+    ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
+    ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),
     ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),
     ("FireBoxes.panel/AddInternalTrays.pushbutton", fire_trays),
     ("FireBoxes.panel/MarkInsideFireBox.pushbutton", fire_mark),

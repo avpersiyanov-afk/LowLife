@@ -110,9 +110,9 @@ def place(settings):
                    u'Created/updated: {}. Skips/errors: {}. Boxes are not issued yet.').format(len(entries),len(errors)))
 
 
-def publish(settings):
+def publish(settings, elements=None):
     doc = revit.doc
-    elements = selected_elements()
+    elements = selected_elements() if elements is None else elements
     drafts = api.prepare_drafts(doc,elements,settings)
     registry = store.registry(doc)
     with revit.Transaction(tr(u'Проверить статус выдачи',u'Check issue status')):
@@ -136,7 +136,7 @@ def publish(settings):
             api.publish(doc,elements,settings)
 
 
-def withdraw(settings):
+def withdraw(settings, task_ids=None):
     registry = store.registry(revit.doc)
     options = {}
     for tid,record in registry['tasks'].items():
@@ -145,7 +145,7 @@ def withdraw(settings):
             label = u'{} | r{} | {}'.format(tid,record['revision'],
                     tr(u'бокс удалён',u'box deleted') if missing else tr(u'выдано',u'issued'))
             options[label] = tid
-    selected = choose(options,tr(u'Отозвать выданные задания',u'Withdraw issued tasks'),True)
+    selected = task_ids if task_ids is not None else choose(options,tr(u'Отозвать выданные задания',u'Withdraw issued tasks'),True)
     if selected and forms.alert(tr(u'Зафиксировать отзыв выбранных заданий: {}?',u'Record withdrawal of {} selected tasks?').format(len(selected)),yes=True,no=True):
         with revit.Transaction(tr(u'Отзыв заданий',u'Withdraw tasks')):
             api.retract(revit.doc,selected,settings)
@@ -159,7 +159,7 @@ def receipt_state(record, registry, doc):
     return core.incoming_state(record,receipt,exists)
 
 
-def kr(settings, action=None):
+def kr(settings, action=None, selected=None):
     doc = revit.doc
     registry = store.registry(doc)
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
@@ -183,7 +183,8 @@ def kr(settings, action=None):
         inst = link.GetLinkDocument().GetElement(record['owner_uid'])
         out.print_md(u'- {} | {} | {} | {}'.format(record['task_id'],state,
                        out.linkify(link.Id),out.linkify(inst.Id) if inst and link.GetLinkDocument()==doc else record['owner_uid']))
-    selected = choose(options,tr(u'Входящие задания КР: выберите задания',u'Incoming KR tasks: select tasks'),True)
+    if selected is None:
+        selected = choose(options,tr(u'Входящие задания КР: выберите задания',u'Incoming KR tasks: select tasks'),True)
     if not selected:
         return
     actions = {tr(u'Принять отдельно',u'Accept separately'):'accept',
@@ -232,7 +233,7 @@ def kr(settings, action=None):
             out.print_md(tr(u'Создано отверстие: {}',u'Created opening: {}').format(out.linkify(opening.Id)))
 
 
-def confirm(settings):
+def confirm(settings, task_ids=None):
     results = api.structural_results(revit.doc,settings['opening_project'])
     options = {u'{} | r{} | {}'.format(task['task_id'],task['revision'],receipt['opening_id']):
                (task,receipt,link) for task,receipt,link in results}
@@ -240,7 +241,8 @@ def confirm(settings):
         forms.alert(tr(u'Нет актуальных принятых отверстий КР для подтверждения. Обновите связи.',
                        u'No current accepted KR openings to confirm. Reload links.'))
         return
-    selected = choose(options,tr(u'Подтвердить результат КР',u'Confirm KR results'),True)
+    selected = ([value for value in options.values() if value[0]['task_id'] in task_ids]
+                if task_ids is not None else choose(options,tr(u'Подтвердить результат КР',u'Confirm KR results'),True))
     if selected and forms.alert(tr(u'Подтвердить выбранные отверстия КР: {}?',u'Confirm {} selected KR openings?').format(len(selected)),yes=True,no=True):
         with revit.Transaction(tr(u'Подтверждение ВИС',u'VIS confirmation')):
             api.confirm_results(revit.doc,selected,settings)

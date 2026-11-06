@@ -67,4 +67,6 @@ model backups; JSON is not protected against deliberate manual edits.
 Protocol tests run without Revit; connector adapter tests use a substitute API.
 Native openings, UI and worksharing still require a Revit 2024 pilot on model copies.
 
-Actions have separate ribbon buttons: VIS boxes, Issue to KR, Withdraw tasks, Confirm KR, KR inbox, Accept separately, Merge openings, KR comments, Process withdrawal.
+Actions are available inside role interfaces: VIS boxes, Issue to KR, Withdraw tasks, Confirm KR, KR inbox, Accept separately, Merge openings, KR comments, Process withdrawal.
+
+The ribbon now has VIS and KR modeless interfaces only. Search, status filters and multi-selection operate on a cached list. Actions use ExternalEvent and verify the active document; KR revisions are re-read before applying selected tasks. Refresh reloads current data. Settings are available inside each window and through Shift+click.
