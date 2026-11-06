@@ -67,6 +67,19 @@ def resolver(monkeypatch,doc,local_levels):
              _box_points=lambda bb:[bb.Min,bb.Max],safe_element_name=lambda lv:lv.Name)
     monkeypatch.setitem(sys.modules,'lowlife.tray_boxes',boxes)
     monkeypatch.setattr(lowlife,'tray_boxes',boxes,raising=False)
+    def probe_factory(doc,sources,categories,down_range_mm):
+        assert len(sources)==1 and categories==['floors'] and down_range_mm is None
+        source_doc,transform=next(iter(sources.values()))
+        def hits(x,y,z):
+            result=[]
+            for floor in source_doc.floors:
+                source_doc.checked.append(floor.UniqueId)
+                top=transform.OfPoint(XYZ(x,y,floor.z)).Z
+                if not floor.hole and top<=z:
+                    result.append((z-top,floor))
+            return result
+        return NS(floor_hits_below=hits)
+    monkeypatch.setitem(sys.modules,'lowlife.slab_marks',NS(SlabProbe=probe_factory))
     path=Path(__file__).parents[1]/'lib/lowlife/opening_levels.py'
     tree=ast.parse(path.read_text())
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Resolver')
@@ -76,13 +89,13 @@ def resolver(monkeypatch,doc,local_levels):
             tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[cls],type_ignores=[]),str(path),'exec'),ns)
     obj=object.__new__(ns['Resolver'])
-    obj.doc,obj.levels,obj.sources,obj.options=doc,local_levels,{},None
+    obj.doc,obj.levels,obj.sources,obj.probes=doc,local_levels,{},{}
     return obj
 
 
 def link(doc,z=0):
     return NS(UniqueId='link-'+doc.ProjectInformation.UniqueId,GetLinkDocument=lambda:doc,
-              transform=NS(BasisZ=XYZ.BasisZ),offset=z)
+              transform=NS(BasisZ=XYZ.BasisZ,OfPoint=lambda p:XYZ(p.X,p.Y,p.Z+z)),offset=z)
 
 
 def test_pierced_floor_level_uses_selected_link_and_transformed_elevation(monkeypatch):
@@ -117,30 +130,34 @@ def test_wall_ray_intersects_only_ar_floors_and_ignores_holes(monkeypatch):
     assert kr.checked==[] and local.checked==[]
 
 
-def test_changing_existing_box_level_restores_position_and_keeps_element_id():
+def test_opening_wrapper_reuses_assigner_and_verifies_target_and_position(monkeypatch):
+    import lowlife
     path=Path(__file__).parents[1]/'lib/lowlife/opening_levels.py'
     tree=ast.parse(path.read_text())
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='assign_level')
     instance=NS(Id='box-id',LevelId='wrong',Location=NS(Point=XYZ(1,2,30)))
     before=instance.Location.Point
-    XYZ.Subtract=lambda a,b:XYZ(a.X-b.X,a.Y-b.Y,a.Z-b.Z)
-    XYZ.GetLength=lambda p:p.DistanceTo(XYZ(0,0,0))
-    def set_level(level):
-        instance.LevelId=level
-        instance.Location.Point=XYZ(1,2,130)  # Revit changes its offset on level assignment.
+    calls=[]
+    def assign(doc,inst,level):
+        calls.append((inst.Id,level.Id))
+        inst.LevelId=level.Id
         return True
-    instance.get_Parameter=lambda name:NS(IsReadOnly=False,Set=set_level)
-    def move(doc,eid,delta):
-        assert eid=='box-id'
-        point=instance.Location.Point
-        instance.Location.Point=XYZ(point.X+delta.X,point.Y+delta.Y,point.Z+delta.Z)
-    ns=dict(instance_level_id=lambda inst:inst.LevelId,
-            BuiltInParameter=NS(FAMILY_LEVEL_PARAM='level',INSTANCE_REFERENCE_LEVEL_PARAM='ref'),
-            ElementTransformUtils=NS(MoveElement=move),tr=lambda ru,en=None:ru)
+    module=NS(assign_by_param=assign)
+    geometry=NS(get_element_level=lambda doc,inst:NS(Id=inst.LevelId))
+    monkeypatch.setattr(lowlife,'level_assign',module,raising=False)
+    monkeypatch.setattr(lowlife,'geometry',geometry,raising=False)
+    ns=dict(tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[fn],type_ignores=[]),str(path),'exec'),ns)
-    ns['assign_level'](NS(Regenerate=lambda:None),instance,NS(Id='correct'))
-    assert instance.Id=='box-id' and instance.LevelId=='correct'
-    assert instance.Location.Point.DistanceTo(before)==0
-    instance.get_Parameter=lambda name:NS(IsReadOnly=True)
-    with pytest.raises(ValueError):
-        ns['assign_level'](NS(Regenerate=lambda:None),instance,NS(Id='other'))
+    ns['assign_level'](None,instance,NS(Id='correct'))
+    assert calls==[('box-id','correct')]
+    assert instance.Id=='box-id' and instance.Location.Point.DistanceTo(before)==0
+    ns['assign_level'](None,instance,NS(Id='correct'))
+    assert len(calls)==1
+    module.assign_by_param=lambda *args:True
+    with pytest.raises(ValueError):ns['assign_level'](None,instance,NS(Id='other'))
+    def moved(doc,inst,level):
+        inst.LevelId=level.Id
+        inst.Location.Point=XYZ(1,2,99)
+        return True
+    module.assign_by_param=moved
+    with pytest.raises(ValueError):ns['assign_level'](None,instance,NS(Id='other'))

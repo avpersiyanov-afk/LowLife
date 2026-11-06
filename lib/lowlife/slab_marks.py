@@ -123,8 +123,11 @@ class SlabProbe(object):
         int(BuiltInCategory.OST_Ceilings): core.CEILING,
     }
 
-    def __init__(self, doc, opening_size_mm=0.0):
+    def __init__(self, doc, opening_size_mm=0.0, sources=None, categories=None, down_range_mm=PROBE_DOWN_MM):
         self.doc = doc
+        self._source_override = sources
+        self._category_override = categories
+        self.down_range_mm = down_range_mm
         # Отверстия в перекрытии (шахты, проёмы): вертикаль проходит насквозь
         # до плиты следующих этажей. Если найденная плита выше следующего
         # уровня, проверяются 4 точки на этом расстоянии вокруг (см.
@@ -167,9 +170,9 @@ class SlabProbe(object):
         self._sources = []
         self._elements = {}
         self._grid = core.BoxGrid(cell=GRID_CELL_MM)
-        sources = model_sources(self.doc)
-        labels = _source_labels(self.doc)
-        categories = List[BuiltInCategory]([
+        sources = model_sources(self.doc) if self._source_override is None else self._source_override
+        labels = _source_labels(self.doc) if self._source_override is None else {}
+        categories = List[BuiltInCategory](self._category_override if self._category_override is not None else [
             BuiltInCategory.OST_Floors, BuiltInCategory.OST_Roofs, BuiltInCategory.OST_Ceilings])
         for source_key in sorted(sources):
             source_doc, transform = sources[source_key]
@@ -325,7 +328,7 @@ class SlabProbe(object):
             # только элементы в пределах PROBE_UP_MM над точкой и PROBE_DOWN_MM
             # под ней — иначе для каждой новой точки читались бы грани всех
             # перекрытий здания до кровли
-            if z_min > z_mm + PROBE_UP_MM or z_max < z_mm - PROBE_DOWN_MM:
+            if z_min > z_mm + PROBE_UP_MM or (self.down_range_mm is not None and z_max < z_mm - self.down_range_mm):
                 continue
             kind = self._kind_cache.get(key)
             faces, sloped = self._faces(key)
@@ -339,6 +342,18 @@ class SlabProbe(object):
             self.first_ray_seconds = time.time() - started
         self.points += 1
         return up, down
+
+    def floor_hits_below(self, x, y, origin_z):
+        """Downward floor hits as (distance feet, element), with source scope retained."""
+        # Include a point lying on the surface within Revit's modelling tolerance.
+        _up, down = self._hits(x, y, origin_z + ft(1.0))
+        result=[]
+        for distance, kind, key in down:
+            element=self._element(key)
+            if (kind==core.SLAB and element is not None and
+                    element.Category.Id.IntegerValue==int(BuiltInCategory.OST_Floors)):
+                result.append((max(0.0,ft(distance-1.0)),element))
+        return result
 
     # --- диагностика ---
 

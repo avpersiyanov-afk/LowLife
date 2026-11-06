@@ -395,12 +395,11 @@ class BoxPlacer(object):
         doc = self.doc
         if level is None:
             raise ValueError(tr(u'Не определён уровень конструкции.',u'Host level could not be resolved.'))
-        x_dir = XYZ(box.x_dir[0], box.x_dir[1], 0.0)
-        if self.family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased:
-            on_plane = XYZ(origin.X, origin.Y, level.ProjectElevation)
-            inst = doc.Create.NewFamilyInstance(level.GetPlaneReference(), on_plane, x_dir, self.symbol)
-        else:
-            inst = doc.Create.NewFamilyInstance(origin, self.symbol, level, StructuralType.NonStructural)
+        from lowlife import level_assign
+        inst=level_assign.create_on_level(doc,self.symbol,origin,level)
+        if inst is None:
+            raise ValueError(tr(u'Семейство бокса не применило уровень конструкции.',
+                                u'The box family did not apply the host level.'))
         doc.Regenerate()
         loc = inst.Location
         delta = box.angle() - loc.Rotation
