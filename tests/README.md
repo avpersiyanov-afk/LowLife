@@ -213,3 +213,11 @@ python -m pytest tests -v
 писался этот набор, не было интерпретатора Python вообще, и часть тестов
 была добавлена и проверена только построчным прослеживанием логики — с тех
 пор это устранено, весь набор реально выполняется.
+
+- `test_opening_tasks_core.py` — immutable VIS issues, stable revisions, explicit withdrawals,
+  deleted-box history, geometry validation, same-host merge and revision-specific receipts.
+- `test_opening_tasks_mep.py` — connector envelopes, insulation and unsupported-route rejection
+  with an API substitute; native Revit placement/openings are not exercised.
+- `test_opening_tasks_coordinates.py` — host-local snapshot coordinates under link rotation,
+  translation, bottom insertion and invalid tilted-link transforms.
+- `test_opening_tasks_settings.py` — blank project parameter defaults and scoped VIS/KR requirements.

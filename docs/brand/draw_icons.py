@@ -677,7 +677,22 @@ def fire_mark(c):
     c.line([(59, 70), (68, 79), (82, 62)], ORANGE, 5)
 
 
+def vis_opening_tasks(c):
+    tray_opening_boxes(c)
+    c.badge((72, 73), 17)
+    c.line([(63, 73), (79, 73), (73, 67)], ORANGE, 4)
+    c.line([(79, 73), (73, 79)], ORANGE, 4)
+
+
+def kr_opening_tasks(c):
+    c.rect((16, 12, 80, 84), BLUE, WHITE, 4, 1)
+    c.rect((30, 30, 66, 62), ORANGE, WHITE, 4, 1)
+    c.line([(52, 76), (62, 85), (84, 62)], ORANGE, 6)
+
+
 ICONS = [
+    ("OpeningTasks.panel/VISOpeningTasks.pushbutton", vis_opening_tasks),
+    ("OpeningTasks.panel/KROpeningTasks.pushbutton", kr_opening_tasks),
     ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),
     ("FireBoxes.panel/AddInternalTrays.pushbutton", fire_trays),
     ("FireBoxes.panel/MarkInsideFireBox.pushbutton", fire_mark),

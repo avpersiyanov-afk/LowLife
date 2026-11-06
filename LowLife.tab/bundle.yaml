@@ -29,6 +29,7 @@ layout:
   - TrayRoof
   - FireBoxes
   - ToolsTraySection
+  - OpeningTasks
   - Tools
   - FilterSelection
   - ToolsRooms
