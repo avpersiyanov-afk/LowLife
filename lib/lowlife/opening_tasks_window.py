@@ -22,6 +22,7 @@ from lowlife import opening_tasks_ui as flow
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
 from lowlife import opening_tasks_settings as cfg
+from lowlife import opening_tasks_manifest as manifest
 from lowlife import text_search
 from lowlife import opening_tasks_browser as browser
 
@@ -42,6 +43,7 @@ class Handler(IExternalEventHandler):
                 return
             uidoc=uiapp.ActiveUIDocument
             action,rows=w.pending
+            manifest.validate_action(w.role,action)
             if action=='refresh':
                 w.refresh()
                 return
@@ -130,6 +132,7 @@ class Handler(IExternalEventHandler):
 
 class TaskWindow(forms.WPFWindow):
     def __init__(self,role,doc):
+        manifest.validate_role(role)
         forms.WPFWindow.__init__(self,u'''<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="1150" Height="720"
             MinWidth="850" MinHeight="500" WindowStartupLocation="CenterScreen">
@@ -157,13 +160,15 @@ class TaskWindow(forms.WPFWindow):
           </Grid>
         </Window>''',literal_string=True)
         self.role,self.document=role,doc
+        self.manifest_version=manifest.VERSION
         self.pending=None
         self.closed=False
         self.rows=[]
         self.updating=False
         self.visible={}
         self.Title=tr(u'Задания ВИС',u'VIS tasks') if role=='VIS' else tr(u'Задания КР',u'KR tasks')
-        self.heading.Text=self.Title+u' | '+doc.Title
+        purpose=tr(u'Подготовка и выдача заданий',u'Prepare and issue tasks') if role=='VIS' else tr(u'Рассмотрение и создание отверстий',u'Review and create openings')
+        self.heading.Text=self.Title+u' — '+purpose+u' | '+doc.Title
         self.filter_controls=[('status',self.state,tr(u'Все статусы',u'All statuses')),
             ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
             ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
@@ -193,18 +198,8 @@ class TaskWindow(forms.WPFWindow):
         select_button.Margin=Thickness(0,0,8,8)
         select_button.Click+=lambda s,e:self.tasks.SelectAll()
         self.actions.Children.Add(select_button)
-        if role=='VIS':
-            actions=[('place',tr(u'Расставить боксы',u'Place boxes')),('issue',tr(u'Выдать КР',u'Issue to KR')),
-                     ('withdraw',tr(u'Отозвать',u'Withdraw')),('confirm',tr(u'Подтвердить КР',u'Confirm KR')),
-                     ('focus',tr(u'Бокс в 3D',u'Box in 3D')),('control',tr(u'Виды и реестр',u'Views and register'))]
-        else:
-            actions=[('show',tr(u'Показать конструкцию',u'Show host')),('accept',tr(u'Принять отдельно',u'Accept separately')),
-                     ('merge',tr(u'Объединить',u'Merge')),('reject',tr(u'Замечание',u'Comment')),
-                     ('remove',tr(u'Отработать отзыв',u'Process withdrawal')),('structures',tr(u'Вид конструкций',u'Structural view')),
-                     ('kr_plans',tr(u'Планы плит',u'Slab plans')),
-                     ('kr_sections',tr(u'Разрезы стен',u'Wall sections'))]
-        for action,label in actions:
-            self.add(action,label)
+        for action,label in manifest.actions(role):
+            self.add(action,tr(label))
         self.search.TextChanged+=lambda s,e:self.render()
         for key,control,label in self.filter_controls:
             control.SelectionChanged+=lambda s,e:self.render()
@@ -225,6 +220,11 @@ class TaskWindow(forms.WPFWindow):
         self.actions.Children.Add(button)
 
     def dispatch(self,action):
+        try:
+            manifest.validate_action(self.role,action)
+        except ValueError as ex:
+            forms.alert(unicode(ex))
+            return
         if self.pending:
             return
         self.pending=(action,self.selected_rows())
@@ -410,10 +410,14 @@ class TaskWindow(forms.WPFWindow):
 
 def show(role,config_mode=False):
     from pyrevit import revit
+    manifest.validate_role(role)
     if config_mode:
         cfg.make(role).get_settings_interactive()
         return
     existing=_WINDOWS.get(role)
+    if existing and not existing.closed and (getattr(existing,'manifest_version',None)!=manifest.VERSION or existing.document!=revit.doc or existing.role!=role):
+        existing.Close()
+        existing=None
     if existing and not existing.closed:
         existing.Show()
         existing.Activate()

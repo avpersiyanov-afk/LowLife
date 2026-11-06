@@ -95,3 +95,7 @@ Translation-only updates attempt to retain the existing Opening and its IDs in a
 ## Preview fallback and valid names
 
 VIS 3D preview no longer requires a prepared KR structural view. It uses that view when present, otherwise ByHostView with category restrictions, transparency and section box. In fallback mode, linked elements in the permitted box/source categories may also appear; a prepared structural view remains optional for strict linked category control. Generated view/schedule/filter names are sanitized, including the prohibited pipe character, before collision checks.
+
+## Role manifest
+
+`opening_tasks_manifest.py` defines ribbon entry points and each role's allowed actions. VIS: place, issue, withdraw, confirm result, box 3D, views/register. KR: show host, accept, merge, comment, process withdrawal, structural view, slab plans, wall sections. Refresh/settings are common. Dispatch and execution both reject cross-role actions. Unknown roles do not fall back to KR. VIS labels now read Issue tasks and Confirm result. Close old windows and restart Revit after updating persistent interfaces.

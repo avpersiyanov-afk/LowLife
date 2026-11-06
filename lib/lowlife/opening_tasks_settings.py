@@ -2,9 +2,11 @@
 """Settings for VIS/KR opening exchange. Project parameter names stay blank."""
 from lowlife import settings_core as sc
 from lowlife import tray_boxes_settings as trays
+from lowlife import opening_tasks_manifest as manifest
 
 
 def make(role, doc=None):
+    manifest.validate_role(role)
     common = [
         sc.TextField('opening_project', u'Обмен заданиями', u'Код проекта', required=True),
         sc.TextField('opening_json_param', u'', u'JSON-параметр задания',
