@@ -86,6 +86,12 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             self.fields = self.pages[0]
             self.product = self.combo(tr(u'Конструкция', u'Construction'), ['FIREBOX', 'OSK'], self.values['product'])
             self.rating = self.combo(tr(u'Огнестойкость, мин', u'Fire resistance, min'), [], None)
+            self.wall_configuration = self.combo(tr(u'Стенки короба', u'Enclosure walls'),
+                [tr(u'Четыре стенки', u'Four sides'),
+                 tr(u'Без верхней — к перекрытию', u'No top — against slab'),
+                 tr(u'Без левой — к стене', u'No left — against wall'),
+                 tr(u'Без правой — к стене', u'No right — against wall')], None)
+            self.wall_configuration.SelectedIndex = core.WALL_CONFIGURATIONS.index(self.values['wall_configuration'])
             self.worksets = fire_boxes.workset_options(doc)
             self.workset_boxes = {}
             self.workset_field('box_workset_name', tr(u'Рабочий набор коробов', u'Enclosure workset'))
@@ -142,8 +148,10 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                                                   tr(u'огнезащитных коробов', u'fire enclosures'), self.reload)
             self.rebuild_rows(self.values['trays'])
             self.update_ratings(self.values['rating'])
+            self.update_wall_controls()
             self.product.SelectionChanged += self.product_changed
-            self.rating.SelectionChanged += self.refresh
+            self.rating.SelectionChanged += self.rating_changed
+            self.wall_configuration.SelectionChanged += self.wall_changed
             self.arrangement.SelectionChanged += self.refresh
             self.loading = False
             self.tabs.SelectedIndex = 1
@@ -250,6 +258,31 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             self.loading = True
             self.update_ratings(selected)
             self.loading = False
+            self.update_wall_controls()
+            self.refresh(None, None)
+
+        def update_wall_controls(self):
+            supported = unicode(self.product.SelectedItem) == 'OSK' and self.rating.SelectedItem in (90, 180)
+            self.wall_configuration.IsEnabled = supported
+            self.wall_configuration.ToolTip = tr(u'Трёхсторонние конфигурации ОСК-90/180 по АТР. Слева и справа — как на разрезе.',
+                                                 u'Three-sided OSK-90/180 configurations from the ATR. Left and right follow the preview.')
+            if not supported:
+                self.wall_configuration.SelectedIndex = 0
+            self.boxes['ceiling_gap_mm'].IsEnabled = self.wall_configuration.SelectedIndex != 1
+            self.boxes['ceiling_gap_mm'].ToolTip = tr(
+                u'Без верхней стенки короб примыкает к перекрытию: на схеме зазор равен 0. Для остальных конфигураций используется введённое значение.',
+                u'Without the top panel the enclosure meets the slab: the preview gap is 0. Other configurations use the entered value.')
+
+        def rating_changed(self, sender, event):
+            if self.loading:
+                return
+            self.update_wall_controls()
+            self.refresh(None, None)
+
+        def wall_changed(self, sender, event):
+            if self.loading:
+                return
+            self.update_wall_controls()
             self.refresh(None, None)
 
         def rebuild_rows(self, sizes):
@@ -329,6 +362,7 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
             values['product'] = unicode(self.product.SelectedItem)
             values['rating'] = int(self.rating.SelectedItem)
             values['arrangement'] = 'vertical' if self.arrangement.SelectedIndex == 0 else 'horizontal'
+            values['wall_configuration'] = core.WALL_CONFIGURATIONS[self.wall_configuration.SelectedIndex]
             if doc.IsWorkshared:
                 for key, box in self.workset_boxes.items():
                     values[key] = unicode(box.SelectedItem) if box.SelectedIndex > 0 else ''
@@ -393,13 +427,19 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 if section['mounting_supported']:
                     self.explanation.Text += u'\n' + tr(u'АТР ОСК-{}, лист {}. Стенка: {:g} мм. Траверса: 30×30 мм.',
                         u'ATR OSK-{}, sheet {}. Wall: {:g} mm. Crossbar: 30×30 mm.').format(values['rating'], section['source_sheet'], float(section['wall']))
+                if values['wall_configuration'] != 'closed':
+                    self.explanation.Text += u'\n' + tr(
+                        u'Габарит уменьшен на толщину одной стенки. В свету размеры сохранены. '
+                        u'Отсутствующая стенка заменяется строительной конструкцией; узел примыкания выполняется по АТР.',
+                        u'The envelope is reduced by one panel thickness; clear dimensions are preserved. '
+                        u'The omitted panel is replaced by the building structure; follow the ATR junction detail.')
                 if values['product'] == 'OSK' and not section['mounting_supported']:
                     self.explanation.Text += u'\n' + tr(u'Для ОСК-240 в приложенных АТР нет схемы подвесов и толщины стенки.',
                                                         u'The attached ATRs do not specify OSK-240 suspension or wall thickness.')
                 if section['middle_rod_missing']:
                     self.explanation.Text += u'\n' + tr(u'Широкий короб: дополнительная шпилька пересекает лотки. Нужно проектное решение подвеса.',
                                                         u'Wide enclosure: an extra rod would intersect trays. A designed suspension solution is needed.')
-                if values['product'] == 'OSK' and values['rating'] == 180 and section['top_clear'] < 100:
+                if values['product'] == 'OSK' and values['rating'] == 180 and values['wall_configuration'] != 'no_top' and section['top_clear'] < 100:
                     self.explanation.Text += u'\n' + tr(u'До крышки менее рекомендованных АТР 100 мм.', u'Less than the 100 mm lid clearance recommended by the ATR.')
                 from lowlife.fire_boxes_diagram import draw
                 draw(self.diagram, values, section)

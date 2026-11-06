@@ -19,6 +19,8 @@ def draw(canvas, settings, section=None):
     cx, cy = 300.0, 360.0
     w, h = section['width'], section['height']
     cw, ch = section['cavity_width'], section['cavity_height']
+    ix, iz = section['cavity_x'], section['cavity_z']
+    configuration = section['wall_configuration']
     X = lambda value: cx + value*scale
     Y = lambda value: cy - value*scale
 
@@ -74,8 +76,34 @@ def draw(canvas, settings, section=None):
 
     fmt = lambda value: u'{:g}'.format(float(value))
     text(25,15,tr(u'Поперечный разрез · размеры в мм',u'Cross-section · dimensions in mm'),size=17)
-    rectangle(0,0,w,h,Brushes.DarkOrange,Brushes.Bisque,2)
-    rectangle(0,0,cw,ch,Brushes.Gray,Brushes.WhiteSmoke)
+    if configuration == 'closed':
+        rectangle(0,0,w,h,Brushes.DarkOrange,Brushes.Bisque,2)
+    else:
+        wall = section['wall']
+        top_wall = 0 if configuration == 'no_top' else wall
+        left_wall = 0 if configuration == 'no_left' else wall
+        right_wall = 0 if configuration == 'no_right' else wall
+        rectangle(0,-h/2+wall/2,w,wall,Brushes.DarkOrange,Brushes.Bisque,2)
+        if top_wall:
+            rectangle(0,h/2-wall/2,w,wall,Brushes.DarkOrange,Brushes.Bisque,2)
+        side_height = h-wall-top_wall
+        if left_wall:
+            rectangle(-w/2+wall/2,(wall-top_wall)/2,wall,side_height,Brushes.DarkOrange,Brushes.Bisque,2)
+        if right_wall:
+            rectangle(w/2-wall/2,(wall-top_wall)/2,wall,side_height,Brushes.DarkOrange,Brushes.Bisque,2)
+        caption = {'no_top': tr(u'Без верхней стенки · к перекрытию',u'No top panel · against slab'),
+                   'no_left': tr(u'Без левой стенки · к стене',u'No left panel · against wall'),
+                   'no_right': tr(u'Без правой стенки · к стене',u'No right panel · against wall')}[configuration]
+        text(25,45,caption)
+        if configuration in ('no_left', 'no_right'):
+            x = X(-w/2) if configuration == 'no_left' else X(w/2)
+            outer_x = x-20 if configuration == 'no_left' else x+20
+            y1,y2 = Y(h/2+gap)-20,Y(-h/2)+20
+            line_px(x,y1,x,y2,Brushes.DimGray,2)
+            line_px(outer_x,y1,outer_x,y2,Brushes.DimGray)
+            for y in range(int(y1),int(y2)-20,12):
+                line_px(x,y,outer_x,y+20,Brushes.LightGray)
+    rectangle(ix,iz,cw,ch,Brushes.Gray,Brushes.WhiteSmoke)
 
     if settings['product'] == 'FIREBOX':
         rectangle(0,0,cw,ch,Brushes.SteelBlue,Brushes.LightBlue)
@@ -91,20 +119,22 @@ def draw(canvas, settings, section=None):
             text(cx,slab_y-42,tr(u'Перекрытие (условно)',u'Slab (symbolic)'),center=True)
             profile = section['profile_height']
             if profile:
-                rectangle(0,-ch/2+profile/2,cw,profile,Brushes.Gray,Brushes.Gainsboro)
+                rectangle(ix,iz-ch/2+profile/2,cw,profile,Brushes.Gray,Brushes.Gainsboro)
             for x in section['rods']:
-                line(x,-ch/2,x,h/2+gap,Brushes.DimGray,2)
+                line(x,iz-ch/2,x,h/2+gap,Brushes.DimGray,2)
                 line_px(X(x),slab_y-10,X(x),slab_y,Brushes.Black,4)
                 # External exposed rod's fire protection, per ATR 90 sheet15 / 180 sheet14.
                 line_px(X(x)-4,slab_y,X(x)-4,Y(h/2),Brushes.LightPink,3)
                 line_px(X(x)+4,slab_y,X(x)+4,Y(h/2),Brushes.LightPink,3)
             for z in section['crossbars']:
-                rectangle(0,z-section['crossbar_height']/2,
+                rectangle(ix,z-section['crossbar_height']/2,
                           section['rods'][-1]-section['rods'][0]+20,
                           section['crossbar_height'],Brushes.DimGray,Brushes.Gainsboro)
-            vertical(X(w/2)+25,Y(h/2+gap),Y(h/2),fmt(gap)+u' *')
+            if gap:
+                vertical(X(w/2)+25,Y(h/2+gap),Y(h/2),fmt(gap)+u' *')
             text(560,110,tr(u'Шпильки М8/М10 *',u'M8/M10 rods *'),size=13)
-            text(560,132,tr(u'Розовое: огнезащита подвесов',u'Pink: rod fire protection'),size=12)
+            if gap:
+                text(560,132,tr(u'Розовое: огнезащита подвесов',u'Pink: rod fire protection'),size=12)
             text(560,155,tr(u'Траверсы 30×30',u'Crossbars 30×30'),size=13)
             text(560,177,tr(u'Стенка: {}',u'Wall: {}').format(fmt(section['wall'])),size=13)
             text(560,199,tr(u'В свету: {} × {}',u'Clear: {} × {}').format(fmt(cw),fmt(ch)),size=13)
@@ -134,8 +164,8 @@ def draw(canvas, settings, section=None):
                 a,b = left['x']+left['width']/2,right['x']-right['width']/2
                 horizontal(X(a),X(b),Y(section['tray_bottom'])-18,fmt(b-a))
         # Physical clearances around the complete tray group.
-        vertical(X(w/2)+40,Y(ch/2),Y(section['tray_top']),fmt(section['top_clear']))
-        vertical(X(w/2)+40,Y(section['tray_bottom']),Y(-ch/2),fmt(section['bottom_clear']))
+        vertical(X(w/2)+40,Y(iz+ch/2),Y(section['tray_top']),fmt(section['top_clear']))
+        vertical(X(w/2)+40,Y(section['tray_bottom']),Y(iz-ch/2),fmt(section['bottom_clear']))
         if section['middle_rod_missing']:
             text(25,590,tr(u'Нужен проект дополнительной подвески: шпилька пересекает лотки.',
                             u'Extra suspension must be designed: a central rod intersects trays.'),brush=Brushes.Firebrick,size=13)

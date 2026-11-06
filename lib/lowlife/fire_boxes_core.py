@@ -18,6 +18,17 @@ FIREBOX_WALLS = {90: 50, 150: 75, 180: 90, 240: 120}
 OSK_ALLOWANCES = {90: (260, 290), 180: (280, 290), 240: (310, 270)}
 # Attached ATR A2-OSK90 sheets 2-4,10; A1-OSK180 sheets 2-3,8.
 OSK_PANELS = {90: 25.0, 180: 70.0}
+WALL_CONFIGURATIONS = ('closed', 'no_top', 'no_left', 'no_right')
+
+
+def wall_configuration(settings):
+    configuration = settings.get('wall_configuration', 'closed')
+    if configuration not in WALL_CONFIGURATIONS:
+        raise ValueError(tr(u'Неизвестная конфигурация стенок короба.', u'Unknown enclosure wall configuration.'))
+    if configuration != 'closed' and (settings['product'] != 'OSK' or int(settings['rating']) not in OSK_PANELS):
+        raise ValueError(tr(u'Трёхсторонние конфигурации доступны для ОСК-90 и ОСК-180.',
+                            u'Three-sided configurations are available for OSK-90 and OSK-180.'))
+    return configuration
 
 
 def number(value, minimum=0, positive=False):
@@ -43,6 +54,7 @@ def allowances(product, rating):
 
 
 def layout(settings):
+    configuration = wall_configuration(settings)
     rows = settings.get('trays') or []
     if not rows or len(rows) > 32:
         raise ValueError(tr(u'Укажите от 1 до 32 лотков.', u'Specify 1 to 32 trays.'))
@@ -94,6 +106,25 @@ def layout(settings):
     if section['top_clear'] < -0.001:
         raise ValueError(tr(u'Лотки выходят за крышку короба: уменьшите нижний отступ.',
                             u'Trays exceed the enclosure lid: reduce the bottom clearance.'))
+    # Keep the clear interior and tray offsets inside it unchanged. Only remove
+    # one panel from the external envelope, whose centre remains the route axis.
+    dx = -wall/2 if configuration == 'no_left' else wall/2 if configuration == 'no_right' else 0.0
+    dz = wall/2 if configuration == 'no_top' else 0.0
+    if configuration in ('no_left', 'no_right'):
+        section['width'] -= wall
+        section['allowance_width'] -= wall
+    if configuration == 'no_top':
+        section['height'] -= wall
+        section['allowance_height'] -= wall
+    section['cavity_x'], section['cavity_z'] = dx, dz
+    section['wall_configuration'] = configuration
+    section['wall_width'] = section['width'] - section['cavity_width']
+    section['wall_height'] = section['height'] - section['cavity_height']
+    for row in placements:
+        row['x'] += dx
+        row['z'] += dz
+    section['tray_bottom'] += dz
+    section['tray_top'] += dz
     return section
 
 
@@ -107,7 +138,7 @@ def mounting_section(settings, section=None):
     supported = settings['product'] == 'OSK' and int(settings['rating']) in OSK_PANELS
     result = dict(section, rods=[], crossbars=[], middle_rod_required=False,
                   middle_rod_missing=False, mounting_supported=supported,
-                  ceiling_gap=number(settings.get('ceiling_gap_mm', 200)))
+                  ceiling_gap=0.0 if section['wall_configuration'] == 'no_top' else number(settings.get('ceiling_gap_mm', 200)))
     if not supported:
         return result
     if settings['arrangement'] == 'vertical' and len(section['trays']) > 1 and number(settings.get('gap_mm', 100)) < 30:
@@ -115,7 +146,7 @@ def mounting_section(settings, section=None):
                             u'Allow at least 30 mm between tiers for a crossbar.'))
     inset = number(settings.get('rod_inset_mm', 25), positive=True)
     half_cavity = section['cavity_width']/2
-    left, right = -half_cavity + inset, half_cavity - inset
+    left, right = section['cavity_x'] - half_cavity + inset, section['cavity_x'] + half_cavity - inset
     radius = 5.0  # M8/M10 envelope: use the larger diameter for clearance checks.
     if left >= right:
         raise ValueError(tr(u'Шпильки не помещаются в сечении.', u'The rods do not fit the cross-section.'))
@@ -129,12 +160,12 @@ def mounting_section(settings, section=None):
     threshold = 1200 if int(settings['rating']) == 90 else 1500
     if section['width'] > threshold:
         result['middle_rod_required'] = True
-        candidates = [0.0]
+        candidates = [section['cavity_x']]
         ordered = sorted(section['trays'], key=lambda row: row['x'])
         candidates += [(a['x']+a['width']/2+b['x']-b['width']/2)/2 for a,b in zip(ordered,ordered[1:])]
         candidates = [x for x in candidates if left+radius*2 < x < right-radius*2 and clear(x)]
         if candidates:
-            rods.append(min(candidates, key=abs))
+            rods.append(min(candidates, key=lambda x: abs(x-section['cavity_x'])))
         else:
             result['middle_rod_missing'] = True
     result['rods'] = sorted(rods)
@@ -159,7 +190,13 @@ def description(settings):
         groups[key] = groups.get(key, 0) + 1
     sizes = u'; '.join(u'{} \u0448\u0442. {} \u043c\u043c'.format(n, size) for size, n in groups.items())
     product_name = u'\u041e\u0421\u041a' if settings['product'] == 'OSK' else 'FIREBOX'
-    return u'{}; EI {}; \u043b\u043e\u0442\u043a\u0438: {}'.format(product_name, settings['rating'], sizes)
+    result = u'{}; EI {}; \u043b\u043e\u0442\u043a\u0438: {}'.format(product_name, settings['rating'], sizes)
+    configuration = wall_configuration(settings)
+    if configuration != 'closed':
+        result += u'; ' + {'no_top': u'без верхней стенки (к перекрытию)',
+                          'no_left': u'без левой стенки (к стене)',
+                          'no_right': u'без правой стенки (к стене)'}[configuration]
+    return result
 
 
 def merge_note(existing, note):
@@ -236,9 +273,9 @@ def line_intersection(a, da, b, db, tolerance=1.0):
     return mul(add(p, q), 0.5)
 
 
-def section_fits_axes(row, right, up, box_right, box_up, inner_width, inner_height, tolerance=0.5):
+def section_fits_axes(row, right, up, box_right, box_up, inner_width, inner_height, tolerance=0.5, cavity_center=(0, 0)):
     """Containment of an offset tray rectangle in a possibly rolled enclosure."""
-    offset = add(mul(right, row['x']), mul(up, row['z']))
+    offset = add(mul(right, row['x']-cavity_center[0]), mul(up, row['z']-cavity_center[1]))
     for axis, limit in ((box_right, inner_width), (box_up, inner_height)):
         occupied = (abs(dot(offset, axis)) + abs(dot(right, axis)) * row['width']/2
                     + abs(dot(up, axis)) * row['height']/2)
