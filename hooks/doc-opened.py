@@ -124,3 +124,11 @@ try:
     _feedback.check_replies_detached()
 except Exception:
     pass
+
+
+# Google-журнал отверстий: тихое возобновление очереди и фоновых повторов.
+try:
+    from lowlife import opening_tasks_journal as _opening_journal
+    _opening_journal.retry_pending()
+except Exception:
+    pass

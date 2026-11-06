@@ -147,8 +147,7 @@ class Handler(IExternalEventHandler):
                 try:
                     journal.auto_publish(w,settings)
                 except Exception:
-                    forms.alert(tr(u'Действие в Revit выполнено. Журнал не поставлен в очередь: проверьте доступ к локальному профилю и обратитесь к администратору.',
-                                   u'Revit action completed. Journal could not be queued: check local profile access and contact the administrator.'))
+                    pass  # Journal delivery must not interrupt the engineering workflow.
             else:
                 w.refresh()
         except Exception as ex:

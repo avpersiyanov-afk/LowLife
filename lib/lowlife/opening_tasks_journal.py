@@ -159,67 +159,75 @@ def auto_publish(window,settings):
         store=queue_store()
         data=store.read()
         data['items']=enqueue(data.get('items',[]),capture(window,settings))
-        if not store.write(data):
+        if not store.write(data,notify=False):
             raise ValueError(tr(u'Изменения в модели зафиксированы, но очередь журнала не сохранена. Обратитесь к администратору.',
                                 u'Model changes were committed, but the journal queue was not saved. Contact the administrator.'))
     retry_pending(window)
 
 
-def retry_pending(window):
-    """Detached network operation; durable acknowledgements run on the UI thread."""
+def drain_pending(store,send,lock):
+    """Read without holding a network lock; acknowledge only delivered IDs."""
+    with lock():
+        items=store.read().get('items',[])
+    sent,blocked=deliver(items,send)
+    if sent:
+        with lock():
+            data=store.read()
+            data['items']=[i for i in data.get('items',[]) if i['id'] not in set(sent)]
+            store.write(data,notify=False)
+    return sent,blocked
+
+
+def install_sender():
+    """One process-wide timer; no model, window, Dispatcher or Revit API required."""
     from pnotes.core import _QueueLock
-    from System import Action, AppDomain
+    from System import AppDomain
+    from System.Threading import Timer, TimerCallback
+    domain=AppDomain.CurrentDomain
+    with _QueueLock('lowlife_opening_journal_queue'):
+        if domain.GetData('lowlife_opening_journal_timer') is not None:
+            return
+        def tick(state):
+            try:
+                retry_pending()
+            except Exception:
+                pass
+        timer=Timer(TimerCallback(tick),None,60000,60000)
+        domain.SetData('lowlife_opening_journal_timer',timer)
+
+
+def retry_pending(window=None):
+    """Silent background attempts now and every minute, even with closed windows."""
+    from pnotes.core import _QueueLock
+    from System import AppDomain
     from System.Threading import Thread, ThreadStart
+    install_sender()
     domain=AppDomain.CurrentDomain
     flag='lowlife_opening_journal_sending'
     with _QueueLock('lowlife_opening_journal_queue'):
-        items=queue_store().read().get('items',[])
-        if not items or domain.GetData(flag):
+        if domain.GetData(flag) or not queue_store().read().get('items',[]):
             return
         domain.SetData(flag,True)
-    window.exchange_hint.Text=tr(u'Изменения зафиксированы в Revit. Журнал отправляется автоматически; сохраните/синхронизируйте модель.',
-                                 u'Changes committed in Revit. Sending journal automatically; save/synchronize the model.')
-    def flush():
-        def send(item):
-            scope=item['scope']
-            connection=load_connection(scope['project'],scope['role'],scope['model'])
-            status=request(connection,'status',scope)
-            request(connection,'publish',dict(scope,base_version=status['version'],payload=item['payload']))
-        sent,blocked=deliver(items,send)
-        def done():
-            with _QueueLock('lowlife_opening_journal_queue'):
-                store=queue_store()
-                data=store.read()
-                data['items']=[i for i in data.get('items',[]) if i['id'] not in set(sent)]
-                saved=store.write(data)
-                remaining=len(data['items']) if saved else len(store.read().get('items',[]))
-            if not window.closed:
-                window.exchange_hint.Text=(
-                    tr(u'Журнал обновлён автоматически. Сохраните/синхронизируйте модель для обмена связями.',
-                       u'Journal updated automatically. Save/synchronize the model for linked-model exchange.')
-                    if not remaining and saved else
-                    tr(u'Журнал ожидает отправки: {}. Проверьте подключение. Повтор — при «Обновить обмен», открытии окна или следующем изменении.',
-                       u'Journal entries awaiting delivery: {}. Check the connection. Retry on Refresh exchange, window opening or next change.').format(remaining))
-            if not blocked and saved and remaining:
-                retry_pending(window)
-        # Release the sender before the UI acknowledgement can resume queued work.
-        with _QueueLock('lowlife_opening_journal_queue'):
-            domain.SetData(flag,None)
-        window.Dispatcher.BeginInvoke(Action(done))
-    def safe_worker():
+    def worker():
         try:
-            flush()
+            def send(item):
+                scope=item['scope']
+                connection=load_connection(scope['project'],scope['role'],scope['model'])
+                status=request(connection,'status',scope)
+                request(connection,'publish',dict(scope,base_version=status['version'],payload=item['payload']))
+            drain_pending(queue_store(),send,lambda:_QueueLock('lowlife_opening_journal_queue'))
         except Exception:
+            pass
+        finally:
             with _QueueLock('lowlife_opening_journal_queue'):
                 domain.SetData(flag,None)
-    thread=Thread(ThreadStart(safe_worker))
+    thread=Thread(ThreadStart(worker))
     thread.IsBackground=True
     try:
         thread.Start()
     except Exception:
         with _QueueLock('lowlife_opening_journal_queue'):
             domain.SetData(flag,None)
-        raise
 
 
 def setup(doc,role,project):

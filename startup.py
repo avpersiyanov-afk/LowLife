@@ -111,3 +111,11 @@ try:
     _favorites.restore_on_load()
 except Exception as exc:
     _crumb(u"мои панели: {}".format(exc))
+
+
+# Google-журнал отверстий: тихое возобновление очереди и фоновых повторов.
+try:
+    from lowlife import opening_tasks_journal as _opening_journal
+    _opening_journal.retry_pending()
+except Exception:
+    pass

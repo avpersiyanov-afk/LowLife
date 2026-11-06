@@ -136,7 +136,9 @@ Release, reissue, withdrawal, KR/AR decisions and VIS confirmation automatically
 enqueue a snapshot after the Revit transaction commits. Each project code gets
 a separate object tab with current status and full event history. Cancelled
 operations and unchanged registries do not enqueue anything. The durable local
-queue retries on window opening, Refresh exchange or the next model decision.
+queue silently retries every minute while Revit is running, including with
+closed task windows. It resumes automatically at startup/reload or document open.
+Delivery failures show no notifications or status messages.
 A failed earlier revision blocks later revisions of that model; other models
 can still publish. Tokens never enter the queue.
 

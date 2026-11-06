@@ -345,3 +345,14 @@ def test_choice_field_labels_values_and_legacy():
     assert f.coerce(u"2") == "b"
     assert f.coerce(u"мусор") == "a"     # битое — умолчание
     assert f.display(None) == u"Первый"
+
+
+def test_background_write_failure_can_suppress_alerts(appdata, monkeypatch):
+    notices=[]
+    monkeypatch.setattr(settings_core,'_alert',notices.append)
+    store=JsonStore('LowLifeBackground.json',share=False)
+    os.makedirs(store.path())
+    assert store.write({'items':[]},notify=False) is False
+    assert notices==[]
+    assert store.write({'items':[]}) is False
+    assert len(notices)==1
