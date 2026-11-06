@@ -4,7 +4,7 @@ from pyrevit import forms, script
 from lowlife import link_hide
 from lowlife.i18n import tr
 
-__title__ = u"Скрыть\nв связи"
+__title__ = u"Скрыть в связи"
 __doc__ = u"Выбрать связи, категории и условие, проверить совпадения и скрыть выбранные элементы на текущем виде. Shift+клик — настройки."
 
 try:
