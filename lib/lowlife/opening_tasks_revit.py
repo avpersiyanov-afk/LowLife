@@ -146,6 +146,9 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if data['task_id'] not in issued_ids:
                     store.set_parameter(inst, settings['opening_json_param'],
                         dict(data, status='draft', geometry=host_geometry(inst,data,source)))
+                issued = store.registry(doc)['tasks'].get(data['task_id'])
+                visible_issue(inst,settings,issued, bool(issued and issued['status']=='issued' and
+                    not core.geometry_equal(issued['geometry'],host_geometry(inst,data,source))))
                 store.write(inst, data)
                 if sub.Commit() != TransactionStatus.Committed:
                     raise ValueError(tr(u'Транзакция бокса не зафиксирована',u'Draft transaction was not committed'))
@@ -189,6 +192,7 @@ def publish(doc, elements, settings):
     by_id = {d['task_id']: e for d,e in zip(drafts,elements)}
     for record in changes:
         store.set_parameter(by_id[record['task_id']],settings['opening_json_param'],record)
+        visible_issue(by_id[record['task_id']],settings,record)
     if changes:
         store.save_registry(doc,registry)
     return changes
@@ -200,6 +204,7 @@ def retract(doc, task_ids, settings):
         inst = doc.GetElement(record['owner_uid'])
         if inst:
             store.set_parameter(inst,settings['opening_json_param'],record)
+            visible_issue(inst,settings,record)
     if changes:
         store.save_registry(doc,registry)
     return changes
@@ -404,3 +409,23 @@ def confirm_results(doc, results, settings):
         if inst:
             store.set_parameter(inst,settings['opening_json_param'],registry['tasks'][task['task_id']])
     store.save_registry(doc,registry)
+
+
+def visible_issue(inst, settings, record=None, changed=False):
+    # Values written into the model are data, never translated.
+    values = {
+        'opening_status_param': (u'Изменено после выдачи' if changed else
+            u'Отозвано' if record and record['status']=='withdrawn' else
+            u'Выдано' if record else u'Черновик'),
+        'opening_issue_param': unicode(record.get('issue_number',record['issue_id'])) if record else u'',
+        'opening_revision_param': unicode(record['revision']) if record else u'',
+        'opening_date_param': record['issued_at'] if record else u'',
+    }
+    for key,value in values.items():
+        name = settings.get(key)
+        if not name:
+            continue
+        param = inst.LookupParameter(name)
+        if param is None or param.IsReadOnly or param.StorageType != StorageType.String:
+            raise ValueError(tr(u'Нужен текстовый параметр экземпляра: {}',u'Text instance parameter required: {}').format(name))
+        param.Set(value)
