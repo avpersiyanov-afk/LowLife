@@ -33,8 +33,8 @@ def test_vertical_mixed_sizes_clear_gaps_and_centers():
     section = core.layout(values)
     first, second = section['trays']
     assert (section['inner_width'], section['inner_height']) == (340, 270)
-    assert first['z'] == -65
-    assert second['z'] == 90
+    assert first['z'] == -90
+    assert second['z'] == 65
     assert second['z'] - second['height']/2 - (first['z'] + first['height']/2) == 80
     assert first['x'] == second['x'] == 0
 
@@ -111,3 +111,89 @@ def test_rolled_enclosure_cannot_hide_out_of_bounds_tray():
     row = dict(x=0,z=0,width=300,height=100)
     assert core.section_fits_axes(row, (1,0,0),(0,1,0),(1,0,0),(0,1,0),300,200)
     assert not core.section_fits_axes(row, (1,0,0),(0,1,0),(0,1,0),(1,0,0),300,200)
+
+
+def test_single_type_settings_migrate_to_rows_without_overwriting_types():
+    old = dict(tray_type_uid='legacy', trays=[dict(width_mm=300,height_mm=100),
+               dict(width_mm=200,height_mm=50,tray_type_uid='explicit')])
+    migrated = cfg.normalize(old)
+    assert [r['tray_type_uid'] for r in migrated['trays']] == ['legacy','explicit']
+    assert 'tray_type_uid' not in old['trays'][0]
+
+
+def test_mixed_type_ids_survive_layout_and_storage(tmp_path,monkeypatch):
+    monkeypatch.setenv('APPDATA',str(tmp_path))
+    values = cfg.defaults()
+    values['box_type_uid'] = 'box'
+    values['trays'] = [dict(width_mm=300,height_mm=100,tray_type_uid='perforated'),
+                       dict(width_mm=200,height_mm=50,tray_type_uid='ladder')]
+    cfg.save(values)
+    loaded = cfg.load()
+    assert [r['tray_type_uid'] for r in core.layout(loaded)['trays']] == ['perforated','ladder']
+
+
+@pytest.mark.parametrize('rating,wall,bottom,top',[(90,25,80,160),(180,70,50,100)])
+def test_physical_panels_and_mounting_clearances(rating,wall,bottom,top):
+    values = cfg.defaults()
+    values['rating'] = rating
+    section = core.mounting_section(values)
+    assert section['wall'] == wall
+    assert section['cavity_width'] == section['width']-2*wall
+    assert section['cavity_height'] == section['height']-2*wall
+    assert section['bottom_clear'] == bottom
+    assert section['top_clear'] == top
+    assert section['trays'][0]['z']-section['trays'][0]['height']/2 == -section['height']/2+wall+bottom
+    assert len(section['rods']) == 2
+
+
+def test_legacy_box_metadata_keeps_original_centered_offsets():
+    values = cfg.defaults()
+    values.pop('support_bottom_mm')
+    values['trays'] = [dict(width_mm=300,height_mm=100),dict(width_mm=200,height_mm=50)]
+    assert [r['z'] for r in core.layout(values)['trays']] == [-75,100]
+
+
+def test_additional_rod_goes_in_free_gap_instead_of_through_tray():
+    values = cfg.defaults()
+    values['arrangement'] = 'horizontal'
+    values['trays'] = [dict(width_mm=800,height_mm=100)]*2
+    section = core.mounting_section(values)
+    assert section['middle_rod_required']
+    assert not section['middle_rod_missing']
+    assert section['rods'][1] == 0
+
+
+def test_wide_single_tray_needs_designed_extra_suspension():
+    values = cfg.defaults()
+    values['trays'][0]['width_mm'] = 1500
+    section = core.mounting_section(values)
+    assert section['middle_rod_missing']
+    assert len(section['rods']) == 2
+
+
+def test_crossbar_cannot_overlap_lower_tray():
+    values = cfg.defaults()
+    values['trays'] *= 2
+    values['gap_mm'] = 10
+    with pytest.raises(ValueError):
+        core.mounting_section(values)
+
+
+def test_rod_collision_and_excessive_bottom_offset_are_rejected():
+    values = cfg.defaults()
+    values['rod_inset_mm'] = 100
+    with pytest.raises(ValueError):
+        core.mounting_section(values)
+    values = cfg.defaults()
+    values['support_bottom_mm'] = 300
+    with pytest.raises(ValueError):
+        core.layout(values)
+
+
+def test_no_osk240_mounting_details_are_invented():
+    values = cfg.defaults()
+    values['rating'] = 240
+    section = core.mounting_section(values)
+    assert section['wall'] is None
+    assert not section['mounting_supported']
+    assert section['rods'] == section['crossbars'] == []

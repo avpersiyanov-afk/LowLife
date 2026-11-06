@@ -13,9 +13,7 @@ except NameError:
 def show(doc, values=None, preview_path=None):
     from pyrevit import forms
     from System.Windows import Thickness, TextWrapping
-    from System.Windows.Controls import StackPanel, TextBlock, TextBox, Button, Canvas
-    from System.Windows.Media import Brushes
-    from System.Windows.Shapes import Rectangle, Line
+    from System.Windows.Controls import StackPanel, TextBlock, TextBox, Button
     from lowlife import fire_boxes, param_autocomplete, select_list, settings_transfer
 
     class Editor(forms.WPFWindow):
@@ -23,23 +21,23 @@ def show(doc, values=None, preview_path=None):
             forms.WPFWindow.__init__(self, u'''<Window
               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-              Width="1100" Height="820" MinWidth="960" MinHeight="700" Background="White" Foreground="#202020"
+              Width="1360" Height="900" MinWidth="1200" MinHeight="780" Background="White" Foreground="#202020"
               WindowStartupLocation="CenterScreen">
               <Grid Margin="18" Background="White">
                 <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="440"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="530"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TabControl x:Name="tabs" Margin="0,0,18,0"/>
                 <Grid Grid.Column="1">
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <TextBlock x:Name="summary" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                  <Viewbox Grid.Row="1" Stretch="Uniform"><Canvas x:Name="diagram" Width="560" Height="450"/></Viewbox>
+                  <Viewbox Grid.Row="1" Stretch="Uniform"><Canvas x:Name="diagram" Width="800" Height="650"/></Viewbox>
                   <TextBlock x:Name="explanation" Grid.Row="2" TextWrapping="Wrap" Margin="0,10,0,0"/>
                 </Grid>
                 <StackPanel x:Name="footer" Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0"/>
               </Grid>
             </Window>''', literal_string=True)
             self.Title = tr(u'Огнезащитные короба — настройки', u'Fire enclosures — settings')
-            self.values = copy.deepcopy(values if values is not None else cfg.load())
+            self.values = cfg.normalize(values if values is not None else cfg.load())
             self.result = None
             self.loading = True
             self.rows = []
@@ -75,12 +73,16 @@ def show(doc, values=None, preview_path=None):
             self.choose_buttons = {}
             for key, label, kind in [
                 ('box_type_uid', tr(u'Тип короба', u'Enclosure type'), 'box'),
-                ('system_type_uid', tr(u'Система воздуховода для короба', u'Enclosure duct system'), 'system'),
-                ('tray_type_uid', tr(u'Тип внутренних лотков', u'Internal tray type'), 'tray')]:
+                ('system_type_uid', tr(u'Система воздуховода для короба', u'Enclosure duct system'), 'system')]:
                 self.fields = self.pages[1] if kind == 'tray' else self.pages[0]
                 self.label(label)
                 button = self.button(self.fields, self.type_label(key), lambda s, e, k=key, t=kind: self.pick_type(k, t))
                 self.choose_buttons[key] = button
+            for key, label in [
+                ('support_bottom_mm', tr(u'От днища в свету до низа лотков, мм (0 — авто)', u'Clear floor to tray bottom, mm (0 — auto)')),
+                ('rod_inset_mm', tr(u'От внутренней стенки до оси шпильки, мм *', u'Inner wall to rod axis, mm *')),
+                ('ceiling_gap_mm', tr(u'От крышки до перекрытия, мм *', u'Lid to slab, mm *'))]:
+                self.boxes[key] = self.field(label, self.values[key])
             self.fields = self.pages[2]
             for key, label in [
                 ('inside_flag_param', tr(u'Параметр Да/Нет: элемент в ОКК', u'Yes/No parameter: inside enclosure')),
@@ -88,11 +90,10 @@ def show(doc, values=None, preview_path=None):
                 self.boxes[key] = self.field(label, self.values[key])
             param_autocomplete.attach_by_keys(self.boxes, param_autocomplete.NameSource(doc))
             self.fields = self.pages[1]
-            self.count_box = self.field(tr(u'Количество лотков (1–32)', u'Number of trays (1–32)'), len(self.values['trays']))
-            self.button(self.fields, tr(u'Применить количество', u'Apply count'), self.change_count)
-            self.label(tr(u'Внутренние лотки: ширина × высота, мм', u'Internal trays: width × height, mm'))
+            self.label(tr(u'Каждая строка — отдельный лоток. Размеры в мм.', u'Each row is a separate tray. Dimensions are in mm.'))
             self.row_panel = StackPanel()
             self.fields.Children.Add(self.row_panel)
+            self.button(self.fields, tr(u'+ Добавить лоток', u'+ Add tray'), self.add_row)
             self.button(self.footer, tr(u'Сохранить', u'Save'), self.accept)
             cancel = self.button(self.footer, tr(u'Отмена', u'Cancel'), lambda s, e: self.Close())
             cancel.IsCancel = True
@@ -176,29 +177,73 @@ def show(doc, values=None, preview_path=None):
             self.refresh(None, None)
 
         def rebuild_rows(self, sizes):
+            from System.Windows import GridLength, GridUnitType, VerticalAlignment, TextTrimming
+            from System.Windows.Controls import Grid, ColumnDefinition
             self.row_panel.Children.Clear()
             self.rows = []
-            for index, size in enumerate(sizes):
-                panel = StackPanel()
-                from System.Windows.Controls import Orientation
-                panel.Orientation = Orientation.Horizontal
+            def grid():
+                panel = Grid()
+                for width in (26, None, 65, 65, 28):
+                    column = ColumnDefinition()
+                    column.Width = GridLength(1, GridUnitType.Star) if width is None else GridLength(width)
+                    panel.ColumnDefinitions.Add(column)
                 panel.Margin = Thickness(0, 3, 0, 3)
+                self.row_panel.Children.Add(panel)
+                return panel
+            header = grid()
+            for index, title in enumerate([u'№', tr(u'Тип лотка', u'Tray type'),
+                                            tr(u'Ш, мм', u'W, mm'), tr(u'В, мм', u'H, mm')]):
                 label = TextBlock()
-                label.Text = u'{}:  '.format(index + 1)
-                label.Width = 35
+                label.Text = title
+                Grid.SetColumn(label, index)
+                header.Children.Add(label)
+            for index, size in enumerate(sizes):
+                panel = grid()
+                label = TextBlock()
+                label.Text = unicode(index + 1)
+                label.VerticalAlignment = VerticalAlignment.Center
                 panel.Children.Add(label)
-                boxes = []
-                for key in ('width_mm', 'height_mm'):
+                uid = size.get('tray_type_uid') or self.values.get('tray_type_uid', '')
+                element = doc.GetElement(uid) if uid else None
+                button = Button()
+                caption = TextBlock()
+                caption.Text = fire_boxes.type_name(element) if element is not None else tr(u'Выбрать тип…', u'Choose type…')
+                caption.TextTrimming = TextTrimming.CharacterEllipsis
+                button.Content = caption
+                button.ToolTip = fire_boxes.type_label(element) if element is not None else caption.Text
+                button.Padding = Thickness(5)
+                button.Margin = Thickness(0, 0, 6, 0)
+                Grid.SetColumn(button, 1)
+                panel.Children.Add(button)
+                row = dict(uid=uid, button=button, caption=caption)
+                button.Click += lambda s, e, r=row: self.pick_row_type(r)
+                for column_index, key in enumerate(('width_mm', 'height_mm'), 2):
                     box = TextBox()
                     box.Text = unicode(size[key])
-                    box.Width = 145
-                    box.Margin = Thickness(0, 0, 8, 0)
+                    box.Margin = Thickness(0, 0, 6, 0)
                     box.Padding = Thickness(5)
                     box.TextChanged += self.refresh
+                    Grid.SetColumn(box, column_index)
                     panel.Children.Add(box)
-                    boxes.append(box)
-                self.rows.append(boxes)
-                self.row_panel.Children.Add(panel)
+                    row[key] = box
+                remove = Button()
+                remove.Content = u'×'
+                remove.ToolTip = tr(u'Удалить лоток', u'Remove tray')
+                remove.IsEnabled = len(sizes) > 1
+                remove.Click += lambda s, e, n=index: self.remove_row(n)
+                Grid.SetColumn(remove, 4)
+                panel.Children.Add(remove)
+                self.rows.append(row)
+
+        def pick_row_type(self, row):
+            options = fire_boxes.type_options(doc, 'tray')
+            choice = select_list.SelectFromList.show(sorted(options), multiselect=False,
+                          title=tr(u'Тип этого лотка', u'Type of this tray'))
+            if choice:
+                row['uid'] = options[choice].UniqueId
+                row['caption'].Text = fire_boxes.type_name(options[choice])
+                row['button'].ToolTip = choice
+                self.refresh(None, None)
 
         def read(self):
             values = copy.deepcopy(self.values)
@@ -207,121 +252,87 @@ def show(doc, values=None, preview_path=None):
             values['arrangement'] = 'vertical' if self.arrangement.SelectedIndex == 0 else 'horizontal'
             for key, box in self.boxes.items():
                 values[key] = box.Text.strip() if key.endswith('_param') else core.number(box.Text, minimum=-1000000 if key == 'elevation_mm' else 0)
-            values['trays'] = [dict(width_mm=core.number(w.Text, positive=True),
-                                   height_mm=core.number(h.Text, positive=True)) for w, h in self.rows]
+            values['trays'] = [dict(width_mm=core.number(row['width_mm'].Text, positive=True),
+                                   height_mm=core.number(row['height_mm'].Text, positive=True),
+                                   tray_type_uid=row['uid']) for row in self.rows]
             return values
 
-        def change_count(self, sender, event):
+        def set_rows(self, sizes):
+            self.loading = True
             try:
-                value = core.number(self.count_box.Text, minimum=1)
-                if value != int(value) or value > 32:
-                    raise ValueError()
-                sizes = self.read()['trays']
-                while len(sizes) < int(value):
-                    sizes.append(dict(sizes[-1]))
-                self.loading = True
-                self.rebuild_rows(sizes[:int(value)])
+                self.rebuild_rows(sizes)
+            finally:
                 self.loading = False
-                self.refresh(None, None)
-            except Exception:
-                forms.alert(tr(u'Укажите целое количество от 1 до 32 и положительные размеры.',
-                               u'Enter an integer count from 1 to 32 and positive dimensions.'))
+            self.refresh(None, None)
+
+        def add_row(self, sender, event):
+            try:
+                sizes = self.read()['trays']
+                if len(sizes) >= 32:
+                    raise ValueError(tr(u'Максимум 32 лотка.', u'Maximum 32 trays.'))
+                sizes.append(dict(sizes[-1]))
+                self.set_rows(sizes)
+            except Exception as exc:
+                forms.alert(unicode(exc))
+
+        def remove_row(self, index):
+            try:
+                sizes = self.read()['trays']
+                if len(sizes) > 1:
+                    del sizes[index]
+                    self.set_rows(sizes)
+            except Exception as exc:
+                forms.alert(unicode(exc))
 
         def refresh(self, sender, event):
             if self.loading:
                 return
             try:
                 values = self.read()
-                section = core.layout(values)
+                section = core.mounting_section(values)
                 summary = (tr(u'Короб: {:.0f} × {:.0f} мм\nПространство для кабелей: {:.0f} × {:.0f} мм',
                               u'Enclosure: {:.0f} × {:.0f} mm\nCable space: {:.0f} × {:.0f} mm')
                            if values['product'] == 'FIREBOX' else
-                           tr(u'Короб: {:.0f} × {:.0f} мм\nВнутри: {:.0f} × {:.0f} мм',
-                              u'Enclosure: {:.0f} × {:.0f} mm\nInside: {:.0f} × {:.0f} mm'))
+                           tr(u'Короб: {:.0f} × {:.0f} мм\nВ свету: {:.0f} × {:.0f} мм',
+                              u'Enclosure: {:.0f} × {:.0f} mm\nClear interior: {:.0f} × {:.0f} mm'))
                 self.summary.Text = summary.format(
                                            float(section['width']), float(section['height']),
-                                           float(section['inner_width']), float(section['inner_height']))
+                                           float(section['cavity_width']), float(section['cavity_height']))
                 caption = (tr(u'FIREBOX: выделено внутреннее пространство для кабелей.\n',
                               u'FIREBOX: the highlighted interior is cable space.\n')
                            if values['product'] == 'FIREBOX' else
-                           tr(u'ОСК: показаны открытые сечения внутренних лотков. Номера соответствуют строкам слева.\n',
-                              u'OSK: open internal tray sections are shown. Numbers match the rows on the left.\n'))
+                           tr(u'ОСК: позиции и размеры лотков совпадают с построением в модели.\n',
+                              u'OSK: tray positions and dimensions match model placement.\n'))
                 self.explanation.Text = caption + tr(
-                    u'Размеры короба — по калькулятору 2Ф. Для ОСК учтены суммарные прибавки калькулятора; это не толщина стенок. '
-                    u'Зазоры задаются проектом, значение 0 не означает разрешение монтажа вплотную.\n'
-                    u'Рисование: укажите точки оси на плане, Esc завершает трассу. Соединительные детали берутся из настроек выбранного типа.',
-                    u'Enclosure dimensions follow the 2F calculator. OSK uses total calculator allowances, not wall thickness. '
-                    u'Clearances are project inputs; zero does not approve installation without a gap.\n'
-                    u'Draw: pick axis points in plan; Esc ends the route. Fittings use the selected type routing settings.')
-                self.draw(section, values['product'])
-            except Exception:
-                self.summary.Text = tr(u'Проверьте размеры и огнестойкость.', u'Check dimensions and fire resistance.')
+                    u'Габарит — по калькулятору 2Ф. Стенки, каркас и траверсы ОСК-90/180 — по АТР. '
+                    u'* Отступы шпилек и высота подвеса уточняются проектом. Подвесы показаны на схеме и не создаются в модели.',
+                    u'Overall dimensions follow the 2F calculator. OSK-90/180 walls, frame and crossbars follow the ATR. '
+                    u'* Rod insets and suspension height are project inputs. Supports are previewed and are not created in the model.')
+                if section['mounting_supported']:
+                    self.explanation.Text += u'\n' + tr(u'АТР ОСК-{}, лист {}. Стенка: {:g} мм. Траверса: 30×30 мм.',
+                        u'ATR OSK-{}, sheet {}. Wall: {:g} mm. Crossbar: 30×30 mm.').format(values['rating'], section['source_sheet'], float(section['wall']))
+                if values['product'] == 'OSK' and not section['mounting_supported']:
+                    self.explanation.Text += u'\n' + tr(u'Для ОСК-240 в приложенных АТР нет схемы подвесов и толщины стенки.',
+                                                        u'The attached ATRs do not specify OSK-240 suspension or wall thickness.')
+                if section['middle_rod_missing']:
+                    self.explanation.Text += u'\n' + tr(u'Широкий короб: дополнительная шпилька пересекает лотки. Нужно проектное решение подвеса.',
+                                                        u'Wide enclosure: an extra rod would intersect trays. A designed suspension solution is needed.')
+                if values['product'] == 'OSK' and values['rating'] == 180 and section['top_clear'] < 100:
+                    self.explanation.Text += u'\n' + tr(u'До крышки менее рекомендованных АТР 100 мм.', u'Less than the 100 mm lid clearance recommended by the ATR.')
+                from lowlife.fire_boxes_diagram import draw
+                draw(self.diagram, values, section)
+            except Exception as exc:
+                self.summary.Text = tr(u'Проверьте сечение:\n{}', u'Check cross-section:\n{}').format(exc)
                 self.diagram.Children.Clear()
-
-        def draw(self, section, product):
-            self.diagram.Children.Clear()
-            scale = min(400.0 / section['width'], 290.0 / section['height'])
-            cx, cy = 280, 225
-
-            def rectangle(x, y, w, h, stroke, fill):
-                item = Rectangle()
-                item.Width, item.Height = w * scale, h * scale
-                item.Stroke, item.Fill, item.StrokeThickness = stroke, fill, 2
-                Canvas.SetLeft(item, cx + (x - w / 2) * scale)
-                Canvas.SetTop(item, cy - (y + h / 2) * scale)
-                self.diagram.Children.Add(item)
-
-            def text(x, y, value):
-                item = TextBlock()
-                item.Text, item.FontSize = value, 14
-                Canvas.SetLeft(item, x)
-                Canvas.SetTop(item, y)
-                self.diagram.Children.Add(item)
-
-            def tray(row):
-                left = cx + (row['x'] - row['width'] / 2) * scale
-                right = left + row['width'] * scale
-                top = cy - (row['z'] + row['height'] / 2) * scale
-                bottom = top + row['height'] * scale
-                # The open top distinguishes a tray from a cable-space block.
-                for x1, y1, x2, y2 in [(left, top, left, bottom),
-                                       (left, bottom, right, bottom),
-                                       (right, bottom, right, top)]:
-                    edge = Line()
-                    edge.X1, edge.Y1, edge.X2, edge.Y2 = x1, y1, x2, y2
-                    edge.Stroke, edge.StrokeThickness = Brushes.SteelBlue, 3
-                    self.diagram.Children.Add(edge)
-                text(cx + row['x'] * scale - 6, cy - row['z'] * scale - 10, unicode(row['index'] + 1))
-
-            def dimension(x1, y1, x2, y2, label):
-                item = Line()
-                item.X1, item.Y1, item.X2, item.Y2 = x1, y1, x2, y2
-                item.Stroke, item.StrokeThickness = Brushes.DimGray, 1
-                self.diagram.Children.Add(item)
-                text((x1 + x2) / 2 + 6, (y1 + y2) / 2 + 3, label)
-
-            rectangle(0, 0, section['width'], section['height'], Brushes.DarkOrange, Brushes.Bisque)
-            if product == 'FIREBOX':
-                rectangle(0, 0, section['inner_width'], section['inner_height'], Brushes.SteelBlue, Brushes.LightBlue)
-                text(30, 12, tr(u'Пространство для кабелей', u'Cable space'))
-                if section['inner_width'] * scale >= 100 and section['inner_height'] * scale >= 40:
-                    text(cx - 28, cy - 10, tr(u'Кабели', u'Cables'))
-            else:
-                rectangle(0, 0, section['inner_width'], section['inner_height'], Brushes.Gray, Brushes.WhiteSmoke)
-                for row in section['trays']:
-                    tray(row)
-                text(30, 12, u' | '.join(u'{}: {:g} × {:g}'.format(r['index'] + 1, float(r['width']), float(r['height'])) for r in section['trays'][:4]))
-            w, h = section['width'] * scale / 2, section['height'] * scale / 2
-            dimension(cx - w, cy + h + 24, cx + w, cy + h + 24, u'{:g} mm'.format(float(section['width'])))
-            dimension(cx + w + 15, cy - h, cx + w + 15, cy + h, u'{:g} mm'.format(float(section['height'])))
 
         def accept(self, sender, event):
             try:
-                value = core.number(self.count_box.Text, minimum=1)
-                if value != len(self.rows):
-                    raise ValueError(tr(u'Нажмите «Применить количество».', u'Click Apply count.'))
                 values = self.read()
                 cfg.validate(values)
+                for index, row in enumerate(values['trays']):
+                    uid = row.get('tray_type_uid')
+                    if not uid or doc.GetElement(uid) is None:
+                        raise ValueError(tr(u'Выберите тип для лотка №{}.', u'Select the type for tray #{}.').format(index+1))
                 box_type = doc.GetElement(values['box_type_uid'])
                 if box_type is None:
                     raise ValueError(tr(u'Выберите тип короба в этой модели.', u'Select an enclosure type in this model.'))

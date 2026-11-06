@@ -63,6 +63,10 @@ def type_label(element):
     return u'{} : {} [{}]'.format(family, name, eid(element.Id))
 
 
+def type_name(element):
+    return DB.Element.Name.GetValue(element) if element is not None else u''
+
+
 def type_options(doc, kind):
     types = []
     if kind in ('box', 'tray'):
@@ -392,12 +396,10 @@ def _junctions(curves, fittings, shifted):
     return nodes
 
 
-def add_trays(doc, elements, fallback, tray_type):
+def add_trays(doc, elements, fallback, tray_type=None):
     curves, fittings = resolve_route(elements)
     if not curves:
         raise ValueError(tr(u'Выберите короб или его соединительные детали.', u'Select an enclosure or its fittings.'))
-    if not isinstance(tray_type, CableTrayType):
-        raise ValueError(tr(u'Выберите тип внутренних лотков.', u'Select an internal tray type.'))
     configs = {}
     for key, curve in curves.items():
         if not isinstance(curve.Location.Curve, DB.Line):
@@ -410,6 +412,16 @@ def add_trays(doc, elements, fallback, tray_type):
         configs[key] = copy.deepcopy(metadata['settings'] if metadata else fallback)
         configs[key]['inside_flag_param'] = fallback['inside_flag_param']
         configs[key]['enclosure_note_param'] = fallback['enclosure_note_param']
+        for index, row in enumerate(configs[key]['trays']):
+            uid = row.get('tray_type_uid')
+            if not uid and index < len(fallback.get('trays', [])):
+                uid = fallback['trays'][index].get('tray_type_uid')
+            uid = uid or configs[key].get('tray_type_uid') or fallback.get('tray_type_uid') or (tray_type.UniqueId if tray_type is not None else '')
+            element_type = doc.GetElement(uid) if uid else None
+            if not isinstance(element_type, CableTrayType):
+                raise ValueError(tr(u'Выберите тип для лотка №{} в настройках.',
+                                    u'Select the type for tray #{} in settings.').format(index+1))
+            row['tray_type_uid'] = uid
         if metadata and metadata.get('tray_ids'):
             if any(doc.GetElement(uid) is not None for uid in metadata['tray_ids']):
                 raise ValueError(tr(u'В коробе {} уже созданы лотки. Повторная вставка остановлена.',
@@ -418,7 +430,8 @@ def add_trays(doc, elements, fallback, tray_type):
             raise ValueError(tr(u'Короб {} меньше расчётного сечения. Измените размеры или настройки.',
                                 u'Enclosure {} is smaller than the required section. Resize it or edit settings.').format(key))
     signature = lambda settings: (settings['product'], settings['rating'], settings['arrangement'],
-                                  settings['gap_mm'], settings['clearance_mm'], settings['trays'])
+                                  settings['gap_mm'], settings['clearance_mm'], settings['trays'],
+                                  settings.get('support_bottom_mm'))
     sample = configs[next(iter(configs))]
     if any(signature(c) != signature(sample) for c in configs.values()):
         raise ValueError(tr(u'Выберите короба с одинаковым составом лотков и огнестойкостью.',
@@ -427,6 +440,7 @@ def add_trays(doc, elements, fallback, tray_type):
     created, by_source = [], dict((key, []) for key in curves)
     section = core.layout(sample)
     for row in section['trays']:
+        row_type = doc.GetElement(row['tray_type_uid'])
         shifted = {}
         for key in curves:
             right, up = frames[key]
@@ -434,8 +448,8 @@ def add_trays(doc, elements, fallback, tray_type):
             actual_w, actual_h = dimensions(curves[key])
             if not core.section_fits_axes(row, right, up, coords(port.CoordinateSystem.BasisX),
                                           coords(port.CoordinateSystem.BasisY),
-                                          actual_w - section['allowance_width'],
-                                          actual_h - section['allowance_height']):
+                                          actual_w - (2*section['wall'] if section['wall'] is not None else section['allowance_width']),
+                                          actual_h - (2*section['wall'] if section['wall'] is not None else section['allowance_height'])):
                 raise ValueError(tr(u'В участке {} повёрнуто сечение короба: лотки выходят за внутренний габарит. Разделите трассу или выровняйте сечения.',
                                     u'Enclosure {} has a rolled cross-section: trays exceed its inner bounds. Split the run or align the sections.').format(key))
             offset = core.add(core.mul(right, row['x']/304.8), core.mul(up, row['z']/304.8))
@@ -448,7 +462,7 @@ def add_trays(doc, elements, fallback, tray_type):
                 raise ValueError(tr(u'Слишком короткий участок {} для выбранного расположения лотков.',
                                     u'Segment {} is too short for this tray arrangement.').format(key))
             level = source.ReferenceLevel
-            lane[key] = create_curve(doc, tray_type, None, level.Id, xyz(shifted[key][0]), xyz(shifted[key][1]), row['width'], row['height'])
+            lane[key] = create_curve(doc, row_type, None, level.Id, xyz(shifted[key][0]), xyz(shifted[key][1]), row['width'], row['height'])
             # Match cross-section roll (important for vertical enclosures).
             doc.Regenerate()
             port = connectors(lane[key])[0]
@@ -641,18 +655,11 @@ def run(doc, uidoc, action):
             selected = pick(uidoc)
             if not selected:
                 return
-            tray_type = None
             if action == 'add':
-                options = type_options(doc, 'tray')
-                current = doc.GetElement(settings['tray_type_uid']) if settings.get('tray_type_uid') else None
-                choice = select_list.SelectFromList.show(sorted(options), multiselect=False,
-                         title=tr(u'Тип лотков внутри короба', u'Internal tray type'),
-                         default=type_label(current) if current else None)
-                if not choice:
-                    return
-                tray_type = options[choice]
-                settings['tray_type_uid'] = tray_type.UniqueId
-                cfg.STORE.write(settings)
+                if any(not row.get('tray_type_uid') for row in settings['trays']):
+                    settings = fire_boxes_ui.show(doc, settings)
+                    if settings is None:
+                        return
             targets = mark_targets(doc, selected, settings) if action == 'mark' else None
             if targets is not None and not targets:
                 forms.alert(tr(u'Не найдены лотки и детали, полностью находящиеся в выбранном коробе.',
@@ -662,7 +669,7 @@ def run(doc, uidoc, action):
             transaction.Start()
             try:
                 if action == 'add':
-                    created = add_trays(doc, selected, settings, tray_type)
+                    created = add_trays(doc, selected, settings)
                 else:
                     created = targets
                     for element in created:

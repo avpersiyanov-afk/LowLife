@@ -16,6 +16,8 @@ except NameError:
 
 FIREBOX_WALLS = {90: 50, 150: 75, 180: 90, 240: 120}
 OSK_ALLOWANCES = {90: (260, 290), 180: (280, 290), 240: (310, 270)}
+# Attached ATR A2-OSK90 sheets 2-4,10; A1-OSK180 sheets 2-3,8.
+OSK_PANELS = {90: 25.0, 180: 70.0}
 
 
 def number(value, minimum=0, positive=False):
@@ -60,13 +62,88 @@ def layout(settings):
     for index, (w, h) in enumerate(sizes):
         x = cursor + w / 2 - width / 2 if direction == 'horizontal' else 0
         z = cursor + h / 2 - height / 2 if direction == 'vertical' else (h - height) / 2
-        placements.append(dict(index=index, x=x, z=z, width=w, height=h))
+        placements.append(dict(index=index, x=x, z=z, width=w, height=h,
+                               tray_type_uid=rows[index].get('tray_type_uid') or settings.get('tray_type_uid', '')))
         cursor += (w if direction == 'horizontal' else h) + gap
     inner_w, inner_h = width + 2 * clearance, height + 2 * clearance
     dw, dh = allowances(settings['product'], int(settings['rating']))
-    return dict(trays=placements, inner_width=inner_w, inner_height=inner_h,
+    section = dict(trays=placements, inner_width=inner_w, inner_height=inner_h,
                 width=inner_w + dw, height=inner_h + dh,
                 allowance_width=dw, allowance_height=dh)
+    wall = (OSK_PANELS.get(int(settings['rating'])) if settings['product'] == 'OSK'
+            else float(FIREBOX_WALLS[int(settings['rating'])]))
+    section['wall'] = wall
+    section['cavity_width'] = section['width'] - 2*wall if wall is not None else inner_w
+    section['cavity_height'] = section['height'] - 2*wall if wall is not None else inner_h
+    if settings['product'] == 'OSK' and wall is not None and 'support_bottom_mm' in settings:
+        bottom = number(settings['support_bottom_mm'])
+        if bottom == 0:
+            bottom = 80.0 if int(settings['rating']) == 90 else 50.0
+        minimum = 80.0 if int(settings['rating']) == 90 else 30.0
+        if bottom < minimum:
+            raise ValueError(tr(u'Под лотком нужно место для траверсы и каркаса: не менее {} мм.',
+                                u'Allow at least {} mm below the tray for the crossbar and frame.').format(minimum))
+        offset_z = -section['height']/2 + wall + bottom + clearance + height/2
+        for row in placements:
+            row['z'] += offset_z
+    section['tray_bottom'] = min(r['z'] - r['height']/2 for r in placements)
+    section['tray_top'] = max(r['z'] + r['height']/2 for r in placements)
+    section['bottom_clear'] = section['tray_bottom'] + section['cavity_height']/2
+    section['top_clear'] = section['cavity_height']/2 - section['tray_top']
+    section['side_clear'] = (section['cavity_width'] - width)/2
+    if section['top_clear'] < -0.001:
+        raise ValueError(tr(u'Лотки выходят за крышку короба: уменьшите нижний отступ.',
+                            u'Trays exceed the enclosure lid: reduce the bottom clearance.'))
+    return section
+
+
+def mounting_section(settings, section=None):
+    """Physical section used by BOTH preview and routing (millimetres).
+
+    Rod inset and ceiling gap are project choices; starred ATR dimensions are
+    not mandatory constants. No construction details are inferred for OSK240.
+    """
+    section = section or layout(settings)
+    supported = settings['product'] == 'OSK' and int(settings['rating']) in OSK_PANELS
+    result = dict(section, rods=[], crossbars=[], middle_rod_required=False,
+                  middle_rod_missing=False, mounting_supported=supported,
+                  ceiling_gap=number(settings.get('ceiling_gap_mm', 200)))
+    if not supported:
+        return result
+    if settings['arrangement'] == 'vertical' and len(section['trays']) > 1 and number(settings.get('gap_mm', 100)) < 30:
+        raise ValueError(tr(u'Между ярусами нужно не менее 30 мм для траверсы.',
+                            u'Allow at least 30 mm between tiers for a crossbar.'))
+    inset = number(settings.get('rod_inset_mm', 25), positive=True)
+    half_cavity = section['cavity_width']/2
+    left, right = -half_cavity + inset, half_cavity - inset
+    radius = 5.0  # M8/M10 envelope: use the larger diameter for clearance checks.
+    if left >= right:
+        raise ValueError(tr(u'Шпильки не помещаются в сечении.', u'The rods do not fit the cross-section.'))
+    def clear(x):
+        return all(x+radius <= r['x']-r['width']/2 or x-radius >= r['x']+r['width']/2
+                   for r in section['trays'])
+    if not clear(left) or not clear(right):
+        raise ValueError(tr(u'Шпилька пересекает лоток: измените отступ шпильки или компоновку.',
+                            u'A rod intersects a tray: change the rod inset or layout.'))
+    rods = [left, right]
+    threshold = 1200 if int(settings['rating']) == 90 else 1500
+    if section['width'] > threshold:
+        result['middle_rod_required'] = True
+        candidates = [0.0]
+        ordered = sorted(section['trays'], key=lambda row: row['x'])
+        candidates += [(a['x']+a['width']/2+b['x']-b['width']/2)/2 for a,b in zip(ordered,ordered[1:])]
+        candidates = [x for x in candidates if left+radius*2 < x < right-radius*2 and clear(x)]
+        if candidates:
+            rods.append(min(candidates, key=abs))
+        else:
+            result['middle_rod_missing'] = True
+    result['rods'] = sorted(rods)
+    result['crossbars'] = sorted(set(r['z']-r['height']/2 for r in section['trays']))
+    result['profile_height'] = 50.0 if int(settings['rating']) == 90 else 0.0
+    result['crossbar_height'] = 30.0
+    result['source_sheet'] = 10 if int(settings['rating']) == 90 else 8
+    result['rod_inset'] = inset
+    return result
 
 
 def fits(actual_width, actual_height, settings, tolerance=0.5):
