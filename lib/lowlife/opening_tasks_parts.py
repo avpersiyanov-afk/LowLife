@@ -44,35 +44,24 @@ def require_choice(project,value):
 def fetch(window,settings):
     """Capture scope in API context, perform network IO without accessing the model."""
     from lowlife import opening_tasks_journal as journal
-    from System.Threading import Thread, ThreadStart
-    from System import Action
+    from pnotes.ui import in_background
     project=settings['opening_project']
     scope=dict(project=project,role=window.role,model=window.model_uid)
     connection=journal.load_connection(project,window.role,window.model_uid)
     window.parts_loading=True
-    def worker():
-        values=None
-        try:
-            response=journal.request(connection,'catalog',scope)
-            values=sorted(set(v for v in response['parts'] if valid_label(v)))
-        except Exception:
-            pass
-        def done():
-            window.parts_loading=False
-            if values is not None:
-                data=store().read()
-                data.setdefault('catalogs',{})[project]=values
-                store().write(data,notify=False)
-            if not window.closed and window.project_code==project:
-                window.load_parts()
-        try:
-            window.Dispatcher.BeginInvoke(Action(done))
-        except Exception:
-            pass
-    thread=Thread(ThreadStart(worker))
-    thread.IsBackground=True
+    def work():
+        response=journal.request(connection,'catalog',scope,track=True)
+        return sorted(set(v for v in response['parts'] if valid_label(v)))
+    def done(values,error):
+        window.parts_loading=False
+        if error is None and values is not None:
+            data=store().read()
+            data.setdefault('catalogs',{})[project]=values
+            store().write(data,notify=False)
+        if not window.closed and window.project_code==project:
+            window.load_parts()
     try:
-        thread.Start()
+        in_background(window,work,done)
     except Exception:
         window.parts_loading=False
         raise

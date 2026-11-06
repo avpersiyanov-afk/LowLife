@@ -102,11 +102,11 @@ def snapshot(registry,project,role,model,title,rows=None):
     return value
 
 
-def request(connection, action, payload):
+def request(connection, action, payload, track=False):
     # Shared, proven .NET transport handles Google's redirect and Windows proxies.
     from pnotes.core import call
     return call(action,payload,url=connection['url'],token=connection['token'],
-                timeout_ms=25000,retries=0,track=False)
+                timeout_ms=25000,retries=0,track=track)
 
 
 def queue_store():
@@ -244,15 +244,17 @@ def setup(doc,role,project):
               WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
               <StackPanel Margin="20">
                 <TextBox x:Name="info" TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0" Margin="0,0,0,16"/>
-                <TextBlock Text="Google Apps Script URL"/>
+                <TextBlock x:Name="url_label"/>
                 <TextBox x:Name="url" Margin="0,6,0,12"/>
-                <TextBlock Text="Token"/>
+                <TextBlock x:Name="token_label"/>
                 <PasswordBox x:Name="token" Margin="0,6,0,18"/>
                 <Button x:Name="save" Padding="12,7"/>
               </StackPanel></Window>''',literal_string=True)
             self.Title=tr(u'Подключение журнала — persiyanov',u'Journal connection — persiyanov')
             self.info.Text=tr(u'Проект: {} | Роль: {}\nID модели: {}\nСоздайте токен для этих значений в меню Google-таблицы LowLife.',
                               u'Project: {} | Role: {}\nModel ID: {}\nCreate a token for these values in the Google sheet LowLife menu.').format(project,role,model)
+            self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')
+            self.token_label.Text=tr(u'Токен',u'Token')
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
             self.save.Click+=self.on_save
         def on_save(self,sender,event):
@@ -261,11 +263,31 @@ def setup(doc,role,project):
                 token=unicode(self.token.Password).strip()
                 if not token:
                     raise ValueError(tr(u'Введите токен подключения',u'Enter a connection token'))
-                result=request(dict(url=url,token=token),'status',dict(project=project,role=role,model=model))
-                save_connection(project,role,model,url,token,result.get('sheet_url',''))
-                self.token.Password=''
-                self.Close()
+                from pnotes.ui import in_background
+                self.save.IsEnabled=False
+                self.url.IsEnabled=False
+                self.token.IsEnabled=False
+                def work():
+                    return request(dict(url=url,token=token),'status',
+                                   dict(project=project,role=role,model=model),track=True)
+                def done(result,error):
+                    self.save.IsEnabled=True
+                    self.url.IsEnabled=True
+                    self.token.IsEnabled=True
+                    if error is not None:
+                        forms.alert(error)
+                        return
+                    try:
+                        save_connection(project,role,model,url,token,result.get('sheet_url',''))
+                        self.token.Password=''
+                        self.Close()
+                    except Exception as ex:
+                        forms.alert(unicode(ex))
+                in_background(self,work,done)
             except Exception as ex:
+                self.save.IsEnabled=True
+                self.url.IsEnabled=True
+                self.token.IsEnabled=True
                 forms.alert(unicode(ex))
     ConnectionWindow().ShowDialog()
 

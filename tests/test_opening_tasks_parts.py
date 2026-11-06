@@ -64,3 +64,32 @@ def test_merging_requires_same_part_even_for_one_physical_host():
     assert c.common_part([draft(),draft()])==''
     with pytest.raises(ValueError):c.common_part([draft(u'НЧ-1'),draft(u'ПЧ-1')])
     with pytest.raises(ValueError):c.common_part([draft(),draft(u'НЧ-1')])
+
+
+def test_catalog_reuses_background_helper_and_preserves_cache_on_error(tmp_path,monkeypatch):
+    import sys
+    from types import SimpleNamespace as NS
+    from lowlife import opening_tasks_journal as journal
+    monkeypatch.setenv('APPDATA',str(tmp_path))
+    callbacks=[]
+    monkeypatch.setitem(sys.modules,'pnotes.ui',NS(in_background=lambda w,work,done:callbacks.append((work,done))))
+    monkeypatch.setattr(journal,'load_connection',lambda *a:{'url':'url','token':'secret'})
+    network=[]
+    def request(connection,action,scope,track=False):
+        network.append((action,scope,track))
+        return {'parts':[u'НЧ-1',u'ПЧ-2',u'НЧ-1','invalid']}
+    monkeypatch.setattr(journal,'request',request)
+    updated=[]
+    window=NS(role='VIS',model_uid='model',project_code='P',parts_loading=False,
+              closed=False,load_parts=lambda:updated.append(True))
+    p.fetch(window,{'opening_project':'P'})
+    assert network==[] and window.parts_loading
+    work,done=callbacks.pop()
+    done(work(),None)
+    assert network==[('catalog',{'project':'P','role':'VIS','model':'model'},True)]
+    assert p.catalog('P')==[u'НЧ-1',u'ПЧ-2']
+    assert not window.parts_loading and updated==[True]
+    p.fetch(window,{'opening_project':'P'})
+    work,done=callbacks.pop()
+    done(None,'offline')
+    assert p.catalog('P')==[u'НЧ-1',u'ПЧ-2']

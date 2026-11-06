@@ -3074,3 +3074,7 @@ enters task JSON and level corrections participate in reissue detection.
 Opening box placement reuses level_assign.create_on_level / assign_by_param.
 Opening level rays reuse slab_marks.SlabProbe with optional sources/categories
 scope and floor_hits_below. Defaults for existing detector tools are unchanged.
+
+Opening task catalog loading and connection verification both reuse
+pnotes.ui.in_background. Attached requests are cancellable; the periodic
+journal sender remains detached and silent when windows close.
