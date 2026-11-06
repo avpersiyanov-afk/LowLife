@@ -242,6 +242,24 @@ def nearest_connector(element, point):
     return min(connectors(element), key=lambda c: c.Origin.DistanceTo(point))
 
 
+def align_tray_section(doc, element, start, end, target_up):
+    doc.Regenerate()
+    actual_up = connectors(element)[0].CoordinateSystem.BasisY
+    tangent = (end - start).Normalize()
+    angle = core.section_roll_angle(coords(tangent), coords(actual_up), target_up)
+    if abs(angle) <= 1e-7:
+        return
+    if abs(tangent.Z) < 1e-6:
+        # Revit reports this constraint only at Transaction.Commit, after rotate
+        # and Regenerate have appeared to succeed. Reject it before that point.
+        raise ValueError(tr(u'Сечение горизонтального короба повёрнуто вокруг оси. '
+                            u'Выровняйте ширину короба по горизонтали: Revit не допускает боковой наклон горизонтального лотка.',
+                            u'The horizontal enclosure cross-section is rolled. '
+                            u'Align its width horizontally: Revit does not allow a horizontal tray to tilt sideways.'))
+    DB.ElementTransformUtils.RotateElement(doc, element.Id,
+                                           DB.Line.CreateUnbound(start, tangent), angle)
+
+
 def join(doc, curves, point):
     """Pair the straight-through ports first, then branch ports for tees/crosses."""
     ports = [nearest_connector(el, point) for el in curves]
@@ -496,15 +514,7 @@ def add_trays(doc, elements, fallback, tray_type=None):
             level = source.ReferenceLevel
             lane[key] = create_curve(doc, row_type, None, level.Id, xyz(shifted[key][0]), xyz(shifted[key][1]), row['width'], row['height'])
             assign_workset(lane[key], workset_id)
-            # Match cross-section roll (important for vertical enclosures).
-            doc.Regenerate()
-            port = connectors(lane[key])[0]
-            target_up = xyz(frames[key][1])
-            actual_up = port.CoordinateSystem.BasisY
-            tangent = (xyz(shifted[key][1]) - xyz(shifted[key][0])).Normalize()
-            angle = math.atan2(tangent.DotProduct(actual_up.CrossProduct(target_up)), actual_up.DotProduct(target_up))
-            if abs(angle) > 1e-7:
-                DB.ElementTransformUtils.RotateElement(doc, lane[key].Id, DB.Line.CreateUnbound(xyz(shifted[key][0]), tangent), angle)
+            align_tray_section(doc, lane[key], xyz(shifted[key][0]), xyz(shifted[key][1]), frames[key][1])
             mark(lane[key], fallback)
             created.append(lane[key])
             by_source[key].append(lane[key].UniqueId)

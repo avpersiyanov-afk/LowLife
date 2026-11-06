@@ -205,6 +205,19 @@ def frame(start, end):
     return right, up
 
 
+def section_roll_angle(tangent, actual_up, target_up):
+    """Align rectangular section axes, which are equivalent modulo 180 degrees.
+
+    Revit connector axes may point opposite to the section's up direction.
+    Their sign alone must never turn an upright tray upside down.
+    """
+    actual_up, target_up = unit(actual_up), unit(target_up)
+    if dot(actual_up, target_up) < 0:
+        actual_up = mul(actual_up, -1)
+    return math.atan2(dot(unit(tangent), cross(actual_up, target_up)),
+                      dot(actual_up, target_up))
+
+
 def line_intersection(a, da, b, db, tolerance=1.0):
     """Intersection of 3D infinite lines, refusing skew/parallel lines."""
     da, db = unit(da), unit(db)

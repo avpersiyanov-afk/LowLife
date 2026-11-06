@@ -113,6 +113,22 @@ def test_rolled_enclosure_cannot_hide_out_of_bounds_tray():
     assert not core.section_fits_axes(row, (1,0,0),(0,1,0),(0,1,0),(1,0,0),300,200)
 
 
+@pytest.mark.parametrize('tangent', [(1,0,0),(-1,0,0),(0,1,0),(0,-1,0)])
+@pytest.mark.parametrize('sign', [-1, 1])
+def test_horizontal_tray_connector_sign_never_causes_a_half_turn(tangent, sign):
+    assert core.section_roll_angle(tangent, (0,0,sign), (0,0,1)) == pytest.approx(0)
+
+
+def test_vertical_tray_still_aligns_a_genuinely_rotated_section():
+    assert abs(core.section_roll_angle((0,0,1), (1,0,0), (0,1,0))) == pytest.approx(math.pi/2)
+    assert abs(core.section_roll_angle((0,0,1), (-1,0,0), (0,1,0))) == pytest.approx(math.pi/2)
+
+
+def test_section_roll_uses_the_small_angle_near_a_half_turn():
+    angle = core.section_roll_angle((1,0,0), (0,math.sin(0.001),-math.cos(0.001)), (0,0,1))
+    assert abs(angle) == pytest.approx(0.001)
+
+
 def test_single_type_settings_migrate_to_rows_without_overwriting_types():
     old = dict(tray_type_uid='legacy', trays=[dict(width_mm=300,height_mm=100),
                dict(width_mm=200,height_mm=50,tray_type_uid='explicit')])
