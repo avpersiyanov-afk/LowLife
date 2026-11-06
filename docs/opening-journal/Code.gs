@@ -4,7 +4,7 @@
  */
 const LL = {
   ledger: 'Публикации', blobs: 'Снимки JSON',
-  overview: 'Обзор', tasks: 'Задания', replies: 'Ответы КР АР', working: 'Контроль в Revit', history: 'История',
+  gip: 'ГИП', overview: 'Обзор', tasks: 'Задания', replies: 'Ответы КР АР', working: 'Контроль в Revit', history: 'История',
   maxPayload: 1500000, chunk: 40000
 };
 
@@ -231,6 +231,94 @@ function objectTab_(project) {
   const clean=String(project).replace(/[\\/?:*\[\]]/g,'_').trim().slice(0,65) || 'Без имени';
   return 'Объект '+clean+' '+sha_(String(project)).slice(0,8);
 }
+function gipRows_(snapshots,answers) {
+  const groups=Object.create(null);
+  const key=t=>JSON.stringify([t.project,t.discipline || '',t.recipient || 'KR']);
+  const max=(a,b)=>a && b ? (a>b ? a : b) : (a || b || '');
+  const min=(a,b)=>a && b ? (a<b ? a : b) : (a || b || '');
+  const activity=Object.create(null);
+  function remember(g,d) {
+    if (d.at && (!g.lastDecision || d.at>=g.lastDecision)) {
+      g.lastDecision=d.at;g.lastDecisionAuthor=d.author || '';
+    }
+    if (d.status==='accepted') g.lastAccept=max(g.lastAccept,d.at);
+    if (d.status==='rejected' && d.at && (!g.lastRemark || d.at>=g.lastRemark)) {
+      g.lastRemark=d.at;g.lastRemarkAuthor=d.author || '';g.lastRemarkText=d.comment || '';
+    }
+  }
+  snapshots.forEach(({s})=>s.decisions.forEach(d=>Object.keys(d.revisions).forEach(k=>{
+    const id=JSON.stringify([s.project,s.role,s.model,k]);
+    if (!activity[id]) activity[id]={};
+    remember(activity[id],d);
+  })));
+  function group(t) {
+    const k=key(t);
+    if (!groups[k]) groups[k]={project:t.project,discipline:t.discipline || '',role:t.recipient || 'KR',
+      active:0,accepted:0,remarks:0,review:0,withdrawPending:0,first:'',last:'',
+      lastAccept:'',lastRemark:'',lastDecision:'',completeAt:'',visPublished:'',replyPublished:''};
+    return groups[k];
+  }
+  snapshots.forEach(({row,s})=>{
+    Object.values(s.tasks).forEach(t=>{
+      const g=group(t),taskKey=t.source_model+'/'+t.task_id;
+      const lookup=JSON.stringify([t.project,t.recipient || 'KR',t.geometry.host_model,taskKey]);
+      const a=answers[lookup];
+      const r=a ? a.receipt : null,current=!!r && r.revisions[taskKey]===t.revision;
+      g.visPublished=max(g.visPublished,row[0]);
+      if (a) {
+        g.replyPublished=max(g.replyPublished,a.at);
+        remember(g,r);
+      }
+      if (t.status==='withdrawn') {
+        if (!(current && r.status==='withdrawn')) g.withdrawPending++;
+      } else {
+        g.active++;
+        const verified=current && r.status==='accepted' && a.observed && a.observed.exists && a.observed.matches;
+        if (verified) {
+          g.accepted++;
+          g.completeAt=max(g.completeAt,r.at);
+        } else if (current && r.status==='rejected') {
+          g.remarks++;
+        }
+        if (current && r.status==='accepted' && !verified) g.review++;
+        g.first=min(g.first,t.created_at || t.issued_at);
+        g.last=max(g.last,t.issued_at);
+      }
+      // Preindexed activity avoids rescanning all receiver histories per task.
+      const past=activity[lookup];
+      if (past) {
+        if (past.lastDecision && past.lastDecision>=g.lastDecision) {
+          g.lastDecision=past.lastDecision;g.lastDecisionAuthor=past.lastDecisionAuthor;
+        }
+        g.lastAccept=max(g.lastAccept,past.lastAccept);
+        if (past.lastRemark && (!g.lastRemark || past.lastRemark>=g.lastRemark)) {
+          g.lastRemark=past.lastRemark;g.lastRemarkAuthor=past.lastRemarkAuthor;g.lastRemarkText=past.lastRemarkText;
+        }
+      }
+    });
+    s.issues.forEach(i=>{
+      if (i.action==='withdraw') return;
+      i.tasks.forEach(t=>{
+        const g=group(t);
+        g.first=min(g.first,i.at || t.issued_at);
+        g.last=max(g.last,i.at || t.issued_at);
+      });
+    });
+  });
+  return Object.keys(groups).sort().map(k=>{
+    const g=groups[k];
+    const complete=g.active>0 && g.accepted===g.active && !g.withdrawPending;
+    const state=complete ? 'Все отверстия приняты' :
+      g.remarks ? 'Есть замечания' : g.review ? 'Требуется проверка проёмов' :
+      g.withdrawPending ? 'Есть неотработанные отзывы' :
+      !g.active ? 'Нет действующих заданий' : 'На рассмотрении';
+    return [g.project,g.discipline,g.role,state,g.active,g.accepted,
+      g.active-g.accepted-g.remarks,g.remarks,g.review,g.withdrawPending,
+      g.first,g.last,g.lastAccept,g.lastRemark,g.lastDecision,complete ? g.completeAt : '',
+      g.visPublished,g.replyPublished,g.lastDecisionAuthor || '',g.lastRemarkAuthor || '',
+      String(g.lastRemarkText || '').slice(0,250)];
+  });
+}
 function rebuild_(ss) {
   const all=ledger_(ss),latest={};
   all.forEach(r=>{latest[scope_({project:r[1],role:r[2],model:r[3]})]=r;});
@@ -243,6 +331,11 @@ function rebuild_(ss) {
         observed:(s.observations || {})[k]};
     });
   });
+  project_(ss,LL.gip,['Объект','Дисциплина','Получатель','Состояние','Действующих заданий',
+    'Принято актуальных','Требуют рассмотрения','Замечаний','Проёмы требуют проверки','Неотработанных отзывов',
+    'Первая выдача','Последняя выдача','Последнее принятие','Последнее замечание','Последнее решение',
+    'Все отверстия приняты — дата','Публикация ВИС','Публикация КР/АР',
+    'Автор последнего решения','Автор последнего замечания','Последнее замечание — кратко'],gipRows_(snapshots,answers));
   const overview=[];
   snapshots.forEach(({row,s})=>{
     Object.values(s.tasks).forEach(t=>{
