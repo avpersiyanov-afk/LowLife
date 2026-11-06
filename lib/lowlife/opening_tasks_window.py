@@ -45,7 +45,18 @@ class Handler(IExternalEventHandler):
             settings_form=cfg.make(w.role)
             settings=settings_form.get_settings_silent()
             settings_form.require(settings,['opening_project'])
-            if action=='structures':
+            if action in ('kr_plans','kr_sections'):
+                from lowlife.opening_tasks_kr_views import build
+                from pyrevit import revit, script
+                with revit.Transaction(tr(u'Виды контроля КР',u'KR control views')):
+                    views=build(w.document,settings['opening_project'],
+                                'plans' if action=='kr_plans' else 'sections',
+                                [row['record'] for row in rows] if rows else None)
+                for view in views:
+                    script.get_output().print_md(u'- {}: {}'.format(view.Name,script.get_output().linkify(view.Id)))
+                forms.alert(tr(u'Создано/обновлено видов: {}. Ссылки — в окне вывода.',
+                               u'Views created/updated: {}. See output links.').format(len(views)))
+            elif action=='structures':
                 from lowlife.opening_tasks_focus import run
                 run(structures=True)
             elif action=='control':
@@ -149,7 +160,9 @@ class TaskWindow(forms.WPFWindow):
         else:
             actions=[('show',tr(u'Показать конструкцию',u'Show host')),('accept',tr(u'Принять отдельно',u'Accept separately')),
                      ('merge',tr(u'Объединить',u'Merge')),('reject',tr(u'Замечание',u'Comment')),
-                     ('remove',tr(u'Отработать отзыв',u'Process withdrawal')),('structures',tr(u'Вид конструкций',u'Structural view'))]
+                     ('remove',tr(u'Отработать отзыв',u'Process withdrawal')),('structures',tr(u'Вид конструкций',u'Structural view')),
+                     ('kr_plans',tr(u'Планы плит',u'Slab plans')),
+                     ('kr_sections',tr(u'Разрезы стен',u'Wall sections'))]
         for action,label in actions:
             self.add(action,label)
         self.search.TextChanged+=lambda s,e:self.render()
