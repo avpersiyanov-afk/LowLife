@@ -1,0 +1,5 @@
+title_en: KR
+tooltip: Окно заданий на отверстия. Shift+клик — настройки.
+tooltip_en: Opening task interface. Shift+click for settings.
+engine:
+  persistent: true
