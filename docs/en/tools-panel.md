@@ -17,12 +17,14 @@ For a link element, its ID **in the linked file** is shown, not the ID of the li
 
 ## Dimension grids
 
-Dimensions the selected grids with one chain and an overall dimension.
+Automatically finds straight grids in the current model on the active plan by name mask. No selection is required.
 
-1. Select at least two grids (of the same direction) in the view.
-2. Press the button and pick a dimension type from the list.
+1. Open a plan. **Shift+click** to configure the grid name mask and dimension offsets.
+2. Press the button and choose a dimension type.
 
-The button builds a dimension chain between neighbouring grids at an offset of 1400 mm from the grid ends and, if there are three or more grids, an overall dimension from the first grid to the last — another 700 mm farther out.
+Masks match the full name without case sensitivity: `*` matches any characters, `?` one character, `[0-9]` a digit and `[А-Я]` a Russian letter. Separate alternatives with `;`: for example `[0-9]*;[А-Я]` for numeric names and single Russian letters, or `А/*` for names with the «А/» prefix. The default `*` includes all grids in the plan. Multiple masks combine the selection.
+
+A chain is created between neighbouring grids by position for each parallel direction. With three or more grids, the overall dimension spans the minimum and maximum names: 2 before 10, А/2 before А/10. Default offsets are 1400 mm from the visible grid ends for the chain and another 700 mm for the overall dimension. Angled directions are supported. Arc grids are skipped and counted in the result. Linked-model grids are not processed.
 
 ## Line length
 

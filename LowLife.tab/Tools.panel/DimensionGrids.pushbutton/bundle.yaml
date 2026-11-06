@@ -1,5 +1,8 @@
+title: Размеры осей
 tooltip: |
-  Образмеривает выбранные оси на виде
-title_en: "Dimension\ngrids"
+  Автоматически образмеривает оси активного плана по маске маркировки.
+  Shift+клик — маска и отступы размеров.
+title_en: Dimension grids
 tooltip_en: >-
-  Dimensions the selected grids in the view.
+  Automatically dimensions grids in the active plan by name mask.
+  Shift+click to configure the mask and dimension offsets.
