@@ -482,7 +482,8 @@ def add_trays(doc, elements, fallback, tray_type=None):
     signature = lambda settings: (settings['product'], settings['rating'], settings['arrangement'],
                                   settings['gap_mm'], settings['clearance_mm'], settings['trays'],
                                   settings.get('support_bottom_mm'), settings.get('wall_configuration', 'closed'),
-                                  settings.get('rod_inset_mm', 25), settings.get('rod_to_tray_mm'))
+                                  settings.get('rod_inset_mm', 25), settings.get('rod_to_tray_mm'),
+                                  settings.get('top_clearance_mm'))
     sample = configs[next(iter(configs))]
     if any(signature(c) != signature(sample) for c in configs.values()):
         raise ValueError(tr(u'Выберите короба с одинаковым составом лотков, огнестойкостью и конфигурацией стенок.',

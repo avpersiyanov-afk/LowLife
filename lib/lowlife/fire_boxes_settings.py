@@ -17,6 +17,7 @@ def defaults():
                 box_workset_name='', tray_workset_name='',
                 wall_configuration='closed',
                 rod_to_tray_mm=None,
+                top_clearance_mm=None,
                 trays=[dict(width_mm=300.0, height_mm=100.0, tray_type_uid='')])
 
 
