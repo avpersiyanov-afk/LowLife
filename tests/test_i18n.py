@@ -20,6 +20,22 @@ def appdata(tmpdir, monkeypatch):
     i18n._CACHE.update({"mtime": None, "lang": None})
 
 
+@pytest.mark.parametrize("role, russian, english", [
+    ("VIS", u"Задания ВИС", u"VIS tasks"),
+    ("KR", u"Задания КР", u"KR tasks"),
+    ("AR", u"Задания АР", u"AR tasks"),
+])
+def test_opening_settings_titles_follow_language(appdata, role, russian, english):
+    from lowlife import opening_tasks_settings
+
+    settings = opening_tasks_settings.make(role)
+    assert i18n.tr(settings.button_name) == russian
+    i18n.save(i18n.EN)
+    assert i18n.tr(settings.button_name) == english
+    i18n.save(i18n.RU)
+    assert i18n.tr(settings.button_name) == russian
+
+
 def test_russian_is_the_default(appdata):
     assert i18n.current() == i18n.RU
     assert i18n.tr(u"Цепи", u"Circuits") == u"Цепи"

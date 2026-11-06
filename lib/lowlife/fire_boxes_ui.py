@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """Resizable cross-section editor. All coordinates displayed in millimetres."""
-import copy
-from lowlife.i18n import tr
-from lowlife import fire_boxes_core as core, fire_boxes_settings as cfg
-
 try:
     unicode
 except NameError:
     unicode = str
+
+import copy
+from lowlife.i18n import tr
+from lowlife import fire_boxes_core as core, fire_boxes_settings as cfg
 
 
 def show(doc, values=None, preview_path=None, preview_tab=1):
