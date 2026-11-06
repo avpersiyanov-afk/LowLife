@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+"""Dedicated 3D preview. Linked geometry is shown via a structural-only KR view."""
+from System.Collections.Generic import List
+from Autodesk.Revit.DB import (BoundingBoxXYZ, BuiltInCategory, CategoryType, Color,
+    ElementId, FamilyInstance, FillPatternElement, FilteredElementCollector,
+    OverrideGraphicSettings, RevitLinkGraphicsSettings, LinkVisibility,
+    View3D, ViewFamily, ViewFamilyType, XYZ)
+from pyrevit import forms, revit
+from lowlife.i18n import tr
+from lowlife import select_list
+from lowlife import opening_tasks_revit as api
+from lowlife import opening_tasks_storage as store
+from lowlife.opening_tasks_views import unique_name
+
+STRUCTURES = ('OST_Walls','OST_Floors','OST_StructuralColumns','OST_StructuralFraming','OST_StructuralFoundation')
+
+
+def structural_categories():
+    return set(int(getattr(BuiltInCategory,n)) for n in STRUCTURES)
+
+
+def new_view(doc):
+    typ = next(t for t in FilteredElementCollector(doc).OfClass(ViewFamilyType) if t.ViewFamily==ViewFamily.ThreeDimensional)
+    return View3D.CreateIsometric(doc,typ.Id)
+
+
+def structures_view(doc):
+    view = next((v for v in FilteredElementCollector(doc).OfClass(View3D)
+                 if not v.IsTemplate and (store.read(v) or {}).get('role')=='structural_preview'),None)
+    if view is None:
+        view = new_view(doc)
+        view.Name = unique_name(doc,u'LowLife | Конструкции для просмотра заданий')
+    hidden=list(view.GetHiddenElementIds())
+    if hidden:
+        view.UnhideElements(List[ElementId](hidden))
+    allowed = structural_categories()
+    for cat in doc.Settings.Categories:
+        if view.CanCategoryBeHidden(cat.Id):
+            view.SetCategoryHidden(cat.Id,api.boxes._id_int(cat.Id) not in allowed)
+        if api.boxes._id_int(cat.Id) in allowed:
+            view.SetCategoryOverrides(cat.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
+    view.IsSectionBoxActive=False
+    store.write(view,dict(schema=1,role='structural_preview'))
+    return view
+
+
+def focus(doc, inst):
+    data = api.metadata(inst)
+    if not data or data.get('owner_uid')!=inst.UniqueId:
+        raise ValueError(tr(u'Выберите собственный бокс задания ВИС.',u'Select an original VIS task box.'))
+    source = doc.GetElement(data['source_uid'])
+    link = doc.GetElement(data['host_link_uid'])
+    if source is None or link is None or link.GetLinkDocument() is None:
+        raise ValueError(tr(u'Нет исходного элемента или загруженной связи КР.',u'Source element or loaded KR link is missing.'))
+    linked = link.GetLinkDocument()
+    structure = next((v for v in FilteredElementCollector(linked).OfClass(View3D)
+                      if not v.IsTemplate and (store.read(v) or {}).get('role')=='structural_preview'),None)
+    if structure is None:
+        raise ValueError(tr(u'В модели КР сначала выполните «Вид конструкций», сохраните модель и обновите связь в ВИС.',
+                            u'Run Structural view in KR, save the model and reload its link in VIS first.'))
+    registry=store.registry(doc)
+    previews=registry.setdefault('box_previews',{})
+    view=doc.GetElement(previews[inst.UniqueId]) if inst.UniqueId in previews else None
+    if view is not None and not isinstance(view,View3D):
+        raise ValueError(tr(u'Сохранённый вид имеет неверный тип.',u'Stored view has an invalid type.'))
+    if view is None:
+        view=new_view(doc)
+        view.Name=unique_name(doc,u'LowLife | Бокс '+str(api.boxes._id_int(inst.Id)))
+        previews[inst.UniqueId]=view.UniqueId
+    keep = set([inst.Id,source.Id,link.Id])
+    # The view belongs to this command: rebuild local isolation on every visit.
+    hidden=list(view.GetHiddenElementIds())
+    if hidden:
+        view.UnhideElements(List[ElementId](hidden))
+    others=[]
+    for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
+        if el.Id not in keep and el.Category is not None and el.CanBeHidden(view):
+            others.append(el.Id)
+    if others:
+        view.HideElements(List[ElementId](others))
+    linked_settings=RevitLinkGraphicsSettings()
+    linked_settings.LinkVisibilityType=LinkVisibility.ByLinkView
+    linked_settings.LinkedViewId=structure.Id
+    view.SetLinkOverrides(link.Id,linked_settings)
+    view.SetElementOverrides(link.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
+    blue=Color(30,100,240)
+    overrides=OverrideGraphicSettings().SetProjectionLineColor(blue).SetCutLineColor(blue).SetSurfaceTransparency(0)
+    solid=next((f.Id for f in FilteredElementCollector(doc).OfClass(FillPatternElement) if f.GetFillPattern().IsSolidFill),None)
+    if solid:
+        overrides.SetSurfaceForegroundPatternId(solid).SetSurfaceForegroundPatternColor(blue)
+        overrides.SetCutForegroundPatternId(solid).SetCutForegroundPatternColor(blue)
+    view.SetElementOverrides(inst.Id,overrides)
+    bounds=inst.get_BoundingBox(None)
+    if bounds is None:
+        raise ValueError(tr(u'У бокса нет габарита.',u'Box has no bounding geometry.'))
+    margin=api.boxes.ft(700)
+    crop=BoundingBoxXYZ()
+    crop.Min=bounds.Min.Subtract(XYZ(margin,margin,margin))
+    crop.Max=bounds.Max.Add(XYZ(margin,margin,margin))
+    view.SetSectionBox(crop)
+    view.IsSectionBoxActive=True
+    store.save_registry(doc,registry)
+    return view,crop
+
+
+def run(structures=False):
+    try:
+        if structures:
+            with revit.Transaction(tr(u'Вид конструкций КР',u'KR structural view')):
+                view=structures_view(revit.doc)
+            revit.uidoc.ActiveView=view
+            forms.alert(tr(u'Вид конструкций подготовлен. Сохраните КР и обновите связь в ВИС.',
+                           u'Structural view prepared. Save KR and reload its link in VIS.'))
+            return
+        drafts=[e for e in FilteredElementCollector(revit.doc).OfClass(FamilyInstance) if api.metadata(e)]
+        selected=[revit.doc.GetElement(i) for i in revit.uidoc.Selection.GetElementIds()]
+        inst=selected[0] if len(selected)==1 and api.metadata(selected[0]) else None
+        if inst is None:
+            options={u'{} | {}'.format(api.boxes._id_int(e.Id),api.metadata(e)['task_id']):e for e in drafts}
+            choice=select_list.SelectFromList.show(sorted(options),title=tr(u'Просмотр бокса в 3D',u'Box 3D preview'),multiselect=False)
+            if not choice:
+                return
+            inst=options[choice]
+        with revit.Transaction(tr(u'Просмотр бокса',u'Box preview')):
+            view,crop=focus(revit.doc,inst)
+        revit.uidoc.ActiveView=view
+        revit.uidoc.RefreshActiveView()
+        for ui in revit.uidoc.GetOpenUIViews():
+            if ui.ViewId==view.Id:
+                ui.ZoomToFit()
+                break
+    except Exception as ex:
+        forms.alert(tr(u'Не удалось подготовить просмотр: {}',u'Could not prepare preview: {}').format(ex))
