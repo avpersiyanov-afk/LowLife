@@ -1,0 +1,4 @@
+title: Нарисовать короб
+title_en: Draw enclosure
+tooltip: Построить короб FIREBOX или ОСК по точкам оси. Сечение, тип и огнестойкость задаются в настройках. Esc завершает трассу. Shift+клик — настройки.
+tooltip_en: Draw a FIREBOX or OSK enclosure by picking axis points. Configure section, type and fire resistance in settings. Esc finishes the route. Shift+click opens settings.

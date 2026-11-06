@@ -131,6 +131,10 @@ THEMES = {
         (u"SS1", u"SS1Easy"),
     ],
     u"КНК": [
+        (u"FireBoxes", u"DrawFireBox"),
+        (u"FireBoxes", u"AddInternalTrays"),
+        (u"FireBoxes", u"MarkInsideFireBox"),
+        (u"FireBoxes", u"FireBoxSettings"),
         (u"TrayLadder", u"TraySPZo"),
         (u"TrayLadder", u"TraySPZp"),
         (u"TrayLadder", u"TraySB"),
@@ -180,6 +184,10 @@ THEMES = {
         (u"Tools", u"FopParameters"),
     ],
     u"General": [
+        (u"FireBoxes", u"DrawFireBox"),
+        (u"FireBoxes", u"AddInternalTrays"),
+        (u"FireBoxes", u"MarkInsideFireBox"),
+        (u"FireBoxes", u"FireBoxSettings"),
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
         (u"Tools", u"ZoomToElement"),

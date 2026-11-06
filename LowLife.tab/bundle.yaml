@@ -27,6 +27,7 @@ layout:
   - TrayPerforated
   - TrayWire
   - TrayRoof
+  - FireBoxes
   - ToolsTraySection
   - Tools
   - FilterSelection

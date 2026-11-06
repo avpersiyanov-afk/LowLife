@@ -1911,6 +1911,7 @@
  "Общий разрез: ширина и глубина — по крайним элементам (+ отступы из настроек), направление взгляда — по первому выбранному, низ — самый нижний базовый уровень, верх — следующий этаж над самым верхним.": "Combined section: width and depth follow the outermost elements (plus the configured margins); view direction follows the first selected element; the bottom uses the lowest base level and the top uses the next floor above the highest element.",
  "Объекты на выбранном 3D-виде": "Objects in the selected 3D view",
  "Обычно не нужно: разрез смотрит на лицевую сторону семейства (для устройств на стене — со стороны помещения). Включите, если у ваших семейств лицевая сторона задана наоборот.": "Usually unnecessary: the section faces the front of the family (for wall-mounted devices, from the room side). Enable this if your families have their front defined the other way round.",
+ "Огнезащитные короба": "Fire enclosures",
  "Один оповещатель на лот — в прихожей (список помещений — в «Параметрах»). Не выбрано — квартиры не оснащаются.": "One speaker per lot — in the hallway (the list of rooms is in «Parameters»). Not chosen — apartments aren't equipped.",
  "Один разрез для всех элементов": "One section for all elements",
  "Ожидается «панель.шлейф.номер», например `3.1.2`. Эти устройства в шлейфы не попали:": "«panel.loop.number» is expected, for example `3.1.2`. These devices didn't get into loops:",
