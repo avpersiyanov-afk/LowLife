@@ -15,6 +15,12 @@ def make(role, doc=None):
         fields += [sc.ChoiceField('opening_increase', u'', u'Дополнительно по ЗНП',
                     [('none', u'Без увеличения'), ('auto', u'Автоматически'),
                      ('50', u'+50 мм'), ('100', u'+100 мм'), ('150', u'+150 мм')])]
+        fields += [sc.TextField(key, u'Фиксация выдачи', label, required=True)
+                   for key,label in [
+                       ('opening_status_param',u'Параметр статуса выдачи'),
+                       ('opening_issue_param',u'Параметр номера выпуска'),
+                       ('opening_revision_param',u'Параметр ревизии задания'),
+                       ('opening_date_param',u'Параметр даты выдачи')]]
         replacements = {
             'size_extra_mm': sc.NumberField('size_extra_mm', u'③ Размеры', u'Запас по EIR с каждой стороны, мм',
                                             hint=u'Запас добавляется к габариту элемента ВИС с каждой стороны.', default=50.0, minimum=0.0),

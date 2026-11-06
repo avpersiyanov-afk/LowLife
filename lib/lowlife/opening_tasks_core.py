@@ -59,6 +59,7 @@ def issue(registry, drafts, project, discipline, author, when):
     result = copy.deepcopy(registry)
     seen, changes = set(), []
     issue_id = guid()
+    issue_number = len(result['issues']) + 1
     for draft in drafts:
         tid = draft['task_id']
         if tid in seen:
@@ -73,7 +74,7 @@ def issue(registry, drafts, project, discipline, author, when):
             continue
         record = copy.deepcopy(draft)
         record.update(schema=VERSION, project=project, discipline=discipline, recipient='KR', status='issued',
-                      revision=old['revision']+1 if old else 1, issue_id=issue_id,
+                      revision=old['revision']+1 if old else 1, issue_id=issue_id, issue_number=issue_number,
                       created_at=old['created_at'] if old else when, issued_at=when, author=author)
         result['tasks'][tid] = record
         changes.append(record)

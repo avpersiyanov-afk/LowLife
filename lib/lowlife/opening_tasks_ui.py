@@ -114,6 +114,11 @@ def publish(settings):
     doc = revit.doc
     elements = selected_elements()
     drafts = api.prepare_drafts(doc,elements,settings)
+    registry = store.registry(doc)
+    with revit.Transaction(tr(u'Проверить статус выдачи',u'Check issue status')):
+        for inst,draft in zip(elements,drafts):
+            record = registry['tasks'].get(draft['task_id'])
+            api.visible_issue(inst,settings,record,bool(record and record['status']=='issued' and not core.geometry_equal(record['geometry'],draft['geometry'])))
     _registry, changes = core.issue(store.registry(doc),drafts,settings['opening_project'],
                                     settings['opening_discipline'],doc.Application.Username,api.now())
     if not changes:
@@ -259,7 +264,9 @@ def run(role, config_mode=False, action=None):
             settings_form.require(settings,['box_width_param','box_depth_param','box_height_param','box_host_filter_param'])
             place(settings)
         elif action=='issue':
+            settings_form.require(settings,['opening_status_param','opening_issue_param','opening_revision_param','opening_date_param'])
             publish(settings)
+
         elif action=='withdraw':
             withdraw(settings)
         elif action=='confirm':
