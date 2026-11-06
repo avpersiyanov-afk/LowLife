@@ -70,3 +70,14 @@ Native openings, UI and worksharing still require a Revit 2024 pilot on model co
 Actions are available inside role interfaces: VIS boxes, Issue to KR, Withdraw tasks, Confirm KR, KR inbox, Accept separately, Merge openings, KR comments, Process withdrawal.
 
 The ribbon now has VIS and KR modeless interfaces only. Search, status filters and multi-selection operate on a cached list. Actions use ExternalEvent and verify the active document; KR revisions are re-read before applying selected tasks. Refresh reloads current data. Settings are available inside each window and through Shift+click.
+
+## KR slab plans and wall sections
+
+The KR interface provides Slab plans for every level, with view ranges covering
+slabs containing accepted openings. Wall sections creates one full-wall section
+for each straight wall of the selected tasks, or all walls with accepted project
+openings when no rows are selected. These are native Revit sections, not Elevation
+views. Existing managed views are updated by UniqueId. If a wall rotates or moves
+behind the old section plane, delete the outdated section and run again. Accepted
+openings receive blue overrides; manually modified openings receive orange overrides,
+to the extent supported by native Opening graphics. Revit runtime validation is required.
