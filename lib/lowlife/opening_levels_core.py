@@ -4,14 +4,17 @@ from lowlife.i18n import tr
 
 
 def match_level(levels,name,elevation,tolerance=1.0/304.8):
-    at_elevation=[level for level in levels if abs(level['elevation']-elevation)<=tolerance]
-    exact=[level for level in at_elevation if level['name']==name]
-    if len(exact)==1:
-        return exact[0]
-    if not exact and len(at_elevation)==1:
-        return at_elevation[0]
-    raise ValueError(tr(u'Нет однозначного уровня текущей модели на отметке конструкции «{}». Проверьте уровни АР и корпуса.',
-                        u'No unique current-model level at the host elevation {}. Check architectural levels and buildings.').format(name or elevation))
+    if levels:
+        distance=min(abs(level['elevation']-elevation) for level in levels)
+        nearest=[level for level in levels
+                 if abs(abs(level['elevation']-elevation)-distance)<=tolerance]
+        if len(nearest)==1:
+            return nearest[0]
+        named=[level for level in nearest if level['name']==name]
+        if len(named)==1:
+            return named[0]
+    raise ValueError(tr(u'Нельзя однозначно выбрать ближайший уровень текущей модели к отметке конструкции «{}». Проверьте уровни и корпуса.',
+                        u'Cannot uniquely select the current-model level nearest to host elevation {}. Check levels and buildings.').format(name or elevation))
 
 
 def first_hit(hits,tolerance=1.0/304.8,allow_missing_level=False):
