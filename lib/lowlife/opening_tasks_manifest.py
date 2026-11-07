@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=19
+VERSION=20
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('refresh','settings','journal_setup','journal_open','parts_refresh')
@@ -36,6 +36,23 @@ ACTIONS={
         ('kr_sections',N_(u'Разрезы стен')),
     ),
 }
+
+
+# Ordered workflow groups; action identities and role permissions stay unchanged.
+ACTION_GROUPS={
+    'VIS': ((N_(u'Задания КР'),('place','issue','confirm')),
+            (N_(u'Задания АР'),('place_ar','issue_ar','confirm_ar')),
+            (N_(u'Контроль'),('focus','control','withdraw'))),
+    'KR': ((N_(u'Принятие'),('show','accept','merge','reject','remove')),
+           (N_(u'Виды'),('structures','kr_plans','kr_sections'))),
+    'AR': ((N_(u'Принятие'),('ar_show','ar_accept','ar_merge','ar_reject','ar_remove')),),
+}
+
+
+def action_groups(role):
+    return ACTION_GROUPS[validate_role(role)]+(
+        (N_(u'Обмен'),('refresh','journal_open')),
+        (N_(u'Настройки'),('settings','parts_refresh','journal_setup')))
 
 
 def validate_role(role):
