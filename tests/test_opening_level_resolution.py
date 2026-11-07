@@ -182,3 +182,15 @@ def test_link_level_with_different_ar_name_matches_by_transformed_elevation(monk
     r=resolver(monkeypatch,local,[target])
     result,info=r.resolve(NS(link=link(kr,100),host=kr.floors[0],kind='floor'))
     assert result is target and info['elevation_mm']==pytest.approx(100*304.8)
+
+
+def test_floor_kr_elevation_maps_to_nearest_ar_level_with_offset(monkeypatch):
+    kr_level=Level('kr-level','KR structural',9.5)
+    kr=document([kr_level],[Floor('slab','kr-level',10)],'KR')
+    target=Level('AR-storey','AR storey',110)
+    local=document([target],[],'VIS')
+    r=resolver(monkeypatch,local,[target,Level('AR-other','AR other',100)])
+    result,info=r.resolve(NS(link=link(kr,100),host=kr.floors[0],kind='floor'))
+    assert result is target
+    assert info['elevation_mm']==pytest.approx(109.5*304.8)
+    assert info['support_uid']=='slab'

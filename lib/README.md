@@ -3075,9 +3075,10 @@ uses the shared params.read_project_parameter reader and its own parameter setti
 
 Shared box-level resolver for VIS/KR/AR tasks and tray boxes. Pierced floor level
 or downward solid intersection with floors/foundations from the same selected source.
-Name and transformed project-elevation matching, then unique current-model elevation
-matching for differently named KR/AR levels. Unassigned support levels use the actual
-surface hit elevation. No nearest-level fallback; ambiguous same-elevation levels fail.
+Nearest current-model level to the transformed host project elevation, including
+AR levels with differing names/elevations. Unassigned support levels use the actual
+surface hit elevation. Equal-distance candidates prefer a unique matching name;
+unresolved ties fail. The opening height never replaces the host elevation.
 Checks and updates actual instance level while preserving position; provenance
 enters task JSON and level corrections participate in reissue detection.
 
