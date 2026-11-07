@@ -237,3 +237,26 @@ def test_saved_discipline_is_returned_with_shared_credentials(monkeypatch):
     monkeypatch.setattr(j,'connection_value',lambda *a:value)
     monkeypatch.setattr(j,'crypt',lambda *a:'token')
     assert j.load_connection('P','VIS','model')['discipline']==u'ВК'
+
+
+def test_department_is_discovered_from_token_without_user_role_or_discipline(monkeypatch):
+    captured=[]
+    def request(connection,action,payload,track=False):
+        captured.append((action,payload,track))
+        return dict(department=u'ОВиК',role='VIS',credential_scope='group',sheet_url='sheet')
+    monkeypatch.setattr(j,'request',request)
+    value=j.discover_connection('https://script.google.com/macros/s/d/exec','secret',track=True)
+    assert captured==[('connect',{},True)]
+    assert value['department']==value['discipline']==u'ОВиК'
+    with pytest.raises(ValueError):
+        j.discover_connection('https://script.google.com/macros/s/d/exec','secret',role='KR')
+
+
+def test_discovery_rejects_unknown_department_and_legacy_scope_mismatch(monkeypatch):
+    response=dict(department=u'ВК',role='VIS',credential_scope='project_group',project='P')
+    monkeypatch.setattr(j,'request',lambda *a,**kw:dict(response))
+    url='https://script.google.com/macros/s/d/exec'
+    assert j.discover_connection(url,'token',role='VIS',project='P')['department']==u'ВК'
+    with pytest.raises(ValueError):j.discover_connection(url,'token',role='VIS',project='OTHER')
+    response.update(department='UNKNOWN')
+    with pytest.raises(ValueError):j.discover_connection(url,'token')

@@ -25,13 +25,14 @@ function setupJournal() {
   const ss=SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) fail_('USE_BOUND_SCRIPT');
   props_().setProperties({ADMIN_EMAIL:email,SPREADSHEET_ID:ss.getId()});
-  init_(ss);
+  const lock=LockService.getScriptLock();lock.waitLock(10000);
+  try { init_(ss);rebuild_(ss); } finally { lock.releaseLock(); }
   onOpen();
 }
 function onOpen() {
   if (Session.getActiveUser().getEmail()!==props_().getProperty('ADMIN_EMAIL')) return;
   SpreadsheetApp.getUi().createMenu('LowLife')
-    .addItem('Выдать токен группы','issueGroupToken')
+    .addItem('Выдать токен отдела','issueDepartmentToken')
     .addItem('Отозвать токен','revokeModelToken')
     .addItem('Восстановить представления журнала','rebuildJournal').addToUi();
 }
@@ -46,24 +47,27 @@ function disciplineCode_(value) {
   const code=String(value || '').trim().toUpperCase();
   return ['ОВИК','ОК'].includes(code) ? 'ОВиК' : code;
 }
-function issueGroupToken() {
+function departmentRole_(department) {
+  return {'ОВиК':'VIS','ВК':'VIS','ЭОМ':'VIS','СС':'VIS','АК':'VIS','КР':'KR','АР':'AR'}[department];
+}
+function issueDepartmentToken() {
   admin_();
-  const group=prompt_('Название команды/группы (например отдел ОВиК; только метка)');
-  const discipline=disciplineCode_(prompt_('Дисциплина: ОВиК, ВК, ЭОМ, СС, АК, КР или АР'));
-  const roles={'ОВиК':'VIS','ВК':'VIS','ЭОМ':'VIS','СС':'VIS','АК':'VIS','КР':'KR','АР':'AR'};
-  const role=roles[discipline];
+  const department=disciplineCode_(prompt_('Отдел: ОВиК, ВК, ЭОМ, СС, АК, КР или АР'));
+  const role=departmentRole_(department);
   if (!role) fail_('INVALID_ROLE');
+  const group=department,discipline=department;
   const token=Utilities.getUuid()+Utilities.getUuid();
   const id=sha_(token);
-  props_().setProperty('TOKEN_'+id,JSON.stringify({group,role,discipline}));
+  props_().setProperty('TOKEN_'+id,JSON.stringify({department,group,role,discipline}));
   // The raw token is shown once; only its digest remains on the server.
   const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(
-    '<p>Скопируйте токен и передайте участникам группы отдельно. Он показан один раз.</p>'+
+    '<p>Скопируйте токен и передайте сотрудникам отдела отдельно. Он показан один раз.</p>'+
     '<textarea readonly style="width:95%;height:70px">'+esc(token)+'</textarea>'+
-    '<p>ID для отзыва: <code>'+id+'</code></p>'),'Токен группы '+group);
+    '<p>ID для отзыва: <code>'+id+'</code></p>'),'Токен отдела '+department);
 }
-function issueModelToken() { return issueGroupToken(); }
+function issueGroupToken() { return issueDepartmentToken(); }
+function issueModelToken() { return issueDepartmentToken(); }
 function revokeModelToken() {
   admin_();
   const id=prompt_('Полный ID токена (SHA-256)');
@@ -86,7 +90,7 @@ function sheet_(ss,name,headers) {
 }
 function init_(ss) {
   sheet_(ss,LL.parts,['Шифр объекта','Часть (НЧ/ПЧ)','Корпус/секция','Использовать']);
-  const headers=['Время сервера UTC','Проект','Роль','ID модели','Версия публикации','SHA256','Снимок','Частей','Группа/владелец токена','Пользователь Revit','Пользователь Windows'];
+  const headers=['Время сервера UTC','Проект','Роль','ID модели','Версия публикации','SHA256','Снимок','Частей','Отдел','Пользователь Revit','Пользователь Windows'];
   const ledger=sheet_(ss,LL.ledger,headers);
   ledger.getRange(1,1,1,headers.length).setValues([headers]);
   sheet_(ss,LL.blobs,['Снимок','Часть','JSON']);
@@ -136,6 +140,14 @@ function auth_(body) {
   const raw=props_().getProperty('TOKEN_'+sha_(body.token));
   if (!raw) fail_('UNAUTHORIZED');
   const grant=JSON.parse(raw);
+  if (body.action==='connect') {
+    const department=disciplineCode_(grant.department || grant.discipline || grant.group ||
+      ({KR:'КР',AR:'АР'}[grant.role]) || '');
+    if (!departmentRole_(department)) fail_('DEPARTMENT_REQUIRED');
+    if (departmentRole_(department)!==grant.role) fail_('SCOPE_DENIED');
+    return Object.assign({},grant,{department,discipline:department,
+      credential_scope:grant.model ? 'model' : grant.project ? 'project_group' : 'group'});
+  }
   if (body.role!==grant.role ||
       typeof body.project!=='string' || !body.project.trim() || body.project.length>250 ||
       typeof body.model!=='string' || !body.model || body.model.length>250) fail_('SCOPE_DENIED');
@@ -202,10 +214,14 @@ function doPost(e) {
   try {
     if (!e || !e.postData || e.postData.contents.length>2*LL.maxPayload+10000) fail_('PAYLOAD_TOO_LARGE');
     const body=JSON.parse(e.postData.contents),grant=auth_(body);
-    if (!['status','publish','catalog'].includes(body.action)) fail_('INVALID_ACTION');
+    if (!['connect','status','publish','catalog'].includes(body.action)) fail_('INVALID_ACTION');
     lock=LockService.getScriptLock();
     if (!lock.tryLock(10000)) fail_('BUSY_RETRY');
     const ss=book_();init_(ss);
+    if (body.action==='connect') return output_({ok:true,department:grant.department,
+      group:grant.department,discipline:grant.department,role:grant.role,
+      credential_scope:grant.credential_scope,project:grant.project || '',model:grant.model || '',
+      sheet_url:ss.getUrl()});
     const rows=ledger_(ss),previous=latest_(rows,scope_(grant));
     if (body.action==='catalog') {
       ensureProjectParts_(ss,grant.project);
@@ -243,14 +259,14 @@ function doPost(e) {
     SpreadsheetApp.flush();
     // This ledger row commits the snapshot. Uncommitted chunks are never read.
     append_(ss.getSheetByName(LL.ledger),[[new Date().toISOString(),grant.project,grant.role,
-      grant.model,version+1,hash,blob,parts.length,grant.group || grant.actor || '',
+      grant.model,version+1,hash,blob,parts.length,grant.department || grant.discipline || grant.group || grant.actor || '',
       data.revit_user || '',data.windows_user || '']]);
     SpreadsheetApp.flush();
     rebuild_(ss);
     return output_({ok:true,version:version+1,unchanged:false,sheet_url:ss.getUrl()});
   } catch (ex) {
     const code=String(ex.message || '');
-    const allowed=['UNAUTHORIZED','SCOPE_DENIED','INVALID_ACTION','NOT_INITIALIZED','BUSY_RETRY',
+    const allowed=['DEPARTMENT_REQUIRED','UNAUTHORIZED','SCOPE_DENIED','INVALID_ACTION','NOT_INITIALIZED','BUSY_RETRY',
       'PAYLOAD_TOO_LARGE','INVALID_SNAPSHOT','INVALID_TASK','INVALID_ISSUE','INVALID_RECEIPT',
       'INVALID_OBJECT_PART','REVISION_ROLLBACK','REVISION_CONFLICT','PUBLICATION_CONFLICT','SNAPSHOT_INCOMPLETE','SNAPSHOT_CORRUPT'];
     return output_({ok:false,error:allowed.includes(code) ? code : 'SERVER_ERROR_RETRY'});
@@ -272,7 +288,7 @@ function project_(ss,name,headers,rows) {
 function rebuildJournal() {
   admin_();
   const lock=LockService.getScriptLock();lock.waitLock(10000);
-  try { rebuild_(book_()); } finally { lock.releaseLock(); }
+  try { const ss=book_();init_(ss);rebuild_(ss); } finally { lock.releaseLock(); }
 }
 function objectTab_(project) {
   const clean=String(project).replace(/[\\/?:*\[\]]/g,'_').trim().slice(0,65) || 'Без имени';

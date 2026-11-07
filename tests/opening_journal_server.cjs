@@ -24,6 +24,7 @@ class Sheet {
 const sheets={},ss={
   getSheetByName:n=>sheets[n],
   insertSheet:n=>sheets[n]=new Sheet(),
+  getId:()=> 'test',
   getUrl:()=> 'https://docs.google.com/spreadsheets/d/test'
 };
 const properties={SPREADSHEET_ID:'test',ADMIN_EMAIL:'admin@example.org'};
@@ -41,12 +42,23 @@ const sandbox={
     getUuid:()=>crypto.randomUUID()
   },
   SpreadsheetApp:{openById:()=>ss,flush:()=>{}},
-  LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
+  LockService:{getScriptLock:()=>({tryLock:()=>true,waitLock:()=>{},releaseLock:()=>{}})},
   ContentService:{MimeType:{JSON:1},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},
   Session:{getActiveUser:()=>({getEmail:()=> 'engineer@example.org'})}
 };
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8'),sandbox);
+// First setup creates every static view, even before the first release.
+sandbox.Session.getActiveUser=()=>({getEmail:()=> 'admin@example.org'});
+sandbox.Session.getEffectiveUser=sandbox.Session.getActiveUser;
+sandbox.SpreadsheetApp.getActiveSpreadsheet=()=>ss;
+const onOpen=sandbox.onOpen;sandbox.onOpen=()=>{};
+sandbox.setupJournal();
+for(const name of ['Части объектов','Публикации','Снимки JSON','ГИП','Обзор','Задания','Ответы КР АР','Контроль в Revit','История']) {
+  assert(sheets[name],name);assert.equal(sheets[name].rows.length,1,name);
+}
+sandbox.onOpen=onOpen;
+sandbox.Session.getActiveUser=()=>({getEmail:()=> 'engineer@example.org'});
 function grant(token,role='VIS',model='vis'){
   properties['TOKEN_'+sandbox.sha_(token)]=JSON.stringify({actor:'user',project:'P',role,model});
 }
@@ -273,3 +285,41 @@ const hvacScope={token:hvacToken,project:'HVAC-P',model:'hvac-model',role:'VIS',
 assert.equal(call({...hvacScope,action:'status'}).discipline,'ОВиК');
 assert.equal(call({...hvacScope,discipline:'ОК',action:'status'}).discipline,'ОВиК');
 assert.equal(call({...hvacScope,discipline:'ВК',action:'status'}).error,'SCOPE_DENIED');
+
+// Discovery needs only the token; it cannot publish or bypass scope checks.
+const discovery=call({action:'connect',token:vkToken});
+assert.equal(discovery.department,'ВК');
+assert.equal(discovery.group,'ВК');
+assert.equal(discovery.discipline,'ВК');
+assert.equal(discovery.role,'VIS');
+assert.equal(discovery.credential_scope,'group');
+assert.equal(call({action:'connect',token:'bad'}).error,'UNAUTHORIZED');
+assert.equal(call({action:'connect',token:globalToken}).error,'DEPARTMENT_REQUIRED');
+assert.equal(call({action:'publish',token:vkToken}).error,'SCOPE_DENIED');
+
+// New issuance has exactly ONE prompt: the department. No arbitrary group name.
+sandbox.Session.getActiveUser=()=>({getEmail:()=> 'admin@example.org'});
+let prompts=0,dialog='';
+sandbox.SpreadsheetApp.getUi=()=>({
+  ButtonSet:{OK_CANCEL:'buttons'},Button:{OK:'ok'},
+  prompt:title=>{prompts++;assert(title.startsWith('Отдел:'));
+    return {getSelectedButton:()=> 'ok',getResponseText:()=> 'ОВиК'};},
+  showModalDialog:(html,title)=>{dialog=html;assert(title.includes('ОВиК'));}
+});
+sandbox.HtmlService={createHtmlOutput:html=>html};
+sandbox.issueDepartmentToken();
+assert.equal(prompts,1);
+const issuedToken=dialog.match(/<textarea[^>]*>([^<]+)<\/textarea>/)[1];
+const issuedGrant=JSON.parse(properties['TOKEN_'+sandbox.sha_(issuedToken)]);
+assert.equal(issuedGrant.department,'ОВиК');
+assert.equal(issuedGrant.group,'ОВиК');
+assert.equal(issuedGrant.discipline,'ОВиК');
+assert.equal(call({action:'connect',token:issuedToken}).department,'ОВиК');
+
+// Repeat setup repairs missing views without losing publications or the catalog.
+const beforeSetup=JSON.stringify(sheets['Публикации'].rows);
+const beforeParts=JSON.stringify(sheets['Части объектов'].rows);
+delete sheets['Обзор'];sandbox.onOpen=()=>{};sandbox.setupJournal();
+assert(sheets['Обзор'].rows.length>1);
+assert.equal(JSON.stringify(sheets['Публикации'].rows),beforeSetup);
+assert.equal(JSON.stringify(sheets['Части объектов'].rows),beforeParts);

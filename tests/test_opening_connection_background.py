@@ -6,7 +6,7 @@ from types import SimpleNamespace as NS
 
 
 def test_connection_is_saved_only_after_background_validation(monkeypatch):
-    import lowlife
+    from lowlife import opening_tasks_journal as journal
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_journal.py'
     tree=ast.parse(path.read_text())
     setup=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='setup')
@@ -16,20 +16,21 @@ def test_connection_is_saved_only_after_background_validation(monkeypatch):
 
     def request(connection,action,scope,track=False):
         sent.append((scope,track))
-        return {'sheet_url':'sheet'}
-    ns=dict(in_background=lambda w,work,done:callbacks.append((work,done)),unicode=str,validate_url=lambda url:url,project='P',role='KR',model='model',
+        return {'sheet_url':'sheet','department':u'КР','role':'KR','credential_scope':'group'}
+    monkeypatch.setattr(journal,'request',request)
+    ns=dict(discover_connection=journal.discover_connection,in_background=lambda w,work,done:callbacks.append((work,done)),unicode=str,validate_url=lambda url:url,project='P',role='KR',model='model',
             request=request,save_connection=lambda *args,**kw:saved.append((args,kw)),
             forms=NS(alert=alerts.append),tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[method],type_ignores=[]),str(path),'exec'),ns)
     closed=[]
-    window=NS(url=NS(Text='url',IsEnabled=True),token=NS(Password='secret',IsEnabled=True),
+    window=NS(url=NS(Text='https://script.google.com/macros/s/test/exec',IsEnabled=True),token=NS(Password='secret',IsEnabled=True),
               save=NS(IsEnabled=True),Close=lambda:closed.append(True))
     ns['on_save'](window,None,None)
     assert not window.save.IsEnabled and not sent and not saved
     work,done=callbacks.pop()
     done(work(),None)
-    assert sent==[({'project':'P','role':'KR','model':'model'},True)]
-    assert saved==[(('P','KR','model','url','secret','sheet'),{'shared':False,'all_projects':False,'discipline':''})]
+    assert sent==[({},True)]
+    assert saved==[(('P','KR','model','https://script.google.com/macros/s/test/exec','secret','sheet'),{'shared':True,'all_projects':True,'discipline':u'КР'})]
     assert closed==[True] and window.token.Password=='' and not alerts
     window.token.Password='new'
     ns['on_save'](window,None,None)
