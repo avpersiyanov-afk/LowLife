@@ -3094,3 +3094,9 @@ Shared HTTP transport, ASCII-safe JSON encoding, AppDomainLock and UI background
 worker extracted from the existing Notes implementation. Notes keeps compatible
 adapters; opening tasks uses its own transport and credentials with no pnotes
 imports. Cancellation state is isolated between the tools. CLR imports are lazy.
+
+
+`slab_marks.SlabProbe.floor_hits_below` verifies floor contour misses using
+the cached solid intersection on the same vertical, within the existing source
+scope. The fallback also includes a ray origin inside a slab; `_sloped_hits`
+keeps its original behaviour unless `include_inside=True` is explicitly passed.
