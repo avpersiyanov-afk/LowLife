@@ -26,6 +26,7 @@ from lowlife import opening_tasks_manifest as manifest
 from lowlife import text_search
 from lowlife import opening_tasks_browser as browser
 from lowlife import opening_tasks_parts as parts
+from lowlife import opening_tasks_journal as journal
 
 _WINDOWS = {}
 
