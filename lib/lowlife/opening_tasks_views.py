@@ -237,5 +237,11 @@ def highlight(uidoc,role,project,rows):
     uidoc.ActiveView=view
     ids=List[ElementId](list(elements))
     uidoc.Selection.SetElementIds(ids)
-    uidoc.ShowElements(ids)
     uidoc.RefreshActiveView()
+    from lowlife.route_preview import zoom_to_fit_points
+    points=[]
+    for element in elements.values():
+        bbox=element.get_BoundingBox(view) or element.get_BoundingBox(None)
+        if bbox is not None:
+            points.extend(api.boxes._box_points(bbox))
+    zoom_to_fit_points(uidoc,view,points)
