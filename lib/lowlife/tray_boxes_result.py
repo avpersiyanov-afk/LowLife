@@ -48,7 +48,7 @@ def show(result, clearance_mm, uidoc):
             </Window>''', literal_string=True)
             self.Title = tr(u"Боксы на лотки — результат", u"Opening boxes for trays — results")
             self.selection = (False, 0)
-            self.values = [0, None, 50, 100, 150]
+            self.values = [0, None, 50, 100, 150, 200]
             self.summary.Text = tr(
                 u"Поставлено: {}. Уже были: {}. Пропущено: {}. Ошибок: {}.",
                 u"Placed: {}. Already present: {}. Skipped: {}. Errors: {}.").format(
@@ -57,13 +57,13 @@ def show(result, clearance_mm, uidoc):
                 u"Дополнительно по ЗНП увеличить оба размера отверстия на:",
                 u"Additionally per ZNP, increase both opening dimensions by:")
             for label in [tr(u"Без увеличения", u"No increase"),
-                          tr(u"Автоматически: +50 / +100 / +150 мм", u"Automatic: +50 / +100 / +150 mm"),
+                          tr(u"Автоматически: +50 / +100 / +150 / +200 мм", u"Automatic: +50 / +100 / +150 / +200 mm"),
                           tr(u"+50 мм", u"+50 mm"), tr(u"+100 мм", u"+100 mm"),
-                          tr(u"+150 мм", u"+150 mm")]:
+                          tr(u"+150 мм", u"+150 mm"), tr(u"+200 мм", u"+200 mm")]:
                 self.increase.Items.Add(label)
             self.rules.Text = tr(
-                u"Авто: большая сторона до 300 мм включительно → +50 мм; свыше 300 до 600 мм включительно → +100 мм; свыше 600 мм → +150 мм. Размер берётся после запаса по EIR. Добавка — к каждому из двух размеров, поровну с противоположных сторон. Толщина конструкции не увеличивается.",
-                u"Auto: larger side up to 300 mm inclusive → +50 mm; over 300 up to 600 mm inclusive → +100 mm; over 600 mm → +150 mm. Based on the opening including EIR clearance. The increase applies to each of the two dimensions, split equally between opposite sides. Host thickness stays unchanged.")
+                u"Авто: большая сторона до 300 мм включительно → +50 мм; свыше 300 до 600 мм включительно → +100 мм; свыше 600 до 1200 мм включительно → +150 мм; свыше 1200 мм → +200 мм. Размер берётся после запаса по EIR. Добавка — к каждому из двух размеров, поровну с противоположных сторон. Толщина конструкции не увеличивается.",
+                u"Auto: larger side up to 300 mm inclusive → +50 mm; over 300 up to 600 mm inclusive → +100 mm; over 600 up to 1200 mm inclusive → +150 mm; over 1200 mm → +200 mm. Based on the opening including EIR clearance. The increase applies to each of the two dimensions, split equally between opposite sides. Host thickness stays unchanged.")
             self.apply.Content = tr(u"Применить и закрыть", u"Apply and close")
             self.close.Content = tr(u"Оставить как есть", u"Keep as placed")
             self.apply.IsEnabled = not bool(result.missing_params)

@@ -40,7 +40,7 @@ Do not duplicate a model with its identifiers for another project.
   Fittings, flexible/curved runs and rolled rectangular profiles are reported for review.
 - Select the KR link instance, box type and workset. EIR clearance is per side.
   ZNP adds to both opening dimensions; automatic values use the larger dimension
-  including clearance: ≤300 mm → 50; ≤600 → 100; otherwise 150 mm.
+  including clearance: ≤300 mm → 50; ≤600 → 100; ≤1200 → 150; >1200 → 200 mm.
 - Updating own drafts preserves their GUID by source/host/link identity.
 - Select boxes and explicitly issue them. Preview revisions, movement/size changes,
   host-local centers and dimensions. Identical releases are idempotent.
