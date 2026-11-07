@@ -61,3 +61,10 @@ def test_ar_receiving_actions_are_separate_from_kr():
             with pytest.raises(ValueError):m.validate_action(role,key)
     assert dict(m.actions('KR'))['accept']==u'Принять задания КР'
     assert dict(m.actions('VIS'))['issue']==u'Выдать задания ВИС-КР'
+
+
+def test_installer_uses_discipline_names_for_engineers_and_receivers():
+    assert set(m.INSTALL_DISCIPLINES)=={u'ОК',u'ВК',u'ЭОМ',u'СС',u'АК',u'КР',u'АР'}
+    assert all(m.INSTALL_DISCIPLINES[d]=='VIS' for d in (u'ОК',u'ВК',u'ЭОМ',u'СС',u'АК'))
+    assert m.INSTALL_DISCIPLINES[u'КР']=='KR'
+    assert m.INSTALL_DISCIPLINES[u'АР']=='AR'

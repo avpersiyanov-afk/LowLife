@@ -1009,6 +1009,7 @@
  "Диапазон поворота, ° (мин-макс, необязательно)": "Rotation range, ° (min-max, optional)",
  "Диииинааасстия!": "Dyyyyynaaaasty!",
  "Дисциплина ВИС": "VIS discipline",
+ "Дисциплина для номера задания и журнала ГИПа. Если установлено подключение с выбором ОК, ВК, ЭОМ, СС или АК, используется дисциплина этого подключения.": "Discipline used in task numbers and the chief engineer journal. If a connection was installed with ОК, ВК, ЭОМ, СС or АК selected, that connection discipline is used.",
  "Длина": "Length",
  "Длина полки выноски, мм": "Leader shoulder length, mm",
  "Длина проводника": "Wire length",

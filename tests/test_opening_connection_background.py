@@ -29,7 +29,7 @@ def test_connection_is_saved_only_after_background_validation(monkeypatch):
     work,done=callbacks.pop()
     done(work(),None)
     assert sent==[({'project':'P','role':'KR','model':'model'},True)]
-    assert saved==[(('P','KR','model','url','secret','sheet'),{'shared':False,'all_projects':False})]
+    assert saved==[(('P','KR','model','url','secret','sheet'),{'shared':False,'all_projects':False,'discipline':''})]
     assert closed==[True] and window.token.Password=='' and not alerts
     window.token.Password='new'
     ns['on_save'](window,None,None)

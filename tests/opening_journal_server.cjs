@@ -242,3 +242,16 @@ assert.equal(call({...sharedScope,project:'NEW-1',action:'status'}).error,'SCOPE
 assert.equal(call({...scope,project:'NEW-1',action:'status'}).error,'SCOPE_DENIED');
 assert(sheets[sandbox.objectTab_('NEW-1')].rows.slice(1).every(r=>r[3]==='NEW-1'));
 assert(sheets[sandbox.objectTab_('NEW-2')].rows.slice(1).every(r=>r[3]==='NEW-2'));
+
+// Public installer choices are disciplines, while existing internal interfaces remain compatible.
+const vkToken='v'.repeat(64);
+properties['TOKEN_'+sandbox.sha_(vkToken)]=JSON.stringify({group:'ВК',role:'VIS',discipline:'ВК'});
+const vkScope={token:vkToken,project:'VK-P',model:'vk-model',role:'VIS',discipline:'ВК'};
+assert.equal(call({...vkScope,action:'status'}).discipline,'ВК');
+assert.equal(call({...vkScope,discipline:'ОК',action:'status'}).error,'SCOPE_DENIED');
+const bootstrap={...vkScope};delete bootstrap.discipline;
+assert.equal(call({...bootstrap,action:'status'}).discipline,'ВК'); // Admin setup reads it from the token.
+assert.equal(call({...bootstrap,action:'catalog'}).error,'SCOPE_DENIED');
+const vkData=globalData('VK-P','vk-model');vkData.tasks.a.discipline='ВК';
+assert.equal(pub(vkData,0,vkScope).version,1);
+assert.equal(pub(vkData,0,bootstrap).error,'SCOPE_DENIED');

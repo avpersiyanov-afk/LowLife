@@ -17,7 +17,7 @@ def make(role, doc=None):
     ]
     if role == 'VIS':
         fields = common + [sc.TextField('opening_discipline', u'', u'Дисциплина ВИС',
-                     hint=u'Обозначение вашей дисциплины, например ОВ, ВК или ЭОМ. Используется в номере задания и журнале ГИПа.', required=True)]
+                     hint=u'Дисциплина для номера задания и журнала ГИПа. Если установлено подключение с выбором ОК, ВК, ЭОМ, СС или АК, используется дисциплина этого подключения.', required=True)]
         fields += [sc.ChoiceField('opening_increase', u'', u'Дополнительно по ЗНП',
                     [('none', u'Без увеличения'), ('auto', u'Автоматически'),
                      ('50', u'+50 мм'), ('100', u'+100 мм'), ('150', u'+150 мм')],
@@ -49,10 +49,13 @@ def make(role, doc=None):
     for field in fields:
         if field.key in hints:
             field.hint=hints[field.key]
-    return sc.TextSettings('LowLifeOpeningTasks' + role + '_settings.json',
+    form=sc.TextSettings('LowLifeOpeningTasks' + role + '_settings.json',
                            N_(u'Задания ВИС') if role == 'VIS' else N_(u'Задания КР') if role=='KR' else N_(u'Задания АР'),
                            u'Задания на отверстия', u'заданий на отверстия', fields,
                            width=780, height=700)
+    if role=='VIS' and doc is not None:
+        form.migrate=lambda saved,values:values.update(opening_discipline=for_document(values,doc)['opening_discipline'])
+    return form
 
 
 def project_code(doc,settings):
@@ -70,4 +73,10 @@ def project_code(doc,settings):
 def for_document(settings,doc):
     value=dict(settings)
     value['opening_project']=project_code(doc,value)
+    if 'opening_discipline' in value:
+        from lowlife import opening_tasks_journal as journal
+        connection=journal.connection_value(value['opening_project'],'VIS',doc.ProjectInformation.UniqueId) or {}
+        discipline=connection.get('discipline','')
+        if manifest.INSTALL_DISCIPLINES.get(discipline)=='VIS':
+            value['opening_discipline']=discipline
     return value

@@ -230,3 +230,10 @@ def test_global_group_connection_works_for_all_projects_and_models(monkeypatch):
     assert j.load_connection('P','VIS','model')['token']=='token'
     assert j.load_connection('OTHER','VIS','another-model')['token']=='token'
     with pytest.raises(ValueError):j.load_connection('OTHER','KR','another-model')
+
+
+def test_saved_discipline_is_returned_with_shared_credentials(monkeypatch):
+    value={'url':'https://script.google.com/macros/s/g/exec','token_dpapi':'encrypted','discipline':u'ВК'}
+    monkeypatch.setattr(j,'connection_value',lambda *a:value)
+    monkeypatch.setattr(j,'crypt',lambda *a:'token')
+    assert j.load_connection('P','VIS','model')['discipline']==u'ВК'
