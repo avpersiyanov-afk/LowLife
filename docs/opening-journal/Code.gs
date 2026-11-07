@@ -1,5 +1,5 @@
 /* LowLife opening journal. Bound Apps Script; V8 runtime.
- * Group tokens authorize one project / role; model identity stays in every record. No admin HTTP endpoint.
+ * Group tokens authorize a role across projects; project/model identity stays in every record. No admin HTTP endpoint.
  * Only the sheet owner/admin edits settings and issues/revokes credentials.
  */
 const LL = {
@@ -45,12 +45,11 @@ function prompt_(title) {
 function issueGroupToken() {
   admin_();
   const group=prompt_('Название группы (например ОВ, ВК, КР или АР)');
-  const project=prompt_('Код проекта (как в Revit)');
   const role=prompt_('Роль: VIS, KR или AR').toUpperCase();
   if (!['VIS','KR','AR'].includes(role)) fail_('INVALID_ROLE');
   const token=Utilities.getUuid()+Utilities.getUuid();
   const id=sha_(token);
-  props_().setProperty('TOKEN_'+id,JSON.stringify({group,project,role}));
+  props_().setProperty('TOKEN_'+id,JSON.stringify({group,role}));
   // The raw token is shown once; only its digest remains on the server.
   const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(
@@ -126,11 +125,14 @@ function auth_(body) {
   const raw=props_().getProperty('TOKEN_'+sha_(body.token));
   if (!raw) fail_('UNAUTHORIZED');
   const grant=JSON.parse(raw);
-  if (body.project!==grant.project || body.role!==grant.role ||
+  if (body.role!==grant.role ||
+      typeof body.project!=='string' || !body.project.trim() || body.project.length>250 ||
       typeof body.model!=='string' || !body.model || body.model.length>250) fail_('SCOPE_DENIED');
+  if (grant.project && body.project!==grant.project) fail_('SCOPE_DENIED');
   if (grant.model && body.model!==grant.model) fail_('SCOPE_DENIED');
-  // Group credentials accept any model of this role. Legacy grants remain model-bound.
-  return Object.assign({},grant,{model:body.model});
+  // Preserve legacy project/model restrictions while new group grants span projects.
+  const credential_scope=grant.model ? 'model' : grant.project ? 'project_group' : 'group';
+  return Object.assign({},grant,{project:body.project,model:body.model,credential_scope});
 }
 function decode_(ss,row) {
   if (!row) return null;
@@ -192,7 +194,7 @@ function doPost(e) {
     const ss=book_();init_(ss);
     const rows=ledger_(ss),previous=latest_(rows,scope_(grant));
     if (body.action==='catalog') return output_({ok:true,parts:catalog_(ss,grant.project)});
-    if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl(),credential_scope:grant.group ? 'group' : 'model',group:grant.group || ''});
+    if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl(),credential_scope:grant.credential_scope,group:grant.group || ''});
     if (typeof body.payload!=='string' || body.payload.length>LL.maxPayload) fail_('PAYLOAD_TOO_LARGE');
     const hash=sha_(body.payload);
     const already=rows.find(r=>scope_({project:r[1],role:r[2],model:r[3]})===scope_(grant) && r[5]===hash);

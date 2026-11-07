@@ -2,7 +2,7 @@
 # The server grant, not this installer or Windows login, enforces write scope.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
-$projectCode = Read-Host 'Project code'
+$projectCode = '__connection_check__'
 $modelRole = (Read-Host 'Role VIS/KR/AR').ToUpperInvariant()
 $modelUid = '__connection_check__'
 $scriptUrl = Read-Host 'Apps Script /exec URL'
@@ -20,7 +20,7 @@ try {
     $protectedToken = [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect(
         [Text.Encoding]::UTF8.GetBytes($modelToken), $null, [Security.Cryptography.DataProtectionScope]::CurrentUser))
     # Same sorted compact JSON key as Python core.dumps.
-    $connectionKey = [ordered]@{model='*';project=$projectCode;role=$modelRole} | ConvertTo-Json -Compress
+    $connectionKey = [ordered]@{model='*';project='*';role=$modelRole} | ConvertTo-Json -Compress
     $configPath = Join-Path $env:APPDATA 'pyRevit\LowLifeOpeningJournal_connections.json'
     $configDir = Split-Path $configPath
     New-Item -ItemType Directory -Force $configDir | Out-Null
@@ -32,7 +32,7 @@ try {
     $connections[$connectionKey] = @{url=$scriptUrl;token_dpapi=$protectedToken;sheet_url=$response.sheet_url}
     $configJson = $connections | ConvertTo-Json -Depth 6
     [IO.File]::WriteAllText($configPath, $configJson, (New-Object Text.UTF8Encoding($false)))
-    Write-Host 'Group connection verified for all models of this project and role in this Windows profile.'
+    Write-Host 'Group connection verified for all projects and models of this role in this Windows profile.'
 } finally {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPtr)
     $modelToken = $null
