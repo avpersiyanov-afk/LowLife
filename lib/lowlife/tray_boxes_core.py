@@ -139,6 +139,8 @@ def opening_sides(box):
 def recommended_increase_mm(side_mm):
     u"""Добавка к обеим сторонам отверстия, выбранная по большей стороне."""
     # Допуск только против погрешности перевода футов в миллиметры.
+    if side_mm > 1200.0 + 1e-7:
+        return 200.0
     if side_mm > 600.0 + 1e-7:
         return 150.0
     if side_mm > 300.0 + 1e-7:

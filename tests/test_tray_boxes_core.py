@@ -84,7 +84,7 @@ def test_names():
 
 
 @pytest.mark.parametrize("side, expected", [(100, 50), (300, 50), (300.001, 100),
-                                            (600, 100), (600.001, 150), (1200, 150)])
+                                            (600, 100), (600.001, 150), (1200, 150), (1200.001, 200), (1800, 200)])
 def test_recommended_increase_boundaries(side, expected):
     assert recommended_increase_mm(side) == expected
     # Размер проходит перевод мм → футы → мм.
