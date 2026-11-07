@@ -158,3 +158,12 @@ def test_human_numbers_are_unique_and_stable_across_revisions():
     updated,changes=issued([changed,draft('c')],registry,'t2')
     assert [r['task_number'] for r in changes]==[1,3]
     assert updated['tasks']['b']['task_number']==2
+
+
+def test_issue_and_withdraw_keep_actor_identity_in_event_snapshots():
+    r,changes=c.issue(c.empty_registry(),[draft()],'P','OV','Revit-user','t1',windows_user='DOMAIN\\first')
+    assert r['issues'][0]['tasks'][0]['revit_user']=='Revit-user'
+    assert r['issues'][0]['tasks'][0]['windows_user']=='DOMAIN\\first'
+    r,changes=c.withdraw(r,['a'],'Other-Revit','t2',windows_user='DOMAIN\\second')
+    assert changes[0]['windows_user']=='DOMAIN\\second'
+    assert r['issues'][0]['tasks'][0]['windows_user']=='DOMAIN\\first'

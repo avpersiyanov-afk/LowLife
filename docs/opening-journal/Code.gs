@@ -1,5 +1,5 @@
 /* LowLife opening journal. Bound Apps Script; V8 runtime.
- * Tokens authorize one project / role / Revit model. No admin HTTP endpoint.
+ * Group tokens authorize one project / role; model identity stays in every record. No admin HTTP endpoint.
  * Only the sheet owner/admin edits settings and issues/revokes credentials.
  */
 const LL = {
@@ -31,7 +31,7 @@ function setupJournal() {
 function onOpen() {
   if (Session.getActiveUser().getEmail()!==props_().getProperty('ADMIN_EMAIL')) return;
   SpreadsheetApp.getUi().createMenu('LowLife')
-    .addItem('Выдать токен модели','issueModelToken')
+    .addItem('Выдать токен группы','issueGroupToken')
     .addItem('Отозвать токен','revokeModelToken')
     .addItem('Восстановить представления журнала','rebuildJournal').addToUi();
 }
@@ -42,23 +42,23 @@ function prompt_(title) {
   if (!value || value.length>250) fail_('INVALID_INPUT');
   return value;
 }
-function issueModelToken() {
+function issueGroupToken() {
   admin_();
-  const actor=prompt_('Windows-логин инженера');
+  const group=prompt_('Название группы (например ОВ, ВК, КР или АР)');
   const project=prompt_('Код проекта (как в Revit)');
   const role=prompt_('Роль: VIS, KR или AR').toUpperCase();
   if (!['VIS','KR','AR'].includes(role)) fail_('INVALID_ROLE');
-  const model=prompt_('ID модели Revit (из окна подключения или файла сведений)');
   const token=Utilities.getUuid()+Utilities.getUuid();
   const id=sha_(token);
-  props_().setProperty('TOKEN_'+id,JSON.stringify({actor,project,role,model}));
+  props_().setProperty('TOKEN_'+id,JSON.stringify({group,project,role}));
   // The raw token is shown once; only its digest remains on the server.
   const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(
-    '<p>Скопируйте токен и передайте инженеру отдельно. Он показан один раз.</p>'+
+    '<p>Скопируйте токен и передайте участникам группы отдельно. Он показан один раз.</p>'+
     '<textarea readonly style="width:95%;height:70px">'+esc(token)+'</textarea>'+
-    '<p>ID для отзыва: <code>'+id+'</code></p>'),'Токен модели '+role);
+    '<p>ID для отзыва: <code>'+id+'</code></p>'),'Токен группы '+group);
 }
+function issueModelToken() { return issueGroupToken(); }
 function revokeModelToken() {
   admin_();
   const id=prompt_('Полный ID токена (SHA-256)');
@@ -81,7 +81,9 @@ function sheet_(ss,name,headers) {
 }
 function init_(ss) {
   sheet_(ss,LL.parts,['Шифр объекта','Часть (НЧ/ПЧ)','Корпус/секция','Использовать']);
-  sheet_(ss,LL.ledger,['Время сервера UTC','Проект','Роль','ID модели','Версия публикации','SHA256','Снимок','Частей','Кто опубликовал']);
+  const headers=['Время сервера UTC','Проект','Роль','ID модели','Версия публикации','SHA256','Снимок','Частей','Группа/владелец токена','Пользователь Revit','Пользователь Windows'];
+  const ledger=sheet_(ss,LL.ledger,headers);
+  ledger.getRange(1,1,1,headers.length).setValues([headers]);
   sheet_(ss,LL.blobs,['Снимок','Часть','JSON']);
 }
 function catalog_(ss,project) {
@@ -124,8 +126,11 @@ function auth_(body) {
   const raw=props_().getProperty('TOKEN_'+sha_(body.token));
   if (!raw) fail_('UNAUTHORIZED');
   const grant=JSON.parse(raw);
-  if (scope_(body)!==scope_(grant)) fail_('SCOPE_DENIED');
-  return grant;
+  if (body.project!==grant.project || body.role!==grant.role ||
+      typeof body.model!=='string' || !body.model || body.model.length>250) fail_('SCOPE_DENIED');
+  if (grant.model && body.model!==grant.model) fail_('SCOPE_DENIED');
+  // Group credentials accept any model of this role. Legacy grants remain model-bound.
+  return Object.assign({},grant,{model:body.model});
 }
 function decode_(ss,row) {
   if (!row) return null;
@@ -187,7 +192,7 @@ function doPost(e) {
     const ss=book_();init_(ss);
     const rows=ledger_(ss),previous=latest_(rows,scope_(grant));
     if (body.action==='catalog') return output_({ok:true,parts:catalog_(ss,grant.project)});
-    if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl()});
+    if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl(),credential_scope:grant.group ? 'group' : 'model',group:grant.group || ''});
     if (typeof body.payload!=='string' || body.payload.length>LL.maxPayload) fail_('PAYLOAD_TOO_LARGE');
     const hash=sha_(body.payload);
     const already=rows.find(r=>scope_({project:r[1],role:r[2],model:r[3]})===scope_(grant) && r[5]===hash);
@@ -198,6 +203,7 @@ function doPost(e) {
     const version=previous ? Number(previous[4]) : 0;
     if (body.base_version!==version) fail_('PUBLICATION_CONFLICT');
     const data=JSON.parse(body.payload);
+    ['revit_user','windows_user'].forEach(k=>{if (data[k]!==undefined && (typeof data[k]!=='string' || data[k].length>250)) fail_('INVALID_SNAPSHOT');});
     const priorData=decode_(ss,previous);
     validate_(data,grant,priorData);
     const allowedParts=catalog_(ss,grant.project);
@@ -218,7 +224,8 @@ function doPost(e) {
     SpreadsheetApp.flush();
     // This ledger row commits the snapshot. Uncommitted chunks are never read.
     append_(ss.getSheetByName(LL.ledger),[[new Date().toISOString(),grant.project,grant.role,
-      grant.model,version+1,hash,blob,parts.length,grant.actor]]);
+      grant.model,version+1,hash,blob,parts.length,grant.group || grant.actor || '',
+      data.revit_user || '',data.windows_user || '']]);
     SpreadsheetApp.flush();
     rebuild_(ss);
     return output_({ok:true,version:version+1,unchanged:false,sheet_url:ss.getUrl()});
@@ -386,7 +393,7 @@ function rebuild_(ss) {
       overview.push([s.project,t.discipline,t.recipient || 'KR',t.task_number,t.task_id,
         t.status,t.revision,revision,state,r ? r.comment || '' : '',next,
         t.issued_at,row[0],a ? a.at : '',t.geometry.host_model,t.geometry.host_uid,
-        JSON.stringify(t.geometry.size_mm),s.model_title,t.object_part || '']);
+        JSON.stringify(t.geometry.size_mm),s.model_title,t.object_part || '',t.revit_user || t.author || '',t.windows_user || '']);
     });
     Object.values(s.tasks).forEach(t=>{
       const g=t.geometry;
@@ -394,23 +401,23 @@ function rebuild_(ss) {
         s.model_title,t.source_uid,t.owner_uid,t.status,t.revision,t.issue_number || '',t.issue_id,
         t.created_at,t.issued_at,t.author,g.host_model,g.host_uid,g.kind,
         JSON.stringify(g.center_mm),JSON.stringify(g.size_mm),JSON.stringify(g.x_dir),
-        t.confirmation ? JSON.stringify(t.confirmation) : '',row[0],t.object_part || '']);
+        t.confirmation ? JSON.stringify(t.confirmation) : '',row[0],t.object_part || '',t.revit_user || t.author || '',t.windows_user || '']);
     });
     Object.keys(s.receipts).forEach(key=>{
       const r=s.receipts[key];
       replies.push([s.project,s.role,s.model,s.model_title,key,r.revisions[key],r.status,
         r.comment || '',r.opening_id || '',r.opening_uid || '',r.author || '',r.at || '',
-        JSON.stringify(r.revisions),r.geometry ? JSON.stringify(r.geometry) : '',row[0],r.object_part || '']);
+        JSON.stringify(r.revisions),r.geometry ? JSON.stringify(r.geometry) : '',row[0],r.object_part || '',r.revit_user || r.author || '',r.windows_user || '']);
     });
     s.working.forEach(w=>working.push([s.project,s.role,s.model,w.number || '',w.task_id || '',
       w.recipient || '',w.level || '',w.kind || '',w.status || '',w.result || '',w.sizes || '',
       w.previous_sizes || '',w.displacement || '',w.comment || '',w.next_action || '',row[0],w.object_part || '']));
     s.issues.forEach(i=>i.tasks.forEach(t=>history.push([s.project,s.role,s.model,i.at || '',
-      i.author || '',i.action || '',t.task_id,t.revision,t.status,t.issue_id || '',t.object_part || ''])));
+      i.author || '',i.action || '',t.task_id,t.revision,t.status,t.issue_id || '',t.object_part || '',t.revit_user || t.author || i.author || '',t.windows_user || ''])));
     s.decisions.forEach(r=>Object.keys(r.revisions).forEach(k=>history.push([s.project,s.role,s.model,
-      r.at || '',r.author || '',r.status,k,r.revisions[k],r.comment || '',r.opening_id || '',r.object_part || ''])));
+      r.at || '',r.author || '',r.status,k,r.revisions[k],r.comment || '',r.opening_id || '',r.object_part || '',r.revit_user || r.author || '',r.windows_user || ''])));
     s.confirmations.forEach(c=>history.push([s.project,s.role,s.model,c.at || '',c.author || '',
-      'confirmed',c.task_id,c.revision,'',c.opening_id || '',c.object_part || '']));
+      'confirmed',c.task_id,c.revision,'',c.opening_id || '',c.object_part || '',c.revit_user || c.author || '',c.windows_user || '']));
   });
   const objects=Object.create(null);
   function objectRow(project,row) {
@@ -424,32 +431,32 @@ function rebuild_(ss) {
       objectRow(s.project,[t.status==='withdrawn' ? 'Отзыв' : t.revision>1 ? 'Перевыдача' : 'Выдача',
         i.at || '',i.author || '',s.project,t.discipline,t.recipient || 'KR',t.task_number,t.task_id,
         t.status,t.revision,'','','','',t.issued_at,row[0],'',g.host_model,g.host_uid,
-        JSON.stringify(g.size_mm),s.model_title,t.object_part || '']);
+        JSON.stringify(g.size_mm),s.model_title,t.object_part || '',t.revit_user || t.author || i.author || '',t.windows_user || '']);
     }));
     s.decisions.forEach(r=>Object.keys(r.revisions).forEach(k=>{
       const g=r.geometry || {};
       objectRow(s.project,['Решение '+s.role,r.at || '',r.author || '',s.project,'',s.role,'',k,
         r.status,'',r.revisions[k],r.status,r.comment || '','',r.at || '','',row[0],
-        s.model,g.host_uid || '',g.size_mm ? JSON.stringify(g.size_mm) : '',s.model_title,r.object_part || '']);
+        s.model,g.host_uid || '',g.size_mm ? JSON.stringify(g.size_mm) : '',s.model_title,r.object_part || '',r.revit_user || r.author || '',r.windows_user || '']);
     }));
     s.confirmations.forEach(c=>objectRow(s.project,['Подтверждение ВИС',c.at || '',c.author || '',
       s.project,'',c.recipient || 'KR','',c.task_id,'confirmed',c.revision,c.revision,
-      'Подтверждено ВИС','','',c.at || '',row[0],'',c.kr_model || '','','',s.model_title,c.object_part || '']));
+      'Подтверждено ВИС','','',c.at || '',row[0],'',c.kr_model || '','','',s.model_title,c.object_part || '',c.revit_user || c.author || '',c.windows_user || '']));
   });
   Object.keys(objects).sort().forEach(project=>project_(ss,objectTab_(project),
     ['Запись','Дата события','Автор','Проект','Дисциплина','Получатель','Номер','GUID задания','Статус выдачи',
      'Выданная ревизия','Ревизия ответа','Результат','Замечание','Что делать','Дата выдачи',
-     'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС','Часть объекта'],
+     'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС','Часть объекта','Пользователь Revit','Пользователь Windows'],
     objects[project]));
   project_(ss,LL.overview,['Проект','Дисциплина','Получатель','Номер','GUID задания','Статус выдачи',
     'Выданная ревизия','Ревизия ответа','Результат','Замечание','Что делать','Дата выдачи',
-    'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС','Часть объекта'],overview);
+    'Публикация ВИС','Публикация получателя','Модель получателя ID','Конструкция UID','Размеры мм','Модель ВИС','Часть объекта','Пользователь Revit','Пользователь Windows'],overview);
   project_(ss,LL.tasks,['Проект','Дисциплина','Получатель','Номер','GUID задания','Модель ВИС ID','Модель ВИС',
     'Исходный элемент UID','Бокс UID','Статус выдачи','Ревизия','Номер выпуска','ID выпуска','Создано','Выдано',
-    'Автор','Модель получателя ID','Конструкция UID','Тип','Центр XYZ мм','Размеры XYZ мм','Ось X','Подтверждение ВИС','Опубликовано','Часть объекта'],tasks);
+    'Автор','Модель получателя ID','Конструкция UID','Тип','Центр XYZ мм','Размеры XYZ мм','Ось X','Подтверждение ВИС','Опубликовано','Часть объекта','Пользователь Revit','Пользователь Windows'],tasks);
   project_(ss,LL.replies,['Проект','Роль','Модель ID','Модель','Ключ задания','Ревизия ответа','Решение','Замечание',
-    'Проём ID','Проём UID','Автор','Дата решения','Состав объединения','Геометрия','Опубликовано','Часть объекта'],replies);
+    'Проём ID','Проём UID','Автор','Дата решения','Состав объединения','Геометрия','Опубликовано','Часть объекта','Пользователь Revit','Пользователь Windows'],replies);
   project_(ss,LL.working,['Проект','Роль','Модель ID','Задание','GUID','Получатель','Уровень','Конструкция',
     'Статус в модели','Ответ по связи','Размеры мм','Предыдущие размеры мм','Смещение мм','Замечание','Что делать','Опубликовано','Часть объекта'],working);
-  project_(ss,LL.history,['Проект','Роль','Модель ID','Дата','Автор','Действие','Задание','Ревизия','Результат','Выпуск/проём ID','Часть объекта'],history);
+  project_(ss,LL.history,['Проект','Роль','Модель ID','Дата','Автор','Действие','Задание','Ревизия','Результат','Выпуск/проём ID','Часть объекта','Пользователь Revit','Пользователь Windows'],history);
 }
