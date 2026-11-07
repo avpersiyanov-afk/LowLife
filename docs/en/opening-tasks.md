@@ -205,3 +205,10 @@ project tabs appear after the first project publication. Repeat setup or rebuild
 to repair missing views without removing publications or the parts catalog.
 The saved engineering discipline fills new task records; older release records
 remain unchanged until explicitly reissued. PowerShell uses UTF-8 with BOM.
+
+
+Task window commands use compact workflow tabs. VIS has KR tasks, AR tasks
+and Review; KR has Review and Views; AR has Review. All roles have Exchange
+(refresh and spreadsheet) and Settings (parameters, building catalog and connection).
+Buttons have smaller padding and font size while retaining captions and tooltips.
+Select visible sits next to table filters; command tabs retain row selection and filters.

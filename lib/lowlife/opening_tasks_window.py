@@ -10,7 +10,7 @@ from Autodesk.Revit.DB import FamilyInstance, FilteredElementCollector, ElementI
 from System.Collections.Generic import List
 import clr
 clr.AddReference("System.Data")
-from System.Windows.Controls import Button, DataGridTextColumn, DataGridLength, DataGridRow
+from System.Windows.Controls import Button, DataGridTextColumn, DataGridLength, DataGridRow, TabItem, WrapPanel
 from System.Windows.Media import VisualTreeHelper
 from System.Windows.Data import Binding
 from System.Data import DataTable
@@ -174,11 +174,19 @@ class TaskWindow(forms.WPFWindow):
         forms.WPFWindow.__init__(self,u'''<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="1150" Height="720"
             MinWidth="850" MinHeight="500" WindowStartupLocation="CenterScreen">
-          <Grid Margin="18">
+          <Window.Resources>
+            <Style TargetType="Button">
+              <Setter Property="FontSize" Value="11"/>
+              <Setter Property="Padding" Value="8,3"/>
+              <Setter Property="Margin" Value="0,0,5,4"/>
+              <Setter Property="MinHeight" Value="24"/>
+            </Style>
+          </Window.Resources>
+          <Grid Margin="12">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-            <TextBlock x:Name="heading" FontSize="20" FontWeight="Bold" Margin="0,0,0,12"/>
-            <WrapPanel x:Name="actions" Grid.Row="1" Margin="0,0,0,8"/>
+            <TextBlock x:Name="heading" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+            <TabControl x:Name="actions" Grid.Row="1" Margin="0,0,0,8"/>
             <StackPanel Grid.Row="2" Margin="0,0,0,10">
               <WrapPanel Margin="0,0,0,8">
                 <TextBlock x:Name="project_label" VerticalAlignment="Center" Margin="0,0,12,0"/>
@@ -186,7 +194,7 @@ class TaskWindow(forms.WPFWindow):
               </WrapPanel>
               <TextBlock x:Name="exchange_hint" TextWrapping="Wrap" Margin="0,0,0,8"/>
               <TextBox x:Name="search" Height="28" Margin="0,0,0,8"/>
-              <WrapPanel>
+              <WrapPanel x:Name="filter_bar">
                 <ComboBox x:Name="part_filter" Width="180" Margin="0,0,8,6"/>
                 <ComboBox x:Name="state" Width="190" Margin="0,0,8,6"/>
                 <ComboBox x:Name="discipline_filter" Width="145" Margin="0,0,8,6"/>
@@ -250,19 +258,27 @@ class TaskWindow(forms.WPFWindow):
             self.tasks.Columns.Add(column)
         self.handler=Handler(self)
         self.event=ExternalEvent.Create(self.handler)
-        self.add('refresh',tr(u'Обновить обмен',u'Refresh exchange'))
-        self.add('settings',tr(u'Настройки',u'Settings'))
-        self.add('journal_open',tr(u'Открыть таблицу',u'Open spreadsheet'))
-        self.add('parts_refresh',tr(u'Обновить номера корпусов',u'Refresh building numbers'))
-        self.add('journal_setup',tr(u'Подключение таблицы',u'Sheet connection'))
+        labels=dict(manifest.actions(role))
+        labels.update({
+            'refresh':tr(u'Обновить обмен',u'Refresh exchange'),
+            'settings':tr(u'Настройки',u'Settings'),
+            'journal_open':tr(u'Открыть таблицу',u'Open spreadsheet'),
+            'parts_refresh':tr(u'Обновить номера корпусов',u'Refresh building numbers'),
+            'journal_setup':tr(u'Подключение таблицы',u'Sheet connection')})
+        for title,actions in manifest.action_groups(role):
+            tab=TabItem()
+            tab.Header=tr(title)
+            panel=WrapPanel()
+            panel.Margin=Thickness(8,6,8,2)
+            for action in actions:
+                self.add(action,tr(labels[action]),panel)
+            tab.Content=panel
+            self.actions.Items.Add(tab)
+        self.actions.SelectedIndex=0
         select_button=Button()
         select_button.Content=tr(u'Выбрать показанные',u'Select visible')
-        select_button.Padding=Thickness(10,6,10,6)
-        select_button.Margin=Thickness(0,0,8,8)
         select_button.Click+=lambda s,e:self.tasks.SelectAll()
-        self.actions.Children.Add(select_button)
-        for action,label in manifest.actions(role):
-            self.add(action,tr(label))
+        self.filter_bar.Children.Add(select_button)
         self.search.TextChanged+=lambda s,e:self.render()
         for key,control,label in self.filter_controls:
             control.SelectionChanged+=lambda s,e:self.render()
@@ -299,14 +315,12 @@ class TaskWindow(forms.WPFWindow):
         self.object_part=selected if selected in parts.catalog(self.project_code) else ''
         parts.select(self.project_code,self.role,self.model_uid,self.object_part)
 
-    def add(self,action,label):
+    def add(self,action,label,panel):
         button=Button()
         button.Content=label
         button.ToolTip=manifest.action_hint(action)
-        button.Padding=Thickness(10,6,10,6)
-        button.Margin=Thickness(0,0,8,8)
         button.Click+=lambda s,e,a=action:self.dispatch(a)
-        self.actions.Children.Add(button)
+        panel.Children.Add(button)
 
     def dispatch(self,action):
         try:

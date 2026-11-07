@@ -75,3 +75,14 @@ def test_hvac_spelling_and_legacy_alias_resolve_to_same_discipline():
     assert m.canonical_discipline(u'ОВИК')==u'ОВиК'
     assert m.canonical_discipline(u'ОК')==u'ОВиК'
     assert m.canonical_discipline(u'ВК')==u'ВК'
+
+
+@pytest.mark.parametrize('role',['VIS','KR','AR'])
+def test_workflow_groups_cover_every_role_action_once(role):
+    groups=m.action_groups(role)
+    grouped=[action for title,actions in groups for action in actions]
+    expected={action for action,label in m.actions(role)}|set(m.COMMON)
+    assert set(grouped)==expected
+    assert len(grouped)==len(set(grouped))
+    for action in grouped:
+        assert m.validate_action(role,action)==action
