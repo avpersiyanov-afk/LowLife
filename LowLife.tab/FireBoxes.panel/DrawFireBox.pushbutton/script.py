@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = u'Нарисовать короб'
+__title__ = u'Смоделировать короб'
 __persistentengine__ = True
 from pyrevit import revit
 from lowlife.fire_boxes import run

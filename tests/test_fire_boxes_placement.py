@@ -162,7 +162,7 @@ def test_preflight_rejects_missing_type_or_system_and_non_plan():
 def test_unavailable_native_command_does_not_leave_handlers():
     a = adapter()
     a.uiapp.CanPostCommand = lambda command: False
-    with pytest.raises(ValueError, match='cannot start drawing'):
+    with pytest.raises(ValueError, match='cannot start modeling'):
         a.scope['start'](a.doc, a.uidoc, a.settings)
     assert not a.requests and not a.registered and not a.uiapp.Idling.handlers
 
@@ -197,3 +197,25 @@ def test_new_curve_receives_section_elevation_system_and_metadata():
     session.apply(element)
     assert writes[:4] == [('size', 500, 400), ('system', 20), ('offset', 3000/304.8), ('workset', 2)]
     assert writes[-1][1] == dict(version=1, settings=session.settings)
+
+
+@pytest.mark.parametrize('config_mode', [False, True])
+@pytest.mark.parametrize('accepted', [False, True])
+def test_model_settings_ok_starts_with_edited_values_cancel_and_shift_do_not(config_mode, accepted):
+    source = Path(__file__).parents[1] / 'lib/lowlife/fire_boxes.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    tree.body = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run']
+    function = tree.body[0]
+    function.body = [node for node in function.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
+    saved = dict(box_type_uid='valid', elevation_mm=3000)
+    edited = dict(box_type_uid='changed', elevation_mm=4000) if accepted else None
+    dialogs, models = [], []
+    def show(doc, values=None):
+        dialogs.append(values)
+        return edited
+    scope = dict(EXEC_PARAMS=NS(config_mode=config_mode), cfg=NS(load=lambda: saved),
+                 fire_boxes_ui=NS(show=show), draw=lambda doc, uidoc, values: models.append(values))
+    exec(compile(tree, str(source), 'exec'), scope)
+    scope['run'](object(), object(), 'draw')
+    assert dialogs == [None if config_mode else saved]
+    assert models == ([edited] if accepted and not config_mode else [])

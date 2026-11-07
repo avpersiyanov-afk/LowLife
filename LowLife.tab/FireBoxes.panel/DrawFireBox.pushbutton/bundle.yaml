@@ -1,6 +1,6 @@
-title: Нарисовать короб
-title_en: Draw enclosure
-tooltip: Рисовать короб FIREBOX или ОСК штатным инструментом Revit с предпросмотром, привязками и временными размерами. Сечение задаётся в настройках. Esc завершает рисование. Shift+клик — настройки.
-tooltip_en: Draw a FIREBOX or OSK enclosure with Revit's native preview, snaps and temporary dimensions. Configure the section in settings. Esc finishes drawing. Shift+click opens settings.
+title: Смоделировать короб
+title_en: Model enclosure
+tooltip: Открыть настройки короба FIREBOX или ОСК. После ОК начинается моделирование штатным инструментом Revit с предпросмотром, привязками и временными размерами. Esc завершает моделирование. Shift+клик — только настройки.
+tooltip_en: Open FIREBOX or OSK enclosure settings. Click OK to start modeling with Revit's native preview, snaps and temporary dimensions. Esc finishes modeling. Shift+click opens settings only.
 engine:
   persistent: true
