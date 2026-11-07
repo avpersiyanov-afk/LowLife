@@ -223,7 +223,7 @@ class TaskWindow(forms.WPFWindow):
         self.heading.Text=self.Title+u' — '+purpose+u' | '+doc.Title
         self.heading.ToolTip=tr(u'Обмен: сохраните/синхронизируйте свою модель, обновите связь смежника в Revit, затем нажмите «Обновить обмен». Данные показаны по последней загруженной версии связи.',u'Exchange: save/synchronize your model, reload the other discipline link in Revit, then click Refresh exchange. Results reflect the last loaded link version.')
         self.exchange_hint.Text=tr(u'Обмен: сохранить модель → обновить связь смежника в Revit → «Обновить обмен». Ответы показаны по загруженной версии связи.',u'Exchange: save model → reload recipient link in Revit → Refresh exchange. Responses reflect the loaded link version.')
-        self.filter_controls=[('object_part',self.part_filter,tr(u'Все части объекта',u'All object parts')),
+        self.filter_controls=[('object_part',self.part_filter,tr(u'Все номера корпусов',u'All building numbers')),
             ('status',self.state,tr(u'Все статусы',u'All statuses')),
             ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
             ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
@@ -234,7 +234,7 @@ class TaskWindow(forms.WPFWindow):
         self.attention.Content=tr(u'Требуют внимания',u'Need attention')
         self.reset.Content=tr(u'Сбросить фильтры',u'Reset filters')
         self.search.ToolTip=tr(u'Поиск по номеру, GUID, модели, уровню и размерам',u'Search number, GUID, model, level and sizes')
-        self.columns=[('ObjectPart',tr(u'Часть объекта',u'Object part'),100),('Number',tr(u'Задание',u'Task'),150),('Status',tr(u'Статус',u'Status'),170),
+        self.columns=[('ObjectPart',tr(u'Номер корпуса',u'Building number'),100),('Number',tr(u'Задание',u'Task'),150),('Status',tr(u'Статус',u'Status'),170),
             ('Recipient',tr(u'Получатель',u'Recipient'),90),('Discipline',tr(u'Дисциплина',u'Discipline'),95),('Model',tr(u'Модель',u'Model'),140),
             ('Level',tr(u'Уровень',u'Level'),120),('Kind',tr(u'Конструкция',u'Host'),100),
             ('Issue',tr(u'Выпуск',u'Issue'),90),('Revision',tr(u'Ревизия',u'Revision'),75),
@@ -253,7 +253,7 @@ class TaskWindow(forms.WPFWindow):
         self.add('refresh',tr(u'Обновить обмен',u'Refresh exchange'))
         self.add('settings',tr(u'Настройки',u'Settings'))
         self.add('journal_open',tr(u'Открыть таблицу',u'Open spreadsheet'))
-        self.add('parts_refresh',tr(u'Обновить части объекта',u'Refresh object parts'))
+        self.add('parts_refresh',tr(u'Обновить номера корпусов',u'Refresh building numbers'))
         self.add('journal_setup',tr(u'Подключение таблицы',u'Sheet connection'))
         select_button=Button()
         select_button.Content=tr(u'Выбрать показанные',u'Select visible')
@@ -282,7 +282,7 @@ class TaskWindow(forms.WPFWindow):
     def load_parts(self):
         self.parts_updating=True
         self.part_choice.Items.Clear()
-        placeholder=tr(u'Выберите часть объекта',u'Select object part')
+        placeholder=tr(u'Выберите номер корпуса',u'Select building number')
         self.part_choice.Items.Add(placeholder)
         values=parts.catalog(self.project_code)
         for value in values:

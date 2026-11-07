@@ -36,8 +36,8 @@ def select(project,role,model,value):
 
 def require_choice(project,value):
     if not value or value not in catalog(project):
-        raise ValueError(tr(u'Выберите часть объекта из Google-справочника. Заполните лист «Части объектов» и обновите список.',
-                            u'Select an object part from the Google catalog. Fill the Object parts sheet and refresh the list.'))
+        raise ValueError(tr(u'Выберите номер корпуса из Google-справочника. Заполните лист «Части объектов» и обновите список.',
+                            u'Select a building number from the Google catalog. Fill the Object parts sheet and refresh the list.'))
     return value
 
 
