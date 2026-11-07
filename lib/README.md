@@ -3074,8 +3074,10 @@ uses the shared params.read_project_parameter reader and its own parameter setti
 ### opening_levels.py / opening_levels_core.py
 
 Shared box-level resolver for VIS/KR/AR tasks and tray boxes. Pierced floor level
-or downward solid intersection with floors from the same selected source.
-Name and transformed project-elevation matching, no nearest-level fallback.
+or downward solid intersection with floors/foundations from the same selected source.
+Name and transformed project-elevation matching, then unique current-model elevation
+matching for differently named KR/AR levels. Unassigned support levels use the actual
+surface hit elevation. No nearest-level fallback; ambiguous same-elevation levels fail.
 Checks and updates actual instance level while preserving position; provenance
 enters task JSON and level corrections participate in reissue detection.
 

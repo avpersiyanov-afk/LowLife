@@ -178,8 +178,11 @@ summary expose the part so НЧ/ПЧ and buildings/sections can be controlled se
 Floor openings use the pierced slab's level. Wall openings cast a vertical
 downward ray against actual floor solids in the same selected KR or AR link;
 other links and VIS geometry are excluded. A ray through a hole continues to
-the next physical hit. Linked levels map to VIS by name and transformed project
-elevation (1 mm tolerance), never by the nearest lower level. Missing/ambiguous
+the next physical hit. Linked levels map by name and transformed project elevation (1 mm tolerance).
+When KR/AR names differ, a unique current-model level at the same elevation is used.
+Foundations are included in downward rays within the selected source. If the support
+has no assigned level, its actual surface hit elevation is matched to a current-model
+level. No nearest lower level is used; multiple same-elevation candidates require review. Missing/ambiguous
 levels or hits and tilted links are reported as skipped boxes.
 
 Repeated placement checks existing instance levels and changes them while
