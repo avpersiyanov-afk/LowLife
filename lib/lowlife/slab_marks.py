@@ -286,7 +286,7 @@ class SlabProbe(object):
         self._solids_cache[key] = solids
         return solids
 
-    def _sloped_hits(self, key, x, y, origin_z):
+    def _sloped_hits(self, key, x, y, origin_z, include_inside=False):
         """Для элемента с наклонными гранями: пересечение вертикали с его телами (футы)."""
         from Autodesk.Revit.DB import SolidCurveIntersectionOptions
         element, transform = self._elements[key]
@@ -309,6 +309,8 @@ class SlabProbe(object):
                     up.append(mm(low - origin_z))
                 elif high < origin_z:
                     down.append(mm(origin_z - high))
+                elif include_inside and low <= origin_z <= high:
+                    down.append(0.0)
         return up, down
 
     def _hits(self, x, y, origin_z):
@@ -344,15 +346,31 @@ class SlabProbe(object):
         return up, down
 
     def floor_hits_below(self, x, y, origin_z):
-        """Downward floor hits as (distance feet, element), with source scope retained."""
-        # Include a point lying on the surface within Revit's modelling tolerance.
-        _up, down = self._hits(x, y, origin_z + ft(1.0))
+        """Downward floor hits; verify contour misses against cached floor solids."""
+        probe_z=origin_z+ft(1.0)
+        _up, down = self._hits(x, y, probe_z)
         result=[]
+        found=set()
         for distance, kind, key in down:
             element=self._element(key)
             if (kind==core.SLAB and element is not None and
                     element.Category.Id.IntegerValue==int(BuiltInCategory.OST_Floors)):
                 result.append((max(0.0,ft(distance-1.0)),element))
+                found.add(key)
+        # Face polygons are a fast path. Curves, edges and points inside a slab
+        # need a solid intersection as well, even if a lower slab was found.
+        for key,z_min,z_max in self._grid.at(mm(x),mm(y)):
+            if key in found or z_min>mm(probe_z):
+                continue
+            if self.down_range_mm is not None and z_max<mm(probe_z)-self.down_range_mm:
+                continue
+            element=self._element(key)
+            if (self._kind_cache.get(key)!=core.SLAB or element is None or
+                    element.Category.Id.IntegerValue!=int(BuiltInCategory.OST_Floors)):
+                continue
+            _up, distances=self._sloped_hits(key,x,y,probe_z,include_inside=True)
+            if distances:
+                result.append((max(0.0,ft(min(distances)-1.0)),element))
         return result
 
     # --- диагностика ---

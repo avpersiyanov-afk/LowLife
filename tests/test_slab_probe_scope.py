@@ -64,13 +64,58 @@ def test_open_queries_only_explicit_sources_and_categories(monkeypatch):
 def test_downward_api_reuses_cached_hits_and_returns_only_floor_elements():
     floor=NS(Category=NS(Id=NS(IntegerValue=1)))
     roof=NS(Category=NS(Id=NS(IntegerValue=2)))
-    ns=dict(core=core,ft=lambda value:value/304.8,BuiltInCategory=NS(OST_Floors=1))
+    ns=dict(core=core,ft=lambda value:value/304.8,mm=lambda value:value*304.8,BuiltInCategory=NS(OST_Floors=1))
     fn=method('floor_hits_below',ns)
     calls=[]
     def hits(x,y,z):
         calls.append((x,y,z))
         return [],[(1001,core.SLAB,'floor'),(501,core.SLAB,'roof')]
-    obj=NS(_hits=hits,_element=lambda key:{'floor':floor,'roof':roof}[key])
+    obj=NS(_grid=NS(at=lambda x,y:[]),_hits=hits,_element=lambda key:{'floor':floor,'roof':roof}[key])
     result=fn(obj,1,2,10)
     assert calls==[(1,2,10+1/304.8)]
     assert result==[(1000/304.8,floor)]
+
+
+def test_floor_probe_verifies_missed_solid_even_if_lower_floor_was_found():
+    floor=NS(Category=NS(Id=NS(IntegerValue=1)))
+    lower=NS(Category=NS(Id=NS(IntegerValue=1)))
+    ns=dict(core=core,ft=lambda value:value/304.8,mm=lambda value:value*304.8,
+            BuiltInCategory=NS(OST_Floors=1))
+    fn=method('floor_hits_below',ns)
+    calls=[]
+    def solids(key,x,y,z,include_inside=False):
+        calls.append((key,include_inside))
+        return [],[501]
+    obj=NS(_hits=lambda x,y,z:([],[(3001,core.SLAB,'lower')]),
+           _grid=NS(at=lambda x,y:[('floor',0,2000),('lower',-3000,0)]),
+           _element=lambda key:{'floor':floor,'lower':lower}[key],
+           _kind_cache={'floor':core.SLAB,'lower':core.SLAB},down_range_mm=None,
+           _sloped_hits=solids)
+    hits=fn(obj,1,2,10)
+    assert calls==[('floor',True)]
+    assert hits==[(3000/304.8,lower),(500/304.8,floor)]
+
+
+def test_floor_probe_does_not_invent_hit_when_solid_has_a_void():
+    floor=NS(Category=NS(Id=NS(IntegerValue=1)))
+    ns=dict(core=core,ft=lambda value:value/304.8,mm=lambda value:value*304.8,
+            BuiltInCategory=NS(OST_Floors=1))
+    fn=method('floor_hits_below',ns)
+    obj=NS(_hits=lambda x,y,z:([],[]),_grid=NS(at=lambda x,y:[('floor',0,2000)]),
+           _element=lambda key:floor,_kind_cache={'floor':core.SLAB},down_range_mm=None,
+           _sloped_hits=lambda *args,**kwargs:([],[]))
+    assert fn(obj,1,2,10)==[]
+
+
+def test_solid_fallback_counts_origin_inside_slab_only_when_requested(monkeypatch):
+    monkeypatch.setitem(sys.modules,'Autodesk.Revit.DB',NS(SolidCurveIntersectionOptions=lambda:None))
+    point=lambda x,y,z:NS(X=x,Y=y,Z=z)
+    segment=NS(GetEndPoint=lambda i:point(0,0,[9,11][i]))
+    solid=NS(IntersectWithCurve=lambda ray,options:NS(SegmentCount=1,GetCurveSegment=lambda i:segment))
+    transform=NS(Inverse=NS(OfPoint=lambda p:p),OfPoint=lambda p:p)
+    ns=dict(XYZ=point,Line=NS(CreateBound=lambda a,b:(a,b)),_PROBE_RANGE_FT=1000,
+            mm=lambda z:z*304.8)
+    fn=method('_sloped_hits',ns)
+    obj=NS(_elements={'floor':('floor',transform)},_local_solids=lambda key,element:[solid])
+    assert fn(obj,'floor',0,0,10)==([],[])
+    assert fn(obj,'floor',0,0,10,include_inside=True)==([],[0])
