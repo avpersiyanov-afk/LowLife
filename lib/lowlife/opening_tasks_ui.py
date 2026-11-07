@@ -302,7 +302,7 @@ def run(role, config_mode=False, action=None):
             settings_form.require(settings,['box_width_param','box_depth_param','box_height_param','box_host_filter_param'])
             place(settings)
         elif action=='issue':
-            settings_form.require(settings,['opening_status_param','opening_issue_param','opening_revision_param','opening_date_param'])
+            settings_form.require(settings,['opening_status_param'])
             publish(settings)
 
         elif action=='withdraw':

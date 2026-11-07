@@ -10,6 +10,9 @@ def test_first_run_requires_project_names_instead_of_embedding_them(tmp_path,mon
     assert values['opening_discipline']==''
     assert values['opening_json_param']==''
     assert 'opening_json_param' in [f.key for f in vis.fields if f.required]
+    required={f.key for f in vis.fields if f.required}
+    assert 'opening_status_param' in required
+    assert not required.intersection({'opening_issue_param','opening_revision_param','opening_date_param'})
     assert values['size_extra_mm']==50.0
     assert values['opening_increase']=='none'
     assert 'box_source_model' not in values  # target is explicitly selected per placement

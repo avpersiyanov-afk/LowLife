@@ -216,3 +216,11 @@ and Review; KR has Review and Views; AR has Review. All roles have Exchange
 (refresh and spreadsheet) and Settings (parameters, building catalog and connection).
 Buttons have smaller padding and font size while retaining captions and tooltips.
 Select visible sits next to table filters; command tabs retain row selection and filters.
+
+
+Release tracking requires only the task JSON and release status parameters.
+Separate issue number, revision and issue date parameters are optional; leave
+those settings blank if native Revit schedule columns are unnecessary. Revision
+history remains in JSON, the interface and Google journal. Views and status filters
+continue to work. Existing configured parameters continue to be populated; clearing
+a setting does not delete old parameters or model values.

@@ -3,7 +3,7 @@
 from lowlife import settings_core as sc
 from lowlife import tray_boxes_settings as trays
 from lowlife import opening_tasks_manifest as manifest
-from lowlife.i18n import N_
+from lowlife.i18n import N_, tr
 
 
 def make(role, doc=None):
@@ -22,7 +22,7 @@ def make(role, doc=None):
                     [('none', u'Без увеличения'), ('auto', u'Автоматически'),
                      ('50', u'+50 мм'), ('100', u'+100 мм'), ('150', u'+150 мм'), ('200', u'+200 мм')],
                     hint=u'Добавка к обоим размерам сечения: +50 мм увеличивает каждый размер на 50 мм, по 25 мм с каждой стороны. Авто: большая сторона до 300 мм — +50, свыше 300 — +100, свыше 600 до 1200 включительно — +150, свыше 1200 — +200. Толщина конструкции не увеличивается.')]
-        fields += [sc.TextField(key, u'Фиксация выдачи', label, hint=hint, required=True)
+        fields += [sc.TextField(key, u'Фиксация выдачи', label, hint=hint, required=(key=='opening_status_param'))
                    for key,label,hint in [
                        ('opening_status_param',N_(u'Параметр статуса выдачи'),N_(u'Текстовый параметр экземпляра бокса для статуса: черновик, выдано, изменено после выдачи или отозвано. Можно включить в спецификации и фильтры.')),
                        ('opening_issue_param',N_(u'Параметр номера выпуска'),N_(u'Текстовый параметр экземпляра бокса для номера выпуска. Заполняется автоматически при выдаче или перевыдаче.')),
@@ -47,6 +47,9 @@ def make(role, doc=None):
         'box_height_param':N_(u'Параметр высоты семейства бокса: в стене — высота отверстия, в перекрытии — толщина конструкции. Для параметров типа создаётся отдельный типоразмер.'),
     }
     for field in fields:
+        if field.key in ('opening_issue_param','opening_revision_param','opening_date_param'):
+            field.hint=tr(u'Необязательно. Можно оставить пустым: данные сохраняются в JSON, интерфейсе и Google-журнале. Заполните только для отдельного столбца спецификации Revit.',
+                          u'Optional. Leave blank: data remains in JSON, the interface and Google journal. Fill only for a separate Revit schedule column.')
         if field.key in hints:
             field.hint=hints[field.key]
     form=sc.TextSettings('LowLifeOpeningTasks' + role + '_settings.json',

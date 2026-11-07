@@ -135,7 +135,7 @@ class Handler(IExternalEventHandler):
                         selected.append(record)
                     flow.kr(settings,action,selected)
                 elif action=='issue':
-                    settings_form.require(settings,['opening_discipline','opening_json_param','opening_status_param','opening_issue_param','opening_revision_param','opening_date_param'])
+                    settings_form.require(settings,['opening_discipline','opening_json_param','opening_status_param'])
                     elements=[w.document.GetElement(row['uid']) for row in rows]
                     if any(e is None for e in elements):
                         raise ValueError(tr(u'Часть боксов удалена. Обновите список.',u'Some boxes were deleted. Refresh the list.'))
