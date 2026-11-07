@@ -34,7 +34,8 @@ def scope_key(project, role, model):
 def connection_value(project,role,model):
     data=connection_store().read()
     # A new shared connection replaces per-model setup, while old files still work.
-    return data.get(scope_key(project,role,'*')) or data.get(scope_key(project,role,model))
+    return (data.get(scope_key('*',role,'*')) or
+            data.get(scope_key(project,role,'*')) or data.get(scope_key(project,role,model)))
 
 
 def connection_store():
@@ -64,13 +65,13 @@ def load_connection(project,role,model):
     return dict(url=value['url'],token=crypt(value['token_dpapi'],True))
 
 
-def save_connection(project,role,model,url,token,sheet_url='',shared=False):
+def save_connection(project,role,model,url,token,sheet_url='',shared=False,all_projects=False):
     validate_url(url)
     if not token.strip():
         raise ValueError(tr(u'Введите токен подключения',u'Enter a connection token'))
     config=connection_store()
     data=config.read()
-    data[scope_key(project,role,'*' if shared else model)]=dict(url=url,token_dpapi=crypt(token.strip()),sheet_url=sheet_url)
+    data[scope_key('*' if all_projects else project,role,'*' if shared or all_projects else model)]=dict(url=url,token_dpapi=crypt(token.strip()),sheet_url=sheet_url)
     if not config.write(data):
         raise ValueError(tr(u'Подключение журнала не сохранено',u'Journal connection was not saved'))
 
@@ -277,12 +278,12 @@ def setup(doc,role,project):
                               u'Project: {} | Role: {}\nModel ID: {}').format(project,role,model)
             self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')
             self.token_label.Text=tr(u'Токен',u'Token')
-            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выдайте один токен группе для этого объекта и роли. ID модели сохраняется в журнале и не ограничивает токен.',
-                                   u'The code comes from Project Information. Issue one group token for this project and role in the Google sheet LowLife menu. The model ID is recorded in the journal, not bound to the token.')
+            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выдайте один токен группе для роли, общий для всех объектов. ID модели сохраняется в журнале и не ограничивает токен.',
+                                   u'The code comes from Project Information. Issue one group token for this role across all projects in the Google sheet LowLife menu. The model ID is recorded in the journal, not bound to the token.')
             self.url_hint.Text=tr(u'Вставьте адрес развёрнутого веб-приложения Apps Script с окончанием /exec. Ссылка на саму Google-таблицу сюда не подходит.',
                                   u'Paste the deployed Apps Script web app URL ending in /exec. The spreadsheet URL cannot be used here.')
-            self.token_hint.Text=tr(u'Общий токен группы для объекта и роли. Подходит для всех моделей этой роли. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
-                                    u'Shared group token for this project and role, valid for all models of that role. Revit and Windows users are recorded separately; the token is stored encrypted.')
+            self.token_hint.Text=tr(u'Общий токен группы для роли. Подходит для всех объектов и моделей этой роли. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
+                                    u'Shared group token for this role, valid across all projects and models of that role. Revit and Windows users are recorded separately; the token is stored encrypted.')
             self.guide.Content=tr(u'Инструкция подключения Google',u'Google connection guide')
             self.guide.Click+=self.open_guide
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
@@ -314,7 +315,8 @@ def setup(doc,role,project):
                         return
                     try:
                         save_connection(project,role,model,url,token,result.get('sheet_url',''),
-                                        shared=result.get('credential_scope')=='group')
+                                        shared=result.get('credential_scope') in ('group','project_group'),
+                                        all_projects=result.get('credential_scope')=='group')
                         self.token.Password=''
                         self.Close()
                     except Exception as ex:

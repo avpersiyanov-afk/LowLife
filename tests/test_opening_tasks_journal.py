@@ -213,3 +213,20 @@ def test_windows_identity_and_queued_actor_are_preserved(monkeypatch):
     data['revit_user']='Another user'
     assert c.loads(item['payload'])['revit_user']=='Revit Ivanov'
     assert c.loads(item['payload'])['windows_user']=='BUREAU\\ivanov'
+
+
+def test_global_group_connection_works_for_all_projects_and_models(monkeypatch):
+    class Store:
+        data={}
+        def read(self):return copy.deepcopy(self.data)
+        def write(self,value):
+            self.data=value
+            return True
+    config=Store()
+    monkeypatch.setattr(j,'connection_store',lambda:config)
+    monkeypatch.setattr(j,'crypt',lambda text,decrypt=False:'token' if decrypt else 'encrypted')
+    j.save_connection('P','VIS','model','https://script.google.com/macros/s/g/exec','token',
+                      shared=True,all_projects=True)
+    assert j.load_connection('P','VIS','model')['token']=='token'
+    assert j.load_connection('OTHER','VIS','another-model')['token']=='token'
+    with pytest.raises(ValueError):j.load_connection('OTHER','KR','another-model')

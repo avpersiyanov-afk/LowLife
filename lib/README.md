@@ -3053,7 +3053,7 @@ a process-wide .NET timer, independent of task windows. Startup/document hooks
 resume queued deliveries. Background JsonStore writes suppress alerts. Pure project/model
 snapshot assembly plus lazy Windows DPAPI credential storage through a non-shared
 JsonStore. Settings are visible only to persiyanov; Apps Script separately enforces
-project/role group token grants (with legacy model grants supported). Captures Revit data in ExternalEvent and sends it
+role-scoped group token grants across projects (legacy project/model grants remain supported). Captures Revit data in ExternalEvent and sends it
 on a background .NET thread. Server and provisioning: docs/opening-journal/.
 
 ### opening_tasks_parts.py

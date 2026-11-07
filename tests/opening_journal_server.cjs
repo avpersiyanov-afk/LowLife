@@ -200,7 +200,7 @@ assert.equal(separated.length,2);
 const sharedToken='g'.repeat(64);
 properties['TOKEN_'+sandbox.sha_(sharedToken)]=JSON.stringify({group:'ОВ',project:'P',role:'VIS'});
 const sharedScope={token:sharedToken,project:'P',role:'VIS',model:'vis'};
-assert.equal(call({...sharedScope,action:'status'}).credential_scope,'group');
+assert.equal(call({...sharedScope,action:'status'}).credential_scope,'project_group');
 assert.equal(call({...sharedScope,role:'KR',action:'status'}).error,'SCOPE_DENIED');
 assert.equal(call({...sharedScope,project:'Other',action:'status'}).error,'SCOPE_DENIED');
 const firstGroup=structuredClone(withPart);
@@ -221,3 +221,24 @@ assert.equal(ledgerRows.at(-1)[10],'BUREAU\\petrov');
 assert.equal(sheets['Задания'].rows.find(r=>r[0]==='P' && r[5]==='vis')[26],'BUREAU\\ivanov');
 const spoof=structuredClone(secondGroup);spoof.model='different';
 assert.equal(pub(spoof,1,{...sharedScope,model:'vis-2'}).error,'INVALID_SNAPSHOT');
+
+// Global group grants span objects while legacy grants keep their restrictions.
+const globalToken='z'.repeat(64);
+properties['TOKEN_'+sandbox.sha_(globalToken)]=JSON.stringify({group:'Инженеры ВИС',role:'VIS'});
+const globalScope={token:globalToken,project:'NEW-1',role:'VIS',model:'new-model-1'};
+assert.equal(call({...globalScope,action:'status'}).credential_scope,'group');
+function globalData(project,model){
+  const value=base();value.project=project;value.model=model;
+  value.tasks.a.project=project;value.tasks.a.source_model=model;
+  return value;
+}
+assert.equal(pub(globalData('NEW-1','new-model-1'),0,globalScope).version,1);
+assert.equal(pub(globalData('NEW-2','new-model-2'),0,{...globalScope,project:'NEW-2',model:'new-model-2'}).version,1);
+assert.equal(call({...globalScope,action:'status'}).version,1);
+assert.equal(call({...globalScope,project:'NEW-2',model:'new-model-2',action:'status'}).version,1);
+assert.equal(call({...globalScope,role:'KR',action:'status'}).error,'SCOPE_DENIED');
+assert.equal(call({...globalScope,project:'',action:'status'}).error,'SCOPE_DENIED');
+assert.equal(call({...sharedScope,project:'NEW-1',action:'status'}).error,'SCOPE_DENIED');
+assert.equal(call({...scope,project:'NEW-1',action:'status'}).error,'SCOPE_DENIED');
+assert(sheets[sandbox.objectTab_('NEW-1')].rows.slice(1).every(r=>r[3]==='NEW-1'));
+assert(sheets[sandbox.objectTab_('NEW-2')].rows.slice(1).every(r=>r[3]==='NEW-2'));
