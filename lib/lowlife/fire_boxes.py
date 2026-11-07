@@ -622,64 +622,8 @@ def mark_targets(doc, elements, settings):
 
 
 def draw(doc, uidoc, settings):
-    workset_id = resolve_workset(doc, settings.get('box_workset_name', ''))
-    box_type = doc.GetElement(settings['box_type_uid'])
-    system_type = doc.GetElement(settings['system_type_uid']) if settings.get('system_type_uid') else None
-    if box_type is None:
-        raise ValueError(tr(u'Выберите тип короба в настройках.', u'Select an enclosure type in settings.'))
-    level = doc.ActiveView.GenLevel
-    if level is None:
-        raise ValueError(tr(u'Откройте план уровня для рисования короба.', u'Open a level plan to draw the enclosure.'))
-    section = core.layout(settings)
-    created, previous, last_point = [], None, None
-    group = DB.TransactionGroup(doc, tr(u'Нарисовать огнезащитный короб', u'Draw fire enclosure'))
-    group.Start()
-    try:
-        while True:
-            try:
-                point = uidoc.Selection.PickPoint(tr(u'Точка оси короба; Esc — закончить трассу.', u'Enclosure axis point; Esc finishes the route.'))
-            except OperationCanceledException:
-                break
-            point = DB.XYZ(point.X, point.Y, level.Elevation + float(settings['elevation_mm'])/304.8)
-            if last_point is None:
-                last_point = point
-                continue
-            if last_point.DistanceTo(point) < doc.Application.ShortCurveTolerance:
-                continue
-            transaction = DB.Transaction(doc, tr(u'Участок короба', u'Enclosure segment'))
-            transaction.Start()
-            try:
-                segment = create_curve(doc, box_type, system_type, level.Id, last_point, point, section['width'], section['height'])
-                assign_workset(segment, workset_id)
-                note(segment, settings)
-                write_data(segment, dict(version=1, settings=settings))
-                doc.Regenerate()
-                if previous is not None:
-                    fitting = join(doc, [previous, segment], last_point)
-                    if fitting is not None:
-                        doc.Regenerate()
-                        for member in fitting_members(fitting).values():
-                            assign_workset(member, workset_id)
-                            note(member, settings)
-                            write_data(member, dict(version=1, settings=settings))
-                            created.append(member)
-                if transaction.Commit() != DB.TransactionStatus.Committed:
-                    raise ValueError(tr(u'Revit отменил построение участка.', u'Revit rolled back segment creation.'))
-                created.append(segment)
-                previous, last_point = segment, point
-                uidoc.RefreshActiveView()
-            except Exception:
-                if transaction.GetStatus() == DB.TransactionStatus.Started:
-                    transaction.RollBack()
-                raise
-        status = group.Assimilate() if created else group.RollBack()
-        if created and status != DB.TransactionStatus.Committed:
-            raise ValueError(tr(u'Revit отменил построение короба.', u'Revit rolled back enclosure creation.'))
-    except Exception:
-        if group.GetStatus() == DB.TransactionStatus.Started:
-            group.RollBack()
-        raise
-    return created
+    from lowlife.fire_boxes_placement import start
+    return start(doc, uidoc, settings)
 
 
 def run(doc, uidoc, action):
@@ -699,7 +643,8 @@ def run(doc, uidoc, action):
             if settings is None:
                 return
         if action == 'draw':
-            created = draw(doc, uidoc, settings)
+            draw(doc, uidoc, settings)
+            return  # The native command begins after this API context returns.
         else:
             selected = pick(uidoc)
             if not selected:

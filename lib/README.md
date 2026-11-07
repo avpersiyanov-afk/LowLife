@@ -3034,6 +3034,10 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 координаты совпадают с построением в модели.
 `fire_boxes.py` — построение трассы короба, внутренних лотков и деталей,
 признак Да/Нет, примечание, Extensible Storage и защита от повторной вставки.
+`fire_boxes_placement.start(doc, uidoc, settings)` — асинхронный запуск штатного
+рисования через Create Similar: временный образец передаёт рассчитанное сечение
+и отметку, документный `IUpdater` записывает настройки новым участкам и деталям.
+После выхода из команды отключает события/updater и удаляет образец.
 Руководство: [docs/fire-enclosures.md](../docs/fire-enclosures.md).
 
 ### Opening tasks (VIS → KR)
