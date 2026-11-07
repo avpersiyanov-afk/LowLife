@@ -72,7 +72,7 @@ def test_catalog_reuses_background_helper_and_preserves_cache_on_error(tmp_path,
     from lowlife import opening_tasks_journal as journal
     monkeypatch.setenv('APPDATA',str(tmp_path))
     callbacks=[]
-    monkeypatch.setitem(sys.modules,'pnotes.ui',NS(in_background=lambda w,work,done:callbacks.append((work,done))))
+    monkeypatch.setattr(journal,'in_background',lambda w,work,done:callbacks.append((work,done)))
     monkeypatch.setattr(journal,'load_connection',lambda *a:{'url':'url','token':'secret'})
     network=[]
     def request(connection,action,scope,track=False):

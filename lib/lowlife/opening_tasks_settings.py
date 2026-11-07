@@ -10,7 +10,7 @@ def make(role, doc=None):
     manifest.validate_role(role)
     common = [
         sc.TextField('opening_project_param', u'Обмен заданиями', u'Параметр шифра объекта',
-                     hint=u'Пусто — параметр шифра из настройки «Заметок», затем стандартный «Номер проекта».'),
+                     hint=u'Параметр в «Сведениях о проекте», содержащий шифр объекта. Пусто — стандартный «Номер проекта». Настройка независима от других инструментов.'),
         sc.TextField('opening_json_param', u'', u'JSON-параметр задания',
                      hint=(N_(u'Обязательный текстовый параметр экземпляра бокса: хранит описание задания, GUID, размеры и ревизию.') if role=='VIS' else
                            N_(u'Можно оставить пустым. Если текстовый параметр доступен у проёма, в него дополнительно записывается описание. Связь с заданием сохраняется автоматически.')), required=(role == 'VIS')),
@@ -59,14 +59,10 @@ def make(role, doc=None):
 
 
 def project_code(doc,settings):
-    # Reuse Notes references: custom parameter names and built-ins [BIP_NAME].
-    # Reading the Notes cache is local and must never initiate a network request.
-    from pnotes import core as notes
     ref=settings.get('opening_project_param','').strip()
-    if not ref:
-        ref=notes.get_settings(online=False)[0].get('key_param','')
-    if ref and ref!=notes.FILE_KEY:
-        return notes.read_param(doc,ref)
+    if ref:
+        from lowlife.params import read_project_parameter
+        return read_project_parameter(doc,ref)
     return (doc.ProjectInformation.Number or '').strip()
 
 

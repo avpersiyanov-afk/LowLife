@@ -17,7 +17,6 @@ from System.Diagnostics import Process, ProcessStartInfo
 from System.Windows import Visibility
 from System.Windows.Input import Key, Keyboard, ModifierKeys, Cursors
 from System.Collections.Generic import List
-from System.Threading import Thread, ThreadStart
 from Autodesk.Revit.DB import ElementId
 
 from pnotes import core
@@ -103,55 +102,14 @@ def _log_error(where, details):
         pass
 
 
-def in_background(window, work, done):
-    """work() — в фоновом потоке (только сеть и файлы, без Revit API), затем done(результат, ошибка)
-    — в потоке окна. Пока идёт запрос, окно живое и Revit не «зависает».
-    При закрытии окна идущие запросы обрываются, а потоки дожидаются (_stop_background)."""
-    if not getattr(window, '_bg_threads', None):
-        window._bg_threads = []
-        window._bg_closed = False
-        window.Closed += lambda s, e: _stop_background(window)
-    core.begin_requests()
-
-    def deliver(result, error):
-        if window._bg_closed:
-            return
-        try:
-            done(result, error)
-        except Exception:
-            _log_error(getattr(done, '__name__', 'done'), traceback.format_exc())
-
-    def body():
-        result, error = None, None
-        try:
-            result = work()
-        except core.ApiError as ex:
-            error = core.err_text(ex)
-        except Exception as ex:
-            error = core.err_text(ex)
-            _log_error(getattr(work, '__name__', 'work'), traceback.format_exc())
-        except:  # noqa: E722 — из фонового потока не должно вылететь ничего: это уронило бы Revit
-            error = tr(u'ошибка')
-        try:
-            window.Dispatcher.BeginInvoke(System.Action(lambda: deliver(result, error)))
-        except:  # noqa: E722
-            pass
-
-    thread = Thread(ThreadStart(body))
-    thread.IsBackground = True
-    window._bg_threads.append(thread)
-    thread.Start()
+def in_background(window,work,done):
+    from lowlife import background
+    return background.in_background(window,work,done,core.TRANSPORT,on_error=_log_error)
 
 
 def _stop_background(window):
-    window._bg_closed = True
-    core.abort_requests()
-    for thread in window._bg_threads:
-        try:
-            thread.Join(3000)
-        except Exception:
-            pass
-    core.begin_requests()
+    from lowlife.background import stop_background
+    return stop_background(window,core.TRANSPORT)
 
 
 def _balloon(text):

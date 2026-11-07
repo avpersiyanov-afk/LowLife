@@ -29,23 +29,21 @@ def test_ar_has_its_own_settings_store_and_only_receiver_fields(tmp_path,monkeyp
     assert ar.load_saved_values()['opening_project_param']==''
 
 
-def test_project_code_reuses_notes_reference_without_network(monkeypatch):
+def test_project_code_is_independent_and_reads_only_configured_model_parameter(monkeypatch):
     import sys
-    import types
+    import lowlife
+    from types import SimpleNamespace as NS
     calls=[]
-    notes=types.SimpleNamespace(FILE_KEY='file',
-        get_settings=lambda online:({'key_param':'Code [PROJECT_NUMBER]'},False),
-        read_param=lambda doc,ref:calls.append(ref) or 'PROJECT')
-    monkeypatch.setitem(sys.modules,'pnotes.core',notes)
-    import pnotes
-    monkeypatch.setattr(pnotes,'core',notes,raising=False)
-    doc=types.SimpleNamespace(ProjectInformation=types.SimpleNamespace(Number='FALLBACK'))
-    assert settings.for_document({'opening_project':'STALE'},doc)['opening_project']=='PROJECT'
-    assert calls==['Code [PROJECT_NUMBER]']
+    reader=NS(read_project_parameter=lambda doc,ref:calls.append(ref) or 'PROJECT')
+    monkeypatch.setitem(sys.modules,'lowlife.params',reader)
+    monkeypatch.setattr(lowlife,'params',reader,raising=False)
+    doc=NS(ProjectInformation=NS(Number='MODEL-CODE'))
+    assert settings.for_document({'opening_project':'STALE'},doc)['opening_project']=='MODEL-CODE'
+    assert calls==[]
     assert settings.for_document({'opening_project_param':'Custom code'},doc)['opening_project']=='PROJECT'
-    assert calls[-1]=='Custom code'
-    notes.get_settings=lambda online:({'key_param':'file'},False)
-    assert settings.for_document({},doc)['opening_project']=='FALLBACK'
+    assert calls==['Custom code']
+    assert settings.for_document({'opening_project_param':'Code [PROJECT_NUMBER]'},doc)['opening_project']=='PROJECT'
+    assert calls[-1]=='Code [PROJECT_NUMBER]'
 
 
 def test_installed_discipline_is_used_for_new_tasks(monkeypatch):

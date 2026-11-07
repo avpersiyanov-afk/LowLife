@@ -173,7 +173,7 @@ def test_process_timer_is_singleton_and_retries_without_window(monkeypatch):
         return object()
     monkeypatch.setitem(sys.modules,'System',types.SimpleNamespace(AppDomain=types.SimpleNamespace(CurrentDomain=domain)))
     monkeypatch.setitem(sys.modules,'System.Threading',types.SimpleNamespace(Timer=timer,TimerCallback=lambda f:f))
-    monkeypatch.setitem(sys.modules,'pnotes.core',types.SimpleNamespace(_QueueLock=lambda key:nullcontext()))
+    monkeypatch.setattr(j,'QueueLock',lambda key:nullcontext())
     j.install_sender()
     j.install_sender()
     assert len(timers)==1

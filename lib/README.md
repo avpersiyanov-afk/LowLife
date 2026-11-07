@@ -3061,7 +3061,7 @@ on a background .NET thread. Server and provisioning: docs/opening-journal/.
 Google catalog cache and model/role-scoped selection for НЧ/ПЧ and building/section
 labels. Loads the authenticated project's catalog asynchronously, reuses cached
 choices offline and validates placement/release selections. Project Information
-uses the existing Notes parameter reader and locally cached mapping.
+uses the shared params.read_project_parameter reader and its own parameter setting.
 
 ### opening_levels.py / opening_levels_core.py
 
@@ -3076,5 +3076,13 @@ Opening level rays reuse slab_marks.SlabProbe with optional sources/categories
 scope and floor_hits_below. Defaults for existing detector tools are unchanged.
 
 Opening task catalog loading and connection verification both reuse
-pnotes.ui.in_background. Attached requests are cancellable; the periodic
+background.in_background with a dedicated cloud_io.Transport. Attached requests are cancellable; the periodic
 journal sender remains detached and silent when windows close.
+
+
+### cloud_io.py / background.py
+
+Shared HTTP transport, ASCII-safe JSON encoding, AppDomainLock and UI background
+worker extracted from the existing Notes implementation. Notes keeps compatible
+adapters; opening tasks uses its own transport and credentials with no pnotes
+imports. Cancellation state is isolated between the tools. CLR imports are lazy.

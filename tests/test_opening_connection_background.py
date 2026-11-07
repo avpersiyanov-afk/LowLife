@@ -13,11 +13,11 @@ def test_connection_is_saved_only_after_background_validation(monkeypatch):
     cls=next(n for n in setup.body if isinstance(n,ast.ClassDef) and n.name=='ConnectionWindow')
     method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='on_save')
     callbacks=[];sent=[];saved=[];alerts=[]
-    monkeypatch.setitem(sys.modules,'pnotes.ui',NS(in_background=lambda w,work,done:callbacks.append((work,done))))
+
     def request(connection,action,scope,track=False):
         sent.append((scope,track))
         return {'sheet_url':'sheet'}
-    ns=dict(unicode=str,validate_url=lambda url:url,project='P',role='KR',model='model',
+    ns=dict(in_background=lambda w,work,done:callbacks.append((work,done)),unicode=str,validate_url=lambda url:url,project='P',role='KR',model='model',
             request=request,save_connection=lambda *args,**kw:saved.append((args,kw)),
             forms=NS(alert=alerts.append),tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[method],type_ignores=[]),str(path),'exec'),ns)
