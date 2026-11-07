@@ -277,13 +277,14 @@ function output_(value) {
 }
 function project_(ss,name,headers,rows) {
   const sh=sheet_(ss,name,headers);
-  grow_(sh,rows.length+1,headers.length);
+  const filterRows=Math.max(2,rows.length+1);
+  grow_(sh,filterRows,headers.length);
   sh.clearContents();
   sh.getRange(1,1,1,headers.length).setValues([headers]);
   if (rows.length) sh.getRange(2,1,rows.length,headers.length).setValues(rows.map(r=>r.map(safe_)));
   sh.setFrozenRows(1);
   const filter=sh.getFilter();if (filter) filter.remove();
-  if (rows.length) sh.getRange(1,1,rows.length+1,headers.length).createFilter();
+  sh.getRange(1,1,filterRows,headers.length).createFilter();
 }
 function rebuildJournal() {
   admin_();
