@@ -119,6 +119,7 @@ class SlabProbe(object):
 
     _KINDS = {
         int(BuiltInCategory.OST_Floors): core.SLAB,
+        int(BuiltInCategory.OST_StructuralFoundation): core.SLAB,
         int(BuiltInCategory.OST_Roofs): core.SLAB,
         int(BuiltInCategory.OST_Ceilings): core.CEILING,
     }
@@ -345,8 +346,9 @@ class SlabProbe(object):
         self.points += 1
         return up, down
 
-    def floor_hits_below(self, x, y, origin_z):
+    def floor_hits_below(self, x, y, origin_z, support_categories=None):
         """Downward floor hits; verify contour misses against cached floor solids."""
+        allowed=set(int(c) for c in (support_categories or [BuiltInCategory.OST_Floors]))
         probe_z=origin_z+ft(1.0)
         _up, down = self._hits(x, y, probe_z)
         result=[]
@@ -354,7 +356,7 @@ class SlabProbe(object):
         for distance, kind, key in down:
             element=self._element(key)
             if (kind==core.SLAB and element is not None and
-                    element.Category.Id.IntegerValue==int(BuiltInCategory.OST_Floors)):
+                    element.Category.Id.IntegerValue in allowed):
                 result.append((max(0.0,ft(distance-1.0)),element))
                 found.add(key)
         # Face polygons are a fast path. Curves, edges and points inside a slab
@@ -366,7 +368,7 @@ class SlabProbe(object):
                 continue
             element=self._element(key)
             if (self._kind_cache.get(key)!=core.SLAB or element is None or
-                    element.Category.Id.IntegerValue!=int(BuiltInCategory.OST_Floors)):
+                    element.Category.Id.IntegerValue not in allowed):
                 continue
             _up, distances=self._sloped_hits(key,x,y,probe_z,include_inside=True)
             if distances:

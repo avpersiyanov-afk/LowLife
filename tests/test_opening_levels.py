@@ -10,7 +10,7 @@ def test_floor_level_identity_wins_over_closer_auxiliary_or_other_building_level
                 dict(name=u'Вспомогательный',elevation=10.9),
                 dict(name=u'Корпус 1',elevation=10)]
     assert levels.match_level(candidates,u'Корпус 1',10)==candidates[2]
-    with pytest.raises(ValueError):levels.match_level(candidates,u'Нет такого',10.9)
+    assert levels.match_level(candidates,u'Нет такого',10.9)==candidates[1]
     with pytest.raises(ValueError):levels.match_level(candidates,u'Корпус 1',0)
 
 
@@ -55,3 +55,9 @@ def test_corrected_level_is_a_new_release_without_moving_opening():
     assert tasks.change_kinds(registry['tasks']['a'],updated['tasks']['a'])==['level']
     same,changed=tasks.issue(updated,[copy.deepcopy(draft)],'P','OV','who','t3')
     assert not changed and same==updated
+
+
+def test_ar_fallback_rejects_different_buildings_at_same_elevation():
+    candidates=[dict(name='AR building 1',elevation=10),dict(name='AR building 2',elevation=10)]
+    with pytest.raises(ValueError):levels.match_level(candidates,'KR level',10)
+    with pytest.raises(ValueError):levels.match_level([dict(name='AR',elevation=11)],'KR',10)

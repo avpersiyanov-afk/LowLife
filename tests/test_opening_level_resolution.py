@@ -68,9 +68,9 @@ def resolver(monkeypatch,doc,local_levels):
     monkeypatch.setitem(sys.modules,'lowlife.tray_boxes',boxes)
     monkeypatch.setattr(lowlife,'tray_boxes',boxes,raising=False)
     def probe_factory(doc,sources,categories,down_range_mm):
-        assert len(sources)==1 and categories==['floors'] and down_range_mm is None
+        assert len(sources)==1 and categories==['floors','foundations'] and down_range_mm is None
         source_doc,transform=next(iter(sources.values()))
-        def hits(x,y,z):
+        def hits(x,y,z,support_categories=None):
             result=[]
             for floor in source_doc.floors:
                 source_doc.checked.append(floor.UniqueId)
@@ -84,7 +84,7 @@ def resolver(monkeypatch,doc,local_levels):
     tree=ast.parse(path.read_text())
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Resolver')
     ns=dict(core=core,XYZ=XYZ,Level=Level,FilteredElementCollector=Collector,
-            BuiltInCategory=NS(OST_Floors='floors'),
+            BuiltInCategory=NS(OST_Floors='floors',OST_StructuralFoundation='foundations'),
             Line=NS(CreateBound=lambda a,b:(a,b)),SolidCurveIntersectionOptions=lambda:None,
             tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[cls],type_ignores=[]),str(path),'exec'),ns)
@@ -161,3 +161,24 @@ def test_opening_wrapper_reuses_assigner_and_verifies_target_and_position(monkey
         return True
     module.assign_by_param=moved
     with pytest.raises(ValueError):ns['assign_level'](None,instance,NS(Id='other'))
+
+
+def test_wall_foundation_without_assigned_kr_level_uses_current_ar_elevation(monkeypatch):
+    foundation=Floor('foundation','missing',0)
+    kr=document([], [foundation], 'KR')
+    target=Level('AR-0','AR ground',0)
+    local=document([target],[],'VIS')
+    r=resolver(monkeypatch,local,[target,Level('other','Other building',-1)])
+    result,info=r.resolve(NS(link=link(kr),host=NS(LevelId='none'),kind='wall',center=lambda:(5,5,10)))
+    assert result is target and info['support_uid']=='foundation'
+    assert info['source_level_uid']==''
+
+
+def test_link_level_with_different_ar_name_matches_by_transformed_elevation(monkeypatch):
+    kr_level=Level('kr-level','KR ground',0)
+    kr=document([kr_level],[Floor('slab','kr-level',1)],'KR')
+    target=Level('AR-0','AR ground',100)
+    local=document([target],[],'VIS')
+    r=resolver(monkeypatch,local,[target])
+    result,info=r.resolve(NS(link=link(kr,100),host=kr.floors[0],kind='floor'))
+    assert result is target and info['elevation_mm']==pytest.approx(100*304.8)

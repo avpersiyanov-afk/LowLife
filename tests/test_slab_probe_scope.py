@@ -119,3 +119,14 @@ def test_solid_fallback_counts_origin_inside_slab_only_when_requested(monkeypatc
     obj=NS(_elements={'floor':('floor',transform)},_local_solids=lambda key,element:[solid])
     assert fn(obj,'floor',0,0,10)==([],[])
     assert fn(obj,'floor',0,0,10,include_inside=True)==([],[0])
+
+
+def test_foundation_hits_require_explicit_support_scope():
+    foundation=NS(Category=NS(Id=NS(IntegerValue=2)))
+    ns=dict(core=core,ft=lambda value:value/304.8,mm=lambda value:value*304.8,
+            BuiltInCategory=NS(OST_Floors=1))
+    fn=method('floor_hits_below',ns)
+    obj=NS(_hits=lambda x,y,z:([],[(1001,core.SLAB,'foundation')]),
+           _element=lambda key:foundation,_grid=NS(at=lambda x,y:[]))
+    assert fn(obj,1,2,10)==[]
+    assert fn(obj,1,2,10,support_categories=[1,2])==[(1000/304.8,foundation)]

@@ -29,38 +29,57 @@ class Resolver(object):
         if key not in self.probes:
             self.probes[key]=SlabProbe(self.doc,
                 sources={0:(source.doc,source.transform if source.transform is not None else Transform.Identity)},
-                categories=[BuiltInCategory.OST_Floors],down_range_mm=None)
+                categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation],down_range_mm=None)
         return self.probes[key]
 
     def resolve(self,crossing):
         from lowlife import tray_boxes as boxes
         key,source=self.source(crossing)
         support=crossing.host
+        support_elevation=None
         method='floor_host'
         if crossing.kind=='wall':
             method='downward_ray'
             point=boxes._xyz(crossing.center())
             hits=[]
-            for distance,floor in self.probe(key,source).floor_hits_below(point.X,point.Y,point.Z):
+            for distance,floor in self.probe(key,source).floor_hits_below(point.X,point.Y,point.Z,
+                    support_categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation]):
                 level=source.doc.GetElement(floor.LevelId)
                 hits.append(dict(distance=distance,host_uid=floor.UniqueId,
-                    level_uid=level.UniqueId if isinstance(level,Level) else None,element=floor))
-            support=core.first_hit(hits)['element']
+                    level_uid=level.UniqueId if isinstance(level,Level) else None,element=floor,
+                    elevation=point.Z-distance))
+            hit=core.first_hit(hits,allow_missing_level=True)
+            support=hit['element']
+            support_elevation=hit['elevation']
         elif crossing.kind!='floor':
             raise ValueError(tr(u'Не поддерживается тип конструкции для определения уровня.',
                                 u'Unsupported host kind for level resolution.'))
         source_level=source.doc.GetElement(support.LevelId)
-        if not isinstance(source_level,Level):
-            raise ValueError(tr(u'У пересекаемой конструкции не задан уровень.',u'The intersected host has no level.'))
-        name=boxes.safe_element_name(source_level)
-        elevation=source.to_model(XYZ(0,0,source_level.ProjectElevation)).Z
-        if crossing.link is None:
-            target=source_level
+        candidates=[dict(name=boxes.safe_element_name(lv),elevation=lv.ProjectElevation,element=lv)
+                    for lv in self.levels]
+        has_level=isinstance(source_level,Level)
+        if has_level:
+            name=boxes.safe_element_name(source_level)
+            elevation=source.to_model(XYZ(0,0,source_level.ProjectElevation)).Z
+            target=source_level if crossing.link is None else core.match_level(candidates,name,elevation)['element']
         else:
-            candidates=[dict(name=boxes.safe_element_name(lv),elevation=lv.ProjectElevation,element=lv)
-                        for lv in self.levels]
-            target=core.match_level(candidates,name,elevation)['element']
-        info=dict(name=name,source_level_uid=source_level.UniqueId,
+            # No assigned KR level: use the actual support hit, never the nearest
+            # level below the opening. For a pierced slab, probe its top surface.
+            if support_elevation is None:
+                bbox=support.get_BoundingBox(None)
+                point=boxes._xyz(crossing.center())
+                origin_z=source.to_model(bbox.Max).Z+1.0
+                hits=self.probe(key,source).floor_hits_below(point.X,point.Y,origin_z,
+                    support_categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation])
+                distances=[distance for distance,element in hits if element.UniqueId==support.UniqueId]
+                if not distances:
+                    raise ValueError(tr(u'Не удалось определить отметку конструкции без уровня.',
+                                        u'Could not determine the elevation of the host without a level.'))
+                support_elevation=origin_z-min(distances)
+            elevation=support_elevation
+            target=core.match_level(candidates,None,elevation)['element']
+            name=boxes.safe_element_name(target)
+        info=dict(name=name,source_level_uid=source_level.UniqueId if has_level else '',
                   source_model=source.doc.ProjectInformation.UniqueId,
                   support_uid=support.UniqueId,method=method,
                   elevation_mm=boxes.mm(elevation),box_level_uid=target.UniqueId)
