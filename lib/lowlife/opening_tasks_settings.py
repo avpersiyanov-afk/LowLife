@@ -17,7 +17,7 @@ def make(role, doc=None):
     ]
     if role == 'VIS':
         fields = common + [sc.TextField('opening_discipline', u'', u'Дисциплина ВИС',
-                     hint=u'Дисциплина для номера задания и журнала ГИПа. Если установлено подключение с выбором ОК, ВК, ЭОМ, СС или АК, используется дисциплина этого подключения.', required=True)]
+                     hint=u'Дисциплина для номера задания и журнала ГИПа. Если установлено подключение с выбором ОВиК, ВК, ЭОМ, СС или АК, используется дисциплина этого подключения.', required=True)]
         fields += [sc.ChoiceField('opening_increase', u'', u'Дополнительно по ЗНП',
                     [('none', u'Без увеличения'), ('auto', u'Автоматически'),
                      ('50', u'+50 мм'), ('100', u'+100 мм'), ('150', u'+150 мм')],
@@ -72,7 +72,7 @@ def for_document(settings,doc):
     if 'opening_discipline' in value:
         from lowlife import opening_tasks_journal as journal
         connection=journal.connection_value(value['opening_project'],'VIS',doc.ProjectInformation.UniqueId) or {}
-        discipline=connection.get('discipline','')
+        discipline=manifest.canonical_discipline(connection.get('discipline',''))
         if manifest.INSTALL_DISCIPLINES.get(discipline)=='VIS':
             value['opening_discipline']=discipline
     return value

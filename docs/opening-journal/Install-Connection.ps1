@@ -3,8 +3,9 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
 $projectCode = '__connection_check__'
-$discipline = (Read-Host 'Дисциплина: ОК, ВК, ЭОМ, СС, АК, КР или АР').Trim().ToUpperInvariant()
-$disciplineRoles = @{'ОК'='VIS';'ВК'='VIS';'ЭОМ'='VIS';'СС'='VIS';'АК'='VIS';'КР'='KR';'АР'='AR'}
+$discipline = (Read-Host 'Дисциплина: ОВиК, ВК, ЭОМ, СС, АК, КР или АР').Trim().ToUpperInvariant()
+if ($discipline -in @('ОВИК','ОК')) { $discipline = 'ОВиК' }
+$disciplineRoles = @{'ОВиК'='VIS';'ВК'='VIS';'ЭОМ'='VIS';'СС'='VIS';'АК'='VIS';'КР'='KR';'АР'='AR'}
 if (-not $disciplineRoles.ContainsKey($discipline)) { throw 'Неизвестная дисциплина' }
 $modelRole = $disciplineRoles[$discipline]
 $modelUid = '__connection_check__'

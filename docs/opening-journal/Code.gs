@@ -42,11 +42,15 @@ function prompt_(title) {
   if (!value || value.length>250) fail_('INVALID_INPUT');
   return value;
 }
+function disciplineCode_(value) {
+  const code=String(value || '').trim().toUpperCase();
+  return ['ОВИК','ОК'].includes(code) ? 'ОВиК' : code;
+}
 function issueGroupToken() {
   admin_();
-  const group=prompt_('Название группы');
-  const discipline=prompt_('Дисциплина: ОК, ВК, ЭОМ, СС, АК, КР или АР').toUpperCase();
-  const roles={'ОК':'VIS','ВК':'VIS','ЭОМ':'VIS','СС':'VIS','АК':'VIS','КР':'KR','АР':'AR'};
+  const group=prompt_('Название команды/группы (например отдел ОВиК; только метка)');
+  const discipline=disciplineCode_(prompt_('Дисциплина: ОВиК, ВК, ЭОМ, СС, АК, КР или АР'));
+  const roles={'ОВиК':'VIS','ВК':'VIS','ЭОМ':'VIS','СС':'VIS','АК':'VIS','КР':'KR','АР':'AR'};
   const role=roles[discipline];
   if (!role) fail_('INVALID_ROLE');
   const token=Utilities.getUuid()+Utilities.getUuid();
@@ -135,13 +139,14 @@ function auth_(body) {
   if (body.role!==grant.role ||
       typeof body.project!=='string' || !body.project.trim() || body.project.length>250 ||
       typeof body.model!=='string' || !body.model || body.model.length>250) fail_('SCOPE_DENIED');
-  if (grant.discipline && body.discipline!==grant.discipline &&
+  if (grant.discipline && disciplineCode_(body.discipline)!==disciplineCode_(grant.discipline) &&
       !(body.action==='status' && !body.discipline)) fail_('SCOPE_DENIED');
   if (grant.project && body.project!==grant.project) fail_('SCOPE_DENIED');
   if (grant.model && body.model!==grant.model) fail_('SCOPE_DENIED');
   // Preserve legacy project/model restrictions while new group grants span projects.
   const credential_scope=grant.model ? 'model' : grant.project ? 'project_group' : 'group';
-  return Object.assign({},grant,{project:body.project,model:body.model,credential_scope});
+  return Object.assign({},grant,{project:body.project,model:body.model,credential_scope,
+    discipline:disciplineCode_(grant.discipline)});
 }
 function decode_(ss,row) {
   if (!row) return null;

@@ -50,8 +50,8 @@ def test_installed_discipline_is_used_for_new_tasks(monkeypatch):
     from types import SimpleNamespace as NS
     from lowlife import opening_tasks_journal as journal
     monkeypatch.setattr(settings,'project_code',lambda doc,values:'P')
-    monkeypatch.setattr(journal,'connection_value',lambda project,role,model:{'discipline':u'ОК'})
+    monkeypatch.setattr(journal,'connection_value',lambda project,role,model:{'discipline':u'ОВиК'})
     doc=NS(ProjectInformation=NS(UniqueId='model'))
-    assert settings.for_document({'opening_discipline':'OLD'},doc)['opening_discipline']==u'ОК'
+    assert settings.for_document({'opening_discipline':'OLD'},doc)['opening_discipline']==u'ОВиК'
     assert 'opening_discipline' not in settings.for_document({},doc)
-    assert settings.make('VIS',doc).load_saved_values()['opening_discipline']==u'ОК'
+    assert settings.make('VIS',doc).load_saved_values()['opening_discipline']==u'ОВиК'

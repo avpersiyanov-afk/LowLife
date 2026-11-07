@@ -263,3 +263,13 @@ assert.deepEqual(call(autoScope).parts,['НЧ','ПЧ']);
 assert.deepEqual(call(autoScope).parts,['НЧ','ПЧ']);
 assert.equal(sheets['Части объектов'].rows.filter(r=>r[0]==='AUTO-PARTS').length,2);
 assert.equal(sheets['Части объектов'].rows.filter(r=>r[0]==='AUTO-PARTS')[0][0],'AUTO-PARTS');
+
+// Correct HVAC label and compatibility with already distributed ОК tokens.
+assert.equal(sandbox.disciplineCode_('ОВиК'),'ОВиК');
+assert.equal(sandbox.disciplineCode_('овик'),'ОВиК');
+const hvacToken='h'.repeat(64);
+properties['TOKEN_'+sandbox.sha_(hvacToken)]=JSON.stringify({group:'HVAC',role:'VIS',discipline:'ОК'});
+const hvacScope={token:hvacToken,project:'HVAC-P',model:'hvac-model',role:'VIS',discipline:'ОВиК'};
+assert.equal(call({...hvacScope,action:'status'}).discipline,'ОВиК');
+assert.equal(call({...hvacScope,discipline:'ОК',action:'status'}).discipline,'ОВиК');
+assert.equal(call({...hvacScope,discipline:'ВК',action:'status'}).error,'SCOPE_DENIED');
