@@ -255,3 +255,11 @@ assert.equal(call({...bootstrap,action:'catalog'}).error,'SCOPE_DENIED');
 const vkData=globalData('VK-P','vk-model');vkData.tasks.a.discipline='ВК';
 assert.equal(pub(vkData,0,vkScope).version,1);
 assert.equal(pub(vkData,0,bootstrap).error,'SCOPE_DENIED');
+
+
+// The model supplies the project code; a new object's directory starts with НЧ/ПЧ.
+const autoScope={...globalScope,project:'AUTO-PARTS',model:'auto-model',action:'catalog'};
+assert.deepEqual(call(autoScope).parts,['НЧ','ПЧ']);
+assert.deepEqual(call(autoScope).parts,['НЧ','ПЧ']);
+assert.equal(sheets['Части объектов'].rows.filter(r=>r[0]==='AUTO-PARTS').length,2);
+assert.equal(sheets['Части объектов'].rows.filter(r=>r[0]==='AUTO-PARTS')[0][0],'AUTO-PARTS');

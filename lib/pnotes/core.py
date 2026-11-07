@@ -6,18 +6,12 @@ from pnotes.localization import server_error
 import io
 import json
 import uuid
-import time
 import datetime
-import threading
 
 import clr
 clr.AddReference('System')
 import System
-from System.Net import (HttpWebRequest, ServicePointManager, SecurityProtocolType, CredentialCache,
-                        WebException, WebExceptionStatus)
-from System.IO import StreamReader, IOException
-from System.Threading import Thread, ThreadStart, Monitor
-from System.Text import Encoding
+from System.Threading import Thread, ThreadStart
 
 from Autodesk.Revit.DB import (BuiltInParameter, StorageType, ModelPathUtils, ElementId, ViewSheet, View,
                                FilteredElementCollector)
@@ -64,21 +58,7 @@ DEFAULT_SETTINGS = {
 SKIP_BIP_PREFIXES = ('ELEM_', 'EDITED_BY', 'IFC_', 'DESIGN_OPTION', 'PHASE_', 'SYMBOL_', 'ALL_MODEL_')
 
 
-class ApiError(Exception):
-    pass
-
-
-def err_text(ex):
-    # У собственных исключений текст — в args; у .NET-исключений — в Message
-    if isinstance(ex, ApiError) and ex.args:
-        return u'{}'.format(ex.args[0])
-    msg = getattr(ex, 'Message', None)
-    if msg:
-        return msg
-    try:
-        return u'{}'.format(ex)
-    except Exception:
-        return tr(u'ошибка')
+from lowlife.cloud_io import ApiError, err_text, dumps_ascii, Transport, AppDomainLock
 
 
 # ---------------------------------------------------------------- файлы
@@ -91,25 +71,7 @@ def _read_json(path, default=None):
         return default
 
 
-def _dumps(data, indent=None):
-    """json.dumps с ASCII-результатом, безопасный для IronPython.
-
-    Стандартный ensure_ascii=True в IronPython (pyRevit на части машин, напр. Revit 2022) падает на
-    любой кириллице: UnicodeEncodeError 'ascii' codec can't encode character. Поэтому строим текст
-    с ensure_ascii=False и сами заменяем не-ASCII символы на \\uXXXX — результат тот же, что у CPython.
-    """
-    text = json.dumps(data, ensure_ascii=False, indent=indent)
-    out = []
-    for ch in text:
-        code = ord(ch)
-        if code < 128:
-            out.append(ch)
-        elif code > 0xFFFF:  # CPython 3: символ вне BMP — суррогатная пара
-            code -= 0x10000
-            out.append(u'\\u{:04x}\\u{:04x}'.format(0xD800 + (code >> 10), 0xDC00 + (code & 0x3FF)))
-        else:
-            out.append(u'\\u{:04x}'.format(code))
-    return u''.join(out)
+_dumps=dumps_ascii
 
 
 def _write_json(path, data):
@@ -164,141 +126,22 @@ def is_configured():
 
 # Запросы, идущие сейчас (в т.ч. из фоновых потоков окон): при закрытии окна их обрывают,
 # чтобы фоновый поток не пережил окно.
-_active = []
-_lock = threading.Lock()
-_cancelled = [False]
-
-
-def begin_requests():
-    _cancelled[0] = False
-
-
-def abort_requests():
-    """Оборвать все идущие запросы (окно закрыто); следующие до begin_requests() не начнутся."""
-    _cancelled[0] = True
-    with _lock:
-        reqs = list(_active)
-    for req in reqs:
-        try:
-            req.Abort()
-        except Exception:
-            pass
-
-
-def _post(url, body, timeout_ms, track=True):
-    try:
-        ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | SecurityProtocolType.Tls12
-        # Без этого .NET шлёт «Expect: 100-continue» и ждёт лишний обмен с сервером (часть прокси его рвёт)
-        ServicePointManager.Expect100Continue = False
-        # По умолчанию 2 соединения на хост: фоновые отправки и загрузка сводки стояли бы в очереди друг за другом
-        if ServicePointManager.DefaultConnectionLimit < 8:
-            ServicePointManager.DefaultConnectionLimit = 8
-    except Exception:
-        pass
-    data = Encoding.UTF8.GetBytes(body)
-    req = HttpWebRequest.Create(url)
-    req.Method = 'POST'
-    req.ContentType = 'text/plain; charset=utf-8'
-    req.Timeout = timeout_ms
-    req.ReadWriteTimeout = timeout_ms
-    req.AllowAutoRedirect = True  # Apps Script отвечает редиректом на googleusercontent.com
-    if req.Proxy is not None:
-        req.Proxy.Credentials = CredentialCache.DefaultNetworkCredentials
-    req.ContentLength = data.Length
-    if track:
-        with _lock:
-            _active.append(req)
-    try:
-        stream = req.GetRequestStream()
-        try:
-            stream.Write(data, 0, data.Length)
-        finally:
-            stream.Close()
-        resp = req.GetResponse()
-        try:
-            return StreamReader(resp.GetResponseStream(), Encoding.UTF8).ReadToEnd()
-        finally:
-            resp.Close()
-    finally:
-        with _lock:
-            if req in _active:
-                _active.remove(req)
-
-
-_TRANSIENT = (WebExceptionStatus.ConnectionClosed, WebExceptionStatus.KeepAliveFailure,
-              WebExceptionStatus.ReceiveFailure, WebExceptionStatus.SendFailure,
-              WebExceptionStatus.ConnectFailure, WebExceptionStatus.NameResolutionFailure,
-              WebExceptionStatus.PipelineFailure, WebExceptionStatus.SecureChannelFailure)
-
-
-def _is_transient(ex, timeout=False):
-    """Сбой, который у Google случается сам по себе и проходит при повторе (обрыв, 5xx, 429).
-    Таймаут повторяем только с timeout=True — в фоне, где лишнее ожидание не блокирует Revit:
-    у Google отдельный запрос иногда «зависает», а новый проходит за несколько секунд."""
-    if _cancelled[0]:
-        return False
-    net = getattr(ex, 'clsException', None) or ex
-    if isinstance(net, WebException):
-        if net.Status == WebExceptionStatus.Timeout:
-            return timeout
-        if net.Status == WebExceptionStatus.ProtocolError:
-            try:
-                code = int(net.Response.StatusCode)
-            except Exception:
-                return False
-            return code >= 500 or code == 429
-        return net.Status in _TRANSIENT
-    return isinstance(net, IOException)
-
-
-# Сколько работал сам скрипт Google в последнем ответе (мс) — чтобы отличить медленную таблицу от медленной сети
-last_server_ms = [None]
+TRANSPORT=Transport()
+_active=TRANSPORT._active
+_lock=TRANSPORT._lock
+_cancelled=TRANSPORT._cancelled
+begin_requests=TRANSPORT.begin_requests
+abort_requests=TRANSPORT.abort_requests
+_post=TRANSPORT._post
+_is_transient=TRANSPORT._is_transient
+last_server_ms=TRANSPORT.last_server_ms
 
 
 def call(action, payload=None, timeout_ms=15000, url=None, token=None, retries=1, track=True,
          retry_timeout=False):
-    """Запрос к веб-приложению. Временный сбой связи повторяется (retries раз): все действия
-    сервера безопасно повторять — «add» отсеивает повторную отправку по id.
-    track=False — запрос не обрывается закрытием окна (фоновая отправка после закрытия, send_queue_detached)."""
-    cfg = load_config()
-    url = url or cfg['url']
-    token = token or cfg['token']
-    if not (url and token):
-        raise ApiError(tr(u'Не настроено подключение к таблице (кнопка «Настройка»).'))
-    body = dict(payload or {})
-    body['action'] = action
-    body['token'] = token
-    text = _dumps(body)
-    attempt = 0
-    while True:
-        if track and _cancelled[0]:
-            raise ApiError(tr(u'Запрос отменён: окно закрыто.'))
-        try:
-            raw = _post(url, text, timeout_ms, track)
-        except Exception as ex:
-            if attempt < retries and _is_transient(ex, retry_timeout):
-                attempt += 1
-                time.sleep(1)
-                continue
-            raise ApiError(tr(u'Нет связи с Google Таблицей: ') + err_text(ex))
-        try:
-            resp = json.loads(raw)
-        except Exception:
-            # Google иногда отдаёт страницу ошибки вместо ответа скрипта — один раз повторяем
-            if attempt < retries and not _cancelled[0]:
-                attempt += 1
-                time.sleep(1)
-                continue
-            raise ApiError(tr(u'Таблица ответила не данными, а страницей. Проверьте адрес (должен заканчиваться на /exec) '
-                           u'и что веб-приложение развернуто с доступом «Все».'))
-        break
-    try:
-        last_server_ms[0] = float(resp.get('ms'))
-    except Exception:
-        last_server_ms[0] = None  # Code.gs старой версии не сообщает своё время
-    if not resp.get('ok'):
-        raise ApiError(server_error(resp.get('error') or tr(u'Неизвестная ошибка')))
-    return resp
+    cfg=load_config()
+    return TRANSPORT.call(action,payload,timeout_ms,url or cfg['url'],token or cfg['token'],
+                          retries,track,retry_timeout,error_transform=server_error)
 
 
 # ---------------------------------------------------------------- настройки команды (лист «Настройки»)
@@ -398,21 +241,11 @@ def list_project_params(doc):
     return result
 
 
-def read_param(doc, ref):
-    if not ref or ref == FILE_KEY:
+def read_param(doc,ref):
+    if not ref or ref==FILE_KEY:
         return u''
-    pi = doc.ProjectInformation
-    name, bipname, p = ref, None, None
-    if ref.endswith(u']') and u' [' in ref:
-        name, bipname = ref[:-1].rsplit(u' [', 1)
-    if bipname:
-        try:
-            p = pi.get_Parameter(getattr(BuiltInParameter, bipname))
-        except Exception:
-            p = None
-    if p is None:
-        p = pi.LookupParameter(name)
-    return _value(p)
+    from lowlife.params import read_project_parameter
+    return read_project_parameter(doc,ref)
 
 
 def model_path(doc):
@@ -545,26 +378,8 @@ def pending_notes(key):
     return result
 
 
-class _QueueLock(object):
-    """Блокировка файла очереди на весь процесс Revit: её трогают окна разных кнопок (каждая — в своём
-    движке pyRevit со своей копией модуля) и фоновая отправка. Объект блокировки — в AppDomain."""
-    def __init__(self, key='pnotes_queue_lock'):
-        self.key = key
-
-    def __enter__(self):
-        domain = System.AppDomain.CurrentDomain
-        obj = domain.GetData(self.key)
-        if obj is None:
-            obj = System.Object()
-            domain.SetData(self.key, obj)
-            obj = domain.GetData(self.key)
-        self.obj = obj
-        Monitor.Enter(obj)
-        return self
-
-    def __exit__(self, *args):
-        Monitor.Exit(self.obj)
-        return False
+def _QueueLock(key='pnotes_queue_lock'):
+    return AppDomainLock(key)
 
 
 def queue_size():

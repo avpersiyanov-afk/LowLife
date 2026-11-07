@@ -273,3 +273,21 @@ def set_param_text(p, text):
     except Exception:
         return False
     return False
+
+
+def read_project_parameter(doc,ref):
+    """Project Information reference: parameter name or Name [BUILTIN_NAME]."""
+    from Autodesk.Revit.DB import BuiltInParameter
+    if not ref:
+        return u''
+    name,bipname,param=ref,None,None
+    if ref.endswith(u']') and u' [' in ref:
+        name,bipname=ref[:-1].rsplit(u' [',1)
+    if bipname:
+        try:
+            param=doc.ProjectInformation.get_Parameter(getattr(BuiltInParameter,bipname))
+        except Exception:
+            param=None
+    if param is None:
+        param=doc.ProjectInformation.LookupParameter(name)
+    return (param_to_text(param) or u'').strip()

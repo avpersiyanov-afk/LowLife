@@ -158,10 +158,12 @@ Completion requires accepted current revisions, verified openings and processed
 withdrawals. A new revision reopens review; a fully withdrawn group is not
 reported as accepted. Publication dates show how current each side's data is.
 
-Project codes now come from Project Information using the parameter mapping
-already configured in Notes (cached locally, no network wait). A configurable
-override supports the same built-in reference syntax. If no parameter is mapped,
-the standard Project Number is used; stale manual codes are not used.
+Project codes come from Project Information through the tool's own
+“Project code parameter” setting. Blank means the standard Project Number.
+Notes settings, credentials and cache are not used.
+When a new object's parts are first requested, Google creates НЧ/ПЧ directory
+rows with the project code from the model. Only building/section numbers
+need to be filled in.
 
 The Google “Части объектов” catalog lists project, НЧ/ПЧ, building/section
 number and enabled flag. Revit asynchronously loads only that project's choices

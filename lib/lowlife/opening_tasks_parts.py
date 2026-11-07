@@ -44,7 +44,7 @@ def require_choice(project,value):
 def fetch(window,settings):
     """Capture scope in API context, perform network IO without accessing the model."""
     from lowlife import opening_tasks_journal as journal
-    from pnotes.ui import in_background
+    in_background=journal.in_background
     project=settings['opening_project']
     scope=dict(project=project,role=window.role,model=window.model_uid)
     connection=journal.load_connection(project,window.role,window.model_uid)

@@ -10,6 +10,9 @@ import os
 import re
 from lowlife import opening_tasks_core as core
 from lowlife.i18n import tr
+from lowlife.cloud_io import Transport, AppDomainLock as QueueLock
+
+TRANSPORT=Transport()
 
 ADMIN_LOGIN = 'persiyanov'
 CONFIG_FILE = 'LowLifeOpeningJournal_connections.json'
@@ -112,13 +115,19 @@ def snapshot(registry,project,role,model,title,rows=None,revit_user='',windows_u
 
 
 def request(connection, action, payload, track=False):
-    # Shared, proven .NET transport handles Google's redirect and Windows proxies.
-    from pnotes.core import call
+    # Shared transport; no Notes settings, credentials, requests or cancellation state.
+    call=TRANSPORT.call
     payload=dict(payload)
     if connection.get('discipline'):
         payload['discipline']=connection['discipline']
     return call(action,payload,url=connection['url'],token=connection['token'],
                 timeout_ms=25000,retries=0,track=track)
+
+
+
+def in_background(window,work,done):
+    from lowlife import background
+    return background.in_background(window,work,done,TRANSPORT)
 
 
 def queue_store():
@@ -175,8 +184,7 @@ def capture(window,settings):
 
 
 def auto_publish(window,settings):
-    from pnotes.core import _QueueLock
-    with _QueueLock('lowlife_opening_journal_queue'):
+    with QueueLock('lowlife_opening_journal_queue'):
         store=queue_store()
         data=store.read()
         data['items']=enqueue(data.get('items',[]),capture(window,settings))
@@ -201,11 +209,10 @@ def drain_pending(store,send,lock):
 
 def install_sender():
     """One process-wide timer; no model, window, Dispatcher or Revit API required."""
-    from pnotes.core import _QueueLock
     from System import AppDomain
     from System.Threading import Timer, TimerCallback
     domain=AppDomain.CurrentDomain
-    with _QueueLock('lowlife_opening_journal_queue'):
+    with QueueLock('lowlife_opening_journal_queue'):
         if domain.GetData('lowlife_opening_journal_timer') is not None:
             return
         def tick(state):
@@ -219,13 +226,12 @@ def install_sender():
 
 def retry_pending(window=None):
     """Silent background attempts now and every minute, even with closed windows."""
-    from pnotes.core import _QueueLock
     from System import AppDomain
     from System.Threading import Thread, ThreadStart
     install_sender()
     domain=AppDomain.CurrentDomain
     flag='lowlife_opening_journal_sending'
-    with _QueueLock('lowlife_opening_journal_queue'):
+    with QueueLock('lowlife_opening_journal_queue'):
         if domain.GetData(flag) or not queue_store().read().get('items',[]):
             return
         domain.SetData(flag,True)
@@ -236,18 +242,18 @@ def retry_pending(window=None):
                 connection=load_connection(scope['project'],scope['role'],scope['model'])
                 status=request(connection,'status',scope)
                 request(connection,'publish',dict(scope,base_version=status['version'],payload=item['payload']))
-            drain_pending(queue_store(),send,lambda:_QueueLock('lowlife_opening_journal_queue'))
+            drain_pending(queue_store(),send,lambda:QueueLock('lowlife_opening_journal_queue'))
         except Exception:
             pass
         finally:
-            with _QueueLock('lowlife_opening_journal_queue'):
+            with QueueLock('lowlife_opening_journal_queue'):
                 domain.SetData(flag,None)
     thread=Thread(ThreadStart(worker))
     thread.IsBackground=True
     try:
         thread.Start()
     except Exception:
-        with _QueueLock('lowlife_opening_journal_queue'):
+        with QueueLock('lowlife_opening_journal_queue'):
             domain.SetData(flag,None)
 
 
@@ -304,7 +310,6 @@ def setup(doc,role,project):
                 token=unicode(self.token.Password).strip()
                 if not token:
                     raise ValueError(tr(u'Введите токен подключения',u'Enter a connection token'))
-                from pnotes.ui import in_background
                 self.save.IsEnabled=False
                 self.url.IsEnabled=False
                 self.token.IsEnabled=False

@@ -87,6 +87,11 @@ function init_(ss) {
   ledger.getRange(1,1,1,headers.length).setValues([headers]);
   sheet_(ss,LL.blobs,['Снимок','Часть','JSON']);
 }
+function ensureProjectParts_(ss,project) {
+  const sh=ss.getSheetByName(LL.parts);
+  if (!rows_(sh).some(r=>String(r[0]).trim()===project))
+    append_(sh,[[project,'НЧ','',true],[project,'ПЧ','',true]]);
+}
 function catalog_(ss,project) {
   const values=[];
   rows_(ss.getSheetByName(LL.parts)).forEach(r=>{
@@ -197,7 +202,10 @@ function doPost(e) {
     if (!lock.tryLock(10000)) fail_('BUSY_RETRY');
     const ss=book_();init_(ss);
     const rows=ledger_(ss),previous=latest_(rows,scope_(grant));
-    if (body.action==='catalog') return output_({ok:true,parts:catalog_(ss,grant.project)});
+    if (body.action==='catalog') {
+      ensureProjectParts_(ss,grant.project);
+      return output_({ok:true,parts:catalog_(ss,grant.project)});
+    }
     if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl(),credential_scope:grant.credential_scope,group:grant.group || '',discipline:grant.discipline || ''});
     if (typeof body.payload!=='string' || body.payload.length>LL.maxPayload) fail_('PAYLOAD_TOO_LARGE');
     const hash=sha_(body.payload);

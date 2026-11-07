@@ -63,7 +63,7 @@ class Handler(IExternalEventHandler):
             if w.role=='AR' and action.startswith('ar_'):
                 action=action[3:]
             if not settings['opening_project']:
-                raise ValueError(tr(u'Заполните шифр объекта в «Сведениях о проекте» и проверьте выбранный параметр в настройках «Заметок».',u'Fill the project code in Project Information and check the parameter selected in Notes settings.'))
+                raise ValueError(tr(u'Заполните шифр объекта в «Сведениях о проекте» и выберите его параметр в настройках заданий.',u'Fill the project code in Project Information and select its parameter in opening task settings.'))
             settings_form.require(settings,['opening_project'])
             before_registry=api.core.dumps(store.registry(w.document))
             if action=='parts_refresh':
