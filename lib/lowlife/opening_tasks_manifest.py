@@ -2,8 +2,9 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=14
+VERSION=15
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
+INSTALL_DISCIPLINES={u'ОК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('refresh','settings','journal_setup','journal_open','parts_refresh')
 ACTIONS={
     'VIS': (

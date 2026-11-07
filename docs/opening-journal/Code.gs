@@ -44,12 +44,14 @@ function prompt_(title) {
 }
 function issueGroupToken() {
   admin_();
-  const group=prompt_('Название группы (например ОВ, ВК, КР или АР)');
-  const role=prompt_('Роль: VIS, KR или AR').toUpperCase();
-  if (!['VIS','KR','AR'].includes(role)) fail_('INVALID_ROLE');
+  const group=prompt_('Название группы');
+  const discipline=prompt_('Дисциплина: ОК, ВК, ЭОМ, СС, АК, КР или АР').toUpperCase();
+  const roles={'ОК':'VIS','ВК':'VIS','ЭОМ':'VIS','СС':'VIS','АК':'VIS','КР':'KR','АР':'AR'};
+  const role=roles[discipline];
+  if (!role) fail_('INVALID_ROLE');
   const token=Utilities.getUuid()+Utilities.getUuid();
   const id=sha_(token);
-  props_().setProperty('TOKEN_'+id,JSON.stringify({group,role}));
+  props_().setProperty('TOKEN_'+id,JSON.stringify({group,role,discipline}));
   // The raw token is shown once; only its digest remains on the server.
   const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(
@@ -128,6 +130,8 @@ function auth_(body) {
   if (body.role!==grant.role ||
       typeof body.project!=='string' || !body.project.trim() || body.project.length>250 ||
       typeof body.model!=='string' || !body.model || body.model.length>250) fail_('SCOPE_DENIED');
+  if (grant.discipline && body.discipline!==grant.discipline &&
+      !(body.action==='status' && !body.discipline)) fail_('SCOPE_DENIED');
   if (grant.project && body.project!==grant.project) fail_('SCOPE_DENIED');
   if (grant.model && body.model!==grant.model) fail_('SCOPE_DENIED');
   // Preserve legacy project/model restrictions while new group grants span projects.
@@ -194,7 +198,7 @@ function doPost(e) {
     const ss=book_();init_(ss);
     const rows=ledger_(ss),previous=latest_(rows,scope_(grant));
     if (body.action==='catalog') return output_({ok:true,parts:catalog_(ss,grant.project)});
-    if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl(),credential_scope:grant.credential_scope,group:grant.group || ''});
+    if (body.action==='status') return output_({ok:true,version:previous ? previous[4] : 0,sheet_url:ss.getUrl(),credential_scope:grant.credential_scope,group:grant.group || '',discipline:grant.discipline || ''});
     if (typeof body.payload!=='string' || body.payload.length>LL.maxPayload) fail_('PAYLOAD_TOO_LARGE');
     const hash=sha_(body.payload);
     const already=rows.find(r=>scope_({project:r[1],role:r[2],model:r[3]})===scope_(grant) && r[5]===hash);

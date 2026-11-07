@@ -46,3 +46,14 @@ def test_project_code_reuses_notes_reference_without_network(monkeypatch):
     assert calls[-1]=='Custom code'
     notes.get_settings=lambda online:({'key_param':'file'},False)
     assert settings.for_document({},doc)['opening_project']=='FALLBACK'
+
+
+def test_installed_discipline_is_used_for_new_tasks(monkeypatch):
+    from types import SimpleNamespace as NS
+    from lowlife import opening_tasks_journal as journal
+    monkeypatch.setattr(settings,'project_code',lambda doc,values:'P')
+    monkeypatch.setattr(journal,'connection_value',lambda project,role,model:{'discipline':u'ОК'})
+    doc=NS(ProjectInformation=NS(UniqueId='model'))
+    assert settings.for_document({'opening_discipline':'OLD'},doc)['opening_discipline']==u'ОК'
+    assert 'opening_discipline' not in settings.for_document({},doc)
+    assert settings.make('VIS',doc).load_saved_values()['opening_discipline']==u'ОК'

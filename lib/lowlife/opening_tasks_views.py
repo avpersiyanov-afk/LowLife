@@ -159,7 +159,7 @@ def build(doc, settings):
 
 
 def run(config_mode=False):
-    settings_form = cfg.make('VIS')
+    settings_form = cfg.make('VIS',revit.doc)
     if config_mode:
         settings_form.get_settings_interactive()
         return

@@ -191,4 +191,10 @@ once per role across all projects; model IDs continue to isolate publication str
 ownership in the journal. Project/model-bound legacy credentials remain supported with their original restrictions.
 Release/review/withdrawal events store Revit and Windows usernames at action time;
 queued retries retain the original identity. Publications show group and sender
-separately. Group labels do not add discipline-level authorization inside VIS.
+separately. New tokens validate the selected installer discipline.
+
+
+The installer and Google token menu now offer ОК, ВК, ЭОМ, СС, АК, КР and АР.
+VIS is an internal interface mode, not a user-facing installer choice.
+The saved engineering discipline fills new task records; older release records
+remain unchanged until explicitly reissued. PowerShell uses UTF-8 with BOM.

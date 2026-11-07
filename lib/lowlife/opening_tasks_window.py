@@ -51,10 +51,10 @@ class Handler(IExternalEventHandler):
                 journal.retry_pending(w)
                 return
             if action=='settings':
-                cfg.make(w.role).get_settings_interactive()
+                cfg.make(w.role,w.document).get_settings_interactive()
                 w.refresh()
                 return
-            settings_form=cfg.make(w.role)
+            settings_form=cfg.make(w.role,w.document)
             settings=cfg.for_document(settings_form.get_settings_silent(),w.document)
             settings['opening_object_part']=w.object_part
             settings['opening_recipient']=w.role if w.role in ('KR','AR') else ('AR' if action.endswith('_ar') else 'KR')
@@ -276,7 +276,7 @@ class TaskWindow(forms.WPFWindow):
         self.refresh()
         journal.retry_pending(self)
         try:
-            parts.fetch(self,cfg.for_document(cfg.make(self.role).get_settings_silent(),self.document))
+            parts.fetch(self,cfg.for_document(cfg.make(self.role,self.document).get_settings_silent(),self.document))
         except Exception:
             pass
 
@@ -331,7 +331,7 @@ class TaskWindow(forms.WPFWindow):
             self.Show()
 
     def refresh(self):
-        settings=cfg.for_document(cfg.make(self.role).get_settings_silent(),self.document)
+        settings=cfg.for_document(cfg.make(self.role,self.document).get_settings_silent(),self.document)
         self.project_code=settings.get('opening_project','')
         self.project_label.Text=tr(u'Объект: {}',u'Project: {}').format(self.project_code or u'—')
         self.load_parts()
@@ -527,7 +527,7 @@ def show(role,config_mode=False):
     from pyrevit import revit
     manifest.validate_role(role)
     if config_mode:
-        cfg.make(role).get_settings_interactive()
+        cfg.make(role,revit.doc).get_settings_interactive()
         return
     existing=_WINDOWS.get(role)
     if existing and not existing.closed and (getattr(existing,'manifest_version',None)!=manifest.VERSION or existing.document!=revit.doc or existing.role!=role):

@@ -62,16 +62,16 @@ def load_connection(project,role,model):
         raise ValueError(tr(u'Журнал не подключён для этой модели. Администратор persiyanov должен выдать подключение.',
                             u'Journal is not configured for this model. Ask administrator persiyanov for a connection.'))
     validate_url(value['url'])
-    return dict(url=value['url'],token=crypt(value['token_dpapi'],True))
+    return dict(url=value['url'],token=crypt(value['token_dpapi'],True),discipline=value.get('discipline',''))
 
 
-def save_connection(project,role,model,url,token,sheet_url='',shared=False,all_projects=False):
+def save_connection(project,role,model,url,token,sheet_url='',shared=False,all_projects=False,discipline=''):
     validate_url(url)
     if not token.strip():
         raise ValueError(tr(u'Введите токен подключения',u'Enter a connection token'))
     config=connection_store()
     data=config.read()
-    data[scope_key('*' if all_projects else project,role,'*' if shared or all_projects else model)]=dict(url=url,token_dpapi=crypt(token.strip()),sheet_url=sheet_url)
+    data[scope_key('*' if all_projects else project,role,'*' if shared or all_projects else model)]=dict(url=url,token_dpapi=crypt(token.strip()),sheet_url=sheet_url,discipline=discipline)
     if not config.write(data):
         raise ValueError(tr(u'Подключение журнала не сохранено',u'Journal connection was not saved'))
 
@@ -114,6 +114,9 @@ def snapshot(registry,project,role,model,title,rows=None,revit_user='',windows_u
 def request(connection, action, payload, track=False):
     # Shared, proven .NET transport handles Google's redirect and Windows proxies.
     from pnotes.core import call
+    payload=dict(payload)
+    if connection.get('discipline'):
+        payload['discipline']=connection['discipline']
     return call(action,payload,url=connection['url'],token=connection['token'],
                 timeout_ms=25000,retries=0,track=track)
 
@@ -274,16 +277,18 @@ def setup(doc,role,project):
                 <Button x:Name="save" Padding="12,7"/>
               </StackPanel></ScrollViewer></Window>''',literal_string=True)
             self.Title=tr(u'Подключение журнала — persiyanov',u'Journal connection — persiyanov')
-            self.info.Text=tr(u'Проект: {} | Роль: {}\nID модели: {}',
-                              u'Project: {} | Role: {}\nModel ID: {}').format(project,role,model)
+            installed=connection_value(project,role,model) or {}
+            discipline=installed.get('discipline') or ({'KR':u'КР','AR':u'АР'}.get(role)) or tr(u'Определится по токену',u'Determined by the token')
+            self.info.Text=tr(u'Проект: {} | Дисциплина: {}\nID модели: {}',
+                              u'Project: {} | Discipline: {}\nModel ID: {}').format(project,discipline,model)
             self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')
             self.token_label.Text=tr(u'Токен',u'Token')
-            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выдайте один токен группе для роли, общий для всех объектов. ID модели сохраняется в журнале и не ограничивает токен.',
+            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выдайте один токен группе выбранной дисциплины, общий для всех объектов. ID модели сохраняется в журнале и не ограничивает токен.',
                                    u'The code comes from Project Information. Issue one group token for this role across all projects in the Google sheet LowLife menu. The model ID is recorded in the journal, not bound to the token.')
             self.url_hint.Text=tr(u'Вставьте адрес развёрнутого веб-приложения Apps Script с окончанием /exec. Ссылка на саму Google-таблицу сюда не подходит.',
                                   u'Paste the deployed Apps Script web app URL ending in /exec. The spreadsheet URL cannot be used here.')
-            self.token_hint.Text=tr(u'Общий токен группы для роли. Подходит для всех объектов и моделей этой роли. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
-                                    u'Shared group token for this role, valid across all projects and models of that role. Revit and Windows users are recorded separately; the token is stored encrypted.')
+            self.token_hint.Text=tr(u'Общий токен группы дисциплины. Подходит для всех её объектов и моделей. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
+                                    u'Shared discipline group token, valid across all its projects and models. Revit and Windows users are recorded separately; the token is stored encrypted.')
             self.guide.Content=tr(u'Инструкция подключения Google',u'Google connection guide')
             self.guide.Click+=self.open_guide
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
@@ -316,7 +321,7 @@ def setup(doc,role,project):
                     try:
                         save_connection(project,role,model,url,token,result.get('sheet_url',''),
                                         shared=result.get('credential_scope') in ('group','project_group'),
-                                        all_projects=result.get('credential_scope')=='group')
+                                        all_projects=result.get('credential_scope')=='group',discipline=result.get('discipline',''))
                         self.token.Password=''
                         self.Close()
                     except Exception as ex:
