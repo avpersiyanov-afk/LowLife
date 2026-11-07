@@ -634,8 +634,8 @@ def run(doc, uidoc, action):
         if EXEC_PARAMS.config_mode:
             fire_boxes_ui.show(doc)
             return
-        if action in ('draw', 'add') and (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None):
-            settings = fire_boxes_ui.show(doc)
+        if action == 'draw' or (action == 'add' and (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None)):
+            settings = fire_boxes_ui.show(doc, settings)
             if settings is None:
                 return
         if action in ('add', 'mark') and not settings.get('inside_flag_param'):

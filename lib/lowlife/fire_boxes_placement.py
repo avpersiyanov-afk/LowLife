@@ -106,7 +106,7 @@ class PlacementSession(object):
         level = self.doc.ActiveView.GenLevel
         origin = self.doc.ActiveView.Origin
         start = DB.XYZ(origin.X, origin.Y, level.Elevation+float(self.settings['elevation_mm'])/304.8)
-        transaction = DB.Transaction(self.doc, tr(u'Подготовить рисование короба', u'Prepare enclosure drawing'))
+        transaction = DB.Transaction(self.doc, tr(u'Подготовить моделирование короба', u'Prepare enclosure modeling'))
         transaction.Start()
         try:
             seed = fb.create_curve(self.doc, self.type, self.system, level.Id, start, start+DB.XYZ(1, 0, 0),
@@ -209,7 +209,7 @@ class PlacementSession(object):
 def start(doc, uidoc, settings):
     """Queue Revit's native tool; never keep a transaction or PickPoint loop open."""
     if doc.ActiveView.GenLevel is None:
-        raise ValueError(tr(u'Откройте план уровня для рисования короба.', u'Open a level plan to draw the enclosure.'))
+        raise ValueError(tr(u'Откройте план уровня для моделирования короба.', u'Open a level plan to model the enclosure.'))
     element_type = doc.GetElement(settings['box_type_uid'])
     if element_type is None:
         raise ValueError(tr(u'Выберите тип короба в настройках.', u'Select an enclosure type in settings.'))
@@ -224,8 +224,8 @@ def start(doc, uidoc, settings):
     try:
         session.prepare()
         if not uidoc.Application.CanPostCommand(session.command):
-            raise ValueError(tr(u'Revit не может запустить рисование на текущем виде.',
-                                u'Revit cannot start drawing in the current view.'))
+            raise ValueError(tr(u'Revit не может запустить моделирование на текущем виде.',
+                                u'Revit cannot start modeling in the current view.'))
         session.install()
         script.set_envvar(SESSION_KEY, session)
         uidoc.Application.PostCommand(session.command)
