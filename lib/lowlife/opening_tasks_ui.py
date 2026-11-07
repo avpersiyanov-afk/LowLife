@@ -62,9 +62,24 @@ def selected_elements(selection_filter=None):
 
 
 def report_errors(errors):
+    if not errors:
+        return
     out = script.get_output()
-    for eid, error in errors:
-        out.print_md(u'- {}: {}'.format(out.linkify(eid),error))
+    out.print_md(tr(u'## Пропуски и ошибки',u'## Skips and errors'))
+    out.print_table([[out.linkify(eid),unicode(error)] for eid,error in errors],
+                    columns=[tr(u'Элемент',u'Element'),tr(u'Причина',u'Reason')])
+    out.show()
+
+
+def report_placement_result(created,errors):
+    report_errors(errors)
+    details=u'\n'.join(u'ID {}: {}'.format(boxes._id_int(eid),error) for eid,error in errors)
+    message=tr(u'Создано/обновлено: {}. Пропусков/ошибок: {}. Боксы ещё не выданы.',
+               u'Created/updated: {}. Skips/errors: {}. Boxes are not issued yet.').format(created,len(errors))
+    if errors:
+        message+=tr(u'\nПричины: раскройте подробности этого сообщения. Ссылки на элементы — в окне вывода.',
+                    u'\nReasons: expand this message for details. Element links are in the output window.')
+    forms.alert(message,expanded=details or None)
 
 
 def place(settings):
@@ -112,13 +127,12 @@ def place(settings):
             entries, errors = api.place(doc,routes,link,symbol,settings,workset,
                                        lambda i,n:bar.update_progress(i,n))
     out = script.get_output()
-    out.print_table([[out.linkify(route.Id),u'{:.0f} × {:.0f}'.format(float(boxes.mm(mep.Route(route).Width)),float(boxes.mm(mep.Route(route).Height))),
+    if entries:
+        out.print_table([[out.linkify(route.Id),u'{:.0f} × {:.0f}'.format(float(boxes.mm(mep.Route(route).Width)),float(boxes.mm(mep.Route(route).Height))),
                       crossing.host_label(),out.linkify(inst.Id)] for route,crossing,inst,box in entries],
                     columns=[tr(u'Источник',u'Source'),tr(u'Сечение, мм',u'Cross-section, mm'),
                              tr(u'Конструкция',u'Host'),tr(u'Бокс',u'Box')])
-    report_errors(errors)
-    forms.alert(tr(u'Создано/обновлено: {}. Пропусков/ошибок: {}. Боксы ещё не выданы.',
-                   u'Created/updated: {}. Skips/errors: {}. Boxes are not issued yet.').format(len(entries),len(errors)))
+    report_placement_result(len(entries),errors)
 
 
 def publish(settings, elements=None):
