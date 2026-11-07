@@ -3103,3 +3103,9 @@ imports. Cancellation state is isolated between the tools. CLR imports are lazy.
 the cached solid intersection on the same vertical, within the existing source
 scope. The fallback also includes a ray origin inside a slab; `_sloped_hits`
 keeps its original behaviour unless `include_inside=True` is explicitly passed.
+
+
+`opening_tasks_views.highlight(uidoc, role, project, rows)` resolves selected
+VIS boxes or KR/AR receipt opening IDs and reuses project-managed graphical
+control views or selected-box previews. Keeps a suitable active view, otherwise
+asks to choose; selects and zooms the elements without creating a new view.
