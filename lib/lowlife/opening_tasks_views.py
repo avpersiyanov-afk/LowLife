@@ -14,6 +14,7 @@ from lowlife import opening_tasks_settings as cfg
 
 STATUSES = [(u'Черновик',(130,130,130)),(u'Выдано',(45,165,80)),
             (u'Изменено после выдачи',(240,140,40)),(u'Отозвано',(220,55,55))]
+REQUIRED_KEYS = ['opening_status_param','opening_json_param']
 KEYS = ['opening_status_param','opening_issue_param','opening_revision_param','opening_date_param','opening_json_param']
 
 
@@ -55,6 +56,8 @@ def build(doc, settings):
     for category, instances in groups.items():
         ids = {}
         for key in KEYS:
+            if key not in REQUIRED_KEYS and not settings.get(key):
+                continue
             for inst in instances:
                 param = inst.LookupParameter(settings[key])
                 if param is None or param.StorageType != StorageType.String:
@@ -138,6 +141,8 @@ def build(doc, settings):
         schedulable = {f.ParameterId:f for f in definition.GetSchedulableFields()}
         fields = {definition.GetField(fid).ParameterId:definition.GetField(fid) for fid in definition.GetFieldOrder()}
         for key in KEYS:
+            if key not in ids:
+                continue
             pid = ids[key]
             if pid not in schedulable:
                 raise ValueError(tr(u'Параметр недоступен для спецификации: {}',u'Parameter is not schedulable: {}').format(settings[key]))
@@ -164,7 +169,7 @@ def run(config_mode=False):
         settings_form.get_settings_interactive()
         return
     settings = cfg.for_document(settings_form.get_settings_silent(),revit.doc)
-    settings_form.require(settings,['opening_project']+KEYS)
+    settings_form.require(settings,['opening_project']+REQUIRED_KEYS)
     try:
         with revit.Transaction(tr(u'Контроль заданий ВИС',u'VIS task control')):
             views = build(revit.doc,settings)
