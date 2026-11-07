@@ -10,7 +10,7 @@ import os
 import re
 from lowlife import opening_tasks_core as core
 from lowlife.i18n import tr
-from lowlife.opening_tasks_manifest import canonical_discipline
+from lowlife.opening_tasks_manifest import canonical_discipline, INSTALL_DISCIPLINES
 from lowlife.cloud_io import Transport, AppDomainLock as QueueLock
 
 TRANSPORT=Transport()
@@ -124,6 +124,36 @@ def request(connection, action, payload, track=False):
     return call(action,payload,url=connection['url'],token=connection['token'],
                 timeout_ms=25000,retries=0,track=track)
 
+
+
+
+def discover_connection(url,token,track=False,project=None,role=None,model=None):
+    """Read the department from the token, without asking the employee for it."""
+    validate_url(url)
+    if not token.strip():
+        raise ValueError(tr(u'Введите токен отдела',u'Enter the department token'))
+    from lowlife.cloud_io import ApiError
+    try:
+        result=request(dict(url=url,token=token),'connect',{},track=track)
+    except ApiError as ex:
+        if ex.args and ex.args[0]=='DEPARTMENT_REQUIRED':
+            raise ValueError(tr(u'У старого токена не указан отдел. Администратору нужно выдать новый токен отдела.',
+                                u'This legacy token has no department. Ask the administrator for a department token.'))
+        raise
+    department=canonical_discipline(result.get('department') or result.get('discipline'))
+    if not department or INSTALL_DISCIPLINES.get(department)!=result.get('role'):
+        raise ValueError(tr(u'Не удалось определить отдел по токену. Обновите Apps Script и проверьте токен.',
+                            u'Could not identify the department from the token. Update Apps Script and check the token.'))
+    if ((role and result['role']!=role) or
+            (result.get('project') and project and result['project']!=project) or
+            (result.get('model') and model and result['model']!=model)):
+        raise ValueError(tr(u'Токен отдела {} не подходит для этого интерфейса или модели.',
+                            u'The {} department token does not match this interface or model.').format(department))
+    if result.get('credential_scope') not in ('group','project_group','model'):
+        raise ValueError(tr(u'Формат подключения не поддерживается. Обновите Apps Script.',
+                            u'Unsupported connection format. Update Apps Script.'))
+    result=dict(result,department=department,discipline=department)
+    return result
 
 
 def in_background(window,work,done):
@@ -286,16 +316,16 @@ def setup(doc,role,project):
             self.Title=tr(u'Подключение журнала — persiyanov',u'Journal connection — persiyanov')
             installed=connection_value(project,role,model) or {}
             discipline=canonical_discipline(installed.get('discipline')) or ({'KR':u'КР','AR':u'АР'}.get(role)) or tr(u'Определится по токену',u'Determined by the token')
-            self.info.Text=tr(u'Проект: {} | Дисциплина: {}\nID модели: {}',
-                              u'Project: {} | Discipline: {}\nModel ID: {}').format(project,discipline,model)
+            self.info.Text=tr(u'Проект: {} | Отдел: {}\nID модели: {}',
+                              u'Project: {} | Department: {}\nModel ID: {}').format(project,discipline,model)
             self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')
             self.token_label.Text=tr(u'Токен',u'Token')
-            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выдайте один токен группе выбранной дисциплины, общий для всех объектов. ID модели сохраняется в журнале и не ограничивает токен.',
-                                   u'The code comes from Project Information. Issue one group token for this role across all projects in the Google sheet LowLife menu. The model ID is recorded in the journal, not bound to the token.')
+            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выберите отдел и выдайте его токен. При подключении отдел определяется автоматически. ID модели сохраняется в журнале и не ограничивает токен.',
+                                   u'The code comes from Project Information. Select a department and issue its token in the Google sheet LowLife menu. The department is identified automatically on connection. The model ID is recorded in the journal, not bound to the token.')
             self.url_hint.Text=tr(u'Вставьте адрес развёрнутого веб-приложения Apps Script с окончанием /exec. Ссылка на саму Google-таблицу сюда не подходит.',
                                   u'Paste the deployed Apps Script web app URL ending in /exec. The spreadsheet URL cannot be used here.')
-            self.token_hint.Text=tr(u'Общий токен группы дисциплины. Подходит для всех её объектов и моделей. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
-                                    u'Shared discipline group token, valid across all its projects and models. Revit and Windows users are recorded separately; the token is stored encrypted.')
+            self.token_hint.Text=tr(u'Общий токен отдела. Отдел определяется по токену; выбирать его повторно не нужно. Подходит для всех объектов и моделей отдела. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
+                                    u'Shared department token. The department is identified from it without a second selection. Works across all department projects and models. Revit and Windows users are recorded separately; the token is stored encrypted.')
             self.guide.Content=tr(u'Инструкция подключения Google',u'Google connection guide')
             self.guide.Click+=self.open_guide
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
@@ -315,8 +345,7 @@ def setup(doc,role,project):
                 self.url.IsEnabled=False
                 self.token.IsEnabled=False
                 def work():
-                    return request(dict(url=url,token=token),'status',
-                                   dict(project=project,role=role,model=model),track=True)
+                    return discover_connection(url,token,track=True,project=project,role=role,model=model)
                 def done(result,error):
                     self.save.IsEnabled=True
                     self.url.IsEnabled=True

@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=17
+VERSION=18
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('refresh','settings','journal_setup','journal_open','parts_refresh')
@@ -61,8 +61,8 @@ def action_hint(action):
                      u'Read tasks and responses from the currently loaded links. Reload links in Revit first.'),
         'settings':tr(u'Настройки текущей роли. Под каждым полем есть пояснение; имена параметров выбираются с подсказками.',
                       u'Settings for the current role. Each field has an explanation; parameter names have suggestions.'),
-        'journal_setup':tr(u'Подключение Google-журнала: адрес Apps Script и токен группы. Доступно только persiyanov. Внутри есть инструкция.',
-                           u'Google journal connection: Apps Script URL and group token. Available only to persiyanov. Includes a setup guide.'),
+        'journal_setup':tr(u'Подключение Google-журнала: адрес Apps Script и токен отдела. Доступно только persiyanov. Внутри есть инструкция.',
+                           u'Google journal connection: Apps Script URL and department token. Available only to persiyanov. Includes a setup guide.'),
         'journal_open':tr(u'Открыть Google-журнал в браузере. Задания отправляются автоматически; для просмотра нужен доступ к таблице.',
                           u'Open the Google journal in your browser. Tasks are sent automatically; viewing requires sheet access.'),
         'parts_refresh':tr(u'Загрузить из Google НЧ/ПЧ и номера корпусов или секций текущего объекта. Без сети используется сохранённый список.',

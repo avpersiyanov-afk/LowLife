@@ -193,10 +193,14 @@ once per role across all projects; model IDs continue to isolate publication str
 ownership in the journal. Project/model-bound legacy credentials remain supported with their original restrictions.
 Release/review/withdrawal events store Revit and Windows usernames at action time;
 queued retries retain the original identity. Publications show group and sender
-separately. New tokens validate the selected installer discipline.
+separately. The department is obtained automatically from the token.
 
 
-The installer and Google token menu now offer ОВиК, ВК, ЭОМ, СС, АК, КР and АР.
-VIS is an internal interface mode, not a user-facing installer choice.
+The Google token menu asks for a department once: ОВиК, ВК, ЭОМ, СС, АК, КР or АР.
+The installer asks only for the Apps Script URL and department token.
+Department and internal VIS/KR/AR mode are discovered automatically.
+Initial Google setup creates all shared journal tabs with headers before any release;
+project tabs appear after the first project publication. Repeat setup or rebuild
+to repair missing views without removing publications or the parts catalog.
 The saved engineering discipline fills new task records; older release records
 remain unchanged until explicitly reissued. PowerShell uses UTF-8 with BOM.
