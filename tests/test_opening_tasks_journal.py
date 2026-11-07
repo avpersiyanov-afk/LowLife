@@ -41,13 +41,6 @@ def test_receiver_snapshot_is_separate_from_issuer(role,key):
     assert s['confirmations']==[]
 
 
-def test_only_named_admin_sees_configuration():
-    assert j.is_admin('persiyanov')
-    assert j.is_admin('PERSIYANOV')
-    assert not j.is_admin('engineer')
-    assert not j.is_admin('persiyanov2')
-
-
 @pytest.mark.parametrize('url',[
     'http://script.google.com/macros/s/abc/exec',
     'https://example.com/macros/s/abc/exec',

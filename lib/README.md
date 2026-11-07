@@ -3058,7 +3058,7 @@ local queue preserves release order and retries silently every minute through
 a process-wide .NET timer, independent of task windows. Startup/document hooks
 resume queued deliveries. Background JsonStore writes suppress alerts. Pure project/model
 snapshot assembly plus lazy Windows DPAPI credential storage through a non-shared
-JsonStore. Settings are visible only to persiyanov; Apps Script separately enforces
+JsonStore. Connection settings are available to every user and stored in their Windows profile; Apps Script separately enforces
 department token grants across projects (legacy project/model grants remain supported).
 `discover_connection` uses the shared request transport to obtain department and role
 from the token; installers ask only for URL and token. Captures Revit data in ExternalEvent and sends it

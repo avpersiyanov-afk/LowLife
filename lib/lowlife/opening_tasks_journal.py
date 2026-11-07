@@ -15,12 +15,7 @@ from lowlife.cloud_io import Transport, AppDomainLock as QueueLock
 
 TRANSPORT=Transport()
 
-ADMIN_LOGIN = 'persiyanov'
 CONFIG_FILE = 'LowLifeOpeningJournal_connections.json'
-
-
-def is_admin(login=None):
-    return (login if login is not None else os.environ.get('USERNAME','')).lower() == ADMIN_LOGIN
 
 
 def validate_url(url):
@@ -63,8 +58,8 @@ def crypt(text, decrypt=False):
 def load_connection(project,role,model):
     value=connection_value(project,role,model)
     if not value:
-        raise ValueError(tr(u'Журнал не подключён для этой модели. Администратор persiyanov должен выдать подключение.',
-                            u'Journal is not configured for this model. Ask administrator persiyanov for a connection.'))
+        raise ValueError(tr(u'Журнал не подключён. Откройте «Подключение таблицы» и введите адрес и токен отдела.',
+                            u'Journal is not connected. Open Sheet connection and enter the URL and department token.'))
     validate_url(value['url'])
     return dict(url=value['url'],token=crypt(value['token_dpapi'],True),discipline=canonical_discipline(value.get('discipline','')))
 
@@ -289,9 +284,7 @@ def retry_pending(window=None):
 
 
 def setup(doc,role,project):
-    """Admin-only UI; normal users receive scoped credentials through provisioning."""
-    if not is_admin():
-        raise ValueError(tr(u'Настройка журнала доступна только persiyanov',u'Only persiyanov can configure the journal'))
+    """Per-user connection UI; the server token determines department and role."""
     from pyrevit import forms
     from lowlife import opening_tasks_storage as storage
     model=storage.model_id(doc)
@@ -313,7 +306,7 @@ def setup(doc,role,project):
                 <Button x:Name="guide" Padding="12,7" Margin="0,0,0,8"/>
                 <Button x:Name="save" Padding="12,7"/>
               </StackPanel></ScrollViewer></Window>''',literal_string=True)
-            self.Title=tr(u'Подключение журнала — persiyanov',u'Journal connection — persiyanov')
+            self.Title=tr(u'Подключение журнала',u'Journal connection')
             installed=connection_value(project,role,model) or {}
             discipline=canonical_discipline(installed.get('discipline')) or ({'KR':u'КР','AR':u'АР'}.get(role)) or tr(u'Определится по токену',u'Determined by the token')
             self.info.Text=tr(u'Проект: {} | Отдел: {}\nID модели: {}',
@@ -324,8 +317,8 @@ def setup(doc,role,project):
                                    u'The code comes from Project Information. Select a department and issue its token in the Google sheet LowLife menu. The department is identified automatically on connection. The model ID is recorded in the journal, not bound to the token.')
             self.url_hint.Text=tr(u'Вставьте адрес развёрнутого веб-приложения Apps Script с окончанием /exec. Ссылка на саму Google-таблицу сюда не подходит.',
                                   u'Paste the deployed Apps Script web app URL ending in /exec. The spreadsheet URL cannot be used here.')
-            self.token_hint.Text=tr(u'Общий токен отдела. Отдел определяется по токену; выбирать его повторно не нужно. Подходит для всех объектов и моделей отдела. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
-                                    u'Shared department token. The department is identified from it without a second selection. Works across all department projects and models. Revit and Windows users are recorded separately; the token is stored encrypted.')
+            self.token_hint.Text=tr(u'Настройка сохраняется только в вашем профиле Windows для всех моделей отдела. Общий токен отдела. Отдел определяется по токену; выбирать его повторно не нужно. Подходит для всех объектов и моделей отдела. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
+                                    u'Saved only in your Windows profile for all department models. Shared department token. The department is identified from it without a second selection. Works across all department projects and models. Revit and Windows users are recorded separately; the token is stored encrypted.')
             self.guide.Content=tr(u'Инструкция подключения Google',u'Google connection guide')
             self.guide.Click+=self.open_guide
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
