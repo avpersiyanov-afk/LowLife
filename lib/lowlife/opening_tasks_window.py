@@ -253,9 +253,7 @@ class TaskWindow(forms.WPFWindow):
         self.add('settings',tr(u'Настройки',u'Settings'))
         self.add('journal_open',tr(u'Открыть таблицу',u'Open spreadsheet'))
         self.add('parts_refresh',tr(u'Обновить части объекта',u'Refresh object parts'))
-        from lowlife import opening_tasks_journal as journal
-        if journal.is_admin():
-            self.add('journal_setup',tr(u'Подключение таблицы',u'Sheet connection'))
+        self.add('journal_setup',tr(u'Подключение таблицы',u'Sheet connection'))
         select_button=Button()
         select_button.Content=tr(u'Выбрать показанные',u'Select visible')
         select_button.Padding=Thickness(10,6,10,6)
@@ -312,10 +310,6 @@ class TaskWindow(forms.WPFWindow):
     def dispatch(self,action):
         try:
             manifest.validate_action(self.role,action)
-            if action=='journal_setup':
-                from lowlife import opening_tasks_journal as journal
-                if not journal.is_admin():
-                    raise ValueError(tr(u'Настройка журнала доступна только persiyanov',u'Only persiyanov can configure the journal'))
         except ValueError as ex:
             forms.alert(unicode(ex))
             return

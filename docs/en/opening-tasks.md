@@ -142,7 +142,8 @@ Delivery failures show no notifications or status messages.
 A failed earlier revision blocks later revisions of that model; other models
 can still publish. Tokens never enter the queue.
 
-Only Windows user persiyanov sees connection settings. Each token is scoped
+Every user can open Sheet connection and enter the URL and department token once
+in their Windows profile for all their models. No credentials are saved in RVT. Each token is scoped
 to a role for a group, works across projects and models and is protected with Windows DPAPI. “Open spreadsheet”
 is available to engineers. Google link sharing can grant Viewer access; a tab
 link grants access to the entire spreadsheet, not just one project. Separate
