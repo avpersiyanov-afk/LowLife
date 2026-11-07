@@ -2,10 +2,10 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=20
+VERSION=21
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
-COMMON=('refresh','settings','journal_setup','journal_open','parts_refresh')
+COMMON=('highlight','refresh','settings','journal_setup','journal_open','parts_refresh')
 ACTIONS={
     'VIS': (
         ('place',N_(u'Расставить боксы')),
@@ -42,10 +42,10 @@ ACTIONS={
 ACTION_GROUPS={
     'VIS': ((N_(u'Задания КР'),('place','issue','confirm')),
             (N_(u'Задания АР'),('place_ar','issue_ar','confirm_ar')),
-            (N_(u'Контроль'),('focus','control','withdraw'))),
+            (N_(u'Контроль'),('highlight','focus','control','withdraw'))),
     'KR': ((N_(u'Принятие'),('show','accept','merge','reject','remove')),
-           (N_(u'Виды'),('structures','kr_plans','kr_sections'))),
-    'AR': ((N_(u'Принятие'),('ar_show','ar_accept','ar_merge','ar_reject','ar_remove')),),
+           (N_(u'Виды'),('highlight','structures','kr_plans','kr_sections'))),
+    'AR': ((N_(u'Принятие'),('highlight','ar_show','ar_accept','ar_merge','ar_reject','ar_remove')),),
 }
 
 
@@ -74,6 +74,8 @@ def validate_action(role,action):
 
 def action_hint(action):
     return {
+        'highlight':tr(u'Открыть ранее созданный вид контроля и выделить выбранные боксы или проёмы. Если подходящих видов несколько, предложить выбор.',
+                       u'Open an existing control view and select the chosen boxes or openings. Choose a view when several are suitable.'),
         'refresh':tr(u'Перечитать задания и ответы из уже загруженных связей. Перед этим обновите связи штатной командой Revit.',
                      u'Read tasks and responses from the currently loaded links. Reload links in Revit first.'),
         'settings':tr(u'Настройки текущей роли. Под каждым полем есть пояснение; имена параметров выбираются с подсказками.',

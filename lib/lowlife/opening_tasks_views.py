@@ -4,7 +4,7 @@ from System.Collections.Generic import List
 from Autodesk.Revit.DB import (Color, ElementId, ElementParameterFilter, FamilyInstance,
     FillPatternElement, FilteredElementCollector, LogicalAndFilter, ElementFilter,
     OverrideGraphicSettings, ParameterFilterElement, ParameterFilterRuleFactory,
-    ScheduleFilter, ScheduleFilterType, StorageType, Level, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
+    ScheduleFilter, ScheduleFilterType, StorageType, Level, View, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
 from pyrevit import revit, forms, script
 from lowlife.i18n import tr
 from lowlife.opening_tasks_names import safe_name
@@ -180,3 +180,62 @@ def run(config_mode=False):
                        u'Views/schedules created or updated: {}. Gray: draft; green: issued; orange: changed; red: withdrawn.').format(len(views)))
     except Exception as ex:
         forms.alert(tr(u'Создание контроля отменено: {}',u'Control setup rolled back: {}').format(ex))
+
+
+def highlight(uidoc,role,project,rows):
+    """Open an already managed graphical view and select current-model elements."""
+    if not rows:
+        raise ValueError(tr(u'Выберите строки для подсветки.',u'Select rows to highlight.'))
+    doc=uidoc.Document
+    registry=store.registry(doc)
+    receipts=api.core.receipts(registry,role) if role in ('KR','AR') else {}
+    elements={}
+    for row in rows:
+        if role=='VIS':
+            uid=row['uid']
+        else:
+            receipt=receipts.get(row['key'],{})
+            uid=receipt.get('opening_uid')
+        element=doc.GetElement(uid) if uid else None
+        if element is None:
+            raise ValueError(tr(u'Для одной из выбранных строк нет бокса или созданного проёма в текущей модели. Обновите список.',
+                                u'A selected row has no box or created opening in the current model. Refresh the list.'))
+        elements[element.Id]=element
+    managed=dict(registry.get('control_views' if role=='VIS' else 'kr_control_views',{}))
+    if role=='VIS':
+        for row in rows:
+            preview=registry.get('box_previews',{}).get(row['uid'])
+            if preview:
+                managed[project+'/preview/'+row['uid']]=preview
+    views={}
+    selected=set(elements)
+    for key,uid in managed.items():
+        if not key.startswith(project+'/'):
+            continue
+        view=doc.GetElement(uid)
+        if not isinstance(view,View) or isinstance(view,ViewSchedule) or view.IsTemplate:
+            continue
+        visible=set(FilteredElementCollector(doc,view.Id).WhereElementIsNotElementType().ToElementIds())
+        if selected.issubset(visible):
+            views[view.UniqueId]=view
+    if not views:
+        raise ValueError(tr(u'Нет созданного вида, на котором видны все выбранные элементы. Создайте виды контроля или выберите строки одного вида.',
+                            u'No created view shows all selected elements. Create control views or select rows from one view.'))
+    current=uidoc.ActiveView
+    view=views.get(current.UniqueId)
+    if view is None:
+        if len(views)==1:
+            view=next(iter(views.values()))
+        else:
+            from lowlife import select_list
+            options={v.Name:v for v in views.values()}
+            choice=select_list.SelectFromList.show(sorted(options),
+                title=tr(u'Показать на созданном виде',u'Show in an existing view'),multiselect=False)
+            if not choice:
+                return
+            view=options[choice]
+    uidoc.ActiveView=view
+    ids=List[ElementId](list(elements))
+    uidoc.Selection.SetElementIds(ids)
+    uidoc.ShowElements(ids)
+    uidoc.RefreshActiveView()

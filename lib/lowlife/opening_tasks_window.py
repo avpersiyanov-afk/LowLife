@@ -80,6 +80,10 @@ class Handler(IExternalEventHandler):
                 from lowlife import opening_tasks_journal as journal
                 journal.setup(w.document,w.role,settings['opening_project'])
                 return
+            if action=='highlight':
+                from lowlife.opening_tasks_views import highlight
+                highlight(uidoc,w.role,settings['opening_project'],rows)
+                return
             if action in ('kr_plans','kr_sections'):
                 from lowlife.opening_tasks_kr_views import build
                 from pyrevit import revit, script
@@ -262,6 +266,7 @@ class TaskWindow(forms.WPFWindow):
         self.event=ExternalEvent.Create(self.handler)
         labels=dict(manifest.actions(role))
         labels.update({
+            'highlight':tr(u'Подсветить на виде',u'Highlight in view'),
             'refresh':tr(u'Обновить обмен',u'Refresh exchange'),
             'settings':tr(u'Настройки',u'Settings'),
             'journal_open':tr(u'Открыть таблицу',u'Open spreadsheet'),
