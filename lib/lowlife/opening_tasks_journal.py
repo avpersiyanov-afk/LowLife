@@ -30,6 +30,13 @@ def scope_key(project, role, model):
     return core.dumps(dict(project=project,role=role,model=model))
 
 
+
+def connection_value(project,role,model):
+    data=connection_store().read()
+    # A new shared connection replaces per-model setup, while old files still work.
+    return data.get(scope_key(project,role,'*')) or data.get(scope_key(project,role,model))
+
+
 def connection_store():
     from lowlife.settings_core import JsonStore
     return JsonStore(CONFIG_FILE,share=False)
@@ -49,7 +56,7 @@ def crypt(text, decrypt=False):
 
 
 def load_connection(project,role,model):
-    value=connection_store().read().get(scope_key(project,role,model))
+    value=connection_value(project,role,model)
     if not value:
         raise ValueError(tr(u'Журнал не подключён для этой модели. Администратор persiyanov должен выдать подключение.',
                             u'Journal is not configured for this model. Ask administrator persiyanov for a connection.'))
@@ -57,22 +64,23 @@ def load_connection(project,role,model):
     return dict(url=value['url'],token=crypt(value['token_dpapi'],True))
 
 
-def save_connection(project,role,model,url,token,sheet_url=''):
+def save_connection(project,role,model,url,token,sheet_url='',shared=False):
     validate_url(url)
     if not token.strip():
         raise ValueError(tr(u'Введите токен подключения',u'Enter a connection token'))
     config=connection_store()
     data=config.read()
-    data[scope_key(project,role,model)]=dict(url=url,token_dpapi=crypt(token.strip()),sheet_url=sheet_url)
+    data[scope_key(project,role,'*' if shared else model)]=dict(url=url,token_dpapi=crypt(token.strip()),sheet_url=sheet_url)
     if not config.write(data):
         raise ValueError(tr(u'Подключение журнала не сохранено',u'Journal connection was not saved'))
 
 
-def snapshot(registry,project,role,model,title,rows=None):
+def snapshot(registry,project,role,model,title,rows=None,revit_user='',windows_user=''):
     """Full released records/history, scoped to one project and originating model."""
     if role not in ('VIS','KR','AR') or not project or not model:
         raise ValueError(tr(u'Не задан проект, модель или роль журнала',u'Journal project, model or role is missing'))
     value=dict(schema=1,project=project,role=role,model=model,model_title=title,
+               revit_user=revit_user,windows_user=windows_user,
                tasks={},issues=[],receipts={},decisions=[],confirmations=[],working=[],observations={})
     if role=='VIS':
         value['tasks']={key:copy.deepcopy(r) for key,r in registry.get('tasks',{}).items()
@@ -138,11 +146,20 @@ def deliver(items, send):
     return sent,blocked
 
 
+
+def windows_user():
+    user=os.environ.get('USERNAME') or os.environ.get('USER') or ''
+    domain=os.environ.get('USERDOMAIN') or ''
+    return domain+u'\\'+user if domain and user else user
+
+
 def capture(window,settings):
     from lowlife import opening_tasks_storage as storage
     doc=window.document
     data=snapshot(storage.registry(doc),settings['opening_project'],window.role,
-                  storage.model_id(doc),unicode(doc.Title),window.rows)
+                  storage.model_id(doc),unicode(doc.Title),window.rows,
+                  revit_user=unicode(doc.Application.Username or ''),
+                  windows_user=windows_user())
     if window.role in ('KR','AR'):
         from lowlife import opening_tasks_revit as api
         for key,receipt in data['receipts'].items():
@@ -260,12 +277,12 @@ def setup(doc,role,project):
                               u'Project: {} | Role: {}\nModel ID: {}').format(project,role,model)
             self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')
             self.token_label.Text=tr(u'Токен',u'Token')
-            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. Для этих шифра, роли и ID модели выдайте токен через меню LowLife в Google-таблице.',
-                                   u'The code comes from Project Information. Issue a token for this code, role and model ID in the Google sheet LowLife menu.')
+            self.info_hint.Text=tr(u'Шифр берётся из сведений о проекте. В меню LowLife Google-таблицы выдайте один токен группе для этого объекта и роли. ID модели сохраняется в журнале и не ограничивает токен.',
+                                   u'The code comes from Project Information. Issue one group token for this project and role in the Google sheet LowLife menu. The model ID is recorded in the journal, not bound to the token.')
             self.url_hint.Text=tr(u'Вставьте адрес развёрнутого веб-приложения Apps Script с окончанием /exec. Ссылка на саму Google-таблицу сюда не подходит.',
                                   u'Paste the deployed Apps Script web app URL ending in /exec. The spreadsheet URL cannot be used here.')
-            self.token_hint.Text=tr(u'Персональный токен для текущих проекта, роли и модели. Хранится зашифрованным в вашем профиле Windows; в модель не записывается.',
-                                    u'A personal token for this project, role and model. Stored encrypted in your Windows profile; never written to the model.')
+            self.token_hint.Text=tr(u'Общий токен группы для объекта и роли. Подходит для всех моделей этой роли. Пользователи Revit и Windows записываются отдельно; токен хранится зашифрованным.',
+                                    u'Shared group token for this project and role, valid for all models of that role. Revit and Windows users are recorded separately; the token is stored encrypted.')
             self.guide.Content=tr(u'Инструкция подключения Google',u'Google connection guide')
             self.guide.Click+=self.open_guide
             self.save.Content=tr(u'Проверить и сохранить',u'Check and save')
@@ -296,7 +313,8 @@ def setup(doc,role,project):
                         forms.alert(error)
                         return
                     try:
-                        save_connection(project,role,model,url,token,result.get('sheet_url',''))
+                        save_connection(project,role,model,url,token,result.get('sheet_url',''),
+                                        shared=result.get('credential_scope')=='group')
                         self.token.Password=''
                         self.Close()
                     except Exception as ex:
@@ -313,7 +331,7 @@ def setup(doc,role,project):
 def open_sheet(doc,role,project):
     from lowlife import opening_tasks_storage as storage
     from pyrevit import script
-    value=connection_store().read().get(scope_key(project,role,storage.model_id(doc)),{})
+    value=connection_value(project,role,storage.model_id(doc)) or {}
     url=value.get('sheet_url','')
     if not re.match(r'^https://docs\.google\.com/spreadsheets/d/[A-Za-z0-9_-]+(?:/edit)?$',url):
         raise ValueError(tr(u'Нет ссылки на журнал. Переустановите подключение таблицы.',u'Journal link is missing. Reinstall the sheet connection.'))

@@ -52,7 +52,7 @@ def geometry_equal(a, b, tolerance_mm=0.1):
             and all(abs(x-y) < 1e-8 for x, y in zip(a['x_dir'], b['x_dir'])))
 
 
-def issue(registry, drafts, project, discipline, author, when, recipient='KR'):
+def issue(registry, drafts, project, discipline, author, when, recipient='KR',windows_user=''):
     """Explicit selected scope. Missing tasks NEVER become withdrawn implicitly."""
     validate_recipient(recipient)
     if not project.strip() or not discipline.strip():
@@ -92,6 +92,8 @@ def issue(registry, drafts, project, discipline, author, when, recipient='KR'):
         record.update(schema=VERSION, project=project, discipline=discipline, recipient=recipient, status='issued',
                       revision=old['revision']+1 if old else 1, issue_id=issue_id, issue_number=issue_number,
                       created_at=old['created_at'] if old else when, issued_at=when, author=author)
+        if windows_user:
+            record.update(revit_user=author,windows_user=windows_user)
         result['tasks'][tid] = record
         changes.append(record)
     if changes:
@@ -99,13 +101,15 @@ def issue(registry, drafts, project, discipline, author, when, recipient='KR'):
     return result, changes
 
 
-def withdraw(registry, task_ids, author, when):
+def withdraw(registry, task_ids, author, when,windows_user=''):
     result, changes = copy.deepcopy(registry), []
     for tid in set(task_ids):
         record = result['tasks'][tid]
         if record['status'] == 'withdrawn':
             continue
         record.update(status='withdrawn', revision=record['revision']+1, issued_at=when, author=author)
+        if windows_user:
+            record.update(revit_user=author,windows_user=windows_user)
         changes.append(copy.deepcopy(record))
     if changes:
         iid = guid()

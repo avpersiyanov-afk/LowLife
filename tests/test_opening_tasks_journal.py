@@ -184,3 +184,32 @@ def test_process_timer_is_singleton_and_retries_without_window(monkeypatch):
     callback(None)
     callback(None)
     assert attempts==[True,True]
+
+
+def test_shared_connection_is_reused_across_models_but_not_projects_or_roles(monkeypatch):
+    class Store:
+        data={}
+        def read(self):return copy.deepcopy(self.data)
+        def write(self,value):
+            self.data=value
+            return True
+    config=Store()
+    monkeypatch.setattr(j,'connection_store',lambda:config)
+    monkeypatch.setattr(j,'crypt',lambda text,decrypt=False:'shared-token' if decrypt else 'encrypted')
+    url='https://script.google.com/macros/s/group/exec'
+    j.save_connection('P','VIS','model1',url,'token',shared=True)
+    assert j.load_connection('P','VIS','model1')['token']=='shared-token'
+    assert j.load_connection('P','VIS','model2')['token']=='shared-token'
+    with pytest.raises(ValueError):j.load_connection('OTHER','VIS','model2')
+    with pytest.raises(ValueError):j.load_connection('P','KR','model2')
+
+
+def test_windows_identity_and_queued_actor_are_preserved(monkeypatch):
+    monkeypatch.setenv('USERNAME','ivanov')
+    monkeypatch.setenv('USERDOMAIN','BUREAU')
+    assert j.windows_user()=='BUREAU\\ivanov'
+    data=j.snapshot(registry(),'P','VIS','vis','Name',revit_user='Revit Ivanov',windows_user=j.windows_user())
+    item=j.enqueue([],data)[0]
+    data['revit_user']='Another user'
+    assert c.loads(item['payload'])['revit_user']=='Revit Ivanov'
+    assert c.loads(item['payload'])['windows_user']=='BUREAU\\ivanov'

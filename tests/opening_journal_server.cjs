@@ -187,7 +187,7 @@ assert.equal(call({...scope,project:'OTHER',action:'catalog'}).error,'SCOPE_DENI
 assert.equal(call({...scope,token:'bad',action:'catalog'}).error,'UNAUTHORIZED');
 const withPart=structuredClone(event);withPart.tasks.a.revision=4;withPart.tasks.a.object_part='НЧ-01';
 assert.equal(pub(withPart,4).version,5);
-assert.equal(sheets['Задания'].rows.find(r=>r[0]==='P').at(-1),'НЧ-01');
+assert.equal(sheets['Задания'].rows.find(r=>r[0]==='P')[24],'НЧ-01');
 assert.equal(sheets['ГИП'].rows.find(r=>r[0]==='P').at(-1),'НЧ-01');
 const relabel=structuredClone(withPart);relabel.tasks.a.revision=5;relabel.tasks.a.object_part='ПЧ';
 assert.equal(pub(relabel,5).error,'INVALID_OBJECT_PART');
@@ -195,3 +195,29 @@ const invalidPart=structuredClone(withPart);invalidPart.tasks.a.revision=5;inval
 assert.equal(pub(invalidPart,5).error,'INVALID_OBJECT_PART');
 const separated=sandbox.gipRows_([gipSnapshot([{...g1,object_part:'НЧ-1'},{...g2,object_part:'ПЧ-1'}])],{});
 assert.equal(separated.length,2);
+
+// One group token works for multiple models; project and role remain restricted.
+const sharedToken='g'.repeat(64);
+properties['TOKEN_'+sandbox.sha_(sharedToken)]=JSON.stringify({group:'ОВ',project:'P',role:'VIS'});
+const sharedScope={token:sharedToken,project:'P',role:'VIS',model:'vis'};
+assert.equal(call({...sharedScope,action:'status'}).credential_scope,'group');
+assert.equal(call({...sharedScope,role:'KR',action:'status'}).error,'SCOPE_DENIED');
+assert.equal(call({...sharedScope,project:'Other',action:'status'}).error,'SCOPE_DENIED');
+const firstGroup=structuredClone(withPart);
+firstGroup.tasks.a.revision=5;
+firstGroup.revit_user='Revit Ivanov';firstGroup.windows_user='BUREAU\\ivanov';
+firstGroup.tasks.a.revit_user='Revit Ivanov';firstGroup.tasks.a.windows_user='BUREAU\\ivanov';
+assert.equal(pub(firstGroup,5,sharedScope).version,6);
+const secondGroup=base();secondGroup.model='vis-2';secondGroup.tasks.a.source_model='vis-2';
+secondGroup.revit_user='Revit Petrov';secondGroup.windows_user='BUREAU\\petrov';
+assert.equal(pub(secondGroup,0,{...sharedScope,model:'vis-2'}).version,1);
+assert.equal(call({...sharedScope,action:'status'}).version,6);
+assert.equal(call({...sharedScope,model:'vis-2',action:'status'}).version,1);
+const ledgerRows=sheets['Публикации'].rows;
+assert.equal(ledgerRows.at(-1)[3],'vis-2');
+assert.equal(ledgerRows.at(-1)[8],'ОВ');
+assert.equal(ledgerRows.at(-1)[9],'Revit Petrov');
+assert.equal(ledgerRows.at(-1)[10],'BUREAU\\petrov');
+assert.equal(sheets['Задания'].rows.find(r=>r[0]==='P' && r[5]==='vis')[26],'BUREAU\\ivanov');
+const spoof=structuredClone(secondGroup);spoof.model='different';
+assert.equal(pub(spoof,1,{...sharedScope,model:'vis-2'}).error,'INVALID_SNAPSHOT');

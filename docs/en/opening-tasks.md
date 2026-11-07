@@ -143,7 +143,7 @@ A failed earlier revision blocks later revisions of that model; other models
 can still publish. Tokens never enter the queue.
 
 Only Windows user persiyanov sees connection settings. Each token is scoped
-to project, role and model and protected with Windows DPAPI. “Open spreadsheet”
+to project and role for a group, works across models and is protected with Windows DPAPI. “Open spreadsheet”
 is available to engineers. Google link sharing can grant Viewer access; a tab
 link grants access to the entire spreadsheet, not just one project. Separate
 Google files are needed when project visibility must be isolated.
@@ -184,3 +184,11 @@ preserving location and ID. An unsupported family change is rolled back.
 Resolution provenance is stored in box/task JSON and shown in the table;
 a corrected issued level creates a new revision on reissue. The same rules
 apply to the standalone tray box tool.
+
+
+Group credentials replace per-model token issuance. Configure each Windows profile
+once per project/role; model IDs continue to isolate publication streams and task
+ownership in the journal. Model-bound legacy credentials remain supported.
+Release/review/withdrawal events store Revit and Windows usernames at action time;
+queued retries retain the original identity. Publications show group and sender
+separately. Group labels do not add discipline-level authorization inside VIS.

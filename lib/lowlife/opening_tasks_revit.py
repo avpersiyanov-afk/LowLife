@@ -12,6 +12,7 @@ from datetime import datetime
 from Autodesk.Revit.DB import (CurveArray, ElementTransformUtils, FamilyInstance, CategoryType, IndependentTag, Dimension, FilteredElementCollector,
                                Floor, Line, LocationPoint, Opening, Options, RevitLinkInstance, StorageType,
                                SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ)
+from lowlife.opening_tasks_journal import windows_user
 from lowlife import opening_tasks_core as core
 from lowlife import opening_tasks_storage as store
 from lowlife import tray_boxes as boxes
@@ -205,7 +206,7 @@ def prepare_drafts(doc, elements, settings):
 def publish(doc, elements, settings):
     drafts = prepare_drafts(doc,elements,settings)
     registry, changes = core.issue(store.registry(doc), drafts, settings['opening_project'],
-                                   settings['opening_discipline'],doc.Application.Username,now(),settings.get('opening_recipient','KR'))
+                                   settings['opening_discipline'],doc.Application.Username,now(),settings.get('opening_recipient','KR'),windows_user=windows_user())
     by_id = {d['task_id']: e for d,e in zip(drafts,elements)}
     for record in changes:
         inst=by_id[record['task_id']]
@@ -220,7 +221,7 @@ def publish(doc, elements, settings):
 
 
 def retract(doc, task_ids, settings):
-    registry, changes = core.withdraw(store.registry(doc),task_ids,doc.Application.Username,now())
+    registry, changes = core.withdraw(store.registry(doc),task_ids,doc.Application.Username,now(),windows_user=windows_user())
     for record in changes:
         inst = doc.GetElement(record['owner_uid'])
         if inst:
@@ -428,7 +429,7 @@ def accept(doc, records, settings):
                   set(list(old_receipts.values())[0]['revisions'])==keys else core.guid())
     receipt = dict(schema=1,role='receipt',object_part=records[0].get('object_part',''),recipient=settings.get('opening_recipient','KR'),opening_id=opening_id, opening_uid=opening.UniqueId,
                    revisions={core.task_key(r):r['revision'] for r in records}, status='accepted',
-                   geometry=g,issued_tasks=copy.deepcopy(records),project=settings['opening_project'],author=doc.Application.Username,at=now())
+                   geometry=g,issued_tasks=copy.deepcopy(records),project=settings['opening_project'],author=doc.Application.Username,revit_user=doc.Application.Username,windows_user=windows_user(),at=now())
     # Native Opening categories may not support project text parameters. ES is authoritative here.
     store.write(opening,receipt)
     param = opening.LookupParameter(settings['opening_json_param']) if settings.get('opening_json_param') else None
@@ -451,7 +452,7 @@ def reject(doc, records, settings, comment):
         if previous and previous.get('opening_uid'):
             raise ValueError(tr(u'Для реализованного отверстия нужно отдельное решение: отклонение его не удаляет',u'An implemented opening must be reviewed explicitly, not silently rejected'))
         receipt = dict(schema=1,status='rejected',object_part=record.get('object_part',''),recipient=settings.get('opening_recipient','KR'),revisions={key:record['revision']},comment=comment,
-                       author=doc.Application.Username,at=now(),project=settings['opening_project'])
+                       author=doc.Application.Username,revit_user=doc.Application.Username,windows_user=windows_user(),at=now(),project=settings['opening_project'])
         receipts[key] = receipt
         registry.setdefault('decisions' if settings.get('opening_recipient','KR')=='KR' else 'ar_decisions',[]).append(copy.deepcopy(receipt))
     store.save_registry(doc,registry)
@@ -477,7 +478,7 @@ def remove_withdrawn(doc, records, settings):
             assert_safe_replacement(doc,element)
             doc.Delete(element.Id)
         for key in receipt['revisions']:
-            updated = dict(receipt,status='withdrawn',opening_uid=None,at=now(),author=doc.Application.Username,
+            updated = dict(receipt,status='withdrawn',opening_uid=None,at=now(),author=doc.Application.Username,revit_user=doc.Application.Username,windows_user=windows_user(),
                            revisions={k:selected[k]['revision'] for k in receipt['revisions']})
             receipts[key] = updated
         registry.setdefault('decisions' if settings.get('opening_recipient','KR')=='KR' else 'ar_decisions',[]).append(updated)
@@ -538,7 +539,7 @@ def confirm_results(doc, results, settings):
             raise ValueError(tr(u'Ревизия задания изменилась',u'Task revision changed'))
         confirmation = dict(object_part=task.get('object_part',''),recipient=task.get('recipient','KR'),task_id=task['task_id'],revision=task['revision'],
                             opening_id=receipt['opening_id'],kr_model=store.model_id(link.GetLinkDocument()),
-                            author=doc.Application.Username,at=now())
+                            author=doc.Application.Username,revit_user=doc.Application.Username,windows_user=windows_user(),at=now())
         registry['tasks'][task['task_id']]['confirmation'] = confirmation
         registry.setdefault('confirmations',[]).append(copy.deepcopy(confirmation))
         inst = doc.GetElement(task['owner_uid'])

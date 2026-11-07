@@ -18,7 +18,7 @@ def test_connection_is_saved_only_after_background_validation(monkeypatch):
         sent.append((scope,track))
         return {'sheet_url':'sheet'}
     ns=dict(unicode=str,validate_url=lambda url:url,project='P',role='KR',model='model',
-            request=request,save_connection=lambda *args:saved.append(args),
+            request=request,save_connection=lambda *args,**kw:saved.append((args,kw)),
             forms=NS(alert=alerts.append),tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[method],type_ignores=[]),str(path),'exec'),ns)
     closed=[]
@@ -29,7 +29,7 @@ def test_connection_is_saved_only_after_background_validation(monkeypatch):
     work,done=callbacks.pop()
     done(work(),None)
     assert sent==[({'project':'P','role':'KR','model':'model'},True)]
-    assert saved==[('P','KR','model','url','secret','sheet')]
+    assert saved==[(('P','KR','model','url','secret','sheet'),{'shared':False})]
     assert closed==[True] and window.token.Password=='' and not alerts
     window.token.Password='new'
     ns['on_save'](window,None,None)
