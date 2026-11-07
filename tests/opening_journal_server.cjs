@@ -11,6 +11,7 @@ class Sheet {
       row.forEach((x,j)=>this.rows[r-1+i][c-1+j]=x);
     });},
     getValues:()=>this.rows.slice(r-1,r-1+n).map(row=>row.slice(c-1,c-1+m)),
+    setNumberFormat:format=>{this.numberFormat=format;},
     createFilter:()=>{}
   };}
   getMaxRows(){return 1000;}
@@ -323,3 +324,11 @@ delete sheets['Обзор'];sandbox.onOpen=()=>{};sandbox.setupJournal();
 assert(sheets['Обзор'].rows.length>1);
 assert.equal(JSON.stringify(sheets['Публикации'].rows),beforeSetup);
 assert.equal(JSON.stringify(sheets['Части объектов'].rows),beforeParts);
+
+// Hyphenated numbers stay text; old dates never become labels in the selector.
+assert.equal(sheets['Части объектов'].numberFormat,'@');
+sandbox.append_(sheets['Части объектов'],[
+ ['BUILDING-TEXT','НЧ','1-2',true],['BUILDING-TEXT','НЧ','6-7',true],
+ ['BUILDING-TEXT','ПЧ','01',true],['BUILDING-TEXT','НЧ',new Date('2026-07-06'),true]
+]);
+assert.deepEqual(Array.from(sandbox.catalog_(ss,'BUILDING-TEXT')),['НЧ-1-2','НЧ-6-7','ПЧ-01']);

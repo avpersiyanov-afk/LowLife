@@ -74,8 +74,8 @@ def issue(registry, drafts, project, discipline, author, when, recipient='KR',wi
         if old and old.get('recipient','KR')!=recipient:
             raise ValueError(tr(u'Нельзя изменить получателя выданного задания. Создайте отдельное задание.',u'Cannot change the recipient of an issued task. Create a separate task.'))
         if old and old.get('object_part') and old['object_part']!=draft.get('object_part',''):
-            raise ValueError(tr(u'Нельзя изменить часть объекта выданного задания. Создайте отдельное задание.',
-                                u'Cannot change the object part of an issued task. Create a separate task.'))
+            raise ValueError(tr(u'Нельзя изменить номер корпуса выданного задания. Создайте отдельное задание.',
+                                u'Cannot change the building number of an issued task. Create a separate task.'))
         if old and (old['source_model'] != draft['source_model'] or old['project'] != project):
             raise ValueError(tr(u'Конфликт идентификатора задания или кода проекта',u'Task identity or project conflict'))
         if (old and old['status'] == 'issued' and geometry_equal(old['geometry'], draft['geometry'])
@@ -213,5 +213,5 @@ def check_recipient(records,recipient,project,model):
 def common_part(records):
     parts=set(r.get('object_part','') for r in records)
     if len(parts)>1:
-        raise ValueError(tr(u'Нельзя объединить задания разных частей объекта',u'Cannot merge tasks from different object parts'))
+        raise ValueError(tr(u'Нельзя объединить задания разных корпусов',u'Cannot merge tasks from different buildings'))
     return next(iter(parts)) if parts else ''

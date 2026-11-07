@@ -30,7 +30,7 @@ def state_label(state):
         'moved':tr(u'Перемещено',u'Moved'), 'resized':tr(u'Изменены размеры',u'Resized'),
         'rotated':tr(u'Повёрнуто',u'Rotated'), 'rehosted':tr(u'Изменена конструкция',u'Host changed'),
         'level':tr(u'Уточнён уровень конструкции',u'Host level corrected'),
-        'object_part':tr(u'Назначена часть объекта',u'Object part assigned'),
+        'object_part':tr(u'Назначен номер корпуса',u'Building number assigned'),
         'reissued':tr(u'Повторная выдача после отзыва',u'Reissued after withdrawal'),
     }.get(state,state)
 

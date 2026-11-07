@@ -124,7 +124,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if previous:
                     inst, data = previous
                     if data.get('object_part') and data['object_part']!=settings.get('opening_object_part',''):
-                        raise ValueError(tr(u'Бокс относится к другой части объекта',u'Draft belongs to another object part'))
+                        raise ValueError(tr(u'Бокс относится к другому корпусу',u'Draft belongs to another building number'))
                     if not isinstance(inst.Location, LocationPoint):
                         raise ValueError(tr(u'У бокса нет точки вставки',u'Draft has no point location'))
                     from lowlife.opening_levels import assign_level
@@ -197,7 +197,7 @@ def prepare_drafts(doc, elements, settings):
         if data['host_model'] != store.model_id(link.GetLinkDocument()):
             raise ValueError(tr(u'Связь заменена: пересоздайте задание',u'Target link was replaced; regenerate the draft'))
         if data.get('object_part') and data['object_part']!=settings.get('opening_object_part',''):
-            raise ValueError(tr(u'Бокс относится к другой части объекта',u'Draft belongs to another object part'))
+            raise ValueError(tr(u'Бокс относится к другому корпусу',u'Draft belongs to another building number'))
         drafts.append(dict(level=data.get('level'), object_part=settings.get('opening_object_part',''), task_id=data['task_id'], source_model=data['source_model'], source_uid=data['source_uid'],
                            owner_uid=inst.UniqueId, recipient=data.get('recipient','KR'), geometry=host_geometry(inst,data,link)))
     return drafts
