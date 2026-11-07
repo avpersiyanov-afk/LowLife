@@ -2,9 +2,9 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=16
+VERSION=17
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
-INSTALL_DISCIPLINES={u'ОК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
+INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('refresh','settings','journal_setup','journal_open','parts_refresh')
 ACTIONS={
     'VIS': (
@@ -68,3 +68,8 @@ def action_hint(action):
         'parts_refresh':tr(u'Загрузить из Google НЧ/ПЧ и номера корпусов или секций текущего объекта. Без сети используется сохранённый список.',
                            u'Load the current project parts and building or section numbers from Google. Cached choices are used offline.'),
     }.get(action,'')
+
+
+def canonical_discipline(value):
+    value=(value or '').strip()
+    return u'ОВиК' if value.upper() in (u'ОВИК',u'ОК') else value

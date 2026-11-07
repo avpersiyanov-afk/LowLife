@@ -196,7 +196,7 @@ queued retries retain the original identity. Publications show group and sender
 separately. New tokens validate the selected installer discipline.
 
 
-The installer and Google token menu now offer ОК, ВК, ЭОМ, СС, АК, КР and АР.
+The installer and Google token menu now offer ОВиК, ВК, ЭОМ, СС, АК, КР and АР.
 VIS is an internal interface mode, not a user-facing installer choice.
 The saved engineering discipline fills new task records; older release records
 remain unchanged until explicitly reissued. PowerShell uses UTF-8 with BOM.

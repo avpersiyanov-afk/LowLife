@@ -10,6 +10,7 @@ import os
 import re
 from lowlife import opening_tasks_core as core
 from lowlife.i18n import tr
+from lowlife.opening_tasks_manifest import canonical_discipline
 from lowlife.cloud_io import Transport, AppDomainLock as QueueLock
 
 TRANSPORT=Transport()
@@ -65,7 +66,7 @@ def load_connection(project,role,model):
         raise ValueError(tr(u'Журнал не подключён для этой модели. Администратор persiyanov должен выдать подключение.',
                             u'Journal is not configured for this model. Ask administrator persiyanov for a connection.'))
     validate_url(value['url'])
-    return dict(url=value['url'],token=crypt(value['token_dpapi'],True),discipline=value.get('discipline',''))
+    return dict(url=value['url'],token=crypt(value['token_dpapi'],True),discipline=canonical_discipline(value.get('discipline','')))
 
 
 def save_connection(project,role,model,url,token,sheet_url='',shared=False,all_projects=False,discipline=''):
@@ -284,7 +285,7 @@ def setup(doc,role,project):
               </StackPanel></ScrollViewer></Window>''',literal_string=True)
             self.Title=tr(u'Подключение журнала — persiyanov',u'Journal connection — persiyanov')
             installed=connection_value(project,role,model) or {}
-            discipline=installed.get('discipline') or ({'KR':u'КР','AR':u'АР'}.get(role)) or tr(u'Определится по токену',u'Determined by the token')
+            discipline=canonical_discipline(installed.get('discipline')) or ({'KR':u'КР','AR':u'АР'}.get(role)) or tr(u'Определится по токену',u'Determined by the token')
             self.info.Text=tr(u'Проект: {} | Дисциплина: {}\nID модели: {}',
                               u'Project: {} | Discipline: {}\nModel ID: {}').format(project,discipline,model)
             self.url_label.Text=tr(u'Адрес Google Apps Script',u'Google Apps Script URL')

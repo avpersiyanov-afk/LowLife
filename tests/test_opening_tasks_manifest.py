@@ -64,7 +64,14 @@ def test_ar_receiving_actions_are_separate_from_kr():
 
 
 def test_installer_uses_discipline_names_for_engineers_and_receivers():
-    assert set(m.INSTALL_DISCIPLINES)=={u'ОК',u'ВК',u'ЭОМ',u'СС',u'АК',u'КР',u'АР'}
-    assert all(m.INSTALL_DISCIPLINES[d]=='VIS' for d in (u'ОК',u'ВК',u'ЭОМ',u'СС',u'АК'))
+    assert set(m.INSTALL_DISCIPLINES)=={u'ОВиК',u'ВК',u'ЭОМ',u'СС',u'АК',u'КР',u'АР'}
+    assert all(m.INSTALL_DISCIPLINES[d]=='VIS' for d in (u'ОВиК',u'ВК',u'ЭОМ',u'СС',u'АК'))
     assert m.INSTALL_DISCIPLINES[u'КР']=='KR'
     assert m.INSTALL_DISCIPLINES[u'АР']=='AR'
+
+
+def test_hvac_spelling_and_legacy_alias_resolve_to_same_discipline():
+    assert m.canonical_discipline(u'ОВиК')==u'ОВиК'
+    assert m.canonical_discipline(u'ОВИК')==u'ОВиК'
+    assert m.canonical_discipline(u'ОК')==u'ОВиК'
+    assert m.canonical_discipline(u'ВК')==u'ВК'
