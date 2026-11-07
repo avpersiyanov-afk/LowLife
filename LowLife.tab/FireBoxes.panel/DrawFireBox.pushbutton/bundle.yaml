@@ -1,4 +1,6 @@
 title: Нарисовать короб
 title_en: Draw enclosure
-tooltip: Построить короб FIREBOX или ОСК по точкам оси. Сечение, тип и огнестойкость задаются в настройках. Esc завершает трассу. Shift+клик — настройки.
-tooltip_en: Draw a FIREBOX or OSK enclosure by picking axis points. Configure section, type and fire resistance in settings. Esc finishes the route. Shift+click opens settings.
+tooltip: Рисовать короб FIREBOX или ОСК штатным инструментом Revit с предпросмотром, привязками и временными размерами. Сечение задаётся в настройках. Esc завершает рисование. Shift+клик — настройки.
+tooltip_en: Draw a FIREBOX or OSK enclosure with Revit's native preview, snaps and temporary dimensions. Configure the section in settings. Esc finishes drawing. Shift+click opens settings.
+engine:
+  persistent: true
