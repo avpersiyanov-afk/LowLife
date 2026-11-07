@@ -109,6 +109,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
         for crossing in crossings:
             sub = SubTransaction(doc)
             count = len(placer.existing)
+            filter_error_count = len(placer.result.filter_errors)
             try:
                 box, reason = boxes.box_for(route, crossing, settings)
                 if box is None:
@@ -172,6 +173,9 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if sub.GetStatus() == TransactionStatus.Started:
                     sub.RollBack()
                 del placer.existing[count:]
+                # Warnings from this attempt may reference instances destroyed
+                # by rollback; keep only warnings for committed boxes.
+                del placer.result.filter_errors[filter_error_count:]
                 errors.append((route.Id, unicode(ex)))
     errors += [(inst.Id, err) for inst, err in placer.result.filter_errors]
     return entries, errors

@@ -18,6 +18,7 @@ from System import String, Int32
 from System.Windows import Thickness
 from pyrevit import forms
 from lowlife.i18n import tr
+import traceback
 from lowlife import opening_tasks_ui as flow
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
@@ -160,7 +161,8 @@ class Handler(IExternalEventHandler):
             else:
                 w.refresh()
         except Exception as ex:
-            forms.alert(tr(u'Действие не выполнено: {}',u'Action failed: {}').format(unicode(ex)))
+            forms.alert(tr(u'Действие не выполнено: {}',u'Action failed: {}').format(unicode(ex)),
+                        expanded=traceback.format_exc())
         finally:
             w.pending=None
             w.IsEnabled=True
