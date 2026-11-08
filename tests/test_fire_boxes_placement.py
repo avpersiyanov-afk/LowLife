@@ -53,19 +53,21 @@ def adapter():
             return list
     fb = NS(resolve_workset=lambda doc, name: 2, CURVE_CATS=(1,), FITTING_CATS=(2,),
             in_categories=lambda el, cats: el is not None and el.category in cats,
-            connected_curves=lambda el: el.connections, is_duct_type=lambda el: True)
+            connected_curves=lambda el: el.connections, is_duct_type=lambda el: True,
+            dimensions=lambda el: (0, 0))
     scope = dict(DB=db, UI=NS(RevitCommandId=NS(LookupPostableCommandId=lambda cmd: cmd),
                              PostableCommand=NS(CreateSimilar='similar')),
-                 List=GenericList, UPDATER_GUID='guid', SESSION_KEY='session', copy=copy,
+                 List=GenericList, UPDATER_GUID='guid', SESSION_KEY='session', SOURCE_KEY='source', copy=copy,
                  fb=fb, core=NS(mounting_section=lambda settings: dict(width=500, height=400)),
                  script=NS(get_envvar=env.get, set_envvar=lambda key, value: env.update({key: value})),
                  forms=NS(alert=alerts.append), tr=lambda ru, en: en, unicode=str)
     exec(compile(tree, str(source), 'exec'), scope)
+    prepare = scope['PlacementSession'].prepare
     scope['PlacementSession'].prepare = lambda session: None
     settings = dict(box_type_uid='type', system_type_uid='system', elevation_mm=3000)
     return NS(scope=scope, doc=doc, uiapp=uiapp, uidoc=uidoc, settings=settings,
               registered=registered, env=env, alerts=alerts, table=table, elements=elements,
-              requests=requests, applied=applied)
+              requests=requests, applied=applied, prepare=prepare)
 
 
 def test_native_request_keeps_session_until_idle_then_restores_workset():
@@ -219,3 +221,86 @@ def test_model_settings_ok_starts_with_edited_values_cancel_and_shift_do_not(con
     scope['run'](object(), object(), 'draw')
     assert dialogs == [None if config_mode else saved]
     assert models == ([edited] if accepted and not config_mode else [])
+
+
+def reusable_adapter():
+    a = adapter()
+    a.doc.ActiveView.GenLevel = NS(Id=5)
+    a.doc.ActiveView.get_Parameter = lambda key: NS(AsElementId=lambda: 7)
+    db, fb = a.scope['DB'], a.scope['fb']
+    db.BuiltInParameter = NS(RBS_OFFSET_PARAM='offset', RBS_DUCT_SYSTEM_TYPE_PARAM='system', VIEW_PHASE='phase')
+    db.ElementId = int
+    db.StorageType = NS(String='string')
+    fb.note_parameter = lambda el, settings: NS(IsReadOnly=False, StorageType='string')
+    element = NS(Id=55, UniqueId='last', category=1, type_id=10, dimensions=(500, 400),
+                 ReferenceLevel=NS(Id=5), WorksetId=2, offset=3000/304.8, system=20,
+                 DesignOption=None, CreatedPhaseId=7, rise=0, up=1)
+    element.GetTypeId = lambda: element.type_id
+    element.get_Parameter = lambda key: NS(AsDouble=lambda: element.offset, AsElementId=lambda: element.system)
+    element.Location = NS(Curve=NS(GetEndPoint=lambda index: NS(Z=index*element.rise)))
+    fb.dimensions = lambda el: el.dimensions
+    fb.connectors = lambda el: [NS(CoordinateSystem=NS(BasisY=NS(Z=el.up)))]
+    a.elements['last'] = element
+    a.env['source'] = 'last'
+    a.source = element
+    a.selected = []
+    a.uiapp.ActiveUIDocument = NS(Selection=NS(SetElementIds=a.selected.append))
+    a.session = a.scope['PlacementSession'](a.uiapp, a.doc, a.settings)
+    return a
+
+
+def test_repeated_launch_reuses_source_without_transaction_or_deleting_existing_element():
+    a = reusable_adapter()
+    # No Transaction/XYZ mocks: reaching the seed path would fail this test.
+    a.prepare(a.session)
+    assert a.selected == [[55]]
+    assert a.session.seed_uid is None
+    a.session.stop()
+    assert a.elements['last'] is a.source
+
+
+@pytest.mark.parametrize('change', ['deleted', 'type', 'size', 'level', 'offset', 'workset',
+                                    'phase', 'option', 'slope', 'roll', 'inverted', 'system', 'note'])
+def test_cached_source_is_revalidated_before_reuse(change):
+    a = reusable_adapter()
+    if change == 'deleted':
+        del a.elements['last']
+    elif change == 'type':
+        a.source.type_id = 11
+    elif change == 'size':
+        a.source.dimensions = (600, 400)
+    elif change == 'level':
+        a.source.ReferenceLevel = NS(Id=6)
+    elif change == 'offset':
+        a.source.offset += 1
+    elif change == 'workset':
+        a.source.WorksetId = 3
+    elif change == 'phase':
+        a.source.CreatedPhaseId = 8
+    elif change == 'option':
+        a.source.DesignOption = object()
+    elif change == 'slope':
+        a.source.rise = 1
+    elif change == 'roll':
+        a.source.up = 0
+    elif change == 'inverted':
+        a.source.up = -1
+    elif change == 'system':
+        a.source.system = 21
+    elif change == 'note':
+        a.scope['fb'].note_parameter = lambda *args: None
+    assert a.session.reusable_source() is None
+
+
+def test_correct_section_does_not_rewrite_dimensions():
+    a = adapter()
+    session = a.scope['PlacementSession'](a.uiapp, a.doc, a.settings)
+    a.scope['fb'].dimensions = lambda el: (500, 400)
+    a.scope['fb'].size = lambda *args: pytest.fail('unnecessary dimension write')
+    a.scope['fb'].is_duct_type = lambda el: False
+    a.scope['DB'].BuiltInParameter = NS(RBS_OFFSET_PARAM='offset')
+    a.scope['fb'].assign_workset = lambda *args: None
+    a.scope['fb'].note = lambda *args: None
+    a.scope['fb'].write_data = lambda *args: None
+    element = NS(category=1, get_Parameter=lambda key: NS(IsReadOnly=False, AsDouble=lambda: 3000/304.8))
+    session.apply(element)
