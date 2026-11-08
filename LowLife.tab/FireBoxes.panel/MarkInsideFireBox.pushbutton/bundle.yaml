@@ -1,4 +1,4 @@
-title: Отметить в ОКК
-title_en: Mark inside enclosure
+title: "Отметить\nв ОКК"
+title_en: "Mark inside\nenclosure"
 tooltip: Выберите короб — отметить лотки и детали внутри него. Либо выберите лотки и детали явно. Проверяется полное попадание геометрии в короб. Имя параметра Да/Нет задаётся в настройках. Shift+клик — настройки.
 tooltip_en: Select an enclosure to mark the trays and fittings inside, or select trays and fittings explicitly. Automatic selection requires full solid containment. Configure the Yes/No parameter in settings. Shift+click opens settings.

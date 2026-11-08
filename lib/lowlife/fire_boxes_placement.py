@@ -15,6 +15,7 @@ from lowlife.i18n import tr
 from lowlife import fire_boxes as fb, fire_boxes_core as core
 
 SESSION_KEY = 'LowLife.FireBoxes.NativePlacement'
+SOURCE_KEY = 'LowLife.FireBoxes.PlacementSource'
 UPDATER_GUID = Guid('a1cd038b-189e-40a3-9892-4edaf4e07734')
 
 
@@ -64,7 +65,8 @@ class PlacementSession(object):
 
     def apply(self, element):
         if fb.in_categories(element, fb.CURVE_CATS):
-            fb.size(element, self.section['width'], self.section['height'])
+            if not self.matches_section(element):
+                fb.size(element, self.section['width'], self.section['height'])
             if fb.is_duct_type(self.type):
                 parameter = element.get_Parameter(DB.BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM)
                 if parameter is not None and parameter.AsElementId() != self.system.Id:
@@ -96,13 +98,61 @@ class PlacementSession(object):
         for element in curves+fittings:
             try:
                 self.apply(element)
+                if fb.in_categories(element, fb.CURVE_CATS):
+                    script.set_envvar(SOURCE_KEY, element.UniqueId)
                 self.errors.pop(element.UniqueId, None)
             except Exception as exc:
                 self.errors[element.UniqueId] = unicode(exc)
 
+    def matches_section(self, element):
+        width, height = fb.dimensions(element)
+        return abs(width-self.section['width']) < 1e-5 and abs(height-self.section['height']) < 1e-5
+
+    def reusable_source(self):
+        # Keep only a UID, never a live Element or a model-wide scan. Recheck
+        # every inherited property: the previous segment may have been edited,
+        # deleted, undone or may belong to another document.
+        uid = script.get_envvar(SOURCE_KEY)
+        element = self.doc.GetElement(uid) if uid else None
+        if element is None:
+            return None
+        try:
+            if not fb.in_categories(element, fb.CURVE_CATS) or element.GetTypeId() != self.type.Id:
+                return None
+            if not self.matches_section(element) or element.ReferenceLevel.Id != self.doc.ActiveView.GenLevel.Id:
+                return None
+            phase = self.doc.ActiveView.get_Parameter(DB.BuiltInParameter.VIEW_PHASE)
+            if element.DesignOption is not None or phase is None or element.CreatedPhaseId != phase.AsElementId():
+                return None
+            if self.workset is not None and element.WorksetId != self.workset:
+                return None
+            offset = element.get_Parameter(DB.BuiltInParameter.RBS_OFFSET_PARAM)
+            if offset is None or abs(offset.AsDouble()-float(self.settings['elevation_mm'])/304.8) > 1e-7:
+                return None
+            curve = element.Location.Curve
+            if abs(curve.GetEndPoint(0).Z-curve.GetEndPoint(1).Z) > 1e-7:
+                return None
+            ports = fb.connectors(element)
+            if not ports or any(port.CoordinateSystem.BasisY.Z < 0.999999 for port in ports):
+                return None
+            if fb.is_duct_type(self.type):
+                system = element.get_Parameter(DB.BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM)
+                if system is None or system.AsElementId() != self.system.Id:
+                    return None
+            note = fb.note_parameter(element, self.settings)
+            if note is None or note.IsReadOnly or note.StorageType != DB.StorageType.String:
+                return None
+            return element
+        except Exception:
+            return None  # A stale/incompatible source uses the normal seed path.
+
     def prepare(self):
         # Create Similar copies instance dimensions/elevation into the native
         # options bar. Type placement alone reuses Revit's last (unrelated) size.
+        source = self.reusable_source()
+        if source is not None:
+            self.uiapp.ActiveUIDocument.Selection.SetElementIds(List[DB.ElementId]([source.Id]))
+            return
         level = self.doc.ActiveView.GenLevel
         origin = self.doc.ActiveView.Origin
         start = DB.XYZ(origin.X, origin.Y, level.Elevation+float(self.settings['elevation_mm'])/304.8)

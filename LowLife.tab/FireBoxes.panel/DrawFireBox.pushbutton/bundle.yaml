@@ -1,5 +1,5 @@
-title: Смоделировать короб
-title_en: Model enclosure
+title: "Смоделировать\nкороб"
+title_en: "Model\nenclosure"
 tooltip: Открыть настройки короба FIREBOX или ОСК. После ОК начинается моделирование штатным инструментом Revit с предпросмотром, привязками и временными размерами. Esc завершает моделирование. Shift+клик — только настройки.
 tooltip_en: Open FIREBOX or OSK enclosure settings. Click OK to start modeling with Revit's native preview, snaps and temporary dimensions. Esc finishes modeling. Shift+click opens settings only.
 engine:
