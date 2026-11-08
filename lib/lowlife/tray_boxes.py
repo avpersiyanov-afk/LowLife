@@ -27,6 +27,11 @@ tray_boxes_settings.py.
 основе грани/стены не поддерживается. Вызывать внутри открытой транзакции.
 """
 
+try:
+    unicode
+except NameError:
+    unicode = str
+
 import math
 from lowlife.i18n import tr
 from datetime import datetime
@@ -317,12 +322,19 @@ def box_for(tray, crossing, settings):
     extra = ft(settings.get("size_extra_mm") or 0.0)
     depth_extra = ft(settings.get("depth_extra_mm") or 0.0)
     slope = settings.get("max_slope_deg") or 0.0
+    section_x=getattr(tray,'section_x',None)
+    round_section=getattr(tray,'round_section',False)
     if crossing.kind == core.WALL:
+        if section_x is not None and hasattr(crossing.host,'CrossSection') and unicode(crossing.host.CrossSection)!='Vertical':
+            return None,tr(u'Наклонная стена не поддерживается автоматическим созданием проёма. Требуется ручное решение.',
+                           u'A slanted wall cannot be cut automatically. Manual resolution is required.')
         return core.wall_box(crossing.center(), d, crossing.wall_dir, crossing.length(),
                              tray.Width, tray.Height, extra, depth_extra, slope,
-                             settings.get("max_wall_angle_deg") or 0.0)
-    return core.floor_box(crossing.center(), d, tray_width_direction(tray), crossing.length(),
-                          tray.Width, tray.Height, extra, depth_extra, slope)
+                             settings.get("max_wall_angle_deg") or 0.0,
+                             section_x=section_x,round_section=round_section)
+    return core.floor_box(crossing.center(), d, section_x or tray_width_direction(tray), crossing.length(),
+                          tray.Width, tray.Height, extra, depth_extra, slope,
+                          allow_sloped=section_x is not None,round_section=round_section)
 
 
 # ------------------------------------------------------------

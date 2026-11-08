@@ -3119,3 +3119,12 @@ needed linked models, once per linked model, and accepts a preloaded local regis
 Search text is built after feedback during refresh, not on every keystroke.
 No model-derived data is retained across refreshes. Preselected KR/AR actions reuse
 records revalidated by the ExternalEvent handler instead of rebuilding the picker.
+
+
+Inclined VIS passage envelopes reuse `tray_boxes_core.wall_box` (`section_x`) and
+`floor_box` (`allow_sloped`), sharing `_oblique_spans` for section projection and
+through-thickness drift. The MEP adapter retains connector BasisX and round shape
+with insulation. Calculation is constant-size vector algebra, without boolean
+Revit operations. Legacy tray calls preserve their old slope checks. VIS supports
+rolled rectangular sections; slanted walls are rejected before issuance because
+the current native-opening creation path cannot cut them.

@@ -31,13 +31,11 @@ def make(role, doc=None):
         replacements = {
             'size_extra_mm': sc.NumberField('size_extra_mm', u'③ Размеры', u'Запас по EIR с каждой стороны, мм',
                                             hint=u'Запас добавляется к габариту элемента ВИС с каждой стороны.', default=50.0, minimum=0.0),
-            'max_slope_deg': sc.NumberField('max_slope_deg', u'', u'Допуск наклона участка ВИС, градусы',
-                                            hint=u'Через стены — горизонтальные участки, через перекрытия — вертикальные.', default=1.0, minimum=0.0),
             'max_wall_angle_deg': sc.NumberField('max_wall_angle_deg', u'', u'Максимальный угол прохода к нормали стены, градусы',
                                                 hint=u'0° — проход перпендикулярно стене. Если угол к нормали больше заданного, пересечение пропускается.',
                                                 default=60.0, minimum=0.0),
         }
-        fields += [replacements.get(f.key,f) for f in trays._make_settings([]).fields if f.key != 'box_source_model']
+        fields += [replacements.get(f.key,f) for f in trays._make_settings([]).fields if f.key not in ('box_source_model','max_slope_deg')]
     else:
         fields = common
     hints={

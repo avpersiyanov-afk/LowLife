@@ -68,10 +68,9 @@ def test_rectangular_duct_envelope_includes_insulation(adapter):
     assert (route.Width,route.Height)==(320,120)
 
 
-def test_rolled_and_fitting_routes_are_explicitly_rejected(adapter):
+def test_rolled_section_keeps_its_frame_and_fittings_are_rejected(adapter):
     Route,_=adapter
-    with pytest.raises(ValueError):
-        Route(element(2,roll=.5))
+    assert Route(element(2,roll=.5)).section_x==(0,1,.5)
     with pytest.raises(ValueError):
         Route(element(99))
     el=element();el.Location=NS(Curve=Line())
@@ -79,7 +78,7 @@ def test_rolled_and_fitting_routes_are_explicitly_rejected(adapter):
         Route(el)
 
 
-def test_selection_filter_rejects_wrong_categories_and_slope(adapter):
+def test_selection_filter_accepts_inclined_routes_and_rejects_wrong_categories(adapter):
     # Load the filter with the same substitute API used by adapter tests.
     import ast
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_mep.py'
@@ -98,6 +97,7 @@ def test_selection_filter_rejects_wrong_categories_and_slope(adapter):
     tilted.Location=LocationCurve();tilted.Location.Curve=Line()
     tilted.Location.Curve.Direction=Vector(math.sqrt(.5),0,math.sqrt(.5))
     tilted.ConnectorManager.Connectors[0].CoordinateSystem.BasisZ=tilted.Location.Curve.Direction
-    assert not f.AllowElement(tilted)
+    assert f.AllowElement(tilted)
     floor_only=Filter(dict(box_hosts='floors',max_slope_deg=1))
     assert not floor_only.AllowElement(element(1))
+    assert floor_only.AllowElement(tilted)

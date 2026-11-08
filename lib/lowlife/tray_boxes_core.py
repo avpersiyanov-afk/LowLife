@@ -19,6 +19,7 @@ tray_boxes.py, настройки — tray_boxes_settings.py.
 """
 
 import math
+from lowlife.i18n import tr
 
 WALL = u"wall"
 FLOOR = u"floor"
@@ -91,14 +92,44 @@ class Box(object):
         return (x, y, z - self.height / 2.0)
 
 
+def _oblique_spans(direction, section_x, normal, axes, length, width, height, round_section):
+    """Bounds of the swept section between two parallel host faces.
+
+    Project the section along the route onto a face; the far face adds the
+    full route drift through the host. This is not a world-axis section bbox.
+    """
+    d=unit(direction)
+    u=unit(section_x)
+    if d is None or u is None or abs(_dot(d,u))>1e-5:
+        raise ValueError(tr(u'Некорректная ориентация сечения коммуникации.',
+                            u'Invalid MEP section orientation.'))
+    v=(d[1]*u[2]-d[2]*u[1],d[2]*u[0]-d[0]*u[2],d[0]*u[1]-d[1]*u[0])
+    cosine=_dot(d,normal)
+    if abs(cosine)<1e-6:
+        return None
+    projected=[]
+    for axis in (u,v):
+        shift=_dot(axis,normal)/cosine
+        projected.append(tuple(axis[i]-d[i]*shift for i in range(3)))
+    result=[]
+    for axis in axes:
+        a=width*_dot(projected[0],axis)
+        b=height*_dot(projected[1],axis)
+        section=math.sqrt(a*a+b*b) if round_section else abs(a)+abs(b)
+        result.append(section+length*abs(_dot(d,axis)))
+    return result
+
+
 def wall_box(center, tray_dir, wall_dir, crossing_len, tray_width, tray_height,
-             extra, depth_extra, max_slope_deg, max_angle_deg):
+             extra, depth_extra, max_slope_deg, max_angle_deg, section_x=None, round_section=False):
     u"""Бокс в стене. tray_dir — ось лотка, wall_dir — направление стены в
     этой точке, crossing_len — длина оси лотка внутри стены.
+    section_x задаёт пространственную ориентацию сечения для наклонного прохода.
+    Без section_x сохраняется прежнее ограничение наклона отдельной кнопки лотков.
 
     Возвращает (Box, None) или (None, причина пропуска)."""
     d = unit(tray_dir)
-    if d is None or abs(d[2]) > math.sin(math.radians(max_slope_deg)):
+    if d is None or (section_x is None and abs(d[2]) > math.sin(math.radians(max_slope_deg))):
         return None, SKIP_SLOPED
     d_h = horizontal(d)
     w = horizontal(wall_dir)
@@ -108,6 +139,14 @@ def wall_box(center, tray_dir, wall_dir, crossing_len, tray_width, tray_height,
     cos_a = abs(_dot(d_h, normal))
     if cos_a < math.cos(math.radians(max_angle_deg)) or cos_a < 1e-6:
         return None, SKIP_ANGLE
+    if section_x is not None:
+        spans=_oblique_spans(d,section_x,normal,(w,(0.0,0.0,1.0)),crossing_len,
+                             tray_width,tray_height,round_section)
+        if spans is None:
+            return None,SKIP_ANGLE
+        thickness=crossing_len*abs(_dot(d,normal))
+        return Box(WALL,center,w,spans[0]+2.0*extra,thickness+depth_extra,
+                   spans[1]+2.0*extra,thickness),None
     tan_a = math.sqrt(max(0.0, 1.0 - cos_a * cos_a)) / cos_a
     thickness = crossing_len * cos_a
     width = tray_width / cos_a + thickness * tan_a + 2.0 * extra
@@ -116,16 +155,25 @@ def wall_box(center, tray_dir, wall_dir, crossing_len, tray_width, tray_height,
 
 
 def floor_box(center, tray_dir, width_dir, crossing_len, tray_width, tray_height,
-              extra, depth_extra, max_slope_deg):
-    u"""Бокс в перекрытии. tray_dir — ось лотка (должна быть вертикальной),
-    width_dir — направление ширины сечения лотка, crossing_len — длина оси
-    лотка внутри перекрытия.
+              extra, depth_extra, max_slope_deg, allow_sloped=False, round_section=False):
+    u"""Бокс в перекрытии. tray_dir — ось лотка; allow_sloped разрешает наклон.
+    width_dir — пространственное направление ширины сечения, crossing_len —
+    длина оси лотка внутри перекрытия. По умолчанию сохраняется старый допуск.
 
     Возвращает (Box, None) или (None, причина пропуска)."""
     d = unit(tray_dir)
-    if d is None or abs(d[2]) < math.cos(math.radians(max_slope_deg)):
+    if d is None or (not allow_sloped and abs(d[2]) < math.cos(math.radians(max_slope_deg))):
         return None, SKIP_SLOPED
     x_dir = horizontal(width_dir) or (1.0, 0.0, 0.0)
+    if allow_sloped:
+        y_dir=(-x_dir[1],x_dir[0],0.0)
+        spans=_oblique_spans(d,width_dir,(0.0,0.0,1.0),(x_dir,y_dir),crossing_len,
+                             tray_width,tray_height,round_section)
+        if spans is None:
+            return None,SKIP_SLOPED
+        thickness=crossing_len*abs(d[2])
+        return Box(FLOOR,center,x_dir,spans[0]+2.0*extra,spans[1]+2.0*extra,
+                   thickness+depth_extra,thickness),None
     thickness = crossing_len * abs(d[2])
     return Box(FLOOR, center, x_dir, tray_width + 2.0 * extra, tray_height + 2.0 * extra,
                thickness + depth_extra, thickness), None
