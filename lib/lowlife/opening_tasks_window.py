@@ -215,7 +215,9 @@ class TaskWindow(forms.WPFWindow):
             </StackPanel>
             <DataGrid x:Name="tasks" Grid.Row="3" SelectionMode="Extended" SelectionUnit="FullRow"
                  IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
-                 CanUserSortColumns="True" CanUserReorderColumns="True"/>
+                 CanUserSortColumns="True" CanUserReorderColumns="True"
+                 EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"/>
             <ScrollViewer Grid.Row="4" MaxHeight="170" VerticalScrollBarVisibility="Auto"><TextBlock x:Name="details" TextWrapping="Wrap" Margin="0,12,0,0"/></ScrollViewer>
           </Grid>
         </Window>''',literal_string=True)
@@ -363,17 +365,18 @@ class TaskWindow(forms.WPFWindow):
                 if r and r['project']!=self.project_code:
                     continue
                 found.add(data['task_id'])
-                self.rows.append(self.row(data['task_id'],inst.UniqueId,r,settings))
+                self.rows.append(self.row(data['task_id'],inst.UniqueId,r,settings,inst=inst,data=data))
             for tid,r in registry['tasks'].items():
                 if tid not in found and r['project']==settings.get('opening_project'):
                     self.rows.append(self.row(tid,r['owner_uid'],r,settings,True))
         elif settings.get('opening_project'):
             for r,link in api.incoming(self.document,settings['opening_project'],self.role):
                 row=self.row(r['task_id'],r['owner_uid'],r,settings)
-                row['status']=flow.state_label(flow.receipt_state(r,registry,self.document,self.role))
+                state=flow.receipt_state(r,registry,self.document,self.role)
+                row['status']=flow.state_label(state)
                 row['record']=r
                 row['model']=link.Name
-                row['attention']=flow.receipt_state(r,registry,self.document,self.role) not in ('accepted','withdrawn')
+                row['attention']=state not in ('accepted','withdrawn')
                 receipt=api.core.receipts(registry,self.role).get(api.core.task_key(r))
                 row['comment']=receipt.get('comment','') if receipt else ''
                 if receipt:
@@ -382,7 +385,7 @@ class TaskWindow(forms.WPFWindow):
                         row['previous_sizes']=self.sizes(prior['geometry']['size_mm'])
                 self.rows.append(row)
         if self.role=='VIS':
-            replies=api.recipient_feedback(self.document,settings.get('opening_project'))
+            replies=api.recipient_feedback(self.document,settings.get('opening_project'),registry=registry)
             for row in self.rows:
                 reply=replies.get(row['key'])
                 if reply:
@@ -393,6 +396,9 @@ class TaskWindow(forms.WPFWindow):
                         row['next_action']=tr(u'ВИС: согласовать отзыв задания',u'VIS: agree task withdrawal')
                     elif row['status']==tr(u'Изменено после выдачи'):
                         row['next_action']=tr(u'ВИС: проверить изменения и перевыдать задание',u'VIS: review changes and reissue the task')
+        for row in self.rows:
+            row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
+                ('object_part','number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
         self.updating=True
         for key,control,label in self.filter_controls:
             previous=control.SelectedItem
@@ -405,58 +411,60 @@ class TaskWindow(forms.WPFWindow):
         self.updating=False
         self.render()
 
-    def row(self,tid,uid,r,settings,missing=False):
+    def row(self,tid,uid,r,settings,missing=False,inst=None,data=None):
         status=(u'Отозвано' if r and r['status']=='withdrawn' else u'Выдано' if r else u'Черновик')
-        inst=self.document.GetElement(uid) if self.role=='VIS' else None
+        if inst is None and self.role=='VIS':
+            inst=self.document.GetElement(uid)
+        if data is None and inst is not None:
+            data=api.metadata(inst)
+        link=self.document.GetElement(data['host_link_uid']) if data else None
+        linked=link.GetLinkDocument() if link else None
+        current_geometry=None
         if inst and settings.get('opening_status_param'):
             p=inst.LookupParameter(settings['opening_status_param'])
             if p and p.AsString():
                 status=p.AsString()
         if missing:
             status=tr(u'Бокс удалён',u'Box deleted')
-        if inst and r and r['status']=='issued':
-            data=api.metadata(inst)
-            link=self.document.GetElement(data['host_link_uid'])
-            if link and link.GetLinkDocument():
-                try:
-                    if (not api.core.geometry_equal(r['geometry'],api.host_geometry(inst,data,link)) or
-                            r.get('level')!=data.get('level')):
-                        status=u'Изменено после выдачи'
-                except Exception:
+        if inst and r and linked is not None:
+            try:
+                current_geometry=api.host_geometry(inst,data,link)
+                if r['status']=='issued' and (
+                        not api.core.geometry_equal(r['geometry'],current_geometry) or
+                        r.get('level')!=data.get('level')):
+                    status=u'Изменено после выдачи'
+            except Exception:
+                if r['status']=='issued':
                     status=tr(u'Нужна проверка геометрии',u'Geometry requires review')
-        if inst and r and r['status']=='issued' and (link is None or link.GetLinkDocument() is None):
+        if inst and r and r['status']=='issued' and linked is None:
             status=tr(u'Связь не загружена',u'Link unloaded')
         raw_status=status
         status=tr(status)
         dimensions=u' × '.join(u'{:.0f}'.format(float(v)) for v in r['geometry']['size_mm']) if r else u'—'
-        if inst:
+        if current_geometry is not None:
+            dimensions=self.sizes(current_geometry['size_mm'])
+        elif inst:
             try:
-                data=api.metadata(inst)
                 dimensions=u' × '.join(u'{:.0f}'.format(float(api.boxes.mm(api.read_size(inst,name)))) for name in data['size_params'])
             except Exception:
                 pass
-        data=api.metadata(inst) if inst else None
         geometry=r['geometry'] if r else None
-        host_doc=self.document
-        host=None
-        if self.role=='VIS' and data:
-            link=self.document.GetElement(data['host_link_uid'])
-            host_doc=link.GetLinkDocument() if link else None
-            host=host_doc.GetElement(data['host_uid']) if host_doc else None
-        elif geometry:
-            host=self.document.GetElement(geometry['host_uid'])
-        level=host_doc.GetElement(host.LevelId) if host is not None else None
         resolved_level=(data.get('level') if data else None) if self.role=='VIS' else (r.get('level') if r else None)
+        level=None
+        if not resolved_level:
+            host_doc=linked if self.role=='VIS' and data else self.document
+            host_uid=data['host_uid'] if self.role=='VIS' and data else geometry['host_uid'] if geometry else None
+            host=host_doc.GetElement(host_uid) if host_doc and host_uid else None
+            level=host_doc.GetElement(host.LevelId) if host is not None else None
         kind=geometry['kind'] if geometry else data.get('kind','') if data else ''
         discipline=r.get('discipline','') if r else settings.get('opening_discipline','')
         number=(u'{}-ОТВ-{:05d}'.format(discipline,r['task_number']) if r and r.get('task_number') else
                 u'{}-{}'.format(discipline,tid[:8]))
         displacement=u'—'
         if inst and r and data:
-            link=self.document.GetElement(data['host_link_uid'])
-            if link and link.GetLinkDocument():
+            if current_geometry is not None:
                 try:
-                    current=api.host_geometry(inst,data,link)['center_mm']
+                    current=current_geometry['center_mm']
                     displacement=u' / '.join(u'{:+.1f}'.format(float(a-b)) for a,b in zip(current,r['geometry']['center_mm']))
                 except Exception:
                     pass
@@ -501,9 +509,6 @@ class TaskWindow(forms.WPFWindow):
             return
         selected=set(row['key'] for row in self.selected_rows())
         filters={key:unicode(control.SelectedItem) for key,control,label in self.filter_controls if control.SelectedIndex>0}
-        for row in self.rows:
-            row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
-                ('object_part','number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
         visible=browser.select_rows(self.rows,filters,self.search.Text,bool(self.attention.IsChecked))
         table=DataTable()
         table.Columns.Add('Key',String)

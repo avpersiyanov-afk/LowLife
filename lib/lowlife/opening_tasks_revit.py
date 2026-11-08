@@ -572,18 +572,21 @@ def visible_issue(inst, settings, record=None, changed=False):
         param.Set(value)
 
 
-def recipient_feedback(doc, project):
+def recipient_feedback(doc, project, registry=None):
     """Read each linked registry once. Missing/replaced/unloaded models stay unavailable."""
     from lowlife import opening_tasks_feedback as feedback
+    local=registry if registry is not None else store.registry(doc)
+    tasks=[task for task in local['tasks'].values() if task['project']==project]
+    needed=set(task['geometry']['host_model'] for task in tasks)
     models={}
     for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
         linked=link.GetLinkDocument()
         if linked is not None:
-            models[store.model_id(linked)]=(linked,store.registry(linked))
+            model=store.model_id(linked)
+            if model in needed and model not in models:
+                models[model]=(linked,store.registry(linked))
     result={}
-    for task in store.registry(doc)['tasks'].values():
-        if task['project']!=project:
-            continue
+    for task in tasks:
         target=models.get(task['geometry']['host_model'])
         receipt=None
         opening=None
