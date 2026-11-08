@@ -209,7 +209,8 @@ def highlight(uidoc,role,project,rows):
                 managed[project+'/preview/'+row['uid']]=preview
     views={}
     selected=set(elements)
-    for key,uid in managed.items():
+    current=uidoc.ActiveView
+    for key,uid in sorted(managed.items(),key=lambda item:item[1]!=current.UniqueId):
         if not key.startswith(project+'/'):
             continue
         view=doc.GetElement(uid)
@@ -218,10 +219,11 @@ def highlight(uidoc,role,project,rows):
         visible=set(FilteredElementCollector(doc,view.Id).WhereElementIsNotElementType().ToElementIds())
         if selected.issubset(visible):
             views[view.UniqueId]=view
+            if view.UniqueId==current.UniqueId:
+                break
     if not views:
         raise ValueError(tr(u'Нет созданного вида, на котором видны все выбранные элементы. Создайте виды контроля или выберите строки одного вида.',
                             u'No created view shows all selected elements. Create control views or select rows from one view.'))
-    current=uidoc.ActiveView
     view=views.get(current.UniqueId)
     if view is None:
         if len(views)==1:

@@ -3109,3 +3109,11 @@ keeps its original behaviour unless `include_inside=True` is explicitly passed.
 VIS boxes or KR/AR receipt opening IDs and reuses project-managed graphical
 control views or selected-box previews. Keeps a suitable active view, otherwise
 asks to choose; selects and zooms the elements without creating a new view.
+
+
+Opening task window refresh reuses each box metadata and geometry result within
+one refresh. Recipient state is evaluated once per row; VIS feedback reads only
+needed linked models, once per linked model, and accepts a preloaded local registry.
+Search text is built after feedback during refresh, not on every keystroke.
+No model-derived data is retained across refreshes. Preselected KR/AR actions reuse
+records revalidated by the ExternalEvent handler instead of rebuilding the picker.

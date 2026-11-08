@@ -182,37 +182,38 @@ def withdraw(settings, task_ids=None):
 
 def receipt_state(record, registry, doc, recipient='KR'):
     receipt = core.receipts(registry,recipient).get(core.task_key(record))
-    exists = bool(receipt and receipt.get('opening_uid') and doc.GetElement(receipt['opening_uid']))
-    if exists and not api.opening_matches(doc.GetElement(receipt['opening_uid']),receipt):
+    opening=doc.GetElement(receipt['opening_uid']) if receipt and receipt.get('opening_uid') else None
+    exists=opening is not None
+    if exists and not api.opening_matches(opening,receipt):
         return 'opening_modified'
     return core.incoming_state(record,receipt,exists)
 
 
 def kr(settings, action=None, selected=None):
     doc = revit.doc
-    registry = store.registry(doc)
-    for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
-        if link.GetLinkDocument() is None:
-            script.get_output().print_md(tr(u'Связь не загружена: {}. Её задания не проверены.',
-                                           u'Link is unloaded: {}. Its tasks were not checked.').format(link.Name))
-    incoming = api.incoming(doc,settings['opening_project'],settings.get('opening_recipient','KR'))
-    if not incoming:
-        forms.alert(tr(u'Нет выданных заданий для модели получателя {}. Проверьте связи и код проекта.',
-                       u'No issued tasks for recipient model {}. Check links and project code.').format(settings.get('opening_recipient','KR')))
-        return
     out = script.get_output()
-    options = {}
-    for record,link in incoming:
-        g = record['geometry']
-        receipt = core.receipts(registry,settings.get('opening_recipient','KR')).get(core.task_key(record))
-        state = state_label(receipt_state(record,registry,doc,settings.get('opening_recipient','KR')))
-        label = u'{} | {} | {} | r{} | {} | {} | {}'.format(link.Name,record['discipline'],record['task_id'],record['revision'],state,
-                    u' × '.join(u'{:.0f}'.format(float(v)) for v in g['size_mm']),record['issued_at'])
-        options[label] = record
-        inst = link.GetLinkDocument().GetElement(record['owner_uid'])
-        out.print_md(u'- {} | {} | {} | {}'.format(record['task_id'],state,
-                       out.linkify(link.Id),out.linkify(inst.Id) if inst and link.GetLinkDocument()==doc else record['owner_uid']))
     if selected is None:
+        registry = store.registry(doc)
+        for link in FilteredElementCollector(doc).OfClass(RevitLinkInstance):
+            if link.GetLinkDocument() is None:
+                script.get_output().print_md(tr(u'Связь не загружена: {}. Её задания не проверены.',
+                                               u'Link is unloaded: {}. Its tasks were not checked.').format(link.Name))
+        incoming = api.incoming(doc,settings['opening_project'],settings.get('opening_recipient','KR'))
+        if not incoming:
+            forms.alert(tr(u'Нет выданных заданий для модели получателя {}. Проверьте связи и код проекта.',
+                           u'No issued tasks for recipient model {}. Check links and project code.').format(settings.get('opening_recipient','KR')))
+            return
+        options = {}
+        for record,link in incoming:
+            g = record['geometry']
+            receipt = core.receipts(registry,settings.get('opening_recipient','KR')).get(core.task_key(record))
+            state = state_label(receipt_state(record,registry,doc,settings.get('opening_recipient','KR')))
+            label = u'{} | {} | {} | r{} | {} | {} | {}'.format(link.Name,record['discipline'],record['task_id'],record['revision'],state,
+                        u' × '.join(u'{:.0f}'.format(float(v)) for v in g['size_mm']),record['issued_at'])
+            options[label] = record
+            inst = link.GetLinkDocument().GetElement(record['owner_uid'])
+            out.print_md(u'- {} | {} | {} | {}'.format(record['task_id'],state,
+                           out.linkify(link.Id),out.linkify(inst.Id) if inst and link.GetLinkDocument()==doc else record['owner_uid']))
         selected = choose(options,tr(u'Входящие задания {}: выберите задания',u'Incoming {} tasks: select tasks').format(settings.get('opening_recipient','KR')),True)
     if not selected:
         return
