@@ -150,6 +150,27 @@ class PlacementSession(object):
         except Exception:
             return None  # A stale/incompatible source uses the normal seed path.
 
+    def seed_origin(self):
+        # Selection displays temporary dimensions even before Create Similar.
+        # Keep the short seed outside the current viewport, without panning it.
+        views = self.uiapp.ActiveUIDocument.GetOpenUIViews()
+        view = next((view for view in views if view.ViewId == self.doc.ActiveView.Id), None)
+        if view is None:
+            raise ValueError(tr(u'Не удалось определить видимую область текущего плана.',
+                                u'Could not determine the current plan viewport.'))
+        first, second = list(view.GetZoomCorners())
+        diagonal = second-first
+        margin = max(diagonal.GetLength()*2,
+                     max(self.section['width'], self.section['height'], 304.8)*4/304.8)
+        offset = diagonal.Normalize()*margin
+        elevation = self.doc.ActiveView.GenLevel.Elevation+float(self.settings['elevation_mm'])/304.8
+        for corner in (second+offset, first-offset):
+            point = DB.XYZ(corner.X, corner.Y, elevation)
+            if DB.XYZ.IsWithinLengthLimits(point):
+                return point
+        raise ValueError(tr(u'Нет места для временного образца за пределами видимой области.',
+                            u'No valid position for a temporary sample outside the viewport.'))
+
     def prepare(self):
         # Create Similar copies instance dimensions/elevation into the native
         # options bar. Type placement alone reuses Revit's last (unrelated) size.
@@ -158,8 +179,7 @@ class PlacementSession(object):
             self.uiapp.ActiveUIDocument.Selection.SetElementIds(List[DB.ElementId]([source.Id]))
             return
         level = self.doc.ActiveView.GenLevel
-        origin = self.doc.ActiveView.Origin
-        start = DB.XYZ(origin.X, origin.Y, level.Elevation+float(self.settings['elevation_mm'])/304.8)
+        start = self.seed_origin()
         transaction = DB.Transaction(self.doc, tr(u'Подготовить моделирование короба', u'Prepare enclosure modeling'))
         transaction.Start()
         try:

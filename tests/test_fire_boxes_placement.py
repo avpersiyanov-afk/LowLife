@@ -21,6 +21,30 @@ class Event:
         return self
 
 
+class Point:
+    def __init__(self, x, y, z):
+        self.X, self.Y, self.Z = x, y, z
+
+    def __add__(self, other):
+        return Point(self.X+other.X, self.Y+other.Y, self.Z+other.Z)
+
+    def __sub__(self, other):
+        return Point(self.X-other.X, self.Y-other.Y, self.Z-other.Z)
+
+    def __mul__(self, scale):
+        return Point(self.X*scale, self.Y*scale, self.Z*scale)
+
+    def GetLength(self):
+        return (self.X**2+self.Y**2+self.Z**2)**0.5
+
+    def Normalize(self):
+        return self*(1/self.GetLength())
+
+    @staticmethod
+    def IsWithinLengthLimits(point):
+        return True
+
+
 def adapter():
     source = Path(__file__).parents[1] / 'lib/lowlife/fire_boxes_placement.py'
     tree = ast.parse(source.read_text(encoding='utf-8'))
@@ -257,6 +281,34 @@ def test_repeated_launch_reuses_source_without_transaction_or_deleting_existing_
     assert a.session.seed_uid is None
     a.session.stop()
     assert a.elements['last'] is a.source
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_seed_is_outside_current_viewport_and_keeps_configured_elevation(reverse):
+    a = adapter()
+    a.scope['DB'].XYZ = Point
+    a.doc.ActiveView.Id = 3
+    a.doc.ActiveView.GenLevel = NS(Elevation=10)
+    corners = [Point(0, 0, 0), Point(10, 10, 0)]
+    if reverse:
+        corners.reverse()
+    view = NS(ViewId=3, GetZoomCorners=lambda: corners)
+    # A different open view must not determine the sample position.
+    a.uiapp.ActiveUIDocument = NS(GetOpenUIViews=lambda: [NS(ViewId=9), view])
+    session = a.scope['PlacementSession'](a.uiapp, a.doc, a.settings)
+    point = session.seed_origin()
+    expected = -20 if reverse else 30
+    assert point.X == pytest.approx(expected) and point.Y == pytest.approx(expected)
+    assert point.Z == pytest.approx(10+3000/304.8)
+
+
+def test_missing_viewport_fails_before_creating_sample():
+    a = adapter()
+    a.doc.ActiveView.Id = 3
+    a.uiapp.ActiveUIDocument = NS(GetOpenUIViews=lambda: [])
+    session = a.scope['PlacementSession'](a.uiapp, a.doc, a.settings)
+    with pytest.raises(ValueError, match='viewport'):
+        session.seed_origin()
 
 
 @pytest.mark.parametrize('change', ['deleted', 'type', 'size', 'level', 'offset', 'workset',
