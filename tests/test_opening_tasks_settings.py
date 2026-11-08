@@ -15,6 +15,7 @@ def test_first_run_requires_project_names_instead_of_embedding_them(tmp_path,mon
     assert not required.intersection({'opening_issue_param','opening_revision_param','opening_date_param'})
     assert values['size_extra_mm']==50.0
     assert values['opening_increase']=='none'
+    assert 'max_slope_deg' not in {field.key for field in vis.fields}
     assert 'box_source_model' not in values  # target is explicitly selected per placement
 
 

@@ -36,8 +36,9 @@ Do not duplicate a model with its identifiers for another project.
 
 - Place/update boxes on selected straight trays, ducts, pipes and conduits.
   Round/oval profiles use a rectangular envelope. Duct/pipe insulation is included.
-  As in the tray tool, wall crossings must be horizontal and floor crossings vertical.
-  Fittings, flexible/curved runs and rolled rectangular profiles are reported for review.
+  Straight routes may cross vertical walls or horizontal floors at an incline.
+  The envelope includes the section orientation and drift through the host thickness.
+  Fittings and flexible/curved runs are unsupported. Slanted walls are rejected before issuance.
 - Select the KR link instance, box type and workset. EIR clearance is per side.
   ZNP adds to both opening dimensions; automatic values use the larger dimension
   including clearance: ≤300 mm → 50; ≤600 → 100; ≤1200 → 150; >1200 → 200 mm.
@@ -224,3 +225,12 @@ those settings blank if native Revit schedule columns are unnecessary. Revision
 history remains in JSON, the interface and Google journal. Views and status filters
 continue to work. Existing configured parameters continue to be populated; clearing
 a setting does not delete old parameters or model values.
+
+
+Inclined VIS passages project the actual connector section frame along the route
+onto both host faces and include drift through host thickness. Round sections use
+elliptical projection bounds; rectangular sections include roll. Oval profiles use
+a conservative rectangular envelope. Insulation precedes EIR and ZNP clearances.
+Boxes and native openings remain rectangular and aligned to the host. The legacy
+tray button retains its previous slope restrictions; VIS no longer shows that setting.
+Slanted wall cutting remains unsupported. Re-place and reissue changed drafts.

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """MEP adapter for the proven tray intersection/box geometry pipeline."""
-import math
 from Autodesk.Revit.UI.Selection import ISelectionFilter
 from Autodesk.Revit.DB import (BuiltInCategory, ConnectorProfileType, InsulationLiningBase,
                                 Line, LocationCurve)
@@ -16,7 +15,7 @@ def supported(element):
 
 
 class Route(object):
-    """Rectangular envelope, with insulation. Unsupported shapes are explicit errors."""
+    """Section size and connector frame, with insulation, for straight sweeps."""
     def __init__(self, element):
         self.element = element
         if not supported(element):
@@ -33,11 +32,11 @@ class Route(object):
             self.Width = self.Height = 2.0 * connector.Radius
         elif connector.Shape in (ConnectorProfileType.Rectangular, ConnectorProfileType.Oval):
             self.Width, self.Height = connector.Width, connector.Height
-            # tray_boxes assumes an unrolled rectangular cross-section.
-            if abs(axis.Direction.Z) < 0.01 and abs(connector.CoordinateSystem.BasisX.Z) > 0.01:
-                raise ValueError(tr(u'Повёрнутое сечение требует ручной проверки',u'Rolled cross-sections require manual review'))
         else:
             raise ValueError(tr(u'Форма соединителя не поддерживается',u'Unsupported connector shape'))
+        basis=connector.CoordinateSystem.BasisX
+        self.section_x=(basis.X,basis.Y,basis.Z)
+        self.round_section=connector.Shape==ConnectorProfileType.Round
         insulation = 0.0
         insulated = boxes._id_int(element.Category.Id) in [int(BuiltInCategory.OST_DuctCurves), int(BuiltInCategory.OST_PipeCurves)]
         insulation_ids = InsulationLiningBase.GetInsulationIds(element.Document, element.Id) if insulated else []
@@ -54,7 +53,7 @@ class Route(object):
 
 
 class RouteSelectionFilter(ISelectionFilter):
-    """Only supported, straight, unrolled routes with a permitted slope."""
+    """Straight supported routes; inclined and rolled sections are geometric inputs."""
     def __init__(self, settings):
         self.settings=settings
         self.cache={}
@@ -68,10 +67,9 @@ class RouteSelectionFilter(ISelectionFilter):
             try:
                 route=Route(element)
                 z=abs(route.Location.Curve.Direction.Z)
-                angle=math.radians(float(self.settings.get('max_slope_deg',1)))
                 hosts=self.settings.get('box_hosts','walls_floors')
-                self.cache[key]=((hosts in ('walls','walls_floors') and z<=math.sin(angle)) or
-                                 (hosts in ('floors','walls_floors') and z>=math.cos(angle)))
+                self.cache[key]=((hosts in ('walls','walls_floors') and z<1.0-1e-10) or
+                                 (hosts in ('floors','walls_floors') and z>1e-6))
             except Exception:
                 self.cache[key]=False
         return self.cache[key]
