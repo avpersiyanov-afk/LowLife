@@ -285,11 +285,21 @@ def test_cached_source_is_revalidated_before_reuse(change):
         a.source.up = 0
     elif change == 'inverted':
         a.source.up = -1
+        a.scope['fb'].is_duct_type = lambda el: False
     elif change == 'system':
         a.source.system = 21
     elif change == 'note':
         a.scope['fb'].note_parameter = lambda *args: None
     assert a.session.reusable_source() is None
+
+
+@pytest.mark.parametrize('duct,up,expected', [(True, 1, True), (True, -1, True),
+                                             (False, 1, True), (False, -1, False), (True, 0, False)])
+def test_native_duct_half_turn_is_symmetric_but_tray_open_side_is_preserved(duct, up, expected):
+    a = reusable_adapter()
+    a.scope['fb'].is_duct_type = lambda el: duct
+    a.source.up = up
+    assert (a.session.reusable_source() is a.source) is expected
 
 
 def test_correct_section_does_not_rewrite_dimensions():

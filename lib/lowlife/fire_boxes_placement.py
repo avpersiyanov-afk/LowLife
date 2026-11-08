@@ -133,9 +133,13 @@ class PlacementSession(object):
             if abs(curve.GetEndPoint(0).Z-curve.GetEndPoint(1).Z) > 1e-7:
                 return None
             ports = fb.connectors(element)
-            if not ports or any(port.CoordinateSystem.BasisY.Z < 0.999999 for port in ports):
+            # A rectangular duct is symmetric under a half-turn. Revit normally
+            # gives native ducts downward BasisY; trays must still remain open up.
+            is_duct = fb.is_duct_type(self.type)
+            up_values = [port.CoordinateSystem.BasisY.Z for port in ports]
+            if not ports or any((abs(up) if is_duct else up) < 0.999999 for up in up_values):
                 return None
-            if fb.is_duct_type(self.type):
+            if is_duct:
                 system = element.get_Parameter(DB.BuiltInParameter.RBS_DUCT_SYSTEM_TYPE_PARAM)
                 if system is None or system.AsElementId() != self.system.Id:
                     return None
