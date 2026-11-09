@@ -146,11 +146,11 @@ def main():
         report_grids(output, updated_grids)
 
     output.print_md(tr(
-        u'В штатном инструменте выберите связь «{}», нажмите «Копировать», '
-        u'укажите перечисленные элементы на виде и нажмите «Готово». '
+        u'В штатном инструменте выберите связь «{}». «Копировать» и «Несколько» включатся автоматически. '
+        u'Выделите перечисленные элементы рамкой, при необходимости используйте фильтр. Нажмите «Готово» в строке параметров и на ленте. '
         u'Выбор из списка не заменяет выбор на виде Revit.',
-        u'In the native tool select link “{}”, click Copy, pick the listed elements '
-        u'in the view and click Finish. List selection does not replace Revit view picks.').format(
+        u'In the native tool select link “{}”. Copy and Multiple will be enabled automatically. Select the listed elements with a rectangle, use the filter if needed, '
+        u'then click Finish on the options bar and ribbon. List selection does not replace Revit view picks.').format(
             _cell(link_datums.link_label(link))))
     for kind, row, element_type, workset_id in choices:
         output.print_md(u'- {} [{}]'.format(_cell(row.link['name']), row.link['id_int']))
