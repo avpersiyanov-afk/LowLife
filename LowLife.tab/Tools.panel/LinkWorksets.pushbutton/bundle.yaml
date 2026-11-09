@@ -1,0 +1,5 @@
+title: Рабочие наборы связей
+title_en: Linked worksets
+tooltip: Открыть или закрыть рабочие наборы загруженных связей из одного окна. Изменяет загрузку во всём проекте. Перезагрузка очищает историю отмены Revit.
+tooltip_en: Open or close worksets of loaded links in one window. Changes loading throughout the project. Reloading clears Revit Undo history.
+author: LowLife
