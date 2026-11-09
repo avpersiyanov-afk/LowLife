@@ -6,11 +6,12 @@
   <DockPanel Margin="10">
     <StackPanel DockPanel.Dock="Top">
       <TextBlock x:Name="view_label" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,8"/>
-      <TextBlock Text="Галочка — показывать на текущем виде. Серый квадрат — часть группы скрыта."
+      <TextBlock Text="Галочка — показывать на текущем виде. Серый квадрат — часть группы скрыта. Ctrl+клик — добавить группу к выделению, Shift+клик — диапазон от последней нажатой: действие применится ко всем выделенным."
                  TextWrapping="Wrap" Margin="0,0,0,8"/>
       <WrapPanel Margin="0,0,0,8">
         <Button x:Name="refresh_button" Content="Обновить" Padding="8,4" Margin="0,0,5,0"/>
-        <Button x:Name="settings_button" Content="Настройки" Padding="8,4"/>
+        <Button x:Name="settings_button" Content="Настройки" Padding="8,4" Margin="0,0,5,0"/>
+        <Button x:Name="apply_views_button" Content="На виды…" Padding="8,4"/>
       </WrapPanel>
       <TextBlock Text="Группы настроек"/>
       <WrapPanel Margin="0,3,0,8">
