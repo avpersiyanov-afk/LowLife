@@ -197,6 +197,7 @@ THEMES = {
         (u"Tools", u"AlignViewRange"),
         (u"Tools", u"LevelViews"),
         (u"Tools", u"LinkViews"),
+        (u"Tools", u"LinkWorksets"),
         (u"Tools", u"HideLinkedElements"),
         (u"Tools", u"Rotate3DView"),
         (u"Tools", u"Greeting"),

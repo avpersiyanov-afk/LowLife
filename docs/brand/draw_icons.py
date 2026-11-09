@@ -90,6 +90,15 @@ class Canvas(object):
         self.im.resize((96, 96), Image.LANCZOS).save(path)
 
 
+def link_worksets(c):
+    # Two linked model sheets with open/closed workset switches.
+    c.rect((14, 15, 56, 68), BLUE, WHITE, 4)
+    c.rect((36, 29, 81, 82), BLUE, WHITE, 4)
+    for y, active in ((43, True), (58, False), (73, True)):
+        c.rect((44, y - 4, 72, y + 4), BLUE, None, 2, 4)
+        c.circle((67 if active else 49, y), 4, None, ORANGE if active else BLUE)
+
+
 def _graph(c):
     """Граф устройств — общий знак структурных схем (как у СОТ/СПС)."""
     c.line([(24, 26), (44, 44)])
@@ -701,6 +710,7 @@ def datum_filter(c):
 
 
 ICONS = [
+    ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
     ("Tools.panel/DatumFilter.pushbutton", datum_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
