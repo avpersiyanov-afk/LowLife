@@ -22,18 +22,28 @@ class NativeSession(object):
         self.binding = None
         self.started = False
         self.settling = True
+        self.multiple = None
         self.before_handler = self.before
         self.idle_handler = self.idle
         self.close_handler = self.closing
 
     def before(self, sender, args):
         self.started = True
+        try:
+            from lowlife.link_datums_native_ui import MultipleSelection
+            self.multiple = MultipleSelection(self.uiapp, self.doc)
+            self.multiple.start()
+        except Exception:
+            pass  # Native Copy/Monitor remains available manually.
 
     def closing(self, sender, args):
         if args.Document.Equals(self.doc):
             self.stop()
 
     def stop(self):
+        if self.multiple is not None:
+            self.multiple.stop()
+            self.multiple = None
         self.uiapp.Idling -= self.idle_handler
         self.uiapp.Application.DocumentClosing -= self.close_handler
         if self.binding is not None:

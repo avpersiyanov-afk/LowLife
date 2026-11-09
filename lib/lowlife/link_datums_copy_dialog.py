@@ -28,12 +28,12 @@ def show(doc, levels, grids):
     win.Content = outer
     note = TextBlock()
     note.Text = tr(
-        u'Откроется штатное Копирование/Мониторинг Revit. Выберите связь, нажмите «Копировать», '
-        u'укажите отмеченные элементы на виде и нажмите «Готово». После завершения к новым '
+        u'Откроется штатное Копирование/Мониторинг Revit. Выберите связь: «Копировать» и «Несколько» включатся автоматически. '
+        u'Выделите отмеченные элементы рамкой, при необходимости используйте фильтр, затем нажмите «Готово» в строке параметров и на ленте. После завершения к новым '
         u'копиям со штатным мониторингом будут применены выбранные типы, рабочие наборы и закрепление. '
         u'Выбор в этом списке не автоматизирует щелчки по элементам на виде.',
-        u'Native Revit Copy/Monitor will open. Select the link, click Copy, pick the checked elements '
-        u'in the view, then click Finish. Selected types, worksets and pinning will be applied to new '
+        u'Native Revit Copy/Monitor will open. Select the link: Copy and Multiple will be enabled automatically. Select the checked elements with a rectangle, use the filter if needed, '
+        u'then click Finish on the options bar and ribbon. Selected types, worksets and pinning will be applied to new '
         u'copies with native monitoring. Selection in this list does not automate view picks.')
     note.TextWrapping = TextWrapping.Wrap
     note.Margin = Thickness(0, 0, 0, 12)
