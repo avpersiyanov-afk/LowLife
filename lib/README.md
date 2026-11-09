@@ -3217,7 +3217,7 @@ receiver links preserve affected prior labels. Unchanged fingerprints skip model
 edits. Unlocked managed isometric 3D views are locked for TextNotes; annotation
 errors are reported without preventing the table from refreshing.
 
-### datum_filter_core.py / datum_filter_revit.py / datum_filter_panel.py
+### datum_filter_core.py / datum_filter_revit.py / datum_filter_panel.py / datum_filter_presets.py
 
 «Фильтр осей и уровней» — закрепляемая немодальная панель в «Инструментах».
 Обычные виды показывают оси текущей модели, 3D — уровни. Галочка снимает
@@ -3230,6 +3230,17 @@ Shift+клик или «Настройки» задают две независ�
 частям в скобках. Любые непустые уникальные названия частей допустимы.
 Без скобок каждое совпавшее имя — отдельная строка; вне маски элементы
 не меняются. Поиск действует по группам и полным именам элементов.
+
+Пользовательские группы настроек (пресеты) хранятся отдельно для каждой
+модели в `LowLifeDatumFilter_settings.json` (ключ `presets`, модель — по
+полному пути файла, иначе по имени): имя, маски осей/уровней и видимость
+групп по именам. Выбор в списке панели сразу переключает маски и выставляет
+сохранённую видимость на текущем виде (одна транзакция,
+`datum_filter_revit.apply_visibility_map`); «Сохранить»/«Сохранить как…»
+запоминают текущие маски и видимость групп, «Удалить» убирает группу без
+изменения видов. Чистая логика — `datum_filter_presets.py` (нормализация,
+запись/удаление, `plan_changes` повторно использует
+`datum_filter_core.visibility_changes`), тесты — `tests/test_datum_filter.py`.
 
 `startup.py` регистрирует скрытую панель, кнопка открывает её. Провайдер
 и обработчики хранятся в AppDomain между движками/Reload pyRevit; изменения

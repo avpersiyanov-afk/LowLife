@@ -12,6 +12,13 @@
         <Button x:Name="refresh_button" Content="Обновить" Padding="8,4" Margin="0,0,5,0"/>
         <Button x:Name="settings_button" Content="Настройки" Padding="8,4"/>
       </WrapPanel>
+      <TextBlock Text="Группы настроек"/>
+      <WrapPanel Margin="0,3,0,8">
+        <ComboBox x:Name="presets_combo" MinWidth="170" Margin="0,0,5,0"/>
+        <Button x:Name="preset_save_button" Content="Сохранить" Padding="8,4" Margin="0,0,5,0"/>
+        <Button x:Name="preset_save_as_button" Content="Сохранить как…" Padding="8,4" Margin="0,0,5,0"/>
+        <Button x:Name="preset_delete_button" Content="Удалить" Padding="8,4"/>
+      </WrapPanel>
       <TextBlock Text="Поиск"/>
       <TextBox x:Name="search_box" Margin="0,3,0,8"/>
       <TextBlock x:Name="mask_label" TextWrapping="Wrap" Margin="0,0,0,8"/>

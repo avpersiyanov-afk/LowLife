@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 from lowlife import datum_filter_core as core
+from lowlife import datum_filter_presets as presets
 from lowlife import datum_filter_settings as cfg
 
 
@@ -145,3 +146,84 @@ def test_queued_click_cannot_edit_another_view_or_document(changed_document):
     assert refreshed == [uiapp]
     assert busy == [False]
     assert panel.status_label.Text
+
+
+# --- пользовательские группы настроек (пресеты) ----------------------------
+
+def test_document_key_prefers_path_and_falls_back_to_title():
+    assert presets.document_key(u'Проект', u'C:\\a.rvt') == u'C:\\a.rvt'
+    assert presets.document_key(u'Проект', u'') == u'Проект'
+    assert presets.document_key(None, None) == u''
+
+
+def test_list_presets_normalizes_sorts_and_skips_garbage():
+    raw = {
+        u'C:\\a.rvt': {
+            u'Группа 10': {u'grid_mask': u'*', u'level_mask': None,
+                           u'visibility': {u'A': True, u'B': None, u'C': u'yes'}},
+            u'Группа 2': u'битое',
+            u'': {u'grid_mask': u'*'},
+        },
+        u'битый ключ': u'не словарь',
+    }
+    result = presets.list_presets(raw, u'C:\\a.rvt')
+    assert [preset['name'] for preset in result] == [u'Группа 2', u'Группа 10']
+    assert result[1]['grid_mask'] == u'*'
+    assert result[1]['level_mask'] == u'*'  # None -> умолчание
+    assert result[1]['visibility'] == {u'A': True, u'C': True}  # None выброшено
+    assert presets.list_presets(u'не словарь', u'C:\\a.rvt') == []
+    assert presets.list_presets({}, u'нет такой модели') == []
+
+
+def test_save_preset_updates_named_group_and_validates_masks():
+    raw = presets.save_preset({}, u'C:\\a.rvt', u'А', u'{к}_{с}_*', u'*',
+                              {u'B2 / S1': False})
+    again = presets.save_preset(raw, u'C:\\a.rvt', u'А', u'*', u'{к}_*', {})
+    assert again[u'C:\\a.rvt'][u'А'][u'grid_mask'] == u'*'
+    assert list(again.keys()) == [u'C:\\a.rvt']  # та же группа, не дубль
+    assert raw[u'C:\\a.rvt'][u'А'][u'visibility'] == {u'B2 / S1': False}
+
+    import pytest
+    with pytest.raises(ValueError):
+        presets.save_preset({}, u'C:\\a.rvt', u'Б', u'{', u'*', {})
+
+
+def test_save_preset_keeps_other_models_and_empty_masks_default():
+    raw = presets.save_preset({}, u'C:\\a.rvt', u'А', u'*', u'*', {})
+    raw = presets.save_preset(raw, u'C:\\b.rvt', u'Б', u'', u'  ', {})
+    assert set(raw.keys()) == {u'C:\\a.rvt', u'C:\\b.rvt'}
+    assert raw[u'C:\\b.rvt'][u'Б'] == {
+        u'grid_mask': u'*', u'level_mask': u'*', u'visibility': {}}
+
+
+def test_delete_preset_removes_group_and_empty_model():
+    raw = presets.save_preset({}, u'C:\\a.rvt', u'А', u'*', u'*', {})
+    raw = presets.delete_preset(raw, u'C:\\a.rvt', u'А')
+    assert raw == {}
+    # Другие модели и чужие группы не трогаются.
+    raw = presets.save_preset(raw, u'C:\\a.rvt', u'А', u'*', u'*', {})
+    raw = presets.save_preset(raw, u'C:\\b.rvt', u'Б', u'*', u'*', {})
+    raw = presets.delete_preset(raw, u'C:\\a.rvt', u'нет такой')
+    assert set(raw.keys()) == {u'C:\\a.rvt', u'C:\\b.rvt'}
+    raw = presets.delete_preset(raw, u'C:\\b.rvt', u'Б')
+    assert list(raw.keys()) == [u'C:\\a.rvt']
+
+
+def test_visibility_map_captures_tri_state():
+    rows, _ = core.group_datums(
+        [item(u'A_1'), item(u'A_2', 2, True), item(u'B_1', 3)], u'{g}_*')
+    assert presets.visibility_map(rows) == {u'A': None, u'B': True}
+
+
+def test_plan_changes_applies_only_named_targets_that_differ():
+    rows, _ = core.group_datums(
+        [item(u'A_1', hidden=True), item(u'A_2', 2, hidden=True),
+         item(u'B_1', 3), item(u'C_1', 4, hideable=False)], u'{g}_*')
+    saved = {u'A': True, u'B': False, u'C': True, u'Нет такой группы': False}
+    changes = presets.plan_changes(rows, saved)
+    # A скрыта целиком -> показать; B видна -> скрыть; C уже видна,
+    # единственный элемент не hideable -> без изменений.
+    assert [(sorted(item[u'id'] for item in items), show) for items, show in changes] == [
+        ([1, 2], True), ([3], False)]
+    assert presets.plan_changes(rows, {}) == []
+    assert presets.plan_changes(rows, {u'A': None}) == []
