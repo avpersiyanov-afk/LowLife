@@ -4,11 +4,12 @@ __title__ = u"Оси и уровни\nКФП"
 __doc__ = (
     u"Сравнивает уровни и оси модели с уровнями и осями связи КФП и "
     u"показывает список расхождений: другая отметка, смещённая или "
-    u"повёрнутая ось, другое имя, нет в модели / нет в связи. Модель не "
-    u"меняет.\n\n"
+    u"повёрнутая ось, другое имя, нет в модели / нет в связи. Предлагает "
+    u"скопировать недостающие элементы с выбором типа и рабочего набора.\n\n"
     u"Shift+клик — настройки (слово в имени связи, допуск)."
 )
 __author__ = "Pipers"
+__persistentengine__ = True
 
 import traceback
 from lowlife.i18n import tr
@@ -124,6 +125,36 @@ def main():
             _cell(link_datums.link_label(link)), format_mm(tolerance, 1)))
     report_levels(output, levels)
     report_grids(output, grids)
+
+    from lowlife import link_datums_copy, link_datums_copy_dialog
+    if not link_datums_copy.missing_rows(levels, grids):
+        return
+    choices = link_datums_copy_dialog.show(doc, levels, grids)
+    if not choices:
+        return
+    from lowlife import link_datums_native
+
+    def native_report(source_link, configured, errors):
+        output.print_md(tr(u'Штатный мониторинг проверен, настроено и закреплено: {}.',
+                           u'Native monitoring verified, configured and pinned: {}.').format(len(configured)))
+        for error in errors:
+            output.print_md(_cell(error))
+        if configured:
+            output.print_md(output.linkify(configured))
+        updated_levels, updated_grids = link_datums.compare(doc, source_link, float(tolerance))
+        report_levels(output, updated_levels)
+        report_grids(output, updated_grids)
+
+    output.print_md(tr(
+        u'В штатном инструменте выберите связь «{}», нажмите «Копировать», '
+        u'укажите перечисленные элементы на виде и нажмите «Готово». '
+        u'Выбор из списка не заменяет выбор на виде Revit.',
+        u'In the native tool select link “{}”, click Copy, pick the listed elements '
+        u'in the view and click Finish. List selection does not replace Revit view picks.').format(
+            _cell(link_datums.link_label(link))))
+    for kind, row, element_type, workset_id in choices:
+        output.print_md(u'- {} [{}]'.format(_cell(row.link['name']), row.link['id_int']))
+    link_datums_native.start(revit.uidoc.Application, link, choices, float(tolerance), native_report)
 
 
 try:

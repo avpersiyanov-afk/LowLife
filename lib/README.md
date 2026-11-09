@@ -1834,7 +1834,8 @@ room_number_param)` — запись по точкам прохода, возв�
 ## link_datums_core.py / link_datums.py / link_datums_settings.py
 
 Кнопка «Оси и уровни КФП» (`Tools.panel/CompareLinkDatums`, инструкция —
-`docs/tools-panel.md#оси-и-уровни-кфп`). Только чтение, без транзакций.
+`docs/tools-panel.md#оси-и-уровни-кфп`). Сравнение — только чтение;
+после отчёта доступно копирование недостающих элементов.
 
 - **`link_datums.compare(doc, link, tolerance_mm)`** → (строки уровней, строки
   осей): собирает уровни (`ProjectElevation`, отметка от базовой точки проекта
@@ -1854,6 +1855,28 @@ room_number_param)` — запись по точкам прохода, возв�
   «КФП»), `tolerance_mm` (1 мм).
 
 `link_datums_core.py` покрыт `tests/test_link_datums_core.py`.
+
+`link_datums_copy.missing_rows(levels, grids)` отбирает только `MISSING_IN_MODEL`.
+`configure_copies(doc, link, choices, original_ids, tolerance)` повторно сравнивает
+модель со связью и назначает тип, рабочий набор и закрепление только новым
+копиям выбранных элементов с подтверждённым штатным мониторингом нужной связи.
+Ошибка откатывает настройки элемента, сохраняя его штатную копию и мониторинг;
+результат — `(configured_ids, errors)`. Обычное API-копирование не используется.
+`link_datums_native.start(uiapp, link, choices, tolerance, report)` запускает
+`PostableCommand.CopyMonitorSelectLink`, ждёт завершения штатного режима и
+вызывает обработку копий/обновление отчёта. Постоянный движок кнопки сохраняет
+обработчики; они снимаются после завершения или закрытия документа.
+Связь и элементы выбираются на виде вручную: автоматическая передача выбора
+из списка в штатный инструмент не реализована.
+`link_datums_copy_dialog.show` — выбор элементов, типов и рабочих наборов в одном
+окне. Переиспользованы `link_datums.compare`, `cable_tray.find_worksets`,
+`fire_boxes.assign_workset`, `link_views.safe_name`, `text_search.matches`, `i18n.tr`.
+Новые функции отвечают за ранее отсутствовавшие окно выбора, сеанс штатного
+инструмента и обработку его результата. Тесты с подставным API:
+`tests/test_link_datums_copy.py`. В Revit 2024 проверены запуск сеанса, ручное
+штатное копирование оси и автоматическая обработка после завершения:
+мониторинг и закрепление подтверждены API. Окно и копирование уровней в Revit
+пока не проверены.
 
 ## detector_access_core.py / detector_access.py / detector_access_settings.py
 
