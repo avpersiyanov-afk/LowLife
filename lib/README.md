@@ -3145,3 +3145,27 @@ override references, members and a fingerprint in the model registry. Missing
 receiver links preserve affected prior labels. Unchanged fingerprints skip model
 edits. Unlocked managed isometric 3D views are locked for TextNotes; annotation
 errors are reported without preventing the table from refreshing.
+
+### datum_filter_core.py / datum_filter_revit.py / datum_filter_panel.py
+
+«Фильтр осей и уровней» — закрепляемая немодальная панель в «Инструментах».
+Обычные виды показывают оси текущей модели, 3D — уровни. Галочка снимает
+индивидуальное скрытие, снятая галочка скрывает группу только на текущем виде.
+Смешанная группа отмечена серым квадратом; первый щелчок показывает всю группу.
+Категории, шаблоны, обрезка и элементы связей не изменяются.
+
+Shift+клик или «Настройки» задают две независимые маски полного имени:
+`*` — любой текст, `?` — символ, `{корпус}_{секция}_*` — группировка по
+частям в скобках. Любые непустые уникальные названия частей допустимы.
+Без скобок каждое совпавшее имя — отдельная строка; вне маски элементы
+не меняются. Поиск действует по группам и полным именам элементов.
+
+`startup.py` регистрирует скрытую панель, кнопка открывает её. Провайдер
+и обработчики хранятся в AppDomain между движками/Reload pyRevit; изменения
+кода самой панели и первая установка требуют перезапуска Revit. Все действия WPF проходят через
+ExternalEvent с проверкой документа и вида; Idling обновляет видимую панель
+после смены вида, изменений модели и Undo. Настройки: `TextSettings`,
+`LowLifeDatumFilter_settings.json`. Чистая логика — `tests/test_datum_filter.py`.
+Сбор осей и уровней использует существующие `link_datums.collect_grids` /
+`collect_levels`, сортировка — `link_datums_core.natural_key`; настройки,
+поиск и перевод — `settings_core`, `text_search` и `xaml_i18n` / `i18n`.

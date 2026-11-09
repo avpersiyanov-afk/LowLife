@@ -211,6 +211,7 @@ THEMES = {
         (u"Tools", u"LinkTraysToExcel"),
         (u"Tools", u"TrayOpeningBoxes"),
         (u"Tools", u"CompareLinkDatums"),
+        (u"Tools", u"DatumFilter"),
         (u"ToolsTraySection", u"TraySection"),
         (u"FilterSelection", u"CategoryFilterSelect"),
         (u"Schematic", u"BuildRoomSchematic"),

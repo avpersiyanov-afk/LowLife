@@ -119,3 +119,12 @@ try:
     _opening_journal.retry_pending()
 except Exception:
     pass
+
+
+# Панель осей/уровней регистрируется до первого открытия и остаётся немодальной.
+try:
+    from lowlife import datum_filter_panel as _datum_filter
+    from pyrevit import HOST_APP as _datum_host
+    _datum_filter.install(_datum_host.uiapp)
+except Exception as exc:
+    _crumb(u'фильтр осей и уровней: {}'.format(exc))

@@ -690,7 +690,18 @@ def kr_opening_tasks(c):
     c.line([(52, 76), (62, 85), (84, 62)], ORANGE, 6)
 
 
+def datum_filter(c):
+    for x in (24, 48, 72):
+        c.dashed((x, 17), (x, 75), BLUE, 3)
+        c.circle((x, 15), 7, BLUE, WHITE, 2)
+    for y in (36, 57, 77):
+        c.line([(15, y), (80, y)], BLUE, 3)
+    c.rect((48, 48, 87, 87), ORANGE, WHITE, 3, 5)
+    c.line([(56, 68), (65, 77), (80, 58)], ORANGE, 5)
+
+
 ICONS = [
+    ("Tools.panel/DatumFilter.pushbutton", datum_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
     ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),
