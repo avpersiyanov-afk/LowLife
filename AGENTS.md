@@ -9,6 +9,20 @@ exactly as if it were written here (it is named for Claude Code, but every rule 
 repo layout, Python 2/3 compatibility shims, i18n, settings plumbing, icons, tests, never committing real
 parameter names). Tests: `python -m pytest tests` (see `tests/README.md`).
 
+## Повторное использование кода — обязательно
+
+Перед добавлением новой функции:
+1. Прочитай `lib/README.md` и найди в репозитории существующие реализации той же задачи.
+2. Если подходящая функция есть — используй её через импорт. Запрещено копировать её тело
+   или писать аналог под другим именем.
+3. Если существующей функции не хватает возможностей — расширь её с сохранением текущего
+   поведения и используй во всех затронутых местах.
+4. Отдельную реализацию допускается создавать только после проверки, что готовую функцию
+   нельзя применить или разумно расширить. Причину укажи в отчёте.
+
+Перед завершением проверь все добавленные функции на дублирование. В отчёте перечисли
+использованные общие функции и обоснуй новые.
+
 ## Handoff between agents
 
 The user switches between Claude Code and Codex when one of them runs out of limits, and continues the

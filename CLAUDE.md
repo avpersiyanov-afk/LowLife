@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Повторное использование кода — обязательно
+
+Перед добавлением новой функции:
+1. Прочитай `lib/README.md` и найди в репозитории существующие реализации той же задачи.
+2. Если подходящая функция есть — используй её через импорт. Запрещено копировать её тело
+   или писать аналог под другим именем.
+3. Если существующей функции не хватает возможностей — расширь её с сохранением текущего
+   поведения и используй во всех затронутых местах.
+4. Отдельную реализацию допускается создавать только после проверки, что готовую функцию
+   нельзя применить или разумно расширить. Причину укажи в отчёте.
+
+Перед завершением проверь все добавленные функции на дублирование. В отчёте перечисли
+использованные общие функции и обоснуй новые.
+
 ## What this is
 
 A pyRevit extension (IronPython/CPython 2 scripts run inside Revit). There is no build step, package manager, or linter. `tests/` holds pytest unit tests for the Revit-free logic in `lib/lowlife/` (see `tests/README.md`). "Running" the code means loading it into Revit through pyRevit.
