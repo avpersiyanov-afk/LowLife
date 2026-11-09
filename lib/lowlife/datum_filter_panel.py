@@ -21,16 +21,19 @@ clr.AddReference('WindowsBase')
 from System import AppDomain, Guid
 from System.Windows import Thickness
 from System.Windows.Controls import CheckBox, TextBlock
+from System.Windows.Input import Keyboard, ModifierKeys
 from System.Windows.Markup import XamlReader
+from System.Windows.Media import Brushes
 from Autodesk.Revit.UI import (DockablePane, DockablePaneId, DockablePaneState,
                               DockPosition, IDockablePaneProvider,
                               ExternalEvent, IExternalEventHandler, ExternalEventRequest)
 from pyrevit import forms
+from lowlife import datum_filter_core as core
 from lowlife import datum_filter_revit as api
 from lowlife import datum_filter_presets as presets
 from lowlife import datum_filter_settings as cfg
-from lowlife import text_search, xaml_i18n
-from lowlife.i18n import tr
+from lowlife import select_list, text_search, xaml_i18n
+from lowlife.i18n import N_, tr
 
 PANE_GUID = '910a856e-7f71-40e7-bbb9-a60b679d88dc'
 STATE_KEY = 'LowLife.DatumFilter.Panel.v1'
@@ -70,6 +73,16 @@ class Handler(IExternalEventHandler):
                 changed, skipped = api.apply_visibility(document, uidoc.ActiveView, items, show)
                 panel.refresh(uiapp)
                 panel.status_label.Text += u'\n' + tr(u'Изменено: {0}. Пропущено: {1}.').format(changed, skipped)
+            elif action == 'visibility_map':
+                # items — [(items, show), ...] от клика с Shift/Ctrl по списку групп.
+                if (uidoc is None or uidoc.Document != document
+                        or uidoc.ActiveView.Id != view_id):
+                    panel.refresh(uiapp)
+                    panel.status_label.Text = tr(u'Вид изменился. Повторите действие на нужном виде.')
+                    return
+                changed, skipped = api.apply_visibility_map(document, uidoc.ActiveView, items)
+                panel.refresh(uiapp)
+                panel.status_label.Text += u'\n' + tr(u'Изменено: {0}. Пропущено: {1}.').format(changed, skipped)
             elif action == 'apply_preset':
                 # items carries the preset dict; the write targets the current view.
                 if uidoc is None or uidoc.Document != document:
@@ -88,6 +101,40 @@ class Handler(IExternalEventHandler):
                 panel.status_label.Text += u'\n' + tr(
                     u'Группа «{0}» применена. Изменено: {1}. Пропущено: {2}.').format(
                     items['name'], changed, skipped)
+            elif action == 'apply_views':
+                # items — (grid_mask, level_mask, saved_map): текущие маски и
+                # видимость групп переносятся на выбранные пользователем виды.
+                if uidoc is None or uidoc.Document != document:
+                    panel.refresh(uiapp)
+                    panel.status_label.Text = tr(u'Модель изменилась. Повторите действие.')
+                    return
+                grid_mask, level_mask, saved_map = items
+                settings = cfg.SETTINGS.get_settings_silent()
+                settings['grid_mask'] = grid_mask
+                settings['level_mask'] = level_mask
+                views = select_list.select_views(
+                    title=N_(u'Виды, на которых применить видимость'),
+                    button_name=N_(u'Применить'),
+                    multiple=True, doc=document,
+                    filterfunc=api.supported)
+                if not views:
+                    panel.status_label.Text = tr(u'Виды не выбраны.')
+                    return
+                changed = skipped = failed = 0
+                for view in views:
+                    try:
+                        groups, _, _, _ = api.snapshot(document, view, settings)
+                        c, s = api.apply_visibility_map(
+                            document, view, presets.plan_changes(groups, saved_map))
+                        changed += c
+                        skipped += s
+                    except Exception:
+                        failed += 1
+                panel.refresh(uiapp)
+                panel.status_label.Text += u'\n' + tr(
+                    u'Видимость применена к {0} видам. Изменено элементов: {1}. '
+                    u'Пропущено: {2}. Не удалось: {3}.').format(
+                    len(views), changed, skipped, failed)
             else:
                 if action == 'settings':
                     panel.edit_settings()
@@ -113,7 +160,8 @@ class Panel(IDockablePaneProvider):
         for name in ('view_label', 'refresh_button', 'settings_button', 'search_box',
                      'mask_label', 'status_label', 'groups_panel',
                      'presets_combo', 'preset_save_button',
-                     'preset_save_as_button', 'preset_delete_button'):
+                     'preset_save_as_button', 'preset_delete_button',
+                     'apply_views_button'):
             setattr(self, name, self.page.FindName(name))
         self.groups = []
         self.document = None
@@ -127,8 +175,13 @@ class Panel(IDockablePaneProvider):
         self.masks = None          # None — masks from settings; tuple — preset masks
         self.selected_preset = None
         self._loading_presets = False
+        self._anchor = None        # якорь диапазона для Shift+клик
+        self._selected = set()     # индексы групп, выделенных Ctrl+кликом
+        self._checks = {}          # индекс группы -> CheckBox
+        self._visible = []         # отображаемые (индекс, группа) по порядку
         self.refresh_button.Click += self.on_refresh
         self.settings_button.Click += self.on_settings
+        self.apply_views_button.Click += self.on_apply_views
         self.search_box.TextChanged += self.on_search
         self.presets_combo.SelectionChanged += self.on_preset_selected
         self.preset_save_button.Click += self.on_preset_save
@@ -203,7 +256,9 @@ class Panel(IDockablePaneProvider):
 
     def render_groups(self):
         self.groups_panel.Children.Clear()
-        for group in self.groups:
+        self._checks = {}
+        self._visible = []
+        for index, group in enumerate(self.groups):
             if not text_search.matches(group['name'] + u' ' + u' '.join(
                     item['name'] for item in group['items']), self.search_box.Text):
                 continue
@@ -216,14 +271,23 @@ class Panel(IDockablePaneProvider):
             check.IsThreeState = True
             check.IsChecked = group['checked']
             check.IsEnabled = any(item['hideable'] for item in group['items'])
-            check.Tag = group
+            check.Tag = (index, group)
             check.Click += self.on_toggle
             self.groups_panel.Children.Add(check)
+            self._checks[index] = check
+            self._visible.append((index, group))
+        self._highlight_selection()
+
+    def _highlight_selection(self):
+        for index, check in self._checks.items():
+            check.Background = (Brushes.LightSteelBlue if index in self._selected
+                                else Brushes.Transparent)
 
     def set_busy(self, busy):
         self.groups_panel.IsEnabled = not busy
         self.refresh_button.IsEnabled = not busy
         self.settings_button.IsEnabled = not busy
+        self.apply_views_button.IsEnabled = not busy
         self.search_box.IsEnabled = not busy
         self.presets_combo.IsEnabled = not busy
         self.preset_save_button.IsEnabled = not busy
@@ -252,16 +316,41 @@ class Panel(IDockablePaneProvider):
     def on_toggle(self, sender, args):
         # WPF's three-state cycle includes None. Use the snapshot to make
         # clicks deterministic: checked -> hide; mixed/unchecked -> show.
-        group = sender.Tag
+        # Ctrl+клик добавляет группу к выделению, Shift+клик — диапазон
+        # от последней нажатой; действие применяется ко всем выделенным.
+        index, group = sender.Tag
         show = group['checked'] is not True
         sender.IsChecked = show
-        self.request('visibility', group['items'], show)
+        modifiers = Keyboard.Modifiers
+        targets = core.selection_targets(
+            [visible_index for visible_index, _ in self._visible],
+            self._anchor, index,
+            bool(modifiers & ModifierKeys.Shift))
+        if modifiers & ModifierKeys.Control:
+            self._selected = self._selected.union(targets)
+        else:
+            self._selected = targets
+        if not modifiers & ModifierKeys.Shift:
+            self._anchor = index
+        self._highlight_selection()
+        changes = [(visible_group['items'], show)
+                   for visible_index, visible_group in self._visible
+                   if visible_index in self._selected]
+        self.request('visibility_map', changes)
 
     def on_refresh(self, sender, args):
         self.request('refresh')
 
     def on_settings(self, sender, args):
         self.request('settings')
+
+    def on_apply_views(self, sender, args):
+        if not self.groups:
+            self.status_label.Text = tr(u'Сначала обновите список на поддерживаемом виде.')
+            return
+        grid_mask, level_mask = self._current_masks()
+        saved_map = presets.visibility_map(self.groups)
+        self.request('apply_views', (grid_mask, level_mask, saved_map))
 
     def on_search(self, sender, args):
         self.render_groups()

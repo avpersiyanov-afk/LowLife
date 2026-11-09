@@ -57,3 +57,17 @@ def visibility_changes(items, show):
     """Only change explicit per-element hiding, never category/template settings."""
     return [item['id'] for item in items
             if item['hideable'] and bool(item['hidden']) == bool(show)]
+
+
+def selection_targets(visible_indices, anchor, index, range_select):
+    """Индексы групп для массового действия по клику с модификатором.
+
+    visible_indices — индексы отображаемых (не отсеянных поиском) строк
+    по порядку. range_select (Shift) — весь диапазон от якоря; без якоря
+    или вне списка — только нажатая строка. Иначе — только нажатая строка.
+    """
+    if range_select and anchor in visible_indices and index in visible_indices:
+        low, high = sorted((visible_indices.index(anchor),
+                            visible_indices.index(index)))
+        return set(visible_indices[low:high + 1])
+    return set([index])

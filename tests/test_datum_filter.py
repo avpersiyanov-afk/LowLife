@@ -227,3 +227,26 @@ def test_plan_changes_applies_only_named_targets_that_differ():
         ([1, 2], True), ([3], False)]
     assert presets.plan_changes(rows, {}) == []
     assert presets.plan_changes(rows, {u'A': None}) == []
+
+
+# --- мультивыбор групп (Shift/Ctrl) ----------------------------------------
+
+def test_selection_targets_plain_click_selects_only_clicked():
+    visible = [0, 1, 2, 3]
+    assert core.selection_targets(visible, 0, 2, False) == set([2])
+    assert core.selection_targets(visible, None, 2, True) == set([2])
+
+
+def test_selection_targets_shift_selects_range_from_anchor():
+    visible = [0, 1, 2, 3, 4]
+    assert core.selection_targets(visible, 1, 3, True) == set([1, 2, 3])
+    assert core.selection_targets(visible, 3, 1, True) == set([1, 2, 3])
+    # Якорь вне отображаемых строк — только нажатая.
+    assert core.selection_targets(visible, 9, 2, True) == set([2])
+    assert core.selection_targets(visible, 2, 9, True) == set([9])
+
+
+def test_selection_targets_respects_search_filtering():
+    # Поиск отсек строки 1 и 2: диапазон идёт только по видимым.
+    visible = [0, 3, 4]
+    assert core.selection_targets(visible, 0, 4, True) == set([0, 3, 4])
