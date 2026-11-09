@@ -17,12 +17,13 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('WindowsBase')
 
-from System import DateTime, Environment
+from System import DateTime, Environment, IntPtr
 from System.Windows import (CornerRadius, TextWrapping, FontWeights, HorizontalAlignment, SizeToContent,
                             TextAlignment, Thickness, Window, WindowStartupLocation,
                             WindowStyle)
 from System.Windows.Controls import Border, StackPanel, TextBlock
 from System.Windows.Input import Key
+from System.Windows.Interop import WindowInteropHelper
 from System.Windows.Media import Brushes, Color, FontFamily, SolidColorBrush
 
 from lowlife import greeting, settings_core
@@ -110,7 +111,25 @@ def show(uiapp=None):
     win.SizeToContent = SizeToContent.WidthAndHeight
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     win.ShowInTaskbar = False
+    # Приветствие модальное: скрытое за Revit окно выглядит как зависание.
+    # Здесь нет дочерних диалогов, поэтому Topmost можно держать до закрытия.
+    win.Topmost = True
+    win.ShowActivated = True
     win.Content = border
+
+    try:
+        owner = uiapp.MainWindowHandle
+    except Exception:
+        # show(None), а также старые версии API без MainWindowHandle.
+        from System.Diagnostics import Process
+        owner = Process.GetCurrentProcess().MainWindowHandle
+    if owner != IntPtr.Zero:
+        WindowInteropHelper(win).Owner = owner
+        win.WindowStartupLocation = WindowStartupLocation.CenterOwner
+
+    def _activate(sender, args):
+        win.Activate()
+        win.Focus()
 
     def _close(sender, args):
         win.Close()
@@ -121,6 +140,7 @@ def show(uiapp=None):
 
     win.MouseLeftButtonUp += _close
     win.KeyDown += _keys
+    win.ContentRendered += _activate
     win.ShowDialog()
 
 
