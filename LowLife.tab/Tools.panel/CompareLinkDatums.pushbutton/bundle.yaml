@@ -1,11 +1,13 @@
 tooltip: |
-  Сравнивает уровни и оси модели с уровнями и осями связи КФП и показывает список в окне pyRevit: что совпадает, что расходится (отметка уровня, смещение или поворот оси), что названо по-другому и чего нет в модели или в связи. Связь берётся по слову в имени («КФП»), иначе — выбор из списка. Координаты связи — с учётом её размещения. Модель не меняет.
+  Сравнивает уровни и оси модели со связью КФП. После отчёта предлагает выбрать недостающие элементы, тип семейства и рабочий набор отдельно для уровней и осей и открыть штатное Копирование/Мониторинг. Связь и элементы нужно выбрать на виде Revit. После завершения новые копии со штатным мониторингом настраиваются и закрепляются.
 
   Shift+клик — настройки (слово в имени связи, допуск в мм).
 title_en: "Grids and levels\nvs coordination"
 tooltip_en: >-
-  Compares the model's levels and grids with those of the coordination (КФП) link and lists in the
-  pyRevit window what matches, what differs (level elevation, grid offset or rotation), what's named
-  differently and what's missing from the model or the link. The link is found by a word in its name
-  («КФП»), otherwise picked from a list. Link coordinates take its placement into account. Doesn't
-  change the model. Shift+click — settings (word in the link name, tolerance in mm).
+  Compares model levels and grids with the coordination link. After the report, select missing
+  elements and a host family type and workset separately for levels and grids, then open native
+  Copy/Monitor. Pick the link and elements in the Revit view. After finishing, new copies with
+  native monitoring are configured and pinned.
+  Shift+click — settings (word in the link name, tolerance in mm).
+engine:
+  persistent: true
