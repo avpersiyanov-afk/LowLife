@@ -566,13 +566,14 @@ def _keep_with_nested(doc, keep_ids):
     return keep
 
 
-def _hide_other_categories(doc, view, keep_category_ids):
+def _hide_other_categories(doc, view, keep_category_ids, include_annotations=False):
     """Выключает на виде все категории, кроме проверяемых (кроме аннотаций):
-    модельные, связи, импорт DWG. Возвращает число выключенных."""
+    модельные, связи, импорт DWG. include_annotations включает также аннотации.
+    Возвращает число выключенных; прежний режим LOI сохраняется по умолчанию."""
     count = 0
     for cat in doc.Settings.Categories:
         try:
-            if cat.CategoryType == CategoryType.Annotation:
+            if not include_annotations and cat.CategoryType == CategoryType.Annotation:
                 continue
             if not view.CanCategoryBeHidden(cat.Id):
                 continue
