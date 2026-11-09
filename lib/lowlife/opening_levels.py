@@ -3,6 +3,7 @@
 from Autodesk.Revit.DB import BuiltInCategory, FilteredElementCollector, Level, Transform, XYZ
 from lowlife import opening_levels_core as core
 from lowlife.i18n import tr
+from lowlife.geometry import get_element_level
 
 
 class Resolver(object):
@@ -29,7 +30,7 @@ class Resolver(object):
         if key not in self.probes:
             self.probes[key]=SlabProbe(self.doc,
                 sources={0:(source.doc,source.transform if source.transform is not None else Transform.Identity)},
-                categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation],down_range_mm=None)
+                categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation,BuiltInCategory.OST_Roofs],down_range_mm=None)
         return self.probes[key]
 
     def resolve(self,crossing):
@@ -43,8 +44,8 @@ class Resolver(object):
             point=boxes._xyz(crossing.center())
             hits=[]
             for distance,floor in self.probe(key,source).floor_hits_below(point.X,point.Y,point.Z,
-                    support_categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation]):
-                level=source.doc.GetElement(floor.LevelId)
+                    support_categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation,BuiltInCategory.OST_Roofs]):
+                level=get_element_level(source.doc,floor)
                 hits.append(dict(distance=distance,host_uid=floor.UniqueId,
                     level_uid=level.UniqueId if isinstance(level,Level) else None,element=floor,
                     elevation=point.Z-distance))
@@ -54,7 +55,7 @@ class Resolver(object):
         elif crossing.kind!='floor':
             raise ValueError(tr(u'Не поддерживается тип конструкции для определения уровня.',
                                 u'Unsupported host kind for level resolution.'))
-        source_level=source.doc.GetElement(support.LevelId)
+        source_level=get_element_level(source.doc,support)
         candidates=[dict(name=boxes.safe_element_name(lv),elevation=lv.ProjectElevation,element=lv)
                     for lv in self.levels]
         has_level=isinstance(source_level,Level)
@@ -70,7 +71,7 @@ class Resolver(object):
                 point=boxes._xyz(crossing.center())
                 origin_z=source.to_model(bbox.Max).Z+1.0
                 hits=self.probe(key,source).floor_hits_below(point.X,point.Y,origin_z,
-                    support_categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation])
+                    support_categories=[BuiltInCategory.OST_Floors,BuiltInCategory.OST_StructuralFoundation,BuiltInCategory.OST_Roofs])
                 distances=[distance for distance,element in hits if element.UniqueId==support.UniqueId]
                 if not distances:
                     raise ValueError(tr(u'Не удалось определить отметку конструкции без уровня.',

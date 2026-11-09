@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Общие геометрические хелперы для работы с элементами Revit."""
 
-from Autodesk.Revit.DB import LocationPoint, LocationCurve, Line, Level, FilteredElementCollector, ElementId, XYZ
+from Autodesk.Revit.DB import BuiltInParameter, LocationPoint, LocationCurve, Line, Level, FilteredElementCollector, ElementId, XYZ
 
 
 def get_point(el):
@@ -139,17 +139,25 @@ def get_element_level(doc, el):
     рабочей плоскости линейного элемента (для линий, размещённых по
     рабочей плоскости уровня, LevelId ссылается именно на неё), не завися
     от языка интерфейса Revit (в отличие от поиска параметра по имени).
+    Для кровли с недоступным LevelId читает штатный базовый или опорный уровень.
     Возвращает None, если у элемента нет связанного уровня.
     """
     try:
         level_id = el.LevelId
-    except:
-        return None
-
+    except Exception:
+        level_id = None
     if not level_id or level_id == ElementId.InvalidElementId:
-        return None
-
+        for builtin in (BuiltInParameter.ROOF_BASE_LEVEL_PARAM,BuiltInParameter.ROOF_CONSTRAINT_LEVEL_PARAM):
+            try:
+                param=el.get_Parameter(builtin)
+                candidate=param.AsElementId() if param is not None else None
+            except Exception:
+                candidate=None
+            if candidate and candidate!=ElementId.InvalidElementId:
+                level_id=candidate
+                break
+    if not level_id or level_id==ElementId.InvalidElementId:return None
     try:
         return doc.GetElement(level_id)
-    except:
+    except Exception:
         return None

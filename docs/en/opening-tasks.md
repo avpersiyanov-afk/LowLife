@@ -248,3 +248,15 @@ or withdrawals processed in the loaded models. Missing links preserve prior labe
 Annotation in managed 3D views locks their orientation; user views/notes are untouched.
 The full group is retained in decision JSON and the number prefixes journal comments;
 no Apps Script update is required.
+
+
+Vertical routes through pitched roofs/sloped slabs: VIS floor-host selection now
+includes Roofs. After EIR/ZNP enlargement, a vertical extrusion of the final opening
+footprint clips the real host solids; its full Z extent sets box height and center.
+This includes internal valleys/ridges rather than sampling only axis/corner rays.
+Flat-slab shape checks are cached and retain the fast path. KR/AR use Floor/RoofBase
+native openings with bPerpendicularFace=False for a vertical cut. Roof base levels
+use the shared geometry.get_element_level reader; KR plans include roof openings.
+Roof classification is stored as host_category=roof while the compatible internal
+passage kind remains floor. Inclined routes through inclined hosts remain explicitly
+unsupported; re-place after changing clearances. No new family parameters are required.

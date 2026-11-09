@@ -39,9 +39,10 @@ from datetime import datetime
 from Autodesk.Revit.DB import (
     BuiltInCategory, BuiltInParameter, BoundingBoxIntersectsFilter, ElementMulticategoryFilter,
     ElementTransformUtils, Family, FamilyInstance, FamilyPlacementType,
-    FilteredElementCollector, FilteredWorksetCollector, GeometryInstance, Level, Line, LocationCurve, LocationPoint,
+    FilteredElementCollector, FilteredWorksetCollector, GeometryInstance, Level, Line, PlanarFace, CylindricalFace, LocationCurve, LocationPoint,
     Options, Outline, RevitLinkInstance, Solid, SolidCurveIntersectionOptions, StorageType,
     ViewDetailLevel, WorksetKind, XYZ, SubTransaction, TransactionStatus,
+    BooleanOperationsUtils, BooleanOperationsType, CurveLoop, GeometryCreationUtilities,
 )
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
@@ -151,13 +152,14 @@ class Crossing(object):
         return u"{} (Id {}, {})".format(name, _id_int(self.host.Id), where)
 
 
-def _host_categories(settings):
+def _host_categories(settings,include_roofs=False):
     hosts = settings.get("box_hosts")
     cats = []
     if hosts in (cfg.HOSTS_ALL, cfg.HOSTS_WALLS):
         cats.append(BuiltInCategory.OST_Walls)
     if hosts in (cfg.HOSTS_ALL, cfg.HOSTS_FLOORS):
         cats.append(BuiltInCategory.OST_Floors)
+        if include_roofs:cats.append(BuiltInCategory.OST_Roofs)
     return cats
 
 
@@ -217,6 +219,7 @@ class _Source(object):
         self.transform = link.GetTotalTransform() if link is not None else None
         self.inverse = self.transform.Inverse if link is not None else None
         self._solids = {}
+        self._horizontal = {}
 
     def to_local(self, p):
         return self.inverse.OfPoint(p) if self.inverse is not None else p
@@ -232,6 +235,26 @@ class _Source(object):
         if key not in self._solids:
             self._solids[key] = _solids(element, options)
         return self._solids[key]
+
+    def horizontal_host(self,element,options):
+        """Cache the fast path: one flat slab between two horizontal faces."""
+        key=_id_int(element.Id)
+        if key not in self._horizontal:
+            levels=set()
+            flat=True
+            for solid in self.solids(element,options):
+                for face in solid.Faces:
+                    if not isinstance(face,PlanarFace):
+                        if isinstance(face,CylindricalFace) and abs(self.to_model_vector(face.Axis).Z)>1.0-1e-8:continue
+                        flat=False;break
+                    normal=self.to_model_vector(face.FaceNormal)
+                    if abs(normal.Z)>1.0-1e-8 and abs(normal.X)<1e-10 and abs(normal.Y)<1e-10:
+                        levels.add(round(self.to_model(face.Origin).Z,6))
+                    elif abs(normal.Z)>1e-8:
+                        flat=False;break
+                if not flat:break
+            self._horizontal[key]=flat and len(levels)==2
+        return self._horizontal[key]
 
 
 def sources(doc, settings):
@@ -335,6 +358,53 @@ def box_for(tray, crossing, settings):
     return core.floor_box(crossing.center(), d, section_x or tray_width_direction(tray), crossing.length(),
                           tray.Width, tray.Height, extra, depth_extra, slope,
                           allow_sloped=section_x is not None,round_section=round_section)
+
+
+def fit_vertical_host(box,crossing,source,options,direction,depth_extra):
+    """Cover the actual non-flat host inside the FINAL opening footprint.
+
+    The source solids are reused. A vertical extrusion of the final rectangle
+    clips the host itself, preserving ridges/valleys and internal shape changes.
+    """
+    if box.kind!=core.FLOOR or source.horizontal_host(crossing.host,options):return box
+    if abs(abs(direction[2])-1.0)>1e-8:
+        raise ValueError(tr(u'Для наклонной кровли или плиты пока поддерживается только вертикальная коммуникация.',
+                            u'Only vertical routes are supported through sloped roofs or slabs.'))
+    bounds=crossing.host.get_BoundingBox(None)
+    if bounds is None:
+        raise ValueError(tr(u'Нет геометрии кровли или перекрытия.',u'Roof or slab geometry is missing.'))
+    points=[source.to_model(p) for p in _box_points(bounds)]
+    low=min(p.Z for p in points)-ft(10)
+    high=max(p.Z for p in points)+ft(10)
+    x=box.x_dir;y=(-x[1],x[0],0.0)
+    footprint=[source.to_local(XYZ(box.center[0]+a*box.width*x[0]/2+b*box.depth*y[0]/2,
+                                  box.center[1]+a*box.width*x[1]/2+b*box.depth*y[1]/2,low))
+               for a,b in ((-1,-1),(1,-1),(1,1),(-1,1))]
+    loop=CurveLoop()
+    for i in range(4):loop.Append(Line.CreateBound(footprint[i],footprint[(i+1)%4]))
+    vector=source.inverse.OfVector(XYZ.BasisZ) if source.inverse is not None else XYZ.BasisZ
+    prism=GeometryCreationUtilities.CreateExtrusionGeometry(List[CurveLoop]([loop]),vector,high-low)
+    elevations=[]
+    try:
+        for solid in source.solids(crossing.host,options):
+            clipped=None
+            try:
+                clipped=BooleanOperationsUtils.ExecuteBooleanOperation(solid,prism,BooleanOperationsType.Intersect)
+                if clipped is not None and clipped.Volume>1e-9:
+                    elevations.extend(source.to_model(p).Z for p in _box_points(clipped.GetBoundingBox()))
+            except Exception as ex:
+                raise ValueError(tr(u'Не удалось рассчитать тело прохода через кровлю или плиту: {}',
+                                    u'Could not calculate the passage through the roof or slab: {}').format(ex))
+            finally:
+                if clipped is not None:clipped.Dispose()
+    finally:
+        prism.Dispose()
+    if not elevations or max(elevations)-min(elevations)<=ft(.1):
+        raise ValueError(tr(u'В габарите отверстия не найдено тело кровли или перекрытия.',
+                            u'No roof or slab body was found inside the opening footprint.'))
+    low=min(elevations);high=max(elevations)
+    return core.Box(box.kind,(box.center[0],box.center[1],(low+high)/2),box.x_dir,
+                    box.width,box.depth,high-low+depth_extra,high-low)
 
 
 # ------------------------------------------------------------

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Managed structural slab plans and wall-face sections, driven by KR receipts."""
 from Autodesk.Revit.DB import (BoundingBoxXYZ, BuiltInParameter, Color, ElementId,
-    FillPatternElement, FilteredElementCollector, Floor, Level, Line, OverrideGraphicSettings,
+    FillPatternElement, FilteredElementCollector, Floor, RoofBase, Level, Line, OverrideGraphicSettings,
     PlanViewPlane, Transform, ViewFamily, ViewFamilyType, ViewPlan, ViewSection, Wall, XYZ)
 from lowlife.i18n import tr
+from lowlife.geometry import get_element_level
+from lowlife.opening_levels_core import match_level
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
 from lowlife.opening_tasks_views import unique_name
@@ -58,14 +60,24 @@ def build(doc, project, mode, records=None):
                 ogs.SetCutForegroundPatternId(solid).SetCutForegroundPatternColor(color)
             view.SetElementOverrides(opening.Id,ogs)
     if mode=='plans':
-        for level in FilteredElementCollector(doc).OfClass(Level):
+        levels=list(FilteredElementCollector(doc).OfClass(Level))
+        candidates=[dict(name=api.boxes.safe_element_name(level),elevation=level.ProjectElevation,element=level) for level in levels]
+        by_level={}
+        for entry in accepted:
+            opening,host,receipt=entry
+            if not isinstance(host,(Floor,RoofBase)):continue
+            assigned=get_element_level(doc,host)
+            if assigned is None:
+                assigned=match_level(candidates,'',api.boxes.ft(receipt['geometry']['center_mm'][2]))['element']
+            by_level.setdefault(assigned.Id,[]).append(entry)
+        for level in levels:
             key=project+'/slab-plan/'+level.UniqueId
             view=existing(key,ViewPlan)
             if view is None:
                 view=ViewPlan.Create(doc,typ.Id,level.Id)
                 view.Name=unique_name(doc,u'LowLife | '+project+u' | Плиты | '+level.Name)
                 managed[key]=view.UniqueId
-            entries=[e for e in accepted if isinstance(e[1],Floor) and e[1].LevelId==level.Id]
+            entries=by_level.get(level.Id,[])
             bounds=[e[1].get_BoundingBox(None) for e in entries]
             bounds=[b for b in bounds if b is not None]
             low=min([b.Min.Z-level.ProjectElevation for b in bounds]+[-api.boxes.ft(500)])
