@@ -24,7 +24,7 @@ DEST = ROOT / 'docs/opening-tasks-guide'
 FONT_DIR = Path('/usr/share/fonts/truetype/dejavu')
 FONT = FONT_DIR / 'DejaVuSans.ttf'
 BOLD = FONT_DIR / 'DejaVuSans-Bold.ttf'
-COMMON = {'refresh': 'Обновить обмен', 'journal_open': 'Открыть таблицу',
+COMMON = {'remark_show': 'Показать группу', 'refresh': 'Обновить обмен', 'journal_open': 'Открыть таблицу',
           'settings': 'Настройки', 'parts_refresh': 'Обновить номера корпусов',
           'journal_setup': 'Подключение таблицы', 'highlight': 'Подсветить на виде'}
 
@@ -79,7 +79,7 @@ def diagram(role, tab_index, filename):
     rect((96,y+71,1408,y+103),'white')
     text(108,y+78,'Поиск по номеру, GUID, модели, уровню и размерам…',16,'#6a7887')
     x=96;fy=y+114
-    for label in ['Все номера корпусов','Все статусы','Все дисциплины','Все уровни','Все конструкции']:
+    for label in ['Все номера корпусов','Все статусы','Все дисциплины','Все уровни','Все конструкции','Все замечания']:
         x+=control(x,fy,label,True)
     x=96;fy+=39
     for label in ['Все ответы','Все получатели','Все выпуски']:

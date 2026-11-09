@@ -160,6 +160,21 @@ def build(doc, settings):
         definition.AddFilter(ScheduleFilter(fields[ids['opening_json_param']].FieldId,ScheduleFilterType.Contains,'task_id'))
         output.append(schedule)
     store.save_registry(doc,registry)
+    from lowlife.opening_tasks_remark_views import sync
+    doc.Regenerate()
+    feedback=api.recipient_feedback(doc,settings['opening_project'],registry=registry)
+    rows=[]
+    for inst in drafts:
+        data=api.metadata(inst)
+        row=dict(uid=inst.UniqueId,sizes='',displacement='',status='')
+        row.update(feedback.get(api.core.task_key(dict(source_model=data['source_model'],task_id=data['task_id'])),{}))
+        rows.append(row)
+    try:
+        sync(doc,settings['opening_project'],rows,registry)
+    except Exception as ex:
+        import traceback
+        forms.alert(tr(u'Виды созданы, но подписи замечаний не обновлены: {}',
+                       u'Views were created, but remark labels were not updated: {}').format(ex),expanded=traceback.format_exc())
     return output
 
 
@@ -182,7 +197,7 @@ def run(config_mode=False):
         forms.alert(tr(u'Создание контроля отменено: {}',u'Control setup rolled back: {}').format(ex))
 
 
-def highlight(uidoc,role,project,rows):
+def highlight(uidoc,role,project,rows,include_previews=True):
     """Open an already managed graphical view and select current-model elements."""
     if not rows:
         raise ValueError(tr(u'Выберите строки для подсветки.',u'Select rows to highlight.'))
@@ -202,7 +217,7 @@ def highlight(uidoc,role,project,rows):
                                 u'A selected row has no box or created opening in the current model. Refresh the list.'))
         elements[element.Id]=element
     managed=dict(registry.get('control_views' if role=='VIS' else 'kr_control_views',{}))
-    if role=='VIS':
+    if role=='VIS' and include_previews:
         for row in rows:
             preview=registry.get('box_previews',{}).get(row['uid'])
             if preview:
