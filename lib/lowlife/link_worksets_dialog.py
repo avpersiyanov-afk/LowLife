@@ -61,7 +61,9 @@ def show(rows):
 
     for row in rows:
         group = GroupBox()
-        group.Header = u'{} ({})'.format(row['name'], row['instances'])
+        model_label = TextBlock()
+        model_label.Text = u'{} ({})'.format(row['name'], row['instances'])
+        group.Header = model_label
         group.Margin = Thickness(0, 0, 0, 10)
         panel = StackPanel()
         panel.Margin = Thickness(8)
@@ -89,7 +91,9 @@ def show(rows):
                 actions.Children.Add(button)
         for workset in row['worksets']:
             check = CheckBox()
-            check.Content = workset['name']
+            workset_label = TextBlock()
+            workset_label.Text = workset['name']
+            check.Content = workset_label
             check.ToolTip = workset['name']
             check.IsChecked = workset['opened']
             check.IsEnabled = not bool(row['reason'])

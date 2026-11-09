@@ -253,7 +253,9 @@ def show(doc, templates, levels, settings, level_template, store):
         grid.RowDefinitions.Add(RowDefinition())
         name = level_views.safe_name(template)
         check = CheckBox()
-        check.Content = name
+        template_label = TextBlock()
+        template_label.Text = name
+        check.Content = template_label
         check.IsChecked = name in checked
         check.VerticalAlignment = VerticalAlignment.Top
         check.Margin = Thickness(0, 6, 8, 3)
