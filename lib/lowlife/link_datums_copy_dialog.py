@@ -20,7 +20,7 @@ def show(doc, levels, grids):
     states = []
     win = Window()
     win.Title = tr(u'Недостающие уровни и оси', u'Missing levels and grids')
-    win.Width, win.Height = 760, 700
+    win.Width, win.Height = 760, 760
     win.MinWidth, win.MinHeight = 580, 400
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     outer = DockPanel()
@@ -28,10 +28,12 @@ def show(doc, levels, grids):
     win.Content = outer
     note = TextBlock()
     note.Text = tr(
+        u'Для выбранных уровней создаётся 3D-вид, для осей — план. На видах остаются только выбранные элементы связи. '
         u'Откроется штатное Копирование/Мониторинг Revit. Выберите связь: «Копировать» и «Несколько» включатся автоматически. '
         u'Выделите отмеченные элементы рамкой, при необходимости используйте фильтр, затем нажмите «Готово» в строке параметров и на ленте. После завершения к новым '
         u'копиям со штатным мониторингом будут применены выбранные типы, рабочие наборы и закрепление. '
         u'Выбор в этом списке не автоматизирует щелчки по элементам на виде.',
+        u'A 3D view is created for selected levels and a plan for grids. Only the selected linked datums remain visible. '
         u'Native Revit Copy/Monitor will open. Select the link: Copy and Multiple will be enabled automatically. Select the checked elements with a rectangle, use the filter if needed, '
         u'then click Finish on the options bar and ribbon. Selected types, worksets and pinning will be applied to new '
         u'copies with native monitoring. Selection in this list does not automate view picks.')

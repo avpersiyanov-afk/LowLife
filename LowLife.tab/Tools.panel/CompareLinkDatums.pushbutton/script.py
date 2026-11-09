@@ -132,7 +132,18 @@ def main():
     choices = link_datums_copy_dialog.show(doc, levels, grids)
     if not choices:
         return
-    from lowlife import link_datums_native
+    from lowlife import link_datums_native, link_datums_views
+    batches = link_datums_views.prepare(doc, link, choices)
+    for view, selected in batches:
+        output.print_md(tr(u'Создан контрольный вид: **{}** (элементов: {}).',
+                           u'Control view created: **{}** (elements: {}).').format(
+                               _cell(view.Name), len(selected)))
+    output.print_md(tr(u'Сначала копируются уровни на 3D-виде, затем оси на плане. '
+                       u'После успешного завершения первого сеанса откроется следующий вид. '
+                       u'Отмена или отсутствие новых копий останавливают переход.',
+                       u'Levels are copied in 3D first, then grids in plan. '
+                       u'After a successful first session the next view opens. '
+                       u'Cancellation or no new copies stops the sequence.'))
 
     def native_report(source_link, configured, errors):
         output.print_md(tr(u'Штатный мониторинг проверен, настроено и закреплено: {}.',
@@ -154,7 +165,10 @@ def main():
             _cell(link_datums.link_label(link))))
     for kind, row, element_type, workset_id in choices:
         output.print_md(u'- {} [{}]'.format(_cell(row.link['name']), row.link['id_int']))
-    link_datums_native.start(revit.uidoc.Application, link, choices, float(tolerance), native_report)
+    first_view, first_choices = batches[0]
+    link_datums_views.activate(revit.uidoc, first_view, link, first_choices)
+    link_datums_native.start(revit.uidoc.Application, link, first_choices, float(tolerance),
+                            native_report, pending=batches[1:])
 
 
 try:
