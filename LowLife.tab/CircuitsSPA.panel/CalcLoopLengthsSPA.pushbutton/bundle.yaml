@@ -6,7 +6,7 @@ tooltip: |
   Кольцевой шлейф: если в настройках «Кольцевой шлейф» = «да», магистраль (без веток изоляторов — они не удваиваются) замыкается обратно на панель: добавляется участок от последнего устройства магистрали до ближайшего стояка на его этаже, а если стояк не найден — прямой участок до панели.
 
   Shift+клик — настройки этой кнопки.
-title_en: "Fire automation\nloop lengths"
+title_en: "Fire\nautomation loop lengths"
 tooltip_en: >-
   Calculates the length of every fire automation loop from device coordinates (along orthogonal legs,
   not the shortest distance), writes it to the circuit, tags the devices and gives each its previous

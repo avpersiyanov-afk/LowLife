@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Открыть или закрыть рабочие наборы загруженных связей из одного окна."""
-__title__ = u'Рабочие наборы связей'
+__title__ = u'Рабочие\nнаборы связей'
 
 from pyrevit import revit, forms, script
 from lowlife import link_worksets, link_worksets_dialog

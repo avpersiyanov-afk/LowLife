@@ -1,5 +1,5 @@
 tooltip: Загружает правки из .xlsx обратно в обычные, ключевые и ручные спецификации по автоматически добавленной привязке «Revit ID». Записывает параметры экземпляров и типов ([Type]), текст ручной шапки ([Cell]). Изменение типа затронет все его экземпляры. Конфликты, пустые ячейки, параметры только для чтения и ссылки пропускаются. Всё в одной транзакции, в конце — отчёт.
-title_en: "Import\nfrom Excel"
+title_en: "Import from\nExcel"
 tooltip_en: >-
   Loads edits from .xlsx back into the model. Finds elements by the «Revit ID» column and parameters
   by column headers (LookupParameter), and writes the changed values. Empty cells are skipped (they

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Instructions for Codex (ChatGPT) and other agents that read `AGENTS.md`.
+Instructions for Codex (ChatGPT), Kimi Code and other agents that read `AGENTS.md`.
 
 ## Project rules
 
@@ -25,7 +25,7 @@ parameter names). Tests: `python -m pytest tests` (see `tests/README.md`).
 
 ## Handoff between agents
 
-The user switches between Claude Code and Codex when one of them runs out of limits, and continues the
+The user switches between Claude Code, Codex and Kimi Code when one of them runs out of limits, and continues the
 same task in the other. The shared state lives in `HANDOFF.local.md` at the repo root (gitignored via
 `*.local.md`, never commit it).
 
@@ -36,7 +36,7 @@ same task in the other. The shared state lives in `HANDOFF.local.md` at the repo
   what is not. Uncommitted work stays in the working tree; don't commit just to hand off.
 
 ```markdown
-# Handoff — <date time>, from <Claude|Codex>
+# Handoff — <date time>, from <Claude|Codex|Kimi>
 ## Задача
 <what the user asked, in their words>
 ## Сделано

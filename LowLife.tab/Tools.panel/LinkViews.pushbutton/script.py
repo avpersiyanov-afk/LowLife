@@ -4,7 +4,7 @@ from pyrevit import forms, revit, script
 from lowlife import link_views, link_views_dialog, select_list
 from lowlife.i18n import tr
 
-__title__ = u"Виды\nсвязей"
+__title__ = u"Выбрать виды\nдля связанных моделей"
 __doc__ = u"Выбрать основные виды одного типа и настроить виды связей отдельно для каждого."
 
 

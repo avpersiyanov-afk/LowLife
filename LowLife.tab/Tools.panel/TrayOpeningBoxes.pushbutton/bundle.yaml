@@ -4,7 +4,7 @@ tooltip: |
   Если на пересечении бокс уже есть, новый не создаётся (стоящий не меняется) — кнопка предупреждает об этом.
 
   Shift+клик — настройки: слова в именах семейства/типа и рабочего набора, имена параметров размеров, запас, модель, где искать пересечения (эта / связь / все), что пересекать, точка вставки семейства.
-title_en: "Opening boxes\nfor trays"
+title_en: "Opening\nboxes for trays"
 tooltip_en: >-
   Places a box at every spot where the selected cable tray passes through a wall or floor of the model
   chosen in the settings (this model, one of the links or all at once). The family is a loaded one

@@ -2,7 +2,7 @@ tooltip: |
   Сравнивает уровни и оси модели со связью КФП. После отчёта предлагает выбрать недостающие элементы, тип семейства и рабочий набор отдельно для уровней и осей и открыть штатное Копирование/Мониторинг. Создаются 3D-вид выбранных уровней и план выбранных осей. Связь и элементы нужно выбрать на подготовленном виде Revit. После завершения новые копии со штатным мониторингом настраиваются и закрепляются.
 
   Shift+клик — настройки (слово в имени связи, допуск в мм).
-title_en: "Grids and levels\nvs coordination"
+title_en: "Grids and\nlevels vs coordination"
 tooltip_en: >-
   Compares model levels and grids with the coordination link. After the report, select missing
   elements and a host family type and workset separately for levels and grids, then open native

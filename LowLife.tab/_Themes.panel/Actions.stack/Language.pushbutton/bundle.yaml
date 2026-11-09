@@ -1,5 +1,5 @@
-title: Язык / Language
-title_en: "Language / Язык"
+title: "Язык /\nLanguage"
+title_en: "Language /\nЯзык"
 tooltip: >-
   Язык интерфейса LowLife: русский или английский. Подписи и подсказки кнопок на ленте
   переключаются сразу, без перезагрузки pyRevit; выбор запоминается.
