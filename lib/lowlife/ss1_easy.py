@@ -963,7 +963,9 @@ def ask_levels_and_offset(doc, default_offset_mm):
         except Exception:
             label = level.Name
         cb = CheckBox()
-        cb.Content = label
+        level_label = TextBlock()
+        level_label.Text = label
+        cb.Content = level_label
         cb.IsChecked = True
         cb.Tag = level
         cb.Margin = Thickness(2, 3, 2, 3)

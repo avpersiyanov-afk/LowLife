@@ -18,7 +18,7 @@ clr.AddReference('PresentationCore')
 clr.AddReference('WindowsBase')
 from System import AppDomain, Guid
 from System.Windows import Thickness
-from System.Windows.Controls import CheckBox
+from System.Windows.Controls import CheckBox, TextBlock
 from System.Windows.Markup import XamlReader
 from Autodesk.Revit.UI import (DockablePane, DockablePaneId, DockablePaneState,
                               DockPosition, IDockablePaneProvider,
@@ -165,7 +165,9 @@ class Panel(IDockablePaneProvider):
                     item['name'] for item in group['items']), self.search_box.Text):
                 continue
             check = CheckBox()
-            check.Content = u'{0} ({1})'.format(group['name'], len(group['items']))
+            group_label = TextBlock()
+            group_label.Text = u'{0} ({1})'.format(group['name'], len(group['items']))
+            check.Content = group_label
             check.ToolTip = u'\n'.join(item['name'] for item in group['items'])
             check.Margin = Thickness(0, 5, 0, 5)
             check.IsThreeState = True
