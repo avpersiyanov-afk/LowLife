@@ -100,13 +100,14 @@ def snapshot(registry,project,role,model,title,rows=None,revit_user='',windows_u
             return r.get('project')==project and r.get('recipient','KR')==role
         value['receipts']={key:copy.deepcopy(r) for key,r in registry.get('receipts' if role=='KR' else 'ar_receipts',{}).items() if own(r)}
         value['decisions']=[copy.deepcopy(r) for r in registry.get('decisions' if role=='KR' else 'ar_decisions',[]) if own(r)]
+        value['remark_groups']={key:copy.deepcopy(group) for key,group in registry.get('remark_groups',{}).items() if own(group)}
     # UI diagnostics are observations, never formal releases or acceptance.
     for row in rows or []:
         if role=='VIS' and row.get('task_id') not in value['tasks']:
             continue
         value['working'].append({key:copy.deepcopy(row[key]) for key in (
             'key','number','object_part','task_id','status','result','recipient','discipline','level','kind',
-            'revision','date','sizes','previous_sizes','displacement','comment','next_action','attention') if key in row})
+            'remark_number','remark_group_id','remark_state','revision','date','sizes','previous_sizes','displacement','comment','next_action','attention') if key in row})
     return value
 
 

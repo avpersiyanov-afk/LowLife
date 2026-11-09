@@ -26,6 +26,7 @@ from lowlife import opening_tasks_settings as cfg
 from lowlife import opening_tasks_manifest as manifest
 from lowlife import text_search
 from lowlife import opening_tasks_browser as browser
+from lowlife import opening_tasks_remarks as remarks
 from lowlife import opening_tasks_parts as parts
 from lowlife import opening_tasks_journal as journal
 
@@ -79,6 +80,15 @@ class Handler(IExternalEventHandler):
             if action=='journal_setup':
                 from lowlife import opening_tasks_journal as journal
                 journal.setup(w.document,w.role,settings['opening_project'])
+                return
+            if action=='remark_show':
+                ids=set(row.get('remark_group_id','') for row in rows)
+                if len(ids)!=1 or not next(iter(ids)):
+                    raise ValueError(tr(u'Выберите строку одного группового замечания.',u'Select a row from one group remark.'))
+                gid=next(iter(ids))
+                members=[row for row in w.rows if row.get('remark_group_id')==gid]
+                from lowlife.opening_tasks_views import highlight
+                highlight(uidoc,w.role,settings['opening_project'],members,include_previews=False)
                 return
             if action=='highlight':
                 from lowlife.opening_tasks_views import highlight
@@ -208,6 +218,7 @@ class TaskWindow(forms.WPFWindow):
                 <ComboBox x:Name="kind_filter" Width="150" Margin="0,0,8,6"/>
                 <ComboBox x:Name="result_filter" Width="220" Margin="0,0,8,6"/>
                 <ComboBox x:Name="recipient_filter" Width="145" Margin="0,0,8,6"/>
+                <ComboBox x:Name="remark_filter" Width="180" Margin="0,0,8,6"/>
                 <ComboBox x:Name="issue_filter" Width="130" Margin="0,0,8,6"/>
                 <CheckBox x:Name="attention" VerticalAlignment="Center" Margin="0,0,8,6"/>
                 <Button x:Name="reset" Padding="10,4"/>
@@ -239,7 +250,8 @@ class TaskWindow(forms.WPFWindow):
         self.heading.Text=self.Title+u' — '+purpose+u' | '+doc.Title
         self.heading.ToolTip=tr(u'Обмен: сохраните/синхронизируйте свою модель, обновите связь смежника в Revit, затем нажмите «Обновить обмен». Данные показаны по последней загруженной версии связи.',u'Exchange: save/synchronize your model, reload the other discipline link in Revit, then click Refresh exchange. Results reflect the last loaded link version.')
         self.exchange_hint.Text=tr(u'Обмен: сохранить модель → обновить связь смежника в Revit → «Обновить обмен». Ответы показаны по загруженной версии связи.',u'Exchange: save model → reload recipient link in Revit → Refresh exchange. Responses reflect the loaded link version.')
-        self.filter_controls=[('object_part',self.part_filter,tr(u'Все номера корпусов',u'All building numbers')),
+        self.filter_controls=[('remark_number',self.remark_filter,tr(u'Все замечания',u'All remarks')),
+            ('object_part',self.part_filter,tr(u'Все номера корпусов',u'All building numbers')),
             ('status',self.state,tr(u'Все статусы',u'All statuses')),
             ('discipline',self.discipline_filter,tr(u'Все дисциплины',u'All disciplines')),
             ('level',self.level_filter,tr(u'Все уровни',u'All levels')),
@@ -255,6 +267,7 @@ class TaskWindow(forms.WPFWindow):
             ('Level',tr(u'Уровень',u'Level'),120),('Kind',tr(u'Конструкция',u'Host'),100),
             ('Issue',tr(u'Выпуск',u'Issue'),90),('Revision',tr(u'Ревизия',u'Revision'),75),
             ('Result',tr(u'Ответ получателя',u'Recipient response'),200),
+            ('RemarkNumber',tr(u'Группа замечания',u'Remark group'),140),
             ('ReplyRevision',tr(u'Ревизия ответа',u'Reply revision'),100),
             ('Comment',tr(u'Замечание',u'Comment'),220),('NextAction',tr(u'Что делать',u'Next action'),300),
             ('Date',tr(u'Дата выдачи',u'Issue date'),155),('Sizes',tr(u'Размеры, мм',u'Sizes, mm'),150)]
@@ -268,6 +281,7 @@ class TaskWindow(forms.WPFWindow):
         self.event=ExternalEvent.Create(self.handler)
         labels=dict(manifest.actions(role))
         labels.update({
+            'remark_show':tr(u'Показать группу',u'Show remark group'),
             'highlight':tr(u'Подсветить на виде',u'Highlight in view'),
             'refresh':tr(u'Обновить обмен',u'Refresh exchange'),
             'settings':tr(u'Настройки',u'Settings'),
@@ -370,7 +384,12 @@ class TaskWindow(forms.WPFWindow):
                 if tid not in found and r['project']==settings.get('opening_project'):
                     self.rows.append(self.row(tid,r['owner_uid'],r,settings,True))
         elif settings.get('opening_project'):
-            for r,link in api.incoming(self.document,settings['opening_project'],self.role):
+            remark_map=remarks.latest_by_task(registry,settings['opening_project'],self.role)
+            incoming=api.incoming(self.document,settings['opening_project'],self.role)
+            known={api.core.task_key(r):r for r,link in incoming}
+            groups={g['id']:g for g in remark_map.values()}
+            group_states={gid:remarks.group_state(g,api.core.receipts(registry,self.role),known) for gid,g in groups.items()}
+            for r,link in incoming:
                 row=self.row(r['task_id'],r['owner_uid'],r,settings)
                 state=flow.receipt_state(r,registry,self.document,self.role)
                 row['status']=flow.state_label(state)
@@ -378,7 +397,11 @@ class TaskWindow(forms.WPFWindow):
                 row['model']=link.Name
                 row['attention']=state not in ('accepted','withdrawn')
                 receipt=api.core.receipts(registry,self.role).get(api.core.task_key(r))
-                row['comment']=receipt.get('comment','') if receipt else ''
+                group=remark_map.get(api.core.task_key(r))
+                row.update(remark_group_id=group['id'] if group else '',remark_number=group['number'] if group else '',
+                           remark_state=remarks.state(r,receipt,group) if group else '',
+                           remark_group_state=group_states[group['id']] if group else '')
+                row['comment']=group['comment'] if group else receipt.get('comment','') if receipt else ''
                 if receipt:
                     prior=next((t for t in receipt.get('issued_tasks',[]) if api.core.task_key(t)==api.core.task_key(r)),None)
                     if prior:
@@ -396,9 +419,21 @@ class TaskWindow(forms.WPFWindow):
                         row['next_action']=tr(u'ВИС: согласовать отзыв задания',u'VIS: agree task withdrawal')
                     elif row['status']==tr(u'Изменено после выдачи'):
                         row['next_action']=tr(u'ВИС: проверить изменения и перевыдать задание',u'VIS: review changes and reissue the task')
+        if self.role=='VIS':
+            from lowlife.opening_tasks_remark_views import sync
+            try:
+                sync(self.document,self.project_code,self.rows,registry)
+                self.remark_annotation_error=''
+            except Exception as ex:
+                error=unicode(ex)
+                if error!=getattr(self,'remark_annotation_error',''):
+                    forms.alert(tr(u'Таблица обновлена, но подписи замечаний не обновлены: {}',
+                                   u'The table was refreshed, but remark labels were not updated: {}').format(error),
+                                expanded=traceback.format_exc())
+                self.remark_annotation_error=error
         for row in self.rows:
             row['search_text']=u' '.join(unicode(row.get(key,'')) for key in
-                ('object_part','number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
+                ('remark_number','object_part','number','task_id','status','result','comment','next_action','recipient','discipline','model','level','kind','issue','date','sizes'))
         self.updating=True
         for key,control,label in self.filter_controls:
             previous=control.SelectedItem
@@ -468,7 +503,7 @@ class TaskWindow(forms.WPFWindow):
                     displacement=u' / '.join(u'{:+.1f}'.format(float(a-b)) for a,b in zip(current,r['geometry']['center_mm']))
                 except Exception:
                     pass
-        return dict(task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
+        return dict(remark_group_id='',remark_number='',remark_state='',remark_group_state='',task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
                     object_part=(r.get('object_part','') if r else data.get('object_part','') if data else ''),
                     result='',next_action='',reply_revision='',number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
                     level=resolved_level['name'] if resolved_level else level.Name if level else u'—',
@@ -519,7 +554,7 @@ class TaskWindow(forms.WPFWindow):
             item=table.NewRow()
             item['Key']=row['key']
             for column,key in [('ObjectPart','object_part'),('Number','number'),('Status','status'),('Recipient','recipient'),('Discipline','discipline'),('Model','model'),
-                               ('Result','result'),('ReplyRevision','reply_revision'),('Comment','comment'),('NextAction','next_action'),
+                               ('Result','result'),('RemarkNumber','remark_number'),('ReplyRevision','reply_revision'),('Comment','comment'),('NextAction','next_action'),
                                ('Level','level'),('Kind','kind'),('Issue','issue'),('Revision','revision'),('Date','date'),('Sizes','sizes')]:
                 item[column]=row[key]
             table.Rows.Add(item)
@@ -537,6 +572,9 @@ class TaskWindow(forms.WPFWindow):
             self.details.Text=tr(u'Выбрано: {} | {} | {}\nВыданные / ранее принятые размеры: {} мм → Текущие: {} мм\nСмещение XYZ от выдачи, мм: {}\nGUID: {} | Элемент: {}\nЗамечание получателя: {}',
                                 u'Selected: {} | {} | {}\nIssued / previously accepted sizes: {} mm → Current: {} mm\nXYZ movement since issue, mm: {}\nGUID: {} | Element: {}\nRecipient comment: {}').format(
                 len(rows),row['number'],row['status'],row['previous_sizes'],row['sizes'],row['displacement'],row['task_id'],row['uid'],row.get('comment','') or u'—')
+            if row.get('remark_number'):
+                self.details.Text+=tr(u'\nГруппа: {} · {}',u'\nGroup: {} · {}').format(row['remark_number'],
+                    tr(u'Закрыта',u'Closed') if row.get('remark_group_state')=='closed' else tr(u'На рассмотрении',u'Open'))
 
     def on_closed(self,sender,event):
         self.closed=True

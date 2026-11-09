@@ -446,9 +446,26 @@ def accept(doc, records, settings):
     return opening
 
 
-def reject(doc, records, settings, comment):
+def reject(doc, records, settings, comment, grouped=False):
     core.check_recipient(records,settings.get('opening_recipient','KR'),settings['opening_project'],store.model_id(doc))
     registry = store.registry(doc)
+    if grouped:
+        from lowlife.opening_tasks_remarks import create
+        registry,group=create(registry,records,settings['opening_project'],settings.get('opening_recipient','KR'),
+                              store.model_id(doc),comment,doc.Application.Username,now(),windows_user())
+        updated=set()
+        for record in records:
+            receipt=core.receipts(registry,settings.get('opening_recipient','KR'))[core.task_key(record)]
+            uid=receipt.get('opening_uid')
+            if not uid or uid in updated:continue
+            opening=doc.GetElement(uid)
+            if opening is not None:
+                store.write(opening,receipt)
+                name=settings.get('opening_json_param')
+                if name and opening.LookupParameter(name) is not None:store.set_parameter(opening,name,receipt)
+            updated.add(uid)
+        store.save_registry(doc,registry)
+        return group
     receipts=core.receipts(registry,settings.get('opening_recipient','KR'))
     for record in records:
         key = core.task_key(record)
@@ -585,27 +602,54 @@ def recipient_feedback(doc, project, registry=None):
             model=store.model_id(linked)
             if model in needed and model not in models:
                 models[model]=(linked,store.registry(linked))
+    from lowlife import opening_tasks_remarks as remarks
+    group_maps={}
+    for model,(linked,remote) in models.items():
+        for recipient in ('KR','AR'):
+            group_maps[(model,recipient)]=remarks.latest_by_task(remote,project,recipient)
+    known={core.task_key(t):t for t in tasks}
+    checked={}
+    group_states={}
+    def inspect(model,linked,reply):
+        if not reply or not reply.get('opening_uid'):return None,False
+        identity=(model,reply['opening_uid'],core.dumps(reply.get('geometry',{})))
+        if identity not in checked:
+            opening=linked.GetElement(reply['opening_uid'])
+            checked[identity]=(opening,bool(opening is not None and opening_matches(opening,reply)))
+        return checked[identity]
     result={}
     for task in tasks:
         target=models.get(task['geometry']['host_model'])
         receipt=None
         opening=None
+        matches=False
         if target:
             linked,registry=target
             receipt=core.receipts(registry,task.get('recipient','KR')).get(core.task_key(task))
             if receipt and receipt.get('project')!=project:
                 receipt=None
-            if receipt and receipt.get('opening_uid'):
-                opening=linked.GetElement(receipt['opening_uid'])
-        state=feedback.evaluate(task,receipt,bool(target),opening is not None,
-                                bool(opening is not None and receipt and opening_matches(opening,receipt)))
+            opening,matches=inspect(task['geometry']['host_model'],linked,receipt)
+        state=feedback.evaluate(task,receipt,bool(target),opening is not None,matches)
         label,action=feedback.describe(state)
         confirmation=task.get('confirmation',{})
         if state=='accepted' and confirmation.get('revision')==task['revision'] and confirmation.get('opening_id')==receipt.get('opening_id'):
             label=tr(u'Результат подтверждён ВИС',u'Result confirmed by VIS')
             action=tr(u'Действий не требуется',u'No action required')
-        result[core.task_key(task)]=dict(result=label,next_action=action,
-            comment=receipt.get('comment','') if receipt else '',
+        group=group_maps.get((task['geometry']['host_model'],task.get('recipient','KR')),{}).get(core.task_key(task))
+        remark_state=remarks.state(task,receipt,group) if group else ''
+        if group:
+            group_key=(task['geometry']['host_model'],group['id'])
+            if group_key not in group_states:
+                group_states[group_key]=remarks.group_state(group,core.receipts(target[1],task.get('recipient','KR')),known,
+                    verified=lambda reply:inspect(task['geometry']['host_model'],target[0],reply)[1])
+            if state in ('missing','modified'):remark_state='correction'
+        if remark_state=='review':
+            label=tr(u'Исправлено, ожидает проверки',u'Corrected, awaiting review')
+        result[core.task_key(task)]=dict(feedback_available=bool(target),
+            remark_group_id=group['id'] if group else '',remark_number=group['number'] if group else '',
+            remark_state=remark_state,remark_group_state=group_states[group_key] if group else '',
+            result=label,next_action=action,
+            comment=group['comment'] if group else receipt.get('comment','') if receipt else '',
             reply_revision=unicode(receipt.get('revisions',{}).get(core.task_key(task),'')) if receipt else '',
             attention=state not in ('accepted','withdrawn'))
     return result

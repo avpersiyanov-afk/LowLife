@@ -3128,3 +3128,20 @@ with insulation. Calculation is constant-size vector algebra, without boolean
 Revit operations. Legacy tray calls preserve their old slope checks. VIS supports
 rolled rectangular sections; slanted walls are rejected before issuance because
 the current native-opening creation path cannot cut them.
+
+
+### opening_tasks_remarks.py / opening_tasks_remark_views.py
+
+Pure grouped-review decisions: `create` copies the registry and assigns one
+receiver/project-scoped number and GUID across selected task keys/revisions.
+Preserves existing merged-opening receipts and requires selecting all members.
+`latest_by_task`, `state` and `group_state` retain history and distinguish correction,
+reissued review, acceptance and withdrawal. `recipient_feedback` validates group
+opening geometry with a per-refresh cache.
+
+`sync` reconciles labelled leader notes and overrides on tool-owned VIS control
+views. Uses `tag_layout.find_clusters` and `layout`; stores only owned note UIDs,
+override references, members and a fingerprint in the model registry. Missing
+receiver links preserve affected prior labels. Unchanged fingerprints skip model
+edits. Unlocked managed isometric 3D views are locked for TextNotes; annotation
+errors are reported without preventing the table from refreshing.

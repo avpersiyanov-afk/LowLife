@@ -232,11 +232,11 @@ def kr(settings, action=None, selected=None):
             revit.uidoc.Selection.SetElementIds(List[ElementId]([host.Id]))
             revit.uidoc.ShowElements(host.Id)
         return
-    if action == 'reject':
+    if action in ('reject','reject_group'):
         comment = forms.ask_for_string(prompt=tr(u'Причина / замечание',u'Reason / comment'))
         if comment:
             with revit.Transaction(tr(u'Решение получателя {}',u'Recipient decision: {}').format(settings.get('opening_recipient','KR'))):
-                api.reject(doc,selected,settings,comment)
+                api.reject(doc,selected,settings,comment,grouped=True)
         return
     if action == 'remove':
         if forms.alert(tr(u'Удалить ранее созданные отверстия только для отозванных заданий?',

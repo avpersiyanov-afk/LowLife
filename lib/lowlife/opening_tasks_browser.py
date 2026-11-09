@@ -2,7 +2,7 @@
 """Cached browser filtering; no model access and no mutation of issue history."""
 from lowlife import text_search
 
-FILTERS = ('status','discipline','level','kind','issue','recipient','result','object_part')
+FILTERS = ('status','discipline','level','kind','issue','recipient','result','object_part','remark_number')
 
 
 def select_rows(rows, filters=None, query='', attention=False):

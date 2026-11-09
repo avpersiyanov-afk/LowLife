@@ -234,3 +234,17 @@ a conservative rectangular envelope. Insulation precedes EIR and ZNP clearances.
 Boxes and native openings remain rectangular and aligned to the host. The legacy
 tray button retains its previous slope restrictions; VIS no longer shows that setting.
 Slanted wall cutting remains unsupported. Re-place and reissue changed drafts.
+
+
+Group remarks: KR/AR select tasks across disciplines and enter one comment via
+Group remark. One receiver-scoped sequence number and permanent group GUID bind
+the member task revisions. Existing merged openings require all members to be
+selected; assigning a remark preserves their opening identity. VIS refresh shows
+the group column/filter and Show remark group. Tool-owned control views receive
+clustered labels/leaders and orange overrides via the existing tag_layout helpers.
+Reissue changes the label to Corrected, awaiting review; acceptance of the current
+revision clears the member label. The group closes after all members are accepted
+or withdrawals processed in the loaded models. Missing links preserve prior labels.
+Annotation in managed 3D views locks their orientation; user views/notes are untouched.
+The full group is retained in decision JSON and the number prefixes journal comments;
+no Apps Script update is required.

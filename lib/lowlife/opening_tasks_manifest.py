@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=21
+VERSION=22
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('highlight','refresh','settings','journal_setup','journal_open','parts_refresh')
@@ -15,6 +15,7 @@ ACTIONS={
         ('confirm_ar',N_(u'Подтвердить результат АР')),
         ('withdraw',N_(u'Отозвать')),
         ('confirm',N_(u'Подтвердить результат')),
+        ('remark_show',N_(u'Показать группу')),
         ('focus',N_(u'Бокс в 3D')),
         ('control',N_(u'Виды и реестр')),
     ),
@@ -22,14 +23,14 @@ ACTIONS={
         ('ar_show',N_(u'Показать конструкцию АР')),
         ('ar_accept',N_(u'Принять задания АР')),
         ('ar_merge',N_(u'Объединить АР')),
-        ('ar_reject',N_(u'Замечание АР')),
+        ('ar_reject',N_(u'Замечание группе АР')),
         ('ar_remove',N_(u'Отработать отзыв АР')),
     ),
     'KR': (
         ('show',N_(u'Показать конструкцию')),
         ('accept',N_(u'Принять задания КР')),
         ('merge',N_(u'Объединить')),
-        ('reject',N_(u'Замечание')),
+        ('reject',N_(u'Замечание группе')),
         ('remove',N_(u'Отработать отзыв')),
         ('structures',N_(u'Вид конструкций')),
         ('kr_plans',N_(u'Планы плит')),
@@ -42,7 +43,7 @@ ACTIONS={
 ACTION_GROUPS={
     'VIS': ((N_(u'Задания КР'),('place','issue','confirm')),
             (N_(u'Задания АР'),('place_ar','issue_ar','confirm_ar')),
-            (N_(u'Контроль'),('highlight','focus','control','withdraw'))),
+            (N_(u'Контроль'),('remark_show','highlight','focus','control','withdraw'))),
     'KR': ((N_(u'Принятие'),('show','accept','merge','reject','remove')),
            (N_(u'Виды'),('highlight','structures','kr_plans','kr_sections'))),
     'AR': ((N_(u'Принятие'),('highlight','ar_show','ar_accept','ar_merge','ar_reject','ar_remove')),),
@@ -74,6 +75,12 @@ def validate_action(role,action):
 
 def action_hint(action):
     return {
+        'remark_show':tr(u'Выберите строку с групповым замечанием: показать все его задания в вашей модели на созданном виде.',
+                         u'Select a group remark row to show all its tasks in this model on an existing view.'),
+        'reject':tr(u'Одно замечание с общим номером для всех выбранных заданий, в том числе разных разделов.',
+                          u'One numbered remark for all selected tasks, including different disciplines.'),
+        'ar_reject':tr(u'Назначить общее замечание АР выбранной группе заданий.',
+                             u'Assign one AR remark to the selected task group.'),
         'highlight':tr(u'Открыть ранее созданный вид контроля и выделить выбранные боксы или проёмы. Если подходящих видов несколько, предложить выбор.',
                        u'Open an existing control view and select the chosen boxes or openings. Choose a view when several are suitable.'),
         'refresh':tr(u'Перечитать задания и ответы из уже загруженных связей. Перед этим обновите связи штатной командой Revit.',
