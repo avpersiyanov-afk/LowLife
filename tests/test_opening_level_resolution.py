@@ -68,7 +68,7 @@ def resolver(monkeypatch,doc,local_levels):
     monkeypatch.setitem(sys.modules,'lowlife.tray_boxes',boxes)
     monkeypatch.setattr(lowlife,'tray_boxes',boxes,raising=False)
     def probe_factory(doc,sources,categories,down_range_mm):
-        assert len(sources)==1 and categories==['floors','foundations'] and down_range_mm is None
+        assert len(sources)==1 and categories==['floors','foundations','roofs'] and down_range_mm is None
         source_doc,transform=next(iter(sources.values()))
         def hits(x,y,z,support_categories=None):
             result=[]
@@ -84,7 +84,8 @@ def resolver(monkeypatch,doc,local_levels):
     tree=ast.parse(path.read_text())
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Resolver')
     ns=dict(core=core,XYZ=XYZ,Level=Level,FilteredElementCollector=Collector,
-            BuiltInCategory=NS(OST_Floors='floors',OST_StructuralFoundation='foundations'),
+            get_element_level=lambda source_doc,element:source_doc.GetElement(element.LevelId),
+            BuiltInCategory=NS(OST_Floors='floors',OST_StructuralFoundation='foundations',OST_Roofs='roofs'),
             Line=NS(CreateBound=lambda a,b:(a,b)),SolidCurveIntersectionOptions=lambda:None,
             tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[cls],type_ignores=[]),str(path),'exec'),ns)

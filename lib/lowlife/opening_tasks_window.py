@@ -507,7 +507,7 @@ class TaskWindow(forms.WPFWindow):
                     object_part=(r.get('object_part','') if r else data.get('object_part','') if data else ''),
                     result='',next_action='',reply_revision='',number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
                     level=resolved_level['name'] if resolved_level else level.Name if level else u'—',
-                    kind=tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
+                    kind=tr(u'Кровля',u'Roof') if (geometry or data or {}).get('host_category')=='roof' else tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
                     issue=unicode(r.get('issue_number',r.get('issue_id',''))) if r else '',
                     revision=r['revision'] if r else 0,date=r['issued_at'] if r else '',sizes=dimensions,
                     previous_sizes=self.sizes(r['geometry']['size_mm']) if r else u'—',comment='',

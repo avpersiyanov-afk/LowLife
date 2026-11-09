@@ -9,8 +9,8 @@ import copy
 from lowlife.i18n import tr
 import math
 from datetime import datetime
-from Autodesk.Revit.DB import (CurveArray, ElementTransformUtils, FamilyInstance, CategoryType, IndependentTag, Dimension, FilteredElementCollector,
-                               Floor, Line, LocationPoint, Opening, Options, RevitLinkInstance, StorageType,
+from Autodesk.Revit.DB import (BuiltInCategory, CurveArray, ElementTransformUtils, FamilyInstance, CategoryType, IndependentTag, Dimension, FilteredElementCollector,
+                               Floor, RoofBase, Line, LocationPoint, Opening, Options, RevitLinkInstance, StorageType,
                                SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ)
 from lowlife.opening_tasks_journal import windows_user
 from lowlife import opening_tasks_core as core
@@ -52,6 +52,7 @@ def host_geometry(inst, data, source):
     result = dict(kind=data['kind'], center_mm=[boxes.mm(v) for v in boxes._t(local)],
                   x_dir=list(boxes._t(xaxis)), size_mm=[boxes.mm(v) for v in (width, depth, height)],
                   host_uid=data['host_uid'], host_model=data['host_model'])
+    if data.get('host_category')=='roof':result['host_category']='roof'
     core.validate_geometry(result)
     return result
 
@@ -94,7 +95,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
             managed[key] = (inst, data)
     options = Options()
     options.DetailLevel = ViewDetailLevel.Fine
-    categories = boxes._host_categories(settings)
+    categories = boxes._host_categories(settings,include_roofs=True)
     src = boxes._Source(source.GetLinkDocument(), source)
     entries, errors = [], []
     issued_ids = set(store.registry(doc)['tasks'])
@@ -118,6 +119,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                     amount = (geometry.recommended_increase_mm(boxes.mm(max(geometry.opening_sides(box))))
                               if settings['opening_increase'] == 'auto' else float(settings['opening_increase']))
                     box = geometry.enlarge_opening(box, boxes.ft(amount))
+                box=boxes.fit_vertical_host(box,crossing,src,options,boxes._t(route.Location.Curve.Direction),
+                                            boxes.ft(settings.get('depth_extra_mm') or 0))
                 key = (route.UniqueId, crossing.host.UniqueId, source.UniqueId,settings.get('opening_recipient','KR'))
                 previous = managed.get(key)
                 level,level_info=placer.level_resolver.resolve(crossing)
@@ -156,6 +159,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 actual = [read_size(inst,name) for name in data['size_params']]
                 if any(abs(a-b)>1e-6 for a,b in zip(actual,(box.width,box.depth,box.height))):
                     raise ValueError(tr(u'Семейство не применило запрошенные размеры',u'Family did not apply the requested dimensions'))
+                if boxes._id_int(crossing.host.Category.Id)==int(BuiltInCategory.OST_Roofs):
+                    data['host_category']='roof'
                 # Working updates never overwrite a released snapshot in the parameter.
                 if data['task_id'] not in issued_ids:
                     store.set_parameter(inst, settings['opening_json_param'],
@@ -282,8 +287,8 @@ def create_native_opening(doc, g):
             raise ValueError(tr(u'Отверстие не пересекает стену по высоте',u'Opening does not overlap the wall vertically'))
         return doc.Create.NewOpening(host,center.Subtract(x.Multiply(w/2)).Subtract(XYZ(0,0,h/2)),
                                      center.Add(x.Multiply(w/2)).Add(XYZ(0,0,h/2)))
-    if not isinstance(host,Floor):
-        raise ValueError(tr(u'Нужно перекрытие',u'A floor is required'))
+    if not isinstance(host,(Floor,RoofBase)):
+        raise ValueError(tr(u'Нужно перекрытие или кровля',u'A floor or roof is required'))
     bb = host.get_BoundingBox(None)
     if bb is None or center.Z+h/2 < bb.Min.Z or center.Z-h/2 > bb.Max.Z:
         raise ValueError(tr(u'Перекрытие переместилось относительно выданного отверстия',u'Floor moved away from issued opening'))
@@ -293,7 +298,8 @@ def create_native_opening(doc, g):
     profile = CurveArray()
     for i in range(4):
         profile.Append(Line.CreateBound(points[i],points[(i+1)%4]))
-    return doc.Create.NewOpening(host,profile,True)
+    # False means vertical, True means perpendicular to the host face.
+    return doc.Create.NewOpening(host,profile,False)
 
 
 def protected_annotations(doc, opening):
