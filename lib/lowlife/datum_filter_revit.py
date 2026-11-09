@@ -28,10 +28,8 @@ def snapshot(doc, view, settings):
     return groups, unmatched, mask, is_3d
 
 
-def apply_visibility(doc, view, items, show):
-    from Autodesk.Revit.DB import ElementId, Transaction, TransactionStatus
-    from System.Collections.Generic import List
-    # Re-read live state: undo, manual hide and deletion may follow the snapshot.
+def _live_items(doc, view, items):
+    """Актуальное состояние элементов: undo, ручное скрытие, удаление."""
     live = []
     skipped = 0
     for item in items:
@@ -40,21 +38,57 @@ def apply_visibility(doc, view, items, show):
             skipped += 1
             continue
         live.append(dict(id=element.Id, hidden=element.IsHidden(view), hideable=True))
+    return live, skipped
+
+
+def _set_hidden(doc, view, hide_ids, show_ids):
+    """Одна транзакция скрытия/показа; пустые списки не пишутся."""
+    from Autodesk.Revit.DB import ElementId, Transaction, TransactionStatus
+    from System.Collections.Generic import List
+
+    if not hide_ids and not show_ids:
+        return
+    tx = Transaction(doc, tr(u'Фильтр осей и уровней'))
+    tx.Start()
+    try:
+        if hide_ids:
+            view.HideElements(List[ElementId](hide_ids))
+        if show_ids:
+            view.UnhideElements(List[ElementId](show_ids))
+        if tx.Commit() != TransactionStatus.Committed:
+            raise RuntimeError(tr(u'Изменения видимости не сохранены.'))
+    except Exception:
+        if tx.GetStatus() == TransactionStatus.Started:
+            tx.RollBack()
+        raise
+    finally:
+        tx.Dispose()
+
+
+def apply_visibility(doc, view, items, show):
+    # Re-read live state: undo, manual hide and deletion may follow the snapshot.
+    live, skipped = _live_items(doc, view, items)
     ids = core.visibility_changes(live, show)
     if ids:
-        tx = Transaction(doc, tr(u'Фильтр осей и уровней'))
-        tx.Start()
-        try:
-            if show:
-                view.UnhideElements(List[ElementId](ids))
-            else:
-                view.HideElements(List[ElementId](ids))
-            if tx.Commit() != TransactionStatus.Committed:
-                raise RuntimeError(tr(u'Изменения видимости не сохранены.'))
-        except Exception:
-            if tx.GetStatus() == TransactionStatus.Started:
-                tx.RollBack()
-            raise
-        finally:
-            tx.Dispose()
+        if show:
+            _set_hidden(doc, view, [], ids)
+        else:
+            _set_hidden(doc, view, ids, [])
     return len(ids), skipped
+
+
+def apply_visibility_map(doc, view, changes):
+    """Применить сохранённую группу: [(items, show), ...] за одну транзакцию."""
+    hide_ids = []
+    show_ids = []
+    skipped = 0
+    for items, show in changes:
+        live, missed = _live_items(doc, view, items)
+        skipped += missed
+        ids = core.visibility_changes(live, show)
+        if show:
+            show_ids.extend(ids)
+        else:
+            hide_ids.extend(ids)
+    _set_hidden(doc, view, hide_ids, show_ids)
+    return len(hide_ids) + len(show_ids), skipped
