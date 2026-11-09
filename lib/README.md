@@ -3209,3 +3209,13 @@ ExternalEvent с проверкой документа и вида; Idling об�
 Сбор осей и уровней использует существующие `link_datums.collect_grids` /
 `collect_levels`, сортировка — `link_datums_core.natural_key`; настройки,
 поиск и перевод — `settings_core`, `text_search` и `xaml_i18n` / `i18n`.
+
+
+`tray_boxes._host_categories(settings, include_roofs=True)` is used by VIS while
+legacy tray defaults stay unchanged. `_Source.horizontal_host` caches the flat-slab
+fast path. `fit_vertical_host` clips source solids with the final vertical opening
+prism after EIR/ZNP and disposes transient geometry; non-flat hosts require vertical
+routes. It updates box Z extent/center without rotating it along the roof slope.
+`geometry.get_element_level` falls back to the built-in roof base/reference level. Native
+Floor/RoofBase openings use NewOpening(..., False), explicitly vertical as documented
+by Autodesk; KR plan ranges include accepted roof hosts.
