@@ -1,5 +1,5 @@
-title: Подсчёт прокладки
-title_en: Route quantities
+title: "Подсчёт\nпрокладки"
+title_en: "Route\nquantities"
 tooltip: Подсчёт длин труб и лотков по выбранному комплекту цепей. Отдельные ведомости с запасом и без. Shift+клик — настройка трёх текстовых параметров. Модель не меняет.
 tooltip_en: Sum pipe and tray lengths for a selected circuit package. Separate reports with and without reserve. Shift+click configures three text parameters. Does not modify the model.
 min_revit_version: 2024

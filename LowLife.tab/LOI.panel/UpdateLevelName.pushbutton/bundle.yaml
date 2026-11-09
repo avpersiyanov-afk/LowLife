@@ -4,7 +4,7 @@ tooltip: |
   Сначала пробует просто прописать параметр «Уровень» (элемент остаётся на месте). Если Revit не даёт его менять, после подтверждения пересоздаёт экземпляр с уровнем на том же месте: тип, поворот/отражение, параметры экземпляра, рабочий набор и электрические цепи переносятся, но ID элемента меняется, а марки старого удаляются.
 
   Элементы с уровнем, на основе, вложенные и в группах пропускаются. После работы выделены получившиеся элементы.
-title_en: "Update\nlevel name"
+title_en: "Update level\nname"
 tooltip_en: >-
   Assigns a reference level to selected family instances that have none at all and no host (for
   example, placed without a level). The level is chosen from a list or by height: the nearest level

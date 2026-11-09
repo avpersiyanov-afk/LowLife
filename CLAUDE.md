@@ -63,7 +63,7 @@ Key architectural points that aren't obvious from any single file:
 
 ## Ribbon caption formatting
 
-Never show literal escape sequences such as `\n` in button captions or other UI text. Prefer single-line `title`, `title_en` and `__title__` captions (for example, `title: Скрыть в связи`); when a line break is needed, use a real newline supported by the consuming format, such as a YAML double-quoted string, and check both interface languages. Plain or single-quoted YAML strings do not decode `\n`.
+Button captions are two-line by default: split at word boundaries with the first line up to 12 characters (a longer word stays whole) and the rest on the second line; a single-word caption stays on one line. In `bundle.yaml` a two-line caption is a YAML double-quoted string with a literal `\n` between the lines (plain or single-quoted YAML strings do not decode `\n`) — never let a literal escape sequence reach the UI in any other way. `__title__` in `script.py` carries the same split as a real `\n` escape, and `title`/`title_en`/`__title__` must be kept in sync — check both interface languages.
 
 ## IronPython/Revit-API gotchas already worked around here
 
@@ -137,7 +137,7 @@ pyRevit устанавливает расширения, добавленные 
 
 ## Формат подписей ленты
 
-В подписях кнопок и другом тексте интерфейса не должны отображаться буквальные escape-последовательности вроде `\n`. Предпочитайте однострочные `title`, `title_en` и `__title__` (например, `title: Скрыть в связи`); если нужен перенос, используйте настоящий перевод строки, поддерживаемый форматом, например YAML-строку в двойных кавычках, и проверяйте оба языка интерфейса. YAML-строки без кавычек или в одинарных кавычках не преобразуют `\n` в перенос.
+Подписи кнопок по умолчанию двухстрочные: перенос по границам слов, первая строка — не более 12 символов (длинное слово остаётся целиком), остаток — на вторую строку; однословная подпись остаётся однострочной. В `bundle.yaml` двухстрочная подпись — YAML-строка в двойных кавычках с литеральным `\n` между строками (строки без кавычек или в одинарных кавычках `\n` не преобразуют) — буквальные escape-последовательности не должны доходить до интерфейса никак иначе. `__title__` в `script.py` повторяет то же разбиение настоящим `\n`, а `title`/`title_en`/`__title__` держите синхронно — и проверяйте оба языка интерфейса.
 
 ## Конвейер SCS.panel
 

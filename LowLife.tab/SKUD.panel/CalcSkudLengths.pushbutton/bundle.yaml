@@ -2,7 +2,7 @@ tooltip: |
   Считает длину проводника для каждой цепи контроллер-устройство: по катетам (с коэффициентом запаса), если устройство рядом с контроллером, иначе по графу адресованных узлов трассы. Пишет длину в трубе/лотке раздельно, способ прокладки, марку устройств и список цепей на узлах маршрута.
 
   Shift+клик — настройки этой кнопки.
-title_en: "Lengths\nand tags"
+title_en: "Lengths and\ntags"
 tooltip_en: >-
   Calculates the wire length of every controller–device circuit: along orthogonal legs (with a safety
   factor) if the device is near the controller, otherwise along the graph of addressed route nodes.

@@ -4,7 +4,7 @@ tooltip: |
   Полезно для очистки тестовых/лишних цепей — например, оставшихся от ручной проверки в Revit UI или от кнопки «Цепи изолятор-устройства». Revit не даёт добавить элемент, уже состоящий в одной цепи, ещё в одну (ошибка electComponents при построении цепей шлейфов/СКС/СКУД), поэтому такие лишние цепи нужно сначала удалить.
 
   Перед удалением показывает список цепей (по «Номеру цепи», если задан) в окне вывода и спрашивает подтверждение.
-title_en: "Delete circuits\nin view"
+title_en: "Delete\ncircuits in view"
 tooltip_en: >-
   Deletes every electrical circuit that has at least one element (a device or its source panel)
   visible in the active view. Handy for cleaning up test or stray circuits — for example, ones left

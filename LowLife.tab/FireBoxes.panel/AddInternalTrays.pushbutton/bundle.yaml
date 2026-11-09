@@ -1,4 +1,4 @@
-title: "Лотки\nв короб"
+title: "Лотки в\nкороб"
 title_en: "Trays in\nenclosure"
 tooltip: Выберите участки короба и соединительные детали. Создать внутри лотки по сохранённой схеме, каждый со своим типом и размерами, и отметить их параметром Да/Нет. Повторная вставка блокируется. Shift+клик — настройки.
 tooltip_en: Select enclosure segments and fittings. Create internal trays using the saved layout, each with its own type and dimensions, and set their Yes/No flag. Duplicate insertion is blocked. Shift+click opens settings.

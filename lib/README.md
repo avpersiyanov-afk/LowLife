@@ -3027,7 +3027,7 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 
 ## link_views.py / link_views_dialog.py
 
-Кнопка `Tools.panel/LinkViews` («Виды связей»), Revit 2024+: настройка нескольких
+Кнопка `Tools.panel/LinkViews` («Выбрать виды для связанных моделей»), Revit 2024+: настройка нескольких
 экземпляров связей отдельно для каждого выбранного основного вида. `availability(doc, view)` объясняет
 ограничения API, вида и шаблона; `collect_rows` возвращает связи, текущее отображение
 и доступные виды того же типа; `link_views_dialog.show(host_views, rows_by_host)` возвращает

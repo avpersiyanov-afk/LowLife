@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Read circuit route descriptions and show two independent quantity reports."""
-__title__ = u"Подсчёт прокладки"
+__title__ = u"Подсчёт\nпрокладки"
 __doc__ = u"Подсчёт длин труб и лотков по комплекту, с запасом и без. Shift+клик — имена параметров. Модель не меняет."
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
