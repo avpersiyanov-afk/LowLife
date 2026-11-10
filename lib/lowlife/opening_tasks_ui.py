@@ -372,12 +372,15 @@ def delete_boxes_from_list(uidoc, rows=None):
     options={}
     for inst in candidates:
         data=api.metadata(inst) if inst is not None else None
+        if rows and (not data or data.get('owner_uid')!=inst.UniqueId):
+            raise ValueError(tr(u'Выберите собственные боксы текущей модели.',u'Select original boxes in the current model.'))
         if data and data.get('owner_uid')==inst.UniqueId:
             options[u'ID {} | {}'.format(boxes._id_int(inst.Id),data['task_id'])]=inst
     if not options:
         forms.alert(tr(u'Нет собственных боксов для удаления.',u'No original task boxes to delete.'))
         return
-    selected=choose(options,tr(u'Удалить боксы — выберите из списка',u'Delete boxes — select from the list'),True)
+    selected=(list(options.values()) if rows else
+              choose(options,tr(u'Удалить боксы — выберите из списка',u'Delete boxes — select from the list'),True))
     if not selected:
         return
     details=u', '.join(unicode(boxes._id_int(inst.Id)) for inst in selected)
