@@ -3188,10 +3188,11 @@ Shared box-level resolver for VIS/KR/AR tasks and tray boxes. Pierced floor leve
 or downward solid intersection with floors/foundations from the same selected source.
 Assigned source level names are parsed by the existing shared mask from
 `level_views_settings.level_template()` (View Range settings, with the existing
-Family Section fallback). Matching building/floor takes priority over elevation;
-matching AR discipline levels are preferred when the mask includes discipline.
-Nearest elevation resolves candidates only within that group; missing floors
-fail explicitly. Unparsed names retain the legacy exact-name/elevation fallback.
+Family Section fallback). The existing mapping remains primary. Only if it fails, an identity-only fallback
+uses building/floor from that mask, preferring an AR level without an auxiliary
+comment. That fallback ignores elevation and normalizes numeric zero padding.
+Successful primary choices are retained. Missing/ambiguous identity matches fail
+explicitly rather than assigning a different floor.
 Unassigned support levels still use the actual surface hit elevation; ties fail. The opening height never replaces the host elevation.
 Checks and updates actual instance level while preserving position; provenance
 enters task JSON and level corrections participate in reissue detection.
@@ -3457,3 +3458,13 @@ its building-cell double click or context menu; no extra toolbar button is added
 The source of host-classification parameter errors is now explicit in the message:
 `box_host_filter_param`, including inherited shared settings. No parameter name
 is hardcoded and valid configured names are not silently removed.
+
+
+VIS construction classification is optional and independent from issue status.
+The existing `_set_host_filter(..., required=True)` retains strict behaviour for
+the legacy tray button; VIS calls it with required=False so an unavailable optional
+field cannot generate placement warnings. The VIS form no longer inherits this
+family-specific field automatically from shared memory. Explicitly configured
+valid text fields still receive wall/floor; status uses opening_status_param only.
+`LevelNameTemplate.identity(name)` reuses parse and normalizes purely numeric
+building/floor tokens without changing the legacy parse result.

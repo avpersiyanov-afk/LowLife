@@ -87,3 +87,18 @@ def test_custom_mask_is_used_without_an_additional_floor_parser():
     mask=LevelNameTemplate(u'{Корпус}_{Этаж}_{Дисциплина}_{Комментарий}')
     candidates=[dict(name=u'К1_07_АР',elevation=0),dict(name=u'К1_08_АР',elevation=100)]
     assert levels.match_level(candidates,u'К1_07_КР_плита',100,template=mask) is candidates[0]
+
+
+def test_identity_only_ignores_elevation_and_prefers_primary_ar_level():
+    candidates=[dict(name=u'АР_К1_+0.000_01',elevation=0),
+                dict(name=u'АР_К1_+99.000_01_вспомогательный',elevation=99),
+                dict(name=u'АР_К2_+99.000_01',elevation=99),
+                dict(name=u'АР_К1_+99.000_02',elevation=99)]
+    assert levels.match_level(candidates,u'КР_К1_+99.000_1_доп',99,identity_only=True) is candidates[0]
+    with pytest.raises(ValueError):
+        levels.match_level(candidates,u'КР_К1_+99.000_03',99,identity_only=True)
+
+
+def test_identity_only_does_not_guess_between_two_primary_floor_levels():
+    candidates=[dict(name=u'АР_К1_+0.000_01',elevation=0),dict(name=u'АР_К1_+3.000_01',elevation=3)]
+    with pytest.raises(ValueError):levels.match_level(candidates,u'КР_К1_+3.000_01',3,identity_only=True)

@@ -64,7 +64,15 @@ class Resolver(object):
         if has_level:
             name=boxes.safe_element_name(source_level)
             elevation=source.to_model(XYZ(0,0,source_level.ProjectElevation)).Z
-            target=source_level if crossing.link is None else core.match_level(candidates,name,elevation,template=getattr(self,'level_template',None))['element']
+            if crossing.link is None:
+                target=source_level
+            else:
+                template=getattr(self,'level_template',None)
+                try:
+                    target=core.match_level(candidates,name,elevation,template=template)['element']
+                except ValueError:
+                    # Keep successful existing mapping. Mask identity is a fallback.
+                    target=core.match_level(candidates,name,elevation,template=template,identity_only=True)['element']
         else:
             # No assigned KR level: use the actual support hit, never the nearest
             # level below the opening. For a pierced slab, probe its top surface.

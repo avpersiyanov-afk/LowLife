@@ -279,12 +279,18 @@ bounds so a long route cannot place openings outside the chosen scope. Cancellin
 the diagram or scope selector makes no model changes.
 
 
-Level mapping now reuses the existing shared level-name mask: building and floor
-identity precede elevation, and AR levels are preferred within that identity when
-the mask includes discipline. A recognized missing floor is an explicit error.
-Unparsed names retain the legacy name/elevation fallback.
-
 In the VIS table, double-click Building number or right-click selected rows and
 choose Change building number. Catalog values apply to all selected original
 local boxes. Issued JSON/history stay unchanged until reissue creates a revision;
 working changes are marked Changed since issue. KR/AR tables remain read-only.
+
+
+The existing level-mapping method remains primary. Only after it fails does an
+identity-only fallback select the same building/floor from the existing mask,
+prefer a primary AR level, and ignore elevations. Numeric zero padding is ignored
+by that fallback. Successful primary mappings are preserved.
+
+VIS wall/floor classification is optional and separate from issue status. It is
+not inherited automatically from shared defaults; unavailable fields are skipped
+without placement warnings. Valid explicitly configured classification fields
+still receive wall/floor values. The legacy tray button keeps strict validation.

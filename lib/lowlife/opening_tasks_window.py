@@ -124,7 +124,7 @@ class Handler(IExternalEventHandler):
                 from lowlife.opening_tasks_views import run
                 run()
             elif action=='place':
-                settings_form.require(settings,['opening_json_param','box_width_param','box_depth_param','box_height_param','box_host_filter_param'])
+                settings_form.require(settings,['opening_json_param','box_width_param','box_depth_param','box_height_param'])
                 flow.place(settings)
             elif action=='confirm':
                 settings_form.require(settings,['opening_json_param'])
