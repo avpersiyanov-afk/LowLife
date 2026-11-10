@@ -5,7 +5,7 @@ from lowlife.i18n import tr
 from lowlife import tray_boxes_core as core
 
 
-def show(result, clearance_mm, uidoc):
+def show(result, clearance_mm, uidoc, preflight=False, initial_increase=0):
     u"""(нужно применить, добавка в мм); None — автоматический выбор."""
     from pyrevit import forms
     from System.Windows import Thickness, TextWrapping
@@ -15,6 +15,9 @@ def show(result, clearance_mm, uidoc):
     from Autodesk.Revit.DB import ElementId
     from System.Windows.Media import Brushes, DoubleCollection, RotateTransform
     from System.Windows.Shapes import Line, Rectangle
+
+    example=core.Box(core.WALL,(0,0,0),(1,0,0),
+                     (400+2*clearance_mm)/304.8,200/304.8,(200+2*clearance_mm)/304.8,200/304.8) if preflight else None
 
     class ResultWindow(forms.WPFWindow):
         def __init__(self):
@@ -46,13 +49,18 @@ def show(result, clearance_mm, uidoc):
                 </StackPanel>
               </Grid>
             </Window>''', literal_string=True)
-            self.Title = tr(u"Боксы на лотки — результат", u"Opening boxes for trays — results")
+            self.Title = (tr(u"Расстановка боксов — размеры", u"Place boxes — dimensions") if preflight else
+                          tr(u"Боксы на лотки — результат", u"Opening boxes for trays — results"))
             self.selection = (False, 0)
             self.values = [0, None, 50, 100, 150, 200]
-            self.summary.Text = tr(
-                u"Поставлено: {}. Уже были: {}. Пропущено: {}. Ошибок: {}.",
-                u"Placed: {}. Already present: {}. Skipped: {}. Errors: {}.").format(
-                    len(result.created), len(result.existing), len(result.skipped), len(result.failed))
+            if preflight:
+                self.summary.Text=tr(u"Схема размеров до расстановки. Пример сечения 400 × 200 мм; реальные размеры определяются геометрией коммуникации. После подтверждения выберите область расстановки.",
+                                     u"Dimension scheme before placement. Example section: 400 × 200 mm; actual sizes follow route geometry. Choose the placement scope after confirmation.")
+            else:
+                self.summary.Text = tr(
+                    u"Поставлено: {}. Уже были: {}. Пропущено: {}. Ошибок: {}.",
+                    u"Placed: {}. Already present: {}. Skipped: {}. Errors: {}.").format(
+                        len(result.created), len(result.existing), len(result.skipped), len(result.failed))
             self.prompt.Text = tr(
                 u"Дополнительно по ЗНП увеличить оба размера отверстия на:",
                 u"Additionally per ZNP, increase both opening dimensions by:")
@@ -64,13 +72,13 @@ def show(result, clearance_mm, uidoc):
             self.rules.Text = tr(
                 u"Авто: большая сторона до 300 мм включительно → +50 мм; свыше 300 до 600 мм включительно → +100 мм; свыше 600 до 1200 мм включительно → +150 мм; свыше 1200 мм → +200 мм. Размер берётся после запаса по EIR. Добавка — к каждому из двух размеров, поровну с противоположных сторон. Толщина конструкции не увеличивается.",
                 u"Auto: larger side up to 300 mm inclusive → +50 mm; over 300 up to 600 mm inclusive → +100 mm; over 600 up to 1200 mm inclusive → +150 mm; over 1200 mm → +200 mm. Based on the opening including EIR clearance. The increase applies to each of the two dimensions, split equally between opposite sides. Host thickness stays unchanged.")
-            self.apply.Content = tr(u"Применить и закрыть", u"Apply and close")
-            self.close.Content = tr(u"Оставить как есть", u"Keep as placed")
-            self.apply.IsEnabled = not bool(result.missing_params)
-            if result.missing_params:
+            self.apply.Content = tr(u"Продолжить", u"Continue") if preflight else tr(u"Применить и закрыть", u"Apply and close")
+            self.close.Content = tr(u"Отмена", u"Cancel") if preflight else tr(u"Оставить как есть", u"Keep as placed")
+            self.apply.IsEnabled = preflight or not bool(result.missing_params)
+            if not preflight and result.missing_params:
                 self.rules.Text += u"\n" + tr(u"Нет параметров: ", u"Missing parameters: ") + u", ".join(sorted(result.missing_params))
             self.increase.SelectionChanged += self.update
-            self.increase.SelectedIndex = 0
+            self.increase.SelectedIndex = self.values.index(initial_increase) if initial_increase in self.values else 0
             self.apply.Click += self.accept
             self.close.Click += lambda s, e: self.Close()
 
@@ -81,6 +89,9 @@ def show(result, clearance_mm, uidoc):
 
         def update(self, sender, event):
             self.preview.Children.Clear()
+            if preflight:
+                self.draw()
+                return
             trays_by_box = {inst.Id: tray for tray, crossing, inst in result.created}
             for inst, box in result.boxes:
                 a, b = [v * 304.8 for v in core.opening_sides(box)]
@@ -137,19 +148,19 @@ def show(result, clearance_mm, uidoc):
 
         def draw(self):
             self.diagram.Children.Clear()
-            box = result.boxes[0][1]
+            box = example if preflight else result.boxes[0][1]
             a, b = [v * 304.8 for v in core.opening_sides(box)]
             delta = float(self.amount(box))
-            tray = result.created[0][0]
-            self.label(95, 0, tr(u"Первое отверстие — схема без масштаба", u"First opening — schematic, not to scale"))
+            tray = None if preflight else result.created[0][0]
+            self.label(95, 0, tr(u"Пример — схема без масштаба", u"Example — schematic, not to scale") if preflight else tr(u"Первое отверстие — схема без масштаба", u"First opening — schematic, not to scale"))
             # Сечение лотка, отверстие с EIR и (только при ненулевой дельте) ЗНП.
             self.rect(140, 130, 200, 80, Brushes.Black)
             self.rect(115, 105, 250, 130, Brushes.Gray, True)
             pad = 20 if delta else 0
             if delta:
                 self.rect(115 - pad, 105 - pad, 250 + 2 * pad, 130 + 2 * pad, Brushes.DarkOrange)
-            self.label(155, 147, tr(u"Лоток, мм", u"Tray, mm"))
-            self.label(155, 172, u"{:.0f} × {:.0f}".format(float(tray.Width * 304.8), float(tray.Height * 304.8)))
+            self.label(155, 147, tr(u"Коммуникация, мм", u"Route section, mm") if preflight else tr(u"Лоток, мм", u"Tray, mm"))
+            self.label(155, 172, u"{:.0f} × {:.0f}".format(float(400 if preflight else tray.Width * 304.8), float(200 if preflight else tray.Height * 304.8)))
             # Размер A — горизонтальный; B — вертикальный. Выносные линии
             # и подписи вынесены за контуры, с отдельным местом сверху/снизу.
             self.line(115, 105, 115, 65)
@@ -183,7 +194,7 @@ def show(result, clearance_mm, uidoc):
             self.line(352, 155, 410, 155)
             self.line(410, 155, 430, 173)
             self.label(435, 160, tr(u"Запас по EIR: s = {:.0f} мм", u"EIR clearance: s = {:.0f} mm").format(float(clearance_mm)))
-            self.label(435, 183, tr(u"с каждой стороны лотка", u"on each side of the tray"))
+            self.label(435, 183, tr(u"с каждой стороны коммуникации", u"on each side of the route") if preflight else tr(u"с каждой стороны лотка", u"on each side of the tray"))
             if delta:
                 self.dimension(365, 215, 385, 215)
                 self.line(375, 215, 410, 215)

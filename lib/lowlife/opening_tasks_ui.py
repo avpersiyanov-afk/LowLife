@@ -6,6 +6,7 @@ except NameError:
     unicode = str
 
 import traceback
+from collections import OrderedDict
 from Autodesk.Revit.DB import FilteredElementCollector, RevitLinkInstance
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -82,11 +83,55 @@ def report_placement_result(created,errors):
     forms.alert(message,expanded=details or None)
 
 
+def pick_routes(settings):
+    """Explicit scope, followed by the existing safe MEP selection filter."""
+    from System.Collections.Generic import List
+    from Autodesk.Revit.DB import (BuiltInCategory, ElementMulticategoryFilter,
+                                   ElementId, BoundingBoxIntersectsFilter, LogicalOrFilter, ElementFilter)
+    doc=revit.doc
+    category=getattr(BuiltInCategory,'OST_VolumeOfInterest',None)
+    scopes=list(FilteredElementCollector(doc).OfCategory(category).WhereElementIsNotElementType()) if category is not None else []
+    modes=OrderedDict([(tr(u'Все в проекте',u'Entire project'),'all')])
+    if scopes:
+        modes[tr(u'По областям видимости',u'By scope boxes')]='scopes'
+    modes[tr(u'Выбрать элементы вручную',u'Select elements manually')]='manual'
+    mode=choose(modes,tr(u'Где расставить боксы?',u'Where to place boxes?'))
+    if mode is None:
+        return []
+    selection=mep.RouteSelectionFilter(settings)
+    if mode=='manual':
+        return selected_elements(selection)
+    categories=List[ElementId]([ElementId(getattr(BuiltInCategory,n)) for n in mep.CATEGORY_NAMES])
+    collector=FilteredElementCollector(doc).WherePasses(ElementMulticategoryFilter(categories)).WhereElementIsNotElementType()
+    if mode=='scopes':
+        selected=choose({u'{} | {}'.format(boxes.safe_element_name(scope),boxes._id_int(scope.Id)):scope for scope in scopes},
+                        tr(u'Выберите области видимости',u'Select scope boxes'),True)
+        if not selected:
+            return []
+        bounds=[scope.get_BoundingBox(None) for scope in selected]
+        bounds=[b for b in bounds if b is not None]
+        if not bounds:
+            raise ValueError(tr(u'У выбранных областей нет габаритов.',u'Selected scope boxes have no bounds.'))
+        settings['_opening_scope_bounds']=bounds
+        regions=List[ElementFilter]([BoundingBoxIntersectsFilter(boxes._outline(boxes._box_points(b))) for b in bounds])
+        collector=collector.WherePasses(LogicalOrFilter(regions))
+    return [el for el in collector if selection.AllowElement(el)]
+
+
 def place(settings):
     from lowlife import opening_tasks_parts as parts
     parts.require_choice(settings['opening_project'],settings.get('opening_object_part',''))
     doc = revit.doc
-    raw = selected_elements(mep.RouteSelectionFilter(settings))
+    from lowlife import tray_boxes_result
+    mode=settings.get('opening_increase','none')
+    initial=None if mode=='auto' else 0 if mode=='none' else int(mode)
+    apply,amount=tray_boxes_result.show(None,settings.get('size_extra_mm') or 0,revit.uidoc,
+                                      preflight=True,initial_increase=initial)
+    if not apply:
+        return
+    settings=dict(settings)
+    settings['opening_increase']='auto' if amount is None else 'none' if not amount else unicode(amount)
+    raw = pick_routes(settings)
     routes, errors = [], []
     for el in raw:
         try:

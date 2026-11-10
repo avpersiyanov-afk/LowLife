@@ -144,43 +144,29 @@ def test_preview_unhides_through_existing_element_api_helper():
                    for n in ast.walk(fn))
 
 
-def test_unschedulable_family_parameters_do_not_discard_created_views():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text())
-    build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
-    loop = next(n for n in build.body if isinstance(n, ast.For) and isinstance(n.target, ast.Tuple))
-    start = next(i for i, n in enumerate(loop.body) if isinstance(n, ast.Assign)
-                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'schedule_tx')
-    block = loop.body[start:]
-    events, messages = [], []
+def test_register_failure_does_not_discard_created_views():
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text())
+    build=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='build')
+    start=next(i for i,n in enumerate(build.body) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='schedule_tx')
+    end=next(i for i,n in enumerate(build.body[start:],start) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='save_registry')
+    events=[]
     class Tx:
-        def __init__(self, doc):
-            pass
-        def Start(self):
-            events.append('start')
-        def Commit(self):
-            events.append('commit')
-        def RollBack(self):
-            events.append('rollback')
-        def Dispose(self):
-            events.append('dispose')
-    schedule = NS(UniqueId='new', Definition=NS(GetSchedulableFields=lambda: [], GetFieldOrder=lambda: []))
-    output, managed = ['existing 3D', 'existing plan'], {}
-    def remember(key, value):
-        managed[key] = value.UniqueId
-        return value
-    scope = dict(SubTransaction=Tx, doc=None, managed=managed, root='P/1',
-                 existing=lambda *args: None, remember=remember,
-                 ViewSchedule=NS(CreateSchedule=lambda *args: schedule), category=1,
-                 unique_name=lambda doc, name: name, prefix='Control',
-                 KEYS=['opening_json_param'], ids={'opening_json_param': 5},
-                 settings={'opening_json_param': 'JSON'}, output=output,
-                 instances=[NS(Category=NS(Name='Boxes'))],
-                 forms=NS(alert=messages.append), tr=lambda ru, en=None: en or ru)
-    exec(compile(ast.Module(body=block, type_ignores=[]), 'schedule', 'exec'), scope)
-    assert events == ['start', 'rollback', 'dispose']
-    assert output == ['existing 3D', 'existing plan']
-    assert managed == {}  # no UID of the rolled-back schedule remains
-    assert len(messages) == 1 and 'JSON' in messages[0]
+        def __init__(self,doc):pass
+        def Start(self):events.append('start')
+        def RollBack(self):events.append('rollback')
+        def Dispose(self):events.append('dispose')
+    managed={'P/view':'view'}
+    def broken(*args):
+        managed['P/register']='rolled-back'
+        raise ValueError('unsupported field')
+    output=['existing view']
+    messages=[]
+    scope=dict(SubTransaction=Tx,doc=None,managed=managed,settings={},drafts=[],registry={},
+               build_register=broken,output=output,forms=NS(alert=messages.append),tr=lambda ru,en=None:en or ru)
+    exec(compile(ast.Module(body=build.body[start:end],type_ignores=[]),'register-rollback','exec'),scope)
+    assert events==['start','rollback','dispose']
+    assert managed=={'P/view':'view'} and output==['existing view']
+    assert len(messages)==1 and 'unsupported field' in messages[0]
 
 
 def test_preview_isolation_queries_only_crop_and_never_converts_whole_view():
@@ -253,25 +239,6 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     assert len(queries)==2  # one category snapshot plus one native link query
     assert annotation_modes==[True,True]
 
-
-def test_schedule_filters_by_plain_status_instead_of_multiline_json():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text())
-    build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
-    assignment = next(n for n in ast.walk(build) if isinstance(n, ast.Assign)
-                      and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'status_field')
-    check = next(n for n in ast.walk(build) if isinstance(n, ast.If)
-                 and isinstance(n.test, ast.UnaryOp) and isinstance(n.test.operand, ast.Call)
-                 and isinstance(n.test.operand.func, ast.Attribute)
-                 and n.test.operand.func.attr == 'CanFilterByValue')
-    add = next(n for n in ast.walk(build) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
-               and isinstance(n.value.func, ast.Attribute) and n.value.func.attr == 'AddFilter')
-    calls = []
-    scope = dict(fields={1: NS(FieldId='json'), 2: NS(FieldId='status')},
-                 ids={'opening_json_param': 1, 'opening_status_param': 2},
-                 definition=NS(CanFilterByValue=lambda fid: fid == 'status', AddFilter=calls.append),
-                 ScheduleFilter=lambda *args: args, ScheduleFilterType=NS(NotEqual='not_equal'))
-    exec(compile(ast.Module(body=[assignment, check, add], type_ignores=[]), 'filter', 'exec'), scope)
-    assert calls == [('status', 'not_equal', '')]
 
 
 def test_transparent_structure_context_keeps_box_and_existing_graphics():

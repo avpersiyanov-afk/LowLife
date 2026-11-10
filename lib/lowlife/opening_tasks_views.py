@@ -163,54 +163,22 @@ def build(doc, settings):
                     plan.SetFilterOverrides(f.Id,ogs)
                     plan.SetFilterVisibility(f.Id,True)
                 output.append(plan)
-        schedule_tx=SubTransaction(doc)
-        schedule_tx.Start()
-        old_schedule=managed.get(root+'/schedule')
-        try:
-            schedule = existing(root+'/schedule',ViewSchedule)
-            fresh = schedule is None
-            if fresh:
-                schedule = remember(root+'/schedule',ViewSchedule.CreateSchedule(doc,category))
-                schedule.Name = unique_name(doc,prefix+u' | Реестр выдачи')
-            definition = schedule.Definition
-            schedulable = {f.ParameterId:f for f in definition.GetSchedulableFields()}
-            fields = {definition.GetField(fid).ParameterId:definition.GetField(fid) for fid in definition.GetFieldOrder()}
-            for key in KEYS:
-                if key not in ids:
-                    continue
-                pid = ids[key]
-                if pid not in schedulable:
-                    raise ValueError(tr(u'Параметр недоступен для спецификации: {}',u'Parameter is not schedulable: {}').format(settings[key]))
-                if pid not in fields:
-                    fields[pid] = definition.AddField(schedulable[pid])
-            for key in ('box_width_param','box_depth_param','box_height_param'):
-                name = settings.get(key)
-                param = (instances[0].LookupParameter(name) or instances[0].Symbol.LookupParameter(name)) if name else None
-                if param and param.Id in schedulable and param.Id not in fields:
-                    fields[param.Id] = definition.AddField(schedulable[param.Id])
-            fields[ids['opening_json_param']].IsHidden = True
-            definition.IsItemized = True
-            for index in reversed(range(definition.GetFilterCount())):
-                definition.RemoveFilter(index)
-            # Multiline JSON may be schedulable but cannot be substring-filtered.
-            # The dedicated issue status is populated for every draft/issued box.
-            status_field=fields[ids['opening_status_param']].FieldId
-            if not definition.CanFilterByValue(status_field):
-                raise ValueError(tr(u'Параметр статуса «{}» недоступен для фильтра спецификации. Используйте обычный текстовый параметр экземпляра, без многострочного текста.',
-                                   u'Status parameter "{}" cannot be used in a schedule filter. Use a single-line text instance parameter.').format(settings['opening_status_param']))
-            definition.AddFilter(ScheduleFilter(status_field,ScheduleFilterType.NotEqual,u''))
-            schedule_tx.Commit()
-            output.append(schedule)
-        except Exception as ex:
-            schedule_tx.RollBack()
-            if old_schedule:
-                managed[root+'/schedule']=old_schedule
-            else:
-                managed.pop(root+'/schedule',None)
-            forms.alert(tr(u'Виды контроля созданы. Спецификация для категории «{}» не создана: {}. Проверьте, что параметры доступны в спецификации Revit.',
-                           u'Control views created. Schedule for category "{}" was not created: {}. Check that parameters are available in Revit schedules.').format(instances[0].Category.Name,ex))
-        finally:
-            schedule_tx.Dispose()
+    from lowlife.opening_tasks_schedule import build as build_register
+    schedule_tx=SubTransaction(doc)
+    schedule_tx.Start()
+    old_managed=dict(managed)
+    try:
+        schedule=build_register(doc,settings,drafts,registry)
+        schedule_tx.Commit()
+        output.append(schedule)
+    except Exception as ex:
+        schedule_tx.RollBack()
+        managed.clear()
+        managed.update(old_managed)
+        forms.alert(tr(u'Виды контроля созданы. Сводный реестр боксов не создан: {}',
+                       u'Control views created. Consolidated box register was not created: {}').format(ex))
+    finally:
+        schedule_tx.Dispose()
     store.save_registry(doc,registry)
     from lowlife.opening_tasks_remark_views import sync
     doc.Regenerate()

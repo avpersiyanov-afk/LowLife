@@ -260,3 +260,20 @@ use the shared geometry.get_element_level reader; KR plans include roof openings
 Roof classification is stored as host_category=roof while the compatible internal
 passage kind remains floor. Inclined routes through inclined hosts remain explicitly
 unsupported; re-place after changing clearances. No new family parameters are required.
+
+
+## Consolidated register and placement scope
+
+Views/register creates one native Revit schedule for all local task boxes, one
+row per box: family/type, mark and level when available, width/depth/height,
+status, optional issue fields and count with a grand total. JSON is not a column.
+Multiple categories use a multicategory schedule and require common schedulable
+parameter definitions. Existing single-category registers are reused; unrelated
+legacy schedules are retained to avoid breaking sheets.
+
+Before placement, the existing tray-box dimension diagram explains EIR and ZNP.
+It uses an explicitly labelled 400 × 200 mm example; actual boxes follow route
+geometry. After Continue, choose the entire project, existing scope boxes, or
+manual selection. Scope-box placement checks the opening center against selected
+bounds so a long route cannot place openings outside the chosen scope. Cancelling
+the diagram or scope selector makes no model changes.
