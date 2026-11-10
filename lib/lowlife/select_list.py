@@ -69,3 +69,16 @@ def select_views(title=N_(u"Выбор видов"), button_name=N_(u"Выбра
     return SelectFromList.show(
         sorted([forms.ViewOption(v) for v in views], key=lambda x: x.name),
         title=title, button_name=button_name, multiselect=multiple, checked_only=True)
+
+
+def select_sheets(title=N_(u"Выбор листов"), button_name=N_(u"Выбрать"), multiple=True,
+                  filterfunc=None, doc=None):
+    """Как forms.select_sheets: листы в списке с поиском LowLife. Пустышки не показываются."""
+    from pyrevit import revit
+    doc = doc or revit.doc
+    sheets = revit.query.get_sheets(doc=doc, include_placeholders=False)
+    if filterfunc:
+        sheets = [s for s in sheets if filterfunc(s)]
+    return SelectFromList.show(
+        sorted([forms.SheetOption(s) for s in sheets], key=lambda x: x.name),
+        title=title, button_name=button_name, multiselect=multiple, checked_only=True)

@@ -4,6 +4,7 @@ import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace as NS
+from lowlife.cloud_io import dumps_ascii
 
 
 class Link:
@@ -16,6 +17,7 @@ def scope():
     tree.body = [n for n in tree.body if isinstance(n, ast.FunctionDef)]
     ns = dict(unicode=str, TYPE_PREFIX='[Type] ', ID_HEADER='Revit ID',
               HEADER_PREFIX='LLH:', CELL_PREFIX='[Cell] ', base64=base64, json=json,
+              dumps_ascii=dumps_ascii,
               _ID_ALIASES=('revit id',), RevitLinkInstance=Link,
               ElementId=lambda x: x, StorageType=NS(ElementId='reference'),
               ScheduleFieldType=NS(Instance=1, ElementType=2),
@@ -40,6 +42,28 @@ def model():
     tp = parameter(typ, 'type')
     elements = {1: a, 2: b, 100: typ}
     return NS(GetElement=elements.get), a, ip, tp
+
+
+def test_manual_cyrillic_roundtrip_with_ironpython_json_bug(monkeypatch):
+    ns, doc, schedule, header, cells = manual_table()
+    cells[2][0] = u'\u041f\u043e\u0436\u0430\u0440\u043d\u0430\u044f \u0441\u0438\u0433\u043d\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f'
+    original_dumps = json.dumps
+
+    def ironpython_dumps(data, **kwargs):
+        if kwargs.get('ensure_ascii', True):
+            raise UnicodeEncodeError('ascii', u'\u041f', 0, 1, 'ordinal not in range(128)')
+        return original_dumps(data, **kwargs)
+
+    monkeypatch.setattr(json, 'dumps', ironpython_dumps)
+    rows = list(ns['manual_header_rows'](schedule))
+    token, texts = rows[2][1:]
+    snapshot = json.loads(base64.urlsafe_b64decode(token[len('LLH:'):]).decode('ascii'))
+    assert snapshot[6][0] == cells[2][0] == texts[0]
+    corrected = cells[2][0] + u'.'
+    result = ns['rows_to_model'](doc, [['Revit ID', '[Cell] 1'], [token, corrected]])
+    assert result['changed'] == 1
+    assert not result['errors']
+    assert cells[2][0] == corrected
 
 
 def test_export_adds_id_without_a_schedule_id_field():

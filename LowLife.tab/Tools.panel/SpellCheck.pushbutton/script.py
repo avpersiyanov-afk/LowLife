@@ -13,6 +13,8 @@ __doc__ = (
     u"«Задач из почты»). Найденные исправления показываются списком "
     u"«было → стало», записываются только отмеченные; меняются только "
     u"исправленные слова, форматирование заметки сохраняется.\n\n"
+    u"Область: выделенные элементы, текущий вид, выбранные листы (имена листов "
+    u"и все элементы на листах и в размещённых на них видах) или вся модель.\n\n"
     u"Shift+клик — настройки: способ подключения ИИ, модель, промпт."
 )
 __author__ = "Pipers"
@@ -93,6 +95,7 @@ scopes = []
 if selected:
     scopes.append((tr(u"Выделенные ({})").format(len(selected)), spellcheck.SCOPE_SELECTION))
 scopes.append((tr(u"Текущий вид"), spellcheck.SCOPE_VIEW))
+scopes.append((tr(u"Выбранные листы", u"Selected sheets"), spellcheck.SCOPE_SHEETS))
 scopes.append((tr(u"Вся модель"), spellcheck.SCOPE_MODEL))
 choice = forms.alert(tr(u"Где проверить текст?", u"Where should text be checked?"), title=TITLE,
                      options=[label for label, _scope in scopes])
@@ -100,7 +103,16 @@ if not choice:
     script.exit()
 scope = dict(scopes)[choice]
 
-all_notes = spellcheck.collect_targets(doc, scope, doc.ActiveView, selected, kinds)
+picked_sheets = []
+if scope == spellcheck.SCOPE_SHEETS:
+    picked_sheets = select_list.select_sheets(
+        title=tr(u"Какие листы проверить?", u"Which sheets should be checked?"),
+        button_name=tr(u"Продолжить", u"Continue"), doc=doc)
+    if not picked_sheets:
+        script.exit()
+
+all_notes = spellcheck.collect_targets(doc, scope, doc.ActiveView, selected, kinds,
+                                       sheets=picked_sheets)
 if "titleblock" in kinds or "annotation" in kinds:
     fields = sorted(set(note.field for note in all_notes if note.kind in ("instance", "type")))
     if fields:
