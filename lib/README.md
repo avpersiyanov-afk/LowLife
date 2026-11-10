@@ -3316,3 +3316,9 @@ on control plans/sections. Reuses `loi_check._hide_other_categories`,
 `_keep_with_nested` and `_hide_by_filter` to exclude unrelated families in the
 same category and keep nested box geometry. Views are excluded before checking
 hideability. `structural_categories` is shared with the dedicated box preview.
+
+
+Opening schedules filter by a nonempty dedicated issue status after checking
+`ScheduleDefinition.CanFilterByValue`, not by substring search in multiline
+JSON. The JSON column remains hidden. The status parameter must be a normal
+(single-line) schedulable text instance parameter; no extra parameters are added.
