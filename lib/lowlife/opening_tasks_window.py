@@ -10,12 +10,15 @@ from Autodesk.Revit.DB import FamilyInstance, FilteredElementCollector, ElementI
 from System.Collections.Generic import List
 import clr
 clr.AddReference("System.Data")
-from System.Windows.Controls import Button, DataGridTextColumn, DataGridLength, DataGridRow, TabItem, WrapPanel, ContextMenu, MenuItem, ItemsControl
+from System.Windows.Controls import (Button, ComboBox, DataGridTextColumn, DataGridTemplateColumn,
+    DataGridLength, DataGridRow, TabItem, WrapPanel, ContextMenu, MenuItem, ItemsControl, SelectionChangedEventHandler)
+from System.Windows.Controls.Primitives import Selector
+from System.Collections.ObjectModel import ObservableCollection
 from System.Windows.Media import VisualTreeHelper
-from System.Windows.Data import Binding
+from System.Windows.Data import Binding, BindingMode
 from System.Data import DataTable
 from System import String, Int32
-from System.Windows import Thickness
+from System.Windows import Thickness, DataTemplate, FrameworkElementFactory
 from pyrevit import forms
 from lowlife.i18n import tr
 import traceback
@@ -33,6 +36,26 @@ from lowlife import opening_tasks_journal as journal
 _WINDOWS = {}
 
 
+class SelectionHandler(IExternalEventHandler):
+    __namespace__ = 'LowLife.OpeningTasks.Selection_' + api.core.guid().replace('-','')
+    def __init__(self,window):
+        self.window=window
+    def GetName(self):
+        return 'LowLife opening table selection'
+    def Execute(self,uiapp):
+        w=self.window
+        uidoc=uiapp.ActiveUIDocument
+        if w.closed or uidoc is None or uidoc.Document!=w.document:
+            return
+        ids=[]
+        for uid in w.selection_uids:
+            element=w.document.GetElement(uid)
+            if element is not None:
+                ids.append(element.Id)
+        if set(uidoc.Selection.GetElementIds())!=set(ids):
+            uidoc.Selection.SetElementIds(List[ElementId](ids))
+
+
 class Handler(IExternalEventHandler):
     __namespace__ = "LowLife.OpeningTasks.Interface_" + api.core.guid().replace("-", "")
     def __init__(self, window):
@@ -41,6 +64,7 @@ class Handler(IExternalEventHandler):
         return 'LowLife opening tasks'
     def Execute(self, uiapp):
         w=self.window
+        action=None
         try:
             if uiapp.ActiveUIDocument is None or uiapp.ActiveUIDocument.Document != w.document:
                 forms.alert(tr(u'Вернитесь в модель, для которой открыто окно.',u'Return to the model this window belongs to.'))
@@ -69,7 +93,7 @@ class Handler(IExternalEventHandler):
                 raise ValueError(tr(u'Заполните шифр объекта в «Сведениях о проекте» и выберите его параметр в настройках заданий.',u'Fill the project code in Project Information and select its parameter in opening task settings.'))
             settings_form.require(settings,['opening_project'])
             if action=='change_part':
-                flow.change_building_from_table(uidoc,rows,settings)
+                flow.change_building_from_table(uidoc,rows,settings,value=w.pending_part)
                 w.refresh()
                 return
             if action=='delete_boxes':
@@ -183,10 +207,16 @@ class Handler(IExternalEventHandler):
             else:
                 w.refresh()
         except Exception as ex:
+            if action=='change_part' and not w.closed:
+                try:
+                    w.refresh()  # restore the cell if the transaction was rejected
+                except Exception:
+                    pass
             forms.alert(tr(u'Действие не выполнено: {}',u'Action failed: {}').format(unicode(ex)),
                         expanded=traceback.format_exc())
         finally:
             w.pending=None
+            w.pending_part=None
             w.IsEnabled=True
             if not w.closed:
                 w.Show()
@@ -243,6 +273,11 @@ class TaskWindow(forms.WPFWindow):
         self.role,self.document=role,doc
         self.manifest_version=manifest.VERSION
         self.pending=None
+        self.pending_part=None
+        self.selection_uids=[]
+        self.selection_event=None
+        self.rendering=False
+        self.building_choices=ObservableCollection[String]()
         self.closed=False
         self.rows=[]
         self.object_part=''
@@ -280,9 +315,28 @@ class TaskWindow(forms.WPFWindow):
             ('Comment',tr(u'Замечание',u'Comment'),220),('NextAction',tr(u'Что делать',u'Next action'),300),
             ('Date',tr(u'Дата выдачи',u'Issue date'),155),('Sizes',tr(u'Размеры, мм',u'Sizes, mm'),150)]
         for key,label,width in self.columns:
-            column=DataGridTextColumn()
+            if key=='ObjectPart' and role=='VIS':
+                column=DataGridTemplateColumn()
+                factory=FrameworkElementFactory(clr.GetClrType(ComboBox))
+                factory.SetValue(ItemsControl.ItemsSourceProperty,self.building_choices)
+                factory.SetValue(Selector.IsSynchronizedWithCurrentItemProperty,False)
+                factory.SetValue(ComboBox.IsEditableProperty,True)
+                factory.SetValue(ComboBox.IsReadOnlyProperty,True)
+                binding=Binding(key)
+                binding.Mode=BindingMode.OneWay
+                factory.SetBinding(Selector.SelectedItemProperty,binding)
+                text_binding=Binding(key)
+                text_binding.Mode=BindingMode.OneWay
+                factory.SetBinding(ComboBox.TextProperty,text_binding)
+                self.part_cell_handler=SelectionChangedEventHandler(self.building_cell_changed)
+                factory.AddHandler(Selector.SelectionChangedEvent,self.part_cell_handler)
+                template=DataTemplate()
+                template.VisualTree=factory
+                column.CellTemplate=template
+            else:
+                column=DataGridTextColumn()
+                column.Binding=Binding(key)
             column.Header=label
-            column.Binding=Binding(key)
             column.SortMemberPath=key
             column.Width=DataGridLength(float(width))
             self.tasks.Columns.Add(column)
@@ -294,8 +348,10 @@ class TaskWindow(forms.WPFWindow):
             menu.Items.Add(change)
             self.tasks.ContextMenu=menu
             self.tasks.PreviewMouseRightButtonDown+=self.select_context_row
-            self.tasks.ToolTip=tr(u'Двойной щелчок по номеру корпуса или правая кнопка → «Изменить номер корпуса». Можно выделить несколько строк.',
-                                  u'Double-click a building number or right-click → Change building number. Multiple rows can be selected.')
+            self.tasks.ToolTip=tr(u'Один щелчок выбирает бокс в модели. Номер корпуса меняется выпадающим списком; правая кнопка → «Изменить номер корпуса» — для нескольких строк.',
+                                  u'One click selects the box in the model. Use the building dropdown, or right-click → Change building number for multiple rows.')
+            self.selection_handler=SelectionHandler(self)
+            self.selection_event=ExternalEvent.Create(self.selection_handler)
         self.handler=Handler(self)
         self.event=ExternalEvent.Create(self.handler)
         labels=dict(manifest.actions(role))
@@ -330,6 +386,7 @@ class TaskWindow(forms.WPFWindow):
         self.attention.Unchecked+=lambda s,e:self.render()
         self.reset.Click+=self.reset_filters
         self.tasks.SelectionChanged+=self.selection_changed
+        self.tasks.PreviewMouseLeftButtonUp+=self.row_clicked
         self.tasks.MouseDoubleClick+=self.open_row
         self.Closed+=self.on_closed
         self.refresh()
@@ -345,6 +402,12 @@ class TaskWindow(forms.WPFWindow):
         placeholder=tr(u'Выберите номер корпуса',u'Select building number')
         self.part_choice.Items.Add(placeholder)
         values=parts.catalog(self.project_code)
+        for value in list(self.building_choices):
+            if value not in values:
+                self.building_choices.Remove(value)
+        for value in values:
+            if value not in self.building_choices:
+                self.building_choices.Add(value)
         for value in values:
             self.part_choice.Items.Add(value)
         selected=parts.selection(self.project_code,self.role,self.model_uid)
@@ -366,22 +429,27 @@ class TaskWindow(forms.WPFWindow):
         button.Click+=lambda s,e,a=action:self.dispatch(a)
         panel.Children.Add(button)
 
-    def dispatch(self,action):
+    def dispatch(self,action,rows=None):
         try:
             manifest.validate_action(self.role,action)
         except ValueError as ex:
             forms.alert(unicode(ex))
-            return
+            return False
         if self.pending:
-            return
-        self.pending=(action,self.selected_rows())
+            return False
+        self.pending=(action,self.selected_rows() if rows is None else rows)
         self.IsEnabled=False
-        self.Hide()
+        inline=action=='change_part' and self.pending_part is not None
+        if not inline:
+            self.Hide()
         result=self.event.Raise()
         if unicode(result) not in ('Accepted','Pending'):
             self.pending=None
+            self.pending_part=None
             self.IsEnabled=True
             self.Show()
+            return False
+        return True
 
     def refresh(self):
         settings=cfg.for_document(cfg.make(self.role,self.document).get_settings_silent(),self.document)
@@ -548,7 +616,7 @@ class TaskWindow(forms.WPFWindow):
             event.Handled=True
             column=self.tasks.CurrentCell.Column
             if self.role=='VIS' and column is not None and column.SortMemberPath=='ObjectPart':
-                self.dispatch('change_part')
+                return  # the cell dropdown handles this column
             else:
                 self.dispatch('focus' if self.role=='VIS' else 'ar_show' if self.role=='AR' else 'show')
 
@@ -556,6 +624,33 @@ class TaskWindow(forms.WPFWindow):
         row=ItemsControl.ContainerFromElement(self.tasks,event.OriginalSource)
         if isinstance(row,DataGridRow) and not row.IsSelected:
             self.tasks.SelectedItem=row.Item
+
+    def queue_model_selection(self):
+        if self.role!='VIS' or self.closed or self.rendering or self.selection_event is None:
+            return
+        self.selection_uids=[row['uid'] for row in self.selected_rows()]
+        self.selection_event.Raise()  # a pending event reads the newest selection
+
+    def row_clicked(self,sender,event):
+        row=ItemsControl.ContainerFromElement(self.tasks,event.OriginalSource)
+        if isinstance(row,DataGridRow):
+            self.queue_model_selection()
+
+    def building_cell_changed(self,sender,event):
+        if self.parts_updating or self.rendering or self.pending or self.closed:
+            return
+        value=unicode(sender.SelectedItem or '')
+        item=sender.DataContext
+        if item is None or not value or value not in self.building_choices:
+            return
+        row=self.visible.get(item['Key'])
+        if row is None or value==row['object_part']:
+            return
+        self.tasks.SelectedItem=item
+        self.pending_part=value
+        if not self.dispatch('change_part',rows=[row]):
+            self.pending_part=None
+            sender.SelectedItem=row['object_part']
 
     def selected_rows(self):
         return [self.visible[item['Key']] for item in self.tasks.SelectedItems if item['Key'] in self.visible]
@@ -588,14 +683,21 @@ class TaskWindow(forms.WPFWindow):
                                ('Level','level'),('Kind','kind'),('Issue','issue'),('Revision','revision'),('Date','date'),('Sizes','sizes')]:
                 item[column]=row[key]
             table.Rows.Add(item)
-        self.tasks.ItemsSource=table.DefaultView
-        for item in self.tasks.Items:
-            if item['Key'] in selected:
-                self.tasks.SelectedItems.Add(item)
+        self.rendering=True
+        try:
+            self.tasks.ItemsSource=table.DefaultView
+            for item in self.tasks.Items:
+                if item['Key'] in selected:
+                    self.tasks.SelectedItems.Add(item)
+        finally:
+            self.rendering=False
         self.details.Text=tr(u'Всего: {}. По фильтрам: {}. Ctrl/Shift — выбор нескольких строк. Фильтры не меняют данные заданий.',
                              u'Total: {}. Filtered: {}. Ctrl/Shift selects multiple rows. Filters do not change task data.').format(len(self.rows),len(visible))
 
     def selection_changed(self,sender,event):
+        if event.OriginalSource!=self.tasks:
+            return  # ignore SelectionChanged bubbling from a cell ComboBox
+        self.queue_model_selection()
         rows=self.selected_rows()
         if rows:
             row=rows[0]
@@ -610,6 +712,8 @@ class TaskWindow(forms.WPFWindow):
         self.closed=True
         _WINDOWS.pop(self.role,None)
         self.event.Dispose()
+        if self.selection_event is not None:
+            self.selection_event.Dispose()
 
 
 def show(role,config_mode=False):

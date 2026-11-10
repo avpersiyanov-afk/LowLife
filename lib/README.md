@@ -3476,3 +3476,19 @@ identity fallback opts in; the normal parser and successful primary mapping stay
 unchanged. Tech-space, basement and other meaningful parenthetical labels are
 retained. The fallback prefers a level without this annotation and reports the
 normalized floor if it is absent; it never maps floor 1 to basement П1.
+
+
+Opening table interaction: `SelectionHandler` is a lightweight read-only
+ExternalEvent adapter for current-model VIS IDs; it reads the latest pending
+selection, ignores another/closed document and skips unchanged selections. The
+existing business Handler hides/refreshes windows and loads settings/registry,
+so reusing it for every row click would reintroduce UI latency. No generic
+selection-event adapter was found in the library.
+
+The building column uses a DataGridTemplateColumn/readonly editable ComboBox
+with one-way bindings (including text to preserve uncatalogued historical values).
+An ObservableCollection supplies the existing parts catalog; programmatic
+rebuilds are guarded against edits. Cell changes reuse
+`change_building_from_table(..., value=None)` and `change_building`; explicit
+values bypass the second picker. The context menu keeps bulk editing. On API
+rejection the table reloads the original model values.

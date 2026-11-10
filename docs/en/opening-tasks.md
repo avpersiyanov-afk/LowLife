@@ -279,9 +279,8 @@ bounds so a long route cannot place openings outside the chosen scope. Cancellin
 the diagram or scope selector makes no model changes.
 
 
-In the VIS table, double-click Building number or right-click selected rows and
-choose Change building number. Catalog values apply to all selected original
-local boxes. Issued JSON/history stay unchanged until reissue creates a revision;
+In the VIS table, use the inline Building number dropdown for one box, or
+right-click selected rows and choose Change building number for multiple boxes. Issued JSON/history stay unchanged until reissue creates a revision;
 working changes are marked Changed since issue. KR/AR tables remain read-only.
 
 
@@ -300,3 +299,10 @@ The identity fallback ignores a recognized trailing auxiliary annotation, e.g.
 «Этаж 1 (вспомогательный)» matches «Этаж 1» in the same building. Normal parsing
 and successful primary mapping are unchanged. Technical-space/basement labels
 remain meaningful; floor 1 is never silently converted to basement П1.
+
+
+A single VIS row click selects its box in Revit without switching views or zooming.
+Ctrl/Shift selection is mirrored as a group. Selection is coalesced through a
+lightweight ExternalEvent without reading the register or refreshing the table.
+The inline building dropdown uses one-way display bindings and saves through
+the existing validated API; failed edits restore the model value.
