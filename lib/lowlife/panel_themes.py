@@ -183,6 +183,7 @@ THEMES = {
         (u"Tools", u"FopParameters"),
     ],
     u"General": [
+        (u"ToolsExport", u"MergePDF"),
         (u"OpeningTasks", u"VISInterface"),
         (u"OpeningTasks", u"KRInterface"),
         (u"OpeningTasks", u"ARInterface"),
@@ -242,7 +243,6 @@ THEMES = {
     ],
     u"Service": [
         (u"ToolsExport", u"RenameExportFiles"),
-        (u"ToolsExport", u"MergePDF"),
         (u"ToolsExport", u"RenameByList"),
         (u"ToolsExport", u"CaptureExportCommand"),
     ],
