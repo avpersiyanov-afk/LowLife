@@ -30,6 +30,9 @@ DISCIPLINE = u"Дисциплина"
 DEFAULT_TEMPLATE = u"{Дисциплина}_{Корпус}_{Отметка}_{Этаж}_{Комментарий}"
 
 _PLACEHOLDER_RE = re.compile(u"\\{([^{}]*)\\}", re.UNICODE)
+_AUXILIARY_SUFFIX_RE = re.compile(
+    u"\\s*\\(\\s*(?:вспомогательный|вспомогательная|вспомогательное|вспом\\.|auxiliary)\\s*\\)\\s*$",
+    re.UNICODE | re.IGNORECASE)
 
 
 class LevelNameTemplate(object):
@@ -117,13 +120,16 @@ class LevelNameTemplate(object):
         return result+(self._field(m, DISCIPLINE).lower(),) if with_discipline else result
 
 
-    def identity(self, name):
-        """Building/floor key from this mask; numeric zero padding is ignored."""
+    def identity(self, name, ignore_auxiliary=False):
+        """Mask identity; optional auxiliary annotation cleanup for fallback only."""
         parsed=self.parse(name)
         if parsed is None:
             return None
+        values=list(parsed[:2])
+        if ignore_auxiliary:
+            values[1]=_AUXILIARY_SUFFIX_RE.sub(u'',values[1]).strip()
         result=[]
-        for value in parsed[:2]:
+        for value in values:
             try:
                 value=u"{}".format(int(value))
             except (ValueError,TypeError):

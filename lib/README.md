@@ -3468,3 +3468,11 @@ family-specific field automatically from shared memory. Explicitly configured
 valid text fields still receive wall/floor; status uses opening_status_param only.
 `LevelNameTemplate.identity(name)` reuses parse and normalizes purely numeric
 building/floor tokens without changing the legacy parse result.
+
+
+`LevelNameTemplate.identity(..., ignore_auxiliary=False)` optionally strips only
+recognized trailing auxiliary annotations such as «(вспомогательный)». Opening
+identity fallback opts in; the normal parser and successful primary mapping stay
+unchanged. Tech-space, basement and other meaningful parenthetical labels are
+retained. The fallback prefers a level without this annotation and reports the
+normalized floor if it is absent; it never maps floor 1 to basement П1.

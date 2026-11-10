@@ -102,3 +102,22 @@ def test_identity_only_ignores_elevation_and_prefers_primary_ar_level():
 def test_identity_only_does_not_guess_between_two_primary_floor_levels():
     candidates=[dict(name=u'АР_К1_+0.000_01',elevation=0),dict(name=u'АР_К1_+3.000_01',elevation=3)]
     with pytest.raises(ValueError):levels.match_level(candidates,u'КР_К1_+3.000_01',3,identity_only=True)
+
+
+@pytest.mark.parametrize('building',[u'1 и 2',u'3',u'4'])
+def test_auxiliary_kr_floor_matches_real_ar_names_from_report(building):
+    source=u'КР_{}_+100,000_Этаж 1 (вспомогательный)'.format(building)
+    main=dict(name=u'АР_{}_+0,330_Этаж 1'.format(building),elevation=0)
+    auxiliary=dict(name=u'АР_{}_+99,000_Этаж 1 (вспомогательный)'.format(building),elevation=99)
+    wrong=dict(name=u'АР_{}_+100,000_Этаж 2'.format(building),elevation=100)
+    # Existing primary method still fails, enabling only the fallback.
+    with pytest.raises(ValueError):levels.match_level([main,wrong],source,100)
+    assert levels.match_level([auxiliary,main,wrong],source,100,identity_only=True) is main
+
+
+def test_auxiliary_suffix_never_converts_aboveground_floor_to_basement():
+    candidates=[dict(name=u'АР_0_-2,350_Этаж П1',elevation=-2.35),
+                dict(name=u'АР_0_-4,150_Этаж П1',elevation=-4.15),
+                dict(name=u'АР_0_-8,050_Этаж П2',elevation=-8.05)]
+    with pytest.raises(ValueError):
+        levels.match_level(candidates,u'КР_0_+0,000_Этаж 1 (вспомогательный)',0,identity_only=True)

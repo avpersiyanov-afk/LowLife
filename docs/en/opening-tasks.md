@@ -294,3 +294,9 @@ VIS wall/floor classification is optional and separate from issue status. It is
 not inherited automatically from shared defaults; unavailable fields are skipped
 without placement warnings. Valid explicitly configured classification fields
 still receive wall/floor values. The legacy tray button keeps strict validation.
+
+
+The identity fallback ignores a recognized trailing auxiliary annotation, e.g.
+«Этаж 1 (вспомогательный)» matches «Этаж 1» in the same building. Normal parsing
+and successful primary mapping are unchanged. Technical-space/basement labels
+remain meaningful; floor 1 is never silently converted to basement П1.

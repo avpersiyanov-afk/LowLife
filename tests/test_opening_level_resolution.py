@@ -233,3 +233,15 @@ def test_floor_identity_fallback_runs_only_after_previous_method_fails(monkeypat
     source_level.Name=u'КР_К1_+99.000_1_доп'
     result,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
     assert result is target and calls==[False]
+
+
+def test_auxiliary_floor_annotation_recovers_through_fallback(monkeypatch):
+    source_level=Level('source',u'КР_4_+100,000_Этаж 1 (вспомогательный)',100)
+    floor=Floor('slab','source',101)
+    linked=document([source_level],[floor],'KR')
+    target=Level('ar',u'АР_4_+3,350_Этаж 1',3.35)
+    wrong=Level('ar2',u'АР_4_+100,000_Этаж 2',100)
+    local=document([target,wrong],[],'VIS')
+    r=resolver(monkeypatch,local,[target,wrong])
+    result,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
+    assert result is target and info['source_name']==source_level.Name
