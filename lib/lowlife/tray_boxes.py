@@ -34,6 +34,7 @@ except NameError:
 
 import math
 from lowlife.i18n import tr
+from lowlife.slab_marks_core import BoxGrid
 from datetime import datetime
 
 from Autodesk.Revit.DB import (
@@ -220,6 +221,9 @@ class _Source(object):
         self.inverse = self.transform.Inverse if link is not None else None
         self._solids = {}
         self._horizontal = {}
+        self._host_indexes = {}
+        self._host_queries = {}
+        self._host_filters = {}
 
     def to_local(self, p):
         return self.inverse.OfPoint(p) if self.inverse is not None else p
@@ -235,6 +239,33 @@ class _Source(object):
         if key not in self._solids:
             self._solids[key] = _solids(element, options)
         return self._solids[key]
+
+    def hosts(self,categories,outline):
+        """Native quick queries first; batch-local bounds index for large runs."""
+        key=tuple(sorted(int(c) for c in categories))
+        if key not in self._host_filters:
+            self._host_filters[key]=ElementMulticategoryFilter(List[BuiltInCategory](categories))
+        category_filter=self._host_filters[key]
+        self._host_queries[key]=self._host_queries.get(key,0)+1
+        if key not in self._host_indexes and self._host_queries[key]>=128:
+            grid=BoxGrid(cell=ft(5000))
+            for host in FilteredElementCollector(self.doc).WherePasses(category_filter).WhereElementIsNotElementType():
+                bounds=host.get_BoundingBox(None)
+                if bounds is None:
+                    continue
+                points=_box_points(bounds)
+                low=XYZ(min(p.X for p in points),min(p.Y for p in points),min(p.Z for p in points))
+                high=XYZ(max(p.X for p in points),max(p.Y for p in points),max(p.Z for p in points))
+                grid.add((host,low.Z,high.Z),(low.X,low.Y,high.X,high.Y))
+            self._host_indexes[key]=grid
+        if key not in self._host_indexes:
+            return list(FilteredElementCollector(self.doc).WherePasses(category_filter)
+                        .WherePasses(BoundingBoxIntersectsFilter(outline)).WhereElementIsNotElementType())
+        low,high=outline.MinimumPoint,outline.MaximumPoint
+        eps=1e-9
+        return [host for host,z0,z1 in self._host_indexes[key].overlapping(
+                    (low.X-eps,low.Y-eps,high.X+eps,high.Y+eps))
+                if z0<=high.Z+eps and z1>=low.Z-eps]
 
     def horizontal_host(self,element,options):
         """Cache the fast path: one flat slab between two horizontal faces."""
@@ -285,45 +316,51 @@ def tray_crossings(tray, srcs, categories, options):
     if bbox is None:
         return []
     corners = _box_points(bbox)
-    cat_filter = ElementMulticategoryFilter(List[BuiltInCategory](categories))
     min_len = ft(MIN_CROSSING_MM)
 
     result = []
-    for src in srcs:
-        local_axis = axis.CreateTransformed(src.inverse) if src.inverse is not None else axis
-        outline = _outline([src.to_local(p) for p in corners])
-        hosts = (FilteredElementCollector(src.doc)
-                 .WherePasses(cat_filter)
-                 .WherePasses(BoundingBoxIntersectsFilter(outline))
-                 .WhereElementIsNotElementType())
-        for host in hosts:
-            spans = []
-            for solid in src.solids(host, options):
-                try:
-                    hit = solid.IntersectWithCurve(local_axis, SolidCurveIntersectionOptions())
-                except Exception:
-                    continue
-                for i in range(hit.SegmentCount):
-                    seg = hit.GetCurveSegment(i)
-                    a = src.to_model(seg.GetEndPoint(0))
-                    b = src.to_model(seg.GetEndPoint(1))
-                    spans.append((a.Subtract(start).DotProduct(direction),
-                                  b.Subtract(start).DotProduct(direction)))
-            is_wall = _id_int(host.Category.Id) == int(BuiltInCategory.OST_Walls)
-            for a, b in core.merge_intervals(spans, ft(1.0)):
-                if b - a < min_len:
-                    continue
-                pa = start.Add(direction.Multiply(a))
-                pb = start.Add(direction.Multiply(b))
-                wall_dir = None
-                if is_wall:
-                    mid_local = src.to_local(pa.Add(pb).Divide(2.0))
-                    local_dir = _wall_direction(host, mid_local)
-                    if local_dir is None:
+    curve_options=SolidCurveIntersectionOptions()
+    try:
+        for src in srcs:
+            local_axis = axis.CreateTransformed(src.inverse) if src.inverse is not None else axis
+            outline = _outline([src.to_local(p) for p in corners])
+            hosts = src.hosts(categories,outline)
+            for host in hosts:
+                spans = []
+                for solid in src.solids(host, options):
+                    try:
+                        hit = solid.IntersectWithCurve(local_axis, curve_options)
+                    except Exception:
                         continue
-                    wall_dir = _t(src.to_model_vector(local_dir))
-                result.append(Crossing(core.WALL if is_wall else core.FLOOR,
-                                       _t(pa), _t(pb), host, src.link, wall_dir))
+                    try:
+                        for i in range(hit.SegmentCount):
+                            seg = hit.GetCurveSegment(i)
+                            try:
+                                a = src.to_model(seg.GetEndPoint(0))
+                                b = src.to_model(seg.GetEndPoint(1))
+                                spans.append((a.Subtract(start).DotProduct(direction),
+                                              b.Subtract(start).DotProduct(direction)))
+                            finally:
+                                seg.Dispose()
+                    finally:
+                        hit.Dispose()
+                is_wall = _id_int(host.Category.Id) == int(BuiltInCategory.OST_Walls)
+                for a, b in core.merge_intervals(spans, ft(1.0)):
+                    if b - a < min_len:
+                        continue
+                    pa = start.Add(direction.Multiply(a))
+                    pb = start.Add(direction.Multiply(b))
+                    wall_dir = None
+                    if is_wall:
+                        mid_local = src.to_local(pa.Add(pb).Divide(2.0))
+                        local_dir = _wall_direction(host, mid_local)
+                        if local_dir is None:
+                            continue
+                        wall_dir = _t(src.to_model_vector(local_dir))
+                    result.append(Crossing(core.WALL if is_wall else core.FLOOR,
+                                           _t(pa), _t(pb), host, src.link, wall_dir))
+    finally:
+        curve_options.Dispose()
     return result
 
 

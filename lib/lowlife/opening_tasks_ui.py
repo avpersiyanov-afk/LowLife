@@ -167,7 +167,8 @@ def place(settings):
         workset = worksets[0] if len(worksets)==1 else choose({w.Name:w for w in worksets},tr(u'Рабочий набор',u'Workset'))
         if workset is None:
             return
-    with forms.ProgressBar(title=tr(u'Поиск пересечений: {value}/{max_value}',u'Finding crossings: {value}/{max_value}')) as bar:
+    with forms.ProgressBar(title=tr(u'Поиск пересечений: {value}/{max_value}',u'Finding crossings: {value}/{max_value}'),
+                           step=max(1,len(routes)//100)) as bar:
         with revit.Transaction(tr(u'Боксы заданий ВИС',u'VIS task boxes')):
             entries, errors = api.place(doc,routes,link,symbol,settings,workset,
                                        lambda i,n:bar.update_progress(i,n))

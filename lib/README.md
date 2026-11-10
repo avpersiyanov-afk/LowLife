@@ -3421,3 +3421,20 @@ for manual selection; whole-project and scope modes use native category/bounds
 filters. No existing scope-box selection implementation was found to reuse.
 Selected bounds are runtime-only settings; final opening centers are checked
 before creating/updating a box. No new model parameter is introduced.
+
+
+Intersection batch optimization: `slab_marks_core.BoxGrid.overlapping(bbox)`
+extends the existing XY bounds grid with rectangle queries, retaining insertion
+order and avoiding duplicates. Giant bounds use an overflow list rather than
+millions of cells; very broad queries fall back to a finite bounds scan. Existing
+`at(x,y)` semantics are preserved.
+
+`tray_boxes._Source.hosts(categories, outline)` keeps native Revit bounding queries
+for the first 127 requests per category set, then builds one command-local BoxGrid
+of host bounds for large batches, with an additional Z-overlap check. Source/link
+coordinates and category sets remain separate. Solid geometry is still read only
+for candidates and cached by the existing `_Source.solids`; exact
+`Solid.IntersectWithCurve` remains unchanged. Per-route intersection options are
+reused, and temporary hits/segments/options are disposed. No persistent cache or
+geometry approximation is introduced. VIS placement reads issued tasks once per
+batch instead of once per box; progress updates are throttled to about 100 steps.
