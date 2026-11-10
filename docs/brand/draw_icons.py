@@ -709,7 +709,16 @@ def datum_filter(c):
     c.line([(56, 68), (65, 77), (80, 58)], ORANGE, 5)
 
 
+def merge_pdf(c):
+    c.rect((15, 15, 39, 48), BLUE, WHITE, 3)
+    c.rect((57, 15, 81, 48), BLUE, WHITE, 3)
+    c.line([(27, 52), (39, 64), (48, 64)], ORANGE, 4)
+    c.line([(69, 52), (57, 64), (48, 64)], ORANGE, 4)
+    c.rect((36, 67, 60, 86), BLUE, WHITE, 3)
+
+
 ICONS = [
+    ("ToolsExport.panel/MergePDF.pushbutton", merge_pdf),
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
     ("Tools.panel/DatumFilter.pushbutton", datum_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
