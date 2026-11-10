@@ -70,3 +70,20 @@ def test_nearest_ar_level_is_relative_to_kr_elevation_not_opening_height():
     assert levels.match_level(candidates,'KR slab',0.5)['name']=='AR lower'
     with pytest.raises(ValueError):levels.match_level(candidates,'KR slab',5)
     with pytest.raises(ValueError):levels.match_level([],'KR slab',10)
+
+
+def test_floor_and_building_from_existing_mask_override_distant_kr_elevation():
+    candidates=[dict(name=u'АР_К1_+0.000_01',elevation=0),
+                dict(name=u'АР_К1_+3.000_02',elevation=3),
+                dict(name=u'АР_К2_+0.000_01',elevation=10),
+                dict(name=u'КР_К1_+3.000_01_доп',elevation=3)]
+    assert levels.match_level(candidates,u'КР_К1_+3.000_01_плита',3) is candidates[0]
+    with pytest.raises(ValueError):
+        levels.match_level(candidates,u'КР_К1_+3.000_03',3)
+
+
+def test_custom_mask_is_used_without_an_additional_floor_parser():
+    from lowlife.level_name_template import LevelNameTemplate
+    mask=LevelNameTemplate(u'{Корпус}_{Этаж}_{Дисциплина}_{Комментарий}')
+    candidates=[dict(name=u'К1_07_АР',elevation=0),dict(name=u'К1_08_АР',elevation=100)]
+    assert levels.match_level(candidates,u'К1_07_КР_плита',100,template=mask) is candidates[0]

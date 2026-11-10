@@ -4,6 +4,7 @@ from Autodesk.Revit.DB import BuiltInCategory, FilteredElementCollector, Level, 
 from lowlife import opening_levels_core as core
 from lowlife.i18n import tr
 from lowlife.geometry import get_element_level
+from lowlife.level_views_settings import level_template
 
 
 class Resolver(object):
@@ -12,6 +13,7 @@ class Resolver(object):
         self.levels=list(FilteredElementCollector(doc).OfClass(Level))
         self.sources={}
         self.probes={}
+        self.level_template=level_template()
 
     def source(self,crossing):
         from lowlife import tray_boxes as boxes
@@ -62,7 +64,7 @@ class Resolver(object):
         if has_level:
             name=boxes.safe_element_name(source_level)
             elevation=source.to_model(XYZ(0,0,source_level.ProjectElevation)).Z
-            target=source_level if crossing.link is None else core.match_level(candidates,name,elevation)['element']
+            target=source_level if crossing.link is None else core.match_level(candidates,name,elevation,template=getattr(self,'level_template',None))['element']
         else:
             # No assigned KR level: use the actual support hit, never the nearest
             # level below the opening. For a pierced slab, probe its top surface.
@@ -80,7 +82,7 @@ class Resolver(object):
             elevation=support_elevation
             target=core.match_level(candidates,None,elevation)['element']
             name=boxes.safe_element_name(target)
-        info=dict(name=name,source_level_uid=source_level.UniqueId if has_level else '',
+        info=dict(name=boxes.safe_element_name(target),source_name=name,source_level_uid=source_level.UniqueId if has_level else '',
                   source_model=source.doc.ProjectInformation.UniqueId,
                   support_uid=support.UniqueId,method=method,
                   elevation_mm=boxes.mm(elevation),box_level_uid=target.UniqueId)

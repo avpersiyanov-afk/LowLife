@@ -10,7 +10,7 @@ from Autodesk.Revit.DB import FamilyInstance, FilteredElementCollector, ElementI
 from System.Collections.Generic import List
 import clr
 clr.AddReference("System.Data")
-from System.Windows.Controls import Button, DataGridTextColumn, DataGridLength, DataGridRow, TabItem, WrapPanel
+from System.Windows.Controls import Button, DataGridTextColumn, DataGridLength, DataGridRow, TabItem, WrapPanel, ContextMenu, MenuItem, ItemsControl
 from System.Windows.Media import VisualTreeHelper
 from System.Windows.Data import Binding
 from System.Data import DataTable
@@ -68,6 +68,10 @@ class Handler(IExternalEventHandler):
             if not settings['opening_project']:
                 raise ValueError(tr(u'Заполните шифр объекта в «Сведениях о проекте» и выберите его параметр в настройках заданий.',u'Fill the project code in Project Information and select its parameter in opening task settings.'))
             settings_form.require(settings,['opening_project'])
+            if action=='change_part':
+                flow.change_building_from_table(uidoc,rows,settings)
+                w.refresh()
+                return
             if action=='delete_boxes':
                 flow.delete_boxes_from_list(uidoc,rows)
                 w.refresh()
@@ -279,8 +283,19 @@ class TaskWindow(forms.WPFWindow):
             column=DataGridTextColumn()
             column.Header=label
             column.Binding=Binding(key)
+            column.SortMemberPath=key
             column.Width=DataGridLength(float(width))
             self.tasks.Columns.Add(column)
+        if role=='VIS':
+            menu=ContextMenu()
+            change=MenuItem()
+            change.Header=tr(u'Изменить номер корпуса',u'Change building number')
+            change.Click+=lambda s,e:self.dispatch('change_part')
+            menu.Items.Add(change)
+            self.tasks.ContextMenu=menu
+            self.tasks.PreviewMouseRightButtonDown+=self.select_context_row
+            self.tasks.ToolTip=tr(u'Двойной щелчок по номеру корпуса или правая кнопка → «Изменить номер корпуса». Можно выделить несколько строк.',
+                                  u'Double-click a building number or right-click → Change building number. Multiple rows can be selected.')
         self.handler=Handler(self)
         self.event=ExternalEvent.Create(self.handler)
         labels=dict(manifest.actions(role))
@@ -298,6 +313,8 @@ class TaskWindow(forms.WPFWindow):
             panel=WrapPanel()
             panel.Margin=Thickness(8,6,8,2)
             for action in actions:
+                if action=='change_part':
+                    continue  # table context action, not another toolbar button
                 self.add(action,tr(labels[action]),panel)
             tab.Content=panel
             self.actions.Items.Add(tab)
@@ -470,7 +487,7 @@ class TaskWindow(forms.WPFWindow):
                 current_geometry=api.host_geometry(inst,data,link)
                 if r['status']=='issued' and (
                         not api.core.geometry_equal(r['geometry'],current_geometry) or
-                        r.get('level')!=data.get('level')):
+                        r.get('level')!=data.get('level') or r.get('object_part','')!=data.get('object_part','')):
                     status=u'Изменено после выдачи'
             except Exception:
                 if r['status']=='issued':
@@ -508,7 +525,7 @@ class TaskWindow(forms.WPFWindow):
                 except Exception:
                     pass
         return dict(remark_group_id='',remark_number='',remark_state='',remark_group_state='',task_id=tid,uid=uid,status=status,record=r,key=browser.row_key(r,tid),displacement=displacement,
-                    object_part=(r.get('object_part','') if r else data.get('object_part','') if data else ''),
+                    object_part=(data.get('object_part','') if self.role=='VIS' and data else r.get('object_part','') if r else ''),
                     result='',next_action='',reply_revision='',number=number,recipient=(r.get('recipient','KR') if r else data.get('recipient','KR') if data else 'KR'),discipline=discipline,model=self.document.Title,
                     level=resolved_level['name'] if resolved_level else level.Name if level else u'—',
                     kind=tr(u'Кровля',u'Roof') if (geometry or data or {}).get('host_category')=='roof' else tr(u'Стена',u'Wall') if kind=='wall' else tr(u'Перекрытие',u'Floor') if kind=='floor' else u'—',
@@ -529,7 +546,16 @@ class TaskWindow(forms.WPFWindow):
             return
         if node is not None and self.selected_rows():
             event.Handled=True
-            self.dispatch('focus' if self.role=='VIS' else 'ar_show' if self.role=='AR' else 'show')
+            column=self.tasks.CurrentCell.Column
+            if self.role=='VIS' and column is not None and column.SortMemberPath=='ObjectPart':
+                self.dispatch('change_part')
+            else:
+                self.dispatch('focus' if self.role=='VIS' else 'ar_show' if self.role=='AR' else 'show')
+
+    def select_context_row(self,sender,event):
+        row=ItemsControl.ContainerFromElement(self.tasks,event.OriginalSource)
+        if isinstance(row,DataGridRow) and not row.IsSelected:
+            self.tasks.SelectedItem=row.Item
 
     def selected_rows(self):
         return [self.visible[item['Key']] for item in self.tasks.SelectedItems if item['Key'] in self.visible]

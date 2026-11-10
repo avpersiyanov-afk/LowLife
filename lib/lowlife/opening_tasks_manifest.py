@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=24
+VERSION=25
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('highlight','refresh','settings','journal_setup','journal_open','parts_refresh')
@@ -20,6 +20,7 @@ ACTIONS={
         ('control',N_(u'Виды и реестр')),
         ('neighbors',N_(u'Боксы в соседних стенах')),
         ('delete_boxes',N_(u'Удалить боксы')),
+        ('change_part',N_(u'Изменить номер корпуса')),
     ),
     'AR': (
         ('ar_show',N_(u'Показать конструкцию АР')),
@@ -45,7 +46,7 @@ ACTIONS={
 ACTION_GROUPS={
     'VIS': ((N_(u'Задания КР'),('place','issue','confirm')),
             (N_(u'Задания АР'),('place_ar','issue_ar','confirm_ar')),
-            (N_(u'Контроль'),('remark_show','highlight','focus','control','neighbors','delete_boxes','withdraw'))),
+            (N_(u'Контроль'),('remark_show','highlight','focus','control','neighbors','delete_boxes','change_part','withdraw'))),
     'KR': ((N_(u'Принятие'),('show','accept','merge','reject','remove')),
            (N_(u'Виды'),('highlight','structures','kr_plans','kr_sections'))),
     'AR': ((N_(u'Принятие'),('highlight','ar_show','ar_accept','ar_merge','ar_reject','ar_remove')),),

@@ -193,7 +193,7 @@ def publish(settings, elements=None):
         for inst,draft in zip(elements,drafts):
             record = registry['tasks'].get(draft['task_id'])
             api.visible_issue(inst,settings,record,bool(record and record['status']=='issued' and (not core.geometry_equal(record['geometry'],draft['geometry']) or
-                record.get('level')!=draft.get('level'))))
+                record.get('level')!=draft.get('level') or record.get('object_part','')!=draft.get('object_part',''))))
         from lowlife.opening_tasks_views import sync_selection_filters
         sync_selection_filters(doc,settings,registry)
     _registry, changes = core.issue(store.registry(doc),drafts,settings['opening_project'],
@@ -386,3 +386,21 @@ def delete_boxes_from_list(uidoc, rows=None):
         return
     with revit.Transaction(tr(u'Удалить боксы заданий',u'Delete task boxes')):
         api.delete_boxes(doc,selected)
+
+
+def change_building_from_table(uidoc, rows, settings):
+    from lowlife import opening_tasks_parts as parts
+    if not rows:
+        raise ValueError(tr(u'Выберите строки боксов в таблице.',u'Select box rows in the table.'))
+    values=parts.catalog(settings['opening_project'])
+    if not values:
+        raise ValueError(tr(u'Обновите номера корпусов из Google-справочника.',u'Refresh building numbers from the Google catalog.'))
+    value=choose({item:item for item in values},tr(u'Номер корпуса для выбранных боксов',u'Building number for selected boxes'))
+    if value is None:
+        return
+    elements=[uidoc.Document.GetElement(row['uid']) for row in rows]
+    if any(el is None for el in elements):
+        raise ValueError(tr(u'Один из боксов удалён. Обновите таблицу.',u'A box was deleted. Refresh the table.'))
+    with revit.Transaction(tr(u'Изменить номер корпуса боксов',u'Change box building number')):
+        api.change_building(uidoc.Document,elements,value,settings)
+    parts.select(settings['opening_project'],'VIS',store.model_id(uidoc.Document),value)

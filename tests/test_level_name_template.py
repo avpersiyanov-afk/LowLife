@@ -66,3 +66,9 @@ def test_validate_errors():
 
 def test_invalid_template_never_parses():
     assert LevelNameTemplate(u"{Корпус}").parse(u"К1") is None
+
+
+def test_optional_discipline_output_preserves_legacy_three_field_parse():
+    template=LevelNameTemplate(DEFAULT_TEMPLATE)
+    assert template.parse(u'АР_К1_+0.000_01')==(u'к1',u'01',u'')
+    assert template.parse(u'АР_К1_+0.000_01',with_discipline=True)==(u'к1',u'01',u'',u'ар')
