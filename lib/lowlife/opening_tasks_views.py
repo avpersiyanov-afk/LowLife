@@ -9,6 +9,7 @@ from Autodesk.Revit.DB import (Color, ElementId, ElementParameterFilter, FamilyI
 from pyrevit import revit, forms, script
 from lowlife.i18n import tr
 from lowlife.opening_tasks_names import safe_name
+from lowlife.opening_tasks_visibility import configure
 from lowlife.loi_check import _selection_filter
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
@@ -115,6 +116,7 @@ def build(doc, settings):
             if view is None:
                 view = remember(key,View3D.CreateIsometric(doc,vft.Id))
                 view.Name = unique_name(doc,prefix+u' | '+(status or u'Все задания'))
+            configure(doc,view,instances)
             for f,ogs in colors:
                 if not view.IsFilterApplied(f.Id):
                     view.AddFilter(f.Id)
@@ -145,6 +147,7 @@ def build(doc, settings):
                     vr.SetLevelId(plane,level.Id)
                     vr.SetOffset(plane,offset)
                 plan.SetViewRange(vr)
+                configure(doc,plan,instances,structures=True)
                 for f,ogs in colors:
                     if not plan.IsFilterApplied(f.Id):
                         plan.AddFilter(f.Id)

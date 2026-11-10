@@ -207,3 +207,31 @@ def test_focus_never_hides_itself_or_other_views_even_if_api_says_hideable():
                  FilteredElementCollector=lambda doc: Collector(elements))
     exec(compile(ast.Module(body=focus.body[start:end+1], type_ignores=[]), 'focus', 'exec'), scope)
     assert view.hidden == [6]
+
+
+def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plans():
+    class V:
+        Id = 100
+        UniqueId = 'control'
+        Category = NS(Id=1)
+        def CanBeHidden(self, view):
+            raise AssertionError('must never inspect a view for hiding')
+    elements = [NS(Id=eid, Category=NS(Id=cat), CanBeHidden=lambda v: True)
+                for eid, cat in [(1, 1), (2, 1), (3, 2), (4, 3), (5, 4)]]
+    hidden, categories = [], []
+    view = V()
+    scope = dict(ElementId=NS(InvalidElementId=-1), View=V,
+                 BuiltInCategory=NS(OST_RvtLinks=4),
+                 boxes=NS(_id_int=int), structural_categories=lambda: {2},
+                 _keep_with_nested=lambda doc, ids: ids,
+                 _hide_other_categories=lambda doc, v, ids, **kw: categories.append(ids),
+                 _hide_by_filter=lambda doc, v, ids, name: hidden.append(ids),
+                 FilteredElementCollector=lambda doc: Collector(elements+[view]))
+    configure = load_function('opening_tasks_visibility.py', 'configure', scope)
+    configure(None, view, [elements[0]])
+    assert categories[-1] == {1}
+    assert hidden[-1] == [2]  # unrelated family in the box category
+    configure(None, view, [elements[0]], structures=True)
+    assert categories[-1] == {1, 2, 4}  # boxes, structures, links; no MEP category
+    assert hidden[-1] == [2]
+    assert view.ViewTemplateId == -1

@@ -9,6 +9,7 @@ from lowlife.opening_levels_core import match_level
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
 from lowlife.opening_tasks_views import unique_name
+from lowlife.opening_tasks_visibility import configure
 
 
 def corners(bb):
@@ -52,6 +53,7 @@ def build(doc, project, mode, records=None):
             raise ValueError(tr(u'Неверный тип сохранённого вида КР.',u'Invalid stored KR view type.'))
         return view
     def decorate(view,entries):
+        configure(doc,view,[opening for opening,host,r in entries],structures=True)
         for opening,host,r in entries:
             color=blue if api.opening_matches(opening,r) else orange
             ogs=OverrideGraphicSettings().SetProjectionLineColor(color).SetCutLineColor(color)
