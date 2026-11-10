@@ -665,3 +665,18 @@ def recipient_feedback(doc, project, registry=None):
             reply_revision=unicode(receipt.get('revisions',{}).get(core.task_key(task),'')) if receipt else '',
             attention=state not in ('accepted','withdrawn'))
     return result
+
+
+def delete_boxes(doc, elements):
+    """Delete validated original local boxes atomically; keep issued snapshots."""
+    from System.Collections.Generic import List
+    from Autodesk.Revit.DB import ElementId
+    unique={inst.UniqueId:inst for inst in elements}
+    for inst in unique.values():
+        data=metadata(inst)
+        if inst.Document!=doc or not data or data.get('owner_uid')!=inst.UniqueId:
+            raise ValueError(tr(u'Удалять можно только собственные боксы заданий текущей модели.',
+                               u'Only original task boxes in the current model can be deleted.'))
+    if unique:
+        doc.Delete(List[ElementId]([inst.Id for inst in unique.values()]))
+    return len(unique)

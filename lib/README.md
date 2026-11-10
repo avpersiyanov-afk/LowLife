@@ -3337,9 +3337,10 @@ JSON. The JSON column remains hidden. The status parameter must be a normal
 (single-line) schedulable text instance parameter; no extra parameters are added.
 
 
-Opening preview performance: `opening_tasks_visibility.isolate_preview` uses
-native temporary isolation converted to permanent, with `_keep_with_nested`
-and reads only the retained elements (no whole-model unhide/hide loops).
+Opening preview performance: `opening_tasks_visibility.isolate_preview(doc, view, elements, crop)`
+uses a native bounding-box query within the active section box and the existing
+`_hide_by_filter` selection filter. It keeps nested components via `_keep_with_nested`.
+It does not convert temporary isolation across the whole document.
 `configure(..., cache=None)` uses a native multicategory collector and a
 build-scoped cache for repeated control views. No cache survives the command.
 Previews save the registry only when registering a new view and use existing
@@ -3354,3 +3355,36 @@ sections, structural source views and focused previews. Existing override settin
 are preserved; box overrides are untouched. `configure` shares a native link
 collector snapshot through its build-scoped cache. General box-only 3D views
 keep structural categories hidden.
+
+
+Focused preview graphics are versioned in the existing view ExtensibleStorage
+(`role=box_preview`). Reopening the same box updates its crop and bounded
+isolation, skipping category, link, fill and transparency assignments when
+the owner/source/link/structural-view identity has not changed. No process-wide
+cache or new storage schema is introduced.
+
+
+`opening_tasks_neighbors.check(doc, elements)` is an on-demand, read-only check
+of final box dimensions against neighboring walls in the selected host link.
+It reuses `opening_tasks_revit.host_geometry` for current size/orientation and
+link coordinates, `tray_boxes._solids` for cached wall bodies and existing
+bounding-box helpers. `envelope_solid(g)` creates the logical sized box because
+a family may contain only symbolic lines or arbitrary nested geometry. A native
+bounds filter precedes exact positive-volume intersection; original host and
+face-only contact are excluded. Transient solids are disposed. `run(uidoc)`
+shows a separate searchable selection list with box and neighboring-wall IDs;
+unloaded links and geometry failures are reported separately. No new parameters
+or background checks are introduced.
+
+
+`opening_tasks_revit.delete_boxes(doc, elements)` validates original local task
+identity before one native batch deletion, inside the caller's transaction.
+Other existing schematic deletion helpers suppress failures and lack ownership
+validation, so they cannot safely serve this workflow. Issued registry snapshots
+are never deleted. `opening_tasks_ui.delete_boxes_from_list` uses the existing
+`choose` list and reviews exact IDs before deletion; cancellation does not write.
+
+Repeated focused preview resolves its view directly through the optional
+`preview_uid` in existing box ExtensibleStorage. Legacy registry mappings remain
+a fallback and are preserved; the full issued-task registry is not read on
+the direct-reference path. No new Revit parameter or storage schema is needed.
