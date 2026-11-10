@@ -30,8 +30,8 @@ pyrevit.script.get_config() (тот не гарантированно делил
   оканчиваются на «_param»/«_param_name», кроме SHARED_EXCLUDED_KEYS —
   одинаковых имён с разным смыслом).
 - JsonStore.read возвращает SavedSettings — обычный dict, у которого
-  get(key, default) для такого ключа, не заполненного в своём файле (нет
-  или пусто), и при пустом default берёт запомненное значение. Непустой
+  get(key, default) для такого ключа, отсутствующего в своём файле,
+  и при пустом default берёт запомненное значение. Непустой
   default модуля (ключевые слова, коэффициенты) не перекрывается, свой
   файл кнопки — тоже; в сам файл подставленное значение попадает, только
   когда пользователь сохранит настройки этой кнопки.
@@ -138,8 +138,9 @@ def _blank(value):
 class SavedSettings(dict):
     """
     Словарь из файла настроек (JsonStore.read). Отличается от dict только
-    get(): незаполненный в файле общий ключ (is_shared_key) при пустом
+    get(): отсутствующий в файле общий ключ (is_shared_key) при пустом
     default берётся из того, что пользователь вводил в других кнопках.
+    Сохранённое пустое значение означает намеренную очистку.
     """
 
     def __init__(self, data=None, shared=None):
@@ -148,7 +149,7 @@ class SavedSettings(dict):
 
     def shared_value(self, key):
         """Запомненное в других кнопках значение, если оно здесь подставится; иначе None."""
-        if not is_shared_key(key) or not _blank(dict.get(self, key)):
+        if not is_shared_key(key) or key in self:
             return None
         value = self.shared.get(key)
         if isinstance(value, _string_types) and not _blank(value):

@@ -593,18 +593,19 @@ _write_all = _STORE.write
 | `JsonStore.write` | `write(data)` | Перезаписывает файл; `True`, иначе `forms.alert` (если pyrevit доступен) и `False`. Изменённые общие ключи запоминает в общем файле |
 | `JsonStore.update` | `update(values)` | `read()` + `dict.update` + `write()` |
 | `is_shared_key` | `is_shared_key(key)` | Ключ оканчивается на `_param`/`_param_name` и не в `SHARED_EXCLUDED_KEYS` (одно имя — разный смысл в разных кнопках) |
-| `SavedSettings` | `dict` | Как `dict`, но `get(key, default)` для незаполненного (нет/пусто) общего ключа при пустом `default` возвращает значение, введённое в другой кнопке. `[]`, `in`, `items()` — только свой файл |
+| `SavedSettings` | `dict` | Как `dict`, но `get(key, default)` для отсутствующего в файле общего ключа при пустом `default` возвращает значение, введённое в другой кнопке. `[]`, `in`, `items()` — только свой файл |
 | `read_shared` / `remember_shared` | `()` / `(old, new)` | Общая память `%APPDATA%\pyRevit\LowLifeShared_settings.json`: `{ключ: последнее введённое значение}`; пишутся только непустые строки, изменившиеся относительно файла кнопки |
 
 **Общие значения между кнопками.** Одинаковые настройки разных кнопок
 (имена параметров проекта: `wire_mark_param`, `device_address_param`,
 `level_param_name`, …) названы в файлах одинаково. Что пользователь ввёл
 в одной кнопке, подставляется по умолчанию в остальные, где это поле ещё
-не заполнено: модули читают `saved.get(key, default)`, и `SavedSettings`
+не сохранялось: модули читают `saved.get(key, default)`, и `SavedSettings`
 отдаёт запомненное значение вместо пустого `default`. Непустые умолчания
 модуля (ключевые слова, коэффициенты, форматы) и собственные значения
 кнопки не перекрываются; в файл кнопки подставленное значение попадает,
-только когда пользователь сохранит её настройки. Новому ключу имени
+только когда пользователь сохранит её настройки. Явно сохранённое пустое
+поле остаётся пустым и не заполняется из общей памяти. Новому ключу имени
 параметра, который в разных кнопках значит разное, — место в
 `SHARED_EXCLUDED_KEYS` (или другое имя ключа).
 
@@ -3308,3 +3309,29 @@ routes. It updates box Z extent/center without rotating it along the roof slope.
 `geometry.get_element_level` falls back to the built-in roof base/reference level. Native
 Floor/RoofBase openings use NewOpening(..., False), explicitly vertical as documented
 by Autodesk; KR plan ranges include accepted roof hosts.
+
+
+Opening control compatibility: `opening_tasks_focus` reuses
+`loi_check._unhide_all(doc, view)` (element `IsHidden(view)`, not a
+nonexistent View.GetHiddenElementIds) for both dedicated previews.
+`opening_tasks_views.build` checks filterable parameters for each category;
+family-only parameters fall back to selection filters via the existing
+`loi_check._selection_filter`. `sync_selection_filters(doc, settings, registry=None)`
+refreshes only these saved selections once per placement/issue/withdrawal batch,
+without rebuilding views or touching other projects. This batch helper is needed
+because selection filters do not evaluate parameter changes themselves. A schedule
+failure rolls back only its subtransaction, preserving graphical control views.
+
+
+`opening_tasks_visibility.configure(doc, view, elements, structures=False)`
+configures owned control views: boxes only in general 3D, structures and openings
+on control plans/sections. Reuses `loi_check._hide_other_categories`,
+`_keep_with_nested` and `_hide_by_filter` to exclude unrelated families in the
+same category and keep nested box geometry. Views are excluded before checking
+hideability. `structural_categories` is shared with the dedicated box preview.
+
+
+Opening schedules filter by a nonempty dedicated issue status after checking
+`ScheduleDefinition.CanFilterByValue`, not by substring search in multiline
+JSON. The JSON column remains hidden. The status parameter must be a normal
+(single-line) schedulable text instance parameter; no extra parameters are added.

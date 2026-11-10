@@ -183,6 +183,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 del placer.result.filter_errors[filter_error_count:]
                 errors.append((route.Id, unicode(ex)))
     errors += [(inst.Id, err) for inst, err in placer.result.filter_errors]
+    from lowlife.opening_tasks_views import sync_selection_filters
+    sync_selection_filters(doc,settings)
     return entries, errors
 
 
@@ -226,6 +228,8 @@ def publish(doc, elements, settings):
         visible_issue(by_id[record['task_id']],settings,record)
     if changes:
         store.save_registry(doc,registry)
+    from lowlife.opening_tasks_views import sync_selection_filters
+    sync_selection_filters(doc,settings,registry)
     return changes
 
 
@@ -238,6 +242,8 @@ def retract(doc, task_ids, settings):
             visible_issue(inst,settings,record)
     if changes:
         store.save_registry(doc,registry)
+    from lowlife.opening_tasks_views import sync_selection_filters
+    sync_selection_filters(doc,settings,registry)
     return changes
 
 

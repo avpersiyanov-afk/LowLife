@@ -286,7 +286,7 @@ def test_param_entered_in_one_button_is_default_in_another(appdata):
     assert saved.get("schematic_view_name", u"") == u""
 
 
-def test_shared_value_fills_blank_but_not_own_value_or_nonempty_default(appdata):
+def test_shared_value_fills_missing_but_not_saved_blank_or_own_value(appdata):
     a = JsonStore("LowLifeA_settings.json")
     b = JsonStore("LowLifeB_settings.json")
     b.write({"wire_mark_param": u"", "load_name_param": u"Своё"})
@@ -294,7 +294,7 @@ def test_shared_value_fills_blank_but_not_own_value_or_nonempty_default(appdata)
               "cable_type_param": u"Кабель"})
 
     saved = b.read()
-    assert saved.get("wire_mark_param", u"") == u"Марка"  # пусто в файле — подставляется
+    assert saved.get("wire_mark_param", u"") == u""  # намеренно очищено
     assert saved.get("load_name_param", u"") == u"Своё"
     # у модуля свой непустой default — его не перекрываем
     assert saved.get("cable_type_param", u"По умолчанию") == u"По умолчанию"
@@ -356,3 +356,32 @@ def test_background_write_failure_can_suppress_alerts(appdata, monkeypatch):
     assert notices==[]
     assert store.write({'items':[]}) is False
     assert len(notices)==1
+
+
+@pytest.mark.parametrize("key", ["opening_revision_param", "box_width_param"])
+def test_parameter_edits_and_clears_survive_reopening_settings(appdata, key):
+    other = JsonStore("LowLifeOther_settings.json")
+    other.write({key: u"Прежнее имя"})
+    def reopen():
+        return TextSettings(
+            "LowLifeOpeningTasksVIS_settings.json", u"Задания", u"Настройки",
+            u"заданий", [TextField(key, u"", u"Параметр")])
+
+    assert reopen().get_settings_silent()[key] == u"Прежнее имя"
+    edited, errors = reopen().parse_form({key: u"Новое имя"})
+    assert not errors
+    reopen().save_values(edited)
+    other.write({key: u"Имя из другой кнопки"})
+    assert reopen().get_settings_silent()[key] == u"Новое имя"
+
+    edited, errors = reopen().parse_form({key: u""})
+    assert not errors
+    reopen().save_values(edited)
+    # A later update in another button must not undo the explicit clear.
+    other.write({key: u"Ещё одно имя"})
+    assert reopen().get_settings_silent()[key] == u""
+    saved = reopen().store.read()
+    assert saved.get(key, u"") == u""
+    assert saved.shared_value(key) is None
+    # Other buttons can still use the shared default for an unconfigured key.
+    assert JsonStore("LowLifeNew_settings.json").read().get(key) == u"Ещё одно имя"
