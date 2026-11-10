@@ -4,7 +4,7 @@ from System.Collections.Generic import List
 from Autodesk.Revit.DB import (BoundingBoxXYZ, BuiltInCategory, CategoryType, Color,
     ElementId, FamilyInstance, FillPatternElement, FilteredElementCollector,
     OverrideGraphicSettings, RevitLinkGraphicsSettings, LinkVisibility,
-    View3D, ViewFamily, ViewFamilyType, XYZ)
+    View, View3D, ViewFamily, ViewFamilyType, XYZ)
 from pyrevit import forms, revit
 from lowlife.i18n import tr
 from lowlife import select_list
@@ -72,12 +72,12 @@ def focus(doc, inst):
         view=new_view(doc)
         view.Name=unique_name(doc,u'LowLife | Бокс '+str(api.boxes._id_int(inst.Id)))
         previews[inst.UniqueId]=view.UniqueId
-    keep = set([inst.Id,source.Id,link.Id])
+    keep = set([view.Id,inst.Id,source.Id,link.Id])
     # The view belongs to this command: rebuild local isolation on every visit.
     _unhide_all(doc,view)
     others=[]
     for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
-        if el.Id not in keep and el.Category is not None and el.CanBeHidden(view):
+        if el.Id not in keep and not isinstance(el,View) and el.Category is not None and el.CanBeHidden(view):
             others.append(el.Id)
     if others:
         view.HideElements(List[ElementId](others))

@@ -178,3 +178,32 @@ def test_unschedulable_family_parameters_do_not_discard_created_views():
     assert output == ['existing 3D', 'existing plan']
     assert managed == {}  # no UID of the rolled-back schedule remains
     assert len(messages) == 1 and 'JSON' in messages[0]
+
+
+def test_focus_never_hides_itself_or_other_views_even_if_api_says_hideable():
+    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text())
+    focus = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'focus')
+    start = next(i for i, n in enumerate(focus.body) if isinstance(n, ast.Assign)
+                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'keep')
+    end = next(i for i, n in enumerate(focus.body[start:], start) if isinstance(n, ast.If)
+               and isinstance(n.test, ast.Name) and n.test.id == 'others')
+    class PreviewView:
+        def __init__(self, eid):
+            self.Id = eid
+            self.Category = object()
+        def CanBeHidden(self, view):
+            return True  # Revit's per-element check does not exclude the view.
+        def HideElements(self, ids):
+            assert self.Id not in ids
+            self.hidden = list(ids)
+    view = PreviewView(1)
+    other_view = PreviewView(2)
+    elements = [view, other_view]
+    for eid in (3, 4, 5, 6):
+        elements.append(NS(Id=eid, Category=object(), CanBeHidden=lambda v: True))
+    scope = dict(view=view, inst=elements[2], source=elements[3], link=elements[4],
+                 doc=None, View=PreviewView, _unhide_all=lambda *a: None,
+                 List=Lists, ElementId=int,
+                 FilteredElementCollector=lambda doc: Collector(elements))
+    exec(compile(ast.Module(body=focus.body[start:end+1], type_ignores=[]), 'focus', 'exec'), scope)
+    assert view.hidden == [6]
