@@ -3384,8 +3384,9 @@ or background checks are introduced.
 identity before one native batch deletion, inside the caller's transaction.
 Other existing schematic deletion helpers suppress failures and lack ownership
 validation, so they cannot safely serve this workflow. Issued registry snapshots
-are never deleted. `opening_tasks_ui.delete_boxes_from_list` uses the existing
-`choose` list and reviews exact IDs before deletion; cancellation does not write.
+are never deleted. `opening_tasks_ui.delete_boxes_from_list` goes directly to exact-ID confirmation
+for preselected table rows; only an empty selection opens the existing `choose`
+list. Cancellation does not write.
 
 Repeated focused preview resolves its view directly through the optional
 `preview_uid` in existing box ExtensibleStorage. Legacy registry mappings remain
