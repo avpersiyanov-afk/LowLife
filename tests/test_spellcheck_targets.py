@@ -9,6 +9,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 from lowlife import spellcheck_core as core
+from lowlife.cloud_io import dumps_ascii
 
 
 class Parameter:
@@ -97,7 +98,8 @@ def api():
               BuiltInCategory=NS(OST_TitleBlocks='titleblock', OST_GenericAnnotation='annotation'),
               ViewSchedule=Schedule, ScheduleSheetInstance=ScheduleInstance,
               SectionType=NS(Header='header'),
-              safe_name=lambda el: 'element '+str(el.Id), base64=base64, json=json, re=re)
+              safe_name=lambda el: 'element '+str(el.Id), base64=base64, json=json, re=re,
+              dumps_ascii=dumps_ascii)
     class ElementId:
         InvalidElementId = -1
         def __new__(cls, value):

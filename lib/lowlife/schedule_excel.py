@@ -23,6 +23,7 @@ import re
 import base64
 import json
 from lowlife.i18n import tr
+from lowlife.cloud_io import dumps_ascii
 
 from Autodesk.Revit.DB import (
     Element,
@@ -302,7 +303,7 @@ def manual_header_rows(sched):
         target = [sched.UniqueId, r, header.NumberOfRows, header.NumberOfColumns,
                   header.FirstRowNumber, header.FirstColumnNumber, texts, spans]
         token = HEADER_PREFIX + base64.urlsafe_b64encode(
-            json.dumps(target, ensure_ascii=True).encode('utf-8')).decode('ascii')
+            dumps_ascii(target).encode('utf-8')).decode('ascii')
         yield r, token, texts
 
 
