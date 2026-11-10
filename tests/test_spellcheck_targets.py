@@ -52,6 +52,10 @@ class FamilyInstance(Element):
     pass
 
 
+class Viewport(Element):
+    pass
+
+
 class Sheet(Element):
     pass
 
@@ -94,6 +98,7 @@ def api():
     storage = NS(String='string', Integer='int', Double='double', ElementId='id')
     ns = dict(core=core, tr=lambda ru, en=None: ru, unicode=str,
               TextNote=Note, FamilyInstance=FamilyInstance, ViewSheet=Sheet,
+              Viewport=Viewport,
               StorageType=storage, BuiltInParameter=NS(SHEET_NAME='sheet_name'),
               BuiltInCategory=NS(OST_TitleBlocks='titleblock', OST_GenericAnnotation='annotation'),
               ViewSchedule=Schedule, ScheduleSheetInstance=ScheduleInstance,
@@ -117,7 +122,7 @@ def api():
                 if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Assign))]
         exec(compile(ast.Module(body=body, type_ignores=[]), filename, 'exec'), ns)
 
-    def model(elements, visible=()):
+    def model(elements, visible=(), views=None):
         doc = NS(IsWorkshared=False)
         doc.GetElement = lambda eid: next((e for e in elements
                                           if eid is not None and (e.Id == eid or getattr(e, 'UniqueId', None) == eid)), None)
@@ -127,7 +132,10 @@ def api():
         class Collector:
             def __init__(self, document, view_id=None):
                 assert document is doc
-                self.elements = [e for e in elements if view_id is None or e.Id in visible]
+                allowed = visible
+                if views is not None and view_id is not None:
+                    allowed = views.get(view_id, [])
+                self.elements = [e for e in elements if view_id is None or e.Id in allowed]
 
             def OfClass(self, cls):
                 self.elements = [e for e in self.elements if isinstance(e, cls)]
@@ -238,6 +246,61 @@ def test_current_sheet_collects_each_placed_schedule_once(api):
     targets = sc.collect_targets(doc, sc.SCOPE_VIEW, sheet, kinds=['schedule'])
     assert len(targets) == 2
     assert all(t.Id == 2 for t in targets)
+
+
+def test_sheets_scope_walks_viewports_and_collects_everything(api):
+    sc, model, ns = api
+    sheet = Sheet(1, [Parameter('Sheet name')])
+    note_on_sheet = Note(2)
+    note_in_view = Note(3)
+    viewport = Viewport(4)
+    viewport.ViewId = 10
+    stamp = FamilyInstance(5, [Parameter('Stamp text')], 6, category='titleblock')
+    stamp_type = Element(6, [Parameter('Stamp type text')])
+    schedule = Schedule(7)
+    schedule_instance = ScheduleInstance(8)
+    schedule_instance.ScheduleId = 7
+    doc = model([sheet, note_on_sheet, note_in_view, viewport,
+                 stamp, stamp_type, schedule, schedule_instance],
+                views={1: [2, 4, 5, 8], 10: [3]})
+    targets = sc.collect_targets(doc, sc.SCOPE_SHEETS, sheets=[sheet])
+    assert [(t.kind, t.Id) for t in targets] == [
+        ('note', 2), ('note', 3),
+        ('sheet', 1),
+        ('instance', 5), ('type', 6),
+        ('schedule', 7), ('schedule', 7)]
+    assert [sc.plain_text(t) for t in targets[:3]] == [
+        'Text note', 'Text note', 'Sheet name']
+
+
+def test_sheets_scope_dedupes_instances_across_sheet_and_view(api):
+    sc, model, ns = api
+    sheet = Sheet(1, [Parameter('Sheet name')])
+    stamp = FamilyInstance(2, [Parameter('Stamp text')], 3, category='titleblock')
+    stamp_type = Element(3, [Parameter('Stamp type text')])
+    viewport = Viewport(4)
+    viewport.ViewId = 10
+    doc = model([sheet, stamp, stamp_type, viewport], views={1: [2, 4], 10: [2]})
+    targets = sc.collect_targets(doc, sc.SCOPE_SHEETS, sheets=[sheet], kinds=['titleblock'])
+    assert [(t.kind, t.Id) for t in targets] == [('instance', 2), ('type', 3)]
+
+
+def test_sheets_scope_collects_each_placed_schedule_once(api):
+    sc, model, ns = api
+    sheet = Sheet(1)
+    schedule = Schedule(2)
+    first, second = ScheduleInstance(3), ScheduleInstance(4)
+    first.ScheduleId = second.ScheduleId = 2
+    doc = model([sheet, schedule, first, second], views={1: [3, 4]})
+    targets = sc.collect_targets(doc, sc.SCOPE_SHEETS, sheets=[sheet], kinds=['schedule'])
+    assert len(targets) == 2
+    assert all(t.Id == 2 for t in targets)
+
+
+def test_sheets_scope_without_sheets_collects_nothing(api):
+    sc, model, ns = api
+    doc = model([Note(1), Sheet(2, [Parameter('Sheet name')])])
+    assert sc.collect_targets(doc, sc.SCOPE_SHEETS, sheets=[]) == []
 
 
 def test_writes_exact_parameter_even_when_names_are_equal(api):

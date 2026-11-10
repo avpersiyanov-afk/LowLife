@@ -14,7 +14,7 @@ Revit-часть кнопки «Проверка орфографии» (Tools.p
 from Autodesk.Revit.DB import (
     FilteredElementCollector, TextNote, TextRange, ElementId,
     WorksharingUtils, CheckoutStatus, ModelUpdatesStatus,
-    FamilyInstance, ViewSheet, BuiltInParameter, BuiltInCategory, StorageType,
+    FamilyInstance, ViewSheet, Viewport, BuiltInParameter, BuiltInCategory, StorageType,
     ViewSchedule, ScheduleSheetInstance, SectionType
 )
 from lowlife.i18n import tr
@@ -26,6 +26,7 @@ from lowlife import spellcheck_core as core
 
 SCOPE_SELECTION = "selection"
 SCOPE_VIEW = "view"
+SCOPE_SHEETS = "sheets"
 SCOPE_MODEL = "model"
 
 # Итог apply_fix
@@ -61,27 +62,52 @@ class TextTarget(object):
         return u"{} — {} [ {} ]".format(self.field, safe_name(self.element), self.Id)
 
 
-def collect_targets(doc, scope, view=None, selected=None, kinds=None):
+def sheet_scope_view_ids(doc, sheets):
+    """Идентификаторы видов для полного обхода листов: сам лист плюс виды
+    во всех размещённых на нём видовых экранах (включая легенды и узлы)."""
+    ids = []
+    for sheet in sheets:
+        ids.append(sheet.Id)
+        for viewport in FilteredElementCollector(doc, sheet.Id).OfClass(Viewport):
+            ids.append(viewport.ViewId)
+    return ids
+
+
+def collect_targets(doc, scope, view=None, selected=None, kinds=None, sheets=None):
     """Тексты документа: заметки, листы, штампы, типовые аннотации, ручные таблицы.
 
     На листе проверяется его имя, а семейства/заметки — видимые на самом
     листе, без обхода размещённых видовых экранов. Тип проверяется один раз.
-    """
+    Область SCOPE_SHEETS обходит листы вместе с видами в их видовых экранах
+    (`sheets` — выбранные листы), остальные области `sheets` не используют."""
     kinds = set(kinds if kinds is not None else ("note", "sheet", "titleblock", "annotation", "schedule"))
     selected = list(selected or [])
+    sheets = list(sheets or [])
     result = []
     if "note" in kinds:
-        notes = collect_text_notes(doc, scope, view,
-                                   [e for e in selected if isinstance(e, TextNote)])
+        if scope == SCOPE_SHEETS:
+            notes = []
+            seen = set()
+            for view_id in sheet_scope_view_ids(doc, sheets):
+                collector = FilteredElementCollector(doc, view_id)
+                for note in collector.OfClass(TextNote).WhereElementIsNotElementType():
+                    if note.Id not in seen:
+                        seen.add(note.Id)
+                        notes.append(note)
+        else:
+            notes = collect_text_notes(doc, scope, view,
+                                       [e for e in selected if isinstance(e, TextNote)])
         result.extend(TextTarget(e, "note") for e in notes)
     if "sheet" in kinds:
-        if scope == SCOPE_SELECTION:
-            sheets = [e for e in selected if isinstance(e, ViewSheet)]
+        if scope == SCOPE_SHEETS:
+            sheet_list = sheets
+        elif scope == SCOPE_SELECTION:
+            sheet_list = [e for e in selected if isinstance(e, ViewSheet)]
         elif scope == SCOPE_VIEW:
-            sheets = [view] if isinstance(view, ViewSheet) else []
+            sheet_list = [view] if isinstance(view, ViewSheet) else []
         else:
-            sheets = FilteredElementCollector(doc).OfClass(ViewSheet)
-        for sheet in sheets:
+            sheet_list = FilteredElementCollector(doc).OfClass(ViewSheet)
+        for sheet in sheet_list:
             p = sheet.get_Parameter(BuiltInParameter.SHEET_NAME)
             if p is not None:
                 result.append(TextTarget(sheet, "sheet", p))
@@ -92,6 +118,16 @@ def collect_targets(doc, scope, view=None, selected=None, kinds=None):
         if scope == SCOPE_SELECTION:
             instances = [e for e in selected if isinstance(e, FamilyInstance)
                          and e.Category is not None and e.Category.Id == ElementId(category)]
+        elif scope == SCOPE_SHEETS:
+            instances = []
+            seen = set()
+            for view_id in sheet_scope_view_ids(doc, sheets):
+                collector = FilteredElementCollector(doc, view_id)
+                found = collector.OfCategory(category).OfClass(FamilyInstance).WhereElementIsNotElementType()
+                for instance in found:
+                    if instance.Id not in seen:
+                        seen.add(instance.Id)
+                        instances.append(instance)
         else:
             collector = (FilteredElementCollector(doc, view.Id)
                          if scope == SCOPE_VIEW and view is not None
@@ -112,9 +148,14 @@ def collect_targets(doc, scope, view=None, selected=None, kinds=None):
         if scope == SCOPE_MODEL:
             schedules = schedule_excel.list_schedules(doc)
         else:
-            elements = selected if scope == SCOPE_SELECTION else [view]
-            if scope == SCOPE_VIEW and isinstance(view, ViewSheet):
-                elements = FilteredElementCollector(doc, view.Id).OfClass(ScheduleSheetInstance)
+            if scope == SCOPE_SHEETS:
+                elements = []
+                for sheet in sheets:
+                    elements.extend(FilteredElementCollector(doc, sheet.Id).OfClass(ScheduleSheetInstance))
+            else:
+                elements = selected if scope == SCOPE_SELECTION else [view]
+                if scope == SCOPE_VIEW and isinstance(view, ViewSheet):
+                    elements = FilteredElementCollector(doc, view.Id).OfClass(ScheduleSheetInstance)
             schedules = []
             seen = set()
             for element in elements:

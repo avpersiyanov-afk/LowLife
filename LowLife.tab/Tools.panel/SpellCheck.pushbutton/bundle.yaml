@@ -1,7 +1,7 @@
 tooltip: |
   Проверяет заметки, названия листов, штампы, типовые аннотации и ручные спецификации с помощью ИИ. Параметры оборудования и других модельных семейств не обходятся. Подключение то же, что у «Задач из почты». Исправления показываются списком «было → стало», записываются только отмеченные. Форматирование заметок сохраняется.
 
-  Область: выделенные элементы, текущий вид или вся модель. Правка параметра типа затрагивает все его экземпляры.
+  Область: выделенные элементы, текущий вид, выбранные листы (имена листов и все элементы на листах и в размещённых на них видах) или вся модель. Правка параметра типа затрагивает все его экземпляры.
 
   Shift+клик — настройки: способ подключения ИИ, модель, промпт.
 title_en: "Spell\ncheck"
@@ -9,6 +9,7 @@ tooltip_en: >-
   Checks text notes, sheet names, title blocks, generic annotations and manual schedule headers with AI.
   Equipment and other model family parameters are excluded.
   The connection is shared with «Tasks from mail». Corrections are previewed and only checked items
-  are applied. Note formatting is preserved. Scope: selected elements, current view or whole model.
+  are applied. Note formatting is preserved. Scope: selected elements, current view, selected sheets
+  (sheet names and all elements on the sheets and in views placed on them) or whole model.
   Editing a type parameter affects all instances of that type.
   Shift+click — settings: how to connect the AI, model, prompt.
