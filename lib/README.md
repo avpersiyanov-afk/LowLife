@@ -1227,6 +1227,10 @@ VerticalTextAlignment.Middle` (тем же приёмом, что и `Horizontal
 | `list_sheet_names` | `list_sheet_names(path)` | Имена листов книги по порядку, как в Excel; `[]` если не прочиталось |
 
 ## schedule_excel.py
+`manual_header_rows(sched)` — генератор `(строка, LLH-токен снимка, тексты)`
+многострочной ручной шапки без обхода элементов модели. Общий для Excel и
+проверки орфографии; запись ячеек — через `rows_to_model` с проверкой снимка.
+
 Выгрузка спецификации в таблицу и обратная загрузка правок в модель. Ключ
 связи строки с элементом — столбец `«Revit ID»`; остальные столбцы —
 параметры экземпляра по имени поля спецификации и параметры типа с префиксом
@@ -2244,11 +2248,31 @@ Revit, на первом `Idling`, один раз за сеанс (флаг в 
   ниже `MIN_SIMILARITY`), `split_text`/`full_text` (разделитель строк
   Revit `\r` и пробелы по краям), `replacement_spans` (минимальные замены
   по словам, длина ≥ 1), `apply_spans`, `describe_changes`, `SYSTEM_PROMPT`.
+  `comparison_runs(old, new)` — фрагменты `(текст, изменён)` для двух
+  столбцов сравнения на основе тех же `replacement_spans`, без нового diff.
+- `spellcheck_ui.py` — `review(proposals, targets)`: изменяемое по размеру
+  окно «Было / Как будет», ошибки слева красным, исправления справа зелёным,
+  перенос строк, галочки, выбор всех и счётчик; источники в подсказке.
+  Возвращает отмеченные предложения либо None при отмене. WPF загружается лениво.
 - `spellcheck.py` — Revit: `collect_text_notes(doc, scope, view, selected)`,
   `selected_text_notes`, `plain_text`, `skip_reason` (группа, чужой или
   устаревший элемент совместной модели), `apply_fix` — замены в
   `FormattedText` (`SetPlainText(TextRange, …)`), при неудаче —
   `TextNote.Text` целиком.
+  `collect_targets(doc, scope, view, selected, kinds)` собирает `TextTarget`:
+  заметки, названия листов (`SHEET_NAME`) и заполненные доступные для записи
+  строковые параметры только штампов и типовых аннотаций. Категория фильтруется
+  в Revit до чтения параметров; оборудование не обходится. Типы — один раз,
+  неразмещённые и связи исключены. `TextTarget.field`/`label` показывают место
+  записи; `plain_text`/`skip_reason`/`apply_fix` принимают и старые TextNote,
+  и новые цели. Параметры читаются/пишутся через `params.param_to_text` /
+  `set_param_text` по точному объекту Parameter, имена — `link_views.safe_name`.
+  Перед записью повторно проверяются доступность и исходный текст.
+  Ручные таблицы — через `schedule_excel.manual_header_rows`, запись через
+  `rows_to_model` с проверкой структуры/объединений/исходного текста. Тело
+  спецификаций и параметры их элементов не читаются. Поддерживаются открытая
+  спецификация, размещения на активном листе, выделенные размещения и вся модель.
+  Тесты адаптера с подставным API — `tests/test_spellcheck_targets.py`.
 - `spellcheck_settings.py` — `load()` (подключение из `ai_settings` + свой
   `prompt` в `LowLifeSpellCheck_settings.json`), `save`,
   `effective_prompt`, `edit_interactive(default_prompt)`.

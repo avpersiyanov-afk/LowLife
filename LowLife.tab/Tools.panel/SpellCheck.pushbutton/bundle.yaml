@@ -1,13 +1,14 @@
 tooltip: |
-  Проверяет орфографию, грамматику и пунктуацию в текстовых заметках модели с помощью ИИ (Claude или ChatGPT — подключение то же, что у «Задач из почты»). Одинаковые надписи отправляются один раз; найденные исправления показываются списком «было → стало», записываются только отмеченные. Меняются только исправленные слова — форматирование заметки сохраняется.
+  Проверяет заметки, названия листов, штампы, типовые аннотации и ручные спецификации с помощью ИИ. Параметры оборудования и других модельных семейств не обходятся. Подключение то же, что у «Задач из почты». Исправления показываются списком «было → стало», записываются только отмеченные. Форматирование заметок сохраняется.
 
-  Область: выделенные заметки, текущий вид или вся модель.
+  Область: выделенные элементы, текущий вид или вся модель. Правка параметра типа затрагивает все его экземпляры.
 
   Shift+клик — настройки: способ подключения ИИ, модель, промпт.
 title_en: "Spell\ncheck"
 tooltip_en: >-
-  Checks spelling, grammar and punctuation in the model's text notes with AI (Claude or ChatGPT —
-  connected the same way as «Tasks from mail»). Identical texts are sent once; the corrections found
-  are shown as a «was → becomes» list, and only the ticked ones are written. Only the corrected words
-  change — the note's formatting is kept. Scope: selected notes, the current view or the whole model.
+  Checks text notes, sheet names, title blocks, generic annotations and manual schedule headers with AI.
+  Equipment and other model family parameters are excluded.
+  The connection is shared with «Tasks from mail». Corrections are previewed and only checked items
+  are applied. Note formatting is preserved. Scope: selected elements, current view or whole model.
+  Editing a type parameter affects all instances of that type.
   Shift+click — settings: how to connect the AI, model, prompt.

@@ -287,6 +287,25 @@ def _calc_cell_texts(doc, sched, els, names, calc_flags):
     return out
 
 
+def manual_header_rows(sched):
+    """(row, snapshot token, texts) for multi-row manual headers; no model scan."""
+    header = sched.GetTableData().GetSectionData(SectionType.Header)
+    if header.NumberOfRows <= 1:
+        return
+    for r in range(header.FirstRowNumber, header.LastRowNumber + 1):
+        texts, spans = [], []
+        for c in range(header.FirstColumnNumber, header.LastColumnNumber + 1):
+            span = header.GetMergedCell(r, c)
+            anchor = (span.Top == r and span.Left == c)
+            texts.append(sched.GetCellText(SectionType.Header, r, c) if anchor else u"")
+            spans.append([span.Top, span.Left, span.Bottom, span.Right])
+        target = [sched.UniqueId, r, header.NumberOfRows, header.NumberOfColumns,
+                  header.FirstRowNumber, header.FirstColumnNumber, texts, spans]
+        token = HEADER_PREFIX + base64.urlsafe_b64encode(
+            json.dumps(target, ensure_ascii=True).encode('utf-8')).decode('ascii')
+        yield r, token, texts
+
+
 def schedule_to_rows(doc, sched):
     u"""
     (rows, число_элементов, число_столбцов-параметров, ширины_столбцов).
@@ -341,17 +360,7 @@ def schedule_to_rows(doc, sched):
             row.extend([u""] * count)
         for j in range(count):
             widths.append(_excel_col_width(header.GetColumnWidth(header.FirstColumnNumber + j)))
-        for r in range(header.FirstRowNumber, header.LastRowNumber + 1):
-            texts, spans = [], []
-            for c in range(header.FirstColumnNumber, header.LastColumnNumber + 1):
-                span = header.GetMergedCell(r, c)
-                anchor = (span.Top == r and span.Left == c)
-                texts.append(sched.GetCellText(SectionType.Header, r, c) if anchor else u"")
-                spans.append([span.Top, span.Left, span.Bottom, span.Right])
-            target = [sched.UniqueId, r, header.NumberOfRows, count,
-                      header.FirstRowNumber, header.FirstColumnNumber, texts, spans]
-            token = HEADER_PREFIX + base64.urlsafe_b64encode(
-                json.dumps(target, ensure_ascii=True).encode('utf-8')).decode('ascii')
+        for r, token, texts in manual_header_rows(sched):
             rows.append([token] + [u""] * offset + texts)
 
     return rows, len(rows) - 1, len(rows[0]) - 1, widths

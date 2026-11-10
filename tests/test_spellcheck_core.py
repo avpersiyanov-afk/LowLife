@@ -106,3 +106,24 @@ def test_describe_changes():
     assert sc.describe_changes(u"Кабелный лоток", u"Кабельный лоток") == u"Кабелный → Кабельный"
     text = sc.describe_changes(u"Щит  освещения", u"Щит освещения")
     assert u"→" in text
+
+
+@pytest.mark.parametrize("old,new", [
+    (u"Кабелный лоток", u"Кабельный лоток"),
+    (u"Щит  освещения", u"Щит освещения"),
+    (u"Щит освещения", u"Щит освещения."),
+    (u"Первая строка\nОшбка здесь", u"Первая строка\nОшибка здесь"),
+    (u"Нет изменений", u"Нет изменений"),
+    (u"Лишнее слово здесь", u"Слово здесь"),
+])
+def test_comparison_columns_preserve_full_text(old, new):
+    before, after = sc.comparison_runs(old, new)
+    assert u"".join(text for text, changed in before) == old
+    assert u"".join(text for text, changed in after) == new
+    assert any(changed for text, changed in before) == (old != new)
+
+
+def test_comparison_highlights_error_without_coloring_unchanged_context():
+    before, after = sc.comparison_runs(u"Кабелный лоток", u"Кабельный лоток")
+    assert before == [(u"Кабелный", True), (u" лоток", False)]
+    assert after == [(u"Кабельный", True), (u" лоток", False)]

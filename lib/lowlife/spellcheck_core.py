@@ -239,6 +239,29 @@ def replacement_spans(old, new):
             for i1, i2, j1, j2 in ops]
 
 
+def comparison_runs(old, new):
+    """Two lists of (text, changed) for a side-by-side correction preview.
+
+    Uses the same word replacements as writing notes, including context for
+    inserted punctuation. Concatenating either list restores its full text.
+    """
+    before, after, cursor = [], [], 0
+    for start, length, replacement in replacement_spans(old, new):
+        unchanged = old[cursor:start]
+        if unchanged:
+            before.append((unchanged, False))
+            after.append((unchanged, False))
+        if length:
+            before.append((old[start:start + length], True))
+        if replacement:
+            after.append((replacement, True))
+        cursor = start + length
+    if cursor < len(old):
+        before.append((old[cursor:], False))
+        after.append((old[cursor:], False))
+    return before, after
+
+
 def apply_spans(old, spans):
     """old с применёнными заменами (с конца, как в Revit)."""
     text = _u(old)

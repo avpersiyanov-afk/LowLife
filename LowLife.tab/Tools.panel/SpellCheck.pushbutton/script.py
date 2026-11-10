@@ -7,7 +7,8 @@ except NameError:  # Python 3
 
 __title__ = u"Проверка\nорфографии"
 __doc__ = (
-    u"Проверяет орфографию, грамматику и пунктуацию в текстовых заметках "
+    u"Проверяет орфографию, грамматику и пунктуацию в названиях листов, "
+    u"штампах, ручных спецификациях и аннотациях "
     u"модели с помощью ИИ (Claude или ChatGPT — подключение то же, что у "
     u"«Задач из почты»). Найденные исправления показываются списком "
     u"«было → стало», записываются только отмеченные; меняются только "
@@ -29,7 +30,7 @@ from pyrevit import revit, forms, script, EXEC_PARAMS
 from lowlife import select_list
 
 from lowlife import spellcheck_core as core
-from lowlife import spellcheck, spellcheck_settings, email_ai
+from lowlife import spellcheck, spellcheck_settings, spellcheck_ui, email_ai
 
 TITLE = tr(u"Проверка орфографии")
 BUNDLE_DIR = os.path.dirname(__file__)
@@ -74,20 +75,44 @@ except email_ai.AIError as ex:
     forms.alert(ex.message, title=TITLE, exitscript=True)
 
 
-# --- 1. Какие заметки проверять
-selected = spellcheck.selected_text_notes(doc, uidoc)
+# --- 1. Источники текста и область
+sources = [(tr(u"Текстовые заметки", u"Text notes"), "note"),
+           (tr(u"Названия листов", u"Sheet names"), "sheet"),
+           (tr(u"Штампы", u"Title blocks"), "titleblock"),
+           (tr(u"Типовые аннотации", u"Generic annotations"), "annotation"),
+           (tr(u"Ручные спецификации", u"Manual schedules"), "schedule")]
+picked_sources = select_list.SelectFromList.show(
+    [label for label, kind in sources], title=tr(u"Что проверить?", u"What should be checked?"),
+    button_name=tr(u"Продолжить", u"Continue"), multiselect=True)
+if not picked_sources:
+    script.exit()
+kinds = [kind for label, kind in sources if label in picked_sources]
+selected = [doc.GetElement(eid) for eid in uidoc.Selection.GetElementIds()]
+selected = [e for e in selected if e is not None]
 scopes = []
 if selected:
     scopes.append((tr(u"Выделенные ({})").format(len(selected)), spellcheck.SCOPE_SELECTION))
 scopes.append((tr(u"Текущий вид"), spellcheck.SCOPE_VIEW))
 scopes.append((tr(u"Вся модель"), spellcheck.SCOPE_MODEL))
-choice = forms.alert(tr(u"Какие текстовые заметки проверить?"), title=TITLE,
+choice = forms.alert(tr(u"Где проверить текст?", u"Where should text be checked?"), title=TITLE,
                      options=[label for label, _scope in scopes])
 if not choice:
     script.exit()
 scope = dict(scopes)[choice]
 
-all_notes = spellcheck.collect_text_notes(doc, scope, doc.ActiveView, selected)
+all_notes = spellcheck.collect_targets(doc, scope, doc.ActiveView, selected, kinds)
+if "titleblock" in kinds or "annotation" in kinds:
+    fields = sorted(set(note.field for note in all_notes if note.kind in ("instance", "type")))
+    if fields:
+        picked_fields = select_list.SelectFromList.show(
+            fields,
+            title=tr(u"Выберите параметры. Правка типа затронет все его экземпляры.",
+                     u"Choose parameters. Type edits affect all instances of that type."),
+            button_name=tr(u"Продолжить", u"Continue"), multiselect=True, width=900)
+        if not picked_fields:
+            script.exit()
+        all_notes = [note for note in all_notes
+                     if note.kind not in ("instance", "type") or note.field in picked_fields]
 notes = []
 skipped = []  # (заметка, причина)
 for note in all_notes:
@@ -99,9 +124,9 @@ for note in all_notes:
 
 items = core.collect_items([(i, spellcheck.plain_text(note)) for i, note in enumerate(notes)])
 if not items:
-    forms.alert(tr(u"Нет текстовых заметок с текстом для проверки ({}).{}").format(
+    forms.alert(tr(u"Нет текста для проверки ({}).{}", u"No text to check ({}).{}").format(
         choice.lower(),
-        tr(u"\n\nПропущено заметок (в группах / заняты): {}").format(len(skipped)) if skipped else u""),
+        tr(u"\n\nПропущено источников текста: {}", u"\n\nSkipped text sources: {}").format(len(skipped)) if skipped else u""),
         title=TITLE, exitscript=True)
 
 
@@ -198,36 +223,17 @@ if fatal_error:
     forms.alert(fatal_error, title=TITLE, exitscript=True)
 
 
-# --- 3. Выбор исправлений
-class FixOption(object):
-    def __init__(self, proposal):
-        self.proposal = proposal
-        count = len(proposal["item"]["notes"])
-        new_short = proposal["new_body"].replace(u"\n", u" ↵ ")
-        if len(new_short) > 90:
-            new_short = new_short[:90] + u"…"
-        self.name = u"{}    «{}»{}".format(
-            proposal["changes"], new_short, u"   ×{}".format(count) if count > 1 else u"")
-
-
+# --- 3. Сравнение в двух столбцах и выбор исправлений
 chosen = []
 if proposals:
-    picked = select_list.SelectFromList.show(
-        [forms.TemplateListItem(FixOption(p), checked=True, name_attr="name") for p in proposals],
-        title=tr(u"Исправления ИИ — снимите отметку с ненужных"),
-        button_name=tr(u"Исправить отмеченные"),
-        multiselect=True,
-        width=1000,
-        height=650,
-    )
+    picked = spellcheck_ui.review(proposals, notes)
     if picked is None:
         forms.alert(tr(u"Отменено. В модели ничего не изменено."), title=TITLE, exitscript=True)
-    chosen = [getattr(option, "proposal", None) for option in picked]
-    chosen = [p for p in chosen if p]
+    chosen = picked
 
 
 # --- 4. Запись
-applied = []      # (proposal, [ElementId])
+applied = []      # (proposal, [ElementId], [подпись источника])
 plain_notes = []  # ElementId, где форматирование сброшено
 failed = []       # (ElementId, причина)
 commit_error = None
@@ -237,19 +243,21 @@ if chosen:
         with revit.Transaction(TITLE):
             for proposal in chosen:
                 ids = []
+                labels = []
                 for index, old_plain in proposal["item"]["notes"]:
                     note = notes[index]
                     new_plain = core.full_text(old_plain, proposal["new_body"])
                     try:
                         how = spellcheck.apply_fix(note, old_plain, new_plain)
                     except Exception as ex:
-                        failed.append((note.Id, unicode(ex)))
+                        failed.append((note.Id, u"{}: {}".format(note.label, ex)))
                         continue
                     ids.append(note.Id)
+                    labels.append(note.label)
                     if how == spellcheck.APPLIED_PLAIN:
                         plain_notes.append(note.Id)
                 if ids:
-                    applied.append((proposal, ids))
+                    applied.append((proposal, ids, labels))
     except Exception as ex:
         commit_error = unicode(ex)
         applied, plain_notes = [], []
@@ -259,8 +267,10 @@ if chosen:
 output = script.get_output()
 output.print_md(tr(u"## Проверка орфографии — {}").format(
     datetime.datetime.now().strftime("%d.%m.%Y %H:%M")))
-output.print_md(tr(u"Область: **{}**, заметок: **{}**, уникальных надписей: **{}**, "
-                u"с исправлениями: **{}**. ИИ: {}.").format(
+output.print_md(tr(u"Область: **{}**, источников текста: **{}**, уникальных надписей: **{}**, "
+                u"с исправлениями: **{}**. ИИ: {}.",
+                u"Scope: **{}**, text sources: **{}**, unique texts: **{}**, "
+                u"with corrections: **{}**. AI: {}.").format(
                     choice, len(all_notes), len(items), len(proposals), engine.description))
 
 if commit_error:
@@ -270,10 +280,11 @@ if commit_error:
 if applied:
     output.print_md(tr(u"### Исправлено"))
     rows = []
-    for proposal, ids in applied:
+    for proposal, ids, labels in applied:
         rows.append([proposal["changes"], proposal["new_body"].replace(u"\n", u" ↵ "),
-                     output.linkify(ids)])
-    output.print_table(table_data=rows, columns=[tr(u"Что исправлено"), tr(u"Текст"), tr(u"Заметки")])
+                     u"; ".join(labels), output.linkify(ids)])
+    output.print_table(table_data=rows, columns=[tr(u"Что исправлено"), tr(u"Текст"),
+                       tr(u"Источник текста", u"Text source"), tr(u"Элементы")])
 elif not proposals and not batch_errors:
     output.print_md(tr(u"Ошибок не найдено."))
 elif proposals and not chosen:
@@ -291,7 +302,7 @@ if failed:
 if skipped:
     output.print_md(tr(u"### Пропущены, не проверялись"))
     for note, reason in skipped:
-        output.print_md(u"- {} — {}".format(output.linkify(note.Id), reason))
+        output.print_md(u"- {} — {} — {}".format(output.linkify(note.Id), note.label, reason))
 
 if rejected:
     output.print_md(tr(u"### Отклонено: ИИ переписал текст, а не исправил ошибки"))
