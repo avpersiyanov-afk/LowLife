@@ -3395,3 +3395,11 @@ OST_TextNotes for generated group remarks. Grids, levels, section/elevation
 markers, scope boxes and section-box boundaries are excluded. General 3D views
 reuse `opening_tasks_kr_views.projected_box` with actual box bounds and a 500 mm
 margin, so status views frame only matching boxes instead of the whole model.
+
+
+Preview schema recovery: view configuration uses `schema=opening_tasks_core.VERSION`
+separately from its graphic `version`. `opening_tasks_storage.read` treats only
+the known legacy `box_preview/version=2` record without schema as unconfigured;
+focus rebuilds it using the existing view. Other invalid schemas still raise.
+`write` rejects incompatible/missing schema before mutating ExtensibleStorage,
+without reparsing valid large registry payloads.
