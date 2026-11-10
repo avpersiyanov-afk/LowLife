@@ -3346,3 +3346,11 @@ Previews save the registry only when registering a new view and use existing
 `route_preview.zoom_to_fit_points` with the known crop instead of redundant
 RefreshActiveView/ZoomToFit. Control views use shading with edges and explicitly
 visible solid status fills.
+
+
+`opening_tasks_visibility.transparent_structures(doc, view, links=None)` unifies
+structural category and link-instance transparency at 70% across control plans,
+sections, structural source views and focused previews. Existing override settings
+are preserved; box overrides are untouched. `configure` shares a native link
+collector snapshot through its build-scoped cache. General box-only 3D views
+keep structural categories hidden.
