@@ -154,7 +154,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 assign_level(doc,inst,level)
                 if placer.result.missing_params:
                     raise ValueError(tr(u'Нет параметров размеров бокса',u'Missing box size parameters'))
-                placer._set_host_filter(inst, crossing.kind)
+                placer._set_host_filter(inst, crossing.kind,required=False)
                 data = dict(data, level=level_info, object_part=settings.get('opening_object_part',''), recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
                             host_uid=crossing.host.UniqueId, host_model=store.model_id(source.GetLinkDocument()),
                             host_link_uid=source.UniqueId, kind=crossing.kind,

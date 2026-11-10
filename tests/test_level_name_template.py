@@ -72,3 +72,9 @@ def test_optional_discipline_output_preserves_legacy_three_field_parse():
     template=LevelNameTemplate(DEFAULT_TEMPLATE)
     assert template.parse(u'АР_К1_+0.000_01')==(u'к1',u'01',u'')
     assert template.parse(u'АР_К1_+0.000_01',with_discipline=True)==(u'к1',u'01',u'',u'ар')
+
+
+def test_identity_uses_existing_mask_and_normalizes_numeric_zero_padding():
+    parser=LevelNameTemplate(DEFAULT_TEMPLATE)
+    assert parser.identity(u'АР_01_+0.000_007')==parser.identity(u'КР_1_+30.000_7_доп')==(u'1',u'7')
+    assert parser.parse(u'АР_01_+0.000_007')==(u'01',u'007',u'')

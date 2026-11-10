@@ -29,6 +29,9 @@ def make(role, doc=None):
                        ('opening_revision_param',N_(u'Параметр ревизии задания'),N_(u'Текстовый параметр экземпляра бокса для ревизии. При перевыдаче изменённого задания номер ревизии увеличивается.')),
                        ('opening_date_param',N_(u'Параметр даты выдачи'),N_(u'Текстовый параметр экземпляра бокса для даты и времени выдачи в UTC. Дата отправки в Google фиксируется отдельно.'))]]
         replacements = {
+            'box_host_filter_param':sc.TextField('box_host_filter_param',u'',u'Параметр фильтра по конструкции',
+                hint=tr(u'Необязательно. Дополнительная запись «стена»/«перекрытие» в текстовый параметр экземпляра. К статусу выдачи не относится. Пустой или недоступный параметр пропускается; имена из общих настроек автоматически не подставляются.',
+                        u'Optional wall/floor classification in a text instance parameter. Independent of issue status. Blank or unavailable parameters are skipped; shared defaults are not inserted.'),required=False),
             'box_hosts':sc.ChoiceField('box_hosts',u'⑤ Что пересекать',u'Элементы',
                 [(trays.HOSTS_ALL,N_(u'Стены, перекрытия и кровли')),
                  (trays.HOSTS_WALLS,N_(u'Только стены')),
@@ -58,8 +61,14 @@ def make(role, doc=None):
                            N_(u'Задания ВИС') if role == 'VIS' else N_(u'Задания КР') if role=='KR' else N_(u'Задания АР'),
                            u'Задания на отверстия', u'заданий на отверстия', fields,
                            width=780, height=700)
-    if role=='VIS' and doc is not None:
-        form.migrate=lambda saved,values:values.update(opening_discipline=for_document(values,doc)['opening_discipline'])
+    if role=='VIS':
+        def migrate(saved,values):
+            # This optional family-specific field must be explicitly saved here.
+            if 'box_host_filter_param' not in saved:
+                values['box_host_filter_param']=u''
+            if doc is not None:
+                values['opening_discipline']=for_document(values,doc)['opening_discipline']
+        form.migrate=migrate
     return form
 
 

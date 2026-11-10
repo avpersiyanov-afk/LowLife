@@ -117,6 +117,21 @@ class LevelNameTemplate(object):
         return result+(self._field(m, DISCIPLINE).lower(),) if with_discipline else result
 
 
+    def identity(self, name):
+        """Building/floor key from this mask; numeric zero padding is ignored."""
+        parsed=self.parse(name)
+        if parsed is None:
+            return None
+        result=[]
+        for value in parsed[:2]:
+            try:
+                value=u"{}".format(int(value))
+            except (ValueError,TypeError):
+                pass
+            result.append(value)
+        return tuple(result)
+
+
 def validate(template):
     """Текст ошибки шаблона или None, если шаблон годится."""
     return LevelNameTemplate(template).error

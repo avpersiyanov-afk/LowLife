@@ -583,18 +583,21 @@ class BoxPlacer(object):
                     sym.Activate()
                 inst.ChangeTypeId(sym.Id)
 
-    def _set_host_filter(self, inst, kind):
+    def _set_host_filter(self, inst, kind, required=True):
         u"""Классификация только нового экземпляра, без изменения параметров типа."""
         try:
             name = self.settings.get("box_host_filter_param") or u""
             param = inst.LookupParameter(name) if name else None
             if param is None or param.IsReadOnly or param.StorageType != StorageType.String:
+                if not required:
+                    return
                 raise ValueError(tr(u"В настройке «Параметр фильтра по конструкции» указано «{}». Такой параметр отсутствует у бокса, недоступен для записи или не является текстовым параметром экземпляра. Проверьте это поле в настройках команды; оно предназначено для значений «стена»/«перекрытие».",
                                     u"The Host filter parameter setting specifies '{}'. This parameter is missing on the box, read-only, or is not a text instance parameter. Check that setting; it stores wall/floor classification.").format(name))
             if not param.Set(u"стена" if kind == core.WALL else u"перекрытие"):
                 raise ValueError(tr(u"Не удалось записать параметр «{}».", u"Could not write parameter '{}'.").format(name))
         except Exception as ex:
-            self.result.filter_errors.append((inst, u"{}".format(ex)))
+            if required:
+                self.result.filter_errors.append((inst, u"{}".format(ex)))
 
     # --- один лоток -----------------------------------------------------
 
