@@ -5,7 +5,7 @@ from Autodesk.Revit.DB import (Color, ElementId, ElementParameterFilter, FamilyI
     FillPatternElement, FilteredElementCollector, LogicalAndFilter, ElementFilter,
     OverrideGraphicSettings, ParameterFilterElement, ParameterFilterRuleFactory,
     ParameterFilterUtilities, SelectionFilterElement, FilterElement, SubTransaction,
-    ScheduleFilter, ScheduleFilterType, StorageType, Level, View, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
+    ScheduleFilter, ScheduleFilterType, StorageType, Level, View, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule, Transform)
 from pyrevit import revit, forms, script
 from lowlife.i18n import tr
 from lowlife.opening_tasks_names import safe_name
@@ -118,6 +118,14 @@ def build(doc, settings):
                 view = remember(key,View3D.CreateIsometric(doc,vft.Id))
                 view.Name = unique_name(doc,prefix+u' | '+(status or u'Все задания'))
             configure(doc,view,instances,cache=visibility_cache)
+            from lowlife.opening_tasks_kr_views import projected_box
+            framed=[inst for inst in instances if status is None or
+                    inst.LookupParameter(settings['opening_status_param']).AsString()==status]
+            bounds=[inst.get_BoundingBox(None) for inst in framed]
+            points=[point for bound in bounds if bound is not None for point in api.boxes._box_points(bound)]
+            if points:
+                view.SetSectionBox(projected_box(points,Transform.Identity,api.boxes.ft(500)))
+                view.IsSectionBoxActive=True
             for f,ogs in colors:
                 if not view.IsFilterApplied(f.Id):
                     view.AddFilter(f.Id)

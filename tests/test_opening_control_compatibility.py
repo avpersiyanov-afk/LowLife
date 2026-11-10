@@ -224,6 +224,7 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     elements = [NS(Id=eid, Category=NS(Id=cat), CanBeHidden=lambda v: True)
                 for eid, cat in [(1, 1), (2, 1), (3, 2), (4, 3), (5, 4)]]
     hidden, categories = [], []
+    annotation_modes=[]
     queries=[]
     view = V()
     def collect(doc):
@@ -234,22 +235,23 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     scope = dict(ElementId=Id, View=V, List=Lists,
                  ElementMulticategoryFilter=lambda ids: ids, DisplayStyle=NS(ShadingWithEdges=1), RevitLinkInstance=object,
                  transparent_structures=lambda *a: None,
-                 BuiltInCategory=NS(OST_RvtLinks=4),
+                 BuiltInCategory=NS(OST_RvtLinks=4,OST_TextNotes=8),
                  boxes=NS(_id_int=int), structural_categories=lambda: {2},
                  _keep_with_nested=lambda doc, ids: ids,
-                 _hide_other_categories=lambda doc, v, ids, **kw: categories.append(ids),
+                 _hide_other_categories=lambda doc, v, ids, **kw: (categories.append(ids),annotation_modes.append(kw["include_annotations"])),
                  _hide_by_filter=lambda doc, v, ids, name: hidden.append(ids),
                  FilteredElementCollector=collect)
     configure = load_function('opening_tasks_visibility.py', 'configure', scope)
     cache={}
     configure(None, view, [elements[0]],cache=cache)
-    assert categories[-1] == {1}
+    assert categories[-1] == {1,8}
     assert hidden[-1] == [2]  # unrelated family in the box category
     configure(None, view, [elements[0]], structures=True,cache=cache)
-    assert categories[-1] == {1, 2, 4}  # boxes, structures, links; no MEP category
+    assert categories[-1] == {1, 2, 4, 8}  # boxes, structures, links; no MEP category
     assert hidden[-1] == [2]
     assert view.ViewTemplateId == -1
     assert len(queries)==2  # one category snapshot plus one native link query
+    assert annotation_modes==[True,True]
 
 
 def test_schedule_filters_by_plain_status_instead_of_multiline_json():
@@ -289,3 +291,23 @@ def test_transparent_structure_context_keeps_box_and_existing_graphics():
     assert {(kind,eid) for kind,eid,ogs in changed}=={('category',1),('category',2),('element',10)}
     assert all(ogs.transparency==70 and ogs.line_color=='retained' for kind,eid,ogs in changed)
     # No box IDs/categories are touched and no whole-model collector is needed.
+
+
+def test_general_3d_frame_uses_only_boxes_matching_its_status():
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text())
+    assignments={n.targets[0].id:n for n in ast.walk(tree) if isinstance(n,ast.Assign)
+                 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('framed','bounds','points')}
+    condition=next(n for n in ast.walk(tree) if isinstance(n,ast.If) and isinstance(n.test,ast.Name) and n.test.id=='points')
+    block=[assignments[name] for name in ('framed','bounds','points')]+[condition]
+    a=NS(LookupParameter=lambda name:NS(AsString=lambda:'Issued'),get_BoundingBox=lambda _:['box A'])
+    b=NS(LookupParameter=lambda name:NS(AsString=lambda:'Draft'),get_BoundingBox=lambda _:['box B'])
+    frames=[]
+    view=NS(SetSectionBox=frames.append)
+    scope=dict(instances=[a,b],status='Issued',settings={'opening_status_param':'Status'},
+               api=NS(boxes=NS(_box_points=lambda bound:bound,ft=lambda mm:mm)),
+               projected_box=lambda points,frame,pad:(points,pad),Transform=NS(Identity='world'),view=view)
+    exec(compile(ast.Module(body=block,type_ignores=[]),'frame','exec'),scope)
+    assert frames==[(['box A'],500)] and view.IsSectionBoxActive
+    scope['status']=None
+    exec(compile(ast.Module(body=block,type_ignores=[]),'frame','exec'),scope)
+    assert frames[-1]==(['box A','box B'],500)

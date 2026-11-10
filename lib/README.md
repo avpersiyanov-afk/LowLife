@@ -3388,3 +3388,10 @@ Repeated focused preview resolves its view directly through the optional
 `preview_uid` in existing box ExtensibleStorage. Legacy registry mappings remain
 a fallback and are preserved; the full issued-task registry is not read on
 the direct-reference path. No new Revit parameter or storage schema is needed.
+
+
+Opening control cleanup hides annotation categories explicitly while retaining
+OST_TextNotes for generated group remarks. Grids, levels, section/elevation
+markers, scope boxes and section-box boundaries are excluded. General 3D views
+reuse `opening_tasks_kr_views.projected_box` with actual box bounds and a 500 mm
+margin, so status views frame only matching boxes instead of the whole model.
