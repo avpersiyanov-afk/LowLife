@@ -203,6 +203,7 @@ THEMES = {
         (u"Tools", u"Rotate3DView"),
         (u"Tools", u"Greeting"),
         (u"Tools", u"SpellCheck"),
+        (u"Tools", u"ChangeClouds"),
         (u"Tools", u"DwgToDrafting"),
         (u"Tools", u"FopParameters"),
         (u"Tools", u"ParkingMarks"),

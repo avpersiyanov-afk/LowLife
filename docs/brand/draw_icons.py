@@ -717,6 +717,16 @@ def merge_pdf(c):
     c.rect((36, 67, 60, 86), BLUE, WHITE, 3)
 
 
+def change_clouds(c):
+    # Облако изменений: облако-контур и оранжевый плюс нового изменения.
+    c.rect((21, 54, 78, 67), BLUE, WHITE, 4, 8)
+    c.circle((33, 51), 14, BLUE, WHITE, 4)
+    c.circle((51, 43), 17, BLUE, WHITE, 4)
+    c.circle((68, 52), 13, BLUE, WHITE, 4)
+    c.line([(48, 12), (48, 28)], ORANGE, 6)
+    c.line([(40, 20), (56, 20)], ORANGE, 6)
+
+
 ICONS = [
     ("ToolsExport.panel/MergePDF.pushbutton", merge_pdf),
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
@@ -766,6 +776,7 @@ ICONS = [
     ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),
     ("CircuitsGeneric.panel/WriteLoadName.pushbutton", write_load_name),
     ("CircuitsGeneric.panel/WritePanelName.pushbutton", write_panel_name),
+    ("Tools.panel/ChangeClouds.pushbutton", change_clouds),
 ]
 
 

@@ -1,0 +1,15 @@
+title: "Внесение\nизменений"
+tooltip: |
+  Показывает все изменения проекта (типы семейства облака изменений с шифром, номером и датой) и ведёт пошаговое создание нового: шифр альбома, номер изменения (по умолчанию — следующий за уже существующими по этому шифру), дата (дд.мм.гг), код изменения (1–5) и содержание. Создаёт новый тип семейства по маске «имя семейства_шифр_номер», вставляет облако на активный вид и записывает данные в параметры типа и экземпляра; порядковый номер облака на листе проставляется автоматически.
+
+  Shift+клик — настройки: семейство, маска имени типа, параметры типа (шифр, номер, дата) и экземпляра (код, содержание, порядковый номер).
+title_en: "Enter\nchanges"
+tooltip_en: >-
+  Shows all changes in the model (types of the change cloud family with cipher, number and date) and
+  walks through creating a new one: album cipher, change number (defaults to the next one after the
+  existing changes with this cipher), date (dd.mm.yy), change code (1–5) and description. Creates a new
+  family type named "family_cipher_number", inserts the cloud on the active view and writes the data to
+  type and instance parameters; the cloud's sequence number on the sheet is filled in automatically.
+
+  Shift+click — settings: family, type name template, type parameters (cipher, number, date) and
+  instance parameters (code, description, sequence number).
