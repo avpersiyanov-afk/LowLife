@@ -12,8 +12,9 @@ from lowlife import opening_tasks_revit as api
 from lowlife import opening_tasks_storage as store
 from lowlife.opening_tasks_views import unique_name
 from lowlife.loi_check import _unhide_all
+from lowlife.route_preview import zoom_to_fit_points
 
-from lowlife.opening_tasks_visibility import structural_categories
+from lowlife.opening_tasks_visibility import structural_categories, isolate_preview
 
 
 def new_view(doc):
@@ -64,19 +65,12 @@ def focus(doc, inst):
     view=doc.GetElement(previews[inst.UniqueId]) if inst.UniqueId in previews else None
     if view is not None and not isinstance(view,View3D):
         raise ValueError(tr(u'Сохранённый вид имеет неверный тип.',u'Stored view has an invalid type.'))
-    if view is None:
+    created=view is None
+    if created:
         view=new_view(doc)
         view.Name=unique_name(doc,u'LowLife | Бокс '+str(api.boxes._id_int(inst.Id)))
         previews[inst.UniqueId]=view.UniqueId
-    keep = set([view.Id,inst.Id,source.Id,link.Id])
-    # The view belongs to this command: rebuild local isolation on every visit.
-    _unhide_all(doc,view)
-    others=[]
-    for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
-        if el.Id not in keep and not isinstance(el,View) and el.Category is not None and el.CanBeHidden(view):
-            others.append(el.Id)
-    if others:
-        view.HideElements(List[ElementId](others))
+    isolate_preview(doc,view,[inst,source,link])
     linked_settings=RevitLinkGraphicsSettings()
     link_visibility(linked_settings,structure)
     allowed=structural_categories() | set([api.boxes._id_int(inst.Category.Id),
@@ -102,7 +96,8 @@ def focus(doc, inst):
     crop.Max=bounds.Max.Add(XYZ(margin,margin,margin))
     view.SetSectionBox(crop)
     view.IsSectionBoxActive=True
-    store.save_registry(doc,registry)
+    if created:
+        store.save_registry(doc,registry)
     return view,crop
 
 
@@ -115,10 +110,10 @@ def run(structures=False):
             forms.alert(tr(u'Вид конструкций подготовлен. Сохраните КР и обновите связь в ВИС.',
                            u'Structural view prepared. Save KR and reload its link in VIS.'))
             return
-        drafts=[e for e in FilteredElementCollector(revit.doc).OfClass(FamilyInstance) if api.metadata(e)]
         selected=[revit.doc.GetElement(i) for i in revit.uidoc.Selection.GetElementIds()]
         inst=selected[0] if len(selected)==1 and api.metadata(selected[0]) else None
         if inst is None:
+            drafts=[e for e in FilteredElementCollector(revit.doc).OfClass(FamilyInstance) if api.metadata(e)]
             options={u'{} | {}'.format(api.boxes._id_int(e.Id),api.metadata(e)['task_id']):e for e in drafts}
             choice=select_list.SelectFromList.show(sorted(options),title=tr(u'Просмотр бокса в 3D',u'Box 3D preview'),multiselect=False)
             if not choice:
@@ -127,10 +122,6 @@ def run(structures=False):
         with revit.Transaction(tr(u'Просмотр бокса',u'Box preview')):
             view,crop=focus(revit.doc,inst)
         revit.uidoc.ActiveView=view
-        revit.uidoc.RefreshActiveView()
-        for ui in revit.uidoc.GetOpenUIViews():
-            if ui.ViewId==view.Id:
-                ui.ZoomToFit()
-                break
+        zoom_to_fit_points(revit.uidoc,view,[crop.Min,crop.Max],min_margin_ft=0.0)
     except Exception as ex:
         forms.alert(tr(u'Не удалось подготовить просмотр: {}',u'Could not prepare preview: {}').format(ex))
