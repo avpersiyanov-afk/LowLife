@@ -3335,3 +3335,14 @@ Opening schedules filter by a nonempty dedicated issue status after checking
 `ScheduleDefinition.CanFilterByValue`, not by substring search in multiline
 JSON. The JSON column remains hidden. The status parameter must be a normal
 (single-line) schedulable text instance parameter; no extra parameters are added.
+
+
+Opening preview performance: `opening_tasks_visibility.isolate_preview` uses
+native temporary isolation converted to permanent, with `_keep_with_nested`
+and reads only the retained elements (no whole-model unhide/hide loops).
+`configure(..., cache=None)` uses a native multicategory collector and a
+build-scoped cache for repeated control views. No cache survives the command.
+Previews save the registry only when registering a new view and use existing
+`route_preview.zoom_to_fit_points` with the known crop instead of redundant
+RefreshActiveView/ZoomToFit. Control views use shading with edges and explicitly
+visible solid status fills.

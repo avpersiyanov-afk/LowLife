@@ -40,6 +40,9 @@ class Collector(list):
     def OfClass(self, _):
         return self
 
+    def WherePasses(self, _):
+        return self
+
     def WhereElementIsNotElementType(self):
         return self
 
@@ -135,7 +138,7 @@ def test_preview_unhides_through_existing_element_api_helper():
     assert shown == [1]
     tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text())
     assert not any(isinstance(n, ast.Attribute) and n.attr == 'GetHiddenElementIds' for n in ast.walk(tree))
-    for name in ('focus', 'structures_view'):
+    for name in ('structures_view',):
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
         assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == '_unhide_all'
                    for n in ast.walk(fn))
@@ -180,33 +183,23 @@ def test_unschedulable_family_parameters_do_not_discard_created_views():
     assert len(messages) == 1 and 'JSON' in messages[0]
 
 
-def test_focus_never_hides_itself_or_other_views_even_if_api_says_hideable():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text())
-    focus = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'focus')
-    start = next(i for i, n in enumerate(focus.body) if isinstance(n, ast.Assign)
-                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'keep')
-    end = next(i for i, n in enumerate(focus.body[start:], start) if isinstance(n, ast.If)
-               and isinstance(n.test, ast.Name) and n.test.id == 'others')
-    class PreviewView:
-        def __init__(self, eid):
-            self.Id = eid
-            self.Category = object()
-        def CanBeHidden(self, view):
-            return True  # Revit's per-element check does not exclude the view.
-        def HideElements(self, ids):
-            assert self.Id not in ids
-            self.hidden = list(ids)
-    view = PreviewView(1)
-    other_view = PreviewView(2)
-    elements = [view, other_view]
-    for eid in (3, 4, 5, 6):
-        elements.append(NS(Id=eid, Category=object(), CanBeHidden=lambda v: True))
-    scope = dict(view=view, inst=elements[2], source=elements[3], link=elements[4],
-                 doc=None, View=PreviewView, _unhide_all=lambda *a: None,
-                 List=Lists, ElementId=int,
-                 FilteredElementCollector=lambda doc: Collector(elements))
-    exec(compile(ast.Module(body=focus.body[start:end+1], type_ignores=[]), 'focus', 'exec'), scope)
-    assert view.hidden == [6]
+def test_native_preview_isolation_does_not_enumerate_the_model():
+    calls=[]
+    class Id(int):
+        InvalidElementId=-1
+    view=NS(Id=100, IsTemporaryHideIsolateActive=lambda: True,
+            DisableTemporaryViewMode=lambda mode: calls.append(('reset',mode)),
+            UnhideElements=lambda ids: calls.append(('show',ids)),
+            IsolateElementsTemporary=lambda ids: calls.append(('isolate',sorted(ids))),
+            ConvertTemporaryHideIsolateToPermanent=lambda: calls.append(('permanent',)))
+    doc=NS(GetElement=lambda eid: NS(IsHidden=lambda view: eid==1))
+    scope=dict(ElementId=Id, List=Lists, DisplayStyle=NS(ShadingWithEdges='shaded'),
+               TemporaryViewMode=NS(TemporaryHideIsolate='temporary'),
+               boxes=NS(_id_int=int), _keep_with_nested=lambda doc, ids: ids | {4,100})
+    isolate=load_function('opening_tasks_visibility.py','isolate_preview',scope)
+    isolate(doc,view,[NS(Id=i) for i in (1,2,3)])
+    assert calls==[('show',[1]),('reset','temporary'),('isolate',[1,2,3,4]),('permanent',)]
+    # No collector exists in scope: a model-wide scan would fail this test.
 
 
 def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plans():
@@ -219,22 +212,31 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     elements = [NS(Id=eid, Category=NS(Id=cat), CanBeHidden=lambda v: True)
                 for eid, cat in [(1, 1), (2, 1), (3, 2), (4, 3), (5, 4)]]
     hidden, categories = [], []
+    queries=[]
     view = V()
-    scope = dict(ElementId=NS(InvalidElementId=-1), View=V,
+    def collect(doc):
+        queries.append(doc)
+        return Collector(elements+[view])
+    class Id(int):
+        InvalidElementId=-1
+    scope = dict(ElementId=Id, View=V, List=Lists,
+                 ElementMulticategoryFilter=lambda ids: ids, DisplayStyle=NS(ShadingWithEdges=1),
                  BuiltInCategory=NS(OST_RvtLinks=4),
                  boxes=NS(_id_int=int), structural_categories=lambda: {2},
                  _keep_with_nested=lambda doc, ids: ids,
                  _hide_other_categories=lambda doc, v, ids, **kw: categories.append(ids),
                  _hide_by_filter=lambda doc, v, ids, name: hidden.append(ids),
-                 FilteredElementCollector=lambda doc: Collector(elements+[view]))
+                 FilteredElementCollector=collect)
     configure = load_function('opening_tasks_visibility.py', 'configure', scope)
-    configure(None, view, [elements[0]])
+    cache={}
+    configure(None, view, [elements[0]],cache=cache)
     assert categories[-1] == {1}
     assert hidden[-1] == [2]  # unrelated family in the box category
-    configure(None, view, [elements[0]], structures=True)
+    configure(None, view, [elements[0]], structures=True,cache=cache)
     assert categories[-1] == {1, 2, 4}  # boxes, structures, links; no MEP category
     assert hidden[-1] == [2]
     assert view.ViewTemplateId == -1
+    assert len(queries)==1  # shared category snapshot across the 3D and plan
 
 
 def test_schedule_filters_by_plain_status_instead_of_multiline_json():

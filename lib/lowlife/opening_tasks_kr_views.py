@@ -44,6 +44,7 @@ def build(doc, project, mode, records=None):
     if typ is None:
         raise ValueError(tr(u'Не найден подходящий тип вида.',u'Required view type was not found.'))
     output=[]
+    visibility_cache={}
     blue=Color(30,100,240)
     orange=Color(240,140,40)
     solid=next((f.Id for f in FilteredElementCollector(doc).OfClass(FillPatternElement) if f.GetFillPattern().IsSolidFill),None)
@@ -53,7 +54,7 @@ def build(doc, project, mode, records=None):
             raise ValueError(tr(u'Неверный тип сохранённого вида КР.',u'Invalid stored KR view type.'))
         return view
     def decorate(view,entries):
-        configure(doc,view,[opening for opening,host,r in entries],structures=True)
+        configure(doc,view,[opening for opening,host,r in entries],structures=True,cache=visibility_cache)
         for opening,host,r in entries:
             color=blue if api.opening_matches(opening,r) else orange
             ogs=OverrideGraphicSettings().SetProjectionLineColor(color).SetCutLineColor(color)

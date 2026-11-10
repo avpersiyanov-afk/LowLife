@@ -133,11 +133,8 @@ class Handler(IExternalEventHandler):
                     with revit.Transaction(tr(u'Просмотр бокса',u'Box preview')):
                         view,crop=focus(w.document,inst)
                     uidoc.ActiveView=view
-                    uidoc.RefreshActiveView()
-                    for ui in uidoc.GetOpenUIViews():
-                        if ui.ViewId==view.Id:
-                            ui.ZoomToFit()
-                            break
+                    from lowlife.route_preview import zoom_to_fit_points
+                    zoom_to_fit_points(uidoc,view,[crop.Min,crop.Max],min_margin_ft=0.0)
                 elif w.role in ('KR','AR'):
                     # Reload records before acting: cached rows must never apply stale revisions.
                     fresh={api.core.task_key(r):r for r,link in api.incoming(w.document,settings['opening_project'],w.role)}

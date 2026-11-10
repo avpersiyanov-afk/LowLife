@@ -52,6 +52,7 @@ def build(doc, settings):
     if vft is None:
         raise ValueError(tr(u'Не найден тип 3D-вида.',u'No 3D view type.'))
     output = []
+    visibility_cache={}
     def existing(key, cls):
         el = doc.GetElement(managed[key]) if key in managed else None
         if el is not None and not isinstance(el,cls):
@@ -105,10 +106,10 @@ def build(doc, settings):
         colors = []
         for index,(status,rgb) in enumerate(STATUSES):
             f = pf('/color/'+str(index),status,status)
-            ogs = OverrideGraphicSettings().SetProjectionLineColor(Color(*rgb)).SetCutLineColor(Color(*rgb))
+            ogs = OverrideGraphicSettings().SetProjectionLineColor(Color(*rgb)).SetCutLineColor(Color(*rgb)).SetSurfaceTransparency(0)
             if solid:
-                ogs.SetSurfaceForegroundPatternId(solid).SetSurfaceForegroundPatternColor(Color(*rgb))
-                ogs.SetCutForegroundPatternId(solid).SetCutForegroundPatternColor(Color(*rgb))
+                ogs.SetSurfaceForegroundPatternId(solid).SetSurfaceForegroundPatternColor(Color(*rgb)).SetSurfaceForegroundPatternVisible(True)
+                ogs.SetCutForegroundPatternId(solid).SetCutForegroundPatternColor(Color(*rgb)).SetCutForegroundPatternVisible(True)
             colors.append((f,ogs))
         for index,status in enumerate([None]+[s for s,rgb in STATUSES]):
             key = root+'/view/'+str(index)
@@ -116,7 +117,7 @@ def build(doc, settings):
             if view is None:
                 view = remember(key,View3D.CreateIsometric(doc,vft.Id))
                 view.Name = unique_name(doc,prefix+u' | '+(status or u'Все задания'))
-            configure(doc,view,instances)
+            configure(doc,view,instances,cache=visibility_cache)
             for f,ogs in colors:
                 if not view.IsFilterApplied(f.Id):
                     view.AddFilter(f.Id)
@@ -147,7 +148,7 @@ def build(doc, settings):
                     vr.SetLevelId(plane,level.Id)
                     vr.SetOffset(plane,offset)
                 plan.SetViewRange(vr)
-                configure(doc,plan,instances,structures=True)
+                configure(doc,plan,instances,structures=True,cache=visibility_cache)
                 for f,ogs in colors:
                     if not plan.IsFilterApplied(f.Id):
                         plan.AddFilter(f.Id)
