@@ -4,10 +4,12 @@ from System.Collections.Generic import List
 from Autodesk.Revit.DB import (Color, ElementId, ElementParameterFilter, FamilyInstance,
     FillPatternElement, FilteredElementCollector, LogicalAndFilter, ElementFilter,
     OverrideGraphicSettings, ParameterFilterElement, ParameterFilterRuleFactory,
+    ParameterFilterUtilities, SelectionFilterElement, FilterElement, SubTransaction,
     ScheduleFilter, ScheduleFilterType, StorageType, Level, View, ViewPlan, PlanViewPlane, PlanViewRange, View3D, ViewFamily, ViewFamilyType, ViewSchedule)
 from pyrevit import revit, forms, script
 from lowlife.i18n import tr
 from lowlife.opening_tasks_names import safe_name
+from lowlife.loi_check import _selection_filter
 from lowlife import opening_tasks_storage as store
 from lowlife import opening_tasks_revit as api
 from lowlife import opening_tasks_settings as cfg
@@ -30,7 +32,11 @@ def unique_name(doc, base):
 
 
 def build(doc, settings):
-    drafts = [e for e in FilteredElementCollector(doc).OfClass(FamilyInstance) if api.metadata(e)]
+    drafts = []
+    for e in FilteredElementCollector(doc).OfClass(FamilyInstance):
+        data=api.metadata(e)
+        if data and data.get('owner_uid')==e.UniqueId and data.get('project',settings['opening_project'])==settings['opening_project']:
+            drafts.append(e)
     if not drafts:
         raise ValueError(tr(u'В модели нет боксов заданий ВИС.',u'No VIS task boxes in the model.'))
     registry = store.registry(doc)
@@ -67,20 +73,33 @@ def build(doc, settings):
                 ids[key] = param.Id
         prefix = u'LowLife | {} | {}'.format(settings['opening_project'],instances[0].Category.Name)
         root = settings['opening_project'] + '/' + str(api.boxes._id_int(category))
-        # A metadata condition prevents unrelated elements with the same status from matching.
-        owner_rule = ParameterFilterRuleFactory.CreateContainsRule(ids['opening_json_param'],'task_id')
+        categories=List[ElementId]([category])
+        filterable=set(ParameterFilterUtilities.GetFilterableParametersInCommon(doc,categories))
+        use_parameters=all(ids[key] in filterable for key in REQUIRED_KEYS)
         def pf(key, label, status=None, invert=False):
-            rules = [ElementParameterFilter(owner_rule)]
-            if status is not None:
-                rule = ParameterFilterRuleFactory.CreateEqualsRule(ids['opening_status_param'],status)
-                rules.append(ElementParameterFilter(rule,invert))
-            rule_filter = LogicalAndFilter(List[ElementFilter](rules)) if len(rules)>1 else rules[0]
-            f = existing(root+key,ParameterFilterElement)
-            if f is None:
-                # Filter names share a separate namespace; use a GUID suffix on first creation.
-                f = remember(root+key,ParameterFilterElement.Create(doc,safe_name(prefix,120)+u' - '+safe_name(label,50)+u' - '+api.core.guid()[:8],List[ElementId]([category]),rule_filter))
+            f = existing(root+key,FilterElement)
+            name=safe_name(prefix,120)+u' - '+safe_name(label,50)+u' - '+api.core.guid()[:8]
+            # Existing selection filters remain selections; replacing a filter
+            # would detach it from views where users have already applied it.
+            if not use_parameters or isinstance(f,SelectionFilterElement):
+                if f is not None and not isinstance(f,SelectionFilterElement):
+                    doc.Delete(f.Id)
+                    f=None
+                if f is None:
+                    f=remember(root+key,_selection_filter(doc,name))
+                selected=[inst.Id for inst in instances if status is None or
+                          ((inst.LookupParameter(settings['opening_status_param']).AsString()==status) != invert)]
+                f.SetElementIds(List[ElementId](selected))
             else:
-                f.SetElementFilter(rule_filter)
+                rules=[ElementParameterFilter(ParameterFilterRuleFactory.CreateContainsRule(ids['opening_json_param'],'task_id'))]
+                if status is not None:
+                    rule=ParameterFilterRuleFactory.CreateEqualsRule(ids['opening_status_param'],status)
+                    rules.append(ElementParameterFilter(rule,invert))
+                rule_filter=LogicalAndFilter(List[ElementFilter](rules)) if len(rules)>1 else rules[0]
+                if f is None:
+                    f=remember(root+key,ParameterFilterElement.Create(doc,name,categories,rule_filter))
+                else:
+                    f.SetElementFilter(rule_filter)
             return f
         colors = []
         for index,(status,rgb) in enumerate(STATUSES):
@@ -132,33 +151,48 @@ def build(doc, settings):
                     plan.SetFilterOverrides(f.Id,ogs)
                     plan.SetFilterVisibility(f.Id,True)
                 output.append(plan)
-        schedule = existing(root+'/schedule',ViewSchedule)
-        fresh = schedule is None
-        if fresh:
-            schedule = remember(root+'/schedule',ViewSchedule.CreateSchedule(doc,category))
-            schedule.Name = unique_name(doc,prefix+u' | Реестр выдачи')
-        definition = schedule.Definition
-        schedulable = {f.ParameterId:f for f in definition.GetSchedulableFields()}
-        fields = {definition.GetField(fid).ParameterId:definition.GetField(fid) for fid in definition.GetFieldOrder()}
-        for key in KEYS:
-            if key not in ids:
-                continue
-            pid = ids[key]
-            if pid not in schedulable:
-                raise ValueError(tr(u'Параметр недоступен для спецификации: {}',u'Parameter is not schedulable: {}').format(settings[key]))
-            if pid not in fields:
-                fields[pid] = definition.AddField(schedulable[pid])
-        for key in ('box_width_param','box_depth_param','box_height_param'):
-            name = settings.get(key)
-            param = (instances[0].LookupParameter(name) or instances[0].Symbol.LookupParameter(name)) if name else None
-            if param and param.Id in schedulable and param.Id not in fields:
-                fields[param.Id] = definition.AddField(schedulable[param.Id])
-        fields[ids['opening_json_param']].IsHidden = True
-        definition.IsItemized = True
-        for index in reversed(range(definition.GetFilterCount())):
-            definition.RemoveFilter(index)
-        definition.AddFilter(ScheduleFilter(fields[ids['opening_json_param']].FieldId,ScheduleFilterType.Contains,'task_id'))
-        output.append(schedule)
+        schedule_tx=SubTransaction(doc)
+        schedule_tx.Start()
+        old_schedule=managed.get(root+'/schedule')
+        try:
+            schedule = existing(root+'/schedule',ViewSchedule)
+            fresh = schedule is None
+            if fresh:
+                schedule = remember(root+'/schedule',ViewSchedule.CreateSchedule(doc,category))
+                schedule.Name = unique_name(doc,prefix+u' | Реестр выдачи')
+            definition = schedule.Definition
+            schedulable = {f.ParameterId:f for f in definition.GetSchedulableFields()}
+            fields = {definition.GetField(fid).ParameterId:definition.GetField(fid) for fid in definition.GetFieldOrder()}
+            for key in KEYS:
+                if key not in ids:
+                    continue
+                pid = ids[key]
+                if pid not in schedulable:
+                    raise ValueError(tr(u'Параметр недоступен для спецификации: {}',u'Parameter is not schedulable: {}').format(settings[key]))
+                if pid not in fields:
+                    fields[pid] = definition.AddField(schedulable[pid])
+            for key in ('box_width_param','box_depth_param','box_height_param'):
+                name = settings.get(key)
+                param = (instances[0].LookupParameter(name) or instances[0].Symbol.LookupParameter(name)) if name else None
+                if param and param.Id in schedulable and param.Id not in fields:
+                    fields[param.Id] = definition.AddField(schedulable[param.Id])
+            fields[ids['opening_json_param']].IsHidden = True
+            definition.IsItemized = True
+            for index in reversed(range(definition.GetFilterCount())):
+                definition.RemoveFilter(index)
+            definition.AddFilter(ScheduleFilter(fields[ids['opening_json_param']].FieldId,ScheduleFilterType.Contains,'task_id'))
+            schedule_tx.Commit()
+            output.append(schedule)
+        except Exception as ex:
+            schedule_tx.RollBack()
+            if old_schedule:
+                managed[root+'/schedule']=old_schedule
+            else:
+                managed.pop(root+'/schedule',None)
+            forms.alert(tr(u'Виды контроля созданы. Спецификация для категории «{}» не создана: {}. Проверьте, что параметры доступны в спецификации Revit.',
+                           u'Control views created. Schedule for category "{}" was not created: {}. Check that parameters are available in Revit schedules.').format(instances[0].Category.Name,ex))
+        finally:
+            schedule_tx.Dispose()
     store.save_registry(doc,registry)
     from lowlife.opening_tasks_remark_views import sync
     doc.Regenerate()
@@ -176,6 +210,30 @@ def build(doc, settings):
         forms.alert(tr(u'Виды созданы, но подписи замечаний не обновлены: {}',
                        u'Views were created, but remark labels were not updated: {}').format(ex),expanded=traceback.format_exc())
     return output
+
+
+def sync_selection_filters(doc, settings, registry=None):
+    """Refresh only existing fallback filters, once per batch in a transaction."""
+    registry=registry if registry is not None else store.registry(doc)
+    prefix=settings['opening_project']+'/'
+    filters={key:doc.GetElement(uid) for key,uid in registry.get('control_views',{}).items()
+             if key.startswith(prefix) and ('/color/' in key or '/hide/' in key)}
+    filters={key:f for key,f in filters.items() if isinstance(f,SelectionFilterElement)}
+    if not filters:
+        return
+    groups={}
+    for inst in FilteredElementCollector(doc).OfClass(FamilyInstance):
+        data=api.metadata(inst)
+        if not data or data.get('owner_uid')!=inst.UniqueId or data.get('project',settings['opening_project'])!=settings['opening_project']:
+            continue
+        p=inst.LookupParameter(settings['opening_status_param'])
+        groups.setdefault(str(api.boxes._id_int(inst.Category.Id)),[]).append((inst.Id,p.AsString() if p else ''))
+    for key,f in filters.items():
+        category,kind,index=key[len(prefix):].split('/')
+        status=STATUSES[int(index) if kind=='color' else int(index)-1][0]
+        ids=[eid for eid,value in groups.get(category,[]) if (value==status)==(kind=='color')]
+        if set(f.GetElementIds())!=set(ids):
+            f.SetElementIds(List[ElementId](ids))
 
 
 def run(config_mode=False):
