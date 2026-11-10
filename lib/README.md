@@ -3403,3 +3403,21 @@ the known legacy `box_preview/version=2` record without schema as unconfigured;
 focus rebuilds it using the existing view. Other invalid schemas still raise.
 `write` rejects incompatible/missing schema before mutating ExtensibleStorage,
 without reparsing valid large registry payloads.
+
+
+`opening_tasks_schedule.build` extracts the former per-category schedule builder
+into one model-wide itemized register. It reuses `loi_check._schedulable_index`,
+`_first_by_bips`, `_add_field` and existing view naming. One row remains per box,
+with dimensions/status/count, optional issue fields and native totals. JSON
+is neither required by the schedule nor displayed. The caller isolates failures
+in a subtransaction and retains control views.
+
+`tray_boxes_result.show(..., preflight=False, initial_increase=0)` now supports
+a before-placement mode using the same diagram and EIR/ZNP logic, with an
+explicitly illustrative section and cancel/continue actions. The legacy result
+dialog keeps its default behaviour. `opening_tasks_ui.pick_routes(settings)`
+adds a scope selector before reusing `selected_elements`/`RouteSelectionFilter`
+for manual selection; whole-project and scope modes use native category/bounds
+filters. No existing scope-box selection implementation was found to reuse.
+Selected bounds are runtime-only settings; final opening centers are checked
+before creating/updating a box. No new model parameter is introduced.

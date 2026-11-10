@@ -11,7 +11,7 @@ import math
 from datetime import datetime
 from Autodesk.Revit.DB import (BuiltInCategory, CurveArray, ElementTransformUtils, FamilyInstance, CategoryType, IndependentTag, Dimension, FilteredElementCollector,
                                Floor, RoofBase, Line, LocationPoint, Opening, Options, RevitLinkInstance, StorageType,
-                               SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ)
+                               SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ, Outline)
 from lowlife.opening_tasks_journal import windows_user
 from lowlife import opening_tasks_core as core
 from lowlife import opening_tasks_storage as store
@@ -121,6 +121,10 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                     box = geometry.enlarge_opening(box, boxes.ft(amount))
                 box=boxes.fit_vertical_host(box,crossing,src,options,boxes._t(route.Location.Curve.Direction),
                                             boxes.ft(settings.get('depth_extra_mm') or 0))
+                scope_bounds=settings.get('_opening_scope_bounds')
+                if scope_bounds and not any(Outline(bound.Min,bound.Max).Contains(
+                        bound.Transform.Inverse.OfPoint(boxes._xyz(box.center)),1e-9) for bound in scope_bounds):
+                    continue
                 key = (route.UniqueId, crossing.host.UniqueId, source.UniqueId,settings.get('opening_recipient','KR'))
                 previous = managed.get(key)
                 level,level_info=placer.level_resolver.resolve(crossing)

@@ -121,7 +121,6 @@ class Handler(IExternalEventHandler):
                 run()
             elif action=='place':
                 settings_form.require(settings,['opening_json_param','box_width_param','box_depth_param','box_height_param','box_host_filter_param'])
-                uidoc.Selection.SetElementIds(List[ElementId]())
                 flow.place(settings)
             elif action=='confirm':
                 settings_form.require(settings,['opening_json_param'])
