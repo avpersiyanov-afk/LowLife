@@ -317,3 +317,26 @@ def run(role, config_mode=False, action=None):
     except Exception:
         forms.alert(tr(u'Операция не завершена. Текущая транзакция отменена.\n\n{}',
                        u'Operation did not complete. The current transaction was rolled back.\n\n{}').format(traceback.format_exc()))
+
+
+def delete_boxes_from_list(uidoc, rows=None):
+    doc=uidoc.Document
+    candidates=([doc.GetElement(row['uid']) for row in rows] if rows else
+                list(FilteredElementCollector(doc).OfClass(api.FamilyInstance)))
+    options={}
+    for inst in candidates:
+        data=api.metadata(inst) if inst is not None else None
+        if data and data.get('owner_uid')==inst.UniqueId:
+            options[u'ID {} | {}'.format(boxes._id_int(inst.Id),data['task_id'])]=inst
+    if not options:
+        forms.alert(tr(u'Нет собственных боксов для удаления.',u'No original task boxes to delete.'))
+        return
+    selected=choose(options,tr(u'Удалить боксы — выберите из списка',u'Delete boxes — select from the list'),True)
+    if not selected:
+        return
+    details=u', '.join(unicode(boxes._id_int(inst.Id)) for inst in selected)
+    if not forms.alert(tr(u'Удалить боксы из модели: {}?\nID: {}\n\nИстория выданных заданий сохранится. Удаление не заменяет отзыв задания. Связанные с боксами марки могут быть удалены Revit.',
+                          u'Delete {} boxes from the model?\nIDs: {}\n\nIssued task history remains. Deletion does not withdraw tasks. Revit may delete dependent tags.').format(len(selected),details),yes=True,no=True):
+        return
+    with revit.Transaction(tr(u'Удалить боксы заданий',u'Delete task boxes')):
+        api.delete_boxes(doc,selected)

@@ -2,7 +2,8 @@
 """Visibility for owned opening control views; called inside a transaction."""
 from System.Collections.Generic import List
 from Autodesk.Revit.DB import (BuiltInCategory, DisplayStyle, ElementId, ElementMulticategoryFilter,
-    FilteredElementCollector, RevitLinkInstance, TemporaryViewMode, View)
+    FilteredElementCollector, RevitLinkInstance, TemporaryViewMode, View,
+    BoundingBoxIntersectsFilter, Outline)
 from lowlife.loi_check import _hide_by_filter, _hide_other_categories, _keep_with_nested
 from lowlife import tray_boxes as boxes
 
@@ -65,20 +66,27 @@ def configure(doc, view, elements, structures=False, cache=None):
     _hide_by_filter(doc,view,others,'LowLife opening isolation '+view.UniqueId)
 
 
-def isolate_preview(doc, view, elements):
-    """Native isolation avoids collecting and hiding every model element in Python."""
-    view.ViewTemplateId=ElementId.InvalidElementId
-    view.DisplayStyle=DisplayStyle.ShadingWithEdges
+def isolate_preview(doc, view, elements, crop):
+    """Hide unrelated local elements only within the active section box."""
     keep=_keep_with_nested(doc,set(boxes._id_int(e.Id) for e in elements))
-    ids=[ElementId(eid) for eid in keep if eid!=boxes._id_int(view.Id)]
     shown=[]
-    for eid in ids:
-        element=doc.GetElement(eid)
+    for eid in keep:
+        if eid==boxes._id_int(view.Id):
+            continue
+        element=doc.GetElement(ElementId(eid))
         if element is not None and element.IsHidden(view):
-            shown.append(eid)
+            shown.append(element.Id)
     if shown:
         view.UnhideElements(List[ElementId](shown))
     if view.IsTemporaryHideIsolateActive():
         view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate)
-    view.IsolateElementsTemporary(List[ElementId](ids))
-    view.ConvertTemporaryHideIsolateToPermanent()
+    # The section box clips everything outside this region. A native bounding
+    # filter avoids permanent-isolation conversion across the whole document.
+    region=BoundingBoxIntersectsFilter(Outline(crop.Min,crop.Max))
+    others=[]
+    for element in FilteredElementCollector(doc).WherePasses(region).WhereElementIsNotElementType():
+        if isinstance(element,View) or element.Id==view.Id or element.Category is None:
+            continue
+        if boxes._id_int(element.Id) not in keep and element.CanBeHidden(view):
+            others.append(boxes._id_int(element.Id))
+    _hide_by_filter(doc,view,others,'LowLife box preview isolation '+view.UniqueId)

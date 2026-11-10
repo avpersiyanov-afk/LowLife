@@ -183,23 +183,35 @@ def test_unschedulable_family_parameters_do_not_discard_created_views():
     assert len(messages) == 1 and 'JSON' in messages[0]
 
 
-def test_native_preview_isolation_does_not_enumerate_the_model():
+def test_preview_isolation_queries_only_crop_and_never_converts_whole_view():
     calls=[]
     class Id(int):
         InvalidElementId=-1
-    view=NS(Id=100, IsTemporaryHideIsolateActive=lambda: True,
-            DisableTemporaryViewMode=lambda mode: calls.append(('reset',mode)),
-            UnhideElements=lambda ids: calls.append(('show',ids)),
-            IsolateElementsTemporary=lambda ids: calls.append(('isolate',sorted(ids))),
-            ConvertTemporaryHideIsolateToPermanent=lambda: calls.append(('permanent',)))
-    doc=NS(GetElement=lambda eid: NS(IsHidden=lambda view: eid==1))
-    scope=dict(ElementId=Id, List=Lists, DisplayStyle=NS(ShadingWithEdges='shaded'),
+    class V:
+        Id=100
+        UniqueId='view'
+        Category=object()
+    view=V()
+    view.IsTemporaryHideIsolateActive=lambda: True
+    view.DisableTemporaryViewMode=lambda mode: calls.append(('reset',mode))
+    view.UnhideElements=lambda ids: calls.append(('show',ids))
+    elements=[NS(Id=eid,Category=object(),CanBeHidden=lambda v: True) for eid in (1,2,3,4,5)]
+    class SpatialCollector(Collector):
+        def WherePasses(self, region):
+            assert region==('near','far')
+            calls.append(('region',region))
+            return self
+    doc=NS(GetElement=lambda eid: NS(Id=eid,IsHidden=lambda view: eid==1))
+    scope=dict(ElementId=Id, List=Lists, View=V,
                TemporaryViewMode=NS(TemporaryHideIsolate='temporary'),
-               boxes=NS(_id_int=int), _keep_with_nested=lambda doc, ids: ids | {4,100})
+               boxes=NS(_id_int=int), _keep_with_nested=lambda doc, ids: ids | {4,100},
+               BoundingBoxIntersectsFilter=lambda outline: outline, Outline=lambda a,b: (a,b),
+               FilteredElementCollector=lambda doc: SpatialCollector(elements+[view]),
+               _hide_by_filter=lambda doc,view,ids,name: calls.append(('hide',ids)))
     isolate=load_function('opening_tasks_visibility.py','isolate_preview',scope)
-    isolate(doc,view,[NS(Id=i) for i in (1,2,3)])
-    assert calls==[('show',[1]),('reset','temporary'),('isolate',[1,2,3,4]),('permanent',)]
-    # No collector exists in scope: a model-wide scan would fail this test.
+    isolate(doc,view,[NS(Id=i) for i in (1,2,3)],NS(Min='near',Max='far'))
+    assert calls==[('show',[1]),('reset','temporary'),('region',('near','far')),('hide',[5])]
+    # No IsolateElementsTemporary/Convert... method exists on the fake view.
 
 
 def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plans():

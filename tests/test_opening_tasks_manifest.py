@@ -10,7 +10,7 @@ ROOT=Path(__file__).parents[1]
 def test_roles_have_disjoint_business_actions():
     vis={key for key,label in m.actions('VIS')}
     kr={key for key,label in m.actions('KR')}
-    assert vis=={'place','place_ar','issue','issue_ar','confirm_ar','withdraw','confirm','remark_show','focus','control'}
+    assert vis=={'place','place_ar','issue','issue_ar','confirm_ar','withdraw','confirm','remark_show','focus','control','neighbors','delete_boxes'}
     assert kr=={'show','accept','merge','reject','remove','structures','kr_plans','kr_sections'}
     assert not vis.intersection(kr)
     for key in kr:

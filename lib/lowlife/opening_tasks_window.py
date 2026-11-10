@@ -68,6 +68,14 @@ class Handler(IExternalEventHandler):
             if not settings['opening_project']:
                 raise ValueError(tr(u'Заполните шифр объекта в «Сведениях о проекте» и выберите его параметр в настройках заданий.',u'Fill the project code in Project Information and select its parameter in opening task settings.'))
             settings_form.require(settings,['opening_project'])
+            if action=='delete_boxes':
+                flow.delete_boxes_from_list(uidoc,rows)
+                w.refresh()
+                return
+            if action=='neighbors':
+                from lowlife.opening_tasks_neighbors import run
+                run(uidoc)
+                return
             before_registry=api.core.dumps(store.registry(w.document))
             if action=='parts_refresh':
                 if not w.parts_loading:
