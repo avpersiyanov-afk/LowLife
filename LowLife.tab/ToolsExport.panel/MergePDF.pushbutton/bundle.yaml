@@ -1,0 +1,4 @@
+title: "Объединить\nPDF"
+title_en: "Merge PDF"
+tooltip: Объединяет имя_1.pdf, имя_2.pdf, … в имя.pdf по порядку номеров. После проверки результата удаляет исходники. Существующий итоговый PDF не перезаписывает. Только выбранная папка, без подпапок.
+tooltip_en: Merges name_1.pdf, name_2.pdf, … into name.pdf in numeric order. Deletes sources after verification. Never overwrites an existing output PDF. Processes the selected folder without subfolders.

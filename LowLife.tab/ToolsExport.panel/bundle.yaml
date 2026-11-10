@@ -1,6 +1,7 @@
 title: Выгрузка
 tooltip: Служебное для выгрузки листов — переименование файлов и диагностика хука
 layout:
+  - MergePDF
   - RenameExportFiles
   - RenameByList
   - CaptureExportCommand

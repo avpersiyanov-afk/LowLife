@@ -242,6 +242,7 @@ THEMES = {
     ],
     u"Service": [
         (u"ToolsExport", u"RenameExportFiles"),
+        (u"ToolsExport", u"MergePDF"),
         (u"ToolsExport", u"RenameByList"),
         (u"ToolsExport", u"CaptureExportCommand"),
     ],
