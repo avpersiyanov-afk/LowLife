@@ -82,7 +82,7 @@ def focus(doc, inst):
     view.SetSectionBox(crop)
     view.IsSectionBoxActive=True
     isolate_preview(doc,view,[inst,source,link],crop)
-    configuration=dict(role='box_preview',version=2,owner_uid=inst.UniqueId,
+    configuration=dict(schema=api.core.VERSION,role='box_preview',version=2,owner_uid=inst.UniqueId,
                        source_uid=source.UniqueId,link_uid=link.UniqueId,
                        structure_uid=structure.UniqueId if structure is not None else '')
     if store.read(view)!=configuration:

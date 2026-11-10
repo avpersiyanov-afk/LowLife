@@ -5,6 +5,7 @@ try:
 except NameError:
     unicode = str
 
+import json
 from System import Guid, String
 from lowlife.i18n import tr
 from Autodesk.Revit.DB import FilteredElementCollector, StorageType
@@ -30,10 +31,23 @@ def read(element):
     entity = element.GetEntity(schema())
     if not entity.IsValid():
         return None
-    return core.loads(entity.Get[String](schema().GetField('Json')))
+    text=entity.Get[String](schema().GetField('Json'))
+    try:
+        return core.loads(text)
+    except ValueError:
+        legacy=json.loads(text)
+        # A previous preview optimization omitted schema on view-only settings.
+        # Treat just that known record as unconfigured; focus will rebuild it.
+        if (isinstance(legacy,dict) and 'schema' not in legacy and
+                legacy.get('role')=='box_preview' and legacy.get('version')==2 and
+                all(key in legacy for key in ('owner_uid','source_uid','link_uid','structure_uid'))):
+            return None
+        raise
 
 
 def write(element, value):
+    if not isinstance(value,dict) or value.get('schema')!=core.VERSION:
+        core.loads(core.dumps(value))  # reject unreadable data before SetEntity
     entity = Entity(schema())
     entity.Set[String](schema().GetField('Json'), unicode(core.dumps(value)))
     element.SetEntity(entity)
