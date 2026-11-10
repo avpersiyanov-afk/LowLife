@@ -78,3 +78,15 @@ def test_identity_uses_existing_mask_and_normalizes_numeric_zero_padding():
     parser=LevelNameTemplate(DEFAULT_TEMPLATE)
     assert parser.identity(u'АР_01_+0.000_007')==parser.identity(u'КР_1_+30.000_7_доп')==(u'1',u'7')
     assert parser.parse(u'АР_01_+0.000_007')==(u'01',u'007',u'')
+
+
+def test_auxiliary_suffix_is_ignored_only_when_explicitly_requested():
+    parser=LevelNameTemplate(DEFAULT_TEMPLATE)
+    source=u'КР_1 и 2_+0,000_Этаж 1 (вспомогательный)'
+    target=u'АР_1 и 2_+0,330_Этаж 1'
+    assert parser.identity(source)!=parser.identity(target)
+    assert parser.identity(source,ignore_auxiliary=True)==parser.identity(target,ignore_auxiliary=True)
+    assert parser.parse(source)[1]==u'этаж 1 (вспомогательный)'
+    for suffix in (u'Техпространство',u'Подвал',u'Техподполье'):
+        special=u'АР_1 и 2_+0,000_Этаж 1 ({})'.format(suffix)
+        assert parser.identity(special,ignore_auxiliary=True)!=parser.identity(target,ignore_auxiliary=True)

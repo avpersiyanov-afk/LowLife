@@ -10,19 +10,23 @@ def match_level(levels,name,elevation,tolerance=1.0/304.8,template=None,identity
         raise ValueError(template.error)
     source=template.parse(name,with_discipline=True)
     if source is not None:
+        source_key=template.identity(name,ignore_auxiliary=True) if identity_only else source[:2]
         matched=[]
         for level in levels:
             parts=template.parse(level['name'],with_discipline=True)
-            if parts is not None and (parts[:2]==source[:2] or
-                    (identity_only and template.identity(level['name'])==template.identity(name))):
+            if parts is None:
+                continue
+            key=template.identity(level['name'],ignore_auxiliary=True) if identity_only else parts[:2]
+            if key==source_key:
                 matched.append((level,parts))
         if not matched:
             raise ValueError(tr(u'По маске уровней не найден этаж «{}» корпуса «{}» в текущей модели. Проверьте имена и маску; другой этаж автоматически не выбирается.',
-                                u'No level matches floor "{}" in building "{}" in the current model. Check names and the level mask; another floor is not selected automatically.').format(source[1],source[0]))
+                                u'No level matches floor "{}" in building "{}" in the current model. Check names and the level mask; another floor is not selected automatically.').format(source_key[1],source_key[0]))
         ar=[item for item in matched if item[1][3] in (u'ар','ar')]
         matched=ar or matched
         if identity_only:
-            primary=[item for item in matched if not item[1][2].strip()]
+            primary=[item for item in matched if not item[1][2].strip() and
+                     template.identity(item[0]['name'])==template.identity(item[0]['name'],ignore_auxiliary=True)]
             matched=primary or matched
             if len(matched)==1:
                 return matched[0][0]
