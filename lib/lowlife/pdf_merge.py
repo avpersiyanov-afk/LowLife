@@ -90,7 +90,7 @@ def run():
 
     title = tr(u'Объединить PDF', u'Merge PDFs')
     store = JsonStore('LowLifePdfMerge_settings.json')
-    folder = forms.pick_folder(title=title, init_dir=store.read().get('last_folder', ''))
+    folder = forms.pick_folder(title=title)
     if not folder:
         return
     store.update({'last_folder': folder})
