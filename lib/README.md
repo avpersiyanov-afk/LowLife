@@ -206,6 +206,29 @@ circuit, row_id)` — «Проводник»: параметр = ключево�
 `panel_name_second_param`, `panel_name_mask`), `TextSettings`; поле маски
 (`MaskField`) не сохраняется без `{1}`/`{2}`.
 
+## change_clouds_core.py / change_clouds.py / change_clouds_settings.py / change_clouds_ui.py
+Кнопка «Внесение изменений» (`Tools.panel/ChangeClouds`): облако изменений —
+новый тип семейства по маске «имя_шифр_номер» с данными в параметрах типа
+и экземпляра. Чистая часть — `change_clouds_core.py` (покрыта
+`tests/test_change_clouds_core.py`): `today_text` (дд.мм.гг),
+`build_type_name(template, family, cipher, number)` (маска с
+подстановками `{family}/{cipher}/{number}`, умолчание `DEFAULT_TEMPLATE`),
+`parse_type_name(name, family)` (шифр с подчёркиваниями — номер после
+последнего `_`), `suggest_number(rows, cipher)` (max + 1 по шифру, иначе 1),
+`parse_number` / `parse_date` (валидация ввода, дата → дд.мм.гг).
+Revit-часть — `change_clouds.py`: `find_family` / `family_symbols`
+(через `Family.GetFamilySymbolIds`, включая невставленные), `list_changes`
+(строки типов с параметрами и числом экземпляров), `suggest_next_number`,
+`create_change(doc, view, settings, cipher, number, date, code, content, point)`
+(копия первого типа, запись параметров через `params.set_param_any`,
+вставка на вид, порядковый номер = облака семейства на виде + 1; своя
+транзакция). Настройки — `change_clouds_settings.SETTINGS`
+(`LowLifeChangeClouds_settings.json`, `TextSettings`): семейство, маска
+имени, параметры типа (`cipher_param`, `number_param`, `date_param`) и
+экземпляра (`code_param`, `content_param`, `order_param`). Окно списка
+изменений — `change_clouds_ui.show_changes_window` (вернёт `"new"`,
+`"settings"` или None).
+
 ## selection.py
 Работа с выделением элементов в Revit UI.
 
