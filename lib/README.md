@@ -3308,3 +3308,11 @@ refreshes only these saved selections once per placement/issue/withdrawal batch,
 without rebuilding views or touching other projects. This batch helper is needed
 because selection filters do not evaluate parameter changes themselves. A schedule
 failure rolls back only its subtransaction, preserving graphical control views.
+
+
+`opening_tasks_visibility.configure(doc, view, elements, structures=False)`
+configures owned control views: boxes only in general 3D, structures and openings
+on control plans/sections. Reuses `loi_check._hide_other_categories`,
+`_keep_with_nested` and `_hide_by_filter` to exclude unrelated families in the
+same category and keep nested box geometry. Views are excluded before checking
+hideability. `structural_categories` is shared with the dedicated box preview.

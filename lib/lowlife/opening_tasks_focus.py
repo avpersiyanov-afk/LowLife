@@ -13,11 +13,7 @@ from lowlife import opening_tasks_storage as store
 from lowlife.opening_tasks_views import unique_name
 from lowlife.loi_check import _unhide_all
 
-STRUCTURES = ('OST_Walls','OST_Floors','OST_StructuralColumns','OST_StructuralFraming','OST_StructuralFoundation','OST_Roofs')
-
-
-def structural_categories():
-    return set(int(getattr(BuiltInCategory,n)) for n in STRUCTURES)
+from lowlife.opening_tasks_visibility import structural_categories
 
 
 def new_view(doc):
