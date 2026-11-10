@@ -98,7 +98,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
     categories = boxes._host_categories(settings,include_roofs=True)
     src = boxes._Source(source.GetLinkDocument(), source)
     entries, errors = [], []
-    issued_ids = set(store.registry(doc)['tasks'])
+    issued_tasks=store.registry(doc)['tasks']
+    issued_ids = set(issued_tasks)
     for index, route in enumerate(routes):
         if progress:
             progress(index+1, len(routes))
@@ -169,7 +170,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if data['task_id'] not in issued_ids:
                     store.set_parameter(inst, settings['opening_json_param'],
                         dict(data, status='draft', geometry=host_geometry(inst,data,source)))
-                issued = store.registry(doc)['tasks'].get(data['task_id'])
+                issued = issued_tasks.get(data['task_id'])
                 visible_issue(inst,settings,issued, bool(issued and issued['status']=='issued' and
                     (not core.geometry_equal(issued['geometry'],host_geometry(inst,data,source)) or
                      issued.get('level')!=data.get('level'))))
