@@ -391,16 +391,18 @@ def delete_boxes_from_list(uidoc, rows=None):
         api.delete_boxes(doc,selected)
 
 
-def change_building_from_table(uidoc, rows, settings):
+def change_building_from_table(uidoc, rows, settings, value=None):
     from lowlife import opening_tasks_parts as parts
     if not rows:
         raise ValueError(tr(u'Выберите строки боксов в таблице.',u'Select box rows in the table.'))
     values=parts.catalog(settings['opening_project'])
     if not values:
         raise ValueError(tr(u'Обновите номера корпусов из Google-справочника.',u'Refresh building numbers from the Google catalog.'))
-    value=choose({item:item for item in values},tr(u'Номер корпуса для выбранных боксов',u'Building number for selected boxes'))
+    if value is None:
+        value=choose({item:item for item in values},tr(u'Номер корпуса для выбранных боксов',u'Building number for selected boxes'))
     if value is None:
         return
+    parts.require_choice(settings['opening_project'],value)
     elements=[uidoc.Document.GetElement(row['uid']) for row in rows]
     if any(el is None for el in elements):
         raise ValueError(tr(u'Один из боксов удалён. Обновите таблицу.',u'A box was deleted. Refresh the table.'))

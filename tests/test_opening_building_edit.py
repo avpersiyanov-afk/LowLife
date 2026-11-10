@@ -56,7 +56,7 @@ def test_invalid_selection_or_catalog_is_rejected_before_any_writes():
     assert writes==[]
 
 
-def test_building_cell_dispatches_edit_and_context_keeps_selected_group():
+def test_building_cell_leaves_dropdown_in_control_and_context_keeps_selected_group():
     tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text())
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='TaskWindow')
     methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('open_row','select_context_row')]
@@ -70,7 +70,7 @@ def test_building_cell_dispatches_edit_and_context_keeps_selected_group():
     window=NS(role='VIS',selected_rows=lambda:[dict(uid='box')],dispatch=events.append,
               tasks=NS(CurrentCell=NS(Column=NS(SortMemberPath='ObjectPart')),SelectedItem='existing group'))
     scope['open_row'](window,None,NS(OriginalSource=row))
-    assert events==['change_part']
+    assert events==[]  # cell dropdown handles editing without another chooser
     window.tasks.CurrentCell.Column.SortMemberPath='Sizes'
     scope['open_row'](window,None,NS(OriginalSource=row))
     assert events[-1]=='focus'
