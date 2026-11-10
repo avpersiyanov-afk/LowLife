@@ -42,7 +42,9 @@ def configure(doc, view, elements, structures=False, cache=None):
     allowed.update(structural)
     if structures:
         allowed.add(int(BuiltInCategory.OST_RvtLinks))
-    _hide_other_categories(doc,view,allowed,include_annotations=False)
+    # Keep generated remark labels; hide grids, levels, sections and scope boxes.
+    visible=allowed | set([int(BuiltInCategory.OST_TextNotes)])
+    _hide_other_categories(doc,view,visible,include_annotations=True)
     cache=cache if cache is not None else {}
     if structures:
         if "links" not in cache:
