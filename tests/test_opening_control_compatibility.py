@@ -235,3 +235,23 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     assert categories[-1] == {1, 2, 4}  # boxes, structures, links; no MEP category
     assert hidden[-1] == [2]
     assert view.ViewTemplateId == -1
+
+
+def test_schedule_filters_by_plain_status_instead_of_multiline_json():
+    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text())
+    build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
+    assignment = next(n for n in ast.walk(build) if isinstance(n, ast.Assign)
+                      and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'status_field')
+    check = next(n for n in ast.walk(build) if isinstance(n, ast.If)
+                 and isinstance(n.test, ast.UnaryOp) and isinstance(n.test.operand, ast.Call)
+                 and isinstance(n.test.operand.func, ast.Attribute)
+                 and n.test.operand.func.attr == 'CanFilterByValue')
+    add = next(n for n in ast.walk(build) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+               and isinstance(n.value.func, ast.Attribute) and n.value.func.attr == 'AddFilter')
+    calls = []
+    scope = dict(fields={1: NS(FieldId='json'), 2: NS(FieldId='status')},
+                 ids={'opening_json_param': 1, 'opening_status_param': 2},
+                 definition=NS(CanFilterByValue=lambda fid: fid == 'status', AddFilter=calls.append),
+                 ScheduleFilter=lambda *args: args, ScheduleFilterType=NS(NotEqual='not_equal'))
+    exec(compile(ast.Module(body=[assignment, check, add], type_ignores=[]), 'filter', 'exec'), scope)
+    assert calls == [('status', 'not_equal', '')]

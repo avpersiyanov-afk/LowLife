@@ -183,7 +183,13 @@ def build(doc, settings):
             definition.IsItemized = True
             for index in reversed(range(definition.GetFilterCount())):
                 definition.RemoveFilter(index)
-            definition.AddFilter(ScheduleFilter(fields[ids['opening_json_param']].FieldId,ScheduleFilterType.Contains,'task_id'))
+            # Multiline JSON may be schedulable but cannot be substring-filtered.
+            # The dedicated issue status is populated for every draft/issued box.
+            status_field=fields[ids['opening_status_param']].FieldId
+            if not definition.CanFilterByValue(status_field):
+                raise ValueError(tr(u'Параметр статуса «{}» недоступен для фильтра спецификации. Используйте обычный текстовый параметр экземпляра, без многострочного текста.',
+                                   u'Status parameter "{}" cannot be used in a schedule filter. Use a single-line text instance parameter.').format(settings['opening_status_param']))
+            definition.AddFilter(ScheduleFilter(status_field,ScheduleFilterType.NotEqual,u''))
             schedule_tx.Commit()
             output.append(schedule)
         except Exception as ex:
