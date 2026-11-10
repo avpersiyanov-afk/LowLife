@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Revit-часть кнопки «Проверка орфографии» (Tools.panel/SpellCheck): сбор
-текстовых заметок (TextNote) и запись исправлений.
+заметок, названий листов, штампов, типовых аннотаций и ручных таблиц.
 
 Исправление пишется точечно: в FormattedText заметки заменяются только
 изменённые слова (spellcheck_core.replacement_spans), поэтому жирный /
@@ -13,9 +13,14 @@ Revit-часть кнопки «Проверка орфографии» (Tools.p
 
 from Autodesk.Revit.DB import (
     FilteredElementCollector, TextNote, TextRange, ElementId,
-    WorksharingUtils, CheckoutStatus, ModelUpdatesStatus
+    WorksharingUtils, CheckoutStatus, ModelUpdatesStatus,
+    FamilyInstance, ViewSheet, BuiltInParameter, BuiltInCategory, StorageType,
+    ViewSchedule, ScheduleSheetInstance, SectionType
 )
 from lowlife.i18n import tr
+from lowlife.params import param_to_text, set_param_text
+from lowlife.link_views import safe_name
+from lowlife import schedule_excel
 
 from lowlife import spellcheck_core as core
 
@@ -26,10 +31,116 @@ SCOPE_MODEL = "model"
 # Итог apply_fix
 APPLIED_FORMATTED = "formatted"
 APPLIED_PLAIN = "plain"
+APPLIED_PARAMETER = "parameter"
+
+
+class TextTarget(object):
+    """Точное место записи: заметка или конкретный параметр владельца."""
+    def __init__(self, element, kind, parameter=None, cell=None):
+        self.element = element
+        self.kind = kind
+        self.parameter = parameter
+        self.cell = cell
+        self.Id = element.Id
+
+    @property
+    def field(self):
+        if self.kind == "note":
+            return tr(u"Текстовые заметки", u"Text notes")
+        if self.kind == "sheet":
+            return tr(u"Названия листов", u"Sheet names")
+        if self.cell is not None:
+            return tr(u"Ручная таблица: строка {}, столбец {}",
+                      u"Manual table: row {}, column {}").format(self.cell[0] + 1, self.cell[1] + 1)
+        level = (tr(u"Тип — все экземпляры", u"Type — all instances")
+                 if self.kind == "type" else tr(u"Экземпляр", u"Instance"))
+        return u"{}: {}".format(level, self.parameter.Definition.Name)
+
+    @property
+    def label(self):
+        return u"{} — {} [ {} ]".format(self.field, safe_name(self.element), self.Id)
+
+
+def collect_targets(doc, scope, view=None, selected=None, kinds=None):
+    """Тексты документа: заметки, листы, штампы, типовые аннотации, ручные таблицы.
+
+    На листе проверяется его имя, а семейства/заметки — видимые на самом
+    листе, без обхода размещённых видовых экранов. Тип проверяется один раз.
+    """
+    kinds = set(kinds if kinds is not None else ("note", "sheet", "titleblock", "annotation", "schedule"))
+    selected = list(selected or [])
+    result = []
+    if "note" in kinds:
+        notes = collect_text_notes(doc, scope, view,
+                                   [e for e in selected if isinstance(e, TextNote)])
+        result.extend(TextTarget(e, "note") for e in notes)
+    if "sheet" in kinds:
+        if scope == SCOPE_SELECTION:
+            sheets = [e for e in selected if isinstance(e, ViewSheet)]
+        elif scope == SCOPE_VIEW:
+            sheets = [view] if isinstance(view, ViewSheet) else []
+        else:
+            sheets = FilteredElementCollector(doc).OfClass(ViewSheet)
+        for sheet in sheets:
+            p = sheet.get_Parameter(BuiltInParameter.SHEET_NAME)
+            if p is not None:
+                result.append(TextTarget(sheet, "sheet", p))
+    for source, category in (("titleblock", BuiltInCategory.OST_TitleBlocks),
+                             ("annotation", BuiltInCategory.OST_GenericAnnotation)):
+        if source not in kinds:
+            continue
+        if scope == SCOPE_SELECTION:
+            instances = [e for e in selected if isinstance(e, FamilyInstance)
+                         and e.Category is not None and e.Category.Id == ElementId(category)]
+        else:
+            collector = (FilteredElementCollector(doc, view.Id)
+                         if scope == SCOPE_VIEW and view is not None
+                         else FilteredElementCollector(doc))
+            instances = collector.OfCategory(category).OfClass(FamilyInstance).WhereElementIsNotElementType()
+        seen = set()
+        for instance in instances:
+            for owner, kind in ((instance, "instance"),
+                                (doc.GetElement(instance.GetTypeId()), "type")):
+                if owner is None or owner.Id in seen:
+                    continue
+                seen.add(owner.Id)
+                for p in owner.Parameters:
+                    if p.StorageType == StorageType.String and not p.IsReadOnly:
+                        if core.has_letters(p.AsString()):
+                            result.append(TextTarget(owner, kind, p))
+    if "schedule" in kinds:
+        if scope == SCOPE_MODEL:
+            schedules = schedule_excel.list_schedules(doc)
+        else:
+            elements = selected if scope == SCOPE_SELECTION else [view]
+            if scope == SCOPE_VIEW and isinstance(view, ViewSheet):
+                elements = FilteredElementCollector(doc, view.Id).OfClass(ScheduleSheetInstance)
+            schedules = []
+            seen = set()
+            for element in elements:
+                sched = (doc.GetElement(element.ScheduleId)
+                         if isinstance(element, ScheduleSheetInstance) else element)
+                if isinstance(sched, ViewSchedule) and sched.Id not in seen:
+                    if not sched.IsTemplate and not sched.IsTitleblockRevisionSchedule:
+                        schedules.append(sched)
+                        seen.add(sched.Id)
+        for sched in schedules:
+            first_col = sched.GetTableData().GetSectionData(SectionType.Header).FirstColumnNumber
+            for row, token, texts in schedule_excel.manual_header_rows(sched):
+                for j, text in enumerate(texts):
+                    if core.has_letters(text):
+                        result.append(TextTarget(sched, "schedule", cell=(row, first_col + j, j, token)))
+    return result
 
 
 def plain_text(note):
     """Текст заметки так, как его видит FormattedText (с "\\r" между строками)."""
+    if isinstance(note, TextTarget):
+        if note.cell is not None:
+            return note.element.GetCellText(SectionType.Header, note.cell[0], note.cell[1])
+        if note.parameter is not None:
+            return param_to_text(note.parameter)
+        note = note.element
     try:
         return note.GetFormattedText().GetPlainText()
     except Exception:
@@ -64,6 +175,10 @@ def skip_reason(doc, note):
     редактирования группы даёт предупреждение Revit о группе. В
     совместной модели чужие и устаревшие (изменены в центральной) элементы
     уронили бы при сохранении всю транзакцию — их тоже пропускаем."""
+    if isinstance(note, TextTarget):
+        if note.parameter is not None and note.parameter.IsReadOnly:
+            return tr(u"Параметр доступен только для чтения", u"The parameter is read-only")
+        note = note.element
     try:
         if note.GroupId is not None and note.GroupId != ElementId.InvalidElementId:
             return tr(u"в группе")
@@ -88,6 +203,23 @@ def apply_fix(note, old_plain, new_plain):
     текст заметки успел измениться или Revit запись не принял."""
     if plain_text(note) != old_plain:
         raise ValueError(tr(u"текст заметки изменился после проверки"))
+
+    if isinstance(note, TextTarget):
+        reason = skip_reason(note.element.Document, note)
+        if reason:
+            raise ValueError(reason)
+        if note.cell is not None:
+            result = schedule_excel.rows_to_model(note.element.Document, [
+                [schedule_excel.ID_HEADER, schedule_excel.CELL_PREFIX + str(note.cell[2] + 1)],
+                [note.cell[3], new_plain]])
+            if result['errors'] or result['changed'] != 1:
+                raise ValueError(u"; ".join(result['errors']) or tr(u"Не удалось записать параметр", u"Could not write the parameter"))
+            return APPLIED_PARAMETER
+        if note.parameter is not None:
+            if not set_param_text(note.parameter, new_plain):
+                raise ValueError(tr(u"Не удалось записать параметр", u"Could not write the parameter"))
+            return APPLIED_PARAMETER
+        note = note.element
 
     spans = core.replacement_spans(old_plain, new_plain)
     try:
