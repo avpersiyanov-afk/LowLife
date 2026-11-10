@@ -3296,3 +3296,15 @@ routes. It updates box Z extent/center without rotating it along the roof slope.
 `geometry.get_element_level` falls back to the built-in roof base/reference level. Native
 Floor/RoofBase openings use NewOpening(..., False), explicitly vertical as documented
 by Autodesk; KR plan ranges include accepted roof hosts.
+
+
+Opening control compatibility: `opening_tasks_focus` reuses
+`loi_check._unhide_all(doc, view)` (element `IsHidden(view)`, not a
+nonexistent View.GetHiddenElementIds) for both dedicated previews.
+`opening_tasks_views.build` checks filterable parameters for each category;
+family-only parameters fall back to selection filters via the existing
+`loi_check._selection_filter`. `sync_selection_filters(doc, settings, registry=None)`
+refreshes only these saved selections once per placement/issue/withdrawal batch,
+without rebuilding views or touching other projects. This batch helper is needed
+because selection filters do not evaluate parameter changes themselves. A schedule
+failure rolls back only its subtransaction, preserving graphical control views.

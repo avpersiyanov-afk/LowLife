@@ -11,8 +11,9 @@ from lowlife import select_list
 from lowlife import opening_tasks_revit as api
 from lowlife import opening_tasks_storage as store
 from lowlife.opening_tasks_views import unique_name
+from lowlife.loi_check import _unhide_all
 
-STRUCTURES = ('OST_Walls','OST_Floors','OST_StructuralColumns','OST_StructuralFraming','OST_StructuralFoundation')
+STRUCTURES = ('OST_Walls','OST_Floors','OST_StructuralColumns','OST_StructuralFraming','OST_StructuralFoundation','OST_Roofs')
 
 
 def structural_categories():
@@ -30,9 +31,7 @@ def structures_view(doc):
     if view is None:
         view = new_view(doc)
         view.Name = unique_name(doc,u'LowLife | Конструкции для просмотра заданий')
-    hidden=list(view.GetHiddenElementIds())
-    if hidden:
-        view.UnhideElements(List[ElementId](hidden))
+    _unhide_all(doc,view)
     allowed = structural_categories()
     for cat in doc.Settings.Categories:
         if view.CanCategoryBeHidden(cat.Id):
@@ -75,9 +74,7 @@ def focus(doc, inst):
         previews[inst.UniqueId]=view.UniqueId
     keep = set([inst.Id,source.Id,link.Id])
     # The view belongs to this command: rebuild local isolation on every visit.
-    hidden=list(view.GetHiddenElementIds())
-    if hidden:
-        view.UnhideElements(List[ElementId](hidden))
+    _unhide_all(doc,view)
     others=[]
     for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
         if el.Id not in keep and el.Category is not None and el.CanBeHidden(view):

@@ -148,6 +148,8 @@ def publish(settings, elements=None):
             record = registry['tasks'].get(draft['task_id'])
             api.visible_issue(inst,settings,record,bool(record and record['status']=='issued' and (not core.geometry_equal(record['geometry'],draft['geometry']) or
                 record.get('level')!=draft.get('level'))))
+        from lowlife.opening_tasks_views import sync_selection_filters
+        sync_selection_filters(doc,settings,registry)
     _registry, changes = core.issue(store.registry(doc),drafts,settings['opening_project'],
                                     settings['opening_discipline'],doc.Application.Username,api.now(),settings.get('opening_recipient','KR'))
     if not changes:
