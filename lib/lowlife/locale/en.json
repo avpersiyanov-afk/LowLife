@@ -1246,6 +1246,7 @@
  "Изменено после выдачи": "Changed since issue",
  "Изменено строк: {} (значений: {})": "Rows changed: {} (values: {})",
  "Изменено: {0}. Пропущено: {1}.": "Changed: {0}. Skipped: {1}.",
+ "Изменить номер корпуса": "Change building number",
  "Имена вписаны в настройки: {}": "Names written into the settings: {}",
  "Имена категорий как в Revit. Пусто — все категории модели (без аннотаций, осей, уровней и видов).": "Category names as in Revit. Empty — all model categories (without annotations, grids, levels and views).",
  "Имена параметров (по одному на строке)": "Parameter names (one per line)",

@@ -1,9 +1,28 @@
 # -*- coding: utf-8 -*-
 """Deterministic level matching and vertical-hit selection, without Revit."""
 from lowlife.i18n import tr
+from lowlife.level_name_template import LevelNameTemplate, DEFAULT_TEMPLATE
 
 
-def match_level(levels,name,elevation,tolerance=1.0/304.8):
+def match_level(levels,name,elevation,tolerance=1.0/304.8,template=None):
+    template=template if isinstance(template,LevelNameTemplate) else LevelNameTemplate(template or DEFAULT_TEMPLATE)
+    if template.error:
+        raise ValueError(template.error)
+    source=template.parse(name,with_discipline=True)
+    if source is not None:
+        matched=[]
+        for level in levels:
+            parts=template.parse(level['name'],with_discipline=True)
+            if parts is not None and parts[:2]==source[:2]:
+                matched.append((level,parts))
+        if not matched:
+            raise ValueError(tr(u'По маске уровней не найден этаж «{}» корпуса «{}» в текущей модели. Проверьте имена и маску; другой этаж автоматически не выбирается.',
+                                u'No level matches floor "{}" in building "{}" in the current model. Check names and the level mask; another floor is not selected automatically.').format(source[1],source[0]))
+        ar=[level for level,parts in matched if parts[3] in (u'ар','ar')]
+        levels=ar or [level for level,parts in matched]
+    else:
+        exact=[level for level in levels if name and level['name']==name]
+        levels=exact or levels
     if levels:
         distance=min(abs(level['elevation']-elevation) for level in levels)
         nearest=[level for level in levels

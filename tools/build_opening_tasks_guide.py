@@ -67,6 +67,8 @@ def diagram(role, tab_index, filename):
     badge(1,155)
     x,y=104,204
     for key in groups[tab_index][1]:
+        if key=='change_part':
+            continue  # available from the table context menu
         width=int(d.textlength(labels[key],font=font(17)))+34
         if x+width>1405:x,y=104,y+39
         x+=control(x,y,labels[key])

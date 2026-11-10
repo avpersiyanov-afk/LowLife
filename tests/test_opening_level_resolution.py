@@ -195,3 +195,20 @@ def test_floor_kr_elevation_maps_to_nearest_ar_level_with_offset(monkeypatch):
     assert result is target
     assert info['elevation_mm']==pytest.approx(109.5*304.8)
     assert info['support_uid']=='slab'
+
+
+def test_resolver_uses_saved_level_mask_and_reports_actual_ar_level(monkeypatch,tmp_path):
+    from lowlife import view_range_settings,level_views_settings
+    monkeypatch.setenv('APPDATA',str(tmp_path))
+    view_range_settings.save_values({'level_name_template':u'{Корпус}_{Этаж}_{Дисциплина}_{Комментарий}'})
+    source_level=Level('source-L',u'К1_07_КР_доп',100)
+    floor=Floor('slab','source-L',101)
+    linked=document([source_level],[floor],'KR')
+    correct=Level('ar-7',u'К1_07_АР',0)
+    wrong=Level('ar-8',u'К1_08_АР',100)
+    local=document([correct,wrong],[],'VIS')
+    r=resolver(monkeypatch,local,[correct,wrong])
+    r.level_template=level_views_settings.level_template()
+    target,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
+    assert target is correct
+    assert info['name']==correct.Name and info['source_name']==source_level.Name

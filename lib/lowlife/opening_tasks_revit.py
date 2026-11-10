@@ -173,7 +173,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 issued = issued_tasks.get(data['task_id'])
                 visible_issue(inst,settings,issued, bool(issued and issued['status']=='issued' and
                     (not core.geometry_equal(issued['geometry'],host_geometry(inst,data,source)) or
-                     issued.get('level')!=data.get('level'))))
+                     issued.get('level')!=data.get('level') or issued.get('object_part','')!=data.get('object_part',''))))
                 store.write(inst, data)
                 if sub.Commit() != TransactionStatus.Committed:
                     raise ValueError(tr(u'Транзакция бокса не зафиксирована',u'Draft transaction was not committed'))
@@ -685,3 +685,37 @@ def delete_boxes(doc, elements):
     if unique:
         doc.Delete(List[ElementId]([inst.Id for inst in unique.values()]))
     return len(unique)
+
+
+def change_building(doc, elements, value, settings):
+    """Change working metadata only; a later issue records a new revision."""
+    from lowlife import opening_tasks_parts as parts
+    parts.require_choice(settings['opening_project'],value)
+    registry=store.registry(doc)
+    prepared=[]
+    for inst in {el.UniqueId:el for el in elements if el is not None}.values():
+        data=metadata(inst)
+        if inst.Document!=doc or not data or data.get('owner_uid')!=inst.UniqueId or data.get('source_model')!=store.model_id(doc):
+            raise ValueError(tr(u'Выберите собственные боксы текущей модели.',u'Select original boxes in the current model.'))
+        record=registry['tasks'].get(data['task_id'])
+        if record and record['project']!=settings['opening_project']:
+            raise ValueError(tr(u'Бокс выдан в другом объекте.',u'Box was issued for another project.'))
+        if data.get('object_part','')==value:
+            continue
+        working=None
+        if record is None:
+            param=inst.LookupParameter(settings['opening_json_param'])
+            if param is None or param.StorageType!=StorageType.String:
+                raise ValueError(tr(u'У бокса нет текстового JSON-параметра задания.',u'Box has no text task JSON parameter.'))
+            working=core.loads(param.AsString())
+            working['object_part']=value
+        prepared.append((inst,dict(data,object_part=value),record,working))
+    for inst,data,record,working in prepared:
+        store.write(inst,data)
+        if working is not None:
+            store.set_parameter(inst,settings['opening_json_param'],working)
+        visible_issue(inst,{'opening_status_param':settings.get('opening_status_param','')},record,
+                      bool(record and record['status']=='issued'))
+    from lowlife.opening_tasks_views import sync_selection_filters
+    sync_selection_filters(doc,settings,registry)
+    return len(prepared)

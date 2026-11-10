@@ -277,3 +277,14 @@ geometry. After Continue, choose the entire project, existing scope boxes, or
 manual selection. Scope-box placement checks the opening center against selected
 bounds so a long route cannot place openings outside the chosen scope. Cancelling
 the diagram or scope selector makes no model changes.
+
+
+Level mapping now reuses the existing shared level-name mask: building and floor
+identity precede elevation, and AR levels are preferred within that identity when
+the mask includes discipline. A recognized missing floor is an explicit error.
+Unparsed names retain the legacy name/elevation fallback.
+
+In the VIS table, double-click Building number or right-click selected rows and
+choose Change building number. Catalog values apply to all selected original
+local boxes. Issued JSON/history stay unchanged until reissue creates a revision;
+working changes are marked Changed since issue. KR/AR tables remain read-only.

@@ -3186,10 +3186,13 @@ uses the shared params.read_project_parameter reader and its own parameter setti
 
 Shared box-level resolver for VIS/KR/AR tasks and tray boxes. Pierced floor level
 or downward solid intersection with floors/foundations from the same selected source.
-Nearest current-model level to the transformed host project elevation, including
-AR levels with differing names/elevations. Unassigned support levels use the actual
-surface hit elevation. Equal-distance candidates prefer a unique matching name;
-unresolved ties fail. The opening height never replaces the host elevation.
+Assigned source level names are parsed by the existing shared mask from
+`level_views_settings.level_template()` (View Range settings, with the existing
+Family Section fallback). Matching building/floor takes priority over elevation;
+matching AR discipline levels are preferred when the mask includes discipline.
+Nearest elevation resolves candidates only within that group; missing floors
+fail explicitly. Unparsed names retain the legacy exact-name/elevation fallback.
+Unassigned support levels still use the actual surface hit elevation; ties fail. The opening height never replaces the host elevation.
 Checks and updates actual instance level while preserving position; provenance
 enters task JSON and level corrections participate in reissue detection.
 
@@ -3438,3 +3441,18 @@ for candidates and cached by the existing `_Source.solids`; exact
 reused, and temporary hits/segments/options are disposed. No persistent cache or
 geometry approximation is introduced. VIS placement reads issued tasks once per
 batch instead of once per box; progress updates are throttled to about 100 steps.
+
+
+`LevelNameTemplate.parse(name, with_discipline=False)` preserves the old
+three-item result; optional discipline output reuses the same compiled mask.
+Opening provenance records the assigned target name and the original source name.
+
+`opening_tasks_revit.change_building` validates the cached project catalog and
+original local ownership for all selected boxes before mutation. It updates working
+metadata and unissued JSON; issued JSON/history remain immutable until normal
+reissue creates a revision. It reuses parts.require_choice, visible_issue, and
+sync_selection_filters. The table invokes this only through ExternalEvent from
+its building-cell double click or context menu; no extra toolbar button is added.
+The source of host-classification parameter errors is now explicit in the message:
+`box_host_filter_param`, including inherited shared settings. No parameter name
+is hardcoded and valid configured names are not silently removed.

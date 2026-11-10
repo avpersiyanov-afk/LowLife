@@ -14,12 +14,16 @@ def draft(part=None):
     return data
 
 
-def test_part_is_issued_snapshot_and_cannot_change_on_reissue():
+def test_part_change_creates_revision_and_keeps_original_issue_snapshot():
     registry,_=c.issue(c.empty_registry(),[draft(u'НЧ-1')],'P','OV','user','t1')
     assert registry['issues'][0]['tasks'][0]['object_part']==u'НЧ-1'
     again,changed=c.issue(registry,[draft(u'НЧ-1')],'P','OV','user','t2')
     assert not changed
-    with pytest.raises(ValueError):c.issue(registry,[draft(u'ПЧ-1')],'P','OV','user','t2')
+    updated,changed=c.issue(registry,[draft(u'ПЧ-1')],'P','OV','user','t2')
+    assert changed[0]['revision']==2
+    assert updated['tasks']['a']['object_part']==u'ПЧ-1'
+    assert updated['issues'][0]['tasks'][0]['object_part']==u'НЧ-1'
+    assert c.change_kinds(registry['tasks']['a'],changed[0])==['object_part']
     with pytest.raises(ValueError):c.issue(registry,[draft()],'P','OV','user','t2')
     assert registry['tasks']['a']['revision']==1
 
