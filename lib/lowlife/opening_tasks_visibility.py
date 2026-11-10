@@ -2,16 +2,33 @@
 """Visibility for owned opening control views; called inside a transaction."""
 from System.Collections.Generic import List
 from Autodesk.Revit.DB import (BuiltInCategory, DisplayStyle, ElementId, ElementMulticategoryFilter,
-    FilteredElementCollector, TemporaryViewMode, View)
+    FilteredElementCollector, RevitLinkInstance, TemporaryViewMode, View)
 from lowlife.loi_check import _hide_by_filter, _hide_other_categories, _keep_with_nested
 from lowlife import tray_boxes as boxes
 
 STRUCTURES = ('OST_Walls','OST_Floors','OST_StructuralColumns',
               'OST_StructuralFraming','OST_StructuralFoundation','OST_Roofs')
+STRUCTURE_TRANSPARENCY = 70
 
 
 def structural_categories():
     return set(int(getattr(BuiltInCategory,n)) for n in STRUCTURES)
+
+
+def transparent_structures(doc, view, links=None):
+    """Fade only structural context, preserving other graphic overrides."""
+    for cid in structural_categories():
+        category=ElementId(cid)
+        if view.CanCategoryBeHidden(category):
+            overrides=view.GetCategoryOverrides(category)
+            overrides.SetSurfaceTransparency(STRUCTURE_TRANSPARENCY)
+            view.SetCategoryOverrides(category,overrides)
+    if links is None:
+        links=FilteredElementCollector(doc).OfClass(RevitLinkInstance)
+    for link in links:
+        overrides=view.GetElementOverrides(link.Id)
+        overrides.SetSurfaceTransparency(STRUCTURE_TRANSPARENCY)
+        view.SetElementOverrides(link.Id,overrides)
 
 
 def configure(doc, view, elements, structures=False, cache=None):
@@ -26,6 +43,10 @@ def configure(doc, view, elements, structures=False, cache=None):
         allowed.add(int(BuiltInCategory.OST_RvtLinks))
     _hide_other_categories(doc,view,allowed,include_annotations=False)
     cache=cache if cache is not None else {}
+    if structures:
+        if "links" not in cache:
+            cache["links"]=list(FilteredElementCollector(doc).OfClass(RevitLinkInstance))
+        transparent_structures(doc,view,cache["links"])
     scoped=allowed-structural-set([int(BuiltInCategory.OST_RvtLinks)])
     key=tuple(sorted(scoped))
     if key not in cache:

@@ -14,7 +14,7 @@ from lowlife.opening_tasks_views import unique_name
 from lowlife.loi_check import _unhide_all
 from lowlife.route_preview import zoom_to_fit_points
 
-from lowlife.opening_tasks_visibility import structural_categories, isolate_preview
+from lowlife.opening_tasks_visibility import structural_categories, isolate_preview, transparent_structures
 
 
 def new_view(doc):
@@ -33,8 +33,7 @@ def structures_view(doc):
     for cat in doc.Settings.Categories:
         if view.CanCategoryBeHidden(cat.Id):
             view.SetCategoryHidden(cat.Id,api.boxes._id_int(cat.Id) not in allowed)
-        if api.boxes._id_int(cat.Id) in allowed:
-            view.SetCategoryOverrides(cat.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
+    transparent_structures(doc,view,links=[])
     view.IsSectionBoxActive=False
     store.write(view,dict(schema=1,role='structural_preview'))
     return view
@@ -79,7 +78,7 @@ def focus(doc, inst):
         if view.CanCategoryBeHidden(category.Id):
             view.SetCategoryHidden(category.Id,api.boxes._id_int(category.Id) not in allowed)
     view.SetLinkOverrides(link.Id,linked_settings)
-    view.SetElementOverrides(link.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
+    transparent_structures(doc,view,links=[link])
     blue=Color(30,100,240)
     overrides=OverrideGraphicSettings().SetProjectionLineColor(blue).SetCutLineColor(blue).SetSurfaceTransparency(0)
     solid=next((f.Id for f in FilteredElementCollector(doc).OfClass(FillPatternElement) if f.GetFillPattern().IsSolidFill),None)

@@ -220,7 +220,8 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     class Id(int):
         InvalidElementId=-1
     scope = dict(ElementId=Id, View=V, List=Lists,
-                 ElementMulticategoryFilter=lambda ids: ids, DisplayStyle=NS(ShadingWithEdges=1),
+                 ElementMulticategoryFilter=lambda ids: ids, DisplayStyle=NS(ShadingWithEdges=1), RevitLinkInstance=object,
+                 transparent_structures=lambda *a: None,
                  BuiltInCategory=NS(OST_RvtLinks=4),
                  boxes=NS(_id_int=int), structural_categories=lambda: {2},
                  _keep_with_nested=lambda doc, ids: ids,
@@ -236,7 +237,7 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     assert categories[-1] == {1, 2, 4}  # boxes, structures, links; no MEP category
     assert hidden[-1] == [2]
     assert view.ViewTemplateId == -1
-    assert len(queries)==1  # shared category snapshot across the 3D and plan
+    assert len(queries)==2  # one category snapshot plus one native link query
 
 
 def test_schedule_filters_by_plain_status_instead_of_multiline_json():
@@ -257,3 +258,22 @@ def test_schedule_filters_by_plain_status_instead_of_multiline_json():
                  ScheduleFilter=lambda *args: args, ScheduleFilterType=NS(NotEqual='not_equal'))
     exec(compile(ast.Module(body=[assignment, check, add], type_ignores=[]), 'filter', 'exec'), scope)
     assert calls == [('status', 'not_equal', '')]
+
+
+def test_transparent_structure_context_keeps_box_and_existing_graphics():
+    changed=[]
+    class Graphics:
+        line_color='retained'
+        def SetSurfaceTransparency(self, value):
+            self.transparency=value
+    view=NS(CanCategoryBeHidden=lambda cid: True,
+            GetCategoryOverrides=lambda cid: Graphics(),
+            SetCategoryOverrides=lambda cid, ogs: changed.append(('category',cid,ogs)),
+            GetElementOverrides=lambda eid: Graphics(),
+            SetElementOverrides=lambda eid, ogs: changed.append(('element',eid,ogs)))
+    scope=dict(ElementId=int, structural_categories=lambda: {1,2}, STRUCTURE_TRANSPARENCY=70)
+    apply=load_function('opening_tasks_visibility.py','transparent_structures',scope)
+    apply(None,view,links=[NS(Id=10)])
+    assert {(kind,eid) for kind,eid,ogs in changed}=={('category',1),('category',2),('element',10)}
+    assert all(ogs.transparency==70 and ogs.line_color=='retained' for kind,eid,ogs in changed)
+    # No box IDs/categories are touched and no whole-model collector is needed.
