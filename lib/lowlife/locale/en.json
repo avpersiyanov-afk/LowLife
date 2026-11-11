@@ -1194,7 +1194,7 @@
  "Заполните настройки кнопки (семейство и имена параметров).": "Fill in the button settings (family and parameter names).",
  "Заполните:\n\n": "Complete the following:\n\n",
  "Заполнить LOI": "Fill LOI",
- "Заполняется автоматически: количество облаков этого семейства на текущем листе + 1.": "Filled in automatically: the number of clouds of this family on the current sheet + 1.",
+ "Заполняется автоматически: следующий после максимального порядкового номера облаков этого семейства на текущем листе (на каждом листе — с 1).": "Filled in automatically: one more than the highest sequence number of this family's clouds on the current sheet (each sheet starts at 1).",
  "Запрос отменён: окно закрыто.": "Request cancelled: the window was closed.",
  "Запустить": "Run",
  "Затем по": "Then by",

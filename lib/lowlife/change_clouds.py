@@ -10,7 +10,7 @@
   3. create_change — новый тип по маске имени (копия первого типа семейства),
      запись шифра/номера/даты в параметры типа, вставка экземпляра на
      активный вид, запись кода (1–5), содержания и порядкового номера
-     (количество облаков семейства на виде + 1) в параметры экземпляра.
+     (см. next_order_on_view) в параметры экземпляра.
   4. place_instance — экземпляр уже существующего типа (двойной клик по
      строке окна): параметры типа уже в нём, пишутся только код, содержание
      и порядковый номер экземпляра.
@@ -71,6 +71,27 @@ def instances_on_view(doc, view, family):
     """Вставленные экземпляры семейства на конкретном виде/листе."""
     return [inst for inst in instances_of_family(doc, family)
             if inst.OwnerViewId is not None and inst.OwnerViewId == view.Id]
+
+
+def next_order_on_view(doc, view, family, settings):
+    """Следующий порядковый номер облака на виде: максимум записанных
+    значений order_param у экземпляров семейства на виде + 1; ни у одного
+    номера нет — 1. Нумерация так начинается с единицы на каждом листе и не
+    сбивается облаком без номера (например, вставленным до настройки
+    параметров — счёт «количество облаков + 1» его учитывал и давал 2
+    первому по-настоящему пронумерованному облаку).
+    """
+    name = (settings.get(u"order_param") or u"").strip()
+    best = 0
+    if name:
+        for inst in instances_on_view(doc, view, family):
+            try:
+                number = int(params.get_param_any(inst, name) or u"")
+            except (TypeError, ValueError):
+                continue
+            if number > best:
+                best = number
+    return best + 1
 
 
 def type_row(doc, symbol, family_name, settings):
@@ -150,7 +171,7 @@ def create_change(doc, view, settings, cipher, number, date_text, code, content,
     if type_name in existing:
         raise _error(tr(u"Тип «{}» уже существует.", u"The type “{}” already exists.").format(type_name))
 
-    order = len(instances_on_view(doc, view, family)) + 1
+    order = next_order_on_view(doc, view, family, settings)
 
     tx = Transaction(doc, tr(u"Внесение изменений", u"Enter change"))
     tx.Start()
@@ -188,7 +209,7 @@ def place_instance(doc, view, settings, symbol_id, code, content, point):
         raise _error(tr(u"Тип не найден в проекте — возможно, его удалили. Откройте окно заново.",
                         u"The type is not found in the model — it may have been deleted. Reopen the window."))
 
-    order = len(instances_on_view(doc, view, family)) + 1
+    order = next_order_on_view(doc, view, family, settings)
 
     tx = Transaction(doc, tr(u"Внесение изменений: экземпляр", u"Enter change: instance"))
     tx.Start()
