@@ -20,6 +20,10 @@ __doc__ = (
     u"Двойной клик по строке списка — вставить ещё один экземпляр этого типа: "
     u"шифр, номер и дата берутся из типа, спрашиваются код (1–5) и "
     u"содержание.\n\n"
+    u"После каждой вставки кнопка сразу спрашивает код и содержание "
+    u"следующего облака того же типа и точку на виде — облака ставятся по "
+    u"кругу, без промежуточных окон; Esc на любом шаге завершает вставку и "
+    u"возвращает к списку изменений.\n\n"
     u"Shift+клик — настройки: семейство, маска имени типа, параметры типа "
     u"(шифр, номер, дата) и экземпляра (код, содержание, порядковый номер)."
 )
@@ -145,39 +149,36 @@ def _ask_new_change(rows):
     except Exception as ex:
         forms.alert(u"{}".format(ex), title=TITLE)
         return
-    forms.alert(tr(u"Создан тип «{}», облако вставлено на вид «{}».").format(
-        change_clouds.safe_element_name(symbol),
-        change_clouds.safe_element_name(view)), title=TITLE)
+    # первое облако уже стоит — дальше тот же цикл, что и для существующего типа
+    _place_loop(symbol.Id)
 
 
-def _ask_instance(symbol_id):
-    """Экземпляр существующего типа (двойной клик по строке списка): только
-    код, содержание и точка вставки — шифр/номер/дата уже в типе."""
-    code = select_list.CommandSwitchWindow.show(
-        CODE_CHOICES,
-        title=TITLE,
-        message=tr(u"Код изменения (1–5):"))
-    if code is None:
-        return
-    content = forms.ask_for_string(title=TITLE, prompt=tr(u"Содержание изменения:"))
-    if content is None:
-        return
-    point = _pick_point()
-    if point is None:
-        return
-    try:
-        symbol, instance = change_clouds.place_instance(
-            doc, view, settings, symbol_id, code, content, point)
-    except change_clouds.ChangeCloudsError as ex:
-        message = ex.args[0] if ex.args else unicode(ex)
-        forms.alert(message, title=TITLE)
-        return
-    except Exception as ex:
-        forms.alert(u"{}".format(ex), title=TITLE)
-        return
-    forms.alert(tr(u"Облако «{}» вставлено на вид «{}».").format(
-        change_clouds.safe_element_name(symbol),
-        change_clouds.safe_element_name(view)), title=TITLE)
+def _place_loop(symbol_id):
+    """Повторная вставка экземпляров типа: код, содержание, точка — по кругу,
+    без окон об успехе; Esc на любом шаге выходит из цикла."""
+    while True:
+        code = select_list.CommandSwitchWindow.show(
+            CODE_CHOICES,
+            title=TITLE,
+            message=tr(u"Код изменения (1–5):"))
+        if code is None:
+            return
+        content = forms.ask_for_string(title=TITLE, prompt=tr(u"Содержание изменения:"))
+        if content is None:
+            return
+        point = _pick_point()
+        if point is None:
+            return
+        try:
+            change_clouds.place_instance(
+                doc, view, settings, symbol_id, code, content, point)
+        except change_clouds.ChangeCloudsError as ex:
+            message = ex.args[0] if ex.args else unicode(ex)
+            forms.alert(message, title=TITLE)
+            return
+        except Exception as ex:
+            forms.alert(u"{}".format(ex), title=TITLE)
+            return
 
 
 while True:
@@ -185,7 +186,7 @@ while True:
     family_name = settings.get(u"family_name") if family is not None else None
     action = change_clouds_ui.show_changes_window(family_name, rows)
     if isinstance(action, tuple) and action[0] == u"instance":
-        _ask_instance(action[1])
+        _place_loop(action[1])
         continue
     if action == u"settings":
         edited = settings_mod.get_settings_interactive()
