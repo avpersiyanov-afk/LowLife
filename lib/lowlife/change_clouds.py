@@ -10,7 +10,8 @@
   3. create_change — новый тип по маске имени (копия первого типа семейства),
      запись шифра/номера/даты в параметры типа, вставка экземпляра на
      активный вид, запись кода (1–5), содержания и порядкового номера
-     (см. next_order_on_view) в параметры экземпляра.
+     (см. next_order_on_view — своя нумерация с 1 для каждого изменения
+     на листе) в параметры экземпляра.
   4. place_instance — экземпляр уже существующего типа (двойной клик по
      строке окна): параметры типа уже в нём, пишутся только код, содержание
      и порядковый номер экземпляра.
@@ -67,24 +68,24 @@ def instances_of_family(doc, family):
             if inst.GetTypeId().IntegerValue in ids]
 
 
-def instances_on_view(doc, view, family):
-    """Вставленные экземпляры семейства на конкретном виде/листе."""
-    return [inst for inst in instances_of_family(doc, family)
-            if inst.OwnerViewId is not None and inst.OwnerViewId == view.Id]
-
-
-def next_order_on_view(doc, view, family, settings):
+def next_order_on_view(doc, view, symbol, settings):
     """Следующий порядковый номер облака на виде: максимум записанных
-    значений order_param у экземпляров семейства на виде + 1; ни у одного
-    номера нет — 1. Нумерация так начинается с единицы на каждом листе и не
-    сбивается облаком без номера (например, вставленным до настройки
-    параметров — счёт «количество облаков + 1» его учитывал и давал 2
-    первому по-настоящему пронумерованному облаку).
+    значений order_param у экземпляров этого типа на виде + 1; ни у одного
+    номера нет — 1. Нумерация так своя для каждого изменения (типа) на листе
+    и начинается с единицы; не сбивается облаком без номера (например,
+    вставленным до настройки параметров — счёт «количество облаков + 1» его
+    учитывал и давал 2 первому по-настоящему пронумерованному облаку).
     """
     name = (settings.get(u"order_param") or u"").strip()
+    type_key = symbol.Id.IntegerValue
+    view_key = view.Id.IntegerValue
     best = 0
     if name:
-        for inst in instances_on_view(doc, view, family):
+        for inst in FilteredElementCollector(doc).OfClass(FamilyInstance):
+            if inst.GetTypeId().IntegerValue != type_key:
+                continue
+            if inst.OwnerViewId is None or inst.OwnerViewId.IntegerValue != view_key:
+                continue
             try:
                 number = int(params.get_param_any(inst, name) or u"")
             except (TypeError, ValueError):
@@ -171,8 +172,6 @@ def create_change(doc, view, settings, cipher, number, date_text, code, content,
     if type_name in existing:
         raise _error(tr(u"Тип «{}» уже существует.", u"The type “{}” already exists.").format(type_name))
 
-    order = next_order_on_view(doc, view, family, settings)
-
     tx = Transaction(doc, tr(u"Внесение изменений", u"Enter change"))
     tx.Start()
     try:
@@ -184,6 +183,7 @@ def create_change(doc, view, settings, cipher, number, date_text, code, content,
             pass
         _write_type_params(symbol, settings, cipher, number, date_text)
         instance = doc.Create.NewFamilyInstance(point, symbol, view)
+        order = next_order_on_view(doc, view, symbol, settings)
         _write_instance_params(instance, settings, code, content, order)
         tx.Commit()
     except Exception as ex:
@@ -209,7 +209,7 @@ def place_instance(doc, view, settings, symbol_id, code, content, point):
         raise _error(tr(u"Тип не найден в проекте — возможно, его удалили. Откройте окно заново.",
                         u"The type is not found in the model — it may have been deleted. Reopen the window."))
 
-    order = next_order_on_view(doc, view, family, settings)
+    order = next_order_on_view(doc, view, symbol, settings)
 
     tx = Transaction(doc, tr(u"Внесение изменений: экземпляр", u"Enter change: instance"))
     tx.Start()
