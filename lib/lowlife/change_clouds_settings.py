@@ -99,6 +99,7 @@ SETTINGS = settings_core.TextSettings(
 load_saved_values = SETTINGS.load_saved_values
 save_values = SETTINGS.save_values
 require = SETTINGS.require
+missing = SETTINGS.missing
 show_settings_form = SETTINGS.show_settings_form
 get_settings_interactive = SETTINGS.get_settings_interactive
 get_settings_silent = SETTINGS.get_settings_silent
