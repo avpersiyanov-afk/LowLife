@@ -221,11 +221,13 @@ Revit-часть — `change_clouds.py`: `find_family` / `family_symbols`
 (строки типов с параметрами и числом экземпляров), `suggest_next_number`,
 `create_change(doc, view, settings, cipher, number, date, code, content, point)`
 (копия первого типа, запись параметров через `params.set_param_any`,
-вставка на вид, порядковый номер = облака семейства на виде + 1; своя
-транзакция), `place_instance(doc, view, settings, symbol_id, code, content,
-point)` — экземпляр уже существующего типа (двойной клик по строке окна):
-параметры типа уже в нём, пишутся только код/содержание/порядковый номер
-экземпляра. Настройки — `change_clouds_settings.SETTINGS`
+вставка на вид; своя транзакция), `place_instance(doc, view, settings,
+symbol_id, code, content, point)` — экземпляр уже существующего типа (двойной
+клик по строке окна): параметры типа уже в нём, пишутся только
+код/содержание/порядковый номер экземпляра; номер обоим даёт
+`next_order_on_view` — максимум записанных `order_param` на виде + 1 (ни
+одного нет — 1: на каждом листе нумерация с единицы и не сбивается облаком
+без номера). Настройки — `change_clouds_settings.SETTINGS`
 (`LowLifeChangeClouds_settings.json`, `TextSettings`): семейство, маска
 имени, параметры типа (`cipher_param`, `number_param`, `date_param`) и
 экземпляра (`code_param`, `content_param`, `order_param`). Окно списка
