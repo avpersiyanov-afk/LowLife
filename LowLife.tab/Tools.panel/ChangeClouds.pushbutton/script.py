@@ -12,7 +12,8 @@ __doc__ = (
     u"альбома, номер изменения (по умолчанию — следующий за уже "
     u"существующими по этому шифру), дата (дд.мм.гг), код изменения (1–5) и "
     u"содержание. Создаёт новый тип семейства по маске "
-    u"«имя семейства_шифр_номер», вставляет облако на активный вид и "
+    u"«имя семейства_шифр_номер», вставляет облако в точку, указанную "
+    u"кликом на активном виде, и "
     u"записывает данные в параметры типа и экземпляра; порядковый номер "
     u"облака на листе проставляется автоматически (у каждого изменения на "
     u"листе — своя нумерация с 1).\n\n"
@@ -28,12 +29,12 @@ from lowlife.i18n import tr
 
 from pyrevit import revit, forms, script, EXEC_PARAMS
 from lowlife import select_list
-from Autodesk.Revit.DB import XYZ
 
 from lowlife import change_clouds
 from lowlife import change_clouds_core as core
 from lowlife import change_clouds_settings as settings_mod
 from lowlife import change_clouds_ui
+from lowlife import selection
 
 TITLE = tr(u"Внесение изменений")
 
@@ -82,21 +83,10 @@ if view is None:
 
 
 def _pick_point():
-    """Точка вставки облака: клик на виде, при отказе — центр текущего окна."""
-    try:
-        point = uidoc.PickPoint()
-        if point is not None:
-            return point
-    except Exception:
-        pass
-    try:
-        for ui_view in uidoc.GetOpenUIViews():
-            if ui_view.ViewId == view.Id:
-                center = ui_view.GetZoomUIViewCenter()
-                return XYZ(center.U, center.V, 0.0)
-    except Exception:
-        pass
-    return XYZ.Zero
+    """Точка вставки облака — клик на виде. None, если отказались (Esc)."""
+    return selection.pick_point(
+        uidoc, tr(u"Укажите точку вставки облака изменения",
+                  u"Pick a point to place the change cloud"))
 
 
 def _ask_new_change(rows):
@@ -141,10 +131,13 @@ def _ask_new_change(rows):
     if content is None:
         return
 
+    point = _pick_point()
+    if point is None:
+        return
     try:
         symbol, instance = change_clouds.create_change(
             doc, view, settings, cipher, number, date_text, code, content,
-            _pick_point())
+            point)
     except change_clouds.ChangeCloudsError as ex:
         message = ex.args[0] if ex.args else unicode(ex)
         forms.alert(message, title=TITLE)
@@ -169,9 +162,12 @@ def _ask_instance(symbol_id):
     content = forms.ask_for_string(title=TITLE, prompt=tr(u"Содержание изменения:"))
     if content is None:
         return
+    point = _pick_point()
+    if point is None:
+        return
     try:
         symbol, instance = change_clouds.place_instance(
-            doc, view, settings, symbol_id, code, content, _pick_point())
+            doc, view, settings, symbol_id, code, content, point)
     except change_clouds.ChangeCloudsError as ex:
         message = ex.args[0] if ex.args else unicode(ex)
         forms.alert(message, title=TITLE)

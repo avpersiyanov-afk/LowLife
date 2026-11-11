@@ -221,7 +221,8 @@ Revit-часть — `change_clouds.py`: `find_family` / `family_symbols`
 (строки типов с параметрами и числом экземпляров), `suggest_next_number`,
 `create_change(doc, view, settings, cipher, number, date, code, content, point)`
 (копия первого типа, запись параметров через `params.set_param_any`,
-вставка на вид; своя транзакция), `place_instance(doc, view, settings,
+вставка экземпляра в заданную точку вида; своя транзакция),
+`place_instance(doc, view, settings,
 symbol_id, code, content, point)` — экземпляр уже существующего типа (двойной
 клик по строке окна): параметры типа уже в нём, пишутся только
 код/содержание/порядковый номер экземпляра; номер обоим даёт
@@ -240,6 +241,7 @@ symbol_id, code, content, point)` — экземпляр уже существу
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `get_single_selection` | `get_single_selection(doc, uidoc, empty_message=..., multiple_message=...)` | Возвращает единственный выбранный элемент; если выделено 0 или >1 — показывает `forms.alert` и останавливает скрипт (`exitscript=True`) |
+| `pick_point` | `pick_point(uidoc, prompt)` | Точка, указанная кликом на виде (`uidoc.Selection.PickPoint`); `None`, если отменено (Esc) |
 
 ## view_crop.py / view_crop_dialog.py
 Обрезка вида по двум точкам (`Tools.panel/CropView`, «Обрезать вид»).
