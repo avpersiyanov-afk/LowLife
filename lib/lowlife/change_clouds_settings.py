@@ -24,7 +24,9 @@ _FIELDS = [
         _FAMILY_SECTION,
         N_(u"Имя семейства облака изменений"),
         hint=N_(u"Загруженное в проект семейство, типы которого — изменения. "
-               u"Новый тип будет создан копированием его первого типа."),
+               u"Новый тип будет создан копированием его первого типа. "
+               u"Начните вводить — появится поиск по семействам модели "
+               u"(↓ или Ctrl+Пробел — весь список, Enter — подставить)."),
         required=True,
     ),
     settings_core.TextField(
@@ -97,6 +99,7 @@ SETTINGS = settings_core.TextSettings(
 load_saved_values = SETTINGS.load_saved_values
 save_values = SETTINGS.save_values
 require = SETTINGS.require
+missing = SETTINGS.missing
 show_settings_form = SETTINGS.show_settings_form
 get_settings_interactive = SETTINGS.get_settings_interactive
 get_settings_silent = SETTINGS.get_settings_silent

@@ -61,7 +61,8 @@ def spec_for_key(key):
 #   "params"        — имена параметров модели;
 #   "views"         — имена видов;
 #   "view_prefixes" — начала имён видов («1», «20» из «1 Этаж», «20_План»);
-#   "families"      — имена семейств (для фильтров по части имени);
+#   "families"      — имена семейств (для фильтров по части имени и поля
+#                     «Семейство» в настройках, например «Внесение изменений»);
 #   "system_types"  — типы электрических цепей Revit;
 #   "lines_of"      — строки другого поля (имя категории схемы — из списка
 #                     категорий выше в том же окне);
@@ -71,6 +72,7 @@ EXTRA_RULES = {
     "room_mask": ("params", MASK, None),
     "schematic_view_name": ("views", SINGLE, None),
     "view_name_prefixes": ("view_prefixes", LIST, None),
+    "family_name": ("families", SINGLE, None),
     "family_filter": ("families", SINGLE, None),
     "wire_line_family_filter": ("families", SINGLE, None),
     "circuit_system_type": ("system_types", SINGLE, None),
