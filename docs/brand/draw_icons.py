@@ -717,43 +717,22 @@ def merge_pdf(c):
     c.rect((36, 67, 60, 86), BLUE, WHITE, 3)
 
 
-def _cloud_outline(c, cx, cy, rx, ry, r, color=BLUE, w=LW):
-    """Контур «облака» (как облако изменений на чертеже): цепочка
-    полукругов радиуса ~r наружу от эллипса rx×ry — соседние дуги
-    встречаются концами в точках на эллипсе, контур замкнут."""
-    h = ((rx - ry) / float(rx + ry)) ** 2
-    perimeter = math.pi * (rx + ry) * (1 + 3 * h / (10 + math.sqrt(4 - 3 * h)))
-    n = max(10, int(round(perimeter / (2.0 * r))))
-    for i in range(n):
-        a0 = 2 * math.pi * i / n
-        a1 = 2 * math.pi * (i + 1) / n
-        p0 = (cx + rx * math.cos(a0), cy + ry * math.sin(a0))
-        p1 = (cx + rx * math.cos(a1), cy + ry * math.sin(a1))
-        mx, my = (p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0
-        # внешняя нормаль: перпендикуляр хорды от центра эллипса
-        dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-        nx, ny = -dy, dx
-        if nx * (mx - cx) + ny * (my - cy) < 0:
-            nx, ny = -nx, -ny
-        s = math.degrees(math.atan2(p0[1] - my, p0[0] - mx))
-        e = math.degrees(math.atan2(p1[1] - my, p1[0] - mx))
-        while e <= s:
-            e += 360
-        # нужная полудуга — та, чья середина смотрит наружу
-        mid = math.radians((s + e) / 2.0)
-        if math.cos(mid) * nx + math.sin(mid) * ny < 0:
-            s, e = e, s + 360
-        rr = math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / 2.0
-        c.d.arc([(mx - rr) * K, (my - rr) * K, (mx + rr) * K, (my + rr) * K],
-                s, e, fill=color, width=int(w * K))
-
-
 def change_clouds(c):
-    # Облако изменений: облако-контур из полукругов (как на чертеже) и
-    # оранжевый плюс нового изменения внутри.
-    _cloud_outline(c, 48, 49, 32, 22, 9.5)
-    c.line([(48, 40), (48, 58)], ORANGE, 6.5)
-    c.line([(39, 49), (57, 49)], ORANGE, 6.5)
+    # Облако изменений как на чертеже: прямоугольное облако со скруглёнными
+    # углами, выноска вниз к ярлыку с номером изменения.
+    c.rect((10, 12, 86, 54), BLUE, WHITE, 5, 13)
+    c.line([(40, 54), (56, 72)], BLUE, 3.5)
+    c.rect((52, 70, 88, 88), ORANGE, WHITE, 4, 2.5)
+    font = None
+    for name in ("arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            font = ImageFont.truetype(name, 17 * K)
+            break
+        except IOError:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+    c.d.text((70 * K, 79.5 * K), u"12", font=font, fill=BLUE, anchor="mm")
 
 
 ICONS = [
