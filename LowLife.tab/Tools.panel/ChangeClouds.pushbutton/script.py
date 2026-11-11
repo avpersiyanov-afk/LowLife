@@ -15,6 +15,9 @@ __doc__ = (
     u"«имя семейства_шифр_номер», вставляет облако на активный вид и "
     u"записывает данные в параметры типа и экземпляра; порядковый номер "
     u"облака на листе проставляется автоматически.\n\n"
+    u"Двойной клик по строке списка — вставить ещё один экземпляр этого типа: "
+    u"шифр, номер и дата берутся из типа, спрашиваются код (1–5) и "
+    u"содержание.\n\n"
     u"Shift+клик — настройки: семейство, маска имени типа, параметры типа "
     u"(шифр, номер, дата) и экземпляра (код, содержание, порядковый номер)."
 )
@@ -153,10 +156,40 @@ def _ask_new_change(rows):
         change_clouds.safe_element_name(view)), title=TITLE)
 
 
+def _ask_instance(symbol_id):
+    """Экземпляр существующего типа (двойной клик по строке списка): только
+    код, содержание и точка вставки — шифр/номер/дата уже в типе."""
+    code = select_list.CommandSwitchWindow.show(
+        CODE_CHOICES,
+        title=TITLE,
+        message=tr(u"Код изменения (1–5):"))
+    if code is None:
+        return
+    content = forms.ask_for_string(title=TITLE, prompt=tr(u"Содержание изменения:"))
+    if content is None:
+        return
+    try:
+        symbol, instance = change_clouds.place_instance(
+            doc, view, settings, symbol_id, code, content, _pick_point())
+    except change_clouds.ChangeCloudsError as ex:
+        message = ex.args[0] if ex.args else unicode(ex)
+        forms.alert(message, title=TITLE)
+        return
+    except Exception as ex:
+        forms.alert(u"{}".format(ex), title=TITLE)
+        return
+    forms.alert(tr(u"Облако «{}» вставлено на вид «{}».").format(
+        change_clouds.safe_element_name(symbol),
+        change_clouds.safe_element_name(view)), title=TITLE)
+
+
 while True:
     family, rows = change_clouds.list_changes(doc, settings)
     family_name = settings.get(u"family_name") if family is not None else None
     action = change_clouds_ui.show_changes_window(family_name, rows)
+    if isinstance(action, tuple) and action[0] == u"instance":
+        _ask_instance(action[1])
+        continue
     if action == u"settings":
         edited = settings_mod.get_settings_interactive()
         if edited is not None:

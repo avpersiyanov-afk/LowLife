@@ -222,12 +222,15 @@ Revit-часть — `change_clouds.py`: `find_family` / `family_symbols`
 `create_change(doc, view, settings, cipher, number, date, code, content, point)`
 (копия первого типа, запись параметров через `params.set_param_any`,
 вставка на вид, порядковый номер = облака семейства на виде + 1; своя
-транзакция). Настройки — `change_clouds_settings.SETTINGS`
+транзакция), `place_instance(doc, view, settings, symbol_id, code, content,
+point)` — экземпляр уже существующего типа (двойной клик по строке окна):
+параметры типа уже в нём, пишутся только код/содержание/порядковый номер
+экземпляра. Настройки — `change_clouds_settings.SETTINGS`
 (`LowLifeChangeClouds_settings.json`, `TextSettings`): семейство, маска
 имени, параметры типа (`cipher_param`, `number_param`, `date_param`) и
 экземпляра (`code_param`, `content_param`, `order_param`). Окно списка
 изменений — `change_clouds_ui.show_changes_window` (вернёт `"new"`,
-`"settings"` или None).
+`"settings"`, None или `("instance", symbol_id)` при двойном клике по строке).
 
 ## selection.py
 Работа с выделением элементов в Revit UI.
