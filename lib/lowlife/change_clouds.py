@@ -11,8 +11,12 @@
      запись шифра/номера/даты в параметры типа, вставка экземпляра на
      активный вид, запись кода (1–5), содержания и порядкового номера
      (количество облаков семейства на виде + 1) в параметры экземпляра.
+  4. place_instance — экземпляр уже существующего типа (двойной клик по
+     строке окна): параметры типа уже в нём, пишутся только код, содержание
+     и порядковый номер экземпляра.
 
-Вызывать из script.py; create_change открывает свою транзакцию.
+Вызывать из script.py; create_change и place_instance открывают свою
+транзакцию.
 """
 
 from lowlife.i18n import tr
@@ -162,6 +166,42 @@ def create_change(doc, view, settings, cipher, number, date_text, code, content,
         _write_instance_params(instance, settings, code, content, order)
         tx.Commit()
     except Exception as ex:
+        tx.RollBack()
+        raise
+    return symbol, instance
+
+
+def place_instance(doc, view, settings, symbol_id, code, content, point):
+    """Новый экземпляр уже существующего типа (двойной клик по строке окна):
+    шифр/номер/дата берутся из типа, спрашиваются код и содержание.
+    Возвращает (symbol, instance).
+
+    Открывает свою транзакцию; кидает ChangeCloudsError с понятным текстом.
+    """
+    family_name = (settings.get(u"family_name") or u"").strip()
+    family = find_family(doc, family_name)
+    if family is None:
+        raise _error(tr(u"Семейство «{}» не загружено в проект.",
+                        u"The family “{}” is not loaded in the model.").format(family_name))
+    symbol = doc.GetElement(symbol_id)
+    if symbol is None:
+        raise _error(tr(u"Тип не найден в проекте — возможно, его удалили. Откройте окно заново.",
+                        u"The type is not found in the model — it may have been deleted. Reopen the window."))
+
+    order = len(instances_on_view(doc, view, family)) + 1
+
+    tx = Transaction(doc, tr(u"Внесение изменений: экземпляр", u"Enter change: instance"))
+    tx.Start()
+    try:
+        try:
+            if not symbol.IsActive:
+                symbol.Activate()
+        except Exception:
+            pass
+        instance = doc.Create.NewFamilyInstance(point, symbol, view)
+        _write_instance_params(instance, settings, code, content, order)
+        tx.Commit()
+    except Exception:
         tx.RollBack()
         raise
     return symbol, instance

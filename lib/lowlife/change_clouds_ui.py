@@ -4,7 +4,8 @@
 экземпляров) + кнопки «Новое изменение» и «Настройки».
 
 Возвращает строку-действие: "new" — начать создание изменения, "settings" —
-открыть настройки, None — окно закрыто.
+открыть настройки, None — окно закрыто; (u"instance", symbol_id) — двойной
+клик по строке: вставить ещё один экземпляр этого типа.
 """
 
 from lowlife.i18n import tr
@@ -28,7 +29,7 @@ def show_changes_window(family_name, rows):
               <Grid Margin="16">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
-                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <TextBlock x:Name="heading" FontSize="16" FontWeight="Bold" Margin="0,0,0,10"/>
                 <TextBlock x:Name="empty" Grid.Row="1" TextWrapping="Wrap" VerticalAlignment="Center"/>
@@ -43,7 +44,9 @@ def show_changes_window(family_name, rows):
                     </GridView>
                   </ListView.View>
                 </ListView>
-                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                <TextBlock x:Name="hint" Grid.Row="2" FontSize="11" Foreground="Gray"
+                           TextWrapping="Wrap" Margin="0,8,0,0"/>
+                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
                   <Button x:Name="settings" Padding="18,8" Margin="0,0,10,0"/>
                   <Button x:Name="create" IsDefault="True" Padding="18,8" Margin="0,0,10,0"/>
                   <Button x:Name="close" IsCancel="True" Padding="18,8"/>
@@ -65,10 +68,16 @@ def show_changes_window(family_name, rows):
             self.settings.Content = tr(u"Настройки", u"Settings")
             self.create.Content = tr(u"Новое изменение", u"New change")
             self.close.Content = tr(u"Закрыть", u"Close")
+            self.hint.Text = tr(
+                u"Двойной клик по строке — вставить ещё один экземпляр этого типа "
+                u"(код и содержание спросит, шифр/номер/дата — из типа).",
+                u"Double-click a row to place another instance of that type "
+                u"(asks for the code and content; cipher/number/date come from the type).")
             self.result = None
 
             if not rows:
                 self.rows.Visibility = Visibility.Collapsed
+                self.hint.Visibility = Visibility.Collapsed
                 self.empty.Text = tr(
                     u"Изменений пока нет. Нажмите «Новое изменение», чтобы создать первый тип.",
                     u"No changes yet. Click “New change” to create the first type.")
@@ -83,6 +92,7 @@ def show_changes_window(family_name, rows):
 
             self.settings.Click += self._settings
             self.create.Click += self._create
+            self.rows.MouseDoubleClick += self._row_double_click
             self.close.Click += lambda sender, event: self.Close()
 
         def _settings(self, sender, event):
@@ -93,6 +103,21 @@ def show_changes_window(family_name, rows):
             self.result = u"new"
             self.Close()
 
+        def _row_double_click(self, sender, event):
+            from System.Windows.Controls import ListViewItem
+            from System.Windows.Media import Visual, VisualTreeHelper
+            # клик по строке, а не по заголовку колонки/пустому месту
+            node = event.OriginalSource
+            while node is not None and not isinstance(node, ListViewItem):
+                if not isinstance(node, Visual):
+                    node = getattr(node, "Parent", None)
+                    continue
+                node = VisualTreeHelper.GetParent(node)
+            if node is None:
+                return
+            self.result = (u"instance", node.Content.symbol_id)
+            self.Close()
+
     class _RowItem(object):
         """Обёртка строки для GridView (DisplayMemberBinding по атрибутам)."""
         def __init__(self, row):
@@ -101,6 +126,7 @@ def show_changes_window(family_name, rows):
             self.number = u"{}".format(row.get(u"number") or u"")
             self.date = row.get(u"date") or u""
             self.placed = u"{}".format(row.get(u"placed") if row.get(u"placed") is not None else u"")
+            self.symbol_id = row.get(u"symbol_id")
 
     window = ChangesWindow()
     window.ShowDialog()
