@@ -709,6 +709,16 @@ def datum_filter(c):
     c.line([(56, 68), (65, 77), (80, 58)], ORANGE, 5)
 
 
+def model_filter(c):
+    # Stacked worksets and linked model outlines with a visibility check.
+    for y in (20, 32, 44):
+        c.line([(12, y), (31, y - 8), (50, y), (31, y + 8), (12, y)], BLUE, 3)
+    c.rect((51, 16, 76, 46), BLUE, WHITE, 3, 2)
+    c.rect((61, 26, 86, 56), BLUE, WHITE, 3, 2)
+    c.rect((25, 60, 72, 87), ORANGE, WHITE, 3, 4)
+    c.line([(36, 72), (46, 81), (63, 64)], ORANGE, 5)
+
+
 def merge_pdf(c):
     c.rect((15, 15, 39, 48), BLUE, WHITE, 3)
     c.rect((57, 15, 81, 48), BLUE, WHITE, 3)
@@ -739,6 +749,7 @@ ICONS = [
     ("ToolsExport.panel/MergePDF.pushbutton", merge_pdf),
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
     ("Tools.panel/DatumFilter.pushbutton", datum_filter),
+    ("Tools.panel/ModelFilter.pushbutton", model_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
     ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),

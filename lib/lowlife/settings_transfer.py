@@ -50,7 +50,11 @@ RELOAD = u"__lowlife_settings_reloaded__"
 
 
 def _export(read_all, discipline_label):
-    data = read_all()
+    try:
+        data = read_all()
+    except Exception as exc:
+        forms.alert(tr(u'Ошибка: {0}').format(exc))
+        return
 
     if not data:
         forms.alert(
@@ -114,9 +118,13 @@ def _import(read_all, write_all, discipline_label, on_imported):
     ):
         return
 
-    data = read_all()
-    data.update(imported)
-    write_all(data)
+    try:
+        data = read_all()
+        data.update(imported)
+        write_all(data)
+    except Exception as exc:
+        forms.alert(tr(u'Ошибка: {0}').format(exc))
+        return
 
     forms.alert(
         tr(u"Настройки {} загружены. Окно откроется заново с новыми "

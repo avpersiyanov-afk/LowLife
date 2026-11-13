@@ -15,6 +15,7 @@ from lowlife import datum_filter_core as core
 from lowlife.link_datums_core import natural_key
 
 PRESETS_KEY = 'presets'
+MASK_KEYS = ('grid_mask', 'level_mask')
 
 
 def document_key(title, path):
@@ -22,7 +23,7 @@ def document_key(title, path):
     return (path or title or u'').strip()
 
 
-def normalize_preset(name, data):
+def normalize_preset(name, data, mask_keys=MASK_KEYS):
     """Сырые данные группы → словарь с гарантированными ключами."""
     data = data if isinstance(data, dict) else {}
     visibility = data.get('visibility') or {}
@@ -31,20 +32,20 @@ def normalize_preset(name, data):
     visibility = dict((unicode(key), bool(value))
                       for key, value in visibility.items()
                       if value is not None)
-    return dict(name=unicode(name),
-                grid_mask=(unicode(data.get('grid_mask') or u'*')).strip() or u'*',
-                level_mask=(unicode(data.get('level_mask') or u'*')).strip() or u'*',
-                visibility=visibility)
+    result = dict(name=unicode(name), visibility=visibility)
+    for key in mask_keys:
+        result[key] = (unicode(data.get(key) or u'*')).strip() or u'*'
+    return result
 
 
-def list_presets(raw, doc_key):
+def list_presets(raw, doc_key, mask_keys=MASK_KEYS):
     """Словарь групп одной модели → список групп по имени."""
     if not isinstance(raw, dict):
         return []
     model = raw.get(doc_key) or {}
     if not isinstance(model, dict):
         return []
-    result = [normalize_preset(name, data)
+    result = [normalize_preset(name, data, mask_keys)
               for name, data in model.items() if name]
     return sorted(result, key=lambda preset: natural_key(preset['name']))
 
@@ -55,15 +56,15 @@ def validate_masks(grid_mask, level_mask):
     core.compile_mask(level_mask)
 
 
-def save_preset(raw, doc_key, name, grid_mask, level_mask, visibility):
+def save_preset(raw, doc_key, name, grid_mask, level_mask, visibility, mask_keys=MASK_KEYS):
     """Новый словарь presets с добавленной или обновлённой группой."""
     validate_masks(grid_mask, level_mask)
     data = dict(raw) if isinstance(raw, dict) else {}
     model = dict(data.get(doc_key) or {})
     model[unicode(name)] = dict(
-        grid_mask=(unicode(grid_mask or u'*')).strip() or u'*',
-        level_mask=(unicode(level_mask or u'*')).strip() or u'*',
-        visibility=dict(visibility or {}))
+        (key, (unicode(value or u'*')).strip() or u'*')
+        for key, value in zip(mask_keys, (grid_mask, level_mask)))
+    model[unicode(name)]['visibility'] = dict(visibility or {})
     data[unicode(doc_key)] = model
     return data
 
@@ -82,7 +83,7 @@ def delete_preset(raw, doc_key, name):
 
 def visibility_map(groups):
     """Текущие группы панели → {имя группы: True/False/None}."""
-    return dict((group['name'], group['checked']) for group in groups)
+    return dict((group.get('visibility_key', group['name']), group['checked']) for group in groups)
 
 
 def plan_changes(groups, saved_map):
@@ -94,7 +95,7 @@ def plan_changes(groups, saved_map):
     """
     changes = []
     for group in groups:
-        target = (saved_map or {}).get(group['name'])
+        target = (saved_map or {}).get(group.get('visibility_key', group['name']))
         if target is None:
             continue
         show = bool(target)

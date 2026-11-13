@@ -3291,6 +3291,34 @@ receiver links preserve affected prior labels. Unchanged fingerprints skip model
 edits. Unlocked managed isometric 3D views are locked for TextNotes; annotation
 errors are reported without preventing the table from refreshing.
 
+### model_filter_revit.py / model_filter_panel.py / model_filter_settings.py
+
+«Фильтр наборов и связей» переиспользует `datum_filter_panel.FilterDefinition`, WPF/XAML,
+`datum_filter_core.group_datums`, `selection_targets`, `visibility_changes`, `MaskField`,
+`datum_filter_presets` (настраиваемые ключи масок, независимые ключи разделов),
+`datum_filter_revit.live_items` и общую транзакцию `set_visibility`.
+`snapshot` собирает рабочие наборы через `cable_tray.find_worksets` и все экземпляры Revit-связей,
+включая незагруженные (поэтому `loaded_links` для этого списка не подходит).
+Глобальная видимость наследуется через `WorksetDefaultVisibilitySettings`;
+`link_views.template_controls` проверяет управление шаблоном. Рабочие наборы меняются через
+`View.SetWorksetVisibility`, экземпляры связей — Hide/UnhideElements за одну транзакцию.
+Панель имеет собственный GUID и `JsonStore` в `LowLifeModelFilter_settings.json`.
+
+### workset_manager_core.py / workset_manager.py / workset_manager_dialog.py
+
+Редактор правил из панели фильтра: создание, переименование, перенос экземпляров между наборами.
+`core.normalize_rules` проверяет импорт/ввод, `core.plan` строит последовательный план.
+Маски повторно используют `datum_filter_core.compile_mask`; подстановка назначения —
+`name_mask.render_mask` (`{1}` — полное исходное имя, `{2}` — первая захваченная часть).
+`prepare` проверяет наборы и доступность элементов и моделирует цепочки переносов без записи;
+`apply` сравнивает актуальный план с просмотренным и выполняет всё одной транзакцией с откатом.
+Назначение набора — существующая `fire_boxes.assign_workset`; имена наборов из связей —
+`link_worksets.collect_rows`; хранение — `settings_core.JsonStore`; JSON-перенос —
+`settings_transfer.add_transfer_buttons`; поиск — `text_search.matches`, списки — `select_list`.
+Новые адаптеры нужны для Workset API и предварительного планирования: существующий фильтр
+осей управляет только скрытием элементов, а `link_worksets` перезагружает связи.
+Тесты: `test_model_filter.py`, `test_workset_manager.py`. Ручные сценарии — [инструкция](../docs/model-filter.md).
+
 ### datum_filter_core.py / datum_filter_revit.py / datum_filter_panel.py / datum_filter_presets.py
 
 «Фильтр осей и уровней» — закрепляемая немодальная панель в «Инструментах».

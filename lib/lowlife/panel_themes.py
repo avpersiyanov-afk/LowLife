@@ -215,6 +215,7 @@ THEMES = {
         (u"Tools", u"TrayOpeningBoxes"),
         (u"Tools", u"CompareLinkDatums"),
         (u"Tools", u"DatumFilter"),
+        (u"Tools", u"ModelFilter"),
         (u"ToolsTraySection", u"TraySection"),
         (u"FilterSelection", u"CategoryFilterSelect"),
         (u"Schematic", u"BuildRoomSchematic"),

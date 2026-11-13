@@ -19,7 +19,7 @@ clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
 clr.AddReference('WindowsBase')
 from System import AppDomain, Guid
-from System.Windows import Thickness
+from System.Windows import Thickness, Visibility
 from System.Windows.Controls import CheckBox, TextBlock
 from System.Windows.Input import Keyboard, ModifierKeys
 from System.Windows.Markup import XamlReader
@@ -42,8 +42,27 @@ _NAMESPACE = 'LowLife.DatumFilter.N' + uuid.uuid4().hex
 NONE_ITEM_INDEX = 0
 
 
-def pane_id():
-    return DockablePaneId(Guid(PANE_GUID))
+class FilterDefinition(object):
+    """Shared dockable UI with a separate adapter, settings and pane identity."""
+    def __init__(self, adapter=api, settings=cfg, mask_keys=presets.MASK_KEYS,
+                 guid=PANE_GUID, state_key=STATE_KEY,
+                 title=N_(u'Фильтр осей и уровней'), hint=None, manage=False, snapshot_caption=False):
+        self.api = adapter
+        self.cfg = settings
+        self.mask_keys = mask_keys
+        self.guid = guid
+        self.state_key = state_key
+        self.title = title
+        self.hint = hint
+        self.manage = manage
+        self.snapshot_caption = snapshot_caption
+
+
+DEFAULT_FILTER = FilterDefinition()
+
+
+def pane_id(definition=None):
+    return DockablePaneId(Guid((definition or DEFAULT_FILTER).guid))
 
 
 class Handler(IExternalEventHandler):
@@ -53,7 +72,7 @@ class Handler(IExternalEventHandler):
         self.panel = panel
 
     def GetName(self):
-        return 'LowLife datum visibility'
+        return 'LowLife visibility filter'
 
     def Execute(self, uiapp):
         panel = self.panel
@@ -70,7 +89,7 @@ class Handler(IExternalEventHandler):
                     panel.refresh(uiapp)
                     panel.status_label.Text = tr(u'Вид изменился. Повторите действие на нужном виде.')
                     return
-                changed, skipped = api.apply_visibility(document, uidoc.ActiveView, items, show)
+                changed, skipped = panel.api.apply_visibility(document, uidoc.ActiveView, items, show)
                 panel.refresh(uiapp)
                 panel.status_label.Text += u'\n' + tr(u'Изменено: {0}. Пропущено: {1}.').format(changed, skipped)
             elif action == 'visibility_map':
@@ -80,22 +99,22 @@ class Handler(IExternalEventHandler):
                     panel.refresh(uiapp)
                     panel.status_label.Text = tr(u'Вид изменился. Повторите действие на нужном виде.')
                     return
-                changed, skipped = api.apply_visibility_map(document, uidoc.ActiveView, items)
+                changed, skipped = panel.api.apply_visibility_map(document, uidoc.ActiveView, items)
                 panel.refresh(uiapp)
                 panel.status_label.Text += u'\n' + tr(u'Изменено: {0}. Пропущено: {1}.').format(changed, skipped)
             elif action == 'apply_preset':
                 # items carries the preset dict; the write targets the current view.
-                if uidoc is None or uidoc.Document != document:
+                if (uidoc is None or uidoc.Document != document
+                        or uidoc.ActiveView.Id != view_id):
                     panel.refresh(uiapp)
                     panel.status_label.Text = tr(u'Модель изменилась. Повторите действие.')
                     return
                 view = uidoc.ActiveView
-                panel.masks = (items['grid_mask'], items['level_mask'])
-                settings = cfg.SETTINGS.get_settings_silent()
-                settings['grid_mask'] = items['grid_mask']
-                settings['level_mask'] = items['level_mask']
-                groups, _, _, _ = api.snapshot(document, view, settings)
-                changed, skipped = api.apply_visibility_map(
+                panel.masks = tuple(items[key] for key in panel.mask_keys)
+                settings = panel.cfg.SETTINGS.get_settings_silent()
+                settings.update(zip(panel.mask_keys, panel.masks))
+                groups, _, _, _ = panel.api.snapshot(document, view, settings)
+                changed, skipped = panel.api.apply_visibility_map(
                     document, view, presets.plan_changes(groups, items['visibility']))
                 panel.refresh(uiapp)
                 panel.status_label.Text += u'\n' + tr(
@@ -109,22 +128,21 @@ class Handler(IExternalEventHandler):
                     panel.status_label.Text = tr(u'Модель изменилась. Повторите действие.')
                     return
                 grid_mask, level_mask, saved_map = items
-                settings = cfg.SETTINGS.get_settings_silent()
-                settings['grid_mask'] = grid_mask
-                settings['level_mask'] = level_mask
+                settings = panel.cfg.SETTINGS.get_settings_silent()
+                settings.update(zip(panel.mask_keys, (grid_mask, level_mask)))
                 views = select_list.select_views(
                     title=N_(u'Виды, на которых применить видимость'),
                     button_name=N_(u'Применить'),
                     multiple=True, doc=document,
-                    filterfunc=api.supported)
+                    filterfunc=panel.api.supported)
                 if not views:
                     panel.status_label.Text = tr(u'Виды не выбраны.')
                     return
                 changed = skipped = failed = 0
                 for view in views:
                     try:
-                        groups, _, _, _ = api.snapshot(document, view, settings)
-                        c, s = api.apply_visibility_map(
+                        groups, _, _, _ = panel.api.snapshot(document, view, settings)
+                        c, s = panel.api.apply_visibility_map(
                             document, view, presets.plan_changes(groups, saved_map))
                         changed += c
                         skipped += s
@@ -138,6 +156,12 @@ class Handler(IExternalEventHandler):
             else:
                 if action == 'settings':
                     panel.edit_settings()
+                elif action == 'manage':
+                    if uidoc is None or uidoc.Document != document:
+                        panel.refresh(uiapp)
+                        panel.status_label.Text = tr(u'Модель изменилась. Повторите действие.')
+                        return
+                    panel.api.manage(document)
                 panel.refresh(uiapp)
         except Exception as exc:
             # Rebuild checkboxes from actual state after a failed transaction.
@@ -153,7 +177,11 @@ class Handler(IExternalEventHandler):
 class Panel(IDockablePaneProvider):
     __namespace__ = _NAMESPACE
 
-    def __init__(self, uiapp):
+    def __init__(self, uiapp, definition=None):
+        self.definition = definition or DEFAULT_FILTER
+        self.api = self.definition.api
+        self.cfg = self.definition.cfg
+        self.mask_keys = self.definition.mask_keys
         self.uiapp = uiapp
         self.page = XamlReader.Parse(xaml_i18n.load(
             os.path.join(os.path.dirname(__file__), 'datum_filter.xaml')))
@@ -161,7 +189,7 @@ class Panel(IDockablePaneProvider):
                      'mask_label', 'status_label', 'groups_panel',
                      'presets_combo', 'preset_save_button',
                      'preset_save_as_button', 'preset_delete_button',
-                     'apply_views_button'):
+                     'apply_views_button', 'manage_button'):
             setattr(self, name, self.page.FindName(name))
         self.groups = []
         self.document = None
@@ -182,6 +210,8 @@ class Panel(IDockablePaneProvider):
         self.refresh_button.Click += self.on_refresh
         self.settings_button.Click += self.on_settings
         self.apply_views_button.Click += self.on_apply_views
+        self.manage_button.Click += self.on_manage
+        self.manage_button.Visibility = Visibility.Visible if self.definition.manage else Visibility.Collapsed
         self.search_box.TextChanged += self.on_search
         self.presets_combo.SelectionChanged += self.on_preset_selected
         self.preset_save_button.Click += self.on_preset_save
@@ -234,39 +264,54 @@ class Panel(IDockablePaneProvider):
             self.status_label.Text = u''
             return
         doc, view = uidoc.Document, uidoc.ActiveView
+        new_key = presets.document_key(doc.Title, doc.PathName)
+        if new_key != self.doc_key:
+            self.masks = None
+            self.selected_preset = None
+        if (doc, view.Id) != getattr(self, '_selection_context', None):
+            self._selected = set()
+            self._anchor = None
+        self._selection_context = (doc, view.Id)
         self.view_label.Text = u'{0} — {1}'.format(doc.Title, view.Name)
         self.doc_key = presets.document_key(doc.Title, doc.PathName)
-        self.presets = presets.list_presets(self._read_presets(), self.doc_key)
+        self.presets = presets.list_presets(self._read_presets(), self.doc_key, self.mask_keys)
         self._render_presets()
-        if doc.IsFamilyDocument or not api.supported(view):
+        if doc.IsFamilyDocument or not self.api.supported(view):
             self.status_label.Text = tr(u'Выберите план, разрез, фасад или 3D-вид проекта.')
             return
-        settings = dict(cfg.SETTINGS.get_settings_silent())
+        settings = dict(self.cfg.SETTINGS.get_settings_silent())
         if self.masks:
-            settings['grid_mask'], settings['level_mask'] = self.masks
-        self.groups, unmatched, mask, is_3d = api.snapshot(doc, view, settings)
+            settings.update(zip(self.mask_keys, self.masks))
+        self.groups, unmatched, mask, is_3d = self.api.snapshot(doc, view, settings)
         self.document, self.view_id = doc, view.Id
-        self.mask_label.Text = tr(u'{0}. Маска: {1}').format(
-            tr(u'Уровни') if is_3d else tr(u'Оси'), mask)
+        self.mask_label.Text = (mask if self.definition.snapshot_caption else
+            tr(u'{0}. Маска: {1}').format(tr(u'Уровни') if is_3d else tr(u'Оси'), mask))
         if self.selected_preset:
             self.mask_label.Text += u' ' + tr(u'Группа: {0}').format(self.selected_preset)
         self.status_label.Text = tr(u'Групп: {0}. Вне маски: {1}.').format(len(self.groups), unmatched)
-        self.status_label.Text += u'\n' + tr(u'Галочки управляют скрытием элементов. Категория, шаблон и границы вида могут ограничивать видимость. Только элементы текущей модели.')
+        self.status_label.Text += u'\n' + tr(self.definition.hint or u'Галочки управляют скрытием элементов. Категория, шаблон и границы вида могут ограничивать видимость. Только элементы текущей модели.')
         self.render_groups()
 
     def render_groups(self):
         self.groups_panel.Children.Clear()
         self._checks = {}
         self._visible = []
+        section = None
         for index, group in enumerate(self.groups):
             if not text_search.matches(group['name'] + u' ' + u' '.join(
                     item['name'] for item in group['items']), self.search_box.Text):
                 continue
+            if group.get('section') and group['section'] != section:
+                section = group['section']
+                heading = TextBlock()
+                heading.Text = tr(section)
+                heading.Margin = Thickness(0, 10, 0, 4)
+                self.groups_panel.Children.Add(heading)
             check = CheckBox()
             group_label = TextBlock()
             group_label.Text = u'{0} ({1})'.format(group['name'], len(group['items']))
             check.Content = group_label
-            check.ToolTip = u'\n'.join(item['name'] for item in group['items'])
+            check.ToolTip = u'\n'.join(item['name'] + (u' — ' + item['reason'] if item.get('reason') else u'') for item in group['items'])
             check.Margin = Thickness(0, 5, 0, 5)
             check.IsThreeState = True
             check.IsChecked = group['checked']
@@ -288,6 +333,7 @@ class Panel(IDockablePaneProvider):
         self.refresh_button.IsEnabled = not busy
         self.settings_button.IsEnabled = not busy
         self.apply_views_button.IsEnabled = not busy
+        self.manage_button.IsEnabled = not busy
         self.search_box.IsEnabled = not busy
         self.presets_combo.IsEnabled = not busy
         self.preset_save_button.IsEnabled = not busy
@@ -344,6 +390,9 @@ class Panel(IDockablePaneProvider):
     def on_settings(self, sender, args):
         self.request('settings')
 
+    def on_manage(self, sender, args):
+        self.request('manage')
+
     def on_apply_views(self, sender, args):
         if not self.groups:
             self.status_label.Text = tr(u'Сначала обновите список на поддерживаемом виде.')
@@ -359,14 +408,14 @@ class Panel(IDockablePaneProvider):
 
     def _read_presets(self):
         try:
-            raw = cfg.SETTINGS.store.read().get(presets.PRESETS_KEY, {})
+            raw = self.cfg.SETTINGS.store.read().get(presets.PRESETS_KEY, {})
         except Exception:
             raw = {}
         return raw if isinstance(raw, dict) else {}
 
     def _write_presets(self, raw):
-        cfg.SETTINGS.store.update({presets.PRESETS_KEY: raw})
-        self.presets = presets.list_presets(raw, self.doc_key)
+        self.cfg.SETTINGS.store.update({presets.PRESETS_KEY: raw})
+        self.presets = presets.list_presets(raw, self.doc_key, self.mask_keys)
         self._render_presets()
 
     def _render_presets(self):
@@ -394,8 +443,8 @@ class Panel(IDockablePaneProvider):
     def _current_masks(self):
         if self.masks:
             return self.masks
-        settings = cfg.SETTINGS.get_settings_silent()
-        return settings['grid_mask'], settings['level_mask']
+        settings = self.cfg.SETTINGS.get_settings_silent()
+        return tuple(settings[key] for key in self.mask_keys)
 
     def on_preset_selected(self, sender, args):
         if self._loading_presets:
@@ -448,7 +497,7 @@ class Panel(IDockablePaneProvider):
             return
         raw = presets.save_preset(self._read_presets(), self.doc_key, name,
                                   grid_mask, level_mask,
-                                  presets.visibility_map(self.groups))
+                                  presets.visibility_map(self.groups), self.mask_keys)
         self._write_presets(raw)
         self.status_label.Text = tr(u'Группа «{0}» сохранена.').format(name)
 
@@ -467,32 +516,34 @@ class Panel(IDockablePaneProvider):
         self.status_label.Text = tr(u'Группа «{0}» удалена.').format(preset['name'])
 
     def edit_settings(self):
-        cfg.SETTINGS.get_settings_interactive()
+        self.cfg.SETTINGS.get_settings_interactive()
 
 
-def install(uiapp):
+def install(uiapp, definition=None):
     """Also callable on the first button click after deploying without restart."""
-    existing = AppDomain.CurrentDomain.GetData(STATE_KEY)
+    definition = definition or DEFAULT_FILTER
+    existing = AppDomain.CurrentDomain.GetData(definition.state_key)
     if existing is not None:
         return existing
-    if DockablePane.PaneIsRegistered(pane_id()):
+    if DockablePane.PaneIsRegistered(pane_id(definition)):
         raise RuntimeError(tr(u'Для обновления панели перезапустите Revit.'))
-    panel = Panel(uiapp)
+    panel = Panel(uiapp, definition)
     try:
-        uiapp.RegisterDockablePane(pane_id(), tr(u'Фильтр осей и уровней'), panel)
+        uiapp.RegisterDockablePane(pane_id(definition), tr(definition.title), panel)
     except Exception:
         panel.event.Dispose()
         raise
-    AppDomain.CurrentDomain.SetData(STATE_KEY, panel)
+    AppDomain.CurrentDomain.SetData(definition.state_key, panel)
     panel.subscribe()
     return panel
 
 
-def show(uiapp, settings=False):
-    panel = install(uiapp)
+def show(uiapp, settings=False, definition=None):
+    definition = definition or DEFAULT_FILTER
+    panel = install(uiapp, definition)
     if settings:
         panel.edit_settings()
     panel.refresh(uiapp)
-    if not DockablePane.PaneExists(pane_id()):
+    if not DockablePane.PaneExists(pane_id(definition)):
         raise RuntimeError(tr(u'Панель зарегистрирована. Перезапустите Revit, чтобы открыть закрепляемую панель.'))
-    uiapp.GetDockablePane(pane_id()).Show()
+    uiapp.GetDockablePane(pane_id(definition)).Show()
