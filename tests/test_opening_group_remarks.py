@@ -107,7 +107,7 @@ def test_vis_feedback_shares_group_number_and_waits_for_kr_review():
         return dict(project='P',status='accepted',revisions={key:revision},opening_uid='opening-'+key,
                     opening_id='id-'+key,geometry={'host_model':'RECEIVER'})
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_revit.py'
-    tree=ast.parse(path.read_text());fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='recipient_feedback')
+    tree=ast.parse(path.read_text(encoding='utf-8'));fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='recipient_feedback')
     ns=dict(store=NS(model_id=lambda doc:doc.model,registry=lambda doc:remote),
             core=core,FilteredElementCollector=lambda doc:NS(OfClass=lambda cls:[NS(GetLinkDocument=lambda:receiver)]),
             RevitLinkInstance=object,opening_matches=lambda opening,receipt:read.append(opening.UniqueId) or True,
@@ -152,7 +152,7 @@ def test_group_rejection_updates_merged_opening_metadata_once_without_geometry_e
     store=NS(registry=lambda doc:registry,model_id=lambda doc:'RECEIVER',
              write=lambda opening,data:writes.append(data),save_registry=lambda doc,data:saved.append(data))
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_revit.py'
-    tree=ast.parse(path.read_text());fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='reject')
+    tree=ast.parse(path.read_text(encoding='utf-8'));fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='reject')
     ns=dict(core=core,store=store,now=lambda:'now',windows_user=lambda:'Reviewer')
     exec(compile(ast.Module(body=[fn],type_ignores=[]),str(path),'exec'),ns)
     group=ns['reject'](doc,records,{'opening_project':'P'},'Comment',grouped=True)

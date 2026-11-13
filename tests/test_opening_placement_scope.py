@@ -8,7 +8,7 @@ ROOT=Path(__file__).parents[1]
 
 
 def test_preflight_cancel_stops_before_selection_or_model_operations():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_ui.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_ui.py').read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='place')
     fn.body=[n for n in fn.body if not isinstance(n,ast.ImportFrom)]
     def fail(*args):raise AssertionError('must not proceed after cancelling the scheme')
@@ -19,7 +19,7 @@ def test_preflight_cancel_stops_before_selection_or_model_operations():
 
 
 def test_shared_scheme_preflight_example_uses_eir_per_side_and_znp_rule():
-    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes_result.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes_result.py').read_text(encoding='utf-8'))
     assignment=next(n for n in ast.walk(tree) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='example')
     scope=dict(core=core,preflight=True,clearance_mm=50)
     exec(compile(ast.Module(body=[assignment],type_ignores=[]),'scheme','exec'),scope)
@@ -30,7 +30,7 @@ def test_shared_scheme_preflight_example_uses_eir_per_side_and_znp_rule():
 
 
 def test_scope_check_excludes_crossings_outside_selected_area():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_revit.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_revit.py').read_text(encoding='utf-8'))
     assignment=next(n for n in ast.walk(tree) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='scope_bounds')
     condition=next(n for n in ast.walk(tree) if isinstance(n,ast.If) and isinstance(n.test,ast.BoolOp)
                    and isinstance(n.test.values[0],ast.Name) and n.test.values[0].id=='scope_bounds')
@@ -49,7 +49,7 @@ def test_scope_check_excludes_crossings_outside_selected_area():
 
 
 def test_scope_picker_offers_existing_areas_and_filters_eligible_routes():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_ui.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_ui.py').read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='pick_routes')
     fn.body=[n for n in fn.body if not isinstance(n,ast.ImportFrom)]
     bounds=object()

@@ -44,7 +44,7 @@ def run_builder(categories=(1,1),legacy=False,missing=False):
         params={key:NS(Id=key,AsString=lambda:'Draft') for key in ('w','d','h','status')}
         elements.append(NS(Category=NS(Id=cat),LookupParameter=params.get,Symbol=NS(LookupParameter=lambda key:None)))
     by_id={key:key for key in ('w','d','h','status') if not (missing and key=='h')}
-    node=next(n for n in ast.parse((ROOT/'lib/lowlife/opening_tasks_schedule.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='build')
+    node=next(n for n in ast.parse((ROOT/'lib/lowlife/opening_tasks_schedule.py').read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='build')
     node.body=[n for n in node.body if not isinstance(n,ast.ImportFrom)]
     scope=dict(ElementId=NS(InvalidElementId=-1),ViewSchedule=Native,
                api=NS(boxes=NS(_id_int=int)),unique_name=lambda doc,name:name,

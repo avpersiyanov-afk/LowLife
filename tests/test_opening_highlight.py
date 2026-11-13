@@ -22,7 +22,7 @@ class GenericList:
 @pytest.mark.parametrize('role',['VIS','KR','AR'])
 def test_highlight_uses_created_view_and_actual_current_model_element(role,monkeypatch):
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_views.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='highlight')
     view=View('managed-view');schedule=Schedule('schedule');foreign=View('other-project')
     bbox=object()

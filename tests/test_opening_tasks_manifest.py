@@ -28,20 +28,20 @@ def test_invalid_role_never_falls_back_to_kr(role):
 
 def test_ribbon_layout_and_scripts_match_role_manifest():
     panel=ROOT/'LowLife.tab/OpeningTasks.panel'
-    layout=[line.strip()[2:] for line in (panel/'bundle.yaml').read_text().splitlines() if line.strip().startswith('- ')]
+    layout=[line.strip()[2:] for line in (panel/'bundle.yaml').read_text(encoding='utf-8').splitlines() if line.strip().startswith('- ')]
     assert set(layout)==set(m.INTERFACES.values())
     for role,folder in m.INTERFACES.items():
         path=panel/(folder+'.pushbutton')/'script.py'
-        tree=ast.parse(path.read_text())
+        tree=ast.parse(path.read_text(encoding='utf-8'))
         calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='show']
         assert len(calls)==1
         assert ast.literal_eval(calls[0].args[0])==role
-        text=(path.parent/'bundle.yaml').read_text()
+        text=(path.parent/'bundle.yaml').read_text(encoding='utf-8')
         assert 'persistent: true' in text
 
 
 def test_interface_reads_manifest_and_checks_both_dispatch_boundaries():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text(encoding='utf-8'))
     methods={node.name:node for cls in tree.body if isinstance(cls,ast.ClassDef) for node in cls.body if isinstance(node,ast.FunctionDef)}
     def calls(node,name):
         return [n for n in ast.walk(node) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)

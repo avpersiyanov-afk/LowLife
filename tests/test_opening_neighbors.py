@@ -7,7 +7,7 @@ ROOT=Path(__file__).parents[1]
 
 
 def function(name,scope):
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_neighbors.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_neighbors.py').read_text(encoding='utf-8'))
     node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),'neighbors','exec'),scope)
     return scope[name]

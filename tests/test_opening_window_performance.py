@@ -11,7 +11,7 @@ from lowlife import opening_tasks_browser as browser
 @pytest.mark.parametrize('status',['issued','withdrawn'])
 def test_row_reads_metadata_and_geometry_only_once(preloaded,status):
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_window.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='TaskWindow')
     fn=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='row')
     calls=[]
@@ -44,7 +44,7 @@ def test_row_reads_metadata_and_geometry_only_once(preloaded,status):
 
 def test_feedback_skips_unrelated_links_and_reads_repeated_model_once():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_revit.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='recipient_feedback')
     reads=[]
     target=NS(model='KR');unrelated=NS(model='OTHER')
@@ -65,7 +65,7 @@ def test_feedback_skips_unrelated_links_and_reads_repeated_model_once():
 
 def test_receiver_action_does_not_rebuild_incoming_list_for_preselected_rows():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_ui.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='kr')
     def forbidden(*args):raise AssertionError('Redundant model enumeration')
     prompts=[]

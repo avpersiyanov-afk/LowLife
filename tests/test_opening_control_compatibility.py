@@ -136,7 +136,7 @@ def test_preview_unhides_through_existing_element_api_helper():
         List=Generic, ElementId=int, FilteredElementCollector=lambda _: Collector(elements)))
     unhide(None, view)
     assert shown == [1]
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text())
+    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text(encoding='utf-8'))
     assert not any(isinstance(n, ast.Attribute) and n.attr == 'GetHiddenElementIds' for n in ast.walk(tree))
     for name in ('structures_view',):
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
@@ -145,7 +145,7 @@ def test_preview_unhides_through_existing_element_api_helper():
 
 
 def test_register_failure_does_not_discard_created_views():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
     build=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='build')
     start=next(i for i,n in enumerate(build.body) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='schedule_tx')
     end=next(i for i,n in enumerate(build.body[start:],start) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='save_registry')
@@ -261,7 +261,7 @@ def test_transparent_structure_context_keeps_box_and_existing_graphics():
 
 
 def test_general_3d_frame_uses_only_boxes_matching_its_status():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
     assignments={n.targets[0].id:n for n in ast.walk(tree) if isinstance(n,ast.Assign)
                  and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('framed','bounds','points')}
     condition=next(n for n in ast.walk(tree) if isinstance(n,ast.If) and isinstance(n.test,ast.Name) and n.test.id=='points')

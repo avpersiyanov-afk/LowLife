@@ -43,7 +43,7 @@ def source_adapter():
         counts.append(doc);return Collector(hosts)
     class Generic:
         def __class_getitem__(cls,t):return list
-    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text(encoding='utf-8'))
     node=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='_Source')
     scope=dict(BoxGrid=BoxGrid,List=Generic,BuiltInCategory=int,ElementMulticategoryFilter=lambda cats:tuple(cats),
                BoundingBoxIntersectsFilter=lambda outline:outline,FilteredElementCollector=collect,
@@ -67,7 +67,7 @@ def test_large_batch_reuses_index_and_keeps_category_height_and_boundary_checks(
 
 
 def test_placement_reads_issue_registry_once_before_processing_routes():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_revit.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_revit.py').read_text(encoding='utf-8'))
     place=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='place')
     route_loop=next(n for n in place.body if isinstance(n,ast.For) and isinstance(n.target,ast.Tuple))
     assert not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)
@@ -101,7 +101,7 @@ def test_exact_solid_intersection_is_retained_and_transients_are_disposed():
     host=NS(Category=NS(Id=2))
     source=NS(inverse=None,link='KR',to_local=lambda p:p,to_model=lambda p:p,
               hosts=lambda cats,outline:[host],solids=lambda host,opts:[NS(IntersectWithCurve=intersect)])
-    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='tray_crossings')
     scope=dict(LocationCurve=Location,Line=Line,_box_points=lambda bbox:bbox,_outline=lambda p:p,
                ft=lambda n:n,MIN_CROSSING_MM=1,SolidCurveIntersectionOptions=options_factory,

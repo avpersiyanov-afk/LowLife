@@ -25,7 +25,7 @@ class LocationCurve:
 @pytest.fixture
 def adapter():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_mep.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     body=[n for n in tree.body if isinstance(n,(ast.Assign,ast.FunctionDef,ast.ClassDef))]
     bic=NS(OST_CableTray=1,OST_DuctCurves=2,OST_PipeCurves=3,OST_Conduit=4)
     calls=[]
@@ -82,7 +82,7 @@ def test_selection_filter_accepts_inclined_routes_and_rejects_wrong_categories(a
     # Load the filter with the same substitute API used by adapter tests.
     import ast
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_mep.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='RouteSelectionFilter')
     Route,calls=adapter
     ns=dict(ISelectionFilter=object,math=math,Route=Route,boxes=NS(_id_int=lambda v:v),

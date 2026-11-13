@@ -28,7 +28,7 @@ def adapter():
             metadata=lambda el:el.data,StorageType=NS(String='text'),core=core,
             visible_issue=lambda inst,settings,record,changed:setattr(inst,'changed',changed),
             sync_selection_filters=lambda *args:None,tr=lambda ru,en=None:en or ru)
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_revit.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_revit.py').read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='change_building')
     fn.body=[n for n in fn.body if not isinstance(n,ast.ImportFrom)]
     exec(compile(ast.Module(body=[fn],type_ignores=[]),'building','exec'),ns)
@@ -57,7 +57,7 @@ def test_invalid_selection_or_catalog_is_rejected_before_any_writes():
 
 
 def test_building_cell_leaves_dropdown_in_control_and_context_keeps_selected_group():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text(encoding='utf-8'))
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='TaskWindow')
     methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('open_row','select_context_row')]
     class Row:
