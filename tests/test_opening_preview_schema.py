@@ -23,7 +23,7 @@ class Entity:
 
 
 def storage():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_storage.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_storage.py').read_text(encoding='utf-8'))
     tree.body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('read','write')]
     ns=dict(core=core,json=json,String=str,unicode=str,Entity=Entity,
             schema=lambda:NS(GetField=lambda name:name))
@@ -32,7 +32,7 @@ def storage():
 
 
 def configuration():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_focus.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_focus.py').read_text(encoding='utf-8'))
     node=next(n for n in ast.walk(tree) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='configuration')
     ns=dict(api=NS(core=core),inst=NS(UniqueId='box'),source=NS(UniqueId='route'),
             link=NS(UniqueId='link'),structure=None)

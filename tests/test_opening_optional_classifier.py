@@ -9,7 +9,7 @@ ROOT=Path(__file__).parents[1]
 
 @pytest.mark.parametrize('parameter',[None,NS(IsReadOnly=True,StorageType='text'),NS(IsReadOnly=False,StorageType='number')])
 def test_unavailable_optional_classification_does_not_warn_or_write(parameter):
-    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text(encoding='utf-8'))
     fn=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='_set_host_filter')
     scope=dict(core=core,StorageType=NS(String='text'),tr=lambda ru,en=None:en or ru)
     exec(compile(ast.Module(body=[fn],type_ignores=[]),'classification','exec'),scope)
@@ -23,7 +23,7 @@ def test_unavailable_optional_classification_does_not_warn_or_write(parameter):
 
 
 def test_explicit_valid_classification_still_writes_wall_and_floor():
-    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/tray_boxes.py').read_text(encoding='utf-8'))
     fn=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='_set_host_filter')
     scope=dict(core=core,StorageType=NS(String='text'),tr=lambda ru,en=None:en or ru)
     exec(compile(ast.Module(body=[fn],type_ignores=[]),'classification','exec'),scope)

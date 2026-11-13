@@ -7,7 +7,7 @@ ROOT=Path(__file__).parents[1]
 
 
 def method(name,scope):
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text(encoding='utf-8'))
     node=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),'table','exec'),scope)
     return scope[name]
@@ -19,7 +19,7 @@ class Generic:
 
 def test_selection_handler_uses_latest_rows_and_does_no_refresh_or_zoom():
     scope=dict(List=Generic,ElementId=int)
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_window.py').read_text(encoding='utf-8'))
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='SelectionHandler')
     fn=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='Execute')
     exec(compile(ast.Module(body=[fn],type_ignores=[]),'selection-api','exec'),scope)
@@ -88,7 +88,7 @@ def test_rejected_inline_dispatch_restores_cell_value():
 
 
 def test_inline_building_value_bypasses_second_picker_and_uses_validated_api():
-    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_ui.py').read_text())
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_ui.py').read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='change_building_from_table')
     fn.body=[n for n in fn.body if not isinstance(n,ast.ImportFrom)]
     calls=[]

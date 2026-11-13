@@ -9,7 +9,7 @@ ROOT=Path(__file__).parents[1]
 
 def test_only_original_local_boxes_are_deleted_as_one_batch():
     path=ROOT/'lib/lowlife/opening_tasks_revit.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes')
     fn.body=[n for n in fn.body if not isinstance(n,ast.ImportFrom)]
     deleted=[]
     doc=NS(Delete=lambda ids:deleted.append(ids))
@@ -32,7 +32,7 @@ def test_only_original_local_boxes_are_deleted_as_one_batch():
 
 def test_cancelled_deletion_does_not_start_a_transaction():
     path=ROOT/'lib/lowlife/opening_tasks_ui.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes_from_list')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes_from_list')
     inst=NS(Id=1,UniqueId='box')
     doc=NS(GetElement=lambda uid:inst)
     def unexpected(*args):
@@ -50,7 +50,7 @@ def test_cancelled_deletion_does_not_start_a_transaction():
 
 def test_preselected_table_rows_skip_picker_and_model_wide_scan():
     path=ROOT/'lib/lowlife/opening_tasks_ui.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes_from_list')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes_from_list')
     boxes=[NS(Id=1,UniqueId='a'),NS(Id=2,UniqueId='b')]
     doc=NS(GetElement=lambda uid:next(b for b in boxes if b.UniqueId==uid))
     calls=[]
@@ -72,7 +72,7 @@ def test_preselected_table_rows_skip_picker_and_model_wide_scan():
 
 def test_empty_table_selection_still_opens_box_picker():
     path=ROOT/'lib/lowlife/opening_tasks_ui.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes_from_list')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='delete_boxes_from_list')
     el=NS(Id=1,UniqueId='a')
     calls=[]
     scope=dict(api=NS(FamilyInstance=object,metadata=lambda inst:dict(owner_uid='a',task_id='task')),
