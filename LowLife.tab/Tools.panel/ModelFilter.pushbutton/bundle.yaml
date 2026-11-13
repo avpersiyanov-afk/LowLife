@@ -1,0 +1,20 @@
+title: "Фильтр\nнаборов и связей"
+title_en: "Worksets and\nlinks filter"
+tooltip: >-
+  Закрепляемая немодальная панель с двумя разделами: рабочие наборы текущей модели
+  и экземпляры связанных моделей Revit. Галочки меняют видимость только на виде.
+  Поиск, группировка по маскам, Ctrl/Shift для массового выбора, пресеты и перенос на виды.
+  Закрытые наборы, незагруженные связи и наборы под управлением шаблона недоступны.
+  Shift+клик — настройки масок имён.
+  «Управление наборами» — создание, переименование, перенос элементов по правилам,
+  создание наборов по связям, предварительный просмотр и импорт/экспорт правил JSON.
+tooltip_en: >-
+  Dockable modeless panel with two sections: host model worksets and Revit link instances.
+  Checkboxes change visibility in the view only. Search, name-mask grouping,
+  Ctrl/Shift multi-selection, presets and copying visibility to other views.
+  Closed worksets, unloaded links and template-controlled worksets are disabled.
+  Shift+click opens name-mask settings.
+  Workset management provides creation, renaming, rule-based element transfers,
+  creating worksets from links, preview and JSON rule import/export.
+engine:
+  persistent: true

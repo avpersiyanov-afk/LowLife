@@ -44,6 +44,17 @@ def safe_name(element):
         return unicode(element.Id)
 
 
+def template_controls(doc, view, parameter):
+    """Whether the assigned template controls a particular view parameter."""
+    db = _db()
+    template = doc.GetElement(view.ViewTemplateId)
+    if template is None:
+        return False
+    param = db.ElementId(parameter)
+    return (any(p == param for p in template.GetTemplateParameterIds())
+            and not any(p == param for p in template.GetNonControlledTemplateParameterIds()))
+
+
 def availability(doc, view):
     """Explain unsupported views/templates before showing an editable dialog."""
     db = _db()
@@ -55,10 +66,7 @@ def availability(doc, view):
                   u"Link display cannot be configured on the current view.")
     template = doc.GetElement(view.ViewTemplateId)
     if template is not None:
-        param = db.ElementId(db.BuiltInParameter.VIS_GRAPHICS_RVT_LINKS)
-        controlled = template.GetTemplateParameterIds()
-        free = template.GetNonControlledTemplateParameterIds()
-        if any(p == param for p in controlled) and not any(p == param for p in free):
+        if template_controls(doc, view, db.BuiltInParameter.VIS_GRAPHICS_RVT_LINKS):
             return tr(u"Отображение связей задаёт шаблон «{}». Исключите «Связи Revit» из управления шаблоном и повторите команду.",
                       u"Link display is controlled by template “{}”. Exclude “Revit Links” from template control and run the command again.").format(safe_name(template))
     return None

@@ -12,6 +12,7 @@
         <Button x:Name="refresh_button" Content="Обновить" Padding="8,4" Margin="0,0,5,0"/>
         <Button x:Name="settings_button" Content="Настройки" Padding="8,4" Margin="0,0,5,0"/>
         <Button x:Name="apply_views_button" Content="На виды…" Padding="8,4"/>
+        <Button x:Name="manage_button" Content="Управление наборами…" Padding="8,4" Margin="5,0,0,0" Visibility="Collapsed"/>
       </WrapPanel>
       <TextBlock Text="Группы настроек"/>
       <WrapPanel Margin="0,3,0,8">

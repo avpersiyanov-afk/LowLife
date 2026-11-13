@@ -28,7 +28,7 @@ def snapshot(doc, view, settings):
     return groups, unmatched, mask, is_3d
 
 
-def _live_items(doc, view, items):
+def live_items(doc, view, items):
     """Актуальное состояние элементов: undo, ручное скрытие, удаление."""
     live = []
     skipped = 0
@@ -41,16 +41,21 @@ def _live_items(doc, view, items):
     return live, skipped
 
 
-def _set_hidden(doc, view, hide_ids, show_ids):
+def set_visibility(doc, view, hide_ids, show_ids, workset_changes=None, title=None):
     """Одна транзакция скрытия/показа; пустые списки не пишутся."""
     from Autodesk.Revit.DB import ElementId, Transaction, TransactionStatus
     from System.Collections.Generic import List
 
-    if not hide_ids and not show_ids:
+    if not hide_ids and not show_ids and not workset_changes:
         return
-    tx = Transaction(doc, tr(u'Фильтр осей и уровней'))
+    tx = Transaction(doc, title or tr(u'Фильтр осей и уровней'))
     tx.Start()
     try:
+        if workset_changes:
+            from Autodesk.Revit.DB import WorksetVisibility
+            for workset_id, show in workset_changes:
+                view.SetWorksetVisibility(
+                    workset_id, WorksetVisibility.Visible if show else WorksetVisibility.Hidden)
         if hide_ids:
             view.HideElements(List[ElementId](hide_ids))
         if show_ids:
@@ -67,13 +72,13 @@ def _set_hidden(doc, view, hide_ids, show_ids):
 
 def apply_visibility(doc, view, items, show):
     # Re-read live state: undo, manual hide and deletion may follow the snapshot.
-    live, skipped = _live_items(doc, view, items)
+    live, skipped = live_items(doc, view, items)
     ids = core.visibility_changes(live, show)
     if ids:
         if show:
-            _set_hidden(doc, view, [], ids)
+            set_visibility(doc, view, [], ids)
         else:
-            _set_hidden(doc, view, ids, [])
+            set_visibility(doc, view, ids, [])
     return len(ids), skipped
 
 
@@ -83,12 +88,12 @@ def apply_visibility_map(doc, view, changes):
     show_ids = []
     skipped = 0
     for items, show in changes:
-        live, missed = _live_items(doc, view, items)
+        live, missed = live_items(doc, view, items)
         skipped += missed
         ids = core.visibility_changes(live, show)
         if show:
             show_ids.extend(ids)
         else:
             hide_ids.extend(ids)
-    _set_hidden(doc, view, hide_ids, show_ids)
+    set_visibility(doc, view, hide_ids, show_ids)
     return len(hide_ids) + len(show_ids), skipped
