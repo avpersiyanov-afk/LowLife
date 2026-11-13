@@ -167,11 +167,13 @@ def has_ceiling(ceiling_values):
     return any(value is not None for value in ceiling_values)
 
 
-def split_words(text):
-    """«дым, тепл;пламен» → ['дым', 'тепл', 'пламен'] (нижний регистр, ё → е)."""
+def split_words(text, preserve_case=False):
+    """Split unique words; normalize case/ё unless preserve_case is requested."""
     result = []
     for chunk in (text or u"").replace(u";", u",").replace(u"\n", u",").split(u","):
-        word = chunk.strip().lower().replace(u"ё", u"е")
+        word = chunk.strip()
+        if not preserve_case:
+            word = word.lower().replace(u"ё", u"е")
         if word and word not in result:
             result.append(word)
     return result

@@ -218,6 +218,7 @@ THEMES = {
         (u"ToolsTraySection", u"TraySection"),
         (u"FilterSelection", u"CategoryFilterSelect"),
         (u"Schematic", u"BuildRoomSchematic"),
+        (u"Schematic", u"UgoLegends"),
         (u"ToolsRooms", u"RoomInfo"),
         (u"ToolsRooms", u"RoomTags"),
         (u"ToolsRooms", u"FindRoom"),
