@@ -175,6 +175,8 @@ Five panels (ladder / perforated / solid / wire mesh / on the roof), each with f
 <details>
 <summary><b>Tools</b> — general tools</summary>
 
+- **Worksets and links filter** — dockable workset/link visibility panel with search, masks, presets and copying to views. Workset management provides creation, renaming and rule-based element transfers with preview. [Instructions →](docs/en/model-filter.md)
+
 - **Element ID** — shows and copies to the clipboard the ID of the selected element, including inside a linked model.
 - **Dimension grids** — dimensions the selected grids in the view: a chain between neighbouring grids and an overall dimension.
 - **Line length** — total length of the selected generic models by type.

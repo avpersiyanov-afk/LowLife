@@ -260,3 +260,49 @@ use the shared geometry.get_element_level reader; KR plans include roof openings
 Roof classification is stored as host_category=roof while the compatible internal
 passage kind remains floor. Inclined routes through inclined hosts remain explicitly
 unsupported; re-place after changing clearances. No new family parameters are required.
+
+
+## Consolidated register and placement scope
+
+Views/register creates one native Revit schedule for all local task boxes, one
+row per box: family/type, mark and level when available, width/depth/height,
+status, optional issue fields and count with a grand total. JSON is not a column.
+Multiple categories use a multicategory schedule and require common schedulable
+parameter definitions. Existing single-category registers are reused; unrelated
+legacy schedules are retained to avoid breaking sheets.
+
+Before placement, the existing tray-box dimension diagram explains EIR and ZNP.
+It uses an explicitly labelled 400 × 200 mm example; actual boxes follow route
+geometry. After Continue, choose the entire project, existing scope boxes, or
+manual selection. Scope-box placement checks the opening center against selected
+bounds so a long route cannot place openings outside the chosen scope. Cancelling
+the diagram or scope selector makes no model changes.
+
+
+In the VIS table, use the inline Building number dropdown for one box, or
+right-click selected rows and choose Change building number for multiple boxes. Issued JSON/history stay unchanged until reissue creates a revision;
+working changes are marked Changed since issue. KR/AR tables remain read-only.
+
+
+The existing level-mapping method remains primary. Only after it fails does an
+identity-only fallback select the same building/floor from the existing mask,
+prefer a primary AR level, and ignore elevations. Numeric zero padding is ignored
+by that fallback. Successful primary mappings are preserved.
+
+VIS wall/floor classification is optional and separate from issue status. It is
+not inherited automatically from shared defaults; unavailable fields are skipped
+without placement warnings. Valid explicitly configured classification fields
+still receive wall/floor values. The legacy tray button keeps strict validation.
+
+
+The identity fallback ignores a recognized trailing auxiliary annotation, e.g.
+«Этаж 1 (вспомогательный)» matches «Этаж 1» in the same building. Normal parsing
+and successful primary mapping are unchanged. Technical-space/basement labels
+remain meaningful; floor 1 is never silently converted to basement П1.
+
+
+A single VIS row click selects its box in Revit without switching views or zooming.
+Ctrl/Shift selection is mirrored as a group. Selection is coalesced through a
+lightweight ExternalEvent without reading the register or refreshing the table.
+The inline building dropdown uses one-way display bindings and saves through
+the existing validated API; failed edits restore the model value.

@@ -2,7 +2,7 @@
 """Authoritative ribbon entry points and role-specific opening task actions."""
 from lowlife.i18n import N_, tr
 
-VERSION=22
+VERSION=26
 INTERFACES={'VIS':'VISInterface','KR':'KRInterface','AR':'ARInterface'}
 INSTALL_DISCIPLINES={u'ОВиК':'VIS',u'ВК':'VIS',u'ЭОМ':'VIS',u'СС':'VIS',u'АК':'VIS',u'КР':'KR',u'АР':'AR'}
 COMMON=('highlight','refresh','settings','journal_setup','journal_open','parts_refresh')
@@ -18,6 +18,9 @@ ACTIONS={
         ('remark_show',N_(u'Показать группу')),
         ('focus',N_(u'Бокс в 3D')),
         ('control',N_(u'Виды и реестр')),
+        ('neighbors',N_(u'Боксы в соседних стенах')),
+        ('delete_boxes',N_(u'Удалить боксы')),
+        ('change_part',N_(u'Изменить номер корпуса')),
     ),
     'AR': (
         ('ar_show',N_(u'Показать конструкцию АР')),
@@ -43,7 +46,7 @@ ACTIONS={
 ACTION_GROUPS={
     'VIS': ((N_(u'Задания КР'),('place','issue','confirm')),
             (N_(u'Задания АР'),('place_ar','issue_ar','confirm_ar')),
-            (N_(u'Контроль'),('remark_show','highlight','focus','control','withdraw'))),
+            (N_(u'Контроль'),('remark_show','highlight','focus','control','neighbors','delete_boxes','change_part','withdraw'))),
     'KR': ((N_(u'Принятие'),('show','accept','merge','reject','remove')),
            (N_(u'Виды'),('highlight','structures','kr_plans','kr_sections'))),
     'AR': ((N_(u'Принятие'),('highlight','ar_show','ar_accept','ar_merge','ar_reject','ar_remove')),),
@@ -75,6 +78,10 @@ def validate_action(role,action):
 
 def action_hint(action):
     return {
+        'neighbors':tr(u'Проверить окончательные размеры боксов с запасами на пересечение соседних стен выбранных связей. Открыть отдельный список с подсветкой.',
+                       u'Check final box sizes including clearances against neighboring walls in their host links. Open a separate list with highlighting.'),
+        'delete_boxes':tr(u'Выбрать собственные боксы в списке и удалить из текущей модели после подтверждения ID. История выпусков сохраняется; это не отзыв задания.',
+                          u'Select original boxes from a list and delete them from the current model after confirming IDs. Issue history remains; this does not withdraw tasks.'),
         'remark_show':tr(u'Выберите строку с групповым замечанием: показать все его задания в вашей модели на созданном виде.',
                          u'Select a group remark row to show all its tasks in this model on an existing view.'),
         'reject':tr(u'Одно замечание с общим номером для всех выбранных заданий, в том числе разных разделов.',

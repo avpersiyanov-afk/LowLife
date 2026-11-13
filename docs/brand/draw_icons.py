@@ -90,6 +90,16 @@ class Canvas(object):
         self.im.resize((96, 96), Image.LANCZOS).save(path)
 
 
+def ugo_legends(c):
+    # A legend: three different symbols with text rows.
+    c.rect((13, 12, 83, 84), BLUE, WHITE, 3)
+    c.circle((30, 30), 7, BLUE, None, 3)
+    c.rect((23, 45, 37, 57), BLUE, None, 3)
+    c.polygon([(30, 65), (38, 77), (22, 77)], ORANGE)
+    for y in (30, 51, 72):
+        c.line([(47, y), (72, y)], BLUE, 3)
+
+
 def link_worksets(c):
     # Two linked model sheets with open/closed workset switches.
     c.rect((14, 15, 56, 68), BLUE, WHITE, 4)
@@ -709,6 +719,16 @@ def datum_filter(c):
     c.line([(56, 68), (65, 77), (80, 58)], ORANGE, 5)
 
 
+def model_filter(c):
+    # Stacked worksets and linked model outlines with a visibility check.
+    for y in (20, 32, 44):
+        c.line([(12, y), (31, y - 8), (50, y), (31, y + 8), (12, y)], BLUE, 3)
+    c.rect((51, 16, 76, 46), BLUE, WHITE, 3, 2)
+    c.rect((61, 26, 86, 56), BLUE, WHITE, 3, 2)
+    c.rect((25, 60, 72, 87), ORANGE, WHITE, 3, 4)
+    c.line([(36, 72), (46, 81), (63, 64)], ORANGE, 5)
+
+
 def merge_pdf(c):
     c.rect((15, 15, 39, 48), BLUE, WHITE, 3)
     c.rect((57, 15, 81, 48), BLUE, WHITE, 3)
@@ -717,10 +737,30 @@ def merge_pdf(c):
     c.rect((36, 67, 60, 86), BLUE, WHITE, 3)
 
 
+def change_clouds(c):
+    # Облако изменений как на чертеже: прямоугольное облако со скруглёнными
+    # углами, выноска вниз к ярлыку с номером изменения.
+    c.rect((10, 12, 86, 54), BLUE, WHITE, 5, 13)
+    c.line([(40, 54), (56, 72)], BLUE, 3.5)
+    c.rect((52, 70, 88, 88), ORANGE, WHITE, 4, 2.5)
+    font = None
+    for name in ("arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            font = ImageFont.truetype(name, 17 * K)
+            break
+        except IOError:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+    c.d.text((70 * K, 79.5 * K), u"12", font=font, fill=BLUE, anchor="mm")
+
+
 ICONS = [
+    ("Schematic.panel/UgoLegends.pushbutton", ugo_legends),
     ("ToolsExport.panel/MergePDF.pushbutton", merge_pdf),
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
     ("Tools.panel/DatumFilter.pushbutton", datum_filter),
+    ("Tools.panel/ModelFilter.pushbutton", model_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
     ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),
@@ -766,6 +806,7 @@ ICONS = [
     ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),
     ("CircuitsGeneric.panel/WriteLoadName.pushbutton", write_load_name),
     ("CircuitsGeneric.panel/WritePanelName.pushbutton", write_panel_name),
+    ("Tools.panel/ChangeClouds.pushbutton", change_clouds),
 ]
 
 

@@ -144,62 +144,60 @@ def test_preview_unhides_through_existing_element_api_helper():
                    for n in ast.walk(fn))
 
 
-def test_unschedulable_family_parameters_do_not_discard_created_views():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
-    build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
-    loop = next(n for n in build.body if isinstance(n, ast.For) and isinstance(n.target, ast.Tuple))
-    start = next(i for i, n in enumerate(loop.body) if isinstance(n, ast.Assign)
-                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'schedule_tx')
-    block = loop.body[start:]
-    events, messages = [], []
+def test_register_failure_does_not_discard_created_views():
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
+    build=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='build')
+    start=next(i for i,n in enumerate(build.body) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='schedule_tx')
+    end=next(i for i,n in enumerate(build.body[start:],start) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='save_registry')
+    events=[]
     class Tx:
-        def __init__(self, doc):
-            pass
-        def Start(self):
-            events.append('start')
-        def Commit(self):
-            events.append('commit')
-        def RollBack(self):
-            events.append('rollback')
-        def Dispose(self):
-            events.append('dispose')
-    schedule = NS(UniqueId='new', Definition=NS(GetSchedulableFields=lambda: [], GetFieldOrder=lambda: []))
-    output, managed = ['existing 3D', 'existing plan'], {}
-    def remember(key, value):
-        managed[key] = value.UniqueId
-        return value
-    scope = dict(SubTransaction=Tx, doc=None, managed=managed, root='P/1',
-                 existing=lambda *args: None, remember=remember,
-                 ViewSchedule=NS(CreateSchedule=lambda *args: schedule), category=1,
-                 unique_name=lambda doc, name: name, prefix='Control',
-                 KEYS=['opening_json_param'], ids={'opening_json_param': 5},
-                 settings={'opening_json_param': 'JSON'}, output=output,
-                 instances=[NS(Category=NS(Name='Boxes'))],
-                 forms=NS(alert=messages.append), tr=lambda ru, en=None: en or ru)
-    exec(compile(ast.Module(body=block, type_ignores=[]), 'schedule', 'exec'), scope)
-    assert events == ['start', 'rollback', 'dispose']
-    assert output == ['existing 3D', 'existing plan']
-    assert managed == {}  # no UID of the rolled-back schedule remains
-    assert len(messages) == 1 and 'JSON' in messages[0]
+        def __init__(self,doc):pass
+        def Start(self):events.append('start')
+        def RollBack(self):events.append('rollback')
+        def Dispose(self):events.append('dispose')
+    managed={'P/view':'view'}
+    def broken(*args):
+        managed['P/register']='rolled-back'
+        raise ValueError('unsupported field')
+    output=['existing view']
+    messages=[]
+    scope=dict(SubTransaction=Tx,doc=None,managed=managed,settings={},drafts=[],registry={},
+               build_register=broken,output=output,forms=NS(alert=messages.append),tr=lambda ru,en=None:en or ru)
+    exec(compile(ast.Module(body=build.body[start:end],type_ignores=[]),'register-rollback','exec'),scope)
+    assert events==['start','rollback','dispose']
+    assert managed=={'P/view':'view'} and output==['existing view']
+    assert len(messages)==1 and 'unsupported field' in messages[0]
 
 
-def test_native_preview_isolation_does_not_enumerate_the_model():
+def test_preview_isolation_queries_only_crop_and_never_converts_whole_view():
     calls=[]
     class Id(int):
         InvalidElementId=-1
-    view=NS(Id=100, IsTemporaryHideIsolateActive=lambda: True,
-            DisableTemporaryViewMode=lambda mode: calls.append(('reset',mode)),
-            UnhideElements=lambda ids: calls.append(('show',ids)),
-            IsolateElementsTemporary=lambda ids: calls.append(('isolate',sorted(ids))),
-            ConvertTemporaryHideIsolateToPermanent=lambda: calls.append(('permanent',)))
-    doc=NS(GetElement=lambda eid: NS(IsHidden=lambda view: eid==1))
-    scope=dict(ElementId=Id, List=Lists, DisplayStyle=NS(ShadingWithEdges='shaded'),
+    class V:
+        Id=100
+        UniqueId='view'
+        Category=object()
+    view=V()
+    view.IsTemporaryHideIsolateActive=lambda: True
+    view.DisableTemporaryViewMode=lambda mode: calls.append(('reset',mode))
+    view.UnhideElements=lambda ids: calls.append(('show',ids))
+    elements=[NS(Id=eid,Category=object(),CanBeHidden=lambda v: True) for eid in (1,2,3,4,5)]
+    class SpatialCollector(Collector):
+        def WherePasses(self, region):
+            assert region==('near','far')
+            calls.append(('region',region))
+            return self
+    doc=NS(GetElement=lambda eid: NS(Id=eid,IsHidden=lambda view: eid==1))
+    scope=dict(ElementId=Id, List=Lists, View=V,
                TemporaryViewMode=NS(TemporaryHideIsolate='temporary'),
-               boxes=NS(_id_int=int), _keep_with_nested=lambda doc, ids: ids | {4,100})
+               boxes=NS(_id_int=int), _keep_with_nested=lambda doc, ids: ids | {4,100},
+               BoundingBoxIntersectsFilter=lambda outline: outline, Outline=lambda a,b: (a,b),
+               FilteredElementCollector=lambda doc: SpatialCollector(elements+[view]),
+               _hide_by_filter=lambda doc,view,ids,name: calls.append(('hide',ids)))
     isolate=load_function('opening_tasks_visibility.py','isolate_preview',scope)
-    isolate(doc,view,[NS(Id=i) for i in (1,2,3)])
-    assert calls==[('show',[1]),('reset','temporary'),('isolate',[1,2,3,4]),('permanent',)]
-    # No collector exists in scope: a model-wide scan would fail this test.
+    isolate(doc,view,[NS(Id=i) for i in (1,2,3)],NS(Min='near',Max='far'))
+    assert calls==[('show',[1]),('reset','temporary'),('region',('near','far')),('hide',[5])]
+    # No IsolateElementsTemporary/Convert... method exists on the fake view.
 
 
 def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plans():
@@ -212,6 +210,7 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     elements = [NS(Id=eid, Category=NS(Id=cat), CanBeHidden=lambda v: True)
                 for eid, cat in [(1, 1), (2, 1), (3, 2), (4, 3), (5, 4)]]
     hidden, categories = [], []
+    annotation_modes=[]
     queries=[]
     view = V()
     def collect(doc):
@@ -220,40 +219,62 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
     class Id(int):
         InvalidElementId=-1
     scope = dict(ElementId=Id, View=V, List=Lists,
-                 ElementMulticategoryFilter=lambda ids: ids, DisplayStyle=NS(ShadingWithEdges=1),
-                 BuiltInCategory=NS(OST_RvtLinks=4),
+                 ElementMulticategoryFilter=lambda ids: ids, DisplayStyle=NS(ShadingWithEdges=1), RevitLinkInstance=object,
+                 transparent_structures=lambda *a: None,
+                 BuiltInCategory=NS(OST_RvtLinks=4,OST_TextNotes=8),
                  boxes=NS(_id_int=int), structural_categories=lambda: {2},
                  _keep_with_nested=lambda doc, ids: ids,
-                 _hide_other_categories=lambda doc, v, ids, **kw: categories.append(ids),
+                 _hide_other_categories=lambda doc, v, ids, **kw: (categories.append(ids),annotation_modes.append(kw["include_annotations"])),
                  _hide_by_filter=lambda doc, v, ids, name: hidden.append(ids),
                  FilteredElementCollector=collect)
     configure = load_function('opening_tasks_visibility.py', 'configure', scope)
     cache={}
     configure(None, view, [elements[0]],cache=cache)
-    assert categories[-1] == {1}
+    assert categories[-1] == {1,8}
     assert hidden[-1] == [2]  # unrelated family in the box category
     configure(None, view, [elements[0]], structures=True,cache=cache)
-    assert categories[-1] == {1, 2, 4}  # boxes, structures, links; no MEP category
+    assert categories[-1] == {1, 2, 4, 8}  # boxes, structures, links; no MEP category
     assert hidden[-1] == [2]
     assert view.ViewTemplateId == -1
-    assert len(queries)==1  # shared category snapshot across the 3D and plan
+    assert len(queries)==2  # one category snapshot plus one native link query
+    assert annotation_modes==[True,True]
 
 
-def test_schedule_filters_by_plain_status_instead_of_multiline_json():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
-    build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
-    assignment = next(n for n in ast.walk(build) if isinstance(n, ast.Assign)
-                      and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'status_field')
-    check = next(n for n in ast.walk(build) if isinstance(n, ast.If)
-                 and isinstance(n.test, ast.UnaryOp) and isinstance(n.test.operand, ast.Call)
-                 and isinstance(n.test.operand.func, ast.Attribute)
-                 and n.test.operand.func.attr == 'CanFilterByValue')
-    add = next(n for n in ast.walk(build) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
-               and isinstance(n.value.func, ast.Attribute) and n.value.func.attr == 'AddFilter')
-    calls = []
-    scope = dict(fields={1: NS(FieldId='json'), 2: NS(FieldId='status')},
-                 ids={'opening_json_param': 1, 'opening_status_param': 2},
-                 definition=NS(CanFilterByValue=lambda fid: fid == 'status', AddFilter=calls.append),
-                 ScheduleFilter=lambda *args: args, ScheduleFilterType=NS(NotEqual='not_equal'))
-    exec(compile(ast.Module(body=[assignment, check, add], type_ignores=[]), 'filter', 'exec'), scope)
-    assert calls == [('status', 'not_equal', '')]
+
+def test_transparent_structure_context_keeps_box_and_existing_graphics():
+    changed=[]
+    class Graphics:
+        line_color='retained'
+        def SetSurfaceTransparency(self, value):
+            self.transparency=value
+    view=NS(CanCategoryBeHidden=lambda cid: True,
+            GetCategoryOverrides=lambda cid: Graphics(),
+            SetCategoryOverrides=lambda cid, ogs: changed.append(('category',cid,ogs)),
+            GetElementOverrides=lambda eid: Graphics(),
+            SetElementOverrides=lambda eid, ogs: changed.append(('element',eid,ogs)))
+    scope=dict(ElementId=int, structural_categories=lambda: {1,2}, STRUCTURE_TRANSPARENCY=70)
+    apply=load_function('opening_tasks_visibility.py','transparent_structures',scope)
+    apply(None,view,links=[NS(Id=10)])
+    assert {(kind,eid) for kind,eid,ogs in changed}=={('category',1),('category',2),('element',10)}
+    assert all(ogs.transparency==70 and ogs.line_color=='retained' for kind,eid,ogs in changed)
+    # No box IDs/categories are touched and no whole-model collector is needed.
+
+
+def test_general_3d_frame_uses_only_boxes_matching_its_status():
+    tree=ast.parse((ROOT/'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
+    assignments={n.targets[0].id:n for n in ast.walk(tree) if isinstance(n,ast.Assign)
+                 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('framed','bounds','points')}
+    condition=next(n for n in ast.walk(tree) if isinstance(n,ast.If) and isinstance(n.test,ast.Name) and n.test.id=='points')
+    block=[assignments[name] for name in ('framed','bounds','points')]+[condition]
+    a=NS(LookupParameter=lambda name:NS(AsString=lambda:'Issued'),get_BoundingBox=lambda _:['box A'])
+    b=NS(LookupParameter=lambda name:NS(AsString=lambda:'Draft'),get_BoundingBox=lambda _:['box B'])
+    frames=[]
+    view=NS(SetSectionBox=frames.append)
+    scope=dict(instances=[a,b],status='Issued',settings={'opening_status_param':'Status'},
+               api=NS(boxes=NS(_box_points=lambda bound:bound,ft=lambda mm:mm)),
+               projected_box=lambda points,frame,pad:(points,pad),Transform=NS(Identity='world'),view=view)
+    exec(compile(ast.Module(body=block,type_ignores=[]),'frame','exec'),scope)
+    assert frames==[(['box A'],500)] and view.IsSectionBoxActive
+    scope['status']=None
+    exec(compile(ast.Module(body=block,type_ignores=[]),'frame','exec'),scope)
+    assert frames[-1]==(['box A','box B'],500)

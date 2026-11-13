@@ -11,7 +11,7 @@ import math
 from datetime import datetime
 from Autodesk.Revit.DB import (BuiltInCategory, CurveArray, ElementTransformUtils, FamilyInstance, CategoryType, IndependentTag, Dimension, FilteredElementCollector,
                                Floor, RoofBase, Line, LocationPoint, Opening, Options, RevitLinkInstance, StorageType,
-                               SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ)
+                               SubTransaction, TransactionStatus, ViewDetailLevel, Wall, XYZ, Outline)
 from lowlife.opening_tasks_journal import windows_user
 from lowlife import opening_tasks_core as core
 from lowlife import opening_tasks_storage as store
@@ -98,7 +98,8 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
     categories = boxes._host_categories(settings,include_roofs=True)
     src = boxes._Source(source.GetLinkDocument(), source)
     entries, errors = [], []
-    issued_ids = set(store.registry(doc)['tasks'])
+    issued_tasks=store.registry(doc)['tasks']
+    issued_ids = set(issued_tasks)
     for index, route in enumerate(routes):
         if progress:
             progress(index+1, len(routes))
@@ -121,6 +122,10 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                     box = geometry.enlarge_opening(box, boxes.ft(amount))
                 box=boxes.fit_vertical_host(box,crossing,src,options,boxes._t(route.Location.Curve.Direction),
                                             boxes.ft(settings.get('depth_extra_mm') or 0))
+                scope_bounds=settings.get('_opening_scope_bounds')
+                if scope_bounds and not any(Outline(bound.Min,bound.Max).Contains(
+                        bound.Transform.Inverse.OfPoint(boxes._xyz(box.center)),1e-9) for bound in scope_bounds):
+                    continue
                 key = (route.UniqueId, crossing.host.UniqueId, source.UniqueId,settings.get('opening_recipient','KR'))
                 previous = managed.get(key)
                 level,level_info=placer.level_resolver.resolve(crossing)
@@ -149,7 +154,7 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 assign_level(doc,inst,level)
                 if placer.result.missing_params:
                     raise ValueError(tr(u'Нет параметров размеров бокса',u'Missing box size parameters'))
-                placer._set_host_filter(inst, crossing.kind)
+                placer._set_host_filter(inst, crossing.kind,required=False)
                 data = dict(data, level=level_info, object_part=settings.get('opening_object_part',''), recipient=settings.get('opening_recipient','KR'), source_model=store.model_id(doc), source_uid=route.UniqueId,
                             host_uid=crossing.host.UniqueId, host_model=store.model_id(source.GetLinkDocument()),
                             host_link_uid=source.UniqueId, kind=crossing.kind,
@@ -165,10 +170,10 @@ def place(doc, routes, source, symbol, settings, workset, progress=None):
                 if data['task_id'] not in issued_ids:
                     store.set_parameter(inst, settings['opening_json_param'],
                         dict(data, status='draft', geometry=host_geometry(inst,data,source)))
-                issued = store.registry(doc)['tasks'].get(data['task_id'])
+                issued = issued_tasks.get(data['task_id'])
                 visible_issue(inst,settings,issued, bool(issued and issued['status']=='issued' and
                     (not core.geometry_equal(issued['geometry'],host_geometry(inst,data,source)) or
-                     issued.get('level')!=data.get('level'))))
+                     issued.get('level')!=data.get('level') or issued.get('object_part','')!=data.get('object_part',''))))
                 store.write(inst, data)
                 if sub.Commit() != TransactionStatus.Committed:
                     raise ValueError(tr(u'Транзакция бокса не зафиксирована',u'Draft transaction was not committed'))
@@ -665,3 +670,52 @@ def recipient_feedback(doc, project, registry=None):
             reply_revision=unicode(receipt.get('revisions',{}).get(core.task_key(task),'')) if receipt else '',
             attention=state not in ('accepted','withdrawn'))
     return result
+
+
+def delete_boxes(doc, elements):
+    """Delete validated original local boxes atomically; keep issued snapshots."""
+    from System.Collections.Generic import List
+    from Autodesk.Revit.DB import ElementId
+    unique={inst.UniqueId:inst for inst in elements}
+    for inst in unique.values():
+        data=metadata(inst)
+        if inst.Document!=doc or not data or data.get('owner_uid')!=inst.UniqueId:
+            raise ValueError(tr(u'Удалять можно только собственные боксы заданий текущей модели.',
+                               u'Only original task boxes in the current model can be deleted.'))
+    if unique:
+        doc.Delete(List[ElementId]([inst.Id for inst in unique.values()]))
+    return len(unique)
+
+
+def change_building(doc, elements, value, settings):
+    """Change working metadata only; a later issue records a new revision."""
+    from lowlife import opening_tasks_parts as parts
+    parts.require_choice(settings['opening_project'],value)
+    registry=store.registry(doc)
+    prepared=[]
+    for inst in {el.UniqueId:el for el in elements if el is not None}.values():
+        data=metadata(inst)
+        if inst.Document!=doc or not data or data.get('owner_uid')!=inst.UniqueId or data.get('source_model')!=store.model_id(doc):
+            raise ValueError(tr(u'Выберите собственные боксы текущей модели.',u'Select original boxes in the current model.'))
+        record=registry['tasks'].get(data['task_id'])
+        if record and record['project']!=settings['opening_project']:
+            raise ValueError(tr(u'Бокс выдан в другом объекте.',u'Box was issued for another project.'))
+        if data.get('object_part','')==value:
+            continue
+        working=None
+        if record is None:
+            param=inst.LookupParameter(settings['opening_json_param'])
+            if param is None or param.StorageType!=StorageType.String:
+                raise ValueError(tr(u'У бокса нет текстового JSON-параметра задания.',u'Box has no text task JSON parameter.'))
+            working=core.loads(param.AsString())
+            working['object_part']=value
+        prepared.append((inst,dict(data,object_part=value),record,working))
+    for inst,data,record,working in prepared:
+        store.write(inst,data)
+        if working is not None:
+            store.set_parameter(inst,settings['opening_json_param'],working)
+        visible_issue(inst,{'opening_status_param':settings.get('opening_status_param','')},record,
+                      bool(record and record['status']=='issued'))
+    from lowlife.opening_tasks_views import sync_selection_filters
+    sync_selection_filters(doc,settings,registry)
+    return len(prepared)

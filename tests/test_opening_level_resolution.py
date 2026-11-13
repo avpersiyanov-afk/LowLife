@@ -175,7 +175,7 @@ def test_wall_foundation_without_assigned_kr_level_uses_current_ar_elevation(mon
     assert info['source_level_uid']==''
 
 
-def test_link_level_with_different_ar_name_matches_by_transformed_elevation(monkeypatch):
+def test_existing_successful_elevation_mapping_is_retained(monkeypatch):
     kr_level=Level('kr-level','KR ground',0)
     kr=document([kr_level],[Floor('slab','kr-level',1)],'KR')
     target=Level('AR-0','AR ground',100)
@@ -185,13 +185,63 @@ def test_link_level_with_different_ar_name_matches_by_transformed_elevation(monk
     assert result is target and info['elevation_mm']==pytest.approx(100*304.8)
 
 
-def test_floor_kr_elevation_maps_to_nearest_ar_level_with_offset(monkeypatch):
-    kr_level=Level('kr-level','KR structural',9.5)
+def test_floor_is_selected_by_building_and_floor_even_with_link_offset(monkeypatch):
+    kr_level=Level('kr-level',u'КР_К1_+9.500_01_доп',9.5)
     kr=document([kr_level],[Floor('slab','kr-level',10)],'KR')
-    target=Level('AR-storey','AR storey',110)
+    target=Level('AR-storey',u'АР_К1_+0.000_01',0)
     local=document([target],[],'VIS')
-    r=resolver(monkeypatch,local,[target,Level('AR-other','AR other',100)])
+    r=resolver(monkeypatch,local,[target,Level('AR-other',u'АР_К1_+100.000_02',100)])
     result,info=r.resolve(NS(link=link(kr,100),host=kr.floors[0],kind='floor'))
     assert result is target
     assert info['elevation_mm']==pytest.approx(109.5*304.8)
     assert info['support_uid']=='slab'
+
+
+def test_resolver_uses_saved_level_mask_and_reports_actual_ar_level(monkeypatch,tmp_path):
+    from lowlife import view_range_settings,level_views_settings
+    monkeypatch.setenv('APPDATA',str(tmp_path))
+    view_range_settings.save_values({'level_name_template':u'{Корпус}_{Этаж}_{Дисциплина}_{Комментарий}'})
+    source_level=Level('source-L',u'К1_07_КР_доп',100)
+    floor=Floor('slab','source-L',101)
+    linked=document([source_level],[floor],'KR')
+    correct=Level('ar-7',u'К1_07_АР',0)
+    wrong=Level('ar-8',u'К1_08_АР',100)
+    local=document([correct,wrong],[],'VIS')
+    r=resolver(monkeypatch,local,[correct,wrong])
+    r.level_template=level_views_settings.level_template()
+    target,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
+    assert target is correct
+    assert info['name']==correct.Name and info['source_name']==source_level.Name
+
+
+def test_floor_identity_fallback_runs_only_after_previous_method_fails(monkeypatch):
+    source_level=Level('source',u'КР_К1_+99.000_001_доп',99)
+    floor=Floor('slab','source',100)
+    linked=document([source_level],[floor],'KR')
+    target=Level('ar',u'АР_К1_+0.000_1',0)
+    local=document([target],[],'VIS')
+    r=resolver(monkeypatch,local,[target])
+    calls=[]
+    original=core.match_level
+    def tracked(*args,**kwargs):
+        calls.append(kwargs.get('identity_only',False))
+        return original(*args,**kwargs)
+    monkeypatch.setattr(core,'match_level',tracked)
+    result,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
+    assert result is target and calls==[False,True]
+    calls[:]=[]
+    source_level.Name=u'КР_К1_+99.000_1_доп'
+    result,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
+    assert result is target and calls==[False]
+
+
+def test_auxiliary_floor_annotation_recovers_through_fallback(monkeypatch):
+    source_level=Level('source',u'КР_4_+100,000_Этаж 1 (вспомогательный)',100)
+    floor=Floor('slab','source',101)
+    linked=document([source_level],[floor],'KR')
+    target=Level('ar',u'АР_4_+3,350_Этаж 1',3.35)
+    wrong=Level('ar2',u'АР_4_+100,000_Этаж 2',100)
+    local=document([target,wrong],[],'VIS')
+    r=resolver(monkeypatch,local,[target,wrong])
+    result,info=r.resolve(NS(link=link(linked),host=floor,kind='floor'))
+    assert result is target and info['source_name']==source_level.Name

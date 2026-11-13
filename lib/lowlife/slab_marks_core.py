@@ -167,11 +167,13 @@ def has_ceiling(ceiling_values):
     return any(value is not None for value in ceiling_values)
 
 
-def split_words(text):
-    """«дым, тепл;пламен» → ['дым', 'тепл', 'пламен'] (нижний регистр, ё → е)."""
+def split_words(text, preserve_case=False):
+    """Split unique words; normalize case/ё unless preserve_case is requested."""
     result = []
     for chunk in (text or u"").replace(u";", u",").replace(u"\n", u",").split(u","):
-        word = chunk.strip().lower().replace(u"ё", u"е")
+        word = chunk.strip()
+        if not preserve_case:
+            word = word.lower().replace(u"ё", u"е")
         if word and word not in result:
             result.append(word)
     return result
@@ -725,19 +727,40 @@ class BoxGrid(object):
         self.cell = float(cell)
         self.grid = {}
         self.boxes = []
+        self.large = []
 
     def add(self, value, bbox):
         index = len(self.boxes)
         self.boxes.append((value, bbox))
         x0, y0 = int(bbox[0] // self.cell), int(bbox[1] // self.cell)
         x1, y1 = int(bbox[2] // self.cell), int(bbox[3] // self.cell)
+        if (x1-x0+1)*(y1-y0+1)>4096:
+            self.large.append(index)
+            return
         for i in range(x0, x1 + 1):
             for j in range(y0, y1 + 1):
                 self.grid.setdefault((i, j), []).append(index)
 
+    def overlapping(self, bbox):
+        """Values whose XY bounds overlap bbox; insertion order, no duplicates."""
+        x0,y0=int(bbox[0]//self.cell),int(bbox[1]//self.cell)
+        x1,y1=int(bbox[2]//self.cell),int(bbox[3]//self.cell)
+        if (x1-x0+1)*(y1-y0+1)>max(1,len(self.boxes)):
+            candidates=range(len(self.boxes))
+        else:
+            candidates=set(self.large)
+            for i in range(x0,x1+1):
+                for j in range(y0,y1+1):
+                    candidates.update(self.grid.get((i,j),()))
+            candidates=sorted(candidates)
+        return [self.boxes[index][0] for index in candidates
+                if self.boxes[index][1][0]<=bbox[2] and self.boxes[index][1][2]>=bbox[0]
+                and self.boxes[index][1][1]<=bbox[3] and self.boxes[index][1][3]>=bbox[1]]
+
     def at(self, x, y):
         result = []
-        for index in self.grid.get((int(x // self.cell), int(y // self.cell)), ()):
+        candidates=list(self.grid.get((int(x // self.cell), int(y // self.cell)), ()))+self.large
+        for index in sorted(candidates):
             value, bbox = self.boxes[index]
             if bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]:
                 result.append(value)

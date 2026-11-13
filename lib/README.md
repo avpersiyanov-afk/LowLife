@@ -1,5 +1,35 @@
 # lowlife — общая библиотека для кнопок LowLife.extension
 
+## ugo_core.py / ugo_revit.py / ugo_ui.py
+
+Кнопка «Списки УГО» (`Schematic.panel/UgoLegends`). Каталог всех типов
+элементов узлов, правка подписей, системы и пользовательские списки;
+дублирование пустой легенды и обновление только собственных элементов.
+Инструкция — `docs/ugo-legends.md`, тесты — `tests/test_ugo.py`.
+
+- `ugo_core.merge_catalog` сохраняет подписи и показывает удалённые типы;
+  `selected_rows` объединяет прямое членство и совпадение систем;
+  `rename_group` переносит членство, `validate` проверяет имена списков.
+- `ugo_revit.load/save` — реестр в DataStorage, `catalog` — все типы,
+  `legends` — доступные легенды, `build` — создание/обновление с метками
+  принадлежности на виде и элементах. Все записи — в транзакции вызывающего.
+- `ugo_ui.show` возвращает изменения без записи; `run` сохраняет и строит
+  одной транзакцией, при ошибке возвращает введённые данные в редактор.
+
+Повторно используются `scs_settings.list_symbols_by_categories`, `TypeOption`,
+`_safe_element_name`, `text_search.matches`, `level_views_core.clean_view_name`,
+`room_explication_core.unique_name`, `i18n.tr`. `slab_marks_core.split_words`
+расширен необязательным `preserve_case=True` для имён систем/списков;
+прежняя нормализация по умолчанию сохранена.
+
+Новая логика нужна для членства одного типа в нескольких списках и системах,
+независимого реестра УГО и проверки принадлежности удаляемых элементов.
+Существующее хранилище `opening_tasks_storage` жёстко связано со схемой и
+версиями заданий на отверстия, а очистка `room_schematic._clear_view` удаляет
+всё содержимое вида; применять их для УГО нельзя. Создание текста СОТ
+центрирует подписи и подавляет ошибки; здесь нужен текст фиксированной ширины
+с выравниванием слева и откатом всей операции при ошибке размещения.
+
 ## pdf_merge.py
 
 Кнопка «Объединить PDF» на панели «Выгрузка». `plan_merges(folder)` группирует
@@ -206,12 +236,42 @@ circuit, row_id)` — «Проводник»: параметр = ключево�
 `panel_name_second_param`, `panel_name_mask`), `TextSettings`; поле маски
 (`MaskField`) не сохраняется без `{1}`/`{2}`.
 
+## change_clouds_core.py / change_clouds.py / change_clouds_settings.py / change_clouds_ui.py
+Кнопка «Внесение изменений» (`Tools.panel/ChangeClouds`): облако изменений —
+новый тип семейства по маске «имя_шифр_номер» с данными в параметрах типа
+и экземпляра. Чистая часть — `change_clouds_core.py` (покрыта
+`tests/test_change_clouds_core.py`): `today_text` (дд.мм.гг),
+`build_type_name(template, family, cipher, number)` (маска с
+подстановками `{family}/{cipher}/{number}`, умолчание `DEFAULT_TEMPLATE`),
+`parse_type_name(name, family)` (шифр с подчёркиваниями — номер после
+последнего `_`), `suggest_number(rows, cipher)` (max + 1 по шифру, иначе 1),
+`parse_number` / `parse_date` (валидация ввода, дата → дд.мм.гг).
+Revit-часть — `change_clouds.py`: `find_family` / `family_symbols`
+(через `Family.GetFamilySymbolIds`, включая невставленные), `list_changes`
+(строки типов с параметрами и числом экземпляров), `suggest_next_number`,
+`create_change(doc, view, settings, cipher, number, date, code, content, point)`
+(копия первого типа, запись параметров через `params.set_param_any`,
+вставка экземпляра в заданную точку вида; своя транзакция),
+`place_instance(doc, view, settings,
+symbol_id, code, content, point)` — экземпляр уже существующего типа (двойной
+клик по строке окна): параметры типа уже в нём, пишутся только
+код/содержание/порядковый номер экземпляра; номер обоим даёт
+`next_order_on_view` — максимум записанных `order_param` у экземпляров
+этого типа на виде + 1 (ни одного нет — 1: у каждого изменения на листе
+своя нумерация с единицы, она не сбивается облаком без номера). Настройки — `change_clouds_settings.SETTINGS`
+(`LowLifeChangeClouds_settings.json`, `TextSettings`): семейство, маска
+имени, параметры типа (`cipher_param`, `number_param`, `date_param`) и
+экземпляра (`code_param`, `content_param`, `order_param`). Окно списка
+изменений — `change_clouds_ui.show_changes_window` (вернёт `"new"`,
+`"settings"`, None или `("instance", symbol_id)` при двойном клике по строке).
+
 ## selection.py
 Работа с выделением элементов в Revit UI.
 
 | Функция | Сигнатура | Что делает |
 |---|---|---|
 | `get_single_selection` | `get_single_selection(doc, uidoc, empty_message=..., multiple_message=...)` | Возвращает единственный выбранный элемент; если выделено 0 или >1 — показывает `forms.alert` и останавливает скрипт (`exitscript=True`) |
+| `pick_point` | `pick_point(uidoc, prompt)` | Точка, указанная кликом на виде (`uidoc.Selection.PickPoint`); `None`, если отменено (Esc) |
 
 ## view_crop.py / view_crop_dialog.py
 Обрезка вида по двум точкам (`Tools.panel/CropView`, «Обрезать вид»).
@@ -3188,10 +3248,14 @@ uses the shared params.read_project_parameter reader and its own parameter setti
 
 Shared box-level resolver for VIS/KR/AR tasks and tray boxes. Pierced floor level
 or downward solid intersection with floors/foundations from the same selected source.
-Nearest current-model level to the transformed host project elevation, including
-AR levels with differing names/elevations. Unassigned support levels use the actual
-surface hit elevation. Equal-distance candidates prefer a unique matching name;
-unresolved ties fail. The opening height never replaces the host elevation.
+Assigned source level names are parsed by the existing shared mask from
+`level_views_settings.level_template()` (View Range settings, with the existing
+Family Section fallback). The existing mapping remains primary. Only if it fails, an identity-only fallback
+uses building/floor from that mask, preferring an AR level without an auxiliary
+comment. That fallback ignores elevation and normalizes numeric zero padding.
+Successful primary choices are retained. Missing/ambiguous identity matches fail
+explicitly rather than assigning a different floor.
+Unassigned support levels still use the actual surface hit elevation; ties fail. The opening height never replaces the host elevation.
 Checks and updates actual instance level while preserving position; provenance
 enters task JSON and level corrections participate in reissue detection.
 
@@ -3256,6 +3320,34 @@ override references, members and a fingerprint in the model registry. Missing
 receiver links preserve affected prior labels. Unchanged fingerprints skip model
 edits. Unlocked managed isometric 3D views are locked for TextNotes; annotation
 errors are reported without preventing the table from refreshing.
+
+### model_filter_revit.py / model_filter_panel.py / model_filter_settings.py
+
+«Фильтр наборов и связей» переиспользует `datum_filter_panel.FilterDefinition`, WPF/XAML,
+`datum_filter_core.group_datums`, `selection_targets`, `visibility_changes`, `MaskField`,
+`datum_filter_presets` (настраиваемые ключи масок, независимые ключи разделов),
+`datum_filter_revit.live_items` и общую транзакцию `set_visibility`.
+`snapshot` собирает рабочие наборы через `cable_tray.find_worksets` и все экземпляры Revit-связей,
+включая незагруженные (поэтому `loaded_links` для этого списка не подходит).
+Глобальная видимость наследуется через `WorksetDefaultVisibilitySettings`;
+`link_views.template_controls` проверяет управление шаблоном. Рабочие наборы меняются через
+`View.SetWorksetVisibility`, экземпляры связей — Hide/UnhideElements за одну транзакцию.
+Панель имеет собственный GUID и `JsonStore` в `LowLifeModelFilter_settings.json`.
+
+### workset_manager_core.py / workset_manager.py / workset_manager_dialog.py
+
+Редактор правил из панели фильтра: создание, переименование, перенос экземпляров между наборами.
+`core.normalize_rules` проверяет импорт/ввод, `core.plan` строит последовательный план.
+Маски повторно используют `datum_filter_core.compile_mask`; подстановка назначения —
+`name_mask.render_mask` (`{1}` — полное исходное имя, `{2}` — первая захваченная часть).
+`prepare` проверяет наборы и доступность элементов и моделирует цепочки переносов без записи;
+`apply` сравнивает актуальный план с просмотренным и выполняет всё одной транзакцией с откатом.
+Назначение набора — существующая `fire_boxes.assign_workset`; имена наборов из связей —
+`link_worksets.collect_rows`; хранение — `settings_core.JsonStore`; JSON-перенос —
+`settings_transfer.add_transfer_buttons`; поиск — `text_search.matches`, списки — `select_list`.
+Новые адаптеры нужны для Workset API и предварительного планирования: существующий фильтр
+осей управляет только скрытием элементов, а `link_worksets` перезагружает связи.
+Тесты: `test_model_filter.py`, `test_workset_manager.py`. Ручные сценарии — [инструкция](../docs/model-filter.md).
 
 ### datum_filter_core.py / datum_filter_revit.py / datum_filter_panel.py / datum_filter_presets.py
 
@@ -3339,12 +3431,154 @@ JSON. The JSON column remains hidden. The status parameter must be a normal
 (single-line) schedulable text instance parameter; no extra parameters are added.
 
 
-Opening preview performance: `opening_tasks_visibility.isolate_preview` uses
-native temporary isolation converted to permanent, with `_keep_with_nested`
-and reads only the retained elements (no whole-model unhide/hide loops).
+Opening preview performance: `opening_tasks_visibility.isolate_preview(doc, view, elements, crop)`
+uses a native bounding-box query within the active section box and the existing
+`_hide_by_filter` selection filter. It keeps nested components via `_keep_with_nested`.
+It does not convert temporary isolation across the whole document.
 `configure(..., cache=None)` uses a native multicategory collector and a
 build-scoped cache for repeated control views. No cache survives the command.
 Previews save the registry only when registering a new view and use existing
 `route_preview.zoom_to_fit_points` with the known crop instead of redundant
 RefreshActiveView/ZoomToFit. Control views use shading with edges and explicitly
 visible solid status fills.
+
+
+`opening_tasks_visibility.transparent_structures(doc, view, links=None)` unifies
+structural category and link-instance transparency at 70% across control plans,
+sections, structural source views and focused previews. Existing override settings
+are preserved; box overrides are untouched. `configure` shares a native link
+collector snapshot through its build-scoped cache. General box-only 3D views
+keep structural categories hidden.
+
+
+Focused preview graphics are versioned in the existing view ExtensibleStorage
+(`role=box_preview`). Reopening the same box updates its crop and bounded
+isolation, skipping category, link, fill and transparency assignments when
+the owner/source/link/structural-view identity has not changed. No process-wide
+cache or new storage schema is introduced.
+
+
+`opening_tasks_neighbors.check(doc, elements)` is an on-demand, read-only check
+of final box dimensions against neighboring walls in the selected host link.
+It reuses `opening_tasks_revit.host_geometry` for current size/orientation and
+link coordinates, `tray_boxes._solids` for cached wall bodies and existing
+bounding-box helpers. `envelope_solid(g)` creates the logical sized box because
+a family may contain only symbolic lines or arbitrary nested geometry. A native
+bounds filter precedes exact positive-volume intersection; original host and
+face-only contact are excluded. Transient solids are disposed. `run(uidoc)`
+shows a separate searchable selection list with box and neighboring-wall IDs;
+unloaded links and geometry failures are reported separately. No new parameters
+or background checks are introduced.
+
+
+`opening_tasks_revit.delete_boxes(doc, elements)` validates original local task
+identity before one native batch deletion, inside the caller's transaction.
+Other existing schematic deletion helpers suppress failures and lack ownership
+validation, so they cannot safely serve this workflow. Issued registry snapshots
+are never deleted. `opening_tasks_ui.delete_boxes_from_list` goes directly to exact-ID confirmation
+for preselected table rows; only an empty selection opens the existing `choose`
+list. Cancellation does not write.
+
+Repeated focused preview resolves its view directly through the optional
+`preview_uid` in existing box ExtensibleStorage. Legacy registry mappings remain
+a fallback and are preserved; the full issued-task registry is not read on
+the direct-reference path. No new Revit parameter or storage schema is needed.
+
+
+Opening control cleanup hides annotation categories explicitly while retaining
+OST_TextNotes for generated group remarks. Grids, levels, section/elevation
+markers, scope boxes and section-box boundaries are excluded. General 3D views
+reuse `opening_tasks_kr_views.projected_box` with actual box bounds and a 500 mm
+margin, so status views frame only matching boxes instead of the whole model.
+
+
+Preview schema recovery: view configuration uses `schema=opening_tasks_core.VERSION`
+separately from its graphic `version`. `opening_tasks_storage.read` treats only
+the known legacy `box_preview/version=2` record without schema as unconfigured;
+focus rebuilds it using the existing view. Other invalid schemas still raise.
+`write` rejects incompatible/missing schema before mutating ExtensibleStorage,
+without reparsing valid large registry payloads.
+
+
+`opening_tasks_schedule.build` extracts the former per-category schedule builder
+into one model-wide itemized register. It reuses `loi_check._schedulable_index`,
+`_first_by_bips`, `_add_field` and existing view naming. One row remains per box,
+with dimensions/status/count, optional issue fields and native totals. JSON
+is neither required by the schedule nor displayed. The caller isolates failures
+in a subtransaction and retains control views.
+
+`tray_boxes_result.show(..., preflight=False, initial_increase=0)` now supports
+a before-placement mode using the same diagram and EIR/ZNP logic, with an
+explicitly illustrative section and cancel/continue actions. The legacy result
+dialog keeps its default behaviour. `opening_tasks_ui.pick_routes(settings)`
+adds a scope selector before reusing `selected_elements`/`RouteSelectionFilter`
+for manual selection; whole-project and scope modes use native category/bounds
+filters. No existing scope-box selection implementation was found to reuse.
+Selected bounds are runtime-only settings; final opening centers are checked
+before creating/updating a box. No new model parameter is introduced.
+
+
+Intersection batch optimization: `slab_marks_core.BoxGrid.overlapping(bbox)`
+extends the existing XY bounds grid with rectangle queries, retaining insertion
+order and avoiding duplicates. Giant bounds use an overflow list rather than
+millions of cells; very broad queries fall back to a finite bounds scan. Existing
+`at(x,y)` semantics are preserved.
+
+`tray_boxes._Source.hosts(categories, outline)` keeps native Revit bounding queries
+for the first 127 requests per category set, then builds one command-local BoxGrid
+of host bounds for large batches, with an additional Z-overlap check. Source/link
+coordinates and category sets remain separate. Solid geometry is still read only
+for candidates and cached by the existing `_Source.solids`; exact
+`Solid.IntersectWithCurve` remains unchanged. Per-route intersection options are
+reused, and temporary hits/segments/options are disposed. No persistent cache or
+geometry approximation is introduced. VIS placement reads issued tasks once per
+batch instead of once per box; progress updates are throttled to about 100 steps.
+
+
+`LevelNameTemplate.parse(name, with_discipline=False)` preserves the old
+three-item result; optional discipline output reuses the same compiled mask.
+Opening provenance records the assigned target name and the original source name.
+
+`opening_tasks_revit.change_building` validates the cached project catalog and
+original local ownership for all selected boxes before mutation. It updates working
+metadata and unissued JSON; issued JSON/history remain immutable until normal
+reissue creates a revision. It reuses parts.require_choice, visible_issue, and
+sync_selection_filters. The table invokes this only through ExternalEvent from
+its building-cell double click or context menu; no extra toolbar button is added.
+The source of host-classification parameter errors is now explicit in the message:
+`box_host_filter_param`, including inherited shared settings. No parameter name
+is hardcoded and valid configured names are not silently removed.
+
+
+VIS construction classification is optional and independent from issue status.
+The existing `_set_host_filter(..., required=True)` retains strict behaviour for
+the legacy tray button; VIS calls it with required=False so an unavailable optional
+field cannot generate placement warnings. The VIS form no longer inherits this
+family-specific field automatically from shared memory. Explicitly configured
+valid text fields still receive wall/floor; status uses opening_status_param only.
+`LevelNameTemplate.identity(name)` reuses parse and normalizes purely numeric
+building/floor tokens without changing the legacy parse result.
+
+
+`LevelNameTemplate.identity(..., ignore_auxiliary=False)` optionally strips only
+recognized trailing auxiliary annotations such as «(вспомогательный)». Opening
+identity fallback opts in; the normal parser and successful primary mapping stay
+unchanged. Tech-space, basement and other meaningful parenthetical labels are
+retained. The fallback prefers a level without this annotation and reports the
+normalized floor if it is absent; it never maps floor 1 to basement П1.
+
+
+Opening table interaction: `SelectionHandler` is a lightweight read-only
+ExternalEvent adapter for current-model VIS IDs; it reads the latest pending
+selection, ignores another/closed document and skips unchanged selections. The
+existing business Handler hides/refreshes windows and loads settings/registry,
+so reusing it for every row click would reintroduce UI latency. No generic
+selection-event adapter was found in the library.
+
+The building column uses a DataGridTemplateColumn/readonly editable ComboBox
+with one-way bindings (including text to preserve uncatalogued historical values).
+An ObservableCollection supplies the existing parts catalog; programmatic
+rebuilds are guarded against edits. Cell changes reuse
+`change_building_from_table(..., value=None)` and `change_building`; explicit
+values bypass the second picker. The context menu keeps bulk editing. On API
+rejection the table reloads the original model values.

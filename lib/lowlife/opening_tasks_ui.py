@@ -6,6 +6,7 @@ except NameError:
     unicode = str
 
 import traceback
+from collections import OrderedDict
 from Autodesk.Revit.DB import FilteredElementCollector, RevitLinkInstance
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -82,11 +83,55 @@ def report_placement_result(created,errors):
     forms.alert(message,expanded=details or None)
 
 
+def pick_routes(settings):
+    """Explicit scope, followed by the existing safe MEP selection filter."""
+    from System.Collections.Generic import List
+    from Autodesk.Revit.DB import (BuiltInCategory, ElementMulticategoryFilter,
+                                   ElementId, BoundingBoxIntersectsFilter, LogicalOrFilter, ElementFilter)
+    doc=revit.doc
+    category=getattr(BuiltInCategory,'OST_VolumeOfInterest',None)
+    scopes=list(FilteredElementCollector(doc).OfCategory(category).WhereElementIsNotElementType()) if category is not None else []
+    modes=OrderedDict([(tr(u'Все в проекте',u'Entire project'),'all')])
+    if scopes:
+        modes[tr(u'По областям видимости',u'By scope boxes')]='scopes'
+    modes[tr(u'Выбрать элементы вручную',u'Select elements manually')]='manual'
+    mode=choose(modes,tr(u'Где расставить боксы?',u'Where to place boxes?'))
+    if mode is None:
+        return []
+    selection=mep.RouteSelectionFilter(settings)
+    if mode=='manual':
+        return selected_elements(selection)
+    categories=List[ElementId]([ElementId(getattr(BuiltInCategory,n)) for n in mep.CATEGORY_NAMES])
+    collector=FilteredElementCollector(doc).WherePasses(ElementMulticategoryFilter(categories)).WhereElementIsNotElementType()
+    if mode=='scopes':
+        selected=choose({u'{} | {}'.format(boxes.safe_element_name(scope),boxes._id_int(scope.Id)):scope for scope in scopes},
+                        tr(u'Выберите области видимости',u'Select scope boxes'),True)
+        if not selected:
+            return []
+        bounds=[scope.get_BoundingBox(None) for scope in selected]
+        bounds=[b for b in bounds if b is not None]
+        if not bounds:
+            raise ValueError(tr(u'У выбранных областей нет габаритов.',u'Selected scope boxes have no bounds.'))
+        settings['_opening_scope_bounds']=bounds
+        regions=List[ElementFilter]([BoundingBoxIntersectsFilter(boxes._outline(boxes._box_points(b))) for b in bounds])
+        collector=collector.WherePasses(LogicalOrFilter(regions))
+    return [el for el in collector if selection.AllowElement(el)]
+
+
 def place(settings):
     from lowlife import opening_tasks_parts as parts
     parts.require_choice(settings['opening_project'],settings.get('opening_object_part',''))
     doc = revit.doc
-    raw = selected_elements(mep.RouteSelectionFilter(settings))
+    from lowlife import tray_boxes_result
+    mode=settings.get('opening_increase','none')
+    initial=None if mode=='auto' else 0 if mode=='none' else int(mode)
+    apply,amount=tray_boxes_result.show(None,settings.get('size_extra_mm') or 0,revit.uidoc,
+                                      preflight=True,initial_increase=initial)
+    if not apply:
+        return
+    settings=dict(settings)
+    settings['opening_increase']='auto' if amount is None else 'none' if not amount else unicode(amount)
+    raw = pick_routes(settings)
     routes, errors = [], []
     for el in raw:
         try:
@@ -122,7 +167,8 @@ def place(settings):
         workset = worksets[0] if len(worksets)==1 else choose({w.Name:w for w in worksets},tr(u'Рабочий набор',u'Workset'))
         if workset is None:
             return
-    with forms.ProgressBar(title=tr(u'Поиск пересечений: {value}/{max_value}',u'Finding crossings: {value}/{max_value}')) as bar:
+    with forms.ProgressBar(title=tr(u'Поиск пересечений: {value}/{max_value}',u'Finding crossings: {value}/{max_value}'),
+                           step=max(1,len(routes)//100)) as bar:
         with revit.Transaction(tr(u'Боксы заданий ВИС',u'VIS task boxes')):
             entries, errors = api.place(doc,routes,link,symbol,settings,workset,
                                        lambda i,n:bar.update_progress(i,n))
@@ -147,7 +193,7 @@ def publish(settings, elements=None):
         for inst,draft in zip(elements,drafts):
             record = registry['tasks'].get(draft['task_id'])
             api.visible_issue(inst,settings,record,bool(record and record['status']=='issued' and (not core.geometry_equal(record['geometry'],draft['geometry']) or
-                record.get('level')!=draft.get('level'))))
+                record.get('level')!=draft.get('level') or record.get('object_part','')!=draft.get('object_part',''))))
         from lowlife.opening_tasks_views import sync_selection_filters
         sync_selection_filters(doc,settings,registry)
     _registry, changes = core.issue(store.registry(doc),drafts,settings['opening_project'],
@@ -317,3 +363,49 @@ def run(role, config_mode=False, action=None):
     except Exception:
         forms.alert(tr(u'Операция не завершена. Текущая транзакция отменена.\n\n{}',
                        u'Operation did not complete. The current transaction was rolled back.\n\n{}').format(traceback.format_exc()))
+
+
+def delete_boxes_from_list(uidoc, rows=None):
+    doc=uidoc.Document
+    candidates=([doc.GetElement(row['uid']) for row in rows] if rows else
+                list(FilteredElementCollector(doc).OfClass(api.FamilyInstance)))
+    options={}
+    for inst in candidates:
+        data=api.metadata(inst) if inst is not None else None
+        if rows and (not data or data.get('owner_uid')!=inst.UniqueId):
+            raise ValueError(tr(u'Выберите собственные боксы текущей модели.',u'Select original boxes in the current model.'))
+        if data and data.get('owner_uid')==inst.UniqueId:
+            options[u'ID {} | {}'.format(boxes._id_int(inst.Id),data['task_id'])]=inst
+    if not options:
+        forms.alert(tr(u'Нет собственных боксов для удаления.',u'No original task boxes to delete.'))
+        return
+    selected=(list(options.values()) if rows else
+              choose(options,tr(u'Удалить боксы — выберите из списка',u'Delete boxes — select from the list'),True))
+    if not selected:
+        return
+    details=u', '.join(unicode(boxes._id_int(inst.Id)) for inst in selected)
+    if not forms.alert(tr(u'Удалить боксы из модели: {}?\nID: {}\n\nИстория выданных заданий сохранится. Удаление не заменяет отзыв задания. Связанные с боксами марки могут быть удалены Revit.',
+                          u'Delete {} boxes from the model?\nIDs: {}\n\nIssued task history remains. Deletion does not withdraw tasks. Revit may delete dependent tags.').format(len(selected),details),yes=True,no=True):
+        return
+    with revit.Transaction(tr(u'Удалить боксы заданий',u'Delete task boxes')):
+        api.delete_boxes(doc,selected)
+
+
+def change_building_from_table(uidoc, rows, settings, value=None):
+    from lowlife import opening_tasks_parts as parts
+    if not rows:
+        raise ValueError(tr(u'Выберите строки боксов в таблице.',u'Select box rows in the table.'))
+    values=parts.catalog(settings['opening_project'])
+    if not values:
+        raise ValueError(tr(u'Обновите номера корпусов из Google-справочника.',u'Refresh building numbers from the Google catalog.'))
+    if value is None:
+        value=choose({item:item for item in values},tr(u'Номер корпуса для выбранных боксов',u'Building number for selected boxes'))
+    if value is None:
+        return
+    parts.require_choice(settings['opening_project'],value)
+    elements=[uidoc.Document.GetElement(row['uid']) for row in rows]
+    if any(el is None for el in elements):
+        raise ValueError(tr(u'Один из боксов удалён. Обновите таблицу.',u'A box was deleted. Refresh the table.'))
+    with revit.Transaction(tr(u'Изменить номер корпуса боксов',u'Change box building number')):
+        api.change_building(uidoc.Document,elements,value,settings)
+    parts.select(settings['opening_project'],'VIS',store.model_id(uidoc.Document),value)

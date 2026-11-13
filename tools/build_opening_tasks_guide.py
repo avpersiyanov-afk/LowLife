@@ -67,6 +67,8 @@ def diagram(role, tab_index, filename):
     badge(1,155)
     x,y=104,204
     for key in groups[tab_index][1]:
+        if key=='change_part':
+            continue  # available from the table context menu
         width=int(d.textlength(labels[key],font=font(17)))+34
         if x+width>1405:x,y=104,y+39
         x+=control(x,y,labels[key])
@@ -101,7 +103,12 @@ def diagram(role, tab_index, filename):
         values=['НЧ-1','ОВиК-ОТВ-0000'+str(i+1),['Выдано','Изменено после выдачи','Черновик'][i] if role=='VIS' else ['Принято','Новое','Замечание'][i],
                 'АР' if role=='AR' or (role=='VIS' and tab_index==1) else 'КР','ОВиК','Учебная модель','Этаж 01']
         x=96
-        for value,(_,width) in zip(values,columns):text(x+8,yy+9,value,14);x+=width
+        for column_index,(value,(_,width)) in enumerate(zip(values,columns)):
+            if role=='VIS' and column_index==0:
+                control(x+4,yy+2,value,True)
+            else:
+                text(x+8,yy+9,value,14)
+            x+=width
     rect((96,top+150,1408,top+164),'#e6e9ed')
     rect((99,top+153,820,top+161),'#bbc5cf')
     text(96,top+178,'Выбрано: 1 | ОВиК-ОТВ-00001 | Размеры: 500 × 300 мм',16)

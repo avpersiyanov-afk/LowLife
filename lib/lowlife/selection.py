@@ -30,6 +30,14 @@ def get_single_selection(
     return doc.GetElement(el_id)
 
 
+def pick_point(uidoc, prompt):
+    """Точка, указанная пользователем кликом на виде. None, если отменено (Esc)."""
+    try:
+        return uidoc.Selection.PickPoint(prompt)
+    except OperationCanceledException:
+        return None
+
+
 def _bic_ids(*names):
     """Множество int-id встроенных категорий по именам; несуществующее имя
     в этой версии Revit молча пропускается."""

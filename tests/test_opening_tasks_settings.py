@@ -59,3 +59,16 @@ def test_installed_discipline_is_used_for_new_tasks(monkeypatch):
     assert settings.for_document({'opening_discipline':'OLD'},doc)['opening_discipline']==u'ОВиК'
     assert 'opening_discipline' not in settings.for_document({},doc)
     assert settings.make('VIS',doc).load_saved_values()['opening_discipline']==u'ОВиК'
+
+
+def test_optional_host_filter_is_not_inherited_and_explicit_clear_is_preserved(tmp_path,monkeypatch):
+    from lowlife.settings_core import JsonStore
+    monkeypatch.setenv('APPDATA',str(tmp_path))
+    JsonStore('LowLifeOther_settings.json').write({'box_host_filter_param':'Example classification'})
+    form=settings.make('VIS')
+    assert form.get_settings_silent()['box_host_filter_param']==''
+    assert not next(f for f in form.fields if f.key=='box_host_filter_param').required
+    form.save_values({'box_host_filter_param':'Explicit classification'})
+    assert form.get_settings_silent()['box_host_filter_param']=='Explicit classification'
+    form.save_values({'box_host_filter_param':''})
+    assert form.get_settings_silent()['box_host_filter_param']==''

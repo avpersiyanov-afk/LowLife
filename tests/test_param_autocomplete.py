@@ -96,6 +96,8 @@ def test_rule_for_key():
     assert pa.rule_for_key("room_mask") == ("params", pa.MASK, None)
     assert pa.rule_for_key("schematic_view_name")[0] == "views"
     assert pa.rule_for_key("view_name_prefixes") == ("view_prefixes", pa.LIST, None)
+    # «Семейство» в настройках «Внесение изменений» — поиск по семействам
+    assert pa.rule_for_key("family_name") == ("families", pa.SINGLE, None)
     assert pa.rule_for_key("family_filter")[0] == "families"
     assert pa.rule_for_key("circuit_system_type")[0] == "system_types"
     assert pa.rule_for_key("cabinet_category_name") == (

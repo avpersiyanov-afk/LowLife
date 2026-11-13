@@ -4,7 +4,7 @@ from System.Collections.Generic import List
 from Autodesk.Revit.DB import (BoundingBoxXYZ, BuiltInCategory, CategoryType, Color,
     ElementId, FamilyInstance, FillPatternElement, FilteredElementCollector,
     OverrideGraphicSettings, RevitLinkGraphicsSettings, LinkVisibility,
-    View, View3D, ViewFamily, ViewFamilyType, XYZ)
+    View, View3D, ViewFamily, ViewFamilyType, DisplayStyle, XYZ)
 from pyrevit import forms, revit
 from lowlife.i18n import tr
 from lowlife import select_list
@@ -14,7 +14,7 @@ from lowlife.opening_tasks_views import unique_name
 from lowlife.loi_check import _unhide_all
 from lowlife.route_preview import zoom_to_fit_points
 
-from lowlife.opening_tasks_visibility import structural_categories, isolate_preview
+from lowlife.opening_tasks_visibility import structural_categories, isolate_preview, transparent_structures
 
 
 def new_view(doc):
@@ -33,8 +33,7 @@ def structures_view(doc):
     for cat in doc.Settings.Categories:
         if view.CanCategoryBeHidden(cat.Id):
             view.SetCategoryHidden(cat.Id,api.boxes._id_int(cat.Id) not in allowed)
-        if api.boxes._id_int(cat.Id) in allowed:
-            view.SetCategoryOverrides(cat.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
+    transparent_structures(doc,view,links=[])
     view.IsSectionBoxActive=False
     store.write(view,dict(schema=1,role='structural_preview'))
     return view
@@ -60,9 +59,12 @@ def focus(doc, inst):
     linked = link.GetLinkDocument()
     structure = next((v for v in FilteredElementCollector(linked).OfClass(View3D)
                       if not v.IsTemplate and (store.read(v) or {}).get('role')=='structural_preview'),None)
-    registry=store.registry(doc)
-    previews=registry.setdefault('box_previews',{})
-    view=doc.GetElement(previews[inst.UniqueId]) if inst.UniqueId in previews else None
+    registry=None
+    view=doc.GetElement(data['preview_uid']) if data.get('preview_uid') else None
+    if view is None:
+        registry=store.registry(doc)
+        previews=registry.setdefault('box_previews',{})
+        view=doc.GetElement(previews[inst.UniqueId]) if inst.UniqueId in previews else None
     if view is not None and not isinstance(view,View3D):
         raise ValueError(tr(u'Сохранённый вид имеет неверный тип.',u'Stored view has an invalid type.'))
     created=view is None
@@ -70,23 +72,6 @@ def focus(doc, inst):
         view=new_view(doc)
         view.Name=unique_name(doc,u'LowLife | Бокс '+str(api.boxes._id_int(inst.Id)))
         previews[inst.UniqueId]=view.UniqueId
-    isolate_preview(doc,view,[inst,source,link])
-    linked_settings=RevitLinkGraphicsSettings()
-    link_visibility(linked_settings,structure)
-    allowed=structural_categories() | set([api.boxes._id_int(inst.Category.Id),
-        api.boxes._id_int(source.Category.Id),int(BuiltInCategory.OST_RvtLinks)])
-    for category in doc.Settings.Categories:
-        if view.CanCategoryBeHidden(category.Id):
-            view.SetCategoryHidden(category.Id,api.boxes._id_int(category.Id) not in allowed)
-    view.SetLinkOverrides(link.Id,linked_settings)
-    view.SetElementOverrides(link.Id,OverrideGraphicSettings().SetSurfaceTransparency(80))
-    blue=Color(30,100,240)
-    overrides=OverrideGraphicSettings().SetProjectionLineColor(blue).SetCutLineColor(blue).SetSurfaceTransparency(0)
-    solid=next((f.Id for f in FilteredElementCollector(doc).OfClass(FillPatternElement) if f.GetFillPattern().IsSolidFill),None)
-    if solid:
-        overrides.SetSurfaceForegroundPatternId(solid).SetSurfaceForegroundPatternColor(blue)
-        overrides.SetCutForegroundPatternId(solid).SetCutForegroundPatternColor(blue)
-    view.SetElementOverrides(inst.Id,overrides)
     bounds=inst.get_BoundingBox(None)
     if bounds is None:
         raise ValueError(tr(u'У бокса нет габарита.',u'Box has no bounding geometry.'))
@@ -96,6 +81,33 @@ def focus(doc, inst):
     crop.Max=bounds.Max.Add(XYZ(margin,margin,margin))
     view.SetSectionBox(crop)
     view.IsSectionBoxActive=True
+    isolate_preview(doc,view,[inst,source,link],crop)
+    configuration=dict(schema=api.core.VERSION,role='box_preview',version=2,owner_uid=inst.UniqueId,
+                       source_uid=source.UniqueId,link_uid=link.UniqueId,
+                       structure_uid=structure.UniqueId if structure is not None else '')
+    if store.read(view)!=configuration:
+        view.ViewTemplateId=ElementId.InvalidElementId
+        view.DisplayStyle=DisplayStyle.ShadingWithEdges
+        linked_settings=RevitLinkGraphicsSettings()
+        link_visibility(linked_settings,structure)
+        allowed=structural_categories() | set([api.boxes._id_int(inst.Category.Id),
+            api.boxes._id_int(source.Category.Id),int(BuiltInCategory.OST_RvtLinks)])
+        for category in doc.Settings.Categories:
+            if view.CanCategoryBeHidden(category.Id):
+                view.SetCategoryHidden(category.Id,api.boxes._id_int(category.Id) not in allowed)
+        view.SetLinkOverrides(link.Id,linked_settings)
+        transparent_structures(doc,view,links=[link])
+        blue=Color(30,100,240)
+        overrides=OverrideGraphicSettings().SetProjectionLineColor(blue).SetCutLineColor(blue).SetSurfaceTransparency(0)
+        solid=next((f.Id for f in FilteredElementCollector(doc).OfClass(FillPatternElement) if f.GetFillPattern().IsSolidFill),None)
+        if solid:
+            overrides.SetSurfaceForegroundPatternId(solid).SetSurfaceForegroundPatternColor(blue)
+            overrides.SetCutForegroundPatternId(solid).SetCutForegroundPatternColor(blue)
+        view.SetElementOverrides(inst.Id,overrides)
+        store.write(view,configuration)
+    if data.get('preview_uid')!=view.UniqueId:
+        data=dict(data,preview_uid=view.UniqueId)
+        store.write(inst,data)
     if created:
         store.save_registry(doc,registry)
     return view,crop

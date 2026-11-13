@@ -128,3 +128,11 @@ try:
     _datum_filter.install(_datum_host.uiapp)
 except Exception as exc:
     _crumb(u'фильтр осей и уровней: {}'.format(exc))
+
+
+try:
+    from lowlife import model_filter_panel as _model_filter
+    from pyrevit import HOST_APP as _model_host
+    _model_filter.install(_model_host.uiapp)
+except Exception as exc:
+    _crumb(u'фильтр наборов и связей: {}'.format(exc))

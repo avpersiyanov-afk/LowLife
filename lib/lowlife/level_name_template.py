@@ -25,10 +25,14 @@ from lowlife.i18n import tr
 BUILDING = u"Корпус"
 FLOOR = u"Этаж"
 COMMENT = u"Комментарий"
+DISCIPLINE = u"Дисциплина"
 
 DEFAULT_TEMPLATE = u"{Дисциплина}_{Корпус}_{Отметка}_{Этаж}_{Комментарий}"
 
 _PLACEHOLDER_RE = re.compile(u"\\{([^{}]*)\\}", re.UNICODE)
+_AUXILIARY_SUFFIX_RE = re.compile(
+    u"\\s*\\(\\s*(?:вспомогательный|вспомогательная|вспомогательное|вспом\\.|auxiliary)\\s*\\)\\s*$",
+    re.UNICODE | re.IGNORECASE)
 
 
 class LevelNameTemplate(object):
@@ -84,7 +88,7 @@ class LevelNameTemplate(object):
                 pattern += u"(?:" + re.escape(lit) + group + u")?"
             else:
                 pattern += re.escape(lit) + group
-            if name in (BUILDING, FLOOR, COMMENT):
+            if name in (BUILDING, FLOOR, COMMENT, DISCIPLINE):
                 self._groups[name] = i + 1
         pattern += re.escape(tail) + u"$"
         self._regex = re.compile(pattern, re.UNICODE | re.DOTALL)
@@ -95,12 +99,13 @@ class LevelNameTemplate(object):
             return u""
         return (match.group(idx) or u"").strip()
 
-    def parse(self, name):
+    def parse(self, name, with_discipline=False):
         """
         (корпус, этаж, комментарий) — корпус и этаж в нижнем регистре
         (сравниваются без учёта регистра), без пробелов по краям; None,
         если имя не подходит под шаблон, этаж (или корпус, если он есть в
-        шаблоне) пустой, или шаблон неверный.
+        шаблоне) пустой, или шаблон неверный. with_discipline=True добавляет
+        четвёртым полем дисциплину в нижнем регистре (пусто, если её нет в маске).
         """
         if self._regex is None or name is None:
             return None
@@ -111,7 +116,26 @@ class LevelNameTemplate(object):
         floor = self._field(m, FLOOR).lower()
         if not floor or (BUILDING in self._groups and not building):
             return None
-        return building, floor, self._field(m, COMMENT)
+        result=(building, floor, self._field(m, COMMENT))
+        return result+(self._field(m, DISCIPLINE).lower(),) if with_discipline else result
+
+
+    def identity(self, name, ignore_auxiliary=False):
+        """Mask identity; optional auxiliary annotation cleanup for fallback only."""
+        parsed=self.parse(name)
+        if parsed is None:
+            return None
+        values=list(parsed[:2])
+        if ignore_auxiliary:
+            values[1]=_AUXILIARY_SUFFIX_RE.sub(u'',values[1]).strip()
+        result=[]
+        for value in values:
+            try:
+                value=u"{}".format(int(value))
+            except (ValueError,TypeError):
+                pass
+            result.append(value)
+        return tuple(result)
 
 
 def validate(template):
