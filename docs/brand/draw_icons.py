@@ -90,6 +90,16 @@ class Canvas(object):
         self.im.resize((96, 96), Image.LANCZOS).save(path)
 
 
+def ugo_legends(c):
+    # A legend: three different symbols with text rows.
+    c.rect((13, 12, 83, 84), BLUE, WHITE, 3)
+    c.circle((30, 30), 7, BLUE, None, 3)
+    c.rect((23, 45, 37, 57), BLUE, None, 3)
+    c.polygon([(30, 65), (38, 77), (22, 77)], ORANGE)
+    for y in (30, 51, 72):
+        c.line([(47, y), (72, y)], BLUE, 3)
+
+
 def link_worksets(c):
     # Two linked model sheets with open/closed workset switches.
     c.rect((14, 15, 56, 68), BLUE, WHITE, 4)
@@ -736,6 +746,7 @@ def change_clouds(c):
 
 
 ICONS = [
+    ("Schematic.panel/UgoLegends.pushbutton", ugo_legends),
     ("ToolsExport.panel/MergePDF.pushbutton", merge_pdf),
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
     ("Tools.panel/DatumFilter.pushbutton", datum_filter),

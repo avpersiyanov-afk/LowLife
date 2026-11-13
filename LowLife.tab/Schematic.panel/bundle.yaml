@@ -2,4 +2,5 @@ title: Схемы
 tooltip: Черновые структурные схемы, строящиеся не от устройств, а от выбора помещений
 layout:
   - BuildRoomSchematic
+  - UgoLegends
 title_en: "Diagrams"
