@@ -81,7 +81,7 @@ def resolver(monkeypatch,doc,local_levels):
         return NS(floor_hits_below=hits)
     monkeypatch.setitem(sys.modules,'lowlife.slab_marks',NS(SlabProbe=probe_factory))
     path=Path(__file__).parents[1]/'lib/lowlife/opening_levels.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Resolver')
     ns=dict(core=core,XYZ=XYZ,Level=Level,FilteredElementCollector=Collector,
             get_element_level=lambda source_doc,element:source_doc.GetElement(element.LevelId),
@@ -134,7 +134,7 @@ def test_wall_ray_intersects_only_ar_floors_and_ignores_holes(monkeypatch):
 def test_opening_wrapper_reuses_assigner_and_verifies_target_and_position(monkeypatch):
     import lowlife
     path=Path(__file__).parents[1]/'lib/lowlife/opening_levels.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='assign_level')
     instance=NS(Id='box-id',LevelId='wrong',Location=NS(Point=XYZ(1,2,30)))
     before=instance.Location.Point

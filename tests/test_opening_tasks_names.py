@@ -22,7 +22,7 @@ def test_russian_names_are_preserved():
 
 def test_unique_view_names_are_compared_after_sanitization():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_views.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='unique_name')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='unique_name')
     # Replace only the local Revit type import; naming behavior stays intact.
     fn.body=[n for n in fn.body if not isinstance(n,ast.ImportFrom)]
     collector=NS(OfClass=lambda cls:[NS(Name='LowLife - Test'),NS(Name='LowLife - Test (2)')])
@@ -33,7 +33,7 @@ def test_unique_view_names_are_compared_after_sanitization():
 
 def test_focus_uses_host_view_when_kr_has_no_prepared_view():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_focus.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='link_visibility')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='link_visibility')
     ns=dict(LinkVisibility=NS(ByHostView='host',ByLinkView='linked'))
     exec(compile(ast.Module(body=[fn],type_ignores=[]),str(path),'exec'),ns)
     result=ns['link_visibility'](NS(),None)

@@ -8,7 +8,7 @@ import pytest
 
 def load_bounds():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_kr_views.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='projected_box')
     ns=dict(XYZ=lambda x,y,z:NS(X=x,Y=y,Z=z),BoundingBoxXYZ=lambda:NS(),tr=lambda ru,en=None:ru)
     exec(compile(ast.Module(body=[fn],type_ignores=[]),str(path),'exec'),ns)

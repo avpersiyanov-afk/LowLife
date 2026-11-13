@@ -8,7 +8,7 @@ import pytest
 @pytest.mark.parametrize('count',[0,13])
 def test_placement_report_exposes_every_reason_in_dialog_and_output(count):
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_ui.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     methods=[n for n in tree.body if isinstance(n,ast.FunctionDef)
              and n.name in ('report_errors','report_placement_result')]
     tables=[];shown=[];alerts=[]

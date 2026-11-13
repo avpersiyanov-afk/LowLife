@@ -57,7 +57,7 @@ def test_existing_retry_logic_is_reused(monkeypatch):
 def test_opening_modules_do_not_import_notes():
     root=Path(__file__).parents[1]/'lib/lowlife'
     for path in list(root.glob('opening*.py'))+[root/'cloud_io.py',root/'background.py']:
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             names=([node.module] if isinstance(node,ast.ImportFrom) else
                    [alias.name for alias in node.names] if isinstance(node,ast.Import) else [])
             assert all(not name or not name.startswith('pnotes') for name in names),path
@@ -66,7 +66,7 @@ def test_opening_modules_do_not_import_notes():
 def test_notes_adapter_keeps_its_own_config_and_error_formatter():
     import ast
     path=Path(__file__).parents[1]/'lib/pnotes/core.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='call')
     transport=cloud_io.Transport()
     transport._post=lambda *args:'{"ok":true}'
@@ -108,7 +108,7 @@ def test_shared_project_reader_keeps_custom_and_builtin_reference_support(monkey
     import sys
     from types import SimpleNamespace as NS
     path=Path(__file__).parents[1]/'lib/lowlife/params.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='read_project_parameter')
     monkeypatch.setitem(sys.modules,'Autodesk.Revit.DB',NS(BuiltInParameter=NS(PROJECT_NUMBER='number')))
     doc=NS(ProjectInformation=NS(get_Parameter=lambda bip:NS(value='BUILTIN'),

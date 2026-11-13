@@ -11,7 +11,7 @@ ROOT=Path(__file__).parents[1]
 
 
 def function(path,name,ns):
-    tree=ast.parse((ROOT/path).read_text())
+    tree=ast.parse((ROOT/path).read_text(encoding='utf-8'))
     node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),str(path),'exec'),ns)
     return ns[name]
@@ -172,7 +172,7 @@ def test_flat_host_detection_is_cached_and_accepts_vertical_cylindrical_sides():
     class Cylinder:
         Axis=Point(0,0,1)
     path=ROOT/'lib/lowlife/tray_boxes.py'
-    tree=ast.parse(path.read_text());cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='_Source')
+    tree=ast.parse(path.read_text(encoding='utf-8'));cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='_Source')
     fn=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='horizontal_host')
     ns=dict(_id_int=lambda x:x,PlanarFace=Plane,CylindricalFace=Cylinder)
     exec(compile(ast.Module(body=[fn],type_ignores=[]),str(path),'exec'),ns)

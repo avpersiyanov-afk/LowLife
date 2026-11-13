@@ -7,7 +7,7 @@ import pytest
 
 def guard(doc, protected, states=None):
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_revit.py'
-    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='assert_safe_replacement')
+    fn=next(n for n in ast.parse(path.read_text(encoding='utf-8')).body if isinstance(n,ast.FunctionDef) and n.name=='assert_safe_replacement')
     class Probe:
         def __init__(self,document):self.doc=document
         def Start(self):self.before=dict(self.doc.elements)

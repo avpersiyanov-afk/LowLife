@@ -20,7 +20,7 @@ XYZ.BasisZ=XYZ(0,0,1)
 
 def geometry_reader():
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_revit.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='host_geometry')
     ns=dict(tr=lambda ru,en=None:ru,XYZ=XYZ,math=math,core=core,
             boxes=NS(_t=lambda v:(v.X,v.Y,v.Z),mm=lambda v:v*304.8),

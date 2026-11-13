@@ -43,7 +43,7 @@ class Transaction:
 @pytest.mark.parametrize('separation,expected_notes',[(2,1),(100,2)])
 def test_labels_are_grouped_idempotent_and_removed_only_after_closure(separation,expected_notes):
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_remark_views.py'
-    tree=ast.parse(path.read_text());fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='sync')
+    tree=ast.parse(path.read_text(encoding='utf-8'));fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='sync')
     view=View3D('view');foreign=View3D('foreign')
     elements={'view':view,'foreign':foreign,'user-note':NS(metadata={'role':'user'})}
     for name,x in [('box1',0),('box2',separation)]:

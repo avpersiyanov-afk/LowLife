@@ -81,7 +81,7 @@ def test_revit_adapter_uses_mep_frame_and_rejects_slanted_wall_before_issuance()
     from pathlib import Path
     from types import SimpleNamespace as NS
     path=Path(__file__).parents[1]/'lib/lowlife/tray_boxes.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='box_for')
     s=math.sqrt(.5)
     route=NS(Location=NS(Curve=NS(Direction=(0,s,s))),Width=100,Height=50,

@@ -136,7 +136,7 @@ def test_preview_unhides_through_existing_element_api_helper():
         List=Generic, ElementId=int, FilteredElementCollector=lambda _: Collector(elements)))
     unhide(None, view)
     assert shown == [1]
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text())
+    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_focus.py').read_text(encoding='utf-8'))
     assert not any(isinstance(n, ast.Attribute) and n.attr == 'GetHiddenElementIds' for n in ast.walk(tree))
     for name in ('structures_view',):
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
@@ -145,7 +145,7 @@ def test_preview_unhides_through_existing_element_api_helper():
 
 
 def test_unschedulable_family_parameters_do_not_discard_created_views():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text())
+    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
     build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
     loop = next(n for n in build.body if isinstance(n, ast.For) and isinstance(n.target, ast.Tuple))
     start = next(i for i, n in enumerate(loop.body) if isinstance(n, ast.Assign)
@@ -240,7 +240,7 @@ def test_control_visibility_isolates_boxes_and_preserves_structures_only_on_plan
 
 
 def test_schedule_filters_by_plain_status_instead_of_multiline_json():
-    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text())
+    tree = ast.parse((ROOT / 'lib/lowlife/opening_tasks_views.py').read_text(encoding='utf-8'))
     build = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'build')
     assignment = next(n for n in ast.walk(build) if isinstance(n, ast.Assign)
                       and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'status_field')

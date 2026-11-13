@@ -8,7 +8,7 @@ from types import SimpleNamespace as NS
 def test_connection_is_saved_only_after_background_validation(monkeypatch):
     from lowlife import opening_tasks_journal as journal
     path=Path(__file__).parents[1]/'lib/lowlife/opening_tasks_journal.py'
-    tree=ast.parse(path.read_text())
+    tree=ast.parse(path.read_text(encoding='utf-8'))
     setup=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='setup')
     cls=next(n for n in setup.body if isinstance(n,ast.ClassDef) and n.name=='ConnectionWindow')
     method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='on_save')

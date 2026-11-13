@@ -10,7 +10,7 @@ PATH=Path(__file__).parents[1]/'lib/lowlife/slab_marks.py'
 
 
 def method(name,ns):
-    tree=ast.parse(PATH.read_text())
+    tree=ast.parse(PATH.read_text(encoding='utf-8'))
     cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='SlabProbe')
     node=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name==name)
     exec(compile(ast.Module(body=[node],type_ignores=[]),str(PATH),'exec'),ns)
