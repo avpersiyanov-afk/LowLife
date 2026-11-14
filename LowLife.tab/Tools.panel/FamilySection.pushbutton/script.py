@@ -69,31 +69,31 @@ def main():
 
     warnings = []
 
+    instances = _collect_instances()
+    if not instances:
+        return
+
+    options = fss.ask_run_options(doc, len(instances))
+    if options is None:
+        return
+
     section_type = family_section.find_by_name(
-        family_section.list_section_types(doc), settings[fss.TYPE_KEY])
+        family_section.list_section_types(doc), options[fss.TYPE_KEY])
     if section_type is None:
-        if settings[fss.TYPE_KEY]:
+        if options[fss.TYPE_KEY]:
             warnings.append(tr(u"Типоразмер разреза «{}» не найден — взят тип по умолчанию.").format(
-                settings[fss.TYPE_KEY]))
+                options[fss.TYPE_KEY]))
         section_type = family_section.default_section_type(doc)
     if section_type is None:
         forms.alert(tr(u"В проекте нет ни одного типоразмера разреза."), title=TITLE, exitscript=True)
 
     template = None
-    if settings[fss.TEMPLATE_KEY]:
+    if options[fss.TEMPLATE_KEY]:
         template = family_section.find_by_name(
-            family_section.list_section_templates(doc), settings[fss.TEMPLATE_KEY])
+            family_section.list_section_templates(doc), options[fss.TEMPLATE_KEY])
         if template is None:
             warnings.append(tr(u"Шаблон вида «{}» не найден — разрез создан без шаблона.").format(
-                settings[fss.TEMPLATE_KEY]))
-
-    instances = _collect_instances()
-    if not instances:
-        return
-
-    options = fss.ask_run_options(len(instances))
-    if options is None:
-        return
+                options[fss.TEMPLATE_KEY]))
 
     if options[fss.COMBINE_KEY] and len(instances) > 1:
         groups = [instances]
