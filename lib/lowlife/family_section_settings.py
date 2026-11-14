@@ -30,11 +30,11 @@ from lowlife import family_section, level_name_template
 
 from System.Windows import (
     Window, WindowStartupLocation, Thickness, FontWeights,
-    HorizontalAlignment, TextWrapping, SizeToContent, ResizeMode
+    HorizontalAlignment, TextWrapping, SizeToContent, ResizeMode, SystemParameters
 )
 from System.Windows.Controls import (
     StackPanel, TextBlock, TextBox, Button, Orientation, ComboBox, CheckBox,
-    RadioButton
+    RadioButton, ScrollViewer, ScrollBarVisibility
 )
 from System.Windows.Media import Brushes
 
@@ -171,14 +171,12 @@ def show_settings_form(doc, values):
     Модальное окно настроек. Возвращает словарь значений или None при
     отмене (или settings_transfer.RELOAD после загрузки из файла).
     """
-    templates = [family_section.safe_name(v) for v in family_section.list_section_templates(doc)]
-    types = [family_section.safe_name(t) for t in family_section.list_section_types(doc)]
-
     result = {"values": None}
 
     win = Window()
     win.Title = tr(u"Настройки: Разрез по семейству")
     win.Width = 520
+    win.MaxHeight = SystemParameters.WorkArea.Height * 0.9
     win.SizeToContent = SizeToContent.Height
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
@@ -192,22 +190,7 @@ def show_settings_form(doc, values):
     root.Children.Add(title)
     _hint(root, tr(u"Значения сохраняются и применяются при каждом запуске кнопки."))
 
-    _label(root, tr(u"Шаблон вида"), bold=True, top=14)
-    template_items = [NO_TEMPLATE] + templates
-    template_cb = _combo(root, template_items, values.get(TEMPLATE_KEY) or NO_TEMPLATE)
-    if not templates:
-        _hint(root, tr(u"В проекте нет шаблонов видов для разрезов."))
-    else:
-        _hint(root, tr(u"Назначается каждому новому разрезу: задаёт видимость категорий, "
-                    u"масштаб, детализацию. «<Без шаблона>» — вид останется как есть."))
-
-    _label(root, tr(u"Типоразмер разреза"), bold=True)
-    type_items = [DEFAULT_TYPE] + types
-    type_cb = _combo(root, type_items, values.get(TYPE_KEY) or DEFAULT_TYPE)
-    _hint(root, tr(u"Каким типом разреза Revit создавать вид — от типа зависит, в какой "
-                u"папке браузера проекта он окажется и как выглядит его обозначение на плане."))
-
-    _label(root, tr(u"Имя разреза"), bold=True)
+    _label(root, tr(u"Маска имени вида"), bold=True)
     mask_box = _textbox(root, values.get(NAME_MASK_KEY) or u"")
     _hint(root, tr(u"Подстановки: ") + u"; ".join(
         u"{} — {}".format(k, tr(d)) for k, d in family_section.NAME_PLACEHOLDERS
@@ -289,11 +272,7 @@ def show_settings_form(doc, values):
             forms.alert(u"\n".join(errors), title=tr(u"Разрез по семейству"))
             return
 
-        template = template_items[template_cb.SelectedIndex] if template_cb.SelectedIndex > 0 else None
-        section_type = type_items[type_cb.SelectedIndex] if type_cb.SelectedIndex > 0 else None
         result["values"] = {
-            TEMPLATE_KEY: u"" if template in (None, NO_TEMPLATE) else unicode(template),
-            TYPE_KEY: u"" if section_type in (None, DEFAULT_TYPE) else unicode(section_type),
             NAME_MASK_KEY: mask_box.Text,
             SIDE_KEY: side,
             FRONT_KEY: front,
@@ -324,7 +303,10 @@ def show_settings_form(doc, values):
 
     root.Children.Add(buttons)
 
-    win.Content = root
+    scroll = ScrollViewer()
+    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    scroll.Content = root
+    win.Content = scroll
     win.ShowDialog()
 
     return result["values"]
@@ -350,21 +332,29 @@ def get_settings_silent():
     return load_saved_values()
 
 
-def ask_run_options(count):
+def ask_run_options(doc, count):
     """
     Окно-вопрос перед построением. count — сколько элементов выбрано.
     Спрашивает:
+      - шаблон вида и типоразмер разреза из текущего проекта;
       - при count > 1: один общий разрез на все элементы или свой на каждый;
       - насколько опустить низ разреза ниже базового уровня, мм.
-    Возвращает {COMBINE_KEY: bool, BOTTOM_KEY: float} (и запоминает ответы
+    Возвращает имена шаблона и типа, режим и отступ (и запоминает ответы
     как значения по умолчанию для следующего раза) или None при отмене.
     """
     saved = load_saved_values()
+    templates = [family_section.safe_name(v) for v in family_section.list_section_templates(doc)]
+    types = [family_section.safe_name(t) for t in family_section.list_section_types(doc)]
+    if not types:
+        forms.alert(tr(u"В проекте нет ни одного типоразмера разреза."),
+                    title=tr(u"Разрез по семейству"))
+        return None
     result = {"values": None}
 
     win = Window()
     win.Title = tr(u"Разрез по семейству")
     win.Width = 420
+    win.MaxHeight = SystemParameters.WorkArea.Height * 0.9
     win.SizeToContent = SizeToContent.Height
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     win.ResizeMode = ResizeMode.NoResize
@@ -377,6 +367,21 @@ def ask_run_options(count):
     title.FontSize = 14
     title.FontWeight = FontWeights.Bold
     root.Children.Add(title)
+
+    _label(root, tr(u"Шаблон вида"), bold=True, top=14)
+    template_items = [NO_TEMPLATE] + templates
+    template_cb = _combo(root, template_items, saved.get(TEMPLATE_KEY) or NO_TEMPLATE)
+    if not templates:
+        _hint(root, tr(u"В проекте нет шаблонов видов для разрезов."))
+    else:
+        _hint(root, tr(u"Назначается каждому новому разрезу: задаёт видимость категорий, "
+                    u"масштаб, детализацию. «<Без шаблона>» — вид останется как есть."))
+
+    _label(root, tr(u"Типоразмер разреза"), bold=True)
+    type_items = [DEFAULT_TYPE] + types
+    type_cb = _combo(root, type_items, saved.get(TYPE_KEY) or DEFAULT_TYPE)
+    _hint(root, tr(u"Каким типом разреза Revit создавать вид — от типа зависит, в какой "
+                u"папке браузера проекта он окажется и как выглядит его обозначение на плане."))
 
     separate_rb = None
     combined_rb = None
@@ -432,7 +437,12 @@ def ask_run_options(count):
             forms.alert(u"\n".join(errors), title=tr(u"Разрез по семейству"))
             return
         combined = bool(combined_rb.IsChecked) if combined_rb is not None else saved[COMBINE_KEY]
-        result["values"] = {COMBINE_KEY: combined, BOTTOM_KEY: bottom}
+        result["values"] = {
+            TEMPLATE_KEY: unicode(template_items[template_cb.SelectedIndex]) if template_cb.SelectedIndex > 0 else u"",
+            TYPE_KEY: unicode(type_items[type_cb.SelectedIndex]) if type_cb.SelectedIndex > 0 else u"",
+            COMBINE_KEY: combined,
+            BOTTOM_KEY: bottom,
+        }
         win.Close()
 
     def on_cancel(sender, args):
@@ -444,7 +454,10 @@ def ask_run_options(count):
     buttons.Children.Add(ok_btn)
     root.Children.Add(buttons)
 
-    win.Content = root
+    scroll = ScrollViewer()
+    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+    scroll.Content = root
+    win.Content = scroll
     win.ShowDialog()
 
     if result["values"] is not None:
