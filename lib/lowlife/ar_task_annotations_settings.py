@@ -30,6 +30,24 @@ def text_for(symbol, settings):
     return unicode(value or u'').replace(u'\\n', u'\r').replace(u'\r\n', u'\r').replace(u'\n', u'\r')
 
 
+def symbols_on_view(doc, view):
+    """Уникальные типоразмеры семейств, реально присутствующие на плане."""
+    from Autodesk.Revit.DB import FamilyInstance, FilteredElementCollector
+    from lowlife import equipment_tags
+
+    result = {}
+    for element in FilteredElementCollector(doc, view.Id).OfClass(FamilyInstance):
+        if not equipment_tags.is_equipment(element):
+            continue
+        symbol = getattr(element, 'Symbol', None)
+        if symbol is not None:
+            result.setdefault(type_key(symbol), symbol)
+    return sorted(result.values(), key=lambda symbol: (
+        unicode(getattr(getattr(symbol, 'Category', None), 'Name', u'')),
+        unicode(getattr(symbol, 'FamilyName', u'')),
+        unicode(equipment_tags._safe_name(symbol))))
+
+
 def load():
     values = dict(STORE.read())
     for field in equipment_tags_settings.SETTINGS.fields:
@@ -37,19 +55,18 @@ def load():
     return values
 
 
-def edit(doc):
-    from Autodesk.Revit.DB import CategoryType, FilteredElementCollector, TextNoteType
+def edit(doc, view):
+    from Autodesk.Revit.DB import FilteredElementCollector, TextNoteType
     from pyrevit import forms
-    from lowlife import select_list, scs_settings, settings_transfer
+    from lowlife import select_list, settings_transfer, equipment_tags
     from lowlife.equipment_tags import _safe_name
 
     while True:
         saved = load()
-        symbols = [s for s in scs_settings.list_symbols_by_categories(doc)
-                   if s.Category is not None and s.Category.CategoryType == CategoryType.Model]
+        symbols = symbols_on_view(doc, view)
         options = []
         for symbol in symbols:
-            label = u'{} | {}'.format(symbol.Category.Name, scs_settings.TypeOption(symbol).name)
+            label = u'{} | {}'.format(symbol.Category.Name, equipment_tags._safe_name(symbol))
             option = forms.TemplateListItem(label, checked=type_key(symbol) in saved.get('selected_types', []))
             option.symbol = symbol
             options.append(option)
@@ -70,7 +87,7 @@ def edit(doc):
         fields.extend(equipment_tags_settings.SETTINGS.fields)
         for symbol in selected:
             fields.append(settings_core.TextField(
-                type_key(symbol), u'{} | {}'.format(symbol.Category.Name, scs_settings.TypeOption(symbol).name),
+                type_key(symbol), u'{} | {}'.format(symbol.Category.Name, equipment_tags._safe_name(symbol)),
                 tr(u'Текст аннотации (пусто — не подписывать)', u'Annotation text (blank — skip)'),
                 hint=tr(u'Для переноса строки введите \\n.', u'Enter \\n for a line break.')))
         editor = settings_core.TextSettings(
@@ -80,6 +97,10 @@ def edit(doc):
             intro=tr(u'Расстояния — в мм на листе. Для изменения списка типов снова откройте Shift+клик.',
                      u'Distances are in paper mm. Shift-click again to change the type selection.'),
             height=700)
+        # The dynamic per-type fields and selected_types must use the same
+        # JsonStore as the button, otherwise transfer buttons would operate on
+        # a temporary store created by TextSettings.
+        editor.store = STORE
         edited = editor.show_settings_form(editor.load_saved_values())
         if edited == settings_transfer.RELOAD:
             continue

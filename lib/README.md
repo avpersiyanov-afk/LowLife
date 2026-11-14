@@ -2992,11 +2992,15 @@ previous_state, unmatched_report, stats, **аргументы sync_levels)`: к�
 `tag_layout.layout` остаются общими с IndependentTag. Без адаптера поведение
 оборудования сохранено. Ошибки адаптера передаются внешней транзакции для отката.
 
-Выбор типов использует `scs_settings.list_symbols_by_categories(doc, None)`
-(все категории, включая ещё не размещённые типы), `TypeOption` и
-`select_list.SelectFromList`. Текст и расстояния редактируются через
-`settings_core.TextSettings`; расстояния берутся из полей `equipment_tags_settings`.
-Хранение — `JsonStore`, файл `LowLifeARTaskAnnotations_settings.json`.
+`symbols_on_view(doc, view)` собирает `FamilyInstance` только с активного плана,
+оставляет модельные элементы через `equipment_tags.is_equipment` и дедуплицирует
+их по `type_key`. Поэтому список настроек содержит ровно одну строку на тип УГО,
+который реально есть на плане; неразмещённые типы из каталога семейства туда не
+попадают. Выбор выполняется через `select_list.SelectFromList`, а текст и
+расстояния редактируются через `settings_core.TextSettings`. Динамические поля
+типов и `selected_types` используют тот же `JsonStore`, что и кнопка, поэтому
+стандартная выгрузка/загрузка переносит список и общий текст каждого типа.
+Хранение — файл `LowLifeARTaskAnnotations_settings.json`.
 `type_key` отличает категорию/семейство/тип без привязки к ElementId проекта;
 ID категории приводится к Python `int` перед сериализацией (Revit 2024+ отдаёт
 `System.Int64`, который JSON IronPython не принимает напрямую). Используется
