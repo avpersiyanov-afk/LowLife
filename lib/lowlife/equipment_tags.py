@@ -655,14 +655,15 @@ def _obstacle_rects(doc, view, frame, own_ids, others, scaled):
 # ОСНОВНОЙ ПРОХОД
 # ------------------------------------------------------------
 
-def run(doc, view, entries, settings):
+def run(doc, view, entries, settings, annotation=None):
     """
     Ставит и раскладывает марки на view. entries — [(элемент, марка или
     None, ElementId типа марки или None)]: марка None — создать новую (тип
     None — «по категории», как Revit). Двигаются ровно эти марки, прочие
     марки на виде — препятствия. У элемента может быть несколько марок,
     поэтому ключ раскладки — id марки. Вызывать внутри транзакции.
-    Возвращает словарь статистики.
+    Возвращает словарь статистики. annotation — необязательный адаптер
+    текстовых примечаний (create/prepare/head/place); без него — IndependentTag.
     """
     stats = {"created": 0, "moved": 0, "no_bbox": 0, "failed": 0,
              "overlaps": 0, "crossings": 0, "upper_floor": 0, "no_symbol": 0,
@@ -719,9 +720,14 @@ def run(doc, view, entries, settings):
             try:
                 bb = el.get_BoundingBox(view)
                 depth = frame.depth(bb.Min) if bb is not None else 0.0
-                tag = _create_tag(doc, view, el, type_id, frame.xyz(anchor, depth))
+                point = frame.xyz(anchor, depth)
+                tag = (annotation.create(doc, view, el, type_id, point)
+                       if annotation is not None else
+                       _create_tag(doc, view, el, type_id, point))
                 stats["created"] += 1
             except Exception:
+                if annotation is not None:
+                    raise  # текст и его привязка должны сохраниться вместе
                 stats["failed"] += 1
                 continue
         work.append((el, tag, rect, anchor, attached))
@@ -731,6 +737,9 @@ def run(doc, view, entries, settings):
 
     # 2. габарит марок без выноски
     for _el, tag, _r, _a, _at in work:
+        if annotation is not None:
+            annotation.prepare(tag, _el)
+            continue
         try:
             tag.HasLeader = False
         except Exception:
@@ -743,17 +752,19 @@ def run(doc, view, entries, settings):
     for el, tag, rect, anchor, attached in work:
         trect = frame.rect(tag.get_BoundingBox(view))
         if trect is None:
+            if annotation is not None:
+                raise ValueError("Text annotation has no bounds on the active view")
             stats["failed"] += 1
             continue
         # Revit подводит выноску к середине ПОЛНОЙ высоты марки
         attach_v = (trect[1] + trect[3]) * 0.5
-        if upper_floor_only(doc, tag, two_floor_cache):
+        if annotation is None and upper_floor_only(doc, tag, two_floor_cache):
             # раскладываем только верхний этаж (выноска — к его нижнему
             # краю, черте между этажами); смещение головы ниже считается
             # от центра этой половины, так что запись позиции не меняется
             trect = (trect[0], attach_v, trect[2], trect[3])
             stats["upper_floor"] += 1
-        head = tag.TagHeadPosition
+        head = annotation.head(tag) if annotation is not None else tag.TagHeadPosition
         hu, hv = frame.uv(head)
         cu, cv = tag_layout.rect_center(trect)
         key = id_int(tag.Id)
@@ -777,12 +788,18 @@ def run(doc, view, entries, settings):
         el, tag, (ou, ov), depth, attached = info[p.key]
         cu, cv = tag_layout.rect_center(p.tag_rect)
         try:
+            if annotation is not None:
+                annotation.place(tag, frame, (cu + ou, cv + ov), depth, p)
+                stats["moved"] += 1
+                continue
             tag.TagHeadPosition = frame.xyz((cu + ou, cv + ov), depth)
             _set_leader(tag, _tag_reference(tag, el),
                         frame.xyz(p.end, depth), frame.xyz(p.elbow, depth),
                         attached=attached)
             stats["moved"] += 1
         except Exception:
+            if annotation is not None:
+                raise
             stats["failed"] += 1
             continue
         # конец выноски у УГО свободный — следить за прибором будет updater

@@ -1581,6 +1581,7 @@
  "Марки этих элементов — на активном виде (если выгружается активный вид) или на всех видах. Изменённое \"tag_head_mm\" при загрузке переносит голову марки.": "Tags of these elements — in the active view (if the active view is exported) or in all views. A changed \"tag_head_mm\" moves the tag head on load.",
  "Маркировать нечего: под наклоном — {}, уже с маркой на этом виде — {}. Чтобы переложить марки — режим «{}».": "Nothing to tag: sloped — {}, already tagged in this view — {}. To rearrange tags use the «{}» mode.",
  "Маркировать оборудование смежной модели": "Tag equipment in a linked model",
+ "Маркировка задания для АР": "AR task annotations",
  "Маркировка": "Tagging",
  "Маркировка видимого оборудования связей требует Revit 2024 или новее.": "Tagging visible equipment in links requires Revit 2024 or newer.",
  "Маркировка контроллера": "Controller tag",

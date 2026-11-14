@@ -501,13 +501,14 @@ def list_wire_catalog_items(doc, marker_param_name=None):
     return list_wire_catalog_rows(doc, marker_param_name)
 
 
-def list_symbols_by_categories(doc, builtin_categories):
+def list_symbols_by_categories(doc, builtin_categories=None):
     """
     Все загруженные в проект типоразмеры для перечисленных
     BuiltInCategory (включая типы без вставленных экземпляров, см.
-    list_generic_model_symbols).
+    list_generic_model_symbols). None — все категории семейств.
     """
-    category_ids = set(ElementId(bic) for bic in builtin_categories)
+    category_ids = (set(ElementId(bic) for bic in builtin_categories)
+                    if builtin_categories is not None else None)
     symbols = []
 
     families = FilteredElementCollector(doc).OfClass(Family)
@@ -516,7 +517,7 @@ def list_symbols_by_categories(doc, builtin_categories):
         try:
             if family.FamilyCategory is None:
                 continue
-            if family.FamilyCategory.Id not in category_ids:
+            if category_ids is not None and family.FamilyCategory.Id not in category_ids:
                 continue
         except:
             continue

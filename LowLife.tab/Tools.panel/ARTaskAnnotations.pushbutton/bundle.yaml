@@ -1,0 +1,8 @@
+title: "Маркировка\nзадания для АР"
+title_en: "AR task\nannotations"
+tooltip: >-
+  Текстовые аннотации задания для АР на активном плане с раскладкой как у марок оборудования.
+  Shift+клик — выбор типов семейств, текст для каждого типа, стиль текста и отступы.
+tooltip_en: >-
+  Place AR task text annotations on the active plan using the equipment tag layout.
+  Shift-click to select family types, text for each type, text style and spacing.
