@@ -87,7 +87,7 @@ def test_settings_are_isolated_and_invalid_distances_use_common_defaults(tmp_pat
     assert saved['selected_types'] == []
 
 
-def test_type_selection_uses_checked_rows_and_retains_unplaced_types(type_api):
+def test_type_selection_uses_checked_rows_from_active_plan(type_api):
     # Execute the real settings flow against the list/window boundary.
     scope = dict(config.__dict__)
     a, b = symbol(name='A'), symbol(name='B', element_id=2)
@@ -99,7 +99,9 @@ def test_type_selection_uses_checked_rows_and_retains_unplaced_types(type_api):
             self.name, self.state = label, checked
     saved = {'selected_types': []}
     class Editor(object):
+        last = None
         def __init__(self, *args, **kwargs):
+            Editor.last = self
             self.fields = args[4]
         def load_saved_values(self):
             return {}
@@ -120,16 +122,34 @@ def test_type_selection_uses_checked_rows_and_retains_unplaced_types(type_api):
             'pyrevit': Obj(forms=Obj(TemplateListItem=Option)),
             'lowlife.equipment_tags': Obj(id_int=int, _safe_name=lambda obj: obj.name),
             'lowlife.select_list': Obj(SelectFromList=Obj(show=show)),
-            'lowlife.scs_settings': Obj(list_symbols_by_categories=lambda doc: [a, b],
-                                       TypeOption=lambda sym: Obj(name=sym.name)),
             'lowlife.settings_transfer': Obj(RELOAD='reload')}):
-        scope.update(load=lambda: saved, STORE=Obj(update=saved.update),
+        saved_store = Obj(update=saved.update)
+        scope.update(load=lambda: saved, STORE=saved_store,
+                     symbols_on_view=lambda doc, view: [a, b],
                      settings_core=Obj(TextSettings=Editor,
                                        ChoiceField=config.settings_core.ChoiceField,
                                        TextField=config.settings_core.TextField))
         definitions('lib/lowlife/ar_task_annotations_settings.py', ['edit'], scope)
-        scope['edit'](Obj())
+        scope['edit'](Obj(), Obj(Id=1))
     assert saved['selected_types'] == [config.type_key(b)]
+    assert Editor.last.store is saved_store
+
+
+def test_symbols_on_view_returns_unique_equipment_types(type_api):
+    first = symbol(name='A', element_id=1)
+    duplicate = symbol(name='A', element_id=2)
+    second = symbol(name='B', element_id=3)
+    instances = [Obj(Symbol=first), Obj(Symbol=duplicate), Obj(Symbol=second)]
+    db = Obj(FamilyInstance='family',
+             FilteredElementCollector=lambda doc, view_id: Obj(
+                 OfClass=lambda cls: instances))
+    from unittest.mock import patch
+    with patch.dict(sys.modules, {
+            'Autodesk': Obj(), 'Autodesk.Revit': Obj(), 'Autodesk.Revit.DB': db,
+            'lowlife.equipment_tags': Obj(
+                id_int=int, _safe_name=lambda obj: obj.name,
+                is_equipment=lambda element: True)}):
+        assert config.symbols_on_view(Obj(), Obj(Id=10)) == [first, second]
 
 
 @pytest.mark.parametrize('text_mode,fail_stage', [(False, None), (True, None),

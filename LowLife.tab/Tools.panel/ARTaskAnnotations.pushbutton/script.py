@@ -13,17 +13,17 @@ doc = revit.doc
 if doc is None:
     forms.alert(tr(u'Откройте проект Revit.', u'Open a Revit project.'), exitscript=True)
 
-if EXEC_PARAMS.config_mode:
-    edited = config.edit(doc)
-    forms.alert(tr(u'Настройки сохранены.') if edited is not None else tr(u'Отменено.'), exitscript=True)
-
 view = doc.ActiveView
 if not isinstance(view, ViewPlan) or view.IsTemplate:
     forms.alert(tr(u'Откройте план для маркировки задания АР.',
                    u'Open a plan to place AR task annotations.'), exitscript=True)
+
+if EXEC_PARAMS.config_mode:
+    edited = config.edit(doc, view)
+    forms.alert(tr(u'Настройки сохранены.') if edited is not None else tr(u'Отменено.'), exitscript=True)
 settings = config.load()
 if 'selected_types' not in settings:
-    settings = config.edit(doc)
+    settings = config.edit(doc, view)
     if settings is None:
         forms.alert(tr(u'Отменено.'), exitscript=True)
 

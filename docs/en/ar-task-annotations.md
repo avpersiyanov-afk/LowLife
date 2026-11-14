@@ -7,7 +7,8 @@ for every visible instance of a configured family type in the current model
 on the active plan.
 
 1. **Shift-click** the button and check the required family types. The searchable
-   list includes loaded types with no placed instances.
+   list is collected from the active plan; each family type appears once even when
+   several instances of it are placed.
 2. Continue to text and spacing. Choose a Revit text type and enter the task text
    for each selected family type. Blank text disables creation and updates for
    that type. Enter `\n` for a line break.
@@ -15,8 +16,11 @@ on the active plan.
 
 The first run opens settings automatically. Settings are stored in
 `%APPDATA%\pyRevit\LowLifeARTaskAnnotations_settings.json`; standard LowLife
-settings export/import is available. Types are matched by category, family name
-and type name, so separate types of one family can use different text.
+settings export/import is available. The type list is rebuilt from the active
+plan and duplicate instances are collapsed into one row. Types are matched by
+category, family name and type name, so separate types of one family can use
+different text. One shared text is stored for every selected type and applied to
+all its instances; exported settings can be imported on another computer.
 
 Uses the equipment tag layout: stacks/columns, symbol bounds and nearby equipment,
 tags and text as obstacles. Offset, gap, shoulder length and cluster distance are
