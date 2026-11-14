@@ -209,6 +209,7 @@ THEMES = {
         (u"Tools", u"ParkingMarks"),
         (u"Tools", u"TagTrays"),
         (u"Tools", u"TagEquipment"),
+        (u"Tools", u"ARTaskAnnotations"),
         (u"Tools", u"CropView"),
         (u"Tools", u"LineBypass"),
         (u"Tools", u"LinkTraysToExcel"),

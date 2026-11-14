@@ -571,6 +571,17 @@ def tag_trays(c):
         c.line([(50, y + 8), (80, y + 8)], WHITE, 3)
 
 
+def ar_task_annotations(c):
+    """Семейства на плане и две текстовые выноски задания АР."""
+    c.rect((10, 55, 30, 79), BLUE, WHITE, 4, 2)
+    c.rect((42, 63, 61, 85), BLUE, WHITE, 4, 2)
+    for x, y, top in ((20, 55, 20), (52, 63, 40)):
+        c.line([(x, y), (x, top), (62, top)], ORANGE, 3)
+        c.circle((x, y), 3, None, ORANGE)
+        c.line([(64, top - 6), (87, top - 6)], BLUE, 4)
+        c.line([(64, top), (81, top)], BLUE, 3)
+
+
 def compare_link_datums(c):
     """«Оси и уровни КФП»: оси с марками-кружками и уровень с отметкой
     (модель — синие), поверх — те же оси/уровень связи оранжевым пунктиром;
@@ -756,6 +767,7 @@ def change_clouds(c):
 
 
 ICONS = [
+    ("Tools.panel/ARTaskAnnotations.pushbutton", ar_task_annotations),
     ("Schematic.panel/UgoLegends.pushbutton", ugo_legends),
     ("ToolsExport.panel/MergePDF.pushbutton", merge_pdf),
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
