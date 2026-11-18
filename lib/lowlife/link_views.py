@@ -80,6 +80,13 @@ def compatible_views(link_doc, host_view):
                   key=lambda v: safe_name(v).lower())
 
 
+def host_views(doc):
+    """Return all non-template project views for the host-view tree."""
+    db = _db()
+    return sorted([v for v in db.FilteredElementCollector(doc).OfClass(db.View)
+                   if not v.IsTemplate], key=lambda v: safe_name(v).lower())
+
+
 def current_settings(host_view, link):
     """Use instance settings, or inherited type settings if no override exists."""
     settings = host_view.GetLinkOverrides(link.Id)
