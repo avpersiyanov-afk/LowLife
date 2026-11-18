@@ -8,8 +8,8 @@ from lowlife import fire_boxes_core as core, fire_boxes_settings as cfg
 
 
 @pytest.mark.parametrize('product,rating,extra', [
-    ('FIREBOX', 90, (100, 100)), ('FIREBOX', 150, (150, 150)),
-    ('FIREBOX', 180, (180, 180)), ('FIREBOX', 240, (240, 240)),
+    ('FIREBOX', 90, (100, 310)), ('FIREBOX', 150, (150, 385)),
+    ('FIREBOX', 180, (180, 430)), ('FIREBOX', 240, (240, 520)),
     ('OSK', 90, (260, 290)), ('OSK', 180, (280, 290)), ('OSK', 240, (310, 270)),
 ])
 def test_manufacturer_calculator_reference_cases(product, rating, extra):
@@ -17,6 +17,37 @@ def test_manufacturer_calculator_reference_cases(product, rating, extra):
     values.update(product=product, rating=rating, trays=[dict(width_mm=600, height_mm=200)])
     section = core.layout(values)
     assert (section['width'], section['height']) == (600 + extra[0], 200 + extra[1])
+
+
+@pytest.mark.parametrize('rating,minimum', [(90,150), (150,175), (180,190), (240,220)])
+def test_firebox_uses_atr_service_clearances(rating, minimum):
+    values = cfg.defaults()
+    values.update(product='FIREBOX', rating=rating,
+                  trays=[dict(width_mm=600, height_mm=200)])
+    section = core.layout(values)
+    assert section['bottom_clear'] == core.FIREBOX_BOTTOM_CLEARANCE
+    assert section['top_clear'] == minimum
+    assert section['height'] == 200 + 2 * core.FIREBOX_WALLS[rating] + 60 + minimum
+
+
+def test_firebox_can_request_larger_lid_service_gap_but_not_less():
+    values = cfg.defaults()
+    values.update(product='FIREBOX', rating=180,
+                  trays=[dict(width_mm=600, height_mm=200)])
+    values['top_clearance_mm'] = 250
+    assert core.layout(values)['top_clear'] == 250
+    values['top_clearance_mm'] = 189
+    with pytest.raises(ValueError):
+        core.layout(values)
+
+
+def test_legacy_firebox_metadata_keeps_original_envelope_for_contents():
+    values = cfg.defaults()
+    values.update(product='FIREBOX', rating=180,
+                  _legacy_firebox_geometry=True,
+                  trays=[dict(width_mm=600, height_mm=200)])
+    section = core.layout(values)
+    assert (section['width'], section['height']) == (780, 380)
 
 
 def test_osks_150_minutes_cannot_use_firebox_rule():

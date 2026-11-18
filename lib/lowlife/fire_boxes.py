@@ -172,6 +172,11 @@ def write_data(element, values):
     from Autodesk.Revit.DB.ExtensibleStorage import Entity
     entity = Entity(schema())
     values = dict(values, owner_uid=element.UniqueId)
+    settings = values.get('settings')
+    if isinstance(settings, dict) and settings.get('product') == 'FIREBOX':
+        # Distinguish new ATR-sized enclosures from pre-ATR metadata when
+        # contents are inserted later.  The marker is internal storage only.
+        values['firebox_atr_version'] = 0 if settings.get('_legacy_firebox_geometry') else 1
     entity.Set[String](schema().GetField('Data'), unicode(json.dumps(values, ensure_ascii=False)))
     element.SetEntity(entity)
 
@@ -466,6 +471,11 @@ def add_trays(doc, elements, fallback, tray_type=None):
             raise ValueError(tr(u'Участок {} не относится к типу короба из настроек.',
                                 u'Segment {} does not use the configured enclosure type.').format(key))
         configs[key] = copy.deepcopy(metadata['settings'] if metadata else fallback)
+        if (metadata and metadata.get('firebox_atr_version') is None and
+                configs[key].get('product') == 'FIREBOX'):
+            # Old FIREBOX metadata predates the A7-ФБ service-clearance
+            # sizing.  Preserve its modeled envelope while adding contents.
+            configs[key]['_legacy_firebox_geometry'] = True
         configs[key]['inside_flag_param'] = fallback['inside_flag_param']
         configs[key]['enclosure_note_param'] = fallback['enclosure_note_param']
         for index, row in enumerate(configs[key]['trays']):
@@ -561,30 +571,141 @@ def _box_settings_for_trays(settings, curves):
     return result
 
 
-def add_boxes(doc, elements, fallback):
-    """Create fire enclosures along selected cable-tray runs.
+def _curve_components(curves, fittings):
+    """Return connected curve components, including direct curve links."""
+    adjacency = dict((key, set()) for key in curves)
+    for fitting in fittings.values():
+        keys = [key for key in connected_curves(fitting) if key in curves]
+        for key in keys:
+            adjacency[key].update(other for other in keys if other != key)
+    for key, curve in curves.items():
+        for connector in connectors(curve):
+            for ref in connector.AllRefs:
+                other = eid(ref.Owner.Id)
+                if other in curves and other != key:
+                    adjacency[key].add(other)
+                    adjacency[other].add(key)
+    result, seen = [], set()
+    for root in sorted(curves):
+        if root in seen:
+            continue
+        queue, component = [root], []
+        seen.add(root)
+        while queue:
+            key = queue.pop(0)
+            component.append(key)
+            for other in sorted(adjacency[key]):
+                if other not in seen:
+                    seen.add(other)
+                    queue.append(other)
+        result.append(component)
+    return result
 
-    Each selected connected run gets an enclosure segment for every tray
-    segment and a matching enclosure fitting at every tray junction.  The
-    original trays and all fittings participating in the run are marked as
-    OKK elements in the same transaction.
+
+def _parallel_component_groups(curves, fittings):
+    """Group disconnected, overlapping straight parallel tray runs.
+
+    A selected run may contain more than one curve (for example, a straight
+    segment joined to another segment by a reducer or a transition).  The
+    previous implementation only considered one-curve components, so two
+    parallel runs with their own fittings bypassed the merge and produced one
+    enclosure per run.  Components containing a real bend or branch remain
+    separate because a single straight enclosure cannot represent them.
     """
-    workset_id = resolve_workset(doc, fallback.get('box_workset_name', ''))
-    curves, fittings = resolve_route(elements)
-    curves = dict((key, curve) for key, curve in curves.items() if isinstance(curve, CableTray))
-    if not curves:
-        raise ValueError(tr(u'Выберите кабельные лотки или их соединительные детали.',
-                            u'Select cable trays or their fittings.'))
-    if any(not isinstance(curve.Location.Curve, DB.Line) for curve in curves.values()):
-        raise ValueError(tr(u'Используйте прямые участки лотков, соединённые деталями.',
-                            u'Use straight tray segments connected by fittings.'))
-    element_type = doc.GetElement(fallback.get('box_type_uid')) if fallback.get('box_type_uid') else None
-    if element_type is None or not isinstance(element_type, (CableTrayType, DuctType)):
-        raise ValueError(tr(u'Выберите тип короба в настройках.',
-                            u'Select an enclosure type in settings.'))
-    system_type = doc.GetElement(fallback.get('system_type_uid')) if fallback.get('system_type_uid') else None
-    box_settings = _box_settings_for_trays(fallback, curves)
-    section = core.layout(box_settings)
+    components = _curve_components(curves, fittings)
+    ends = dict((key, [coords(curve.Location.Curve.GetEndPoint(i)) for i in (0, 1)])
+                for key, curve in curves.items())
+    grouped, used = [], set()
+    tolerance = 0.5 / 304.8
+    candidates = []
+    for component in components:
+        root = sorted(component)[0]
+        root_start, root_end = ends[root]
+        root_direction = core.unit(core.sub(root_end, root_start))
+        # Only a straight component can be represented by the one-box
+        # geometry below.  Bent/branched components continue through the
+        # regular route builder, which creates their fittings correctly.
+        if any(abs(abs(core.dot(root_direction,
+                              core.unit(core.sub(ends[key][1], ends[key][0])))) - 1.0) > 1e-5
+               for key in component if key != root):
+            continue
+        minimum = min(core.dot(point, root_direction)
+                      for key in component for point in ends[key])
+        maximum = max(core.dot(point, root_direction)
+                      for key in component for point in ends[key])
+        candidates.append((component, root_direction, minimum, maximum))
+
+    for index, (root_component, root_direction, root_min, root_max) in enumerate(candidates):
+        if index in used:
+            continue
+        group = list(root_component)
+        used.add(index)
+        for other_index in range(index + 1, len(candidates)):
+            if other_index in used:
+                continue
+            other_component, direction, other_min, other_max = candidates[other_index]
+            if abs(abs(core.dot(root_direction, direction)) - 1.0) > 1e-5:
+                continue
+            other_min = min(core.dot(point, root_direction)
+                            for key in other_component for point in ends[key])
+            other_max = max(core.dot(point, root_direction)
+                            for key in other_component for point in ends[key])
+            if min(root_max, other_max) + tolerance < max(root_min, other_min):
+                continue
+            group.extend(other_component)
+            used.add(other_index)
+            # Keep growing the covered interval so overlap is transitive:
+            # [0, 10] + [5, 15] + [12, 20] is one continuous parallel group.
+            root_min = min(root_min, other_min)
+            root_max = max(root_max, other_max)
+        grouped.append(group)
+    return grouped
+
+
+def _parallel_box_geometry(curves, frames, settings):
+    """Return a one-box section and route offset around parallel trays."""
+    reference = sorted(curves)[0]
+    start, end = [coords(curves[reference].Location.Curve.GetEndPoint(i)) for i in (0, 1)]
+    tangent = core.unit(core.sub(end, start))
+    box_right, box_up = frames[reference]
+    bounds, longitudinal = [], []
+    for key, curve in curves.items():
+        curve_start, curve_end = [coords(curve.Location.Curve.GetEndPoint(i)) for i in (0, 1)]
+        center = core.mul(core.add(curve_start, curve_end), 0.5)
+        offset = core.sub(center, start)
+        x = core.dot(offset, box_right)
+        z = core.dot(offset, box_up)
+        row_right, row_up = frames[key]
+        half_x = (abs(core.dot(row_right, box_right)) * curve.Width * 304.8 / 2.0 +
+                  abs(core.dot(row_up, box_right)) * curve.Height * 304.8 / 2.0)
+        half_z = (abs(core.dot(row_right, box_up)) * curve.Width * 304.8 / 2.0 +
+                  abs(core.dot(row_up, box_up)) * curve.Height * 304.8 / 2.0)
+        bounds.append((x * 304.8 - half_x, x * 304.8 + half_x,
+                       z * 304.8 - half_z, z * 304.8 + half_z))
+        longitudinal.extend(core.dot(point, tangent) for point in (curve_start, curve_end))
+    min_x = min(item[0] for item in bounds)
+    max_x = max(item[1] for item in bounds)
+    min_z = min(item[2] for item in bounds)
+    max_z = max(item[3] for item in bounds)
+    result = copy.deepcopy(settings)
+    result['arrangement'] = 'horizontal'
+    result['gap_mm'] = 0.0
+    result['trays'] = [dict(width_mm=max_x-min_x, height_mm=max_z-min_z, tray_type_uid='')]
+    section = core.layout(result)
+    center_x = (min_x + max_x) / 2.0
+    center_z = (min_z + max_z) / 2.0 - section['trays'][0]['z']
+    first, last = min(longitudinal), max(longitudinal)
+    base = start
+    route_start = core.add(base, core.mul(tangent, first - core.dot(base, tangent)))
+    route_end = core.add(base, core.mul(tangent, last - core.dot(base, tangent)))
+    shift = core.add(core.mul(box_right, center_x/304.8), core.mul(box_up, center_z/304.8))
+    return (result, section, core.add(route_start, shift), core.add(route_end, shift), reference)
+
+
+def _create_box_route(doc, curves, fittings, fallback, element_type, system_type, workset_id):
+    """Create boxes for one connected route component."""
+    settings = _box_settings_for_trays(fallback, curves)
+    section = core.layout(settings)
     ends, frames = _route_frames(curves, fittings)
     shifted = dict((key, list(value)) for key, value in ends.items())
     nodes = _junctions(curves, fittings, shifted)
@@ -600,7 +721,6 @@ def add_boxes(doc, elements, fallback):
                            xyz(shifted[key][0]), xyz(shifted[key][1]),
                            section['width'], section['height'])
         assign_workset(box, workset_id)
-        # Keep the opening side of a tray and the box section aligned.
         align_tray_section(doc, box, xyz(shifted[key][0]), xyz(shifted[key][1]),
                            coords(connectors(source)[0].CoordinateSystem.BasisY))
         box_by_source[key] = box
@@ -612,12 +732,70 @@ def add_boxes(doc, elements, fallback):
             doc.Regenerate()
             for member in fitting_members(fitting).values():
                 assign_workset(member, workset_id)
-                note(member, box_settings)
-                write_data(member, dict(version=1, settings=box_settings))
+                note(member, settings)
+                write_data(member, dict(version=1, settings=settings))
                 created.append(member)
     for box in box_by_source.values():
-        note(box, box_settings)
-        write_data(box, dict(version=1, settings=box_settings, tray_ids=source_ids))
+        note(box, settings)
+        write_data(box, dict(version=1, settings=settings, tray_ids=source_ids))
+    return created
+
+
+def _create_parallel_box(doc, curves, fallback, element_type, system_type, workset_id):
+    """Create one enclosure around disconnected parallel tray segments."""
+    ends, frames = _route_frames(curves, {})
+    settings, section, start, end, reference = _parallel_box_geometry(curves, frames, fallback)
+    source = curves[reference]
+    box = create_curve(doc, element_type, system_type, source.ReferenceLevel.Id,
+                       xyz(start), xyz(end), section['width'], section['height'])
+    assign_workset(box, workset_id)
+    align_tray_section(doc, box, xyz(start), xyz(end), frames[reference][1])
+    source_ids = [curve.UniqueId for curve in curves.values()]
+    note(box, settings)
+    write_data(box, dict(version=1, settings=settings, tray_ids=source_ids))
+    return [box]
+
+
+def add_boxes(doc, elements, fallback):
+    """Create fire enclosures along selected cable-tray runs.
+
+    Each selected connected run gets an enclosure segment for every tray
+    segment and a matching enclosure fitting at every tray junction.
+    Disconnected overlapping parallel runs are grouped into one enclosure
+    sized around their combined cross-section. The original trays and all
+    fittings participating in the run are marked as OKK elements together.
+    """
+    workset_id = resolve_workset(doc, fallback.get('box_workset_name', ''))
+    curves, fittings = resolve_route(elements)
+    curves = dict((key, curve) for key, curve in curves.items() if isinstance(curve, CableTray))
+    if not curves:
+        raise ValueError(tr(u'Выберите кабельные лотки или их соединительные детали.',
+                            u'Select cable trays or their fittings.'))
+    if any(not isinstance(curve.Location.Curve, DB.Line) for curve in curves.values()):
+        raise ValueError(tr(u'Используйте прямые участки лотков, соединённые деталями.',
+                            u'Use straight tray segments connected by fittings.'))
+    element_type = doc.GetElement(fallback.get('box_type_uid')) if fallback.get('box_type_uid') else None
+    if element_type is None or not isinstance(element_type, (CableTrayType, DuctType)):
+        raise ValueError(tr(u'Выберите тип короба в настройках.',
+                            u'Select an enclosure type in settings.'))
+    system_type = doc.GetElement(fallback.get('system_type_uid')) if fallback.get('system_type_uid') else None
+    created = []
+    components = _curve_components(curves, fittings)
+    parallel_groups = [group for group in _parallel_component_groups(curves, fittings) if len(group) > 1]
+    parallel_keys = set(key for group in parallel_groups for key in group)
+    for group in parallel_groups:
+        group_curves = dict((key, curves[key]) for key in group)
+        created.extend(_create_parallel_box(doc, group_curves, fallback,
+                                            element_type, system_type, workset_id))
+    for component in components:
+        if any(key in parallel_keys for key in component):
+            continue
+        group_curves = dict((key, curves[key]) for key in component)
+        group_fittings = dict((key, fitting) for key, fitting in fittings.items()
+                              if any(eid(curve.Id) in group_curves
+                                     for curve in connected_curves(fitting).values()))
+        created.extend(_create_box_route(doc, group_curves, group_fittings, fallback,
+                                         element_type, system_type, workset_id))
     # Mark both explicitly selected details and the complete connected route.
     marked = {}
     for element in list(curves.values()) + list(fittings.values()):
