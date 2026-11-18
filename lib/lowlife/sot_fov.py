@@ -2006,10 +2006,14 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         if room_rings is None:
             status = u"ok_no_room"
 
-    used_room = room_rings is not None
+    # Clip only to the Room outer boundary. Inner GetBoundarySegments loops
+    # are internal walls/room-separation lines and must not create extra
+    # cut-outs in the camera zone.
+    clip_rings = room_rings[:1] if room_rings else None
+    used_room = clip_rings is not None
 
-    cl = _zone_curveloop(center, base, half, near_r, far_r, room_rings, ray_count, z)
-    if cl is None and room_rings is not None:
+    cl = _zone_curveloop(center, base, half, near_r, far_r, clip_rings, ray_count, z)
+    if cl is None and clip_rings is not None:
         # обрезка по границе помещения «съела» весь контур — строим без
         # обрезки, но помечаем (см. статус ok_clip_failed)
         cl = _zone_curveloop(center, base, half, near_r, far_r, None, ray_count, z)
@@ -2019,7 +2023,7 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
     if cl is None:
         return (cam, u"bad_geometry",
                 tr(u"контур вырожден (near={:.2f} far={:.2f} фт, обрезка={})").format(
-                    near_r, far_r, tr(u"да") if room_rings is not None else tr(u"нет")))
+                    near_r, far_r, tr(u"да") if clip_rings is not None else tr(u"нет")))
 
     try:
         fr = FilledRegion.Create(doc, frt.Id, view.Id, List[CurveLoop]([cl]))
@@ -2046,7 +2050,7 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         clip_note = tr(u"без обрезки по помещению — {}").format(room_note or tr(u"не найдено"))
     elif used_room:
         clip_note = tr(u"обрезка по помещению: {} ({} сегм.)").format(
-            room_note or u"", sum(len(r) for r in room_rings))
+            room_note or u"", sum(len(r) for r in clip_rings))
     else:
         clip_note = tr(u"обрезка по помещению не удалась — без неё")
 
