@@ -86,6 +86,15 @@ except Exception as exc:
     _crumb(u"тема ленты: {}".format(exc))
 
 
+
+# Restore the LowLife tab after a LowLife command returns control to Revit.
+try:
+    from lowlife import ribbon_focus as _ribbon_focus
+    if _theme_app is not None:
+        _ribbon_focus.install(_theme_app)
+except Exception as exc:
+    _crumb(u"LowLife ribbon focus: {}".format(exc))
+
 # Язык ленты — отдельный try, ничего выше не задевает. Тоже при первом простое: лента ещё не построена.
 try:
     from lowlife import ribbon_language as _ribbon_language

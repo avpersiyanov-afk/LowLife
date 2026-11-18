@@ -34,9 +34,9 @@ from System.Windows.Input import Key, Keyboard, ModifierKeys
 from System.Windows.Media import SolidColorBrush, Color, Pen, Visual, VisualTreeHelper
 from System.Windows.Threading import DispatcherTimer
 
-from lowlife import xaml_i18n, ribbon_catalog, ribbon_language
+from lowlife import xaml_i18n, ribbon_catalog, ribbon_language, ribbon_focus
 
-TAB_NAME = u"LowLife"
+TAB_NAME = ribbon_focus.TAB_NAME
 SELF = (u"_Themes", u"Search")  # саму кнопку «Поиск» в результатах не показываем
 HIGHLIGHT_SECONDS = 8      # запасная штатная отметка, если заливку поверх кнопки нарисовать не вышло
 FLASH_TIMES = 6            # сколько раз мигнуть заливкой
@@ -220,14 +220,7 @@ def run_button(uiapp, entry):
 
 
 def _activate_tab():
-    import clr
-    clr.AddReference("AdWindows")
-    from Autodesk.Windows import ComponentManager
-    for tab in ComponentManager.Ribbon.Tabs:
-        if tab.Title == TAB_NAME or tab.Id == TAB_NAME:
-            tab.IsVisible = True
-            ComponentManager.Ribbon.ActiveTab = tab
-            return
+    ribbon_focus.activate_tab()
 
 
 def _set_highlight(adwin, on):
