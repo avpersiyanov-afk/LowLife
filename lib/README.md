@@ -146,7 +146,13 @@ root=None)` раскладывает их по папкам-ячейкам `LowL
 `forms.select_views`, без `use_selection`). Новые вызовы — `select_list.SelectFromList.show(...)`,
 не `forms.SelectFromList.show(...)`.
 
-## ribbon_search.py
+## ribbon_focus.py / ribbon_search.py
+`ribbon_focus.activate_tab()` показывает и активирует вкладку LowLife через Autodesk.Windows,
+а `ribbon_focus.install(uiapp)` после выполнения любой кнопки LowLife восстанавливает эту
+вкладку одноразовым callback на `UIApplication.Idling`. `ribbon_search` использует тот же
+общий helper для команды «Показать» из окна поиска.
+
+`ribbon_search.py`
 Кнопка «Поиск» (`_Themes.panel/Actions.stack/Search`): окно (`SearchWindow`, XAML строкой) со
 строкой поиска и списком `ribbon_catalog.search`; стрелки в строке листают список.
 `run_button(uiapp, entry)` — находит кнопку на ленте через обёртки pyRevit
@@ -3243,7 +3249,7 @@ ModelPath или ExternalResourceReference. `apply(doc, choices, progress=None)`
 каждого лотка в одной строке. `fire_boxes_diagram.py` — разрез в масштабе
 с панелями, лотками, шпильками, траверсами и размерами по АТР ОСК-90/180;
 координаты совпадают с построением в модели.
-`fire_boxes.py` — построение трассы короба, внутренних лотков и деталей,
+`fire_boxes.py` — построение трассы короба, внутренних лотков и деталей, обратная операция `add_boxes` создаёт короб по выбранным лоткам,
 признак Да/Нет, примечание, Extensible Storage и защита от повторной вставки.
 `fire_boxes.run` открывает настройки перед моделированием; ОК запускает команду,
 отмена и Shift+клик не запускают моделирование.

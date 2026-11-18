@@ -132,6 +132,7 @@ THEMES = {
     ],
     u"КНК": [
         (u"FireBoxes", u"DrawFireBox"),
+        (u"FireBoxes", u"AddFireBox"),
         (u"FireBoxes", u"AddInternalTrays"),
         (u"FireBoxes", u"MarkInsideFireBox"),
         (u"TrayLadder", u"TraySPZo"),
@@ -188,6 +189,7 @@ THEMES = {
         (u"OpeningTasks", u"KRInterface"),
         (u"OpeningTasks", u"ARInterface"),
         (u"FireBoxes", u"DrawFireBox"),
+        (u"FireBoxes", u"AddFireBox"),
         (u"FireBoxes", u"AddInternalTrays"),
         (u"FireBoxes", u"MarkInsideFireBox"),
         (u"Tools", u"DimensionGrids"),

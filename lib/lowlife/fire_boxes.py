@@ -541,6 +541,86 @@ def add_trays(doc, elements, fallback, tray_type=None):
     return created
 
 
+def _box_settings_for_trays(settings, curves):
+    """Build a one-tray enclosure profile from the selected tray route.
+
+    The saved fire-box settings still provide the product, fire rating,
+    clearances and type.  The selected route supplies its actual largest
+    section, so the reverse operation does not depend on an unrelated tray
+    row left in the settings window.
+    """
+    result = copy.deepcopy(settings)
+    widths, heights = zip(*(dimensions(curve) for curve in curves.values()))
+    result['trays'] = [dict(width_mm=max(widths), height_mm=max(heights), tray_type_uid='')]
+    return result
+
+
+def add_boxes(doc, elements, fallback):
+    """Create fire enclosures along selected cable-tray runs.
+
+    Each selected connected run gets an enclosure segment for every tray
+    segment and a matching enclosure fitting at every tray junction.  The
+    original trays and all fittings participating in the run are marked as
+    OKK elements in the same transaction.
+    """
+    workset_id = resolve_workset(doc, fallback.get('box_workset_name', ''))
+    curves, fittings = resolve_route(elements)
+    curves = dict((key, curve) for key, curve in curves.items() if isinstance(curve, CableTray))
+    if not curves:
+        raise ValueError(tr(u'Выберите кабельные лотки или их соединительные детали.',
+                            u'Select cable trays or their fittings.'))
+    if any(not isinstance(curve.Location.Curve, DB.Line) for curve in curves.values()):
+        raise ValueError(tr(u'Используйте прямые участки лотков, соединённые деталями.',
+                            u'Use straight tray segments connected by fittings.'))
+    element_type = doc.GetElement(fallback.get('box_type_uid')) if fallback.get('box_type_uid') else None
+    if element_type is None or not isinstance(element_type, (CableTrayType, DuctType)):
+        raise ValueError(tr(u'Выберите тип короба в настройках.',
+                            u'Select an enclosure type in settings.'))
+    system_type = doc.GetElement(fallback.get('system_type_uid')) if fallback.get('system_type_uid') else None
+    box_settings = _box_settings_for_trays(fallback, curves)
+    section = core.layout(box_settings)
+    ends, frames = _route_frames(curves, fittings)
+    shifted = dict((key, list(value)) for key, value in ends.items())
+    nodes = _junctions(curves, fittings, shifted)
+    created, box_by_source = [], {}
+    source_ids = [curve.UniqueId for curve in curves.values()]
+    for key, source in curves.items():
+        width, height = dimensions(source)
+        if width > section['cavity_width'] + 0.5 or height > section['cavity_height'] + 0.5:
+            raise ValueError(tr(u'Лоток {} не помещается во внутренний габарит короба.',
+                                u'Tray {} does not fit inside the enclosure.').format(eid(source.Id)))
+        level = source.ReferenceLevel
+        box = create_curve(doc, element_type, system_type, level.Id,
+                           xyz(shifted[key][0]), xyz(shifted[key][1]),
+                           section['width'], section['height'])
+        assign_workset(box, workset_id)
+        # Keep the opening side of a tray and the box section aligned.
+        align_tray_section(doc, box, xyz(shifted[key][0]), xyz(shifted[key][1]),
+                           coords(connectors(source)[0].CoordinateSystem.BasisY))
+        box_by_source[key] = box
+        created.append(box)
+    doc.Regenerate()
+    for pairs, point in nodes:
+        fitting = join(doc, [box_by_source[key] for key, _index in pairs], xyz(point))
+        if fitting is not None:
+            doc.Regenerate()
+            for member in fitting_members(fitting).values():
+                assign_workset(member, workset_id)
+                note(member, box_settings)
+                write_data(member, dict(version=1, settings=box_settings))
+                created.append(member)
+    for box in box_by_source.values():
+        note(box, box_settings)
+        write_data(box, dict(version=1, settings=box_settings, tray_ids=source_ids))
+    # Mark both explicitly selected details and the complete connected route.
+    marked = {}
+    for element in list(curves.values()) + list(fittings.values()):
+        marked[eid(element.Id)] = element
+    for element in marked.values():
+        mark(element, fallback)
+    return created
+
+
 def geometry_solids(element):
     options = DB.Options()
     options.DetailLevel = DB.ViewDetailLevel.Fine
@@ -634,11 +714,12 @@ def run(doc, uidoc, action):
         if EXEC_PARAMS.config_mode:
             fire_boxes_ui.show(doc)
             return
-        if action == 'draw' or (action == 'add' and (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None)):
+        if action == 'draw' or (action in ('add', 'box') and
+                                 (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None)):
             settings = fire_boxes_ui.show(doc, settings)
             if settings is None:
                 return
-        if action in ('add', 'mark') and not settings.get('inside_flag_param'):
+        if action in ('add', 'box', 'mark') and not settings.get('inside_flag_param'):
             settings = fire_boxes_ui.show(doc)
             if settings is None:
                 return
@@ -646,7 +727,7 @@ def run(doc, uidoc, action):
             draw(doc, uidoc, settings)
             return  # The native command begins after this API context returns.
         else:
-            selected = pick(uidoc)
+            selected = pick(uidoc, trays_only=(action == 'box'))
             if not selected:
                 return
             if action == 'add':
@@ -659,11 +740,15 @@ def run(doc, uidoc, action):
                 forms.alert(tr(u'Не найдены лотки и детали, полностью находящиеся в выбранном коробе.',
                                u'No trays or fittings fully contained in the selected enclosure were found.'))
                 return
-            transaction = DB.Transaction(doc, tr(u'Лотки в огнезащитном коробе', u'Trays in fire enclosure'))
+            transaction_name = (tr(u'Короб на лотки', u'Enclosure on trays') if action == 'box' else
+                                tr(u'Лотки в огнезащитном коробе', u'Trays in fire enclosure'))
+            transaction = DB.Transaction(doc, transaction_name)
             transaction.Start()
             try:
                 if action == 'add':
                     created = add_trays(doc, selected, settings)
+                elif action == 'box':
+                    created = add_boxes(doc, selected, settings)
                 else:
                     created = targets
                     for element in created:
