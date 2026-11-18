@@ -286,8 +286,12 @@ def join(doc, curves, point):
 
 
 class RouteFilter(ISelectionFilter):
-    def __init__(self, trays_only=False):
-        self.cats = (DB.BuiltInCategory.OST_CableTray, DB.BuiltInCategory.OST_CableTrayFitting) if trays_only else CURVE_CATS + FITTING_CATS
+    def __init__(self, trays_only=False, cable_trays_only=False):
+        if cable_trays_only:
+            self.cats = (DB.BuiltInCategory.OST_CableTray,)
+        else:
+            self.cats = ((DB.BuiltInCategory.OST_CableTray, DB.BuiltInCategory.OST_CableTrayFitting)
+                         if trays_only else CURVE_CATS + FITTING_CATS)
 
     def AllowElement(self, element):
         return in_categories(element, self.cats)
@@ -296,14 +300,16 @@ class RouteFilter(ISelectionFilter):
         return False
 
 
-def pick(uidoc, trays_only=False):
+def pick(uidoc, trays_only=False, cable_trays_only=False):
     selected = [uidoc.Document.GetElement(i) for i in uidoc.Selection.GetElementIds()]
-    filter_ = RouteFilter(trays_only)
+    filter_ = RouteFilter(trays_only=trays_only, cable_trays_only=cable_trays_only)
     result = [el for el in selected if filter_.AllowElement(el)]
     if result:
         return result
     refs = uidoc.Selection.PickObjects(ObjectType.Element, filter_,
-            tr(u'Выберите участки и соединительные детали, затем Готово.', u'Select segments and fittings, then Finish.'))
+            tr(u'Выберите кабельные лотки, затем завершите выбор.', u'Select cable trays, then Finish.')
+            if cable_trays_only else
+            tr(u'Выберите участки и соединительные детали, затем завершите выбор.', u'Select segments and fittings, then Finish.'))
     return [uidoc.Document.GetElement(ref) for ref in refs]
 
 
@@ -712,14 +718,16 @@ def run(doc, uidoc, action):
     settings = cfg.load()
     try:
         if EXEC_PARAMS.config_mode:
+            if action == 'box':
+                return
             fire_boxes_ui.show(doc)
             return
-        if action == 'draw' or (action in ('add', 'box') and
+        if action == 'draw' or (action == 'add' and
                                  (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None)):
             settings = fire_boxes_ui.show(doc, settings)
             if settings is None:
                 return
-        if action in ('add', 'box', 'mark') and not settings.get('inside_flag_param'):
+        if action in ('add', 'mark') and not settings.get('inside_flag_param'):
             settings = fire_boxes_ui.show(doc)
             if settings is None:
                 return
@@ -727,7 +735,7 @@ def run(doc, uidoc, action):
             draw(doc, uidoc, settings)
             return  # The native command begins after this API context returns.
         else:
-            selected = pick(uidoc, trays_only=(action == 'box'))
+            selected = pick(uidoc, cable_trays_only=(action == 'box'))
             if not selected:
                 return
             if action == 'add':
