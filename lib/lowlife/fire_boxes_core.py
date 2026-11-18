@@ -111,10 +111,9 @@ def layout(settings):
             raise ValueError(tr(u'Боковые расстояния меньше дополнительного запаса. Уменьшите запас или увеличьте расстояния на схеме.',
                                 u'Side distances are smaller than the extra clearance. Reduce the clearance or increase the diagram distances.'))
         dw = 2*(wall + side - clearance)
-    # FIREBOX is a two-part tray.  Its closed envelope includes the panel
-    # thickness and the service clearances from A7-ФБ sheet 5.  The inner
-    # dimensions remain the requested cable space; only the outer height and
-    # the position of that space grow for the mounting clearances.
+    # FIREBOX is a two-part tray.  Its physical envelope includes the panel
+    # thickness only.  The 60 mm bottom distance and H1 from A7-ФБ sheet 5
+    # are mounting clearances outside the tray and must not enlarge the box.
     # Metadata created before the ATR update has no service-clearance fields;
     # keep those existing enclosures usable when their contents are inserted.
     firebox = (settings['product'] == 'FIREBOX' and
@@ -122,17 +121,13 @@ def layout(settings):
     firebox_bottom = FIREBOX_BOTTOM_CLEARANCE if firebox else 0.0
     firebox_top = firebox_top_clearance(int(settings['rating']), settings.get('top_clearance_mm')) if firebox else 0.0
     section = dict(trays=placements, inner_width=inner_w, inner_height=inner_h,
-                width=inner_w + dw, height=inner_h + dh + firebox_bottom + firebox_top,
-                allowance_width=dw, allowance_height=dh + firebox_bottom + firebox_top)
+                width=inner_w + dw, height=inner_h + dh,
+                allowance_width=dw, allowance_height=dh)
     section['wall'] = wall
     section['custom_side_spacing'] = custom_spacing
     section['cavity_width'] = section['width'] - 2*wall if wall is not None else inner_w
     section['cavity_height'] = section['height'] - 2*wall if wall is not None else inner_h
-    if firebox:
-        offset_z = (-section['height']/2 + wall + firebox_bottom + clearance + height/2)
-        for row in placements:
-            row['z'] += offset_z
-    elif settings['product'] == 'OSK' and wall is not None and 'support_bottom_mm' in settings:
+    if settings['product'] == 'OSK' and wall is not None and 'support_bottom_mm' in settings:
         bottom = number(settings['support_bottom_mm'])
         if bottom == 0:
             bottom = 80.0 if int(settings['rating']) == 90 else 50.0
@@ -166,10 +161,12 @@ def layout(settings):
         section['tray_bottom'] -= delta/2
         section['tray_top'] -= delta/2
         section['top_clear'] = top
-    elif firebox:
-        # The FIREBOX service gap was included in the outer height above.  Any
-        # additional perimeter clearance also contributes to the physical gap.
-        section['top_clear'] = firebox_top + clearance
+    if firebox:
+        # Keep mounting clearances separate from the internal cavity geometry.
+        # The diagram uses these fields to draw the space needed for support
+        # and lid removal outside the physical FIREBOX envelope.
+        section['firebox_bottom_clearance'] = firebox_bottom
+        section['firebox_top_clearance'] = firebox_top
     section['side_clear'] = (section['cavity_width'] - width)/2
     section['rod_to_tray'] = section['side_clear'] - number(settings.get('rod_inset_mm', 25), positive=True)
     if section['top_clear'] < -0.001:

@@ -8,8 +8,8 @@ from lowlife import fire_boxes_core as core, fire_boxes_settings as cfg
 
 
 @pytest.mark.parametrize('product,rating,extra', [
-    ('FIREBOX', 90, (100, 310)), ('FIREBOX', 150, (150, 385)),
-    ('FIREBOX', 180, (180, 430)), ('FIREBOX', 240, (240, 520)),
+    ('FIREBOX', 90, (100, 100)), ('FIREBOX', 150, (150, 150)),
+    ('FIREBOX', 180, (180, 180)), ('FIREBOX', 240, (240, 240)),
     ('OSK', 90, (260, 290)), ('OSK', 180, (280, 290)), ('OSK', 240, (310, 270)),
 ])
 def test_manufacturer_calculator_reference_cases(product, rating, extra):
@@ -25,9 +25,9 @@ def test_firebox_uses_atr_service_clearances(rating, minimum):
     values.update(product='FIREBOX', rating=rating,
                   trays=[dict(width_mm=600, height_mm=200)])
     section = core.layout(values)
-    assert section['bottom_clear'] == core.FIREBOX_BOTTOM_CLEARANCE
-    assert section['top_clear'] == minimum
-    assert section['height'] == 200 + 2 * core.FIREBOX_WALLS[rating] + 60 + minimum
+    assert section['firebox_bottom_clearance'] == core.FIREBOX_BOTTOM_CLEARANCE
+    assert section['firebox_top_clearance'] == minimum
+    assert section['height'] == 200 + 2 * core.FIREBOX_WALLS[rating]
 
 
 def test_firebox_can_request_larger_lid_service_gap_but_not_less():
@@ -35,7 +35,7 @@ def test_firebox_can_request_larger_lid_service_gap_but_not_less():
     values.update(product='FIREBOX', rating=180,
                   trays=[dict(width_mm=600, height_mm=200)])
     values['top_clearance_mm'] = 250
-    assert core.layout(values)['top_clear'] == 250
+    assert core.layout(values)['firebox_top_clearance'] == 250
     values['top_clearance_mm'] = 189
     with pytest.raises(ValueError):
         core.layout(values)

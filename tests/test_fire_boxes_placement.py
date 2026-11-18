@@ -247,6 +247,34 @@ def test_model_settings_ok_starts_with_edited_values_cancel_and_shift_do_not(con
     assert models == ([edited] if accepted and not config_mode else [])
 
 
+def test_box_settings_are_shown_before_tray_selection():
+    source = Path(__file__).parents[1] / 'lib/lowlife/fire_boxes.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    tree.body = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run']
+    function = tree.body[0]
+    function.body = [node for node in function.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
+    saved = dict(box_type_uid='valid', product='OSK', rating=180)
+    edited = dict(saved, product='FIREBOX', rating=90)
+    dialogs, picked = [], []
+
+    def show(doc, values=None):
+        dialogs.append(values)
+        return edited
+
+    def pick_elements(*args, **kwargs):
+        picked.append(True)
+        return []
+
+    scope = dict(EXEC_PARAMS=NS(config_mode=False), cfg=NS(load=lambda: saved),
+                 fire_boxes_ui=NS(show=show), pick=pick_elements,
+                 forms=NS(alert=lambda *args: None), tr=lambda ru, en: en,
+                 script=NS(get_logger=lambda: NS(exception=lambda: None)))
+    exec(compile(tree, str(source), 'exec'), scope)
+    scope['run'](object(), object(), 'box')
+    assert dialogs == [saved]
+    assert picked == [True]
+
+
 def reusable_adapter():
     a = adapter()
     a.doc.ActiveView.GenLevel = NS(Id=5)

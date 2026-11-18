@@ -722,7 +722,12 @@ def _create_box_route(doc, curves, fittings, fallback, element_type, system_type
                            section['width'], section['height'])
         assign_workset(box, workset_id)
         align_tray_section(doc, box, xyz(shifted[key][0]), xyz(shifted[key][1]),
-                           coords(connectors(source)[0].CoordinateSystem.BasisY))
+                           # Use the transported route frame.  The raw
+                           # connector axis may be reversed (or belong to a
+                           # different local orientation after an elbow),
+                           # while the shifted endpoints were built from
+                           # ``frames`` above.
+                           frames[key][1])
         box_by_source[key] = box
         created.append(box)
     doc.Regenerate()
@@ -897,10 +902,11 @@ def run(doc, uidoc, action):
     try:
         if EXEC_PARAMS.config_mode:
             if action == 'box':
+                fire_boxes_ui.show(doc, settings)
                 return
             fire_boxes_ui.show(doc)
             return
-        if action == 'draw' or (action == 'add' and
+        if action in ('draw', 'box') or (action == 'add' and
                                  (not settings.get('box_type_uid') or doc.GetElement(settings['box_type_uid']) is None)):
             settings = fire_boxes_ui.show(doc, settings)
             if settings is None:
