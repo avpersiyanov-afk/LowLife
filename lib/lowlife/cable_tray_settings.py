@@ -22,8 +22,10 @@ from lowlife.i18n import tr, N_
 FILE_NAME = "LowLifeCableTray_settings.json"
 
 DEFAULT_WORKSET_FILTER = u"КНК"
+DEFAULT_ASSIGN_WORKSET = u"2_КНК"
 
 WORKSET_KEY = "workset_filter"
+ASSIGN_WORKSET_KEY = "assign_workset_name"
 
 # (папка панели без .panel, заголовок панели на ленте, хвост имени типа)
 PANELS = [
@@ -97,6 +99,16 @@ def _fields():
                 u"По умолчанию — «КНК»."
             ),
             default=DEFAULT_WORKSET_FILTER, required=True,
+        ),
+        settings_core.TextField(
+            ASSIGN_WORKSET_KEY,
+            N_(u"Массовое назначение рабочего набора"),
+            N_(u"Точное имя рабочего набора для лотков и соединительных деталей"),
+            hint=N_(
+                u"Это имя рабочего набора получает каждый найденный кабельный лоток "
+                u"и каждая соединительная деталь."
+            ),
+            default=DEFAULT_ASSIGN_WORKSET, required=True,
         ),
     ]
     for panel_folder, panel_title, _suffix in PANELS:

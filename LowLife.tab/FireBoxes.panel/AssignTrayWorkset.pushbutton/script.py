@@ -6,10 +6,10 @@ from lowlife import cable_tray
 from lowlife.i18n import tr
 
 try:
-    count = cable_tray.assign_all_trays_workset(revit.doc)
+    count = cable_tray.run_assign_all_trays_workset_button(revit.doc)
     forms.alert(tr(
-        u'Готово. Рабочий набор «2_КНК» назначен элементам: {}.',
-        u'Done. Workset "2_КНК" assigned to elements: {}.'
+        u'Готово. Рабочий набор из настроек назначен элементам: {}.',
+        u'Done. The configured workset was assigned to elements: {}.'
     ).format(count))
 except Exception as exc:
     script.get_logger().exception('Assigning tray workset failed')

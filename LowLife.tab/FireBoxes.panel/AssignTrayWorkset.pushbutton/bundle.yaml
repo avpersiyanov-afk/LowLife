@@ -1,6 +1,6 @@
 title: "Назначить всем\nлоткам РН"
 title_en: "Assign workset\nto all trays"
 tooltip: >-
-  Находит в модели все кабельные лотки и соединительные детали и назначает им рабочий набор «2_КНК».
+  Находит в модели все кабельные лотки и соединительные детали и назначает им рабочий набор из настроек.
 tooltip_en: >-
-  Finds every cable tray and cable-tray fitting in the model and assigns workset "2_КНК" to them.
+  Finds every cable tray and cable-tray fitting in the model and assigns the workset from settings.

@@ -19,8 +19,9 @@ def appdata(tmpdir, monkeypatch):
 
 def test_defaults_are_the_former_hardcoded_values(appdata):
     values = cts.get_settings_silent()
-    assert len(values) == 1 + 5 * 4
+    assert len(values) == 2 + 5 * 4
     assert values["workset_filter"] == u"КНК"
+    assert values[cts.ASSIGN_WORKSET_KEY] == u"2_КНК"
     assert values["tray_type_TrayLadder_TraySB"] == u"СБ_ЛЛ_1.5_СЦ"
     assert values["tray_type_TrayRoof_TraySPZo"] == u"СПЗо_ЛП_1.5_ГЦ"
     assert values["tray_type_TrayWire_TraySS"] == u"СС_ЛВ_1.5_СЦ"
@@ -34,10 +35,12 @@ def test_every_catalog_entry_has_a_button_folder():
 
 
 def test_saved_values_override_defaults_and_keep_the_rest(appdata):
-    cts.save_values({"tray_type_TrayLadder_TraySB": u"Мой_лоток", "workset_filter": u"Лотки"})
+    cts.save_values({"tray_type_TrayLadder_TraySB": u"Мой_лоток", "workset_filter": u"Лотки",
+                     cts.ASSIGN_WORKSET_KEY: u"КНК_2"})
     values = cts.get_settings_silent()
     assert values["tray_type_TrayLadder_TraySB"] == u"Мой_лоток"
     assert values["workset_filter"] == u"Лотки"
+    assert values[cts.ASSIGN_WORKSET_KEY] == u"КНК_2"
     assert values["tray_type_TrayLadder_TraySS"] == u"СС_ЛЛ_1.5_СЦ"
 
 

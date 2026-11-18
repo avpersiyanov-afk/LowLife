@@ -30,7 +30,6 @@ from pyrevit import forms, script
 from lowlife import cable_tray_settings
 
 DEFAULT_WORKSET_FILTER = cable_tray_settings.DEFAULT_WORKSET_FILTER
-ASSIGN_ALL_WORKSET = u"2_КНК"
 
 
 def _safe_type_name(el):
@@ -74,8 +73,13 @@ def find_trays_and_fittings(doc):
     return elements
 
 
-def assign_all_trays_workset(doc, workset_name=ASSIGN_ALL_WORKSET):
+def assign_all_trays_workset(doc, workset_name):
     """Assign *workset_name* to every tray and tray fitting in the model."""
+    if not workset_name or not workset_name.strip():
+        raise ValueError(tr(
+            u"Не задано имя рабочего набора для массового назначения.",
+            u"No workset name was configured for mass assignment."
+        ))
     if not doc.IsWorkshared:
         raise ValueError(tr(
             u"В проекте не включена совместная работа — рабочий набор назначить нельзя.",
@@ -105,6 +109,42 @@ def assign_all_trays_workset(doc, workset_name=ASSIGN_ALL_WORKSET):
             transaction.RollBack()
         raise
     return len(elements)
+
+
+def run_assign_all_trays_workset_button(doc):
+    """Run the mass-assignment button using the shared tray settings."""
+    try:
+        from pyrevit import EXEC_PARAMS
+        config_mode = bool(EXEC_PARAMS.config_mode)
+    except Exception:
+        config_mode = False
+
+    if config_mode:
+        edited = cable_tray_settings.get_settings_interactive()
+        forms.alert(
+            tr(u"Отмена, настройки не изменены.",
+               u"Cancelled; settings were not changed.") if edited is None
+            else tr(u"Настройки сохранены."))
+        script.exit()
+
+    settings = cable_tray_settings.get_settings_silent()
+    missing = cable_tray_settings.missing(
+        settings, [cable_tray_settings.ASSIGN_WORKSET_KEY]
+    )
+    if missing:
+        forms.alert(
+            tr(
+                u"Не заполнена настройка рабочего набора для массового назначения:\n\n{}\n\n"
+                u"Откройте настройки кнопки Shift+кликом.",
+                u"The workset setting for mass assignment is empty:\n\n{}\n\n"
+                u"Open the button settings with Shift+click."
+            ).format(u"\n".join(missing)),
+            exitscript=True
+        )
+
+    return assign_all_trays_workset(
+        doc, settings[cable_tray_settings.ASSIGN_WORKSET_KEY].strip()
+    )
 
 
 def set_active_workset(doc, workset):
