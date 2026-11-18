@@ -21,6 +21,7 @@ all buttons) live in cable_tray_settings and are edited by Shift+click;
 run_tray_button is the whole body of a button's script.py.
 """
 
+from Autodesk.Revit import DB
 from Autodesk.Revit.DB import Element, FilteredElementCollector, FilteredWorksetCollector, WorksetKind
 from lowlife.i18n import tr
 from Autodesk.Revit.DB.Electrical import CableTrayType
@@ -29,6 +30,7 @@ from pyrevit import forms, script
 from lowlife import cable_tray_settings
 
 DEFAULT_WORKSET_FILTER = cable_tray_settings.DEFAULT_WORKSET_FILTER
+ASSIGN_ALL_WORKSET = u"2_КНК"
 
 
 def _safe_type_name(el):
@@ -58,6 +60,51 @@ def find_worksets(doc, name_filter):
         w for w in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
         if name_filter in w.Name
     ]
+
+
+def find_trays_and_fittings(doc):
+    """Return every host-model cable tray and cable-tray fitting instance."""
+    elements = []
+    for category in (DB.BuiltInCategory.OST_CableTray,
+                     DB.BuiltInCategory.OST_CableTrayFitting):
+        elements.extend(
+            FilteredElementCollector(doc).OfCategory(category)
+            .WhereElementIsNotElementType().ToElements()
+        )
+    return elements
+
+
+def assign_all_trays_workset(doc, workset_name=ASSIGN_ALL_WORKSET):
+    """Assign *workset_name* to every tray and tray fitting in the model."""
+    if not doc.IsWorkshared:
+        raise ValueError(tr(
+            u"В проекте не включена совместная работа — рабочий набор назначить нельзя.",
+            u"Worksharing is disabled, so a workset cannot be assigned."
+        ))
+
+    # Keep the actual parameter write in the existing fire-box adapter.  It
+    # handles read-only/missing ELEM_PARTITION_PARAM consistently everywhere.
+    from lowlife.fire_boxes import assign_workset, resolve_workset
+    workset_id = resolve_workset(doc, workset_name)
+    elements = find_trays_and_fittings(doc)
+
+    transaction = DB.Transaction(doc, tr(
+        u"Назначить РН лоткам", u"Assign tray workset"
+    ))
+    transaction.Start()
+    try:
+        for element in elements:
+            assign_workset(element, workset_id)
+        if transaction.Commit() != DB.TransactionStatus.Committed:
+            raise ValueError(tr(
+                u"Revit отменил назначение рабочего набора.",
+                u"Revit rolled back the workset assignment."
+            ))
+    except Exception:
+        if transaction.GetStatus() == DB.TransactionStatus.Started:
+            transaction.RollBack()
+        raise
+    return len(elements)
 
 
 def set_active_workset(doc, workset):

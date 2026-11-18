@@ -135,6 +135,7 @@ THEMES = {
         (u"FireBoxes", u"AddFireBox"),
         (u"FireBoxes", u"AddInternalTrays"),
         (u"FireBoxes", u"MarkInsideFireBox"),
+        (u"FireBoxes", u"AssignTrayWorkset"),
         (u"TrayLadder", u"TraySPZo"),
         (u"TrayLadder", u"TraySPZp"),
         (u"TrayLadder", u"TraySB"),
