@@ -101,13 +101,19 @@ def collect_rows(doc, host_view):
     rows = []
     for link in db.FilteredElementCollector(doc).OfClass(db.RevitLinkInstance):
         linked_doc = link.GetLinkDocument()
-        views = compatible_views(linked_doc, host_view) if linked_doc else []
         reason = None
+        settings = None
         if linked_doc is None:
             reason = tr(u"Связь не загружена", u"Link is unloaded")
-        elif not views and not custom_available:
+        else:
+            try:
+                settings = current_settings(host_view, link)
+            except Exception:
+                reason = tr(u"Этот вид не поддерживает графические переопределения связей.",
+                            u"This view does not support linked model graphics overrides.")
+        views = compatible_views(linked_doc, host_view) if linked_doc and reason is None else []
+        if linked_doc and not views and not custom_available and reason is None:
             reason = tr(u"Нет видов такого же типа", u"No views of the same type")
-        settings = current_settings(host_view, link) if linked_doc else None
         current = tr(u"По основному виду", u"By host view")
         if settings is not None:
             if settings.LinkVisibilityType == db.LinkVisibility.ByLinkView:

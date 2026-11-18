@@ -362,3 +362,17 @@ def test_custom_available_even_without_compatible_views(model, monkeypatch, vers
     assert row['custom_available'] is available
     assert (row['reason'] is None) is available
 
+
+def test_collect_rows_skips_views_without_link_graphics_overrides(model, monkeypatch):
+    link, _ = model.pair(1)
+    model.db.RevitLinkInstance = object
+    model.db.FilteredElementCollector = lambda doc: Obj(OfClass=lambda cls: [link])
+    def unsupported(host_view, link):
+        raise Exception('The view does not support link graphical overrides.')
+    monkeypatch.setattr(lv, 'current_settings', unsupported)
+    row = lv.collect_rows(model.doc, model.host)[0]
+    assert row['views'] == []
+    assert row['reason'] == lv.tr(
+        u'Этот вид не поддерживает графические переопределения связей.',
+        u'This view does not support linked model graphics overrides.')
+
