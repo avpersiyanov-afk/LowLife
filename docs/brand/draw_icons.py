@@ -571,6 +571,22 @@ def tag_trays(c):
         c.line([(50, y + 8), (80, y + 8)], WHITE, 3)
 
 
+def assign_tray_workset(c):
+    """<Назначить всем лоткам РН>: trays and fittings receive a workset."""
+    # Cable trays and their fittings are grouped on the left; the arrow and
+    # workset tag on the right show the one-way assignment performed by the
+    # button.
+    for y0 in (26, 60):
+        c.rect((8, y0, 46, y0 + 12), BLUE, WHITE, 4, 1)
+        for x in (18, 30, 42):
+            c.line([(x, y0 + 2), (x, y0 + 10)], BLUE, 2)
+    c.rect((58, 30, 88, 66), BLUE, WHITE, 4, 3)
+    c.line([(64, 42), (82, 42)], ORANGE, 4)
+    c.line([(64, 52), (78, 52)], ORANGE, 4)
+    c.line([(48, 46), (59, 46)], ORANGE, 5)
+    c.polygon([(58, 38), (58, 54), (70, 46)], fill=ORANGE)
+
+
 def ar_task_annotations(c):
     """Семейства на плане и две текстовые выноски задания АР."""
     c.rect((10, 55, 30, 79), BLUE, WHITE, 4, 2)
@@ -814,6 +830,7 @@ ICONS = [
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
     ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
     ("Tools.panel/TagTrays.pushbutton", tag_trays),
+    ("FireBoxes.panel/AssignTrayWorkset.pushbutton", assign_tray_workset),
     ("Tools.panel/CompareLinkDatums.pushbutton", compare_link_datums),
     ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),
     ("CircuitsGeneric.panel/WriteLoadName.pushbutton", write_load_name),
