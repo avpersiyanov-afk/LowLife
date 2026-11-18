@@ -254,6 +254,16 @@ def test_candidates_exclude_templates_and_different_view_types(model, monkeypatc
     assert lv.compatible_views(model.linked_doc, model.host) == [candidates[0]]
 
 
+def test_host_views_returns_all_non_template_views_sorted_by_name(model, monkeypatch):
+    candidates = [Obj(Id=3, IsTemplate=False, ViewType='section'),
+                  Obj(Id=1, IsTemplate=True, ViewType='plan'),
+                  Obj(Id=2, IsTemplate=False, ViewType='plan')]
+    model.db.View = object
+    model.db.FilteredElementCollector = lambda doc: Obj(OfClass=lambda cls: candidates)
+    monkeypatch.setattr(lv, 'safe_name', lambda view: {3: 'Zed', 2: 'Alpha'}[view.Id])
+    assert lv.host_views(model.doc) == [candidates[2], candidates[0]]
+
+
 def test_graphics_unavailable_and_old_api_are_explained(model):
     model.host.AreGraphicsOverridesAllowed = lambda: False
     assert lv.availability(model.doc, model.host)

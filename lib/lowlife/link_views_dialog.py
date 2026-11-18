@@ -10,7 +10,8 @@ from System.Windows import (Window, WindowStartupLocation, Thickness,
 from System.Windows.Controls import (DockPanel, Dock, StackPanel, Orientation,
                                      TextBlock, TextBox, Button, CheckBox, ComboBox, Grid,
                                      ColumnDefinition, RowDefinition,
-                                     ScrollViewer, ScrollBarVisibility)
+                                     ScrollViewer, ScrollBarVisibility, TreeView,
+                                     TreeViewItem)
 from pyrevit import forms
 from lowlife import link_views, select_list, text_search
 from lowlife.i18n import tr
@@ -41,10 +42,12 @@ def _text(value):
     return block
 
 
-def show(host_views, rows_by_host):
+def show(host_views, rows_by_host, active_view=None):
     result = {'choices': None}
     states = []
     model_checks = {}
+    host_checks = {}
+    host_rows = {}
 
     def model_key(row):
         return u'{}'.format(row['link'].GetTypeId())
@@ -54,13 +57,13 @@ def show(host_views, rows_by_host):
 
     win = Window()
     win.Title = tr(u"Виды связанных моделей", u"Linked model views")
-    win.Width, win.Height = 1000, 650
-    win.MinWidth, win.MinHeight = 700, 400
+    win.Width, win.Height = 1180, 820
+    win.MinWidth, win.MinHeight = 820, 520
     win.WindowStartupLocation = WindowStartupLocation.CenterScreen
     outer = DockPanel()
     outer.Margin = Thickness(16)
-    header = _text(tr(u"Выбрано видов: {}. Настройте связи отдельно для каждого основного вида. Галочка у экземпляра связи означает изменение; снятая галочка сохраняет текущее отображение.",
-                      u"Selected views: {}. Configure links separately for each host view. Checked link instances will change; unchecked instances keep their current display.").format(len(host_views)))
+    header = _text(tr(u"Выберите основные виды в дереве. Настройки связей ниже применяются отдельно к каждому отмеченному виду. Текущий вид отмечен автоматически.",
+                      u"Choose host views in the tree. Link settings below apply separately to each checked view. The current view is checked automatically."))
     header.ToolTip = u'\n'.join(link_views.safe_name(v) for v in host_views)
     if not any(row.get('custom_available') for rows in rows_by_host for row in rows):
         header.Text += u'\n' + tr(
@@ -69,6 +72,61 @@ def show(host_views, rows_by_host):
     header.Margin = Thickness(0, 0, 0, 12)
     DockPanel.SetDock(header, Dock.Top)
     outer.Children.Add(header)
+
+    host_label = _text(tr(u"Основные виды", u"Host views"))
+    host_label.FontSize = 15
+    DockPanel.SetDock(host_label, Dock.Top)
+    outer.Children.Add(host_label)
+    host_search = TextBox()
+    host_search.ToolTip = tr(u"Фильтр по имени и типу вида", u"Filter by view name and type")
+    host_search.Margin = Thickness(0, 2, 0, 6)
+    DockPanel.SetDock(host_search, Dock.Top)
+    outer.Children.Add(host_search)
+    host_tree = TreeView()
+    host_tree.Height = 190
+    host_tree.MinHeight = 120
+    host_tree.Margin = Thickness(0, 0, 0, 10)
+    DockPanel.SetDock(host_tree, Dock.Top)
+    outer.Children.Add(host_tree)
+
+    groups = {}
+    for host in host_views:
+        groups.setdefault(unicode(host.ViewType), []).append(host)
+    for type_name in sorted(groups, key=lambda value: value.lower()):
+        group_item = TreeViewItem()
+        group_item.Header = _text(type_name)
+        group_item.IsExpanded = True
+        states = []
+        for host in sorted(groups[type_name], key=lambda item: link_views.safe_name(item).lower()):
+            item = TreeViewItem()
+            check = CheckBox()
+            name = link_views.safe_name(host)
+            compatible = active_view is None or host.ViewType == active_view.ViewType
+            check.Content = _text(name)
+            check.IsEnabled = compatible
+            check.IsChecked = bool(active_view is not None and host.Id == active_view.Id)
+            check.ToolTip = (tr(u"Вид другого типа, чем текущий.",
+                                u"This view has a different type from the current view.")
+                             if not compatible else name)
+            check.Margin = Thickness(2, 2, 2, 2)
+            item.Header = check
+            group_item.Items.Add(item)
+            host_checks[u'{}'.format(host.Id)] = check
+            states.append((host, item, u"{} {}".format(type_name, name)))
+        groups[type_name] = (group_item, states)
+        host_tree.Items.Add(group_item)
+
+    def filter_hosts(sender, args):
+        query = host_search.Text
+        for group_item, states in groups.values():
+            any_match = False
+            for host, item, search_text in states:
+                visible = text_search.matches(search_text, query)
+                item.Visibility = Visibility.Visible if visible else Visibility.Collapsed
+                any_match = any_match or visible
+            group_item.Visibility = Visibility.Visible if any_match else Visibility.Collapsed
+
+    host_search.TextChanged += filter_hosts
 
     buttons = StackPanel()
     buttons.Orientation = Orientation.Horizontal
@@ -154,6 +212,7 @@ def show(host_views, rows_by_host):
         definition = RowDefinition()
         definition.Height = GridLength.Auto
         grid.RowDefinitions.Add(definition)
+        host_rows.setdefault(host, []).append(definition)
         if row is None:
             label = _text(link_views.safe_name(host))
             label.FontSize = 16
@@ -255,13 +314,29 @@ def show(host_views, rows_by_host):
     outer.Children.Add(models)
     update_models(None, None)
 
+    def host_selected(host):
+        check = host_checks.get(u'{}'.format(host.Id))
+        return bool(check is not None and check.IsChecked)
+
+    def update_hosts(sender, args):
+        for host, definitions in host_rows.items():
+            height = GridLength.Auto if host_selected(host) else GridLength(0)
+            for definition in definitions:
+                definition.Height = height
+
+    for check in host_checks.values():
+        check.Checked += update_hosts
+        check.Unchecked += update_hosts
+    update_hosts(None, None)
+
     scroll = ScrollViewer()
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroll.Content = grid
     outer.Children.Add(scroll)
 
     def on_apply(sender, args):
-        chosen = [s for s in states if model_selected(s) and s['check'].IsChecked]
+        chosen = [s for s in states if host_selected(s['host'])
+                  and model_selected(s) and s['check'].IsChecked]
         if not chosen:
             forms.alert(tr(u"Отметьте хотя бы одну связь.", u"Check at least one link."), title=win.Title)
             return
