@@ -88,7 +88,7 @@ def test_top_setting_roundtrip_with_zero(tmp_path,monkeypatch):
     assert cfg.load() == settings
 
 
-@pytest.mark.parametrize('product,rating', [('FIREBOX',180), ('OSK',240)])
+@pytest.mark.parametrize('product,rating', [('OSK',240)])
 def test_unsupported_product_keeps_its_previous_height(product,rating):
     settings = cfg.defaults()
     settings.update(product=product,rating=rating)

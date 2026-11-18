@@ -114,6 +114,12 @@ def draw(canvas, settings, section=None, editors=None):
 
     if settings['product'] == 'FIREBOX':
         rectangle(0,0,cw,ch,Brushes.SteelBlue,Brushes.LightBlue)
+        # A7-ФБ, sheet 5: show the service clearances included in the
+        # modeled outer height.  Suspension hardware remains project specific.
+        vertical(X(w/2)+40,Y(iz+ch/2),Y(section['tray_top']),fmt(section['top_clear']))
+        vertical(X(w/2)+40,Y(section['tray_bottom']),Y(iz-ch/2),fmt(section['bottom_clear']))
+        text(560,110,tr(u'Зазор H1 по АТР: {} мм',u'ATR H1 above: {} mm').format(fmt(section['top_clear'])),size=13)
+        text(560,132,tr(u'Низ до опоры: {} мм',u'Bottom mounting gap: {} mm').format(fmt(section['bottom_clear'])),size=13)
         text(cx,cy-10,tr(u'Пространство для кабелей',u'Cable space'),center=True)
     else:
         if supported:

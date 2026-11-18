@@ -291,6 +291,11 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 self.rating.Items.Add(value)
             self.rating.SelectedItem = selected if selected in supported else supported[0]
 
+        def top_clearance_supported(self):
+            product = unicode(self.product.SelectedItem)
+            rating = self.rating.SelectedItem
+            return product == 'FIREBOX' or (product == 'OSK' and rating in (90, 180))
+
         def product_changed(self, sender, event):
             selected = self.rating.SelectedItem
             self.loading = True
@@ -306,10 +311,17 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                                                  u'Three-sided OSK-90/180 configurations from the ATR. Left and right follow the preview.')
             if not supported:
                 self.wall_configuration.SelectedIndex = 0
-            self.boxes['top_clearance_mm'].IsEnabled = supported
-            self.boxes['top_clearance_mm'].ToolTip = tr(
-                u'Для ОСК-90/180. Пусто — прежняя высота по калькулятору 2Ф. Число, включая 0, задаёт зазор до крышки или перекрытия и пересчитывает высоту, сохраняя нижний отступ.',
-                u'For OSK-90/180. Blank keeps the 2F calculator height. A number, including 0, sets the gap to the lid or slab and recalculates height while preserving the bottom clearance.')
+            top_supported = self.top_clearance_supported()
+            self.boxes['top_clearance_mm'].IsEnabled = top_supported
+            if unicode(self.product.SelectedItem) == 'FIREBOX':
+                minimum = core.FIREBOX_TOP_CLEARANCES[int(self.rating.SelectedItem)]
+                self.boxes['top_clearance_mm'].ToolTip = tr(
+                    u'FIREBOX: минимум {} мм над верхним лотком по АТР. Пусто — минимум; можно указать больший зазор.',
+                    u'FIREBOX: at least {} mm above the top tray per the ATR. Blank uses the minimum; a larger gap is allowed.').format(minimum)
+            else:
+                self.boxes['top_clearance_mm'].ToolTip = tr(
+                    u'Для ОСК-90/180. Пусто — прежняя высота по калькулятору 2Ф. Число, включая 0, задаёт зазор до крышки или перекрытия и пересчитывает высоту, сохраняя нижний отступ.',
+                    u'For OSK-90/180. Blank keeps the 2F calculator height. A number, including 0, sets the gap to the lid or slab and recalculates height while preserving the bottom clearance.')
             self.boxes['ceiling_gap_mm'].IsEnabled = self.wall_configuration.SelectedIndex != 1
             self.boxes['ceiling_gap_mm'].ToolTip = tr(
                 u'Без верхней стенки короб примыкает к перекрытию: на схеме зазор равен 0. Для остальных конфигураций используется введённое значение.',
@@ -423,7 +435,7 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 if key == 'rod_inset_mm' and not spacing_supported:
                     continue
                 if key == 'top_clearance_mm':
-                    if spacing_supported:
+                    if self.top_clearance_supported():
                         values[key] = core.number(box.Text) if box.Text.strip() else None
                     continue
                 values[key] = box.Text.strip() if key.endswith('_param') else core.number(box.Text, minimum=-1000000 if key == 'elevation_mm' else 0)
@@ -491,10 +503,10 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                            tr(u'ОСК: позиции и размеры лотков совпадают с построением в модели.\n',
                               u'OSK: tray positions and dimensions match model placement.\n'))
                 self.explanation.Text = caption + tr(
-                    u'Исходный габарит — по калькулятору 2Ф. Стенки, каркас и траверсы ОСК-90/180 — по АТР. '
-                    u'* Отступы шпилек и высота подвеса уточняются проектом. Подвесы показаны на схеме и не создаются в модели.',
-                    u'The initial envelope follows the 2F calculator. OSK-90/180 walls, frame and crossbars follow the ATR. '
-                    u'* Rod insets and suspension height are project inputs. Supports are previewed and are not created in the model.')
+                    u'Для FIREBOX используются толщина стенки и монтажные зазоры с листа 5 АТР; H1 зависит от огнестойкости. '
+                    u'Стенки, каркас и траверсы ОСК-90/180 — по АТР. Монтажные размеры уточняются проектом и не создаются семействами Revit.',
+                    u'FIREBOX uses the panel thickness and service clearances from ATR sheet 5; H1 depends on the fire rating. '
+                    u'OSK-90/180 walls, frame and crossbars follow the ATR. Mounting details remain project inputs and are not created as Revit families.')
                 if section['custom_side_spacing']:
                     self.explanation.Text += u'\n' + tr(
                         u'Ширина задана размерами на схеме. Боковые расстояния применяются с двух сторон. Дополнительный запас задаёт минимальный боковой зазор.',
