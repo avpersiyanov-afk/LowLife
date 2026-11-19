@@ -8,6 +8,7 @@
 клик по строке: вставить ещё один экземпляр этого типа.
 """
 
+from lowlife import ui_theme
 from lowlife.i18n import tr
 
 
@@ -129,5 +130,5 @@ def show_changes_window(family_name, rows):
             self.symbol_id = row.get(u"symbol_id")
 
     window = ChangesWindow()
-    window.ShowDialog()
+    ui_theme.apply(window).ShowDialog()
     return window.result

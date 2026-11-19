@@ -7,7 +7,7 @@ except NameError:
 
 from lowlife import settings_core, equipment_tags_settings
 from lowlife.cloud_io import dumps_ascii
-from lowlife.i18n import tr
+from lowlife.i18n import N_, tr
 
 FILE_NAME = 'LowLifeARTaskAnnotations_settings.json'
 STORE = settings_core.JsonStore(FILE_NAME)
@@ -83,7 +83,10 @@ def edit(doc, view):
             return None
         fields = [settings_core.ChoiceField(
             'text_type_name', u'', tr(u'Тип текста', u'Text type'),
-            [(_safe_name(t), _safe_name(t)) for t in note_types])]
+            [(_safe_name(t), _safe_name(t)) for t in note_types],
+            hint=N_(
+                u"Тип текста Revit для создаваемых подписей задания. Выберите существующий тип с нужным "
+                u"шрифтом и высотой текста."))]
         fields.extend(equipment_tags_settings.SETTINGS.fields)
         for symbol in selected:
             fields.append(settings_core.TextField(

@@ -65,6 +65,7 @@ WPF и pyrevit импортируются лениво (внутри функц�
 (tests/test_settings_core.py).
 """
 
+from lowlife import ui_theme
 import io
 from lowlife.i18n import tr
 import json
@@ -344,6 +345,27 @@ class TextField(object):
         """Как поле называется в сообщениях (require, ошибки ввода)."""
         return tr(self.label or self.section) or self.key
 
+    def help_text(self):
+        """Purpose and input constraints, shared by visible help and tooltip."""
+        from lowlife import param_autocomplete
+        parts = [tr(self.hint)] if self.hint else [self.title()]
+        if isinstance(self, NumberField):
+            parts.append(tr(u"Введите целое число.", u"Enter a whole number.") if self.integer else
+                         tr(u"Введите число; дробную часть отделяйте точкой или запятой.",
+                            u"Enter a number; use a dot or comma for decimals."))
+            if self.minimum is not None:
+                parts.append(tr(u"Минимальное значение: {}.", u"Minimum value: {}.").format(self.minimum))
+        elif isinstance(self, ChoiceField):
+            parts.append(tr(u"Выберите один вариант из списка.", u"Choose one option from the list."))
+        else:
+            input_help = param_autocomplete.input_hint(self.key, self.param_spec)
+            if input_help:
+                parts.append(input_help)
+        if self.required:
+            parts.append(tr(u"Обязательное поле: заполните перед сохранением.",
+                            u"Required: fill in this field before saving."))
+        return u"\n".join(parts)
+
     def display(self, value):
         """Значение → текст в поле ввода."""
         return u"" if value is None else _text(value)
@@ -563,7 +585,7 @@ class TextSettings(object):
         )
         from System.Windows.Controls import (
             StackPanel, TextBlock, TextBox, Button, Orientation, DockPanel, Dock,
-            ScrollViewer, ScrollBarVisibility, ComboBox
+            ScrollViewer, ScrollBarVisibility, ComboBox, WrapPanel
         )
         from System.Windows.Media import Brushes
 
@@ -577,77 +599,26 @@ class TextSettings(object):
         win = Window()
         win.Title = tr(u"Настройки: {}").format(tr(self.button_name))
         win.Width = self.width
-        win.Height = self.height
+        win.Height = max(self.height, 560)
         win.WindowStartupLocation = WindowStartupLocation.CenterScreen
 
-        outer = DockPanel()
-        outer.LastChildFill = True
-
-        root = StackPanel()
-        root.Margin = Thickness(16)
-
-        title = TextBlock()
-        title.Text = tr(self.heading)
-        title.FontSize = 16
-        title.FontWeight = FontWeights.Bold
-        title.Margin = Thickness(0, 0, 0, 4)
-        root.Children.Add(title)
-
-        hint = TextBlock()
-        hint.Text = (tr(self.intro) if self.intro is not None else
-                     tr(u"Значения сохраняются и подставляются при следующих запусках."))
-        hint.FontSize = 11
-        hint.TextWrapping = TextWrapping.Wrap
-        hint.Foreground = Brushes.Gray
-        hint.Margin = Thickness(0, 0, 0, 10)
-        root.Children.Add(hint)
-
-        boxes = {}    # текстовые поля (к ним цепляются подсказки)
-        combos = {}   # ChoiceField — выпадающие списки
-
+        boxes = {}    # TextBox controls used by autocomplete and form parsing
+        combos = {}   # ChoiceField controls
+        field_controls = []
         for field in self.fields:
-            star = u" *" if field.required else u""
-
-            if field.section:
-                section = TextBlock()
-                section.Text = tr(field.section) + (u"" if field.label else star)
-                section.FontWeight = FontWeights.Bold
-                section.Margin = Thickness(0, 16, 0, 2)
-                section.TextWrapping = TextWrapping.Wrap
-                root.Children.Add(section)
-
-            if field.label:
-                label = TextBlock()
-                label.Text = tr(field.label) + star
-                # без заголовка раздела — отступ от предыдущего поля побольше
-                label.Margin = Thickness(0, 2 if field.section else 8, 0, 2)
-                label.TextWrapping = TextWrapping.Wrap
-                root.Children.Add(label)
-
             if isinstance(field, ChoiceField):
-                combo = ComboBox()
+                control = ComboBox()
                 for label_text in field.labels():
-                    combo.Items.Add(label_text)
-                combo.SelectedIndex = field.labels().index(
+                    control.Items.Add(label_text)
+                control.SelectedIndex = field.labels().index(
                     field.display(values.get(field.key)))
-                combo.Padding = Thickness(4)
-                root.Children.Add(combo)
-                combos[field.key] = (field, combo)
+                combos[field.key] = (field, control)
             else:
-                box = TextBox()
-                box.Text = field.display(values.get(field.key))
-                box.Padding = Thickness(4)
-                root.Children.Add(box)
-                boxes[field.key] = box
-
-            if field.hint:
-                field_hint = TextBlock()
-                field_hint.Text = tr(field.hint)
-                field_hint.FontSize = 11
-                field_hint.Foreground = Brushes.Gray
-                field_hint.TextWrapping = TextWrapping.Wrap
-                field_hint.Margin = Thickness(0, 2, 0, 0)
-                root.Children.Add(field_hint)
+                control = TextBox()
+                control.Text = field.display(values.get(field.key))
+                boxes[field.key] = control
+            control.ToolTip = field.help_text()
+            field_controls.append((field, control))
 
         # подсказки: имена параметров, виды, значения… — по ключу поля
         # (param_autocomplete.rule_for_key) или по param_spec поля
@@ -658,15 +629,7 @@ class TextSettings(object):
             values=values,
         )
 
-        if any(f.required for f in self.fields):
-            required_hint = TextBlock()
-            required_hint.Text = tr(u"* обязательные поля")
-            required_hint.FontSize = 11
-            required_hint.Foreground = Brushes.Gray
-            required_hint.Margin = Thickness(0, 10, 0, 0)
-            root.Children.Add(required_hint)
-
-        buttons = StackPanel()
+        buttons = WrapPanel()
         buttons.Orientation = Orientation.Horizontal
         buttons.HorizontalAlignment = HorizontalAlignment.Right
         buttons.Margin = Thickness(16, 8, 16, 12)
@@ -729,16 +692,13 @@ class TextSettings(object):
             self.transfer_label, _on_settings_imported
         )
 
-        # Длинные пояснения не должны обрезаться при маленькой высоте окна.
-        scroll = ScrollViewer()
-        scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        scroll.Content = root
-
-        outer.Children.Add(buttons)
-        outer.Children.Add(scroll)
-
-        win.Content = outer
-        win.ShowDialog()
+        ui_theme.settings_form(
+            win, tr(self.heading),
+            tr(self.intro) if self.intro is not None else
+            tr(u"Значения сохраняются и подставляются при следующих запусках."),
+            field_controls, buttons,
+        )
+        ui_theme.apply(win).ShowDialog()
 
         return result["values"]
 

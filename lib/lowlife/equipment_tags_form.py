@@ -15,6 +15,7 @@
 значения в каждой строке (тот же приём, что skud_door_rooms_form.py).
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -239,6 +240,6 @@ def show_groups(groups, skipped_tagged=0):
     outer.Children.Add(scroll)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["value"]

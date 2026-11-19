@@ -20,6 +20,17 @@ def test_spec_for_key():
     assert pa.spec_for_key(None) is None
 
 
+def test_input_help_distinguishes_names_values_and_custom_syntax(monkeypatch):
+    from lowlife import i18n
+    monkeypatch.setattr(i18n, 'current', lambda: i18n.RU)
+    assert u'точное имя параметра' in pa.input_hint('device_address_param')
+    assert u'через запятую' in pa.input_hint('offset_param_names')
+    assert u'точное имя параметра' not in pa.input_hint('route_param_value')
+    assert u'точное имя параметра' not in pa.input_hint('room_mask')
+    assert pa.input_hint('device_address_param', None) == u''
+    assert pa.input_hint('search_step_mm') == u''
+
+
 def test_rank_order_and_case():
     # точное, начало имени, начало слова, вхождение
     assert pa.rank(NAMES, u"марка") == [u"Марка", u"ADSK_Марка"]

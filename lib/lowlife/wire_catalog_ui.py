@@ -15,6 +15,7 @@ DataTable без Python-классов со свойствами. Имена с�
 wire_catalog.apply_entries; окно закрывается, итог показывает кнопка.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -231,7 +232,7 @@ def show_edit_window(doc, ks):
     outer.Children.Add(buttons)
     outer.Children.Add(grid)
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["entries"]
 
 

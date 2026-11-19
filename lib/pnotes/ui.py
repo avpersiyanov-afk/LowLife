@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Окна «Заметок по проекту»: новая заметка, сводка, настройка, напоминания."""
+from lowlife import ui_theme
 import os
 from lowlife.i18n import tr, N_
 import io
@@ -443,7 +444,7 @@ class SummaryWindow(forms.WPFWindow):
         note = selected[0]
         dlg = NoteWindow(self.ctx, self.settings, True, note=note)
         dlg.Owner = self
-        dlg.ShowDialog()
+        ui_theme.apply(dlg).ShowDialog()
         if not dlg.changes:
             return
         changes, user, sent = dict(dlg.changes), self.ctx['user'], dict(note)
@@ -460,7 +461,7 @@ class SummaryWindow(forms.WPFWindow):
     def _answer(self, note, close):
         dlg = AnswerWindow(note, close)
         dlg.Owner = self
-        dlg.ShowDialog()
+        ui_theme.apply(dlg).ShowDialog()
         if dlg.answer is None:
             return
         status = core.STATUS_DONE if dlg.mark_done else None
@@ -829,7 +830,7 @@ def run_setup(doc, settings=None):
     if settings is None:
         settings = core.get_settings_fast()
     win = SetupWindow(doc, settings)
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return win.saved
 
 
@@ -855,7 +856,7 @@ def run_new_note(uidoc):
 
     ctx = core.get_context(doc, uidoc, settings)
     win = NoteWindow(ctx, settings, online)
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     if win.result:
         # не ждём таблицу: отправка идёт в фоне, Revit свободен сразу
         core.send_queue_detached()
@@ -874,7 +875,7 @@ def run_summary(uidoc):
     ctx = core.get_context(doc, uidoc, settings)
     # окно открывается сразу с последней копией, свежие заметки подгружаются в фоне
     notes, _ = core.cached_notes(ctx['key'])
-    SummaryWindow(ctx, settings, notes, uidoc=uidoc, load=True).ShowDialog()
+    ui_theme.apply(SummaryWindow(ctx, settings, notes, uidoc=uidoc, load=True)).ShowDialog()
 
 
 def run_open_reminders(doc):
@@ -900,4 +901,4 @@ def run_open_reminders(doc):
         return
     due = core.reminders(notes, ctx['user'], settings.get('remind_days'))
     if due:
-        SummaryWindow(ctx, settings, due, reminders_mode=True).ShowDialog()
+        ui_theme.apply(SummaryWindow(ctx, settings, due, reminders_mode=True)).ShowDialog()

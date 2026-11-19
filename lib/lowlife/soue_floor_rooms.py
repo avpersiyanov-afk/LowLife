@@ -10,6 +10,7 @@
 table_to_sheet/table_from_sheet).
 """
 
+from lowlife import ui_theme
 from lowlife import soue_floor_core as core
 from lowlife.i18n import tr
 from lowlife import soue_floor_settings as cfg
@@ -323,7 +324,7 @@ def show_table_window(rows, heading, intro):
     cancel_btn.Click += on_cancel
 
     refresh()
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["rows"]
 
 

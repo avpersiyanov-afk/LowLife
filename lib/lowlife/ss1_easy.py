@@ -46,6 +46,7 @@ Z точки = смещению от уровня (отметка уровня �
 работало в исходном скрипте пользователя на его семействах.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -1041,7 +1042,7 @@ def ask_levels_and_offset(doc, default_offset_mm):
 
     ok_button.Click += on_ok
     cancel_button.Click += on_cancel
-    window.ShowDialog()
+    ui_theme.apply(window).ShowDialog()
 
     if state["result"] is None:
         return None, None

@@ -9,6 +9,7 @@
 Значения общие для всех кнопок SKUD.panel.
 """
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
@@ -1066,7 +1067,7 @@ def show_settings_form(doc, values, keys=None):
         boxes, param_autocomplete.NameSource(doc), values=values
     )
 
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 

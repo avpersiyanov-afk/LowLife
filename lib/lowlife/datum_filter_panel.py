@@ -220,7 +220,8 @@ class Panel(IDockablePaneProvider):
         self.page.IsVisibleChanged += self.on_visible
 
     def SetupDockablePane(self, data):
-        data.FrameworkElement = self.page
+        from lowlife import ui_theme
+        data.FrameworkElement = ui_theme.apply(self.page)
         data.VisibleByDefault = False
         state = DockablePaneState()
         state.DockPosition = DockPosition.Right

@@ -9,6 +9,7 @@ settings_core.TextSettings; здесь только описание полей.
 семейства/типа, перекрытия и потолки — по категориям Revit.
 """
 
+from lowlife.i18n import N_
 from lowlife import settings_core
 
 
@@ -84,6 +85,9 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Допуск сопоставления уровня помещения связи с уровнем вида, мм",
             default=300.0, minimum=0.0,
+            hint=N_(
+                u"Максимальная разница отметок уровня помещения в связи и уровня текущего вида, в "
+                u"миллиметрах. Помещения за пределами допуска не сопоставляются с этим этажом.")
         ),
         settings_core.ChoiceField(
             "draw_slab_fills",
@@ -129,6 +133,9 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Подпись высоты перекрытия от пола ({h} — отметка)",
             default=u"Пер. {h}",
+            hint=N_(
+                u"Шаблон подписи перекрытия. Вместо {h} подставляется рассчитанная отметка перекрытия "
+                u"относительно пола; остальной текст остаётся без изменений.")
         ),
         settings_core.TextField(
             "delta_text_format",
@@ -145,6 +152,9 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Подпись подвесного потолка ({h} — отметка от пола)",
             default=u"ПП {h}",
+            hint=N_(
+                u"Шаблон подписи подвесного потолка. Вместо {h} подставляется рассчитанная отметка "
+                u"потолка от пола помещения.")
         ),
         settings_core.ChoiceField(
             "draw_steps",

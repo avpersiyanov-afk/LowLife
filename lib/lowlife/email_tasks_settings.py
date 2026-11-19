@@ -17,6 +17,7 @@
 pyrevit.script.get_config(), см. докстринг scs_settings.py про причину).
 """
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
@@ -174,7 +175,7 @@ def show_settings_form(values, default_prompt):
     scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroller.Content = root
     win.Content = scroller
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["values"]
 
 

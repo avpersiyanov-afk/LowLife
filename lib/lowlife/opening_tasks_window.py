@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Persistent modeless role interface. All Revit interaction uses ExternalEvent."""
+from lowlife import ui_theme
 try:
     unicode
 except NameError:
@@ -219,7 +220,7 @@ class Handler(IExternalEventHandler):
             w.pending_part=None
             w.IsEnabled=True
             if not w.closed:
-                w.Show()
+                ui_theme.apply(w).Show()
 
 
 class TaskWindow(forms.WPFWindow):
@@ -447,7 +448,7 @@ class TaskWindow(forms.WPFWindow):
             self.pending=None
             self.pending_part=None
             self.IsEnabled=True
-            self.Show()
+            ui_theme.apply(self).Show()
             return False
         return True
 
@@ -727,9 +728,9 @@ def show(role,config_mode=False):
         existing.Close()
         existing=None
     if existing and not existing.closed:
-        existing.Show()
+        ui_theme.apply(existing).Show()
         existing.Activate()
         return
     window=TaskWindow(role,revit.doc)
     _WINDOWS[role]=window
-    window.Show()
+    ui_theme.apply(window).Show()

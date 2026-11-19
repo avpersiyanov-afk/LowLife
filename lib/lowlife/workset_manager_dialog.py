@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Rule editor and concrete preview; Revit work runs after modal dialogs close."""
+from lowlife import ui_theme
 import clr
 clr.AddReference('PresentationFramework')
 from System.Windows import Thickness, Visibility, Window, WindowStartupLocation
@@ -180,7 +181,7 @@ def edit(rules, names, linked_names):
     for rule in rules:
         add(rule)
     search.TextChanged += filter_rows
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result
 
 
@@ -210,7 +211,7 @@ def confirm(preview):
     _button(footer, N_(u'Применить к проекту'), apply)
     back = _button(footer, N_(u'Вернуться к правилам'), lambda sender, args: win.Close())
     back.IsCancel = True
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result['apply']
 
 

@@ -16,6 +16,7 @@
 Ничего в модели Revit не меняется — только `os.rename` на диске.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -309,7 +310,7 @@ def _show_rename_dialog(stems, folder_a, folder_b):
     outer.Children.Add(grid)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["mapping"]
 

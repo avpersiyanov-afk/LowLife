@@ -37,6 +37,7 @@
 все категории, все параметры) — обязательных полей нет.
 """
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
@@ -432,7 +433,7 @@ def show_settings_form(doc, values):
     outer.Children.Add(scroll)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 

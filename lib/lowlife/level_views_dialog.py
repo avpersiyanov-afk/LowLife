@@ -6,6 +6,7 @@
 level_views_core, создание видов — level_views.
 """
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
@@ -391,7 +392,7 @@ def show(doc, templates, levels, settings, level_template, store):
 
     update_preview()
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["value"]
 
 

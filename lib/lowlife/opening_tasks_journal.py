@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Explicit Google journal publication. Secrets never enter model/settings exports."""
+from lowlife import ui_theme
 try:
     unicode
 except NameError:
@@ -361,7 +362,7 @@ def setup(doc,role,project):
                 self.url.IsEnabled=True
                 self.token.IsEnabled=True
                 forms.alert(unicode(ex))
-    ConnectionWindow().ShowDialog()
+    ui_theme.apply(ConnectionWindow()).ShowDialog()
 
 
 def open_sheet(doc,role,project):

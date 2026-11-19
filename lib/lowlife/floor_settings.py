@@ -20,6 +20,7 @@ filter_selection.py: Id не гарантированно совпадает м�
 пересоздания уровня, а имя обычно стабильно.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -295,7 +296,7 @@ def show_settings_form(doc, values):
     outer.Children.Add(grid)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 

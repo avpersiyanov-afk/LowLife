@@ -25,6 +25,7 @@
 выбором значения в каждой строке.
 """
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import N_, tr
 clr.AddReference('PresentationFramework')
@@ -164,7 +165,7 @@ def _show_doors_dialog(room_title, doors, number_param, auto_of, state):
     outer.Children.Add(scroll)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["ok"]
 
 
@@ -388,6 +389,6 @@ def show_rooms_table(rooms, type_names, saved_choice, room_number_param, auto_of
     outer.Children.Add(scroll)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["value"]

@@ -25,6 +25,7 @@
     границе, прежде чем показывать его в диалоге конфликтов (см. loi_split.py).
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -405,7 +406,7 @@ def show_settings_form(doc, values):
         overrides={"param_names_text": (u"\n", None)}
     )
 
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 
@@ -535,5 +536,5 @@ def show_scope_dialog(doc, selected_ids):
     buttons.Children.Add(ok_btn)
     root.Children.Add(buttons)
     win.Content = root
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["scope"]

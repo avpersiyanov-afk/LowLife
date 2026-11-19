@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Two-column spelling review. WPF is loaded only when opening the dialog."""
+from lowlife import ui_theme
 from lowlife.i18n import tr
 from lowlife import spellcheck_core as core
 
@@ -148,5 +149,5 @@ def review(proposals, targets):
             self.Close()
 
     window = ReviewWindow()
-    window.ShowDialog()
+    ui_theme.apply(window).ShowDialog()
     return window.result

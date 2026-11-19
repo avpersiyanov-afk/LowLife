@@ -29,6 +29,7 @@
                                одну цепь; имя нагрузки не заполняется).
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -503,7 +504,7 @@ def show_settings_form(doc, values):
         boxes, param_autocomplete.NameSource(doc), values=values
     )
 
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 

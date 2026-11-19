@@ -35,7 +35,10 @@ def make(role, doc=None):
             'box_hosts':sc.ChoiceField('box_hosts',u'⑤ Что пересекать',u'Элементы',
                 [(trays.HOSTS_ALL,N_(u'Стены, перекрытия и кровли')),
                  (trays.HOSTS_WALLS,N_(u'Только стены')),
-                 (trays.HOSTS_FLOORS,N_(u'Перекрытия и кровли'))],default=trays.HOSTS_ALL),
+                 (trays.HOSTS_FLOORS,N_(u'Перекрытия и кровли'))],default=trays.HOSTS_ALL,
+                hint=N_(
+                    u"Выберите виды строительных конструкций, пересечения с которыми нужно учитывать при "
+                    u"размещении заданий. Конструкции вне выбранного списка не обрабатываются.")),
             'size_extra_mm': sc.NumberField('size_extra_mm', u'③ Размеры', u'Запас по EIR с каждой стороны, мм',
                                             hint=u'Запас добавляется к габариту элемента ВИС с каждой стороны.', default=50.0, minimum=0.0),
             'max_wall_angle_deg': sc.NumberField('max_wall_angle_deg', u'', u'Максимальный угол прохода к нормали стены, градусы',

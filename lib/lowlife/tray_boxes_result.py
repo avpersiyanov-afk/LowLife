@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 u"""Окно результата расстановки: выбор добавки и схема отверстия."""
 
+from lowlife import ui_theme
 from lowlife.i18n import tr
 from lowlife import tray_boxes_core as core
 
@@ -208,5 +209,5 @@ def show(result, clearance_mm, uidoc, preflight=False, initial_increase=0):
             self.Close()
 
     window = ResultWindow()
-    window.ShowDialog()
+    ui_theme.apply(window).ShowDialog()
     return window.selection

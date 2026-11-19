@@ -120,6 +120,9 @@ def _fields():
                 SYSTEM_LABELS[button_folder],
                 default=default_tray_type(panel_folder, button_folder),
                 required=True,
+                hint=N_(
+                    u"Введите часть имени типа кабельного лотка для этой системы и панели. В проекте должен "
+                    u"найтись ровно один подходящий тип; кнопка начнёт рисование лотка этим типом.")
             ))
     return fields
 
