@@ -1,5 +1,7 @@
 title: LowLife
 layout:
+  - About
   - Actions
+  - Feedback
   - ThemeSelector
 title_en: "LowLife"

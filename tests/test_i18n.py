@@ -292,7 +292,7 @@ def test_custom_panels_keep_user_titles_and_button_references_in_english(appdata
     assert fc.button_ref(ref) == ref
     assert u'Мои цепи' in fc.panel_bundle(u'Мои цепи', ['SCS-PlaceRouteNodes'])
     reserved = favorites.reserved_titles()
-    assert u'Справка' in reserved and u'Help' in reserved
-    assert fc.title_problem(u'Help', [], reserved) is not None
+    assert u'LowLife' in reserved
+    assert fc.title_problem(u'LowLife', [], reserved) is not None
     i18n.save(i18n.RU)
     assert fc.title_problem(u'', []) == u'Введите название панели.'

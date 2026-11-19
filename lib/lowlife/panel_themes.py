@@ -58,7 +58,7 @@ and ToolsTraySection.panel ("Сечение лотка") are listed under both "
 
 Notes.panel ("Заметки") is deliberately outside THEMES: it stays visible
 under every theme except «Моя панель» (see _other_panels), like the
-always-visible _Themes.panel/Info.panel.
+always-visible _Themes.panel.
 
 Every panel folder must also be listed in LowLife.tab/bundle.yaml `layout:`
 — pyRevit doesn't build a panel missing from it at all (SPA, LOI,
@@ -279,9 +279,8 @@ def _find_panel(pyrevit_tabs, ribbon_name):
     return None
 
 
-# Панели, которые видны при любой теме, даже «Моя панель»: _Themes.panel («LowLife» — в ней список тем)
-# и Info.panel («Справка» — «О программе» и «Обратная связь»).
-ALWAYS_VISIBLE = (u"_Themes", u"Info")
+# Панель LowLife видна при любой теме, даже «Моя панель».
+ALWAYS_VISIBLE = (u"_Themes",)
 
 
 def _always_visible_panels(root=None):
