@@ -304,12 +304,27 @@ def _other_panels(root=None):
     from lowlife import favorites_core, ribbon_catalog
     tab = os.path.join(root or ribbon_catalog.extension_root(), ribbon_catalog.TAB_FOLDER)
     themed = set(panel for refs in THEMES.values() for panel, _ in refs)
+    return _panel_titles(tab, ribbon_catalog,
+                         lambda stem: stem not in themed and stem not in ALWAYS_VISIBLE
+                         and not favorites_core.is_slot(stem))
+
+
+def _favorite_panels(root=None):
+    """[(folder, title)] пользовательские панели MyPanel<N>."""
+    import os
+    from lowlife import favorites_core, ribbon_catalog
+    tab = os.path.join(root or ribbon_catalog.extension_root(), ribbon_catalog.TAB_FOLDER)
+    return _panel_titles(tab, ribbon_catalog, favorites_core.is_slot)
+
+
+def _panel_titles(tab, ribbon_catalog, include):
+    """Return ``(folder, title)`` for panel folders accepted by ``include``."""
+    import os
     result = []
     for name in sorted(os.listdir(tab)):
         stem, ext = os.path.splitext(name)
-        if ext != u".panel" or stem in themed or stem in ALWAYS_VISIBLE or favorites_core.is_slot(stem):
-            continue
-        result.append((stem, ribbon_catalog.item_title(os.path.join(tab, name))))
+        if ext == u".panel" and include(stem):
+            result.append((stem, ribbon_catalog.item_title(os.path.join(tab, name))))
     return result
 
 
@@ -370,6 +385,16 @@ def apply_theme(selected_theme):
 
     # Панели вне THEMES («Заметки», «Фильтр выбора», …): при «Моя панель» прячутся, при остальных — видны.
     # ALWAYS_VISIBLE показываем всегда — вдруг их спрятала прежняя версия темы «Моя панель».
+    show_mine = selected_theme == MINE
+    for _folder, title in _favorite_panels():
+        panel = _find_panel(pyrevit_tabs, title)
+        if panel is None:
+            continue
+        panel.visible = show_mine
+        adwindows_panel = ribbon_language.adwindows_panel(panel)
+        if adwindows_panel is not None:
+            adwindows_panel.IsVisible = show_mine
+
     show_other = selected_theme != MINE
     for _folder, title in _always_visible_panels():
         panel = _find_panel(pyrevit_tabs, title)

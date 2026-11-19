@@ -3,6 +3,8 @@
 панели LowLife)."""
 
 import os
+import sys
+import types
 
 import pytest
 
@@ -108,3 +110,60 @@ def test_panels_are_found_by_their_ribbon_title():
     assert panel_themes._ribbon_name(u"SCS") == u"СКС"
     assert panel_themes._ribbon_name(u"ToolsCables") == u"Кабели"
     assert panel_themes._ribbon_name(u"LOI") == u"Заполнение LOI"
+
+
+def test_favorite_panels_are_discovered_separately(tmpdir):
+    root = str(tmpdir)
+    folder = os.path.join(root, "LowLife.tab", "MyPanel1.panel")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "bundle.yaml"), "w", encoding="utf-8") as f:
+        f.write('title: "My custom panel"\n')
+    assert panel_themes._favorite_panels(root) == [(u"MyPanel1", u"My custom panel")]
+
+
+def test_favorite_panels_visible_only_in_mine_theme(monkeypatch):
+    class AdWindowsPanel(object):
+        IsVisible = True
+
+    class Panel(object):
+        def __init__(self):
+            self.visible = True
+            self.adwindows = AdWindowsPanel()
+
+        def __iter__(self):
+            return iter(())
+
+        def get_adwindows_object(self):
+            return self.adwindows
+
+    favorite = Panel()
+
+    class Tab(object):
+        def find_child(self, title):
+            return favorite if title == u"My custom panel" else None
+
+    class UI(object):
+        def get_pyrevit_tabs(self):
+            return [Tab()]
+
+    ribbon = types.ModuleType("pyrevit.coreutils.ribbon")
+    ribbon.get_current_ui = lambda: UI()
+    coreutils = types.ModuleType("pyrevit.coreutils")
+    coreutils.ribbon = ribbon
+    pyrevit = types.ModuleType("pyrevit")
+    pyrevit.coreutils = coreutils
+    monkeypatch.setitem(sys.modules, "pyrevit", pyrevit)
+    monkeypatch.setitem(sys.modules, "pyrevit.coreutils", coreutils)
+    monkeypatch.setitem(sys.modules, "pyrevit.coreutils.ribbon", ribbon)
+    monkeypatch.setattr(panel_themes, "_ribbon_name", lambda folder: folder)
+    monkeypatch.setattr(panel_themes, "_favorite_panels",
+                        lambda: [(u"MyPanel1", u"My custom panel")])
+    monkeypatch.setattr(panel_themes, "_always_visible_panels", lambda: [])
+    monkeypatch.setattr(panel_themes, "_other_panels", lambda: [])
+
+    panel_themes.apply_theme(u"SCS")
+    assert not favorite.visible
+    assert not favorite.adwindows.IsVisible
+    panel_themes.apply_theme(panel_themes.MINE)
+    assert favorite.visible
+    assert favorite.adwindows.IsVisible
