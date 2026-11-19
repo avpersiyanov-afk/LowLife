@@ -220,8 +220,10 @@ class Panel(IDockablePaneProvider):
         self.page.IsVisibleChanged += self.on_visible
 
     def SetupDockablePane(self, data):
-        from lowlife import ui_theme
-        data.FrameworkElement = ui_theme.apply(self.page)
+        # Revit owns the dockable-pane host and initializes it during startup.
+        # Applying the shared WPF resource dictionary here can destabilize the
+        # host (including blank native panes and a subsequent Revit crash).
+        data.FrameworkElement = self.page
         data.VisibleByDefault = False
         state = DockablePaneState()
         state.DockPosition = DockPosition.Right
