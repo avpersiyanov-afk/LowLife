@@ -97,6 +97,11 @@ except Exception:
     Family = GenericForm = ReferencePlane = FamilyInstance = None
 
 try:
+    from Autodesk.Revit.DB.Structure import StructuralType
+except Exception:
+    StructuralType = None
+
+try:
     from Autodesk.Revit.DB import ConnectorElement
 except Exception:
     ConnectorElement = None
@@ -1470,14 +1475,32 @@ def _is_column_element(el):
         category = el.Category
         if category is not None:
             cid = category.Id.IntegerValue
-            if cid in (int(BuiltInCategory.OST_Columns),
-                       int(BuiltInCategory.OST_StructuralColumns)):
+            category_ids = []
+            for name in (u"OST_Columns", u"OST_StructuralColumns"):
+                bic = getattr(BuiltInCategory, name, None)
+                if bic is not None:
+                    try:
+                        category_ids.append(int(bic))
+                    except Exception:
+                        pass
+            if cid in category_ids:
                 return True
             name = unicode(category.Name or u"").lower()
             if u"колон" in name or u"column" in name:
                 return True
     except Exception:
         pass
+
+    # Некоторые модели сохраняют колонну как Structural Framing. В этом
+    # случае имя семейства ничего не говорит, но Revit надёжно сообщает
+    # StructuralType.Column у FamilyInstance.
+    if StructuralType is not None:
+        try:
+            if (isinstance(el, FamilyInstance)
+                    and el.StructuralType == StructuralType.Column):
+                return True
+        except Exception:
+            pass
 
     # В некоторых моделях архитектурные колонны сделаны как Generic Model.
     # Проверяем только имя семейства/типа, чтобы не считать все обобщённые
@@ -1527,16 +1550,24 @@ def _column_rings_for_point(doc, center, room_ring, max_r, plane_z=None):
     текущей и загруженных моделей и становятся препятствиями для лучей.
     """
     out = []
-    seen = set()
 
-    visited_docs = set()
+    # Keep only the current recursion path here. The same linked document may
+    # be placed more than once with different transforms; a global
+    # ``visited_docs`` set would silently skip all placements after the first.
+    active_docs = set()
 
     def collect(model_doc, tf):
         try:
+            seen = set()
             elements = []
-            for bic in (BuiltInCategory.OST_Columns,
-                        BuiltInCategory.OST_StructuralColumns,
-                        BuiltInCategory.OST_GenericModel):
+            categories = []
+            for name in (u"OST_Columns", u"OST_StructuralColumns",
+                         u"OST_StructuralFraming", u"OST_GenericModel",
+                         u"OST_SpecialityEquipment", u"OST_Furniture"):
+                bic = getattr(BuiltInCategory, name, None)
+                if bic is not None:
+                    categories.append(bic)
+            for bic in categories:
                 try:
                     elements.extend(
                         FilteredElementCollector(model_doc)
@@ -1580,23 +1611,26 @@ def _column_rings_for_point(doc, center, room_ring, max_r, plane_z=None):
     def visit(model_doc, tf):
         """Обойти также вложенные связи (например, КР внутри АР)."""
         marker = id(model_doc)
-        if marker in visited_docs:
+        if marker in active_docs:
             return
-        visited_docs.add(marker)
-        collect(model_doc, tf)
+        active_docs.add(marker)
         try:
-            links = FilteredElementCollector(model_doc).OfClass(RevitLinkInstance)
-            for link in links:
-                ldoc = link.GetLinkDocument()
-                if ldoc is None:
-                    continue
-                try:
-                    child_tf = tf.Multiply(link.GetTotalTransform())
-                except Exception:
-                    continue
-                visit(ldoc, child_tf)
-        except Exception:
-            return
+            collect(model_doc, tf)
+            try:
+                links = FilteredElementCollector(model_doc).OfClass(RevitLinkInstance)
+                for link in links:
+                    ldoc = link.GetLinkDocument()
+                    if ldoc is None:
+                        continue
+                    try:
+                        child_tf = tf.Multiply(link.GetTotalTransform())
+                    except Exception:
+                        continue
+                    visit(ldoc, child_tf)
+            except Exception:
+                return
+        finally:
+            active_docs.discard(marker)
 
     visit(doc, Transform.Identity)
     return out
@@ -1626,16 +1660,18 @@ def _room_solid_rings(room, tf):
     for solid in _element_solids(room, _geom_options()):
         rings = _horizontal_face_rings(solid, tf)
         if rings:
-            return rings
+            outer = _largest_ring(rings)
+            return [outer] if outer is not None else None
     return None
 
 
 def _room_boundary_rings(room, opt, tf):
-    """[[XYZ,...], ...] — контуры Room в координатах ХОСТА, Z=0. Первый —
-    внешний, остальные — «дыры». Основной путь — GetBoundarySegments;
-    если он не дал ни одного пригодного контура (разомкнутая/повреждённая
-    граница) — резерв _room_solid_rings. None, если не получилось ни так,
-    ни так (помещение действительно не ограничено)."""
+    """Return the room outline and only boundary holes made by columns.
+
+    Revit may return room separators and internal walls as additional loops.
+    They are not obstacles for this calculation. A loop is retained as a hole
+    only when at least one of its boundary segments belongs to a column.
+    """
     try:
         loops = room.GetBoundarySegments(opt)
     except Exception:
@@ -1646,17 +1682,24 @@ def _room_boundary_rings(room, opt, tf):
     rings = []
     for loop in loops:
         pts = []
+        is_column_boundary = False
         for seg in loop:
             crv = None
             try:
                 crv = seg.GetCurve()
             except Exception:
                 try:
-                    crv = seg.Curve            # старое имя (Revit < 2016)
+                    crv = seg.Curve
                 except Exception:
                     crv = None
             if crv is None:
                 continue
+            try:
+                source = room.Document.GetElement(seg.ElementId)
+                if _is_column_element(source):
+                    is_column_boundary = True
+            except Exception:
+                pass
             try:
                 tess = crv.CreateTransformed(tf).Tessellate()
             except Exception:
@@ -1665,8 +1708,20 @@ def _room_boundary_rings(room, opt, tf):
                 q = tess[i]
                 pts.append(XYZ(q.X, q.Y, 0.0))
         if len(pts) >= 3:
-            rings.append(pts)
-    return rings or _room_solid_rings(room, tf)
+            rings.append((pts, is_column_boundary))
+
+    if not rings:
+        return _room_solid_rings(room, tf)
+
+    # GetBoundarySegments does not promise loop order. Select the largest
+    # ring as the outside boundary instead of assuming rings[0] is outer.
+    outer_index = max(
+        range(len(rings)), key=lambda i: abs(_ring_area2(rings[i][0])))
+    result = [rings[outer_index][0]]
+    for i, (ring, is_column_boundary) in enumerate(rings):
+        if i != outer_index and is_column_boundary:
+            result.append(ring)
+    return result
 
 
 def _point_in_ring(px, py, ring):
@@ -2163,10 +2218,10 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         if room_rings is None:
             status = u"ok_no_room"
 
-    # Clip to the Room outer boundary. Inner GetBoundarySegments loops are
-    # internal walls/room-separation lines and must not create extra cut-outs.
-    # Columns are separate solid obstacles and are added back explicitly.
-    clip_rings = room_rings[:1] if room_rings else None
+    # Clip to the Room outer boundary and column holes retained by
+    # _room_boundary_rings. Other internal Room loops are deliberately
+    # discarded there because they are separators/walls, not obstacles.
+    clip_rings = list(room_rings) if room_rings else None
     if clip_rings:
         column_rings = _column_rings_for_point(
             doc, center, clip_rings[0], far_r, z)
