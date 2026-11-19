@@ -64,6 +64,14 @@ def test_real_extension_lists_feedback_button():
     assert all(buttons for buttons in panels.values())
 
 
+def test_lowlife_stack_buttons_have_explicit_captions():
+    root = os.path.join(ribbon_catalog.extension_root(), u"LowLife.tab", u"_Themes.panel", u"Actions.stack")
+    for name in (u"About.pushbutton", u"Search.pushbutton", u"MyPanels.pushbutton",
+                 u"Feedback.pushbutton", u"Language.pushbutton"):
+        bundle = ribbon_catalog.raw_bundle_text(os.path.join(root, name))
+        assert bundle[u"title"]
+
+
 def _entry(title, panel_title=u"П", tooltip=u"", path=(u"B",)):
     return {u"panel": u"P", u"panel_title": panel_title, u"button": path[-1], u"path": list(path),
             u"title": title, u"tooltip": tooltip}
