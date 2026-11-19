@@ -1,6 +1,6 @@
 [Русский](../feedback-panel.md) | **English**
 
-# Feedback — the «Feedback» button on the Help panel
+# Feedback — the «Feedback» button on the LowLife panel
 
 The window and panel/button lists follow the selected LowLife language. Messages
 keep the original panel and button names; message text, contact details and the
@@ -13,7 +13,7 @@ The list of panels and buttons is built from the extension folders (`lib/lowlife
 
 Messages go to **the author's Google Sheet** — separate from «Project notes». The web app (`docs/feedback/Code.gs`) only appends rows; you can't read other people's feedback through it — only the status of and the reply to your own (see «The author's reply» below). Without internet (or while the address isn't set) the message is saved to `%APPDATA%\pyRevit\LowLifeFeedback\queue.json` and goes out with the next send; re-sending doesn't create duplicates (checked by ID). The window doesn't wait for the sheet: «Send» closes it at once, and the message goes out in the background while you keep working.
 
-Code: `lib/pnotes/feedback.py` (the window and sending; HTTP is shared with notes — `pnotes/core.py`), layout — `lib/pnotes/xaml/feedback.xaml`, the button — `LowLife.tab/Info.panel/Info.stack/Feedback.pushbutton`.
+Code: `lib/pnotes/feedback.py` (the window and sending; HTTP is shared with notes — `pnotes/core.py`), layout — `lib/pnotes/xaml/feedback.xaml`, the button — `LowLife.tab/_Themes.panel/Feedback.pushbutton`.
 
 ## Setting up the Google part (once, done by the author)
 

@@ -1,6 +1,7 @@
+title: "О программе"
+title_en: "About"
 tooltip: |
   О программе LowLife: логотип, версия расширения (коммит, из которого pyRevit его поставил) и ссылка на репозиторий.
-title_en: "About"
 tooltip_en: >-
   About LowLife: the logo, the extension version (the commit pyRevit installed it from) and a link to
   the repository.

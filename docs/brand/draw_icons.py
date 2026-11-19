@@ -810,7 +810,7 @@ ICONS = [
     ("SOT.panel/CameraPreviewView.pushbutton", camera_view),
     ("SKUD.panel/InspectSchematicDevices.pushbutton", diag_schematic),
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
-    ("Info.panel/Info.stack/Feedback.pushbutton", feedback),
+    ("_Themes.panel/Feedback.pushbutton", feedback),
     ("_Themes.panel/Actions.stack/Search.pushbutton", ribbon_search),
     ("_Themes.panel/Actions.stack/MyPanels.pushbutton", favorites),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
