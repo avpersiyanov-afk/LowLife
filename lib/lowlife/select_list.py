@@ -30,6 +30,11 @@ def _translated(kwargs):
 
 
 class SelectFromList(forms.SelectFromList):
+    def __init__(self, *args, **kwargs):
+        super(SelectFromList, self).__init__(*args, **kwargs)
+        from lowlife import ui_theme
+        ui_theme.apply(self)
+
     @classmethod
     def show(cls, context, *args, **kwargs):
         return super(SelectFromList, cls).show(context, *args, **_translated(kwargs))
@@ -45,6 +50,11 @@ class SelectFromList(forms.SelectFromList):
 
 
 class CommandSwitchWindow(forms.CommandSwitchWindow):
+    def __init__(self, *args, **kwargs):
+        super(CommandSwitchWindow, self).__init__(*args, **kwargs)
+        from lowlife import ui_theme
+        ui_theme.apply(self)
+
     @classmethod
     def show(cls, context, *args, **kwargs):
         return super(CommandSwitchWindow, cls).show(context, *args, **_translated(kwargs))

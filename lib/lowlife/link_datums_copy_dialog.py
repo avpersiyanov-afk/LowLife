@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Missing datums and target system family types/worksets in one window."""
+from lowlife import ui_theme
 import clr
 clr.AddReference('PresentationFramework')
 from System.Windows import Window, Thickness, WindowStartupLocation, TextWrapping, Visibility
@@ -146,5 +147,5 @@ def show(doc, levels, grids):
         button.Click += handler
         footer.Children.Add(button)
     button.IsCancel = True
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result['choices']

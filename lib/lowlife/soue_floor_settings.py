@@ -22,6 +22,7 @@
 1,5 м, шум по категориям) зашиты в soue_floor_core.
 """
 
+from lowlife import ui_theme
 from lowlife import settings_core
 from lowlife.i18n import N_, tr
 from lowlife import soue_floor_core as core
@@ -87,12 +88,18 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Мощность, если параметра нет, Вт",
             default=1.5, minimum=0,
+            hint=N_(
+                u"Мощность одного оповещателя в ваттах, используемая, если у него нет настроенного "
+                u"параметра мощности. Укажите мощность по паспорту выбранного оборудования.")
         ),
         settings_core.NumberField(
             "wall_margin_mm",
             u"③ Расстановка",
             u"Отступ от углов стены, мм",
             default=300.0, minimum=0,
+            hint=N_(
+                u"Минимальный отступ места установки оповещателя от угла стены, в миллиметрах. "
+                u"Ограничивает доступный участок стены для расстановки.")
         ),
         settings_core.NumberField(
             "opening_clearance_mm",
@@ -461,5 +468,5 @@ def show_settings_window(doc):
     ok_btn.Click += on_ok
     cancel_btn.Click += on_cancel
 
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["saved"]

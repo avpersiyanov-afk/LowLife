@@ -14,6 +14,7 @@
   добавить на неё кнопку.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -393,7 +394,7 @@ def run(uiapp):
 def _run(uiapp):
     entries = [e for e in ribbon_catalog.list_buttons() if (e[u"panel"], e[u"button"]) != SELF]
     win = SearchWindow(entries)
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     if not win.result:
         return
     action, entry = win.result

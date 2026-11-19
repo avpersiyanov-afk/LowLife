@@ -61,6 +61,9 @@ _FIELDS.append(settings_core.TextField(
     u"{} {}".format(_NUMBERS[len(GROUPS)], N_(u"Остальные элементы «Парковки»")),
     u"Текст подписи (пусто — не подписывать)",
     default=OTHER.text_format,
+    hint=N_(
+        u"Подпись для элементов парковки, не попавших в перечисленные группы. Пустое поле "
+        u"исключает подписи таких элементов.")
 ))
 
 SETTINGS = settings_core.TextSettings(

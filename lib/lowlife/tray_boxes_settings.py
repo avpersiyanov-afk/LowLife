@@ -9,6 +9,7 @@ settings_core.TextSettings; здесь только описание полей.
 умолчанию — обычные «Ширина»/«Глубина»/«Высота».
 """
 
+from lowlife.i18n import N_
 from lowlife import settings_core
 from lowlife.i18n import tr
 
@@ -164,6 +165,9 @@ def _make_settings(titles):
                  (HOSTS_WALLS, u"Только стены"),
                  (HOSTS_FLOORS, u"Только перекрытия")],
                 default=HOSTS_ALL,
+                hint=N_(
+                    u"Выберите виды строительных конструкций, пересечения с которыми нужно учитывать при "
+                    u"размещении заданий. Конструкции вне выбранного списка не обрабатываются.")
             ),
             _source_field(titles),
             settings_core.NumberField(

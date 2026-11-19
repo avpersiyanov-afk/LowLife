@@ -25,6 +25,7 @@ pyrevit.script.get_config(), см. CLAUDE.md).
 типоразмеры хранятся в том же файле под ключами SHAFT_KEYS/SYMBOL_KEYS.
 """
 
+from lowlife import ui_theme
 from lowlife import i18n, settings_core
 from lowlife.i18n import N_, tr
 
@@ -78,6 +79,10 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Соседние помещения (через запятую)",
             default=u"Коридор, Вестибюль", required=True,
+            hint=N_(
+                u"Названия помещений в связи АР, в которые должна вести дверь из целевого помещения "
+                u"квартиры. Перечислите варианты через запятую; по подходящей двери выбирается место "
+                u"кабельного подвода.")
         ),
         settings_core.TextField(
             "lot_param_name",
@@ -106,6 +111,10 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Параметр шахты «Номер секции» (экземпляра или типа)",
             default=u"",
+            hint=N_(
+                u"Имя параметра экземпляра шахты или её типа, содержащего номер секции. Значение "
+                u"сопоставляется с номером секции помещения для выбора кросса, от которого строится "
+                u"цепь.")
         ),
         settings_core.TextField(
             "room_param_name",
@@ -122,24 +131,36 @@ SETTINGS = settings_core.TextSettings(
             u"",
             u"Текст для кроссов",
             default=u"Ниша СС",
+            hint=N_(
+                u"Текст, записываемый кроссам в настроенный параметр «Помещение». Это готовое значение "
+                u"подписи, а не имя параметра.")
         ),
         settings_core.NumberField(
             "cross_height_1_mm",
             u"③ Высоты, мм (от уровня)",
             u"Кросс №1",
             default=1000.0, minimum=0,
+            hint=N_(
+                u"Высота установки кросса №1 над уровнем его этажа, в миллиметрах. Используется при "
+                u"размещении кросса в шахте.")
         ),
         settings_core.NumberField(
             "cross_height_2_mm",
             u"",
             u"Кросс №2",
             default=1500.0, minimum=0,
+            hint=N_(
+                u"Высота установки кросса №2 над уровнем его этажа, в миллиметрах. Задаётся отдельно от "
+                u"первого кросса.")
         ),
         settings_core.NumberField(
             "feed_height_mm",
             u"",
             u"Кабельный подвод (значение по умолчанию в окне запуска)",
             default=2700.0, minimum=0,
+            hint=N_(
+                u"Начальная высота кабельного подвода над уровнем этажа, в миллиметрах. Подставляется в "
+                u"окно запуска, где её можно изменить для текущей расстановки.")
         ),
         settings_core.NumberField(
             "feed_wall_inset_mm",
@@ -643,5 +664,5 @@ def show_settings_window(doc):
     ok_btn.Click += on_ok
     cancel_btn.Click += on_cancel
 
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result["saved"]

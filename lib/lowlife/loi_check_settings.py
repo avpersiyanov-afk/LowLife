@@ -28,6 +28,7 @@ pyrevit.script.get_config()).
 настроек пользователя, — в репозитории их нет.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -542,7 +543,7 @@ def show_settings_form(doc, values):
     outer.Children.Add(scroll)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 

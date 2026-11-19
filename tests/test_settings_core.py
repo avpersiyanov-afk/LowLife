@@ -14,6 +14,24 @@ from lowlife import settings_core
 from lowlife.settings_core import ChoiceField, JsonStore, NumberField, TextField, TextSettings
 
 
+def test_field_help_preserves_purpose_and_actual_constraints(monkeypatch):
+    from lowlife import i18n
+    monkeypatch.setattr(i18n, 'current', lambda: i18n.RU)
+    field = TextField('device_address_param', u'', u'Адрес',
+                      hint=u'Текстовый параметр экземпляра устройства для записи адреса.', required=True)
+    help_text = field.help_text()
+    assert field.hint in help_text
+    assert u'точное имя параметра' in help_text
+    assert u'Обязательное поле' in help_text
+    numeric = NumberField('spacing_mm', u'', u'Шаг', minimum=10, integer=True)
+    assert u'целое число' in numeric.help_text()
+    assert u'10' in numeric.help_text()
+    assert u'имя параметра' not in numeric.help_text()
+    monkeypatch.setattr(i18n, 'current', lambda: i18n.EN)
+    assert 'whole number' in numeric.help_text()
+    assert 'Minimum value: 10.' in numeric.help_text()
+
+
 @pytest.fixture
 def appdata(tmpdir, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmpdir))

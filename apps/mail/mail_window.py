@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from lowlife import email_ai, email_tasks_run, email_tasks_xlsx
-from lowlife import i18n
+from lowlife import i18n, ui_theme
 from lowlife import email_tasks_settings_core as settings_core
 from lowlife.email_app_core import app_text
 
@@ -136,6 +136,7 @@ class MainWindow(object):
         panes.add(self.details, weight=1)
 
         self.refresh_summary()
+        ui_theme.apply_tk(root)
 
     def on_language(self, _event=None):
         index = self.language.current()

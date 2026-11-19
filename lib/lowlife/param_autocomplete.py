@@ -564,6 +564,30 @@ def source_for_rule(rule, params_source, boxes=None, values=None):
 
 # --- окно-подсказка под полем (WPF) ------------------------------------------
 
+def input_hint(key, spec="auto"):
+    """Explain the expected input using the same rules as autocomplete."""
+    rule = rule_for_key(key) if spec == "auto" else (
+        ("params", spec, None) if spec is not None else None)
+    if rule is None:
+        return u""
+    kind, actual_spec, _ = rule
+    if kind != "params":
+        return _hint(_HINTS.get(kind, N_(u"значения")))
+    if actual_spec == SINGLE:
+        instruction = tr(
+            u"Введите точное имя параметра Revit, а не его значение. "
+            u"Например: «Марка», а не «ПР-01». Имя должно существовать у элементов, описанных в пояснении.",
+            u"Enter the exact Revit parameter name, rather than its value. "
+            u"For example: 'Mark', rather than 'P-01'. The parameter must exist on the elements described in the help.")
+    elif actual_spec == LIST:
+        instruction = tr(
+            u"Перечислите имена параметров через запятую, а не значения этих параметров.",
+            u"List parameter names separated by commas, rather than their values.")
+    else:
+        instruction = u""
+    return (instruction + u"\n" if instruction else u"") + tr(HINT)
+
+
 def attach_by_keys(boxes, source, overrides=None, values=None):
     """
     Подключает подсказки ко всем полям {ключ: TextBox}, для которых есть
@@ -575,6 +599,11 @@ def attach_by_keys(boxes, source, overrides=None, values=None):
     """
     overrides = overrides or {}
     for key, box in boxes.items():
+        help_text = input_hint(key, overrides.get(key, "auto"))
+        if help_text:
+            old = box.ToolTip
+            if help_text not in u"{}".format(old or u""):
+                box.ToolTip = (u"{}\n\n{}".format(old, help_text) if old else help_text)
         if key in overrides:
             if overrides[key] is not None:
                 attach(box, source, overrides[key])
@@ -639,6 +668,9 @@ class _Completion(object):
         border.BorderThickness = Thickness(1)
         border.Background = Brushes.White
         border.Child = self.list
+
+        from lowlife import ui_theme
+        ui_theme.apply(border)
 
         self.popup = Popup()
         self.popup.PlacementTarget = box

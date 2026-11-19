@@ -12,6 +12,7 @@ pyrevit.script.get_config()).
 проектами (из общего шаблона проекта), а Id — нет.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -307,7 +308,7 @@ def show_settings_form(doc, values):
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroll.Content = root
     win.Content = scroll
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 
@@ -458,7 +459,7 @@ def ask_run_options(doc, count):
     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto
     scroll.Content = root
     win.Content = scroll
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     if result["values"] is not None:
         save_values(result["values"])

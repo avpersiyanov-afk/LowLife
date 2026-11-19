@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Modal graphic preview: task rectangles and the resulting opening envelope."""
+from lowlife import ui_theme
 from pyrevit import forms
 from System.Windows.Controls import Canvas, TextBlock
 from System.Windows.Media import Brushes, DoubleCollection
@@ -63,5 +64,5 @@ def show(records):
             Canvas.SetLeft(rect,x);Canvas.SetTop(rect,y);self.diagram.Children.Add(rect)
         def confirm(self,sender,event):
             self.result=True;self.Close()
-    window=Preview();window.ShowDialog()
+    window=Preview();ui_theme.apply(window).ShowDialog()
     return window.result

@@ -12,6 +12,7 @@ show(uiapp) — показать сейчас (кнопка). show_on_startup(ui
 pyRevit приветствие не повторяет).
 """
 
+from lowlife import ui_theme
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -141,7 +142,7 @@ def show(uiapp=None):
     win.MouseLeftButtonUp += _close
     win.KeyDown += _keys
     win.ContentRendered += _activate
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
 
 def _first_time_this_session():

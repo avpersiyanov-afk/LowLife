@@ -43,6 +43,7 @@ Document.LoadFamily управляет собственной транзакци
 revit.Transaction (см. write_stamp).
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -1349,7 +1350,7 @@ def show_status_form(rows, catalog_root, entries):
     outer.Children.Add(grid)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     if result["jobs"] is None:
         return None
@@ -1675,7 +1676,7 @@ def show_load_form(entries, present_names, catalog_root):
     outer.Children.Add(grid)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     if result["entries"] is None:
         return None
@@ -1842,7 +1843,7 @@ def show_type_picker(type_map):
     outer.Children.Add(grid)
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["map"]
 

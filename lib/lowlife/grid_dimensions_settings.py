@@ -19,10 +19,16 @@ SETTINGS = settings_core.TextSettings(
             default=u"*", required=True),
         settings_core.NumberField(
             "offset_mm", N_(u"Отступы"), N_(u"Отступ цепочки от концов осей, мм"),
-            default=1400.0, minimum=0.0),
+            default=1400.0, minimum=0.0,
+            hint=N_(
+                u"Расстояние от концов осей до первой размерной цепочки, в миллиметрах. Увеличьте его, "
+                u"если размер перекрывает обозначения осей.")),
         settings_core.NumberField(
             "total_gap_mm", N_(u"Отступы"), N_(u"Отступ общего размера от цепочки, мм"),
-            default=700.0, minimum=1.0),
+            default=700.0, minimum=1.0,
+            hint=N_(
+                u"Расстояние между размерной цепочкой отдельных пролётов и общим размером, в "
+                u"миллиметрах. Задаёт разнос двух параллельных размерных линий.")),
     ], height=520,
 )
 

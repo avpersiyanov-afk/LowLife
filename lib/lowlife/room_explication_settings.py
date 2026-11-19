@@ -64,6 +64,9 @@ def _sort_fields():
             "room_sort{}_order".format(n), u"", u"",
             [(ORDER_ASC, u"По возрастанию"), (ORDER_DESC, u"По убыванию")],
             default=ORDER_ASC,
+            hint=N_(
+                u"Направление сортировки по параметру, выбранному для этой строки выше: от меньшего к "
+                u"большему или в обратном порядке.")
         ))
         fields.append(settings_core.ChoiceField(
             "room_sort{}_header".format(n), u"", u"",

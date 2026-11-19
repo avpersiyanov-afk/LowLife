@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from lowlife import ui_theme
 __title__ = u"О программе"
 __doc__ = u"О программе: логотип, версия расширения, поддерживаемые версии Revit, таблица параметров, ссылка на репозиторий и лицензия"
 __author__ = "Pipers"
@@ -92,4 +93,4 @@ def _set_usage(value):
         forms.alert(tr(u'Не удалось сохранить настройку статистики: {}').format(ex), title=u'LowLife')
 
 
-AboutWindow().ShowDialog()
+ui_theme.apply(AboutWindow()).ShowDialog()

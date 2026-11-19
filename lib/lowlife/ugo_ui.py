@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Modal UGO catalog editor; writes are performed after closing the dialog."""
+from lowlife import ui_theme
 try:
     unicode
 except NameError:
@@ -297,7 +298,7 @@ def show(doc, original):
     refresh_groups(next((i for i, g in enumerate(data['groups'])
                          if g['id'] == data.get('selected_group_id')), 0))
     refresh()
-    window.ShowDialog()
+    ui_theme.apply(window).ShowDialog()
     return result[0] if result else None
 
 

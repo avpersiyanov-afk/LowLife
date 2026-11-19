@@ -6,6 +6,7 @@
 (settings_core.JsonStore). Только IronPython/WPF.
 """
 
+from lowlife import ui_theme
 from lowlife import settings_core, view_crop
 from lowlife.i18n import N_, tr
 
@@ -132,7 +133,7 @@ def ask(modes, source_name):
 
     ok.Click += on_ok
     win.Content = root
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     if result["value"] is not None:
         save_choice(*result["value"])

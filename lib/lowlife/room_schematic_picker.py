@@ -28,6 +28,7 @@
 Логика без WPF/Revit — room_schematic_core.py.
 """
 
+from lowlife import ui_theme
 from collections import OrderedDict
 from lowlife.i18n import tr, N_
 
@@ -469,6 +470,6 @@ def show(doc, records):
     win.Content = outer
 
     floors.SelectedIndex = 0
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return state["result"]

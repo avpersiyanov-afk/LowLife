@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Resizable cross-section editor. All coordinates displayed in millimetres."""
+from lowlife import ui_theme
 try:
     unicode
 except NameError:
@@ -582,6 +583,6 @@ def show(doc, values=None, preview_path=None, preview_tab=1):
                 stream.Close()
                 window.Close()
             return True
-        window.ShowDialog()
+        ui_theme.apply(window).ShowDialog()
         if window.result != settings_transfer.RELOAD:
             return window.result

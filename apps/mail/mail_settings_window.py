@@ -108,6 +108,8 @@ class SettingsWindow(object):
         ttk.Button(bottom, text=tr(u"Сохранить"), command=self.on_ok).pack(side=tk.RIGHT)
         ttk.Button(bottom, text=tr(u"Отмена"), command=self.win.destroy).pack(side=tk.RIGHT, padx=(0, 8))
         win.bind(u"<Escape>", lambda _e: win.destroy())
+        from lowlife import ui_theme
+        ui_theme.apply_tk(win)
 
     def _build_connection(self, body, form, values):
         form.label(tr(u"Подключение ИИ"), bold=True, top=14)

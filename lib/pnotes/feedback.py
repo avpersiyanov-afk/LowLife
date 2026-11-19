@@ -8,6 +8,7 @@
 открытии окна) и показываются на вкладке «Мои сообщения»; о новом ответе напоминает уведомление.
 Адрес веб-приложения общий для всех пользователей, поэтому он записан здесь, в FEEDBACK_URL.
 """
+from lowlife import ui_theme
 import os
 from lowlife.i18n import N_, tr
 import json
@@ -487,7 +488,7 @@ def run(uiapp):
 def _run(uiapp):
     win = FeedbackWindow(get_context(uiapp), ribbon_catalog.list_panels(),
                          ribbon_catalog.list_panels(lang=i18n.current()))
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     if not win.result:
         return
     if not feedback_url():

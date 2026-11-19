@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Independent linked-view assignments, grouped by host view."""
+from lowlife import ui_theme
 import clr
 clr.AddReference('PresentationFramework')
 clr.AddReference('PresentationCore')
@@ -364,6 +365,6 @@ def show(host_views, rows_by_host, active_view=None):
     apply_button.Click += on_apply
     buttons.Children.Add(apply_button)
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result['choices']
 

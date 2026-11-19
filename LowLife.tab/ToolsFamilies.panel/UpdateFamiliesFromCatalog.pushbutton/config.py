@@ -3,6 +3,7 @@
 папка-каталог, тихий мониторинг при открытии проекта, авто-метка даты
 при штатной загрузке семейства + имя видимого параметра для даты."""
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
@@ -142,7 +143,7 @@ buttons.Children.Add(ok_btn)
 outer.Children.Add(buttons)
 outer.Children.Add(root_panel)
 win.Content = outer
-win.ShowDialog()
+ui_theme.apply(win).ShowDialog()
 
 if state["ok"]:
     fc.save_monitor_enabled(bool(monitor_cb.IsChecked))

@@ -235,3 +235,9 @@ python -m pytest tests -v
 - `test_opening_tasks_coordinates.py` — host-local snapshot coordinates under link rotation,
   translation, bottom insertion and invalid tilted-link transforms.
 - `test_opening_tasks_settings.py` — blank project parameter defaults and scoped VIS/KR requirements.
+
+
+`test_ui_theme.py` — выбор Graphite/Precision без WPF: тема Revit имеет
+приоритет над Windows, запасной выбор по AppsUseLightTheme, светлая тема
+при недоступном ключе и закрытие реестра. Шаблоны и перестановка controls
+проверяются отдельно в Revit; тесты CPython не заменяют нативный рендер.

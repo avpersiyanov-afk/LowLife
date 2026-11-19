@@ -43,6 +43,7 @@ id линий подсветки «Показать на плане» по до�
 следующем запуске кнопки.
 """
 
+from lowlife import ui_theme
 import clr
 from lowlife.i18n import tr
 clr.AddReference('PresentationFramework')
@@ -911,7 +912,7 @@ def show_settings_form(doc, values):
     refresh_types_combo()
 
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return result["values"]
 

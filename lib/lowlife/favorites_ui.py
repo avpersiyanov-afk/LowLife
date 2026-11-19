@@ -9,6 +9,7 @@
 (`favorites.write_panels`) и предлагает перезагрузить pyRevit. Логика — `favorites_core`, папки — `favorites`.
 """
 
+from lowlife import ui_theme
 try:
     unicode  # noqa: F821 — IronPython/Python 2
 except NameError:  # Python 3
@@ -411,7 +412,7 @@ def run(uiapp):
     try:
         entries = [e for e in ribbon_catalog.list_buttons() if favorites_core.can_add(e)]
         win = FavoritesWindow(favorites.load(), entries, favorites.reserved_titles())
-        win.ShowDialog()
+        ui_theme.apply(win).ShowDialog()
         if win.saved:
             _apply(win.data)
     except Exception as ex:

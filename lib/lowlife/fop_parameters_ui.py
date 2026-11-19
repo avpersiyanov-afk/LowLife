@@ -21,6 +21,7 @@ show_dialog(app) → dict или None (отмена):
     systems        — id выбранных систем
 """
 
+from lowlife import ui_theme
 import os
 from lowlife.i18n import N_, tr
 
@@ -442,6 +443,6 @@ def show_dialog(app):
     outer.Children.Add(buttons)
     outer.Children.Add(grid)
     win.Content = outer
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
 
     return state["result"]

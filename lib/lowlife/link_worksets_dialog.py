@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """One modal window for loaded models and their workset loading state."""
+from lowlife import ui_theme
 import clr
 clr.AddReference('PresentationFramework')
 from System.Windows import Window, Thickness, WindowStartupLocation, TextWrapping, Visibility
@@ -126,5 +127,5 @@ def show(rows):
         button.Click += handler
         footer.Children.Add(button)
     button.IsCancel = True
-    win.ShowDialog()
+    ui_theme.apply(win).ShowDialog()
     return result['choices']

@@ -3631,3 +3631,50 @@ rebuilds are guarded against edits. Cell changes reuse
 `change_building_from_table(..., value=None)` and `change_building`; explicit
 values bypass the second picker. The context menu keeps bulk editing. On API
 rejection the table reloads the original model values.
+
+
+## ui_theme.py / xaml/ui_theme.xaml
+
+Единое оформление всех собственных окон LowLife: Graphite Studio в тёмной
+теме Revit, Precision Pro в светлой. `current_theme()` переиспользует
+`pyrevit.revit.ui.get_current_theme`; без Revit читает AppsUseLightTheme
+Windows (при недоступности — светлая тема). Фирменные иконки и их генератор
+не меняются; акцент элементов окон — фирменный оранжевый.
+
+`apply(window_or_page, theme=None)` добавляет ресурсы только в это окно;
+не меняет Application/Revit. Ресурсы обновляются при ThemeChanged; подписка
+снимается при Unloaded и восстанавливается при Loaded. Повторный вызов не
+создаёт словари-дубли. Явная `theme` предназначена для контрольных рендеров.
+Значимые цвета статусов и привязки сохраняются, технические Canvas не
+перекрашиваются, прозрачное фирменное приветствие сохраняется.
+
+`settings_form(surface, heading, intro, fields, buttons)` компонует уже
+созданные controls TextSettings: в Graphite — вертикальные поля с
+пояснениями, навигация по нескольким разделам; в Precision — строки
+«назначение / параметр» и пояснение поля, получившего фокус. Смена темы
+переставляет существующие controls, не пересоздаёт их и не теряет ввод.
+Полный текст `TextField.help_text()` и данные одинаковы в обеих темах;
+меняются оформление и расположение, но не содержание подсказок.
+
+`button_role(caption)` — общий выбор роли действия на русском/английском.
+`apply_tk(surface, theme=None)` применяет те же палитры к отдельному
+приложению почты по теме Windows, без обязательного импорта WPF.
+Автодополнение использует эту же тему для выпадающего списка.
+
+Подсказки переиспользуют описания полей: `TextField.help_text()` дополняет
+их правилами ввода, обязательностью и ограничениями NumberField;
+`param_autocomplete.input_hint` использует существующие `rule_for_key`,
+SINGLE/LIST/MASK и `_hint`. Имена параметров не смешиваются со значениями,
+синтаксис масок и пар сохраняется. Хранение и проверка по-прежнему идут
+через TextSettings/JsonStore; обработчики команд не дублируются.
+
+Новые `_recolour` и `settings_form` нужны для нейтральных WPF-цветов и
+двух компоновок; аналогов в библиотеке нет. Форма вынесена из прежнего
+`TextSettings.show_settings_form`, а не скопирована. `panel_themes` управляет
+видимостью ленты и не подходит для оформления WPF/Tk.
+
+Проверки: `tests/test_ui_theme.py` (приоритет Revit, запасной выбор Windows,
+закрытие ключа реестра), настройки/автодополнение/i18n — существующие тесты.
+Нативно в Revit 2024 проверены обе темы на IronPython 2.7.12 и CPython
+3.12.3: обновление ресурсов, сохранение ввода/выбора/IsDefault, одинаковая
+подсказка, переход между двумя компоновками, подписка/отписка ThemeChanged.
