@@ -279,7 +279,7 @@ def _find_panel(pyrevit_tabs, ribbon_name):
     return None
 
 
-# Панель LowLife видна при любой теме, даже «Моя панель».
+# Панель LowLife видна при любой теме, даже «Моя панель»; кнопки справки — в стеке Actions.
 ALWAYS_VISIBLE = (u"_Themes",)
 
 

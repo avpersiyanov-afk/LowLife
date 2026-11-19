@@ -4,7 +4,7 @@
 
 ## The LowLife panel
 
-The first panel of the tab, visible under any theme: the labelled «About» and «Feedback» buttons, the small «Search», «Create my panel» and «Language» buttons one above the other, and the «Theme» list.
+The first panel of the tab, visible under any theme: the small stacked «About», «Search», «Create my panel», «Feedback» and «Language» buttons with captions, and the «Theme» list.
 
 ### Search
 
@@ -51,7 +51,7 @@ A button on your panel is a copy of the original: the same caption, icon, toolti
 
 ## About and feedback
 
-These buttons are on the LowLife panel and are visible under any theme, including «My panel». Their captions are shown directly on the ribbon.
+These buttons are on the LowLife panel and are visible under any theme, including «My panel». Their captions are shown directly on the ribbon while the buttons stay small.
 
 ### About
 
