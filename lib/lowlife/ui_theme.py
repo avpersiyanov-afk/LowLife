@@ -172,6 +172,16 @@ def _decorate(root, resources):
 
 def apply(surface, theme=None):
     """Apply/update local resources; optional explicit theme supports preview rendering."""
+    # Revit hosts pyRevit WPF windows and dockable panes inside its own UI
+    # tree.  Replacing templates and subscribing to the host ThemeChanged
+    # event from an IronPython engine can corrupt that tree and take down the
+    # whole Revit process.  Keep the native WPF surface until this integration
+    # is reworked around a dedicated, isolated host window.
+    return surface
+
+    # The implementation below is retained for the standalone preview and
+    # future isolated hosts; do not call it from Revit until the host boundary
+    # is explicit.
     import clr
     clr.AddReference('PresentationFramework')
     clr.AddReference('PresentationCore')
