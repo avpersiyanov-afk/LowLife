@@ -64,6 +64,7 @@ from Autodesk.Revit.DB import (
     FilledRegion, FilledRegionType, CurveElement,
     SpatialElementBoundaryOptions, SpatialElementBoundaryLocation,
     Color, GraphicsStyleType, Options, Solid, PlanarFace,
+    Transform,
     View3D, ViewFamilyType, ViewFamily, ViewOrientation3D,
     ElementTransformUtils,
 )
@@ -1445,6 +1446,162 @@ def _horizontal_face_rings(solid, tf):
     return rings or None
 
 
+def _ring_area2(ring):
+    """Удвоенная площадь проекции кольца в плане (со знаком)."""
+    area = 0.0
+    for i, a in enumerate(ring):
+        b = ring[(i + 1) % len(ring)]
+        area += a.X * b.Y - b.X * a.Y
+    return area
+
+
+def _largest_ring(rings):
+    """Внешнее кольцо из набора колец одного тела."""
+    if not rings:
+        return None
+    return max(rings, key=lambda r: abs(_ring_area2(r)))
+
+
+def _is_column_element(el):
+    """Распознать колонну по категории или имени семейства."""
+    if el is None:
+        return False
+    try:
+        category = el.Category
+        if category is not None:
+            cid = category.Id.IntegerValue
+            if cid in (int(BuiltInCategory.OST_Columns),
+                       int(BuiltInCategory.OST_StructuralColumns)):
+                return True
+            name = unicode(category.Name or u"").lower()
+            if u"колон" in name or u"column" in name:
+                return True
+    except Exception:
+        pass
+
+    # В некоторых моделях архитектурные колонны сделаны как Generic Model.
+    # Проверяем только имя семейства/типа, чтобы не считать все обобщённые
+    # модели препятствиями.
+    try:
+        symbol = getattr(el, "Symbol", None)
+        family_name = unicode(getattr(symbol, "FamilyName", u"") or u"")
+        type_name = unicode(getattr(symbol, "Name", u"") or u"")
+        text = (family_name + u" " + type_name).lower()
+        return u"колон" in text or u"column" in text
+    except Exception:
+        return False
+
+
+def _bbox_near_point(el, tf, center, max_r, plane_z=None):
+    """Быстрый XY-фильтр перед чтением геометрии элемента."""
+    try:
+        bb = el.get_BoundingBox(None)
+        if bb is None:
+            return True
+        corners = []
+        for x in (bb.Min.X, bb.Max.X):
+            for y in (bb.Min.Y, bb.Max.Y):
+                for z in (bb.Min.Z, bb.Max.Z):
+                    corners.append(tf.OfPoint(XYZ(x, y, z)))
+        min_x = min(p.X for p in corners)
+        max_x = max(p.X for p in corners)
+        min_y = min(p.Y for p in corners)
+        max_y = max(p.Y for p in corners)
+        if plane_z is not None:
+            min_z = min(p.Z for p in corners)
+            max_z = max(p.Z for p in corners)
+            if max_z < plane_z - _ROOM_Z_PAD_FT or min_z > plane_z + _ROOM_Z_PAD_FT:
+                return False
+        dx = max(min_x - center.X, 0.0, center.X - max_x)
+        dy = max(min_y - center.Y, 0.0, center.Y - max_y)
+        return dx * dx + dy * dy <= max_r * max_r
+    except Exception:
+        return True
+
+
+def _column_rings_for_point(doc, center, room_ring, max_r, plane_z=None):
+    """Контуры колонн в пределах зоны камеры, в координатах хост-модели.
+
+    Контур Room сам по себе может содержать только внешний периметр после
+    фильтрации внутренних стен. Колонны поэтому читаются отдельно из
+    текущей и загруженных моделей и становятся препятствиями для лучей.
+    """
+    out = []
+    seen = set()
+
+    visited_docs = set()
+
+    def collect(model_doc, tf):
+        try:
+            elements = []
+            for bic in (BuiltInCategory.OST_Columns,
+                        BuiltInCategory.OST_StructuralColumns,
+                        BuiltInCategory.OST_GenericModel):
+                try:
+                    elements.extend(
+                        FilteredElementCollector(model_doc)
+                        .OfCategory(bic)
+                        .WhereElementIsNotElementType()
+                        .ToElements())
+                except Exception:
+                    continue
+
+            for el in elements:
+                try:
+                    key = (id(model_doc), el.Id.IntegerValue)
+                except Exception:
+                    key = (id(model_doc), id(el))
+                if key in seen or not _is_column_element(el):
+                    continue
+                seen.add(key)
+                if not _bbox_near_point(el, tf, center, max_r, plane_z):
+                    continue
+                for solid in _element_solids(el, _geom_options()):
+                    ring = _largest_ring(_horizontal_face_rings(solid, tf))
+                    if ring is None or len(ring) < 3:
+                        continue
+                    # Колонна должна находиться в выбранном Room. Элементы,
+                    # пересекающие границу, также учитываем по любой вершине.
+                    if not (_point_in_ring(ring[0].X, ring[0].Y, room_ring)
+                            or any(_point_in_ring(p.X, p.Y, room_ring)
+                                   for p in ring)):
+                        continue
+                    # Камера может быть закреплена на колонне; её собственное
+                    # кольцо не должно обрезать лучи изнутри.
+                    if _point_in_ring(center.X, center.Y, ring):
+                        continue
+                    distance = _dist_point_to_rings(center.X, center.Y, [ring])
+                    if distance is not None and distance > max_r:
+                        continue
+                    out.append(ring)
+        except Exception:
+            return
+
+    def visit(model_doc, tf):
+        """Обойти также вложенные связи (например, КР внутри АР)."""
+        marker = id(model_doc)
+        if marker in visited_docs:
+            return
+        visited_docs.add(marker)
+        collect(model_doc, tf)
+        try:
+            links = FilteredElementCollector(model_doc).OfClass(RevitLinkInstance)
+            for link in links:
+                ldoc = link.GetLinkDocument()
+                if ldoc is None:
+                    continue
+                try:
+                    child_tf = tf.Multiply(link.GetTotalTransform())
+                except Exception:
+                    continue
+                visit(ldoc, child_tf)
+        except Exception:
+            return
+
+    visit(doc, Transform.Identity)
+    return out
+
+
 # ======================================================================
 #  ПОМЕЩЕНИЕ ИЗ СВЯЗИ  ->  КОНТУР В КООРДИНАТАХ ХОСТА
 # ======================================================================
@@ -2006,10 +2163,15 @@ def _one_camera(doc, cam, view, s, frt, line_style, dori_style,
         if room_rings is None:
             status = u"ok_no_room"
 
-    # Clip only to the Room outer boundary. Inner GetBoundarySegments loops
-    # are internal walls/room-separation lines and must not create extra
-    # cut-outs in the camera zone.
+    # Clip to the Room outer boundary. Inner GetBoundarySegments loops are
+    # internal walls/room-separation lines and must not create extra cut-outs.
+    # Columns are separate solid obstacles and are added back explicitly.
     clip_rings = room_rings[:1] if room_rings else None
+    if clip_rings:
+        column_rings = _column_rings_for_point(
+            doc, center, clip_rings[0], far_r, z)
+        if column_rings:
+            clip_rings = clip_rings + column_rings
     used_room = clip_rings is not None
 
     cl = _zone_curveloop(center, base, half, near_r, far_r, clip_rings, ray_count, z)
