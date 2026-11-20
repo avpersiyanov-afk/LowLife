@@ -224,16 +224,52 @@ def selected_cable_tray(doc, uidoc):
     return trays[0] if len(trays) == 1 else None
 
 
-def element_section_box(element, margin_mm=SECTION_BOX_MARGIN_MM):
-    """Returns a section box around an element with a VIS-style margin."""
-    from Autodesk.Revit.DB import Transform
+def element_section_box(element, direction=None, margin_mm=SECTION_BOX_MARGIN_MM):
+    """Returns a VIS-style section box around an element."""
+    from Autodesk.Revit.DB import Transform, XYZ
     from lowlife.opening_tasks_kr_views import corners, projected_box
 
     bounds = element.get_BoundingBox(None)
     if bounds is None:
         raise ValueError(tr(u"Выбранный элемент не имеет геометрии.",
                             u"The selected element has no bounding geometry."))
-    return projected_box(corners(bounds), Transform.Identity, margin_mm / 304.8)
+    frame = Transform.Identity
+    if direction is not None:
+        angle = align_angle((1.0, 0.0, 0.0), _xyz_tuple(direction))
+        center = bounds.Transform.OfPoint(bounds.Min.Add(bounds.Max).Multiply(0.5))
+        frame = Transform.CreateRotationAtPoint(XYZ.BasisZ, angle, center)
+    return projected_box(corners(bounds), frame, margin_mm / 304.8)
+
+
+def standard_3d_view(doc, active_view=None):
+    """Returns the default orthographic 3D view, with safe fallbacks."""
+    from Autodesk.Revit.DB import FilteredElementCollector, View3D
+
+    views = [view for view in FilteredElementCollector(doc).OfClass(View3D)
+             if not view.IsTemplate]
+    standard = next((view for view in views
+                     if getattr(view, "Name", None) == u"{3D}" and
+                     not getattr(view, "IsPerspective", False)), None)
+    if standard is not None:
+        return standard
+    if (isinstance(active_view, View3D) and not active_view.IsTemplate and
+            not getattr(active_view, "IsPerspective", False)):
+        return active_view
+    return next((view for view in views
+                 if not getattr(view, "IsPerspective", False)), None)
+
+
+def update_view_aligned_to_element(view, element):
+    """Updates an existing 3D view crop and orientation around an element."""
+    line = element_line(element)
+    if line is None or plan_angle(_xyz_tuple(line.Direction)) is None:
+        raise ValueError(tr(u"Выбранный лоток должен быть прямым и иметь направление в плане.",
+                            u"The selected tray must be straight and have a plan direction."))
+    view.IsSectionBoxActive = False
+    align_view(view, line.Direction)
+    view.SetSectionBox(element_section_box(element, line.Direction))
+    view.IsSectionBoxActive = True
+    return view
 
 
 def create_view_aligned_to_element(doc, element, name):
@@ -259,9 +295,7 @@ def create_view_aligned_to_element(doc, element, name):
                          FilteredElementCollector(doc).OfClass(View))
     view = View3D.CreateIsometric(doc, view_type.Id)
     view.Name = copy_name(u"", name, existing_names)
-    view.SetSectionBox(element_section_box(element))
-    view.IsSectionBoxActive = True
-    align_view(view, line.Direction)
+    update_view_aligned_to_element(view, element)
     return view
 
 
