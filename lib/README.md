@@ -3068,6 +3068,10 @@ ID категории приводится к Python `int` перед сериа
   откат); у элемента без УГО марка ставится к самому семейству:
   габарит семейства на виде, выноска к точке вставки (`family_anchor`),
   конец выноски привязан к элементу (`Attached`).
+- `elements_for_family_group` / `example_entries` — поиск экземпляров
+  семейства на выбранном виде и подготовка существующих/новых марок для
+  режима «Маркировка шахт по примеру». `plan_views_for_level` /
+  `matching_plan_view` подбирают план уровня по типу, шаблону и префиксу имени.
 - `equipment_tags_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeEquipmentTags_settings.json`:
   `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm` (мм на листе);
   `load_settings()`, `get_settings_interactive()` (Shift+клик).
