@@ -29,6 +29,7 @@ Z_AXIS = (0.0, 0.0, 1.0)
 # Направление в плане короче этого (после проекции на XY) считаем
 # вертикальным — вдоль такой оси вид не повернуть.
 MIN_PLAN_LENGTH = 1e-6
+SECTION_BOX_MARGIN_MM = 700.0
 
 
 def _norm(v):
@@ -223,6 +224,18 @@ def selected_cable_tray(doc, uidoc):
     return trays[0] if len(trays) == 1 else None
 
 
+def element_section_box(element, margin_mm=SECTION_BOX_MARGIN_MM):
+    """Returns a section box around an element with a VIS-style margin."""
+    from Autodesk.Revit.DB import Transform
+    from lowlife.opening_tasks_kr_views import corners, projected_box
+
+    bounds = element.get_BoundingBox(None)
+    if bounds is None:
+        raise ValueError(tr(u"Выбранный элемент не имеет геометрии.",
+                            u"The selected element has no bounding geometry."))
+    return projected_box(corners(bounds), Transform.Identity, margin_mm / 304.8)
+
+
 def create_view_aligned_to_element(doc, element, name):
     """Создаёт изометрический 3D вид и разворачивает его по линейному элементу.
 
@@ -246,6 +259,8 @@ def create_view_aligned_to_element(doc, element, name):
                          FilteredElementCollector(doc).OfClass(View))
     view = View3D.CreateIsometric(doc, view_type.Id)
     view.Name = copy_name(u"", name, existing_names)
+    view.SetSectionBox(element_section_box(element))
+    view.IsSectionBoxActive = True
     align_view(view, line.Direction)
     return view
 
