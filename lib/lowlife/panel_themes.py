@@ -196,6 +196,7 @@ THEMES = {
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
         (u"Tools", u"ZoomToElement"),
+        (u"Tools", u"VISBox3D"),
         (u"Tools", u"CopyElementId"),
         (u"Tools", u"FamilySection"),
         (u"Tools", u"AlignViewRange"),

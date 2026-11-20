@@ -1,0 +1,4 @@
+title: "Бокс ВИС\nв 3D"
+title_en: "VIS box\nin 3D"
+tooltip: Открывает выбранный бокс задания ВИС в отдельном 3D-виде. Если бокс не выбран, предлагает выбрать его из списка.
+tooltip_en: Opens the selected VIS task box in a dedicated 3D view. If no box is selected, lets you choose one from the list.
