@@ -8,7 +8,9 @@ except NameError:  # Python 3
 
 __title__ = u"Повернуть\n3D вид"
 __doc__ = (
-    u"Поворачивает открытый 3D вид под ось: выберите ось сетки из списка "
+    u"Если перед запуском выбран один кабельный лоток, создаёт новый 3D вид, "
+    u"повёрнутый по его направлению. Иначе поворачивает открытый 3D вид под ось: "
+    u"выберите ось сетки из списка "
     u"(оси модели и связей) или кликните на виде прямую линию, стену, лоток, "
     u"и вид развернётся вокруг вертикали вдоль или поперёк этой оси. "
     u"Включённая рамка 3D вида поворачивается так же — её стороны встают "
@@ -32,6 +34,28 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr(u"Повернуть 3D вид")
+
+
+def create_tray_view(tray):
+    t = Transaction(doc, TITLE)
+    t.Start()
+    try:
+        result = view_rotate.create_view_aligned_to_element(
+            doc, tray, tr(u"3D по выбранному лотку", u"3D along selected tray"))
+        t.Commit()
+    except Exception:
+        t.RollBack()
+        forms.alert(tr(u"Не удалось создать повернутый 3D вид.\n\n",
+                       u"Couldn't create the rotated 3D view.\n\n") + traceback.format_exc(),
+                    title=TITLE, exitscript=True)
+    uidoc.ActiveView = result
+    uidoc.RefreshActiveView()
+
+
+selected_tray = view_rotate.selected_cable_tray(doc, uidoc)
+if selected_tray is not None:
+    create_tray_view(selected_tray)
+    script.exit()
 
 reason = view_rotate.unsupported_reason(view)
 if reason:
