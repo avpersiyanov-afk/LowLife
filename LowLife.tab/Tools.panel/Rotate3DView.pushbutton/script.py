@@ -8,7 +8,7 @@ except NameError:  # Python 3
 
 __title__ = u"Повернуть\n3D вид"
 __doc__ = (
-    u"Если перед запуском выбран один кабельный лоток, создаёт новый 3D вид, "
+    u"Если перед запуском выбран один кабельный лоток, обновляет стандартный 3D вид и "
     u"повёрнутый по его направлению. Иначе поворачивает открытый 3D вид под ось: "
     u"выберите ось сетки из списка "
     u"(оси модели и связей) или кликните на виде прямую линию, стену, лоток, "
@@ -36,25 +36,32 @@ view = doc.ActiveView
 TITLE = tr(u"Повернуть 3D вид")
 
 
-def create_tray_view(tray):
+def update_tray_view(tray):
+    target_view = view_rotate.standard_3d_view(doc, view)
+    if target_view is None:
+        forms.alert(tr(u"В проекте нет стандартного 3D вида.",
+                       u"The project has no standard 3D view."),
+                    title=TITLE, exitscript=True)
+    reason = view_rotate.unsupported_reason(target_view)
+    if reason:
+        forms.alert(reason, title=TITLE, exitscript=True)
     t = Transaction(doc, TITLE)
     t.Start()
     try:
-        result = view_rotate.create_view_aligned_to_element(
-            doc, tray, tr(u"3D по выбранному лотку", u"3D along selected tray"))
+        view_rotate.update_view_aligned_to_element(target_view, tray)
         t.Commit()
     except Exception:
         t.RollBack()
-        forms.alert(tr(u"Не удалось создать повернутый 3D вид.\n\n",
-                       u"Couldn't create the rotated 3D view.\n\n") + traceback.format_exc(),
+        forms.alert(tr(u"Не удалось обновить стандартный 3D вид.\n\n",
+                       u"Couldn't update the standard 3D view.\n\n") + traceback.format_exc(),
                     title=TITLE, exitscript=True)
-    uidoc.ActiveView = result
-    uidoc.RefreshActiveView()
+    if uidoc.ActiveView.Id != target_view.Id:
+        uidoc.ActiveView = target_view
 
 
 selected_tray = view_rotate.selected_cable_tray(doc, uidoc)
 if selected_tray is not None:
-    create_tray_view(selected_tray)
+    update_tray_view(selected_tray)
     script.exit()
 
 reason = view_rotate.unsupported_reason(view)
