@@ -4,7 +4,7 @@
 
 ## The LowLife panel
 
-The first panel of the tab, visible under any theme: the small stacked «About», «Search», «Create my panel», «Feedback» and «Language» buttons with captions, and the «Theme» list.
+The first panel of the tab, visible under any theme: two small stacks with the «About», «Search», «Create my panel», «Feedback» and «Language» buttons with captions, and the «Theme» list.
 
 ### Search
 
