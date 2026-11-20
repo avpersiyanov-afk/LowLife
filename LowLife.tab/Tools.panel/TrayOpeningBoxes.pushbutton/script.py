@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-__title__ = u"Боксы\nна лотки"
+__persistentengine__ = True
+__title__ = u"Создать боксы\nна пересечениях"
 __doc__ = (
     u"Ставит бокс (семейство с «бокс» в имени, тип с «временный») на каждое "
     u"пересечение выбранных кабельных лотков со стенами и перекрытиями "
     u"(модели и связей). Размер — сечение лотка плюс 50 мм с каждой стороны, глубина — по "
     u"толщине стены/перекрытия. Где бокс уже есть — новый не "
     u"создаётся, кнопка предупреждает.\n\n"
-    u"После расстановки — выбор увеличения обеих сторон и схема размеров.\n\n"
+    u"После расстановки открываются список боксов, контрольные виды, подсветка и 3D-просмотр.\n\n"
     u"Shift+клик — настройки."
 )
 __author__ = "Pipers"
@@ -18,11 +19,12 @@ from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
-from lowlife import select_list, tray_boxes, tray_boxes_settings, tray_boxes_result, tray_tags
+from lowlife import (select_list, tray_boxes, tray_boxes_settings,
+                     tray_tags, tray_opening_boxes)
 
 doc = revit.doc
 uidoc = revit.uidoc
-TITLE = tr(u"Боксы на лотки")
+TITLE = tr(u"Создать боксы на пересечениях", u"Create intersection boxes")
 
 
 try:
@@ -66,7 +68,8 @@ def choose_symbol():
         return options[0][1]
     label = select_list.SelectFromList.show(
         [name for name, _symbol in options],
-        title=tr(u"Боксы на лотки — какой тип ставить"),
+        title=tr(u"Создать боксы на пересечениях — какой тип ставить",
+                 u"Create intersection boxes — select type"),
         button_name=tr(u"Ставить"),
         multiselect=False,
     )
@@ -103,7 +106,8 @@ def choose_workset():
         return worksets[0]
     name = select_list.SelectFromList.show(
         [w.Name for w in worksets],
-        title=tr(u"Боксы на лотки — в какой рабочий набор"),
+        title=tr(u"Создать боксы на пересечениях — в какой рабочий набор",
+                 u"Create intersection boxes — select workset"),
         button_name=tr(u"Выбрать"),
         multiselect=False,
     )
@@ -119,25 +123,11 @@ try:
         with revit.Transaction(TITLE):
             result = tray_boxes.run(doc, trays, symbol, settings,
                                     lambda i, n: bar.update_progress(i + 1, n), workset)
+            tray_opening_boxes.register_result(doc, result, settings)
 except Exception:
     forms.alert(tr(u"Сбой (транзакция отменена, изменения не сохранены):\n\n{}").format(
         traceback.format_exc()), title=TITLE, exitscript=True)
 
-
-increase_applied = False
-increase_mm = 0
-if result.boxes:
-    apply_increase, increase_mm = tray_boxes_result.show(result, settings.get("size_extra_mm") or 0.0, uidoc)
-    if apply_increase and increase_mm != 0:
-        try:
-            with revit.Transaction(tr(u"Увеличить отверстия лотков", u"Enlarge tray openings")):
-                new_types = tray_boxes.enlarge_created(doc, result, symbol, settings, increase_mm)
-            result.new_types.extend(new_types)
-            increase_applied = True
-        except Exception:
-            forms.alert(tr(u"Увеличение отменено. Исходные боксы сохранены.\n\n{}",
-                           u"Enlargement rolled back. Originally placed boxes are kept.\n\n{}").format(
-                               traceback.format_exc()), title=TITLE)
 
 output = script.get_output()
 output.print_md(u"## " + TITLE)
@@ -164,24 +154,6 @@ for state, entries in ((tr(u"новый"), result.created), (tr(u"уже был 
         rows.append([output.linkify(tray.Id), tray_size(tray), crossing.host_label(), output.linkify(inst.Id), state])
 if rows:
     output.print_table(rows, columns=[tr(u"Лоток"), tr(u"Сечение лотка, мм", u"Tray cross-section, mm"), tr(u"Пересекает"), tr(u"Бокс"), u""])
-if result.boxes:
-    from lowlife import tray_boxes_core
-    trays_by_box = {inst.Id: tray for tray, crossing, inst in result.created}
-    dimension_rows = []
-    for inst, original in result.boxes:
-        a, b = tray_boxes_core.opening_sides(original)
-        amount = (tray_boxes_core.recommended_increase_mm(tray_boxes.mm(max(a, b)))
-                  if increase_mm is None else increase_mm) if increase_applied else 0.0
-        enlarged = tray_boxes_core.enlarge_opening(original, tray_boxes.ft(amount))
-        x, y = tray_boxes_core.opening_sides(enlarged)
-        tray = trays_by_box[inst.Id]
-        dimension_rows.append([output.linkify(tray.Id), tray_size(tray), output.linkify(inst.Id),
-                               u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(a)), float(tray_boxes.mm(b))),
-                               u"+{:.0f}".format(float(amount)),
-                               u"{:.0f} × {:.0f}".format(float(tray_boxes.mm(x)), float(tray_boxes.mm(y)))])
-    output.print_table(dimension_rows, columns=[tr(u"Лоток"), tr(u"Сечение лотка, мм", u"Tray cross-section, mm"), tr(u"Бокс"),
-        tr(u"Исходное отверстие, мм", u"Original opening, mm"),
-        tr(u"Добавка, мм", u"Increase, mm"), tr(u"Итоговое отверстие, мм", u"Final opening, mm")])
 if result.skipped:
     output.print_md(tr(u"### Пропущено"))
     for tray, crossing, reason in result.skipped:
@@ -213,3 +185,11 @@ if not (result.created or result.existing or result.skipped or result.failed):
     lines.append(tr(u"Выбранные лотки не пересекают ни стен, ни перекрытий выбранной модели."))
 forms.alert(u"\n".join(lines) + tr(u"\n\nПодробности — в окне вывода."), title=TITLE,
             warn_icon=bool(result.existing))
+
+if result.created or result.existing:
+    try:
+        tray_opening_boxes.show(doc, uidoc)
+    except Exception:
+        forms.alert(tr(u"Боксы созданы, но список и виды не удалось открыть. Подробности — в окне вывода.",
+                       u"Boxes were created, but the list and views could not be opened. See the output window."),
+                    title=TITLE, expanded=traceback.format_exc())

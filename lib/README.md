@@ -312,6 +312,9 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 (подпись + направление с трансформацией связи, сортировка `natural_key`);
 `element_line(element)` — прямая линия
 оси сетки, линии модели или линейной `LocationCurve`;
+`selected_cable_tray(doc, uidoc)` — единственный выбранный кабельный лоток;
+`create_view_aligned_to_element(doc, element, name)` — создание изометрического
+3D вида и его разворот по прямому элементу внутри транзакции;
 `make_pick_filter(doc, linked)` — фильтр для `PickObject`: элементы модели
 (`ObjectType.Element`) или связей (`ObjectType.LinkedElement`, где Revit
 даёт выбирать только содержимое связей); `picked_direction(doc, reference)` — направление оси в
@@ -3105,6 +3108,10 @@ ID категории приводится к Python `int` перед сериа
 ## tray_boxes_core.py / tray_boxes.py / tray_boxes_settings.py
 Боксы на пересечениях лотков со стенами/перекрытиями
 (`Tools.panel/TrayOpeningBoxes`, подробно — `docs/tray-opening-boxes.md`).
+
+`tray_opening_boxes.py` хранит локальные идентификаторы самостоятельных
+боксов, создаёт контрольные 3D/плановые виды и даёт список с подсветкой и
+отдельным 3D-просмотром без механики заданий ВИС.
 
 - `tray_boxes_core.py` — чистая геометрия, **без Revit API** (покрыта
   `tests/test_tray_boxes_core.py`): `merge_intervals` (куски одного
