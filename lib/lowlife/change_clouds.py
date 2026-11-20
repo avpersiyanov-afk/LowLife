@@ -20,6 +20,11 @@
 транзакцию.
 """
 
+try:
+    unicode  # noqa: F821 - IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
 from lowlife.i18n import tr
 
 from Autodesk.Revit.DB import (
