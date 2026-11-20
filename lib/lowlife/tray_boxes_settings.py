@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Настройки кнопки «Боксы на лотки» (Tools.panel/TrayOpeningBoxes) + их
+Настройки кнопки «Создать боксы на пересечениях» (Tools.panel/TrayOpeningBoxes) + их
 хранение между запусками (%APPDATA%\\pyRevit\\LowLifeTrayBoxes_settings.json).
 
 Обвязка (хранение, окно, Shift+клик/тихий режим) — общая,
@@ -73,9 +73,9 @@ def link_titles(doc):
 def _make_settings(titles):
     return settings_core.TextSettings(
         file_name="LowLifeTrayBoxes_settings.json",
-        button_name=u"Боксы на лотки",
-        heading=u"Боксы на пересечениях лотков",
-        transfer_label=u"кнопки «Боксы на лотки»",
+        button_name=u"Создать боксы на пересечениях",
+        heading=u"Создать боксы на пересечениях",
+        transfer_label=u"кнопки «Создать боксы на пересечениях»",
         fields=[
             settings_core.TextField(
                 "box_family_words",

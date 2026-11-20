@@ -51,7 +51,7 @@ def show(result, clearance_mm, uidoc, preflight=False, initial_increase=0):
               </Grid>
             </Window>''', literal_string=True)
             self.Title = (tr(u"Расстановка боксов — размеры", u"Place boxes — dimensions") if preflight else
-                          tr(u"Боксы на лотки — результат", u"Opening boxes for trays — results"))
+                          tr(u"Создать боксы на пересечениях — результат", u"Create intersection boxes — results"))
             self.selection = (False, 0)
             self.values = [0, None, 50, 100, 150, 200]
             if preflight:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 u"""
-Чистая геометрия кнопки «Боксы на лотки» (Tools.panel/TrayOpeningBoxes),
+Чистая геометрия кнопки «Создать боксы на пересечениях» (Tools.panel/TrayOpeningBoxes),
 без Revit API — покрыта tests/test_tray_boxes_core.py. Revit-часть —
 tray_boxes.py, настройки — tray_boxes_settings.py.
 
