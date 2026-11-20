@@ -6,12 +6,21 @@ Places and arranges equipment tags (`IndependentTag`) on the active plan/section
 
 ## How to use
 
-The button has three modes. It asks which one you need; if only tags are selected beforehand, the first one starts right away.
+The button has four modes. It asks which one you need; if several tags are selected beforehand, arranging starts right away. One selected tag can be used as an example for shaft tagging.
 
 - **«Arrange selected tags»** — select tags (or equipment: then all its tags in this view are taken), or pick them with a window after pressing. Only these tags move, no new ones are created, and the other tags in the view are obstacles.
 - **«Tag equipment»** — select equipment (or pick it with a window after pressing). A table opens: a row for every family without a tag in this view, with a tag type from the matching category or «— don't tag —». The choice is remembered per family until the next run. Tags are placed only for the ticked rows and arranged right away; existing single-target equipment tags in the view join the layout.
 
 Everything is done in one transaction (Ctrl+Z undoes it all at once).
+
+### Tagging shafts by example
+
+Choose **Tag shafts by example**, select one existing shaft tag as the example,
+then select the levels to process. For each selected level the matching plan is
+found by the active plan type, view template and name prefix. Elements from
+the same category and family as the example are tagged with the example tag
+type. Existing movable tags are reused, pinned tags stay in place, and the
+usual automatic layout runs for every selected plan.
 
 Shift+click — settings (mm on the sheet, multiplied by the view scale):
 

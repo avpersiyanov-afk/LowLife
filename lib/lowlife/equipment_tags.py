@@ -68,7 +68,8 @@ AttributeError — старый.
 from Autodesk.Revit.DB import (
     BuiltInCategory, CategoryType, Element, ElementId, Family,
     FamilyInstance, FamilySymbol, FilteredElementCollector, IndependentTag,
-    LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewType,
+    LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewPlan,
+    ViewType,
     XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point,
     LocationPoint, SubTransaction, ViewDuplicateOption
 )
@@ -251,6 +252,107 @@ def family_group(el):
     except Exception:
         pass
     return (el.Category.Name, fam)
+
+
+def elements_for_family_group(doc, view, group):
+    """Все видимые экземпляры семейства ``group`` на ``view``.
+
+    ``group`` использует ту же пару «категория + имя семейства», что и
+    таблица режима «Поставить марки». Это позволяет режиму маркировки по
+    примеру найти на другом плане те же элементы, не завязываясь на имена
+    конкретного проекта.
+    """
+    result = []
+    for element in FilteredElementCollector(doc, view.Id).OfClass(FamilyInstance):
+        if is_equipment(element) and family_group(element) == group:
+            result.append(element)
+    return result
+
+
+def example_entries(doc, view, group, tag_type_id):
+    """Элементы и марки для режима «по примеру» на одном виде.
+
+    Уже существующие незакреплённые марки переиспользуются и получают тип
+    примера. Закреплённые марки остаются на месте и не дублируются.
+    """
+    elements = elements_for_family_group(doc, view, group)
+    by_element = tags_by_element(doc, view)
+    entries = []
+    pinned = 0
+    for element in elements:
+        tags = by_element.get(equipment_key(element), [])
+        movable = [tag for tag in tags if not getattr(tag, "Pinned", False)]
+        if movable:
+            entries.extend((element, tag, tag_type_id) for tag in movable)
+        elif tags:
+            pinned += 1
+        else:
+            entries.append((element, None, tag_type_id))
+    return elements, entries, pinned
+
+
+def _view_prefix(view):
+    """Часть имени плана до слова «этаж»/«floor» для подбора вида."""
+    try:
+        name = _safe_name(view).lower()
+    except Exception:
+        name = u""
+    for marker in (u"этаж", u"floor"):
+        index = name.find(marker)
+        if index >= 0:
+            return name[:index].rstrip()
+    return name
+
+
+def plan_views_for_level(doc, level, reference_view=None):
+    """Планы уровня того же типа, что и ``reference_view``."""
+    result = []
+    level_key = id_int(level.Id)
+    for view in FilteredElementCollector(doc).OfClass(ViewPlan):
+        try:
+            if view.IsTemplate:
+                continue
+            if reference_view is not None and view.ViewType != reference_view.ViewType:
+                continue
+            gen_level = view.GenLevel
+            if gen_level is None or id_int(gen_level.Id) != level_key:
+                continue
+            result.append(view)
+        except Exception:
+            continue
+    return sorted(result, key=_safe_name)
+
+
+def matching_plan_view(doc, level, reference_view):
+    """Подбирает один план уровня по типу, шаблону и имени исходного вида.
+
+    Возвращает ``(view, candidates)``. ``view`` равен ``None`` при отсутствии
+    плана или при неоднозначном выборе, а ``candidates`` сохраняется для
+    понятного сообщения пользователю.
+    """
+    candidates = plan_views_for_level(doc, level, reference_view)
+    if not candidates:
+        return None, candidates
+    if reference_view.GenLevel is not None and id_int(reference_view.GenLevel.Id) == id_int(level.Id):
+        return reference_view, candidates
+
+    try:
+        template_id = id_int(reference_view.ViewTemplateId)
+        if template_id != id_int(ElementId.InvalidElementId):
+            same_template = [v for v in candidates
+                             if id_int(v.ViewTemplateId) == template_id]
+            if same_template:
+                candidates = same_template
+    except Exception:
+        pass
+
+    prefix = _view_prefix(reference_view)
+    same_prefix = [v for v in candidates if _view_prefix(v) == prefix]
+    if len(same_prefix) == 1:
+        return same_prefix[0], same_prefix
+    if len(candidates) == 1:
+        return candidates[0], candidates
+    return None, same_prefix or candidates
 
 
 # ------------------------------------------------------------
@@ -728,6 +830,13 @@ def run(doc, view, entries, settings, annotation=None):
             except Exception:
                 if annotation is not None:
                     raise  # текст и его привязка должны сохраниться вместе
+                stats["failed"] += 1
+                continue
+        elif type_id is not None:
+            try:
+                if tag.GetTypeId() != type_id:
+                    tag.ChangeTypeId(type_id)
+            except Exception:
                 stats["failed"] += 1
                 continue
         work.append((el, tag, rect, anchor, attached))

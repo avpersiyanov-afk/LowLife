@@ -284,8 +284,27 @@ def settings_form(surface, heading, intro, fields, buttons):
     footer.Padding = Thickness(24, 12, 24, 16)
     footer.BorderThickness = Thickness(0, 1, 0, 0)
     footer.SetResourceReference(Border.BorderBrushProperty, 'LowLife.Border')
-    buttons.Margin = Thickness(0)
-    footer.Child = buttons
+    # Keep utility actions on the left and completion actions on the right.
+    # The settings builders add transfer/reset buttons before Cancel/Save.
+    action_bar = DockPanel()
+    action_bar.LastChildFill = False
+    left_actions = StackPanel()
+    left_actions.Orientation = buttons.Orientation
+    right_actions = StackPanel()
+    right_actions.Orientation = buttons.Orientation
+    children = [buttons.Children[index] for index in range(buttons.Children.Count)]
+    for child in children:
+        buttons.Children.Remove(child)
+    for index, child in enumerate(children):
+        if index >= max(0, len(children) - 2):
+            right_actions.Children.Add(child)
+        else:
+            left_actions.Children.Add(child)
+    DockPanel.SetDock(left_actions, Dock.Left)
+    DockPanel.SetDock(right_actions, Dock.Right)
+    action_bar.Children.Add(left_actions)
+    action_bar.Children.Add(right_actions)
+    footer.Child = action_bar
     DockPanel.SetDock(footer, Dock.Bottom)
     outer.Children.Add(footer)
 
@@ -386,15 +405,26 @@ def settings_form(surface, heading, intro, fields, buttons):
         sidebar.Visibility = Visibility.Visible if dark and len(sections) > 1 else Visibility.Collapsed
         inspector.Visibility = Visibility.Collapsed if dark else Visibility.Visible
         for row, label, control, hint in entries:
-            row.ColumnDefinitions[0].Width = GridLength(1 if dark else 0.38, GridUnitType.Star)
-            row.ColumnDefinitions[1].Width = GridLength(0 if dark else 0.62, GridUnitType.Star)
-            Grid.SetColumnSpan(label, 2 if dark else 1)
-            Grid.SetRow(control, 1 if dark else 0)
-            Grid.SetColumn(control, 0 if dark else 1)
-            Grid.SetColumnSpan(control, 2 if dark else 1)
-            label.Margin = Thickness(0, 0 if dark else 7, 12, 7 if dark else 0)
-            hint.Visibility = Visibility.Visible if dark and hint.Text else Visibility.Collapsed
+            # Keep the same field rhythm in every appearance.  The explanation
+            # stays directly below its input instead of moving to the inspector
+            # or disappearing in the light layout.
+            row.ColumnDefinitions[0].Width = GridLength(1, GridUnitType.Star)
+            row.ColumnDefinitions[1].Width = GridLength(0, GridUnitType.Star)
+            Grid.SetColumnSpan(label, 2)
+            Grid.SetRow(label, 0)
+            Grid.SetColumn(label, 0)
+            Grid.SetRow(control, 1)
+            Grid.SetColumn(control, 0)
+            Grid.SetColumnSpan(control, 2)
+            Grid.SetRow(hint, 2)
+            Grid.SetColumn(hint, 0)
+            Grid.SetColumnSpan(hint, 2)
+            label.Margin = Thickness(0, 0, 12, 7)
+            hint.Visibility = Visibility.Visible if hint.Text else Visibility.Collapsed
     surface.Resources[_LAYOUT_KEY] = update
+    # Revit currently keeps the host window resources untouched, so apply the
+    # standard layout immediately as well as on a later theme refresh.
+    update('light')
     surface.Content = outer
 
 

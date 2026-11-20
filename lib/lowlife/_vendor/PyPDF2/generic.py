@@ -350,7 +350,7 @@ def readStringFromStream(stream):
             elif tok == b_("f"):
                 tok = b_("\f")
             elif tok == b_("c"):
-                tok = b_("\c")
+                tok = b_("\\c")
             elif tok == b_("("):
                 tok = b_("(")
             elif tok == b_(")"):
