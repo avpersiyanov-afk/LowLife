@@ -254,7 +254,8 @@ def settings_form(surface, heading, intro, fields, buttons):
 
     Theme changes move the same controls in place, preserving unsaved input.
     """
-    from System.Windows import Thickness, FontWeights, TextWrapping, Visibility, GridLength, GridUnitType
+    from System.Windows import (Thickness, FontWeights, TextWrapping, Visibility,
+                                GridLength, GridUnitType, HorizontalAlignment)
     from System.Windows.Controls import (
         Border, DockPanel, Dock, Grid, ColumnDefinition, RowDefinition, StackPanel,
         TextBlock, Button, ScrollViewer, ScrollBarVisibility,
@@ -385,6 +386,9 @@ def settings_form(surface, heading, intro, fields, buttons):
         hint.TextWrapping = TextWrapping.Wrap
         hint.Margin = Thickness(0, 7, 0, 0)
         hint.SetResourceReference(TextBlock.ForegroundProperty, 'LowLife.Muted')
+        # Revit keeps the host resource dictionary when the isolated theme
+        # application is disabled. Keep the hint readable in that mode too.
+        hint.Foreground = Brushes.Gray
         Grid.SetRow(hint, 2)
         Grid.SetColumnSpan(hint, 2)
         row.Children.Add(hint)
@@ -393,8 +397,19 @@ def settings_form(surface, heading, intro, fields, buttons):
         root.Children.Add(row)
     for caption, target in sections:
         nav = Button()
-        nav.Content = caption
-        nav.Margin = Thickness(0, 0, 0, 8)
+        display_caption = caption
+        for number, mark in enumerate(u"①②③④⑤⑥⑦⑧⑨⑩", 1):
+            display_caption = display_caption.replace(mark, u"{:02d}".format(number))
+        display_caption = display_caption.replace(u"⓪", u"00")
+        nav_text = TextBlock()
+        nav_text.Text = display_caption
+        nav_text.TextWrapping = TextWrapping.Wrap
+        nav.Content = nav_text
+        nav.HorizontalContentAlignment = HorizontalAlignment.Left
+        nav.Padding = Thickness(8, 5, 8, 5)
+        nav.Margin = Thickness(0, 0, 0, 6)
+        nav.FontSize = 12
+        nav.Foreground = Brushes.DimGray
         nav.Click += lambda sender, args, target=target: target.BringIntoView()
         sidebar.Children.Add(nav)
     if fields:
@@ -403,7 +418,9 @@ def settings_form(surface, heading, intro, fields, buttons):
     def update(name):
         dark = name == 'dark'
         sidebar.Visibility = Visibility.Visible if dark and len(sections) > 1 else Visibility.Collapsed
-        inspector.Visibility = Visibility.Collapsed if dark else Visibility.Visible
+        # The field hint is the single source of guidance. The focus inspector
+        # duplicated the same text and made the form harder to scan.
+        inspector.Visibility = Visibility.Collapsed
         for row, label, control, hint in entries:
             # Keep the same field rhythm in every appearance.  The explanation
             # stays directly below its input instead of moving to the inspector
