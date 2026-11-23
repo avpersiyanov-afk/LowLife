@@ -3109,6 +3109,15 @@ ID категории приводится к Python `int` перед сериа
   последний выбранный тип марки — `LowLifeTrayTags_types.json`
   (`load_tag_type_label`/`save_tag_type_label`).
 
+## tray_connection_core.py / tray_connection.py
+
+Кнопка `ToolsTraySection.panel/TrayConnection` соединяет два выбранных
+кабельных лотка на разных отметках. `tray_connection_core.plan_points` считает
+наклонный участок под заданным углом к горизонту и при необходимости добавляет
+горизонтальный хвост. `tray_connection.create_connection` создаёт участки
+через `fire_boxes.create_curve` и соединяет их штатными фитингами через
+`fire_boxes.join`, сохраняя выбранные лотки без перемещения.
+
 ## tray_boxes_core.py / tray_boxes.py / tray_boxes_settings.py
 Боксы на пересечениях лотков со стенами/перекрытиями
 (`Tools.panel/TrayOpeningBoxes`, подробно — `docs/tray-opening-boxes.md`).
