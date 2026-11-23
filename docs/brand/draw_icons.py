@@ -747,6 +747,24 @@ def vis_opening_tasks(c):
     c.line([(79, 73), (73, 79)], ORANGE, 4)
 
 
+def vis_box_3d(c):
+    """A VIS opening box framed by a 3D view."""
+    for (x, y, dx, dy) in ((10, 18, 1, 1), (86, 18, -1, 1),
+                           (10, 78, 1, -1), (86, 78, -1, -1)):
+        c.line([(x, y + 12 * dy), (x, y), (x + 12 * dx, y)], BLUE, 5)
+
+    box_top = [(48, 28), (70, 39), (48, 50), (26, 39)]
+    box_left = [(26, 39), (48, 50), (48, 72), (26, 61)]
+    box_right = [(48, 50), (70, 39), (70, 61), (48, 72)]
+    c.polygon(box_left, WHITE)
+    c.polygon(box_right, PALE_ORANGE)
+    c.polygon(box_top, PALE_ORANGE)
+    for face in (box_top, box_left, box_right):
+        c.line(list(face) + [face[0]], BLUE, 4)
+    c.line([(48, 50), (48, 72)], ORANGE, 5)
+    c.circle((48, 50), 3.5, None, ORANGE)
+
+
 def kr_opening_tasks(c):
     c.rect((16, 12, 80, 84), BLUE, WHITE, 4, 1)
     c.rect((30, 30, 66, 62), ORANGE, WHITE, 4, 1)
@@ -808,6 +826,7 @@ ICONS = [
     ("Tools.panel/ModelFilter.pushbutton", model_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
+    ("Tools.panel/VISBox3D.pushbutton", vis_box_3d),
     ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),
     ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),
     ("FireBoxes.panel/AddInternalTrays.pushbutton", fire_trays),
