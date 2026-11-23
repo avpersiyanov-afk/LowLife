@@ -571,6 +571,23 @@ def tag_trays(c):
         c.line([(50, y + 8), (80, y + 8)], WHITE, 3)
 
 
+def tray_connection(c):
+    """Two tray runs at different elevations joined by a fixed-angle rise."""
+    # The lower and upper runs stay visibly separate, while the orange diagonal
+    # marks the newly created sloped segment and its two native fittings.
+    c.rect((7, 61, 45, 76), BLUE, WHITE, 4, 2)
+    c.rect((51, 20, 89, 35), BLUE, WHITE, 4, 2)
+    for x in (17, 29, 41):
+        c.line([(x, 63), (x, 74)], BLUE, 2)
+    for x in (61, 73, 85):
+        c.line([(x, 22), (x, 33)], BLUE, 2)
+    c.line([(43, 68), (58, 28)], ORANGE, 6)
+    c.circle((43, 68), 4.5, ORANGE, WHITE, 3)
+    c.circle((58, 28), 4.5, ORANGE, WHITE, 3)
+    c.d.arc([28 * K, 50 * K, 54 * K, 76 * K], 290, 345,
+            fill=ORANGE, width=int(3 * K))
+
+
 def assign_tray_workset(c):
     """<Назначить всем лоткам РН>: trays and fittings receive a workset."""
     # Cable trays and their fittings are grouped on the left; the arrow and
@@ -830,6 +847,7 @@ ICONS = [
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
     ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
     ("Tools.panel/TagTrays.pushbutton", tag_trays),
+    ("ToolsTraySection.panel/TrayConnection.pushbutton", tray_connection),
     ("FireBoxes.panel/AssignTrayWorkset.pushbutton", assign_tray_workset),
     ("Tools.panel/CompareLinkDatums.pushbutton", compare_link_datums),
     ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),
