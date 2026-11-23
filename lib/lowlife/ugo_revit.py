@@ -12,8 +12,8 @@ from Autodesk.Revit.DB import (BuiltInCategory, ElementId, FamilyPlacementType,
     FilteredElementCollector, TextNote, TextNoteType, TextNoteOptions,
     HorizontalTextAlignment, VerticalTextAlignment, View, ViewType, ElementTransformUtils,
     ViewDuplicateOption, XYZ)
-from Autodesk.Revit.DB.ExtensibleStorage import Schema, SchemaBuilder, Entity, AccessLevel
-from Autodesk.Revit.DB import DataStorage
+from Autodesk.Revit.DB.ExtensibleStorage import (DataStorage, Schema, SchemaBuilder,
+    Entity, AccessLevel)
 from lowlife.scs_settings import list_symbols_by_categories, TypeOption
 from lowlife.room_explication_core import unique_name
 from lowlife.i18n import tr
