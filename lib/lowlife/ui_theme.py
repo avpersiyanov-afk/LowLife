@@ -260,6 +260,7 @@ def settings_form(surface, heading, intro, fields, buttons):
         Border, DockPanel, Dock, Grid, ColumnDefinition, RowDefinition, StackPanel,
         TextBlock, Button, ScrollViewer, ScrollBarVisibility,
     )
+    from System.Windows.Media import Brushes
     from lowlife.i18n import tr
     outer = DockPanel()
     outer.SetResourceReference(DockPanel.BackgroundProperty, 'LowLife.Background')
