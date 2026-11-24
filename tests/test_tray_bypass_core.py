@@ -26,3 +26,13 @@ def test_plan_bypass_merges_overlapping_crossings():
 def test_plan_bypass_without_crossings_is_unchanged():
     assert plan_bypass((0, 0, 0), (2, 0, 0), (0, 1, 0), [], 0.2, 0.1) == [
         (0, 0, 0), (2, 0, 0)]
+
+
+def test_tray_crossing_uses_vertical_detour():
+    route = plan_bypass(
+        (0.0, 0.0, 2.0), (10.0, 0.0, 2.0), (0.0, 1.0, 0.0),
+        [{"start": 4.0, "end": 6.0, "mode": "vertical",
+          "vertical_min": 1.0, "vertical_max": 3.0}],
+        0.25, 0.1, tray_half_height=0.25)
+    assert route[2][2] > 2.0
+    assert route[2][2] == route[3][2]
