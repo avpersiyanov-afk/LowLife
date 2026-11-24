@@ -227,6 +227,7 @@ def _create_segments(doc, tray, points):
                             u"Select a cable tray."))
     width, height = fire_boxes.dimensions(tray)
     result = []
+    fitting_failures = 0
     for first, second in zip(points[:-1], points[1:]):
         segment = fire_boxes.create_curve(
             doc, tray_type, None, _level_id(tray), DB.XYZ(*first), DB.XYZ(*second),
@@ -235,8 +236,16 @@ def _create_segments(doc, tray, points):
         result.append(segment)
     doc.Regenerate()
     for first, second, point in zip(result[:-1], result[1:], points[1:-1]):
-        fire_boxes.join(doc, [first, second], DB.XYZ(*point))
-    return result
+        subtransaction = DB.SubTransaction(doc)
+        try:
+            subtransaction.Start()
+            fire_boxes.join(doc, [first, second], DB.XYZ(*point))
+            subtransaction.Commit()
+        except Exception:
+            fitting_failures += 1
+            if subtransaction.GetStatus() == DB.TransactionStatus.Started:
+                subtransaction.RollBack()
+    return result, fitting_failures
 
 
 def run_tray_bypass(doc, uidoc):
@@ -268,7 +277,7 @@ def run_tray_bypass(doc, uidoc):
     transaction.Start()
     try:
         neighbors = _neighbors(tray)
-        created = _create_segments(doc, tray, route)
+        created, fitting_failures = _create_segments(doc, tray, route)
         doc.Delete(tray.Id)
         if neighbors:
             try:
