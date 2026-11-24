@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-__persistentengine__ = True
 __title__ = u"Создать боксы\nна пересечениях"
 __doc__ = (
     u"Ставит бокс (семейство с «бокс» в имени, тип с «временный») на каждое "
@@ -7,7 +6,7 @@ __doc__ = (
     u"(модели и связей). Размер — сечение лотка плюс 50 мм с каждой стороны, глубина — по "
     u"толщине стены/перекрытия. Где бокс уже есть — новый не "
     u"создаётся, кнопка предупреждает.\n\n"
-    u"После расстановки открываются список боксов, контрольные виды, подсветка и 3D-просмотр.\n\n"
+    u"После расстановки отчёт показывается в окне вывода pyRevit.\n\n"
     u"Shift+клик — настройки."
 )
 __author__ = "Pipers"
@@ -20,7 +19,7 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script, EXEC_PARAMS
 
 from lowlife import (select_list, tray_boxes, tray_boxes_settings,
-                     tray_tags, tray_opening_boxes)
+                     tray_tags)
 
 doc = revit.doc
 uidoc = revit.uidoc
@@ -123,7 +122,6 @@ try:
         with revit.Transaction(TITLE):
             result = tray_boxes.run(doc, trays, symbol, settings,
                                     lambda i, n: bar.update_progress(i + 1, n), workset)
-            tray_opening_boxes.register_result(doc, result, settings)
 except Exception:
     forms.alert(tr(u"Сбой (транзакция отменена, изменения не сохранены):\n\n{}").format(
         traceback.format_exc()), title=TITLE, exitscript=True)
@@ -185,11 +183,3 @@ if not (result.created or result.existing or result.skipped or result.failed):
     lines.append(tr(u"Выбранные лотки не пересекают ни стен, ни перекрытий выбранной модели."))
 forms.alert(u"\n".join(lines) + tr(u"\n\nПодробности — в окне вывода."), title=TITLE,
             warn_icon=bool(result.existing))
-
-if result.created or result.existing:
-    try:
-        tray_opening_boxes.show(doc, uidoc)
-    except Exception:
-        forms.alert(tr(u"Боксы созданы, но список и виды не удалось открыть. Подробности — в окне вывода.",
-                       u"Boxes were created, but the list and views could not be opened. See the output window."),
-                    title=TITLE, expanded=traceback.format_exc())
