@@ -42,7 +42,7 @@ def _clean_points(points, tolerance):
     return result
 
 
-def _merged_crossings(crossings, length, clearance, tolerance):
+def _merged_crossings(crossings, length, clearance, tolerance, group_gap):
     """Merge crossing intervals that would produce touching detours."""
     prepared = []
     for crossing in crossings:
@@ -64,7 +64,7 @@ def _merged_crossings(crossings, length, clearance, tolerance):
     merged = []
     for item in prepared:
         if (not merged or item["mode"] != merged[-1]["mode"] or
-                item["start"] > merged[-1]["end"] + tolerance):
+                item["start"] > merged[-1]["end"] + group_gap + tolerance):
             merged.append(item)
             continue
         current = merged[-1]
@@ -79,7 +79,8 @@ def _merged_crossings(crossings, length, clearance, tolerance):
 
 
 def plan_bypass(start, end, perpendicular, crossings, tray_half_width,
-                clearance, tolerance=1.0e-6, tray_half_height=None):
+                clearance, tolerance=1.0e-6, tray_half_height=None,
+                group_gap=None):
     """Return a polyline that detours around all crossing intervals."""
     axis = _sub(end, start)
     length = _length(axis)
@@ -90,7 +91,9 @@ def plan_bypass(start, end, perpendicular, crossings, tray_half_width,
     side = _sub(side, _mul(direction, _dot(side, direction)))
     side = _unit(side)
 
-    groups = _merged_crossings(crossings, length, clearance, tolerance)
+    if group_gap is None:
+        group_gap = max(clearance * 2.0, tray_half_width * 2.0 + clearance)
+    groups = _merged_crossings(crossings, length, clearance, tolerance, group_gap)
     if not groups:
         return [tuple(start), tuple(end)]
 
