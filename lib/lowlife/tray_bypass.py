@@ -312,6 +312,24 @@ def _try_connect_route(doc, created, points, neighbors, start, end,
         return []
 
 
+def _try_grouped_connection(doc, created, angle):
+    subtransaction = DB.SubTransaction(doc)
+    try:
+        subtransaction.Start()
+        additions = []
+        additions.extend(tray_connection.create_connection(
+            doc, created[0], created[1], angle))
+        additions.extend(tray_connection.create_connection(
+            doc, created[1], created[2], angle))
+        subtransaction.Commit()
+        return additions
+    except Exception:
+        if subtransaction.GetStatus() == DB.TransactionStatus.Started:
+            subtransaction.RollBack()
+        script.get_logger().exception("Grouped tray connection failed")
+        return []
+
+
 def run_tray_bypass(doc, uidoc):
     tray = _pick_tray(uidoc)
     if tray is None:
@@ -358,6 +376,7 @@ def run_tray_bypass(doc, uidoc):
                 created.extend(_create_segments(doc, tray, [first, second]))
         else:
             created = _create_segments(doc, tray, route)
+        additions = _try_grouped_connection(doc, created, angle) if grouped_vertical else []
         doc.Delete(tray.Id)
         if transaction.Commit() != DB.TransactionStatus.Committed:
             raise ValueError(tr(u"Revit не применил обход.",
@@ -366,8 +385,8 @@ def run_tray_bypass(doc, uidoc):
         if transaction.GetStatus() == DB.TransactionStatus.Started:
             transaction.RollBack()
         raise
-    additions = _try_connect_route(
-        doc, created, route, neighbors, start, end, angle, grouped_vertical)
+    if not grouped_vertical:
+        additions = _try_connect_route(doc, created, route, neighbors, start, end)
     all_created = created + additions
     uidoc.Selection.SetElementIds(List[DB.ElementId]([element.Id for element in all_created]))
     forms.alert(tr(u"Обход построен. Сегментов лотка: {}.",
