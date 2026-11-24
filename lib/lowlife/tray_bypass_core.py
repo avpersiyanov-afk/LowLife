@@ -80,7 +80,7 @@ def _merged_crossings(crossings, length, clearance, tolerance, group_gap):
 
 def plan_bypass(start, end, perpendicular, crossings, tray_half_width,
                 clearance, tolerance=1.0e-6, tray_half_height=None,
-                group_gap=None):
+                group_gap=None, vertical_side=None, horizontal_side=None):
     """Return a polyline that detours around all crossing intervals."""
     axis = _sub(end, start)
     length = _length(axis)
@@ -112,11 +112,18 @@ def plan_bypass(start, end, perpendicular, crossings, tray_half_width,
                            exit_z - group["vertical_min"])
             negative += tray_half_height + clearance
             detour_vector = (0.0, 0.0, 1.0)
+            if vertical_side in (-1, 1):
+                offset = positive if vertical_side > 0 else -negative
+            else:
+                offset = positive if positive <= negative else -negative
         else:
             positive = group["perp_max"] + tray_half_width + clearance
             negative = -group["perp_min"] + tray_half_width + clearance
             detour_vector = side
-        offset = positive if positive <= negative else -negative
+            if horizontal_side in (-1, 1):
+                offset = positive if horizontal_side > 0 else -negative
+            else:
+                offset = positive if positive <= negative else -negative
 
         entry = _add(start, _mul(direction, group["start"]))
         exit_ = _add(start, _mul(direction, group["end"]))
