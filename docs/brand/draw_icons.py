@@ -29,6 +29,7 @@ BLUE = (48, 112, 186)
 ORANGE = (240, 140, 40)
 PALE_ORANGE = (250, 205, 160)
 WHITE = (248, 250, 253)
+ROUTE_INK = (26, 26, 26)
 K = 4
 LW = 5
 
@@ -843,6 +844,82 @@ def render(fn):
     c = Canvas()
     fn(c)
     return c
+
+
+def route_line_tray(c):
+    """Route line with the repeated open U-shaped tray symbol."""
+    _route_baseline(c, 56)
+    for x in (24, 48, 72):
+        _route_line(c, [(x - 7, 49), (x - 7, 63), (x + 7, 63), (x + 7, 49)])
+
+
+def route_line_pipe(c):
+    """Route line with the repeated closed hexagonal pipe symbol."""
+    _route_baseline(c, 47)
+    for x in (24, 48, 72):
+        _route_hexagon(c, x, 34, 6)
+
+
+def route_line_box(c):
+    """Route line with the repeated closed rectangular box symbol."""
+    _route_baseline(c, 56)
+    for x in (24, 48, 72):
+        _route_line(c, [(x - 8, 48), (x + 8, 48), (x + 8, 64),
+                        (x - 8, 64), (x - 8, 48)])
+
+
+def route_line_open_pipe(c):
+    """Route line with pipe hexagons and diagonal marks crossing the line."""
+    _route_baseline(c, 47)
+    for x in (24, 48, 72):
+        _route_hexagon(c, x, 34, 6)
+    for x in (17, 31, 41, 55, 65, 79):
+        _route_line(c, [(x - 3, 52), (x + 3, 42)], ORANGE, 2.5)
+
+
+def _route_line(c, points, color=ROUTE_INK, width=2.5):
+    c.line(points, color, width)
+
+
+def _route_baseline(c, y):
+    _route_line(c, [(7, y), (89, y)], ORANGE, 3)
+
+
+def _route_hexagon(c, cx, cy, radius):
+    points = [
+        (cx - radius * 0.85, cy - radius * 0.5),
+        (cx - radius * 0.85, cy + radius * 0.5),
+        (cx, cy + radius),
+        (cx + radius * 0.85, cy + radius * 0.5),
+        (cx + radius * 0.85, cy - radius * 0.5),
+        (cx, cy - radius),
+        (cx - radius * 0.85, cy - radius * 0.5),
+    ]
+    _route_line(c, points, ROUTE_INK, 2.5)
+
+
+ICONS.extend([
+    ("RouteLinesCall.panel/LineInTray.pushbutton", route_line_tray),
+    ("RouteLinesData.panel/LineInTray.pushbutton", route_line_tray),
+    ("RouteLinesSecurity.panel/LineInTray.pushbutton", route_line_tray),
+    ("RouteLinesFire.panel/LineInTray.pushbutton", route_line_tray),
+    ("RouteLinesControl.panel/LineInTray.pushbutton", route_line_tray),
+    ("RouteLinesCall.panel/LineInPipe.pushbutton", route_line_pipe),
+    ("RouteLinesData.panel/LineInPipe.pushbutton", route_line_pipe),
+    ("RouteLinesSecurity.panel/LineInPipe.pushbutton", route_line_pipe),
+    ("RouteLinesFire.panel/LineInPipe.pushbutton", route_line_pipe),
+    ("RouteLinesControl.panel/LineInPipe.pushbutton", route_line_pipe),
+    ("RouteLinesCall.panel/LineInBox.pushbutton", route_line_box),
+    ("RouteLinesData.panel/LineInBox.pushbutton", route_line_box),
+    ("RouteLinesSecurity.panel/LineInBox.pushbutton", route_line_box),
+    ("RouteLinesFire.panel/LineInBox.pushbutton", route_line_box),
+    ("RouteLinesControl.panel/LineInBox.pushbutton", route_line_box),
+    ("RouteLinesCall.panel/LineInPipeOpen.pushbutton", route_line_open_pipe),
+    ("RouteLinesData.panel/LineInPipeOpen.pushbutton", route_line_open_pipe),
+    ("RouteLinesSecurity.panel/LineInPipeOpen.pushbutton", route_line_open_pipe),
+    ("RouteLinesFire.panel/LineInPipeOpen.pushbutton", route_line_open_pipe),
+    ("RouteLinesControl.panel/LineInPipeOpen.pushbutton", route_line_open_pipe),
+])
 
 
 def main(argv):
