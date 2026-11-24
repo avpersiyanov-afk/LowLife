@@ -82,6 +82,14 @@ def test_floor_and_building_from_existing_mask_override_distant_kr_elevation():
         levels.match_level(candidates,u'КР_К1_+3.000_03',3)
 
 
+def test_ar_building_pch_matches_source_building_zero():
+    from lowlife.level_name_template import LevelNameTemplate, DEFAULT_TEMPLATE
+    mask = LevelNameTemplate(DEFAULT_TEMPLATE)
+    candidates = [dict(name=u'\u0410\u0420_\u041f\u0427_-7,000_\u042d\u0442\u0430\u0436 \u041f1', elevation=-7.0)]
+    source = u'\u0410\u0420_0_-7,050_\u042d\u0442\u0430\u0436 \u041f1'
+    assert levels.match_level(candidates, source, -7.05, template=mask) is candidates[0]
+
+
 def test_custom_mask_is_used_without_an_additional_floor_parser():
     from lowlife.level_name_template import LevelNameTemplate
     mask=LevelNameTemplate(u'{Корпус}_{Этаж}_{Дисциплина}_{Комментарий}')

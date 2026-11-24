@@ -4,19 +4,32 @@ from lowlife.i18n import tr
 from lowlife.level_name_template import LevelNameTemplate, DEFAULT_TEMPLATE
 
 
+# В АР корпус ПЧ обозначается уровнем как 0. Сопоставляем только эти два
+# обозначения, сохраняя исходные имена уровней и сообщения пользователю.
+BUILDING_ALIASES = {u'пч': u'0', u'0': u'0'}
+
+
+def _building_key(value):
+    value = (value or u'').strip().lower()
+    return BUILDING_ALIASES.get(value, value)
+
+
 def match_level(levels,name,elevation,tolerance=1.0/304.8,template=None,identity_only=False):
     template=template if isinstance(template,LevelNameTemplate) else LevelNameTemplate(template or DEFAULT_TEMPLATE)
     if template.error:
         raise ValueError(template.error)
     source=template.parse(name,with_discipline=True)
     if source is not None:
-        source_key=template.identity(name,ignore_auxiliary=True) if identity_only else source[:2]
+        source_identity = template.identity(name, ignore_auxiliary=True) if identity_only else source[:2]
+        source_key = (_building_key(source_identity[0]), source_identity[1])
         matched=[]
         for level in levels:
             parts=template.parse(level['name'],with_discipline=True)
             if parts is None:
                 continue
-            key=template.identity(level['name'],ignore_auxiliary=True) if identity_only else parts[:2]
+            candidate_identity = (template.identity(level['name'], ignore_auxiliary=True)
+                                  if identity_only else parts[:2])
+            key = (_building_key(candidate_identity[0]), candidate_identity[1])
             if key==source_key:
                 matched.append((level,parts))
         if not matched:
