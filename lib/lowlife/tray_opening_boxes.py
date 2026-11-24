@@ -285,7 +285,7 @@ class _WindowHandler(IExternalEventHandler):
 
 class TrayBoxWindow(forms.WPFWindow):
     def __init__(self, doc, uidoc):
-        forms.WPFWindow.__init__(self, u'''<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="980" Height="560" WindowStartupLocation="CenterScreen">
+        forms.WPFWindow.__init__(self, u'''<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="980" Height="560" WindowStartupLocation="CenterScreen">
           <Grid Margin="12"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <TextBlock x:Name="heading" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
             <DataGrid x:Name="items" Grid.Row="1" SelectionMode="Extended" SelectionUnit="FullRow" IsReadOnly="True" AutoGenerateColumns="True"/>
