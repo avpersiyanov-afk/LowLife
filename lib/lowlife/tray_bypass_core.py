@@ -53,25 +53,33 @@ def _merged_crossings(crossings, length, clearance, tolerance):
         prepared.append({
             "start": start,
             "end": end,
+            "mode": crossing.get("mode", "side"),
             "perp_min": float(crossing.get("perp_min", 0.0)),
             "perp_max": float(crossing.get("perp_max", 0.0)),
+            "vertical_min": crossing.get("vertical_min"),
+            "vertical_max": crossing.get("vertical_max"),
         })
     prepared.sort(key=lambda item: (item["start"], item["end"]))
 
     merged = []
     for item in prepared:
-        if not merged or item["start"] > merged[-1]["end"] + tolerance:
+        if (not merged or item["mode"] != merged[-1]["mode"] or
+                item["start"] > merged[-1]["end"] + tolerance):
             merged.append(item)
             continue
         current = merged[-1]
         current["end"] = max(current["end"], item["end"])
         current["perp_min"] = min(current["perp_min"], item["perp_min"])
         current["perp_max"] = max(current["perp_max"], item["perp_max"])
+        if current["vertical_min"] is not None and item["vertical_min"] is not None:
+            current["vertical_min"] = min(current["vertical_min"], item["vertical_min"])
+        if current["vertical_max"] is not None and item["vertical_max"] is not None:
+            current["vertical_max"] = max(current["vertical_max"], item["vertical_max"])
     return merged
 
 
 def plan_bypass(start, end, perpendicular, crossings, tray_half_width,
-                clearance, tolerance=1.0e-6):
+                clearance, tolerance=1.0e-6, tray_half_height=None):
     """Return a polyline that detours around all crossing intervals."""
     axis = _sub(end, start)
     length = _length(axis)
@@ -88,14 +96,29 @@ def plan_bypass(start, end, perpendicular, crossings, tray_half_width,
 
     points = [tuple(start)]
     for group in groups:
-        positive = group["perp_max"] + tray_half_width + clearance
-        negative = -group["perp_min"] + tray_half_width + clearance
+        if group["mode"] == "vertical":
+            if (group["vertical_min"] is None or
+                    group["vertical_max"] is None or tray_half_height is None):
+                raise ValueError("Vertical crossing geometry is incomplete.")
+            entry_z = start[2] + direction[2] * group["start"]
+            exit_z = start[2] + direction[2] * group["end"]
+            positive = max(group["vertical_max"] - entry_z,
+                           group["vertical_max"] - exit_z)
+            positive += tray_half_height + clearance
+            negative = min(entry_z - group["vertical_min"],
+                           exit_z - group["vertical_min"])
+            negative += tray_half_height + clearance
+            detour_vector = (0.0, 0.0, 1.0)
+        else:
+            positive = group["perp_max"] + tray_half_width + clearance
+            negative = -group["perp_min"] + tray_half_width + clearance
+            detour_vector = side
         offset = positive if positive <= negative else -negative
 
         entry = _add(start, _mul(direction, group["start"]))
         exit_ = _add(start, _mul(direction, group["end"]))
-        points.extend((entry, _add(entry, _mul(side, offset)),
-                       _add(exit_, _mul(side, offset)), exit_))
+        points.extend((entry, _add(entry, _mul(detour_vector, offset)),
+                       _add(exit_, _mul(detour_vector, offset)), exit_))
     points.append(tuple(end))
     return _clean_points(points, tolerance)
 

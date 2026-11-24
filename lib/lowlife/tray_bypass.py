@@ -27,6 +27,7 @@ _COMMUNICATION_CATEGORIES = (
     "OST_PipeCurves", "OST_PipeFitting", "OST_PipeAccessory", "OST_FlexPipeCurves",
     "OST_CableTray", "OST_CableTrayFitting", "OST_Conduit", "OST_ConduitFitting",
     "OST_MechanicalEquipment", "OST_PlumbingFixtures", "OST_ElectricalEquipment",
+    "OST_Walls", "OST_Columns", "OST_StructuralColumns", "OST_StructuralFraming",
 )
 
 
@@ -84,6 +85,22 @@ def _projection(point, origin, direction):
     return point.Subtract(origin).DotProduct(direction)
 
 
+def _category_id(element):
+    try:
+        return _id_int(element.Category.Id)
+    except Exception:
+        return None
+
+
+def _is_tray_element(element):
+    category_id = _category_id(element)
+    for name in ("OST_CableTray", "OST_CableTrayFitting"):
+        category = getattr(DB.BuiltInCategory, name, None)
+        if category is not None and category_id == int(category):
+            return True
+    return False
+
+
 def _side_vector(tray):
     direction = tray.Location.Curve.Direction
     side = DB.XYZ(-direction.Y, direction.X, 0.0)
@@ -118,14 +135,19 @@ def _crossing(tray, element, transform, options, curve_options):
     bbox = element.get_BoundingBox(None)
     if bbox is None:
         return None
+    world_points = [transform.OfPoint(point)
+                    for point in tray_boxes._box_points(bbox)]
     side = _side_vector(tray)
-    side_values = [_projection(transform.OfPoint(point), origin, side)
-                   for point in tray_boxes._box_points(bbox)]
+    side_values = [_projection(point, origin, side) for point in world_points]
+    vertical_values = [point.Z for point in world_points]
     return {
         "start": min(min(span) for span in spans),
         "end": max(max(span) for span in spans),
+        "mode": "vertical" if _is_tray_element(element) else "side",
         "perp_min": min(side_values),
         "perp_max": max(side_values),
+        "vertical_min": min(vertical_values),
+        "vertical_max": max(vertical_values),
     }
 
 
@@ -203,7 +225,7 @@ def _create_segments(doc, tray, points):
     if not isinstance(tray_type, CableTrayType):
         raise ValueError(tr(u"Выберите свойство кабельного лотка.",
                             u"Select a cable tray."))
-    width, _height = fire_boxes.dimensions(tray)
+    width, height = fire_boxes.dimensions(tray)
     result = []
     for first, second in zip(points[:-1], points[1:]):
         segment = fire_boxes.create_curve(
@@ -239,7 +261,8 @@ def run_tray_bypass(doc, uidoc):
         (start.X, start.Y, start.Z), (end.X, end.Y, end.Z),
         (side.X, side.Y, side.Z), crossings,
         (width / FT_TO_MM) / 2.0,
-        CLEARANCE_MM / FT_TO_MM)
+        CLEARANCE_MM / FT_TO_MM,
+        tray_half_height=(height / FT_TO_MM) / 2.0)
     transaction = DB.Transaction(doc, tr(u"Обход коммуникации лотком",
                                          u"Bypass cable tray communication"))
     transaction.Start()
