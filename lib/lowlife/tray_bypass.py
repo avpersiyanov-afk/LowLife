@@ -227,7 +227,6 @@ def _create_segments(doc, tray, points):
                             u"Select a cable tray."))
     width, height = fire_boxes.dimensions(tray)
     result = []
-    fitting_failures = 0
     for first, second in zip(points[:-1], points[1:]):
         segment = fire_boxes.create_curve(
             doc, tray_type, None, _level_id(tray), DB.XYZ(*first), DB.XYZ(*second),
@@ -235,17 +234,35 @@ def _create_segments(doc, tray, points):
         fire_boxes.assign_workset(segment, getattr(tray, "WorksetId", None))
         result.append(segment)
     doc.Regenerate()
-    for first, second, point in zip(result[:-1], result[1:], points[1:-1]):
-        subtransaction = DB.SubTransaction(doc)
-        try:
-            subtransaction.Start()
+    return result
+
+
+def _try_connect_route(doc, created, points, neighbors, start, end):
+    """Add fittings after the geometry is committed.
+
+    A rejected fitting must not be able to roll back the already-created
+    bypass. The optional fitting transaction is discarded as a whole on the
+    first Revit rejection.
+    """
+    fitting_transaction = DB.Transaction(doc, tr(
+        u"Соединить сегменты обхода",
+        u"Connect tray bypass segments"))
+    try:
+        fitting_transaction.Start()
+        joins = list(zip(created[:-1], created[1:], points[1:-1]))
+        if neighbors:
+            joins.insert(0, (neighbors[0], created[0], start))
+        if len(neighbors) > 1:
+            joins.append((created[-1], neighbors[-1], end))
+        for first, second, point in joins:
             fire_boxes.join(doc, [first, second], DB.XYZ(*point))
-            subtransaction.Commit()
-        except Exception:
-            fitting_failures += 1
-            if subtransaction.GetStatus() == DB.TransactionStatus.Started:
-                subtransaction.RollBack()
-    return result, fitting_failures
+        if fitting_transaction.Commit() != DB.TransactionStatus.Committed:
+            raise ValueError("Revit rejected the bypass fittings.")
+        return True
+    except Exception:
+        if fitting_transaction.GetStatus() == DB.TransactionStatus.Started:
+            fitting_transaction.RollBack()
+        return False
 
 
 def run_tray_bypass(doc, uidoc):
@@ -271,24 +288,16 @@ def run_tray_bypass(doc, uidoc):
         (side.X, side.Y, side.Z), crossings,
         (width / FT_TO_MM) / 2.0,
         CLEARANCE_MM / FT_TO_MM,
-        tray_half_height=(height / FT_TO_MM) / 2.0)
+        tray_half_height=(height / FT_TO_MM) / 2.0,
+        group_gap=max(CLEARANCE_MM * 2.0 / FT_TO_MM,
+                      width / FT_TO_MM + CLEARANCE_MM / FT_TO_MM))
     transaction = DB.Transaction(doc, tr(u"Обход коммуникации лотком",
                                          u"Bypass cable tray communication"))
     transaction.Start()
     try:
         neighbors = _neighbors(tray)
-        created, fitting_failures = _create_segments(doc, tray, route)
+        created = _create_segments(doc, tray, route)
         doc.Delete(tray.Id)
-        if neighbors:
-            try:
-                fire_boxes.join(doc, [neighbors[0], created[0]], start)
-            except Exception:
-                pass
-        if len(neighbors) > 1:
-            try:
-                fire_boxes.join(doc, [created[-1], neighbors[-1]], end)
-            except Exception:
-                pass
         if transaction.Commit() != DB.TransactionStatus.Committed:
             raise ValueError(tr(u"Revit не применил обход.",
                                 u"Revit rolled back the bypass."))
@@ -296,6 +305,7 @@ def run_tray_bypass(doc, uidoc):
         if transaction.GetStatus() == DB.TransactionStatus.Started:
             transaction.RollBack()
         raise
+    _try_connect_route(doc, created, route, neighbors, start, end)
     uidoc.Selection.SetElementIds(List[DB.ElementId]([element.Id for element in created]))
     forms.alert(tr(u"Обход построен. Сегментов лотка: {}.",
                    u"Bypass created. Tray segments: {}.").format(len(created)))
