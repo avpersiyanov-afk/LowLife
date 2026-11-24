@@ -1,10 +1,10 @@
 [Русский](../general-panels.md) | **English**
 
-# The LowLife panel, your own panels, «Help», «Selection filter» and «Music»
+# The LowLife panel, your own panels, «Selection filter» and «Music»
 
 ## The LowLife panel
 
-The first panel of the tab, visible under any theme: the small «Search», «Create my panel» and «Language» buttons one above the other, and the «Theme» list.
+The first panel of the tab, visible under any theme: two small stacks with the «About», «Search», «Create my panel», «Feedback» and «Language» buttons with captions, and the «Theme» list.
 
 ### Search
 
@@ -22,7 +22,7 @@ A dropdown that leaves only the buttons you need on the ribbon:
 
 | Theme | What is visible |
 |---|---|
-| My panel | only [your own panels](#my-panels), the «Help» panel and the LowLife panel (with this list, to get back to another theme) |
+| My panel | only [your own panels](#my-panels) and the LowLife panel (with this list, to get back to another theme) |
 | SCS, ACS, CCTV, Voice alarm, Fire alarm, Fire automation, SS1 | the buttons of one discipline, including its circuits |
 | Trays | the cable tray buttons |
 | Electrical circuits | all circuit-building buttons (SCS/ACS/fire alarm/fire automation/general) |
@@ -49,9 +49,9 @@ A button can also be added straight from the [«Search»](#search) window — th
 
 A button on your panel is a copy of the original: the same caption, icon, tooltip and command; Shift+click works (the button's settings are shared with the original). Your panels are ordinary pyRevit panels: the copies live in the extension folder (`LowLife.tab\MyPanel1.panel` …) and are refreshed from the original buttons on every pyRevit load. Your panels' settings are kept per user in `%APPDATA%\pyRevit\LowLifeFavorites_settings.json`: if the extension was reinstalled, the panels come back by themselves from the second pyRevit load. If a button was removed from LowLife, a message appears when saving and the window shows it greyed out — remove it.
 
-## Help
+## About and feedback
 
-The last panel of the tab — two small buttons. Visible under any theme, including «My panel».
+These buttons are on the LowLife panel and are visible under any theme, including «My panel». Their captions are shown directly on the ribbon while the buttons stay small.
 
 ### About
 

@@ -63,7 +63,7 @@ from lowlife.geometry import get_point
 `tools/i18n_tool.py`; `strings(source)` возвращает те же подписи для каталога.
 
 ## about.py
-Данные окна «О программе» (`Info.panel/Info.stack/About`, панель «Справка»): `REPO_URL`, `TAGLINE`,
+Данные окна «О программе» (`_Themes.panel/About`, панель LowLife): `REPO_URL`, `TAGLINE`,
 `DISCIPLINES`, лицензия (`LICENSE_TEXT`, `LICENSE_URL`, `COPYRIGHT`) и версия расширения. `git_revision(root=None)` читает текущий
 коммит прямо из файлов `.git` (HEAD → `refs/heads/…` или `packed-refs`,
 detached HEAD — хеш в самом HEAD) и возвращает `(ветка, хеш)` или `None`;
@@ -127,7 +127,7 @@ root=None)` раскладывает их по папкам-ячейкам `LowL
 меняет только отличающиеся файлы), лишние ячейки и кнопки убираются; возвращает (изменилось ли — нужна
 перезагрузка pyRevit, проблемы). `reload_pyrevit()`, `restore_on_load()` — из `startup.py` при каждой загрузке
 (после обновления LowLife копии получают свежие скрипты). `load`/`save`, `reserved_titles()`. Ячеек нет в
-`panel_themes.THEMES` — темы свои панели не прячут; `ribbon_catalog` ячейки пропускает.
+`panel_themes.THEMES` — темы переключают обычные панели, а ячейки своих панелей показываются только в теме «Моя панель»; `ribbon_catalog` ячейки пропускает.
 `favorites_ui`: окно `FavoritesWindow` (панели / кнопки панели / все кнопки с поиском; перетаскивание мышью
 между списками — `_DragDrop`, сами изменения — методы окна `drop_*`), `run(uiapp)` — после «Сохранить»
 предлагает перезагрузить pyRevit, `add_to_favorites(uiapp, entry)` — «На мою панель» из окна «Поиск»
@@ -312,6 +312,9 @@ xmax, ymax)`, `ValueError` для вырожденной рамки; `MODES` —
 (подпись + направление с трансформацией связи, сортировка `natural_key`);
 `element_line(element)` — прямая линия
 оси сетки, линии модели или линейной `LocationCurve`;
+`selected_cable_tray(doc, uidoc)` — единственный выбранный кабельный лоток;
+`create_view_aligned_to_element(doc, element, name)` — создание изометрического
+3D вида и его разворот по прямому элементу внутри транзакции;
 `make_pick_filter(doc, linked)` — фильтр для `PickObject`: элементы модели
 (`ObjectType.Element`) или связей (`ObjectType.LinkedElement`, где Revit
 даёт выбирать только содержимое связей); `picked_direction(doc, reference)` — направление оси в
@@ -3065,6 +3068,10 @@ ID категории приводится к Python `int` перед сериа
   откат); у элемента без УГО марка ставится к самому семейству:
   габарит семейства на виде, выноска к точке вставки (`family_anchor`),
   конец выноски привязан к элементу (`Attached`).
+- `elements_for_family_group` / `example_entries` — поиск экземпляров
+  семейства на выбранном виде и подготовка существующих/новых марок для
+  режима «Маркировка шахт по примеру». `plan_views_for_level` /
+  `matching_plan_view` подбирают план уровня по типу, шаблону и префиксу имени.
 - `equipment_tags_settings.py` — JSON `%APPDATA%\pyRevit\LowLifeEquipmentTags_settings.json`:
   `offset_mm`, `gap_mm`, `shelf_mm`, `cluster_mm` (мм на листе);
   `load_settings()`, `get_settings_interactive()` (Shift+клик).
@@ -3102,9 +3109,22 @@ ID категории приводится к Python `int` перед сериа
   последний выбранный тип марки — `LowLifeTrayTags_types.json`
   (`load_tag_type_label`/`save_tag_type_label`).
 
+## tray_connection_core.py / tray_connection.py
+
+Кнопка `ToolsTraySection.panel/TrayConnection` соединяет два выбранных
+кабельных лотка на разных отметках. `tray_connection_core.plan_points` считает
+наклонный участок под заданным углом к горизонту и при необходимости добавляет
+горизонтальный хвост. `tray_connection.create_connection` создаёт участки
+через `fire_boxes.create_curve` и соединяет их штатными фитингами через
+`fire_boxes.join`, сохраняя выбранные лотки без перемещения.
+
 ## tray_boxes_core.py / tray_boxes.py / tray_boxes_settings.py
 Боксы на пересечениях лотков со стенами/перекрытиями
 (`Tools.panel/TrayOpeningBoxes`, подробно — `docs/tray-opening-boxes.md`).
+
+`tray_opening_boxes.py` хранит локальные идентификаторы самостоятельных
+боксов, создаёт контрольные 3D/плановые виды и даёт список с подсветкой и
+отдельным 3D-просмотром без механики заданий ВИС.
 
 - `tray_boxes_core.py` — чистая геометрия, **без Revit API** (покрыта
   `tests/test_tray_boxes_core.py`): `merge_intervals` (куски одного
@@ -3160,7 +3180,7 @@ ID категории приводится к Python `int` перед сериа
   обратной связи, лист «Запуски»). `is_enabled()`/`set_enabled(value)` — галочка в окне «О программе».
   Чистая логика — `lowlife/usage_core.py` (`parse_item_id`, `find_entry`, `new_event`, `should_flush`,
   `batch_id`, `trim_queue`, `is_duplicate`; тесты `tests/test_usage_core.py`).
-- `pnotes/feedback.py` — кнопка «Обратная связь» (`Info.panel/Info.stack/Feedback`, панель «Справка»):
+- `pnotes/feedback.py` — кнопка «Обратная связь» (`_Themes.panel/Feedback`, панель LowLife):
   `FeedbackWindow` (панель → кнопка из `lowlife.ribbon_catalog` → проблема/предложение →
   описание, разметка `xaml/feedback.xaml`), `run(uiapp)`. Отправка — `core._post` на
   `FEEDBACK_URL` (отдельная таблица автора, `docs/feedback/Code.gs`, только запись;

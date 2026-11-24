@@ -8,7 +8,9 @@ except NameError:  # Python 3
 
 __title__ = u"Повернуть\n3D вид"
 __doc__ = (
-    u"Поворачивает открытый 3D вид под ось: выберите ось сетки из списка "
+    u"Если перед запуском выбран один кабельный лоток, обновляет стандартный 3D вид и "
+    u"повёрнутый по его направлению. Иначе поворачивает открытый 3D вид под ось: "
+    u"выберите ось сетки из списка "
     u"(оси модели и связей) или кликните на виде прямую линию, стену, лоток, "
     u"и вид развернётся вокруг вертикали вдоль или поперёк этой оси. "
     u"Включённая рамка 3D вида поворачивается так же — её стороны встают "
@@ -32,6 +34,35 @@ uidoc = revit.uidoc
 view = doc.ActiveView
 
 TITLE = tr(u"Повернуть 3D вид")
+
+
+def update_tray_view(tray):
+    target_view = view_rotate.standard_3d_view(doc, view)
+    if target_view is None:
+        forms.alert(tr(u"В проекте нет стандартного 3D вида.",
+                       u"The project has no standard 3D view."),
+                    title=TITLE, exitscript=True)
+    reason = view_rotate.unsupported_reason(target_view)
+    if reason:
+        forms.alert(reason, title=TITLE, exitscript=True)
+    t = Transaction(doc, TITLE)
+    t.Start()
+    try:
+        view_rotate.update_view_aligned_to_element(target_view, tray)
+        t.Commit()
+    except Exception:
+        t.RollBack()
+        forms.alert(tr(u"Не удалось обновить стандартный 3D вид.\n\n",
+                       u"Couldn't update the standard 3D view.\n\n") + traceback.format_exc(),
+                    title=TITLE, exitscript=True)
+    if uidoc.ActiveView.Id != target_view.Id:
+        uidoc.ActiveView = target_view
+
+
+selected_tray = view_rotate.selected_cable_tray(doc, uidoc)
+if selected_tray is not None:
+    update_tray_view(selected_tray)
+    script.exit()
 
 reason = view_rotate.unsupported_reason(view)
 if reason:

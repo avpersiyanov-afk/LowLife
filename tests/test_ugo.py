@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import ast
+from pathlib import Path
+
 import pytest
 from lowlife import ugo_core as core
 
@@ -46,3 +49,13 @@ def test_shared_token_parser_keeps_default_normalization():
     from lowlife.slab_marks_core import split_words
     assert split_words(u'ДЫМ; Ёлка, ДЫМ') == [u'дым', u'елка']
     assert core.tokens(u'СПС; СОУЭ, СПС') == [u'СПС', u'СОУЭ']
+
+
+def test_revit_registry_imports_datastorage_from_extensible_storage():
+    path = Path(__file__).parents[1] / 'lib/lowlife/ugo_revit.py'
+    tree = ast.parse(path.read_text(encoding='utf-8'))
+    imports = {(node.module, alias.name)
+               for node in tree.body if isinstance(node, ast.ImportFrom)
+               for alias in node.names}
+    assert ('Autodesk.Revit.DB.ExtensibleStorage', 'DataStorage') in imports
+    assert ('Autodesk.Revit.DB', 'DataStorage') not in imports

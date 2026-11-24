@@ -9,6 +9,8 @@
 (ось / перпендикуляр к ней, в обе стороны), наклон камеры не меняется.
 Включённая рамка 3D вида поворачивается так же — её стороны становятся
 параллельны и перпендикулярны оси.
+Если заранее выбран один кабельный лоток, вместо этого создаётся новый
+изометрический 3D вид и сразу разворачивается по его направлению.
 
 Поворот — вокруг вертикали через центр рамки 3D вида, без рамки — через
 центр области подрезки вида, чтобы модель оставалась в кадре.
@@ -27,6 +29,7 @@ Z_AXIS = (0.0, 0.0, 1.0)
 # Направление в плане короче этого (после проекции на XY) считаем
 # вертикальным — вдоль такой оси вид не повернуть.
 MIN_PLAN_LENGTH = 1e-6
+SECTION_BOX_MARGIN_MM = 700.0
 
 
 def _norm(v):
@@ -197,6 +200,103 @@ def picked_direction(doc, reference):
     except Exception:
         name = u""
     return direction, name
+
+
+def selected_cable_tray(doc, uidoc):
+    """Возвращает единственный выбранный кабельный лоток или ``None``."""
+    from Autodesk.Revit.DB import BuiltInCategory
+
+    tray_category = int(BuiltInCategory.OST_CableTray)
+    trays = []
+    for element_id in list(uidoc.Selection.GetElementIds()):
+        element = doc.GetElement(element_id)
+        try:
+            category = element.Category
+            category_id = None
+            if category is not None:
+                category_element_id = category.Id
+                category_id = (category_element_id.Value if hasattr(category_element_id, "Value")
+                               else category_element_id.IntegerValue)
+        except Exception:
+            category_id = None
+        if category_id == tray_category:
+            trays.append(element)
+    return trays[0] if len(trays) == 1 else None
+
+
+def element_section_box(element, direction=None, margin_mm=SECTION_BOX_MARGIN_MM):
+    """Returns a VIS-style section box around an element."""
+    from Autodesk.Revit.DB import Transform, XYZ
+    from lowlife.opening_tasks_kr_views import corners, projected_box
+
+    bounds = element.get_BoundingBox(None)
+    if bounds is None:
+        raise ValueError(tr(u"Выбранный элемент не имеет геометрии.",
+                            u"The selected element has no bounding geometry."))
+    frame = Transform.Identity
+    if direction is not None:
+        angle = align_angle((1.0, 0.0, 0.0), _xyz_tuple(direction))
+        center = bounds.Transform.OfPoint(bounds.Min.Add(bounds.Max).Multiply(0.5))
+        frame = Transform.CreateRotationAtPoint(XYZ.BasisZ, angle, center)
+    return projected_box(corners(bounds), frame, margin_mm / 304.8)
+
+
+def standard_3d_view(doc, active_view=None):
+    """Returns the default orthographic 3D view, with safe fallbacks."""
+    from Autodesk.Revit.DB import FilteredElementCollector, View3D
+
+    views = [view for view in FilteredElementCollector(doc).OfClass(View3D)
+             if not view.IsTemplate]
+    standard = next((view for view in views
+                     if getattr(view, "Name", None) == u"{3D}" and
+                     not getattr(view, "IsPerspective", False)), None)
+    if standard is not None:
+        return standard
+    if (isinstance(active_view, View3D) and not active_view.IsTemplate and
+            not getattr(active_view, "IsPerspective", False)):
+        return active_view
+    return next((view for view in views
+                 if not getattr(view, "IsPerspective", False)), None)
+
+
+def update_view_aligned_to_element(view, element):
+    """Updates an existing 3D view crop and orientation around an element."""
+    line = element_line(element)
+    if line is None or plan_angle(_xyz_tuple(line.Direction)) is None:
+        raise ValueError(tr(u"Выбранный лоток должен быть прямым и иметь направление в плане.",
+                            u"The selected tray must be straight and have a plan direction."))
+    view.IsSectionBoxActive = False
+    align_view(view, line.Direction)
+    view.SetSectionBox(element_section_box(element, line.Direction))
+    view.IsSectionBoxActive = True
+    return view
+
+
+def create_view_aligned_to_element(doc, element, name):
+    """Создаёт изометрический 3D вид и разворачивает его по линейному элементу.
+
+    Вызывать внутри открытой транзакции.
+    """
+    from Autodesk.Revit.DB import (FilteredElementCollector, View, View3D,
+                                   ViewFamily, ViewFamilyType)
+    from lowlife.view_crop import copy_name
+
+    line = element_line(element)
+    if line is None or plan_angle(_xyz_tuple(line.Direction)) is None:
+        raise ValueError(tr(u"Выбранный лоток должен быть прямым и иметь направление в плане.",
+                            u"The selected tray must be straight and have a plan direction."))
+    view_type = next((candidate for candidate in
+                      FilteredElementCollector(doc).OfClass(ViewFamilyType)
+                      if candidate.ViewFamily == ViewFamily.ThreeDimensional), None)
+    if view_type is None:
+        raise ValueError(tr(u"В проекте нет типа 3D-вида.",
+                            u"The project has no 3D view type."))
+    existing_names = set(candidate.Name for candidate in
+                         FilteredElementCollector(doc).OfClass(View))
+    view = View3D.CreateIsometric(doc, view_type.Id)
+    view.Name = copy_name(u"", name, existing_names)
+    update_view_aligned_to_element(view, element)
+    return view
 
 
 def list_grid_axes(doc):

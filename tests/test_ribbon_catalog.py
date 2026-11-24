@@ -59,8 +59,23 @@ def test_stack_expanded_and_empty_panel_skipped(tmpdir):
 
 def test_real_extension_lists_feedback_button():
     panels = dict(ribbon_catalog.list_panels())
-    assert panels[u"Справка"] == [u"О программе", u"Обратная связь"]  # стек — кнопки по порядку
+    assert u"О программе" in panels[u"LowLife"]
+    assert u"Обратная связь" in panels[u"LowLife"]
     assert all(buttons for buttons in panels.values())
+
+
+def test_lowlife_stack_buttons_have_explicit_captions():
+    root = os.path.join(ribbon_catalog.extension_root(), u"LowLife.tab", u"_Themes.panel")
+    stacks = {
+        u"Actions.stack": (u"About.pushbutton", u"Search.pushbutton", u"MyPanels.pushbutton"),
+        u"Help.stack": (u"Feedback.pushbutton", u"Language.pushbutton"),
+    }
+    for stack, names in stacks.items():
+        layout = ribbon_catalog.read_bundle(os.path.join(root, stack))[1]
+        assert len(layout) <= 3  # Revit AddStackedItems supports at most three items.
+        for name in names:
+            bundle = ribbon_catalog.raw_bundle_text(os.path.join(root, stack, name))
+            assert bundle[u"title"]
 
 
 def _entry(title, panel_title=u"П", tooltip=u"", path=(u"B",)):

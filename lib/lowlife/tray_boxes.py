@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 u"""
-Кнопка «Боксы на лотки» (Tools.panel/TrayOpeningBoxes) — Revit-часть.
+Кнопка «Создать боксы на пересечениях» (Tools.panel/TrayOpeningBoxes) — Revit-часть.
 Чистая геометрия (размеры, поворот) — tray_boxes_core.py, настройки —
 tray_boxes_settings.py.
 

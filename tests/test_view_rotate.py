@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import math
+import sys
+import types
 
 import pytest
 
 from lowlife.view_rotate import (
     align_angle, camera_plan_direction, natural_key, plan_angle, rotate_camera,
-    rotate_point, rotate_vector,
+    rotate_point, rotate_vector, selected_cable_tray, standard_3d_view,
 )
 
 
@@ -69,3 +71,54 @@ def test_rotate_camera_keeps_pitch_and_orthogonality():
 def test_natural_key():
     names = [u"10", u"2", u"б", u"А", u"1", u"А.1"]
     assert sorted(names, key=natural_key) == [u"1", u"2", u"10", u"А", u"А.1", u"б"]
+
+
+def test_selected_cable_tray_returns_only_single_tray(monkeypatch):
+    db = types.ModuleType("Autodesk.Revit.DB")
+    db.BuiltInCategory = types.SimpleNamespace(OST_CableTray=42)
+    monkeypatch.setitem(sys.modules, "Autodesk", types.ModuleType("Autodesk"))
+    monkeypatch.setitem(sys.modules, "Autodesk.Revit", types.ModuleType("Autodesk.Revit"))
+    monkeypatch.setitem(sys.modules, "Autodesk.Revit.DB", db)
+
+    category = lambda value: types.SimpleNamespace(Id=types.SimpleNamespace(IntegerValue=value))
+    tray = types.SimpleNamespace(Category=category(42))
+    wall = types.SimpleNamespace(Category=category(7))
+    elements = {1: tray, 2: wall}
+    doc = types.SimpleNamespace(GetElement=lambda element_id: elements[element_id])
+    uidoc = types.SimpleNamespace(Selection=types.SimpleNamespace(GetElementIds=lambda: [1, 2]))
+    assert selected_cable_tray(doc, uidoc) is tray
+
+
+def test_selected_cable_tray_ignores_ambiguous_selection(monkeypatch):
+    db = types.ModuleType("Autodesk.Revit.DB")
+    db.BuiltInCategory = types.SimpleNamespace(OST_CableTray=42)
+    monkeypatch.setitem(sys.modules, "Autodesk", types.ModuleType("Autodesk"))
+    monkeypatch.setitem(sys.modules, "Autodesk.Revit", types.ModuleType("Autodesk.Revit"))
+    monkeypatch.setitem(sys.modules, "Autodesk.Revit.DB", db)
+
+    category = types.SimpleNamespace(Id=types.SimpleNamespace(IntegerValue=42))
+    first = types.SimpleNamespace(Category=category)
+    second = types.SimpleNamespace(Category=category)
+    doc = types.SimpleNamespace(GetElement=lambda element_id: {1: first, 2: second}[element_id])
+    uidoc = types.SimpleNamespace(Selection=types.SimpleNamespace(GetElementIds=lambda: [1, 2]))
+    assert selected_cable_tray(doc, uidoc) is None
+
+
+def test_standard_3d_view_prefers_default_view(monkeypatch):
+    db = types.ModuleType("Autodesk.Revit.DB")
+
+    class View3D:
+        def __init__(self, name, perspective=False):
+            self.Name = name
+            self.IsTemplate = False
+            self.IsPerspective = perspective
+
+    db.View3D = View3D
+    db.FilteredElementCollector = lambda doc: types.SimpleNamespace(
+        OfClass=lambda cls: [View3D(u"{3D}"), View3D(u"Other")])
+    monkeypatch.setitem(sys.modules, "Autodesk", types.ModuleType("Autodesk"))
+    monkeypatch.setitem(sys.modules, "Autodesk.Revit", types.ModuleType("Autodesk.Revit"))
+    monkeypatch.setitem(sys.modules, "Autodesk.Revit.DB", db)
+
+    result = standard_3d_view(types.SimpleNamespace())
+    assert result.Name == u"{3D}"

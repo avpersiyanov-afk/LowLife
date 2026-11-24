@@ -572,6 +572,23 @@ def tag_trays(c):
         c.line([(50, y + 8), (80, y + 8)], WHITE, 3)
 
 
+def tray_connection(c):
+    """Two tray runs at different elevations joined by a fixed-angle rise."""
+    # The lower and upper runs stay visibly separate, while the orange diagonal
+    # marks the newly created sloped segment and its two native fittings.
+    c.rect((7, 61, 45, 76), BLUE, WHITE, 4, 2)
+    c.rect((51, 20, 89, 35), BLUE, WHITE, 4, 2)
+    for x in (17, 29, 41):
+        c.line([(x, 63), (x, 74)], BLUE, 2)
+    for x in (61, 73, 85):
+        c.line([(x, 22), (x, 33)], BLUE, 2)
+    c.line([(43, 68), (58, 28)], ORANGE, 6)
+    c.circle((43, 68), 4.5, ORANGE, WHITE, 3)
+    c.circle((58, 28), 4.5, ORANGE, WHITE, 3)
+    c.d.arc([28 * K, 50 * K, 54 * K, 76 * K], 290, 345,
+            fill=ORANGE, width=int(3 * K))
+
+
 def assign_tray_workset(c):
     """<Назначить всем лоткам РН>: trays and fittings receive a workset."""
     # Cable trays and their fittings are grouped on the left; the arrow and
@@ -618,7 +635,7 @@ def compare_link_datums(c):
 
 
 def tray_opening_boxes(c):
-    """«Боксы на лотки»: стена в разрезе (штриховка), сквозь неё — лоток,
+    """«Создать боксы на пересечениях»: стена в разрезе (штриховка), сквозь неё — лоток,
     вокруг лотка в стене — оранжевый бокс с запасом."""
     c.rect((38, 8, 58, 88), BLUE, WHITE, 4, 1)
     for y in range(14, 86, 10):
@@ -731,6 +748,24 @@ def vis_opening_tasks(c):
     c.line([(79, 73), (73, 79)], ORANGE, 4)
 
 
+def vis_box_3d(c):
+    """A VIS opening box framed by a 3D view."""
+    for (x, y, dx, dy) in ((10, 18, 1, 1), (86, 18, -1, 1),
+                           (10, 78, 1, -1), (86, 78, -1, -1)):
+        c.line([(x, y + 12 * dy), (x, y), (x + 12 * dx, y)], BLUE, 5)
+
+    box_top = [(48, 28), (70, 39), (48, 50), (26, 39)]
+    box_left = [(26, 39), (48, 50), (48, 72), (26, 61)]
+    box_right = [(48, 50), (70, 39), (70, 61), (48, 72)]
+    c.polygon(box_left, WHITE)
+    c.polygon(box_right, PALE_ORANGE)
+    c.polygon(box_top, PALE_ORANGE)
+    for face in (box_top, box_left, box_right):
+        c.line(list(face) + [face[0]], BLUE, 4)
+    c.line([(48, 50), (48, 72)], ORANGE, 5)
+    c.circle((48, 50), 3.5, None, ORANGE)
+
+
 def kr_opening_tasks(c):
     c.rect((16, 12, 80, 84), BLUE, WHITE, 4, 1)
     c.rect((30, 30, 66, 62), ORANGE, WHITE, 4, 1)
@@ -792,6 +827,7 @@ ICONS = [
     ("Tools.panel/ModelFilter.pushbutton", model_filter),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
+    ("Tools.panel/VISBox3D.pushbutton", vis_box_3d),
     ("OpeningTasks.panel/KRInterface.pushbutton", kr_opening_tasks),
     ("FireBoxes.panel/DrawFireBox.pushbutton", fire_enclosure),
     ("FireBoxes.panel/AddInternalTrays.pushbutton", fire_trays),
@@ -799,7 +835,7 @@ ICONS = [
     ("ToolsCables.panel/RouteQuantities.pushbutton", route_quantities),
     ("Tools.panel/HideLinkedElements.pushbutton", hide_linked_elements),
     ("Tools.panel/LinkViews.pushbutton", link_views),
-    ("_Themes.panel/Actions.stack/Language.pushbutton", language),
+    ("_Themes.panel/Help.stack/Language.pushbutton", language),
     ("CircuitsDelete.panel/HighlightNoCircuit.pushbutton", highlight_no_circuit),
     ("SCS.panel/BuildScsSchematic.pushbutton", schematic_scs),
     ("SKUD.panel/BuildSkudSchematic.pushbutton", schematic_skud),
@@ -811,7 +847,7 @@ ICONS = [
     ("SOT.panel/CameraPreviewView.pushbutton", camera_view),
     ("SKUD.panel/InspectSchematicDevices.pushbutton", diag_schematic),
     ("SPS.panel/InspectConnectors.pushbutton", diag_connectors),
-    ("Info.panel/Info.stack/Feedback.pushbutton", feedback),
+    ("_Themes.panel/Help.stack/Feedback.pushbutton", feedback),
     ("_Themes.panel/Actions.stack/Search.pushbutton", ribbon_search),
     ("_Themes.panel/Actions.stack/MyPanels.pushbutton", favorites),
     ("LOI.panel/UpdateLevelName.pushbutton", level_name),
@@ -831,6 +867,7 @@ ICONS = [
     ("SPS.panel/DetectorAccess.pushbutton", detector_access),
     ("Tools.panel/ParkingMarks.pushbutton", parking_marks),
     ("Tools.panel/TagTrays.pushbutton", tag_trays),
+    ("ToolsTraySection.panel/TrayConnection.pushbutton", tray_connection),
     ("FireBoxes.panel/AssignTrayWorkset.pushbutton", assign_tray_workset),
     ("Tools.panel/CompareLinkDatums.pushbutton", compare_link_datums),
     ("Tools.panel/TrayOpeningBoxes.pushbutton", tray_opening_boxes),

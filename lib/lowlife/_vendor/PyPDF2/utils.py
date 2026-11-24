@@ -28,6 +28,17 @@
 """
 Utility functions for PDF library.
 """
+
+try:
+    unicode  # noqa: F821 - Python 2
+except NameError:  # Python 3
+    unicode = str
+
+try:
+    long  # noqa: F821 - Python 2
+except NameError:  # Python 3
+    long = int
+
 __author__ = "Mathieu Fenniak"
 __author_email__ = "biziqe@mathieu.fenniak.net"
 

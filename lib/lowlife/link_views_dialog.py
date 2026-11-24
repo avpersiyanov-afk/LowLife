@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 """Independent linked-view assignments, grouped by host view."""
+
+try:
+    unicode  # noqa: F821 - IronPython/Python 2
+except NameError:  # Python 3
+    unicode = str
+
 from lowlife import ui_theme
 import clr
 clr.AddReference('PresentationFramework')

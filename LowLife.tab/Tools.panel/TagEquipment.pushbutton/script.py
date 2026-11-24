@@ -9,7 +9,9 @@ __doc__ = (
     u"(выбор запоминается); новые марки сразу раскладываются. Выноска "
     u"идёт к УГО, а не к семейству.\n\n"
     u"«Маркировать оборудование смежной модели» — выбрать связи и поставить "
-    u"марки на их оборудование, видимое на текущем виде (Revit 2024+).\n\n"
+    u"марки на их оборудование, видимое на текущем виде (Revit 2024+). "
+    u"«Маркировка шахт по примеру» — выбрать марку шахты и уровни, затем "
+    u"создать такие же типы марок и автоматически разложить их на планах.\n\n"
     u"Shift+клик — настройки (отступ, зазор, полка, что считать «рядом»)."
 )
 __author__ = "Pipers"
@@ -19,10 +21,10 @@ from lowlife.i18n import tr
 
 from Autodesk.Revit.UI.Selection import ObjectType
 from Autodesk.Revit.Exceptions import OperationCanceledException
-from pyrevit import revit, forms, EXEC_PARAMS
+from pyrevit import revit, forms, EXEC_PARAMS, script
 from lowlife import select_list
 
-from lowlife import equipment_tags, equipment_tags_settings, equipment_tags_form
+from lowlife import equipment_tags, equipment_tags_settings, equipment_tags_form, geometry
 from lowlife import tag_leader_follow
 
 doc = revit.doc
@@ -31,6 +33,7 @@ uidoc = revit.uidoc
 MODE_LAYOUT = tr(u"Разложить выбранные марки")
 MODE_CREATE = tr(u"Поставить марки на оборудование")
 MODE_LINK = tr(u"Маркировать оборудование смежной модели")
+MODE_SHAFT = tr(u"Маркировка шахт по примеру", u"Tag shafts by example")
 
 
 def preselected():
@@ -39,13 +42,22 @@ def preselected():
 
 
 def choose_mode(picked):
-    """Только марки в выделении — сразу «разложить»; иначе спросить."""
-    has_tags = any(isinstance(e, equipment_tags.IndependentTag) for e in picked)
+    """Только несколько марок — сразу «разложить»; одну можно взять примером."""
+    tags = [e for e in picked if isinstance(e, equipment_tags.IndependentTag)]
+    has_tags = bool(tags)
     has_equipment = any(equipment_tags.is_equipment(e) for e in picked)
     if has_tags and not has_equipment:
-        return MODE_LAYOUT
+        if len(tags) != 1:
+            return MODE_LAYOUT
+        mode = select_list.CommandSwitchWindow.show(
+            [MODE_LAYOUT, MODE_SHAFT],
+            message=tr(u"Марка оборудования — что сделать?",
+                       u"Equipment tag — what to do?"))
+        if not mode:
+            forms.alert(tr(u"Отменено."), exitscript=True)
+        return mode
     mode = select_list.CommandSwitchWindow.show(
-        [MODE_LAYOUT, MODE_CREATE, MODE_LINK],
+        [MODE_LAYOUT, MODE_CREATE, MODE_LINK, MODE_SHAFT],
         message=tr(u"Марки оборудования — что сделать?")
     )
     if not mode:
@@ -59,6 +71,133 @@ def pick(selection_filter, prompt):
     except OperationCanceledException:
         forms.alert(tr(u"Выбор отменён."), exitscript=True)
     return [doc.GetElement(r) for r in refs]
+
+
+def pick_one(selection_filter, prompt):
+    try:
+        reference = uidoc.Selection.PickObject(ObjectType.Element, selection_filter, prompt)
+    except OperationCanceledException:
+        forms.alert(tr(u"Выбор отменён."), exitscript=True)
+    return doc.GetElement(reference)
+
+
+class LevelOption(object):
+    def __init__(self, level):
+        self.level = level
+        elevation_mm = float(level.Elevation) * 304.8
+        self.name = u"{} ({:+.0f} мм)".format(geometry.level_name(level), elevation_mm)
+
+
+def choose_example_tag(picked):
+    tags = [item for item in picked if isinstance(item, equipment_tags.IndependentTag)]
+    tag = tags[0] if len(tags) == 1 else pick_one(
+        equipment_tags.TagFilter(),
+        tr(u"Выберите одну марку как пример, Esc — отмена.",
+           u"Select one tag as the example, Esc — cancel."))
+    targets = [target for target in equipment_tags.tagged_equipment(doc, tag)
+               if target is not None and equipment_tags.is_equipment(target)
+               and not isinstance(target, equipment_tags.LinkedEquipment)]
+    if len(targets) != 1:
+        forms.alert(
+            tr(u"Пример должен указывать ровно на один элемент текущей модели.",
+               u"The example tag must point to exactly one local model element."),
+            exitscript=True)
+    return tag, equipment_tags.family_group(targets[0])
+
+
+def choose_levels():
+    levels = geometry.get_document_levels(doc)
+    if not levels:
+        forms.alert(tr(u"В проекте нет уровней.", u"The project has no levels."),
+                    exitscript=True)
+    chosen = select_list.SelectFromList.show(
+        [LevelOption(level) for level in levels],
+        title=tr(u"Уровни для маркировки шахт", u"Levels for shaft tagging"),
+        button_name=tr(u"Маркировать", u"Tag"),
+        multiselect=True,
+        checked_only=True)
+    if not chosen:
+        forms.alert(tr(u"Уровни не выбраны.", u"No levels selected."), exitscript=True)
+    return [option.level for option in chosen]
+
+
+def shaft_jobs(view, example_tag, example_group, levels):
+    jobs = []
+    skipped = []
+    tag_type_id = example_tag.GetTypeId()
+    for level in levels:
+        target_view, candidates = equipment_tags.matching_plan_view(doc, level, view)
+        if target_view is None:
+            skipped.append((geometry.level_name(level), candidates))
+            continue
+        elements, entries, pinned = equipment_tags.example_entries(
+            doc, target_view, example_group, tag_type_id)
+        if not elements:
+            skipped.append((geometry.level_name(level), candidates))
+            continue
+        if entries or pinned:
+            jobs.append((target_view, entries, len(elements), pinned))
+    return jobs, skipped
+
+
+def _shaft_summary(results, skipped, following_ok):
+    lines = []
+    created = moved = failed = 0
+    for target_view, stats, count, pinned in results:
+        created += stats["created"]
+        moved += stats["moved"]
+        failed += stats["failed"]
+        suffix = tr(u", закреплено {}", u", pinned {}").format(pinned) if pinned else u""
+        lines.append(u"{}: элементов {}, создано {}, разложено {}{}".format(
+            target_view.Name, count, stats["created"], stats["moved"], suffix))
+    lines.insert(0, tr(u"Создано марок: {}, разложено: {}.",
+                        u"Tags created: {}, arranged: {}.").format(created, moved))
+    if failed:
+        lines.append(tr(u"Ошибок: {}.", u"Errors: {}.").format(failed))
+    if skipped:
+        lines.append(tr(u"Пропущены уровни без однозначного плана: {}.",
+                        u"Levels without an unambiguous plan were skipped: {}.").format(
+            u", ".join(name for name, _candidates in skipped)))
+    if not following_ok:
+        lines.append(tr(u"Следящие выноски не установлены — это ограничение Revit.",
+                        u"Leader following is unavailable due to a Revit limitation."))
+    return lines
+
+
+def run_shaft_mode(view, picked, settings):
+    if not isinstance(view, equipment_tags.ViewPlan):
+        forms.alert(tr(u"Для маркировки шахт откройте план этажа.",
+                       u"Open a floor plan to tag shafts."), exitscript=True)
+    example_tag, example_group = choose_example_tag(picked)
+    levels = choose_levels()
+    jobs, skipped = shaft_jobs(view, example_tag, example_group, levels)
+    if not jobs:
+        forms.alert(
+            tr(u"На выбранных уровнях не найдено подходящих планов или элементов.",
+               u"No matching plans or elements were found on the selected levels."),
+            exitscript=True)
+
+    following_ok = False
+    try:
+        following_ok = tag_leader_follow.install(__revit__)  # noqa: F821
+    except Exception:
+        pass
+
+    results = []
+    try:
+        with revit.Transaction(tr(u"Маркировка шахт по примеру",
+                                 u"Tag shafts by example")):
+            for target_view, entries, count, pinned in jobs:
+                stats = equipment_tags.run(doc, target_view, entries, settings)
+                results.append((target_view, stats, count, pinned))
+    except Exception:
+        forms.alert(
+            tr(u"Ошибка маркировки шахт (транзакция отменена):\n\n{}",
+               u"Shaft tagging failed (transaction rolled back):\n\n{}").format(
+                   traceback.format_exc()),
+            title=tr(u"Маркировка шахт", u"Shaft tagging"), exitscript=True)
+    forms.alert(u"\n".join(_shaft_summary(results, skipped, following_ok)),
+                title=tr(u"Маркировка шахт", u"Shaft tagging"))
 
 
 def layout_entries(view, picked):
@@ -156,7 +295,10 @@ if not equipment_tags.is_taggable_view(view):
 settings = equipment_tags_settings.load_settings()
 picked = preselected()
 mode = choose_mode(picked)
-if mode == MODE_LAYOUT:
+if mode == MODE_SHAFT:
+    run_shaft_mode(view, picked, settings)
+    script.exit()
+elif mode == MODE_LAYOUT:
     entries = layout_entries(view, picked)
 elif mode == MODE_LINK:
     from lowlife import equipment_tags_links

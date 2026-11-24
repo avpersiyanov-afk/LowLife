@@ -1,8 +1,10 @@
 [Русский](../tray-opening-boxes.md) | **English**
 
-# Opening boxes for trays (Tools.panel → «Opening boxes for trays»)
+# Create intersection boxes (Tools.panel → «Create intersection boxes»)
 
 Places a box (a temporary opening) at every spot where the selected cable tray passes through a wall or floor of the model chosen in the settings: this model, one of the loaded links (for example architectural or structural) or all at once (the default).
+
+After placement the command opens a box list. It creates a shared 3D view and level plans, highlights selected boxes, and opens a dedicated 3D preview for each box. These are standalone boxes without VIS task JSON or issue status.
 
 ## How to use
 
@@ -23,7 +25,7 @@ The «Comments» parameter of each new box gets the Revit user name and the crea
 
 Sizes are written to the box's instance parameters. If a size parameter in the family is a type parameter, the button creates a type «<type> WxDxH» (or takes an identical one already created).
 
-If there's already a box at the crossing (any family with «бокс» in its name: its insertion point is close by or it covers the middle of the crossing), no new one is created there and the existing one isn't changed — the button shows a warning with the number of such spots, and the output window lists them. Placement and optional enlargement use separate transactions (Ctrl+Z first undoes enlargement, then placement). The report is in the pyRevit output window.
+If there's already a box at the crossing (any family with «бокс» in its name: its insertion point is close by or it covers the middle of the crossing), no new one is created there and the existing one isn't changed — the button shows a warning with the number of such spots, and the output window lists them. The report is in the pyRevit output window.
 
 ## Settings (Shift+click)
 
@@ -40,9 +42,5 @@ If there's already a box at the crossing (any family with «бокс» in its na
 
 The pure geometry (`lib/lowlife/tray_boxes_core.py`) is covered by `tests/test_tray_boxes_core.py`; the Revit part (`tray_boxes.py`) has only been checked by reading the code.
 
-
-## Additional enlargement
-
-After placement, the results window shows a dimension diagram and a preview for every new opening. Choose no increase, +50, +100, +150 mm, or automatic: larger opening side (including clearances) ≤300 mm → +50 mm; >300 and ≤600 mm → +100 mm; >600 mm → +150 mm. The increase applies to both opening dimensions, equally at opposite ends. For example, +100 mm changes a 400×200 mm opening to 500×300 mm. Host thickness stays unchanged. Existing boxes stay unchanged.
 
 Set the host filter parameter in settings (Shift+click); its name has no project-specific default. Choose a text instance parameter: new wall boxes receive «стена», floor boxes receive «перекрытие».
