@@ -6,6 +6,7 @@ from pyrevit import forms
 
 from lowlife.i18n import tr
 from lowlife.scs_settings import _safe_element_name, list_generic_model_symbols
+from lowlife import route_lines_settings
 
 
 FAMILY_FILTER = u"Участок трассы"
@@ -59,8 +60,11 @@ def _activate_symbol(doc, symbol):
         raise
 
 
-def run_route_line_button(doc, uidoc, type_name, family_filter=FAMILY_FILTER):
+def run_route_line_button(doc, uidoc, panel_key, role_key):
     """Find and start Revit's interactive placement tool for one line type."""
+    settings = route_lines_settings.get_settings_silent()
+    family_filter = settings[route_lines_settings.family_key(panel_key)]
+    type_name = settings[route_lines_settings.type_key(panel_key, role_key)]
     if doc is None or getattr(doc, "IsFamilyDocument", False):
         forms.alert(
             tr(u"Откройте проект Revit для размещения участка трассы.",

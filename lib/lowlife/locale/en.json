@@ -3812,5 +3812,19 @@
  "Шаблон подписи возле недоступного извещателя на плане. Вместо {r} подставляется найденная причина; остальной текст выводится как введён.": "Label template beside an inaccessible detector on the plan. {r} is replaced with the detected reason; the remaining text is used as entered.",
  "Шаблон подписи перекрытия. Вместо {h} подставляется рассчитанная отметка перекрытия относительно пола; остальной текст остаётся без изменений.": "Slab label template. {h} is replaced with the calculated slab elevation relative to the floor; the remaining text stays unchanged.",
  "Шаблон подписи подвесного потолка. Вместо {h} подставляется рассчитанная отметка потолка от пола помещения.": "Suspended ceiling label template. {h} is replaced with the calculated ceiling elevation relative to the room floor.",
- "Шаблон рекомендации по переносу извещателя на плане. Вместо {d} подставляется расстояние до предложенного места в миллиметрах.": "Template for a detector relocation recommendation on the plan. {d} is replaced with the distance to the proposed location in millimetres."
+ "Шаблон рекомендации по переносу извещателя на плане. Вместо {d} подставляется расстояние до предложенного места в миллиметрах.": "Template for a detector relocation recommendation on the plan. {d} is replaced with the distance to the proposed location in millimetres.",
+ "Данные": "Data",
+ "Устройства вызова": "Call devices",
+ "Управление": "Control",
+ "Для каждой панели задайте фильтр имени семейства и точные имена четырёх типов. Кнопки размещения используют эти соответствия.": "For each panel, set the family-name filter and the exact names of its four types. Placement buttons use these mappings.",
+ "Линии трассы: семейства и типы": "Route lines: families and types",
+ "Настройки линий трассы": "Route line settings",
+ "Настройка имени семейства и соответствия типов линий трассы.": "Configure the family-name filter and route-line type mapping.",
+ "Подстрока в имени семейства обобщённой модели для этой панели.": "A substring in the Generic Model family name for this panel.",
+ "Точное имя типа семейства, который запускает эта кнопка.": "The exact family type name started by this button.",
+ "Фильтр имени семейства": "Family-name filter",
+ "Линия в лотке": "Line in tray",
+ "Линия в трубе": "Line in pipe",
+ "Линия в коробе": "Line in box",
+ "Линия в трубе открыто": "Line in open pipe"
 }

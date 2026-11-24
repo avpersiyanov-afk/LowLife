@@ -6,6 +6,6 @@ from pyrevit import revit
 
 from lowlife.route_lines import run_route_line_button
 
-run_route_line_button(revit.doc, revit.uidoc, u"Линия в лотке", u"СС_Охр")
+run_route_line_button(revit.doc, revit.uidoc, "security", "tray")
 
 

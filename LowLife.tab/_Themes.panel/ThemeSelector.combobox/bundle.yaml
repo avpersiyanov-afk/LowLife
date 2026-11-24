@@ -29,6 +29,9 @@ members:
 - id: КНК
   text: КНК
   tooltip: Создание кабельных лотков (лестничный/неперфорированный/перфорированный/проволочный/на кровле)
+- id: Кабельные линии
+  text: Кабельные линии
+  tooltip: Размещение участков кабельных линий по семействам и способам прокладки
 - id: Circuits
   text: Электрические цепи
   tooltip: Все кнопки построения цепей (СКС/СКУД/СПС/СПА/общие) в одном месте
@@ -72,6 +75,9 @@ members_en:
 - id: КНК
   text: Trays
   tooltip: Creating cable trays (ladder/solid/perforated/wire mesh/on the roof)
+- id: Кабельные линии
+  text: Cable lines
+  tooltip: Placing route lines by system family and installation method
 - id: Circuits
   text: Electrical circuits
   tooltip: All circuit-building buttons (SCS/ACS/fire alarm/fire automation/general) in one place
