@@ -27,6 +27,11 @@ layout:
   - TrayPerforated
   - TrayWire
   - TrayRoof
+  - RouteLinesCall
+  - RouteLinesData
+  - RouteLinesSecurity
+  - RouteLinesFire
+  - RouteLinesControl
   - FireBoxes
   - ToolsTraySection
   - OpeningTasks
