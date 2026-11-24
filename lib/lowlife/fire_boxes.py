@@ -247,6 +247,29 @@ def nearest_connector(element, point):
     return min(connectors(element), key=lambda c: c.Origin.DistanceTo(point))
 
 
+def _connector_axis(connector):
+    """Return a connector axis with a location-curve fallback."""
+    try:
+        return connector.CoordinateSystem.BasisZ
+    except Exception:
+        pass
+    try:
+        return connector.Owner.Location.Curve.Direction
+    except Exception:
+        return None
+
+
+def _connector_axis_dot(first, second):
+    first_axis = _connector_axis(first)
+    second_axis = _connector_axis(second)
+    if first_axis is None or second_axis is None:
+        return 0.0
+    try:
+        return first_axis.DotProduct(second_axis)
+    except Exception:
+        return 0.0
+
+
 def align_tray_section(doc, element, start, end, target_up):
     doc.Regenerate()
     actual_up = connectors(element)[0].CoordinateSystem.BasisY
@@ -271,10 +294,10 @@ def join(doc, curves, point):
     if len(ports) not in (2, 3, 4):
         raise ValueError(tr(u'Поддерживаются узлы с 2, 3 или 4 соединениями.', u'Junctions must have 2, 3 or 4 ports.'))
     pair = min(((i, j) for i in range(len(ports)) for j in range(i+1, len(ports))),
-               key=lambda ij: ports[ij[0]].CoordinateSystem.BasisZ.DotProduct(ports[ij[1]].CoordinateSystem.BasisZ))
+               key=lambda ij: _connector_axis_dot(ports[ij[0]], ports[ij[1]]))
     ports = [ports[pair[0]], ports[pair[1]]] + [p for i, p in enumerate(ports) if i not in pair]
     if len(ports) == 2:
-        parallel = abs(ports[0].CoordinateSystem.BasisZ.DotProduct(ports[1].CoordinateSystem.BasisZ)) > 0.9999
+        parallel = abs(_connector_axis_dot(ports[0], ports[1])) > 0.9999
         if parallel:
             if ports[0].Origin.DistanceTo(ports[1].Origin) < 1e-5 and abs(ports[0].Width - ports[1].Width) < 1e-6 and abs(ports[0].Height - ports[1].Height) < 1e-6:
                 ports[0].ConnectTo(ports[1])
