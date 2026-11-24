@@ -4,7 +4,7 @@
 
 Places a box (a temporary opening) at every spot where the selected cable tray passes through a wall or floor of the model chosen in the settings: this model, one of the loaded links (for example architectural or structural) or all at once (the default).
 
-After placement the command opens a box list. It creates a shared 3D view and level plans, highlights selected boxes, and opens a dedicated 3D preview for each box. These are standalone boxes without VIS task JSON or issue status.
+After placement the command writes a detailed report to the pyRevit output window. The boxes are standalone and do not create VIS task JSON or issue status.
 
 ## How to use
 
