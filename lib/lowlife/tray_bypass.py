@@ -230,7 +230,7 @@ def _create_segments(doc, tray, points):
     for first, second in zip(points[:-1], points[1:]):
         segment = fire_boxes.create_curve(
             doc, tray_type, None, _level_id(tray), DB.XYZ(*first), DB.XYZ(*second),
-            width, _height)
+            width, height)
         fire_boxes.assign_workset(segment, getattr(tray, "WorksetId", None))
         result.append(segment)
     doc.Regenerate()
@@ -255,7 +255,7 @@ def run_tray_bypass(doc, uidoc):
         return
     curve = tray.Location.Curve
     start, end = curve.GetEndPoint(0), curve.GetEndPoint(1)
-    width, _height = fire_boxes.dimensions(tray)
+    width, height = fire_boxes.dimensions(tray)
     side = _side_vector(tray)
     route = core.plan_bypass(
         (start.X, start.Y, start.Z), (end.X, end.Y, end.Z),
