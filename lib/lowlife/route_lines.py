@@ -1,0 +1,98 @@
+# -*- coding: utf-8 -*-
+"""Размещение линейных обобщённых моделей «Участок трассы»."""
+
+from Autodesk.Revit import DB
+from pyrevit import forms
+
+from lowlife.i18n import tr
+from lowlife.scs_settings import _safe_element_name, list_generic_model_symbols
+
+
+FAMILY_FILTER = u"Участок трассы"
+
+
+def _family_name(symbol):
+    try:
+        return _safe_element_name(symbol.Family) or u""
+    except Exception:
+        return u""
+
+
+def find_route_line_symbols(doc, type_name, family_filter=FAMILY_FILTER):
+    """Return generic-model symbols matching the route family and exact type."""
+    family_filter = (family_filter or u"").strip()
+    family_filter_lower = family_filter.lower()
+    result = []
+    placed_by_type = {}
+    for instance in DB.FilteredElementCollector(doc).OfCategory(
+            DB.BuiltInCategory.OST_GenericModel).WhereElementIsNotElementType():
+        try:
+            type_id = instance.GetTypeId().IntegerValue
+            placed_by_type[type_id] = placed_by_type.get(type_id, 0) + 1
+        except Exception:
+            pass
+    for symbol in list_generic_model_symbols(doc):
+        if _family_name(symbol).lower().find(family_filter_lower) < 0:
+            continue
+        if (_safe_element_name(symbol) or u"") == type_name:
+            result.append(symbol)
+    return sorted(
+        result,
+        key=lambda symbol: (-placed_by_type.get(symbol.Id.IntegerValue, 0),
+                            _family_name(symbol), symbol.Id.IntegerValue),
+    )
+
+
+def _activate_symbol(doc, symbol):
+    if getattr(symbol, "IsActive", True):
+        return
+    transaction = DB.Transaction(doc, tr(
+        u"Активация типа линии трассы", u"Activate route-line type"
+    ))
+    transaction.Start()
+    try:
+        symbol.Activate()
+        transaction.Commit()
+    except Exception:
+        if transaction.GetStatus() == DB.TransactionStatus.Started:
+            transaction.RollBack()
+        raise
+
+
+def run_route_line_button(doc, uidoc, type_name, family_filter=FAMILY_FILTER):
+    """Find and start Revit's interactive placement tool for one line type."""
+    if doc is None or getattr(doc, "IsFamilyDocument", False):
+        forms.alert(
+            tr(u"Откройте проект Revit для размещения участка трассы.",
+               u"Open a Revit project to place a route segment."),
+            exitscript=True,
+        )
+
+    symbols = find_route_line_symbols(doc, type_name, family_filter)
+    if not symbols:
+        forms.alert(
+            tr(
+                u"Не найден тип «{}» в семействе «{}».",
+                u"Type «{}» was not found in family «{}».",
+            ).format(type_name, family_filter),
+            exitscript=True,
+        )
+
+    # Several discipline-specific families carry the same type names. Prefer
+    # the family already used most often in the model, keeping all five
+    # buttons on the same route-segment family.
+    symbol = symbols[0]
+    _activate_symbol(doc, symbol)
+
+    if not hasattr(uidoc, "PostRequestForElementTypePlacement"):
+        forms.alert(
+            tr(
+                u"Эта версия Revit не поддерживает запуск размещения типа из API. "
+                u"Выберите «{}» вручную в инструменте размещения обобщённой модели.",
+                u"This Revit version cannot start type placement through the API. "
+                u"Choose «{}» manually in the Generic Model placement tool.",
+            ).format(type_name),
+            exitscript=True,
+        )
+
+    uidoc.PostRequestForElementTypePlacement(symbol)
