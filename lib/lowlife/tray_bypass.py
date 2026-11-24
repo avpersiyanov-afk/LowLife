@@ -15,7 +15,7 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from System.Collections.Generic import List
 from pyrevit import forms, script
 
-from lowlife import fire_boxes, slab_marks, tray_boxes
+from lowlife import fire_boxes, slab_marks, tray_boxes, tray_connection, tray_connection_core
 from lowlife import tray_bypass_core as core
 from lowlife.i18n import tr
 
@@ -220,6 +220,44 @@ def _pick_tray(uidoc):
     return uidoc.Document.GetElement(reference)
 
 
+def _ask_bypass_sides(crossings):
+    vertical_side = None
+    horizontal_side = None
+    if any(item.get("mode") == "vertical" for item in crossings):
+        above = forms.alert(
+            tr(u"\u041e\u0431\u0445\u043e\u0434 \u043f\u043e\u0434\u043d\u044f\u0442\u044c \u0432\u044b\u0448\u0435 \u043b\u043e\u0442\u043a\u043e\u0432 \u0438\u043b\u0438 \u043e\u043f\u0443\u0441\u0442\u0438\u0442\u044c?\n\n"
+               u"\u0414\u0430 — \u0432\u044b\u0448\u0435, \u041d\u0435\u0442 — \u043d\u0438\u0436\u0435.",
+               u"Should the tray bypass go above the crossing trays?\n\n"
+               u"Yes means above, No means below."),
+            yes=True, no=True)
+        vertical_side = 1 if above else -1
+    if any(item.get("mode") != "vertical" for item in crossings):
+        left = forms.alert(
+            tr(u"\u041e\u0431\u0445\u043e\u0434\u0438\u0442\u044c \u0441\u043b\u0435\u0432\u0430 \u0438\u043b\u0438 \u0441\u043f\u0440\u0430\u0432\u0430 \u043e\u0442 \u043f\u0435\u0440\u0435\u0441\u0435\u0447\u0435\u043d\u0438\u044f?\n\n"
+               u"\u0414\u0430 — \u0441\u043b\u0435\u0432\u0430, \u041d\u0435\u0442 — \u0441\u043f\u0440\u0430\u0432\u0430, \u0435\u0441\u043b\u0438 \u0441\u043c\u043e\u0442\u0440\u0435\u0442\u044c \u043e\u0442 \u043d\u0430\u0447\u0430\u043b\u0430 \u043b\u043e\u0442\u043a\u0430 \u043a \u0435\u0433\u043e \u043a\u043e\u043d\u0446\u0443.",
+               u"Should the tray bypass go to the left of the crossing?\n\n"
+               u"Yes means left, No means right, looking from the tray start to its end."),
+            yes=True, no=True)
+        horizontal_side = 1 if left else -1
+    return vertical_side, horizontal_side
+
+def _ask_connection_angle():
+    raw = forms.ask_for_string(
+        default="45",
+        prompt=tr(
+            u"\u0423\u0433\u043e\u043b \u0441\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u044f \u043b\u043e\u0442\u043a\u0430 \u0441 \u043f\u043e\u0434\u044a\u0451\u043c\u043e\u043c, \u0433\u0440\u0430\u0434\u0443\u0441\u044b (2-88):",
+            u"Tray connection angle with the rise, degrees (2-88):"
+        ),
+        title=tr(u"\u0421\u043e\u0435\u0434\u0438\u043d\u0435\u043d\u0438\u0435 \u043b\u043e\u0442\u043a\u043e\u0432",
+                  u"Connect trays")
+    )
+    try:
+        return tray_connection_core.parse_angle(raw)
+    except ValueError as exc:
+        forms.alert(tr(u"\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u0443\u0433\u043e\u043b: {}",
+                       u"Invalid angle: {}").format(exc), exitscript=True)
+
+
 def _create_segments(doc, tray, points):
     tray_type = doc.GetElement(tray.GetTypeId())
     if not isinstance(tray_type, CableTrayType):
@@ -237,7 +275,8 @@ def _create_segments(doc, tray, points):
     return result
 
 
-def _try_connect_route(doc, created, points, neighbors, start, end):
+def _try_connect_route(doc, created, points, neighbors, start, end,
+                       angle=None, grouped_vertical=False):
     """Add fittings after the geometry is committed.
 
     A rejected fitting must not be able to roll back the already-created
@@ -249,20 +288,28 @@ def _try_connect_route(doc, created, points, neighbors, start, end):
         u"Connect tray bypass segments"))
     try:
         fitting_transaction.Start()
-        joins = list(zip(created[:-1], created[1:], points[1:-1]))
-        if neighbors:
-            joins.insert(0, (neighbors[0], created[0], start))
-        if len(neighbors) > 1:
-            joins.append((created[-1], neighbors[-1], end))
-        for first, second, point in joins:
-            fire_boxes.join(doc, [first, second], DB.XYZ(*point))
+        if grouped_vertical:
+            additions = []
+            additions.extend(tray_connection.create_connection(
+                doc, created[0], created[1], angle))
+            additions.extend(tray_connection.create_connection(
+                doc, created[1], created[2], angle))
+        else:
+            joins = list(zip(created[:-1], created[1:], points[1:-1]))
+            if neighbors:
+                joins.insert(0, (neighbors[0], created[0], start))
+            if len(neighbors) > 1:
+                joins.append((created[-1], neighbors[-1], end))
+            for first, second, point in joins:
+                fire_boxes.join(doc, [first, second], DB.XYZ(*point))
+            additions = []
         if fitting_transaction.Commit() != DB.TransactionStatus.Committed:
             raise ValueError("Revit rejected the bypass fittings.")
-        return True
+        return additions
     except Exception:
         if fitting_transaction.GetStatus() == DB.TransactionStatus.Started:
             fitting_transaction.RollBack()
-        return False
+        return []
 
 
 def run_tray_bypass(doc, uidoc):
@@ -279,6 +326,7 @@ def run_tray_bypass(doc, uidoc):
                        u"No linked engineering communication crosses the tray."),
                     exitscript=True)
         return
+    vertical_side, horizontal_side = _ask_bypass_sides(crossings)
     curve = tray.Location.Curve
     start, end = curve.GetEndPoint(0), curve.GetEndPoint(1)
     width, height = fire_boxes.dimensions(tray)
@@ -290,13 +338,26 @@ def run_tray_bypass(doc, uidoc):
         CLEARANCE_MM / FT_TO_MM,
         tray_half_height=(height / FT_TO_MM) / 2.0,
         group_gap=max(CLEARANCE_MM * 2.0 / FT_TO_MM,
-                      width / FT_TO_MM + CLEARANCE_MM / FT_TO_MM))
+                      width / FT_TO_MM + CLEARANCE_MM / FT_TO_MM),
+        vertical_side=vertical_side,
+        horizontal_side=horizontal_side)
+    grouped_vertical = (
+        len(route) == 6 and crossings and
+        all(item.get("mode") == "vertical" for item in crossings))
+    angle = _ask_connection_angle() if grouped_vertical else None
     transaction = DB.Transaction(doc, tr(u"Обход коммуникации лотком",
                                          u"Bypass cable tray communication"))
     transaction.Start()
     try:
         neighbors = _neighbors(tray)
-        created = _create_segments(doc, tray, route)
+        if grouped_vertical:
+            created = []
+            for first, second in ((route[0], route[1]),
+                                  (route[2], route[3]),
+                                  (route[4], route[5])):
+                created.extend(_create_segments(doc, tray, [first, second]))
+        else:
+            created = _create_segments(doc, tray, route)
         doc.Delete(tray.Id)
         if transaction.Commit() != DB.TransactionStatus.Committed:
             raise ValueError(tr(u"Revit не применил обход.",
@@ -305,10 +366,12 @@ def run_tray_bypass(doc, uidoc):
         if transaction.GetStatus() == DB.TransactionStatus.Started:
             transaction.RollBack()
         raise
-    _try_connect_route(doc, created, route, neighbors, start, end)
-    uidoc.Selection.SetElementIds(List[DB.ElementId]([element.Id for element in created]))
+    additions = _try_connect_route(
+        doc, created, route, neighbors, start, end, angle, grouped_vertical)
+    all_created = created + additions
+    uidoc.Selection.SetElementIds(List[DB.ElementId]([element.Id for element in all_created]))
     forms.alert(tr(u"Обход построен. Сегментов лотка: {}.",
-                   u"Bypass created. Tray segments: {}.").format(len(created)))
+                   u"Bypass created. Tray segments: {}.").format(len(all_created)))
 
 
 def run(doc, uidoc):

@@ -47,3 +47,20 @@ def test_nearby_crossings_are_one_detour_group():
     assert len(route) == 6
     assert route[1][0] == 3.9
     assert route[4][0] == 6.1
+
+
+def test_horizontal_side_can_be_forced_to_right():
+    route = plan_bypass(
+        (0.0, 0.0, 0.0), (10.0, 0.0, 0.0), (0.0, 1.0, 0.0),
+        [{"start": 4.0, "end": 6.0, "perp_min": -0.5, "perp_max": 0.5}],
+        0.25, 0.1, horizontal_side=-1)
+    assert route[2][1] < 0.0
+
+
+def test_vertical_side_can_be_forced_below():
+    route = plan_bypass(
+        (0.0, 0.0, 2.0), (10.0, 0.0, 2.0), (0.0, 1.0, 0.0),
+        [{"start": 4.0, "end": 6.0, "mode": "vertical",
+          "vertical_min": 1.0, "vertical_max": 3.0}],
+        0.25, 0.1, tray_half_height=0.25, vertical_side=-1)
+    assert route[2][2] < 2.0

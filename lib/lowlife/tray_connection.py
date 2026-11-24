@@ -16,7 +16,12 @@ def _point(connector):
 
 
 def _horizontal_direction(connector):
-    basis = connector.CoordinateSystem.BasisZ
+    try:
+        basis = connector.CoordinateSystem.BasisZ
+    except Exception:
+        basis = fire_boxes._connector_axis(connector)
+    if basis is None:
+        return None
     length = (basis.X * basis.X + basis.Y * basis.Y) ** 0.5
     if length <= _POINT_TOLERANCE:
         basis = connector.CoordinateSystem.BasisX
