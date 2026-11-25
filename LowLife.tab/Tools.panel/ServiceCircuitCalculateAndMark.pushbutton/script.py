@@ -2,6 +2,7 @@
 from pyrevit import revit, forms, script
 from lowlife.service_circuit_runtime import build_document_graph, collect_element_points
 from lowlife.service_circuit_adapters import adapt_revit_circuits, element_point
+from Autodesk.Revit.DB import ElementId
 from lowlife.service_circuit_calculator import calculate_circuit_paths
 
 doc = revit.doc
@@ -11,7 +12,7 @@ try:
     points = collect_element_points(doc)
     for circuit in circuits:
         for element_id in [circuit.source_id] + list(circuit.device_ids):
-            element = doc.GetElement(element_id)
+            element = doc.GetElement(ElementId(int(element_id)))
             point = element_point(element) if element is not None else None
             if point is not None:
                 points[element_id] = point
