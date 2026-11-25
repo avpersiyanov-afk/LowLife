@@ -2,6 +2,8 @@
 """Размещение линейных обобщённых моделей «Участок трассы»."""
 
 from Autodesk.Revit import DB
+from Autodesk.Revit.UI import FaceBasedPlacementType, PromptForFamilyInstancePlacementOptions
+from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import forms
 
 from lowlife.i18n import tr
@@ -25,24 +27,12 @@ def find_route_line_symbols(doc, type_name, family_filter=FAMILY_FILTER):
     family_filter = (family_filter or u"").strip()
     family_filter_lower = family_filter.lower()
     result = []
-    placed_by_type = {}
-    for instance in DB.FilteredElementCollector(doc).OfCategory(
-            DB.BuiltInCategory.OST_GenericModel).WhereElementIsNotElementType():
-        try:
-            type_id = instance.GetTypeId().IntegerValue
-            placed_by_type[type_id] = placed_by_type.get(type_id, 0) + 1
-        except Exception:
-            pass
     for symbol in list_generic_model_symbols(doc):
         if _family_name(symbol).lower().find(family_filter_lower) < 0:
             continue
         if (_safe_element_name(symbol) or u"") == type_name:
             result.append(symbol)
-    return sorted(
-        result,
-        key=lambda symbol: (-placed_by_type.get(symbol.Id.IntegerValue, 0),
-                            _family_name(symbol), symbol.Id.IntegerValue),
-    )
+    return sorted(result, key=lambda symbol: (_family_name(symbol), symbol.Id.IntegerValue))
 
 
 def _activate_symbol(doc, symbol):
@@ -85,6 +75,28 @@ def _activate_workset(doc, workset_filter):
     cable_tray.set_active_workset(doc, worksets[0])
 
 
+def _ensure_work_plane(doc, view):
+    if getattr(view, "SketchPlane", None) is not None:
+        return
+    try:
+        normal, origin = view.ViewDirection, view.Origin
+    except Exception:
+        normal, origin = DB.XYZ.BasisZ, DB.XYZ.Zero
+    transaction = DB.Transaction(doc, tr(
+        u"Задать рабочую плоскость линий трассы", u"Set route-line work plane"
+    ))
+    transaction.Start()
+    try:
+        view.SketchPlane = DB.SketchPlane.Create(
+            doc, DB.Plane.CreateByNormalAndOrigin(normal, origin)
+        )
+        transaction.Commit()
+    except Exception:
+        if transaction.GetStatus() == DB.TransactionStatus.Started:
+            transaction.RollBack()
+        raise
+
+
 def run_route_line_button(doc, uidoc, panel_key, role_key):
     """Find and start Revit's interactive placement tool for one line type."""
     if doc is None or getattr(doc, "IsFamilyDocument", False):
@@ -114,15 +126,18 @@ def run_route_line_button(doc, uidoc, panel_key, role_key):
     symbol = symbols[0]
     _activate_symbol(doc, symbol)
 
-    if not hasattr(uidoc, "PostRequestForElementTypePlacement"):
+    _ensure_work_plane(doc, uidoc.ActiveView)
+    options = PromptForFamilyInstancePlacementOptions()
+    options.FaceBasedPlacementType = FaceBasedPlacementType.PlaceOnWorkPlane
+    try:
+        uidoc.PromptForFamilyInstancePlacement(symbol, options)
+    except OperationCanceledException:
+        return
+    except Exception as error:
         forms.alert(
             tr(
-                u"Эта версия Revit не поддерживает запуск размещения типа из API. "
-                u"Выберите «{}» вручную в инструменте размещения обобщённой модели.",
-                u"This Revit version cannot start type placement through the API. "
-                u"Choose «{}» manually in the Generic Model placement tool.",
-            ).format(type_name),
+                u"Не удалось запустить размещение типа «{}» на рабочей плоскости:\n{}",
+                u"Could not start work-plane placement for type «{}»:\n{}",
+            ).format(type_name, error),
             exitscript=True,
         )
-
-    uidoc.PostRequestForElementTypePlacement(symbol)
