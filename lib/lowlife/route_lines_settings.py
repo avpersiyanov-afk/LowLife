@@ -19,6 +19,8 @@ ROLES = [
 ]
 
 FILE_NAME = "LowLifeRouteLines_settings.json"
+WORKSET_KEY = "workset_filter"
+DEFAULT_WORKSET_FILTER = u"_к1"
 FAMILY_KEY = "family_{}"
 TYPE_KEY = "type_{}_{}"
 
@@ -31,7 +33,13 @@ def type_key(panel_key, role_key):
     return TYPE_KEY.format(panel_key, role_key)
 
 
-FIELDS = []
+FIELDS = [settings_core.TextField(
+    WORKSET_KEY, N_(u"Рабочий набор"),
+    N_(u"Часть имени рабочего набора"),
+    hint=N_(u"В имени рабочего набора должна встречаться эта строка. По умолчанию — «_к1». "
+           u"Если подходит несколько наборов, уточните фильтр."),
+    default=DEFAULT_WORKSET_FILTER, required=True,
+)]
 for panel_key, panel_label, family_default in PANELS:
     FIELDS.append(settings_core.TextField(
         family_key(panel_key), panel_label,
@@ -57,7 +65,7 @@ SETTINGS = settings_core.TextSettings(
              u"Кнопки размещения используют эти соответствия."),
     reset_button=True,
     width=820,
-    height=980,
+    height=1040,
 )
 
 get_settings_interactive = SETTINGS.get_settings_interactive

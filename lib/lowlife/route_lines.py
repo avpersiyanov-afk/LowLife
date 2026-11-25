@@ -7,6 +7,7 @@ from pyrevit import forms
 from lowlife.i18n import tr
 from lowlife.scs_settings import _safe_element_name, list_generic_model_symbols
 from lowlife import route_lines_settings
+from lowlife import cable_tray
 
 
 FAMILY_FILTER = u"Участок трассы"
@@ -60,17 +61,42 @@ def _activate_symbol(doc, symbol):
         raise
 
 
+def _activate_workset(doc, workset_filter):
+    if not getattr(doc, "IsWorkshared", False):
+        forms.alert(
+            tr(u"В проекте не включена совместная работа, поэтому рабочий набор выбрать нельзя.",
+               u"Worksharing is disabled, so a workset cannot be selected."),
+            exitscript=True,
+        )
+    worksets = cable_tray.find_worksets(doc, workset_filter)
+    if not worksets:
+        forms.alert(
+            tr(u"Не найден рабочий набор, содержащий «{}» в имени.",
+               u"No workset containing «{}» in its name was found.").format(workset_filter),
+            exitscript=True,
+        )
+    if len(worksets) > 1:
+        forms.alert(
+            tr(u"Фильтр «{}» подходит сразу к нескольким рабочим наборам ({}). Уточните его в настройках.",
+               u"The filter «{}» matches multiple worksets ({}). Refine it in settings.").format(
+                   workset_filter, len(worksets)),
+            exitscript=True,
+        )
+    cable_tray.set_active_workset(doc, worksets[0])
+
+
 def run_route_line_button(doc, uidoc, panel_key, role_key):
     """Find and start Revit's interactive placement tool for one line type."""
-    settings = route_lines_settings.get_settings_silent()
-    family_filter = settings[route_lines_settings.family_key(panel_key)]
-    type_name = settings[route_lines_settings.type_key(panel_key, role_key)]
     if doc is None or getattr(doc, "IsFamilyDocument", False):
         forms.alert(
             tr(u"Откройте проект Revit для размещения участка трассы.",
                u"Open a Revit project to place a route segment."),
             exitscript=True,
         )
+    settings = route_lines_settings.get_settings_silent()
+    _activate_workset(doc, settings[route_lines_settings.WORKSET_KEY])
+    family_filter = settings[route_lines_settings.family_key(panel_key)]
+    type_name = settings[route_lines_settings.type_key(panel_key, role_key)]
 
     symbols = find_route_line_symbols(doc, type_name, family_filter)
     if not symbols:
