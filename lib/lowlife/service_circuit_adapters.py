@@ -45,6 +45,23 @@ def collect_element_points(doc):
             if point is not None:
                 points[element.Id.IntegerValue] = point
     return points
+
+def element_point(element):
+    """Return a usable connection point for any Revit family instance."""
+    location = getattr(element, "Location", None)
+    point = getattr(location, "Point", None) if location is not None else None
+    if point is None and location is not None and hasattr(location, "Curve"):
+        point = location.Curve.Evaluate(0.5, True)
+    if point is None:
+        mep = getattr(element, "MEPModel", None)
+        manager = getattr(mep, "ConnectorManager", None) if mep is not None else getattr(element, "ConnectorManager", None)
+        connectors = getattr(manager, "Connectors", None) if manager is not None else None
+        if connectors is not None:
+            for connector in connectors:
+                point = getattr(connector, "Origin", None)
+                if point is not None:
+                    break
+    return (float(point.X), float(point.Y), float(point.Z)) if point is not None else None
 class CircuitRecord(object):
     def __init__(self, system_kind, circuit_id, source_id, device_ids, route_mode="per_device", ring=False):
         self.system_kind=normalize_system_kind(system_kind); self.circuit_id=circuit_id; self.source_id=source_id; self.device_ids=list(device_ids or []); self.route_mode=route_mode; self.ring=bool(ring)
