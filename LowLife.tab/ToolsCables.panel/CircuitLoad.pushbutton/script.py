@@ -18,9 +18,10 @@ if not records:
     forms.alert(u"В проекте нет электрических цепей.", exitscript=True)
 output = script.get_output()
 output.print_md(u"## Нагрузка электрических цепей")
+summary = circuit_load.summarize(records)
 output.print_md(u"Всего цепей: **{}**, суммарная нагрузка: **{:.0f} VA**, перегружено: **{}**, падение выше 5%: **{}**".format(
-    len(records), circuit_load.summarize(records)["load_va"],
-    circuit_load.summarize(records)["overloaded"], circuit_load.summarize(records)["drop_over_5"]))
+    len(records), float(summary["load_va"]),
+    summary["overloaded"], summary["drop_over_5"]))
 output.print_table([[(r["number"] or str(r["id"])), r["panel"], r["name"], r["element_count"],
                      "{:.0f}".format(r["load_va"]), "{:.1f}".format(r["current_a"] or 0),
                      "{:.1f}".format(r["length_m"] or 0), r["wire"] or u"—",
