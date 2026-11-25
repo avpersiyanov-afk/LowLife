@@ -66,3 +66,8 @@ def nearest_node(graph, point):
     if not graph.nodes:
         return None
     return min(graph.nodes, key=lambda node: _distance(node, point))
+
+def nearest_node_with_distance(graph, point):
+    node = nearest_node(graph, point)
+    return (node, _distance(node, _key(point))) if node is not None else (None, None)
+
