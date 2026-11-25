@@ -207,6 +207,7 @@ THEMES = {
         (u"ToolsCables", u"WireCatalogExport"),
         (u"ToolsCables", u"WireCatalogImport"),
         (u"ToolsCables", u"RouteQuantities"),
+        (u"ToolsCables", u"CircuitLoad"),
     ],
     u"Settings": [
         (u"SCS", u"SetupParameters"),
