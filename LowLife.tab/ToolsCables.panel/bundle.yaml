@@ -6,4 +6,5 @@ layout:
   - WireCatalogExport
   - WireCatalogImport
   - RouteQuantities
+  - CircuitLoad
 title_en: "Cables"
