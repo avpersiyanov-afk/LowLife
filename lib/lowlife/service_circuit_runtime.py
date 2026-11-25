@@ -32,9 +32,18 @@ def collect_electrical_circuits(doc):
     result = []
     for circuit in FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_ElectricalCircuit).WhereElementIsNotElementType():
         source = getattr(circuit, "BaseEquipment", None)
+        elements = list(circuit.Elements)
+        if source is None:
+            # Revit models created by panel schedules can leave BaseEquipment
+            # empty. SCS resolves the panel from the circuit element set.
+            for candidate in elements:
+                category = getattr(getattr(candidate, "Category", None), "Id", None)
+                if category is not None and category.IntegerValue == int(BuiltInCategory.OST_ElectricalEquipment):
+                    source = candidate
+                    break
         if source is None:
             continue
-        devices = [el for el in circuit.Elements if el.Id != source.Id]
+        devices = [el for el in elements if el.Id != source.Id]
         result.append(CircuitRecord("GENERIC", circuit.Id.IntegerValue, source.Id.IntegerValue, [el.Id.IntegerValue for el in devices], "sequence" if len(devices) > 1 else "per_device"))
     return result
 
