@@ -284,6 +284,8 @@ THEMES = {
         (u"ToolsExport", u"RenameExportFiles"),
         (u"ToolsExport", u"RenameByList"),
         (u"ToolsExport", u"CaptureExportCommand"),
+        (u"Tools", u"ServiceCircuitGraph"),
+        (u"Tools", u"ServiceCircuitCalculateAndMark"),
     ],
 }
 
