@@ -20,6 +20,8 @@ try:
     # model devices whose category and location vary between families.
     for electrical in FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_ElectricalCircuit).WhereElementIsNotElementType():
         for element in electrical.Elements:
+            if element.Category is not None and element.Category.Id.IntegerValue == int(BuiltInCategory.OST_GenericModel):
+                continue
             point = element_point(element)
             if point is not None:
                 points[element.Id.IntegerValue] = point
