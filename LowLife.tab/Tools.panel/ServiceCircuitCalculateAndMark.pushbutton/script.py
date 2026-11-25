@@ -2,7 +2,7 @@
 from pyrevit import revit, forms, script
 from lowlife.service_circuit_runtime import build_document_graph, collect_element_points
 from lowlife.service_circuit_adapters import adapt_revit_circuits, element_point
-from Autodesk.Revit.DB import ElementId
+from Autodesk.Revit.DB import ElementId, FilteredElementCollector, BuiltInCategory
 from lowlife.service_circuit_calculator import calculate_circuit_paths
 
 doc = revit.doc
@@ -16,6 +16,15 @@ try:
             point = element_point(element) if element is not None else None
             if point is not None:
                 points[element_id] = point
+    # ElectricalSystem.Elements is authoritative. It also contains generic
+    # model devices whose category and location vary between families.
+    for electrical in FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_ElectricalCircuit).WhereElementIsNotElementType():
+        for element in electrical.Elements:
+            if element.Category is not None and element.Category.Id.IntegerValue == int(BuiltInCategory.OST_GenericModel):
+                continue
+            point = element_point(element)
+            if point is not None:
+                points[element.Id.IntegerValue] = point
     results = calculate_circuit_paths(graph, circuits, points)
     output = script.get_output()
     output.print_md("### Служебный расчёт цепей")
