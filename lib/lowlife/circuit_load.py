@@ -71,12 +71,22 @@ def circuit_record(circuit, settings=None):
     if current_a is not None and length_m is not None and section:
         drop_v = 2.0 * length_m * current_a * resistance / section
     reserve_a = ampacity - current_a if ampacity is not None and current_a is not None else None
+    equipment = []
+    for element in list(circuit.Elements) if getattr(circuit, "Elements", None) else []:
+        category = getattr(getattr(element, "Category", None), "Name", u"") or u""
+        type_name = u""
+        try:
+            type_name = element.Document.GetElement(element.GetTypeId()).Name or u""
+        except Exception:
+            pass
+        equipment.append({"id": getattr(getattr(element, "Id", None), "IntegerValue", None), "name": getattr(element, "Name", u"") or u"", "category": category, "type": type_name})
     return {
         "id": getattr(getattr(circuit, "Id", None), "IntegerValue", None),
         "number": number,
         "name": getattr(circuit, "Name", u""),
         "panel": getattr(panel, "Name", u"") if panel else u"",
-        "element_count": len(list(circuit.Elements)) if getattr(circuit, "Elements", None) else 0,
+        "element_count": len(equipment),
+        "equipment": equipment,
         "load_va": load_va,
         "voltage_v": voltage_v,
         "current_a": current_a,
