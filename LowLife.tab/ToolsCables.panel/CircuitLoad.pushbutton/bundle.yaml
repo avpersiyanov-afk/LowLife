@@ -1,0 +1,5 @@
+title: "Нагрузка\nцепей"
+title_en: "Circuit\nload"
+tooltip: Показывает нагрузку, оборудование, кабель, запас по току и падение напряжения электрических цепей.
+tooltip_en: Shows circuit load, connected equipment count, cable, current reserve, and voltage drop.
+min_revit_version: 2024
