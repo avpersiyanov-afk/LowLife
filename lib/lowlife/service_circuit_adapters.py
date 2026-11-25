@@ -29,7 +29,7 @@ def collect_element_points(doc):
                         return point
         return None
     categories = []
-    for name in ("OST_ElectricalEquipment", "OST_CommunicationDevices", "OST_DataDevices", "OST_ElectricalFixtures", "OST_FireAlarmDevices", "OST_SecurityDevices", "OST_NurseCallDevices"):
+    for name in ("OST_ElectricalEquipment", "OST_CommunicationDevices", "OST_DataDevices", "OST_ElectricalFixtures", "OST_FireAlarmDevices", "OST_SecurityDevices", "OST_NurseCallDevices", "OST_GenericModel"):
         category = getattr(BuiltInCategory, name, None)
         if category is not None:
             categories.append(category)
