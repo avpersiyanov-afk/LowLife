@@ -3,15 +3,22 @@ from pyrevit import revit, forms, EXEC_PARAMS, script
 from Autodesk.Revit.DB import FilteredElementCollector
 from Autodesk.Revit.DB.Electrical import ElectricalSystem
 from lowlife import circuit_load
+from lowlife import circuit_load_settings
 
 __title__ = u"Нагрузка\nцепей"
 __doc__ = u"Интерактивный просмотр цепей и подключённого оборудования."
+settings_ui = circuit_load_settings.SETTINGS
 if EXEC_PARAMS.config_mode:
-    forms.alert(u"Настройки нагрузки будут добавлены после выбора параметров кабельных линий.")
+    settings_ui.get_settings_interactive()
     script.exit()
+settings = settings_ui.get_settings_silent()
+if settings_ui.missing(settings, circuit_load_settings.KEYS):
+    settings = settings_ui.get_settings_interactive()
+    if settings is None:
+        script.exit()
 
 systems = list(FilteredElementCollector(revit.doc).OfClass(ElectricalSystem).WhereElementIsNotElementType())
-records = [circuit_load.circuit_record(system, {"section_mm2": 2.5}) for system in systems]
+records = [circuit_load.circuit_record(system, settings) for system in systems]
 
 class CircuitWindow(forms.WPFWindow):
     def __init__(self, rows):
