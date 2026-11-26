@@ -2,6 +2,7 @@
 """Размещение линейных обобщённых моделей «Участок трассы»."""
 
 from Autodesk.Revit import DB
+from Autodesk.Revit.DB import FamilyPlacementType
 from Autodesk.Revit.UI import FaceBasedPlacementType, PromptForFamilyInstancePlacementOptions
 from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import forms
@@ -127,10 +128,15 @@ def run_route_line_button(doc, uidoc, panel_key, role_key):
     _activate_symbol(doc, symbol)
 
     _ensure_work_plane(doc, uidoc.ActiveView)
-    options = PromptForFamilyInstancePlacementOptions()
-    options.FaceBasedPlacementType = FaceBasedPlacementType.PlaceOnWorkPlane
     try:
-        uidoc.PromptForFamilyInstancePlacement(symbol, options)
+        if symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased:
+            options = PromptForFamilyInstancePlacementOptions()
+            options.FaceBasedPlacementType = FaceBasedPlacementType.PlaceOnWorkPlane
+            uidoc.PromptForFamilyInstancePlacement(symbol, options)
+        else:
+            # CurveBased route families reject FaceBasedPlacementType. Revit
+            # uses the active view/work-plane context for the plain overload.
+            uidoc.PromptForFamilyInstancePlacement(symbol)
     except OperationCanceledException:
         return
     except Exception as error:
