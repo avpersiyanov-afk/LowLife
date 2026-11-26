@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from lowlife.service_circuit_graph import nearest_node_with_distance
+from lowlife.service_circuit_graph import attach_point
 from lowlife.service_circuit_routes import route_sequence
 
 def calculate_circuit_paths(graph, circuits, point_by_id, snap_tolerance=1.0):
@@ -10,8 +10,8 @@ def calculate_circuit_paths(graph, circuits, point_by_id, snap_tolerance=1.0):
         if source is None or not devices:
             results.append({"circuit": circuit, "paths": [], "length": None, "status": "missing_endpoint"})
             continue
-        source_node, source_gap=nearest_node_with_distance(graph, source)
-        device_snap=[nearest_node_with_distance(graph, p) for p in devices]
+        source_node, source_gap=attach_point(graph, source)
+        device_snap=[attach_point(graph, p) for p in devices]
         if source_gap is None or source_gap > snap_tolerance or any(gap is None or gap > snap_tolerance for node, gap in device_snap):
             results.append({"circuit": circuit, "paths": [], "length": None, "status": "off_route"})
             continue

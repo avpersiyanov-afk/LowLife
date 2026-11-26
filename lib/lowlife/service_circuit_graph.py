@@ -71,3 +71,32 @@ def nearest_node_with_distance(graph, point):
     node = nearest_node(graph, point)
     return (node, _distance(node, _key(point))) if node is not None else (None, None)
 
+def attach_point(graph, point, tolerance=5.0):
+    """Snap an element to the nearest point on a route segment, not only an endpoint."""
+    p = tuple(float(v) for v in point)
+    best = None
+    for edge in list(graph.edges.values()):
+        a, b = edge["a"], edge["b"]
+        dx, dy, dz = b[0]-a[0], b[1]-a[1], b[2]-a[2]
+        denom = dx*dx + dy*dy + dz*dz
+        t = 0.0 if denom == 0 else max(0.0, min(1.0, ((p[0]-a[0])*dx + (p[1]-a[1])*dy + (p[2]-a[2])*dz) / denom))
+        q = (a[0]+t*dx, a[1]+t*dy, a[2]+t*dz)
+        distance = _distance(p, q)
+        if best is None or distance < best[0]:
+            best = (distance, q, a, b, edge, t)
+    if best is None or best[0] > tolerance:
+        return None, best[0] if best else None
+    _, q, a, b, edge, t = best
+    q = _key(q)
+    if q not in graph.nodes:
+        graph.nodes[q] = q
+        for endpoint, fraction in ((a, t), (b, 1.0-t)):
+            if fraction <= 0.0:
+                continue
+            part = dict(edge)
+            part["a"], part["b"] = endpoint, q
+            part["length"] = edge["length"] * fraction
+            graph.neighbors.setdefault(endpoint, []).append((q, part))
+            graph.neighbors.setdefault(q, []).append((endpoint, part))
+    return q, best[0]
+
