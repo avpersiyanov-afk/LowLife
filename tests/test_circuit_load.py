@@ -35,3 +35,11 @@ def test_copper_conductor_and_voltage_drop():
     assert conductor["section_mm2"] == 2.5
     result = voltage_drop(10, 20, 2.5, 230)
     assert round(result["volts"], 3) == 2.88
+
+
+def test_selected_circuit_builds_bindable_equipment_rows():
+    from lowlife.circuit_load import equipment_rows
+    rows = equipment_rows({"equipment": [{"category": "Приборы", "type": "Светильник", "voltage_v": 230, "current_a": 1.2, "power_w": 276, "name": "L-01", "id": 10}]})
+    assert rows[0].Category == "Приборы"
+    assert rows[0].Type == "Светильник"
+    assert rows[0].Power == 276

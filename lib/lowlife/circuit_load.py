@@ -39,6 +39,25 @@ def equipment_type_summary(equipment):
     return u", ".join(k + u" (" + str(v) + u")" for k, v in sorted(counts.items()))
 
 
+def equipment_rows(record):
+    """Return plain row objects for reliable WPF binding of a selected circuit."""
+    result = []
+    for item in (record or {}).get("equipment", []):
+        result.append(EquipmentRow(item))
+    return result
+
+
+class EquipmentRow(object):
+    def __init__(self, item):
+        self.Category = item.get("category", u"")
+        self.Type = item.get("type", u"")
+        self.Voltage = item.get("voltage_v")
+        self.Current = item.get("current_a")
+        self.Power = item.get("power_w")
+        self.Name = item.get("name", u"")
+        self.Id = item.get("id")
+
+
 def filter_records(records, query):
     """Filter circuit records by circuit, panel, name, category, or equipment type."""
     query = (query or u"").lower()
