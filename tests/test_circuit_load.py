@@ -43,3 +43,8 @@ def test_selected_circuit_builds_bindable_equipment_rows():
     assert rows[0].Category == "Приборы"
     assert rows[0].Type == "Светильник"
     assert rows[0].Power == 276
+
+
+def test_family_parameter_rules():
+    from lowlife.circuit_load import family_parameter_rules
+    assert family_parameter_rules("Светильник=Мощность расчетная\nРозетка=Power") == {"светильник": "Мощность расчетная", "розетка": "Power"}
