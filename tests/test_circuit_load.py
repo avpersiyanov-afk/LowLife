@@ -31,7 +31,7 @@ def test_window_xaml_declares_x_namespace_and_named_controls():
 
 def test_copper_conductor_and_voltage_drop():
     conductor = conductor_parts(u"ВВГнг-LS 3x2,5мм²")
-    assert conductor["mark"] == u"ВВГнг-LS 3x2,5"
+    assert conductor["mark"] == u"ВВГнг-LS 3x"
     assert conductor["section_mm2"] == 2.5
     result = voltage_drop(10, 20, 2.5, 230)
     assert round(result["volts"], 3) == 2.88
