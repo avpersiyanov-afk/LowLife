@@ -2,9 +2,30 @@
 """Read electrical circuit data and calculate reserve and voltage drop."""
 
 from __future__ import division
+import re
 
 
 FT_TO_M = 0.3048
+COPPER_RESISTIVITY = 0.018
+EXCLUDED_CATEGORIES = (u"Обобщенные модели", u"Generic Models")
+
+
+def conductor_parts(label, mask=u"{mark} {section}мм²"):
+    """Extract conductor mark and copper cross-section using a configurable mask."""
+    text = label or u""
+    match = re.search(r"([0-9]+(?:[.,][0-9]+)?)\s*(?:мм2|мм²|mm2|mm²)", text, re.I)
+    section = float(match.group(1).replace(",", ".")) if match else None
+    mark = text[:match.start()].strip(" -") if match else text.strip()
+    return {"mark": mark, "section_mm2": section, "label": text, "mask": mask}
+
+
+def voltage_drop(current_a, length_m, section_mm2, voltage_v, phases=1):
+    """Voltage drop for copper conductor using a two-conductor single-phase loop."""
+    if not current_a or not length_m or not section_mm2 or not voltage_v:
+        return {"volts": None, "percent": None}
+    factor = 2.0 if phases == 1 else 1.732
+    volts = factor * length_m * current_a * COPPER_RESISTIVITY / section_mm2
+    return {"volts": volts, "percent": 100.0 * volts / voltage_v}
 
 
 def equipment_type_summary(equipment):
@@ -105,7 +126,14 @@ def circuit_record(circuit, settings=None):
             type_name = element.Document.GetElement(element.GetTypeId()).Name or u""
         except Exception:
             pass
-        equipment.append({"id": getattr(getattr(element, "Id", None), "IntegerValue", None), "name": getattr(element, "Name", u"") or u"", "category": category, "type": type_name})
+        if category in EXCLUDED_CATEGORIES:
+            continue
+        equipment.append({"id": getattr(getattr(element, "Id", None), "IntegerValue", None), "name": getattr(element, "Name", u"") or u"", "category": category, "type": type_name,
+                          "voltage_v": _double(_param(element, None, (u"Напряжение", u"Voltage"))),
+                          "current_a": _double(_param(element, None, (u"Ток", u"Current", u"Номинальный ток"))),
+                          "power_w": _double(_param(element, None, (u"Мощность", u"Power", u"Apparent Load")))})
+    conductor = conductor_parts(wire_name, settings.get("conductor_mask", u"{mark} {section}мм²"))
+    drop = voltage_drop(current_a, length_m, conductor["section_mm2"], voltage_v)
     return {
         "id": getattr(getattr(circuit, "Id", None), "IntegerValue", None),
         "number": number,
@@ -118,10 +146,11 @@ def circuit_record(circuit, settings=None):
         "current_a": current_a,
         "length_m": length_m,
         "wire": wire_name,
+        "conductor": conductor,
         "ampacity_a": ampacity,
         "reserve_a": reserve_a,
-        "voltage_drop_v": drop_v,
-        "voltage_drop_pct": (100.0 * drop_v / voltage_v) if drop_v is not None and voltage_v else None,
+        "voltage_drop_v": drop.get("volts") if drop.get("volts") is not None else drop_v,
+        "voltage_drop_pct": drop.get("percent") if drop.get("percent") is not None else ((100.0 * drop_v / voltage_v) if drop_v is not None and voltage_v else None),
     }
 
 
