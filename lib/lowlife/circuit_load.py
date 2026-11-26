@@ -7,6 +7,32 @@ from __future__ import division
 FT_TO_M = 0.3048
 
 
+def equipment_type_summary(equipment):
+    """Return stable ``category / type (count)`` labels for the circuit window."""
+    counts = {}
+    for item in equipment or []:
+        key = item.get("category", u"")
+        if item.get("type"):
+            key += u" / " + item["type"]
+        counts[key] = counts.get(key, 0) + 1
+    return u", ".join(k + u" (" + str(v) + u")" for k, v in sorted(counts.items()))
+
+
+def filter_records(records, query):
+    """Filter circuit records by circuit, panel, name, category, or equipment type."""
+    query = (query or u"").lower()
+    if not query:
+        return list(records)
+    result = []
+    for row in records:
+        text = u" ".join((row.get("number", u""), row.get("panel", u""), row.get("name", u""),
+                           u" ".join(e.get("category", u"") + u" " + e.get("type", u"")
+                                     for e in row.get("equipment", [])))).lower()
+        if query in text:
+            result.append(row)
+    return result
+
+
 def _param(element, builtin, names=()):
     value = None
     if builtin is not None:

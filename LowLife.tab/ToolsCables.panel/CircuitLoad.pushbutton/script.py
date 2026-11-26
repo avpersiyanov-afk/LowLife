@@ -22,12 +22,10 @@ class CircuitWindow(forms.WPFWindow):
         self.circuits.SelectionChanged += self.circuit_selected
         self.refresh()
     def refresh(self, sender=None, args=None):
-        query = self.filter.Text.lower()
+        query = self.filter.Text
         visible = []
-        for row in self.rows:
-            text = u" ".join((row["number"], row["panel"], row["name"], u" ".join(e["category"] + u" " + e["type"] for e in row["equipment"]))).lower()
-            if not query or query in text:
-                visible.append(_Row(row))
+        for row in circuit_load.filter_records(self.rows, query):
+            visible.append(_Row(row))
         self.circuits.ItemsSource = visible
         self.count.Text = u"Показано: {} из {}".format(len(visible), len(self.rows))
     filter_changed = refresh
@@ -44,11 +42,7 @@ class _Row(object):
         self.Panel = row["panel"]
         self.Name = row["name"]
         self.EquipmentCount = row["element_count"]
-        types = {}
-        for item in row["equipment"]:
-            key = item["category"] + (u" / " + item["type"] if item["type"] else u"")
-            types[key] = types.get(key, 0) + 1
-        self.EquipmentTypes = u", ".join(k + u" (" + str(v) + u")" for k, v in sorted(types.items()))
+        self.EquipmentTypes = circuit_load.equipment_type_summary(row["equipment"])
 
 CircuitWindow(records).ShowDialog()
 
