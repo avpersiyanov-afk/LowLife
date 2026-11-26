@@ -73,6 +73,16 @@ def filter_records(records, query):
     return result
 
 
+def family_parameter_rules(text):
+    result = {}
+    for line in (text or u"").splitlines():
+        if u"=" in line:
+            family, parameter = line.split(u"=", 1)
+            if family.strip() and parameter.strip():
+                result[family.strip().lower()] = parameter.strip()
+    return result
+
+
 def _param(element, builtin, names=()):
     value = None
     if builtin is not None:
@@ -113,6 +123,7 @@ def _text(param):
 def circuit_record(circuit, settings=None):
     """Return a serialisable record for one Revit ElectricalSystem."""
     settings = settings or {}
+    family_rules = family_parameter_rules(settings.get("family_rules"))
     from Autodesk.Revit.DB import BuiltInParameter
 
     load = _double(_param(circuit, getattr(BuiltInParameter, "RBS_ELEC_APPARENT_LOAD", None),
@@ -147,11 +158,18 @@ def circuit_record(circuit, settings=None):
             pass
         if category in EXCLUDED_CATEGORIES:
             continue
-        equipment.append({"id": getattr(getattr(element, "Id", None), "IntegerValue", None), "name": getattr(element, "Name", u"") or u"", "category": category, "type": type_name,
+        family_name = getattr(getattr(getattr(element, "Symbol", None), "Family", None), "Name", u"") or u""
+        parameter_name = family_rules.get(family_name.lower(), settings.get("power_param", u"Мощность"))
+        power = _double(_param(element, None, (parameter_name, u"Мощность", u"Power", u"Apparent Load")))
+        equipment.append({"id": getattr(getattr(element, "Id", None), "IntegerValue", None), "name": getattr(element, "Name", u"") or u"", "category": category, "type": type_name, "family": family_name,
                           "voltage_v": _double(_param(element, None, (u"Напряжение", u"Voltage"))),
                           "current_a": _double(_param(element, None, (u"Ток", u"Current", u"Номинальный ток"))),
-                          "power_w": _double(_param(element, None, (u"Мощность", u"Power", u"Apparent Load")))})
+                          "power_w": power, "power_param": parameter_name})
     conductor = conductor_parts(wire_name, settings.get("conductor_mask", u"{mark} {section}мм²"))
+    equipment_power = sum((item.get("power_w") or 0.0) for item in equipment)
+    if equipment_power:
+        load_va = equipment_power
+        current_a = load_va / voltage_v if voltage_v else None
     drop = voltage_drop(current_a, length_m, conductor["section_mm2"], voltage_v)
     return {
         "id": getattr(getattr(circuit, "Id", None), "IntegerValue", None),
