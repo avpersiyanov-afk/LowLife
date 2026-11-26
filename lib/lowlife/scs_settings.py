@@ -438,7 +438,7 @@ class TypeOption(object):
         return self.name
 
 
-def list_generic_model_symbols(doc):
+def list_generic_model_symbols(doc, family_filter=None):
     """
     Все загруженные в проект типоразмеры категории «Обобщённые модели» —
     включая те, у которых ещё нет ни одного вставленного экземпляра.
@@ -449,6 +449,7 @@ def list_generic_model_symbols(doc):
     GetFamilySymbolIds() — так гарантированно попадают все загруженные.
     """
     symbols = []
+    family_filter = (family_filter or u"").strip().lower()
 
     families = FilteredElementCollector(doc).OfClass(Family)
 
@@ -459,6 +460,8 @@ def list_generic_model_symbols(doc):
             if family.FamilyCategory.Id != ElementId(BuiltInCategory.OST_GenericModel):
                 continue
         except:
+            continue
+        if family_filter and family_filter not in (_safe_element_name(family) or u"").lower():
             continue
 
         for symbol_id in family.GetFamilySymbolIds():
