@@ -37,6 +37,12 @@ def test_copper_conductor_and_voltage_drop():
     assert round(result["volts"], 3) == 2.88
 
 
+def test_no_voltage_or_conductor_does_not_invent_values():
+    from lowlife.circuit_load import voltage_drop, conductor_parts
+    assert voltage_drop(10, 20, None, None) == {"volts": None, "percent": None}
+    assert conductor_parts(u"")["section_mm2"] is None
+
+
 def test_selected_circuit_builds_bindable_equipment_rows():
     from lowlife.circuit_load import equipment_rows
     rows = equipment_rows({"equipment": [{"category": "Приборы", "type": "Светильник", "voltage_v": 230, "current_a": 1.2, "power_w": 276, "name": "L-01", "id": 10}]})

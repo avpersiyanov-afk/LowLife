@@ -19,11 +19,11 @@ def conductor_parts(label, mask=u"{mark} {section}мм²"):
     return {"mark": mark, "section_mm2": section, "label": text, "mask": mask}
 
 
-def voltage_drop(current_a, length_m, section_mm2, voltage_v, phases=1):
+def voltage_drop(current_a, length_m, section_mm2, voltage_v):
     """Voltage drop for copper conductor using a two-conductor single-phase loop."""
     if not current_a or not length_m or not section_mm2 or not voltage_v:
         return {"volts": None, "percent": None}
-    factor = 2.0 if phases == 1 else 1.732
+    factor = 2.0
     volts = factor * length_m * current_a * COPPER_RESISTIVITY / section_mm2
     return {"volts": volts, "percent": 100.0 * volts / voltage_v}
 
@@ -140,7 +140,7 @@ def circuit_record(circuit, settings=None):
     ampacity = _double(_param(wire, None, (u"Допустимый ток", u"Ampacity", u"Номинальный ток"))) if wire else None
     section = settings.get("section_mm2")
     resistance = settings.get("resistance_ohm_mm2_m", 0.018)
-    voltage_v = voltage or settings.get("voltage_v", 230.0)
+    voltage_v = voltage
     load_va = load or 0.0
     current_a = load_va / voltage_v if voltage_v else None
     length_m = length * FT_TO_M if length is not None else None
