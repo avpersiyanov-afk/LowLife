@@ -2,9 +2,6 @@
 """Размещение линейных обобщённых моделей «Участок трассы»."""
 
 from Autodesk.Revit import DB
-from Autodesk.Revit.DB import FamilyPlacementType
-from Autodesk.Revit.UI import FaceBasedPlacementType, PromptForFamilyInstancePlacementOptions
-from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import forms
 
 from lowlife.i18n import tr
@@ -128,22 +125,14 @@ def run_route_line_button(doc, uidoc, panel_key, role_key):
     _activate_symbol(doc, symbol)
 
     _ensure_work_plane(doc, uidoc.ActiveView)
-    try:
-        if symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased:
-            options = PromptForFamilyInstancePlacementOptions()
-            options.FaceBasedPlacementType = FaceBasedPlacementType.PlaceOnWorkPlane
-            uidoc.PromptForFamilyInstancePlacement(symbol, options)
-        else:
-            # CurveBased route families reject FaceBasedPlacementType. Revit
-            # uses the active view/work-plane context for the plain overload.
-            uidoc.PromptForFamilyInstancePlacement(symbol)
-    except OperationCanceledException:
-        return
-    except Exception as error:
+    if not hasattr(uidoc, "PostRequestForElementTypePlacement"):
         forms.alert(
             tr(
-                u"Не удалось запустить размещение типа «{}» на рабочей плоскости:\n{}",
-                u"Could not start work-plane placement for type «{}»:\n{}",
-            ).format(type_name, error),
+                u"Эта версия Revit не поддерживает запуск штатной вставки типа из API. "
+                u"Выберите «{}» вручную в инструменте размещения обобщённой модели.",
+                u"This Revit version cannot start standard type placement through the API. "
+                u"Choose «{}» manually in the Generic Model placement tool.",
+            ).format(type_name),
             exitscript=True,
         )
+    uidoc.PostRequestForElementTypePlacement(symbol)
