@@ -43,7 +43,16 @@ def collect_electrical_circuits(doc):
                     break
         if source is None:
             continue
-        devices = [el for el in elements if el.Id != source.Id]
+        generic_model = int(BuiltInCategory.OST_GenericModel)
+        devices = []
+        for element in elements:
+            if element.Id == source.Id:
+                continue
+            category = getattr(element, "Category", None)
+            category_id = getattr(category, "Id", None)
+            if category_id is not None and category_id.IntegerValue == generic_model:
+                continue
+            devices.append(element)
         result.append(CircuitRecord("GENERIC", circuit.Id.IntegerValue, source.Id.IntegerValue, [el.Id.IntegerValue for el in devices], "sequence" if len(devices) > 1 else "per_device"))
     return result
 
