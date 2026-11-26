@@ -25,7 +25,7 @@ def find_route_line_symbols(doc, type_name, family_filter=FAMILY_FILTER):
     family_filter = (family_filter or u"").strip()
     family_filter_lower = family_filter.lower()
     result = []
-    for symbol in list_generic_model_symbols(doc):
+    for symbol in list_generic_model_symbols(doc, family_filter):
         if _family_name(symbol).lower().find(family_filter_lower) < 0:
             continue
         if (_safe_element_name(symbol) or u"") == type_name:
