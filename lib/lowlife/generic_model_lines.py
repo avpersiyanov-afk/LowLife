@@ -97,5 +97,8 @@ def convert_to_detail_lines(doc, view, elements):
             _skip(result, element, reason)
             result["errors"].append(reason)
     if to_delete:
-        doc.Delete(to_delete)
+        # IronPython binds Document.Delete(ElementId) here and does not
+        # convert a native Python list to the ICollection<ElementId> overload.
+        for element_id in to_delete:
+            doc.Delete(element_id)
     return result
