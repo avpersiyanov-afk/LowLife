@@ -67,10 +67,24 @@ SETTINGS = settings_core.TextSettings(
             ),
             default=8.0, minimum=0,
         ),
+        settings_core.ChoiceField(
+            "attach_to_family",
+            u"Привязка выноски",
+            u"Привязывать марку к семейству",
+            choices=[(False, u"Нет"), (True, u"Да")],
+            hint=u"При включении выноска марки прикрепляется к экземпляру семейства.",
+            default=False,
+        ),
     ],
     width=620, height=520,
 )
 
-load_settings = SETTINGS.load_saved_values
+def load_settings():
+    values = SETTINGS.load_saved_values()
+    # Keep the historical shape for callers that only use layout values.
+    if values.get("attach_to_family") is False:
+        values.pop("attach_to_family", None)
+    return values
+
 show_settings_form = SETTINGS.show_settings_form
 get_settings_interactive = SETTINGS.get_settings_interactive
