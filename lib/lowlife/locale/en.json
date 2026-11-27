@@ -3827,8 +3827,8 @@
  "Линия в трубе": "Line in pipe",
  "Линия в коробе": "Line in box",
  "Линия в трубе открыто": "Line in open pipe",
- "В имени рабочего набора должна встречаться эта строка. По умолчанию — «_к1». Если подходит несколько наборов, уточните фильтр.": "This text must occur in the workset name. The default is «_к1». If several worksets match, refine the filter."
+ "В имени рабочего набора должна встречаться эта строка. По умолчанию — «_к1». Если подходит несколько наборов, уточните фильтр.": "This text must occur in the workset name. The default is «_к1». If several worksets match, refine the filter.",
  "Привязка выноски": "Leader attachment",
  "Привязывать марку к семейству": "Attach tag to family",
- "При включении выноска марки прикрепляется к экземпляру семейства.": "When enabled, the tag leader attaches to the family instance.",
+ "При включении выноска марки прикрепляется к экземпляру семейства.": "When enabled, the tag leader attaches to the family instance."
 }

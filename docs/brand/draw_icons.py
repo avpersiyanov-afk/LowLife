@@ -792,6 +792,16 @@ def model_filter(c):
     c.line([(36, 72), (46, 81), (63, 64)], ORANGE, 5)
 
 
+def generic_model_to_detail_line(c):
+    """Convert a model line into an annotation line."""
+    c.line([(10, 27), (36, 27)], BLUE, 5)
+    c.line([(10, 49), (36, 49)], BLUE, 5)
+    c.line([(10, 71), (36, 71)], BLUE, 5)
+    c.line([(42, 49), (68, 49)], ORANGE, 5)
+    c.polygon([(68, 41), (68, 57), (84, 49)], fill=ORANGE)
+    c.line([(56, 71), (84, 71)], BLUE, 5)
+
+
 def merge_pdf(c):
     c.rect((15, 15, 39, 48), BLUE, WHITE, 3)
     c.rect((57, 15, 81, 48), BLUE, WHITE, 3)
@@ -825,6 +835,7 @@ ICONS = [
     ("Tools.panel/LinkWorksets.pushbutton", link_worksets),
     ("Tools.panel/DatumFilter.pushbutton", datum_filter),
     ("Tools.panel/ModelFilter.pushbutton", model_filter),
+    ("Tools.panel/GenericModelToDetailLine.pushbutton", generic_model_to_detail_line),
     ("OpeningTasks.panel/ARInterface.pushbutton", kr_opening_tasks),
     ("OpeningTasks.panel/VISInterface.pushbutton", vis_opening_tasks),
     ("Tools.panel/VISBox3D.pushbutton", vis_box_3d),
