@@ -109,8 +109,14 @@ def self_test(folder=None):
     try:
         from lowlife import email_ai_net, email_outlook, email_tasks_run  # noqa: F401
         from lowlife import i18n
-        if i18n.catalog().get(u"Задачи из почты") != u"Tasks from mail":
-            raise RuntimeError("English translation catalog is missing or incomplete")
+        translations = i18n.catalog(strict=True)
+        lines.append(u"English translation catalog: {} ({} entries)".format(
+            i18n.CATALOG_PATH, len(translations)))
+        if translations.get(u"Задачи из почты") != u"Tasks from mail":
+            raise RuntimeError(
+                "English translation catalog is missing or incomplete: {} "
+                "(mail title: expected 'Tasks from mail', got {!r})".format(
+                    i18n.CATALOG_PATH, translations.get(u"Задачи из почты")))
         lines.append(u"ИИ: {}".format(email_ai_net.run_process.__module__))
         if os.name == "nt":
             import win32com.client  # noqa: F401 — Outlook

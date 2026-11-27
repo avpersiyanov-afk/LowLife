@@ -10,6 +10,7 @@
 ``tr(u"по-русски", u"in English")`` — русский остаётся основным, английский
 подставляется, если выбран English.
 """
+import logging
 import os
 
 RU = "ru"
@@ -76,18 +77,31 @@ CATALOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "locale"
 _CATALOG = {}
 
 
-def catalog():
-    """{русская строка: английская} из ``locale/en.json`` (читается один раз за движок)."""
+def catalog(strict=False):
+    """Load once per engine; log failures and keep the Russian UI fallback.
+
+    ``strict=True`` rejects a failed load, including an already cached fallback,
+    so build checks retain the original path and parsing/IO error.
+    """
     if "en" not in _CATALOG:
         data = {}
+        _CATALOG.pop("error", None)
         try:
             import io
             import json
             with io.open(CATALOG_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception:
+            if not isinstance(data, dict):
+                raise TypeError("English translation catalog must be a JSON object")
+        except Exception as error:
             data = {}
+            message = u"Cannot load English translation catalog '{}': {}: {}".format(
+                CATALOG_PATH, type(error).__name__, error)
+            _CATALOG["error"] = message
+            logging.getLogger(__name__).warning(message)
         _CATALOG["en"] = data
+    if strict and _CATALOG.get("error"):
+        raise RuntimeError(_CATALOG["error"])
     return _CATALOG["en"]
 
 

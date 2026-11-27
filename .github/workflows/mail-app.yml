@@ -16,6 +16,7 @@ on:
       - 'lib/lowlife/settings_core.py'
       - 'lib/lowlife/i18n.py'
       - 'lib/lowlife/locale/en.json'
+      - 'tests/test_i18n_catalog.py'
       - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
       - '.github/workflows/mail-app.yml'
   pull_request:
@@ -26,6 +27,7 @@ on:
       - 'lib/lowlife/settings_core.py'
       - 'lib/lowlife/i18n.py'
       - 'lib/lowlife/locale/en.json'
+      - 'tests/test_i18n_catalog.py'
       - 'LowLife.tab/Mail.panel/EmailTasks.pushbutton/**'
       - '.github/workflows/mail-app.yml'
   workflow_dispatch:
@@ -49,7 +51,10 @@ jobs:
           python-version: '3.12'
 
       - name: Зависимости
-        run: python -m pip install -r apps/mail/requirements-build.txt
+        run: python -m pip install -r apps/mail/requirements-build.txt pytest==8.3.4
+
+      - name: Проверка каталога переводов
+        run: python -m pytest tests/test_i18n_catalog.py -q
 
       - name: Сборка
         run: python -m PyInstaller --noconfirm --clean apps/mail/lowlife_mail.spec

@@ -3830,5 +3830,19 @@
  "В имени рабочего набора должна встречаться эта строка. По умолчанию — «_к1». Если подходит несколько наборов, уточните фильтр.": "This text must occur in the workset name. The default is «_к1». If several worksets match, refine the filter.",
  "Привязка выноски": "Leader attachment",
  "Привязывать марку к семейству": "Attach tag to family",
- "При включении выноска марки прикрепляется к экземпляру семейства.": "When enabled, the tag leader attaches to the family instance."
+ "При включении выноска марки прикрепляется к экземпляру семейства.": "When enabled, the tag leader attaches to the family instance.",
+ "Да": "Yes",
+ "Маска проводника": "Conductor format",
+ "Например: {mark} {section}мм²": "For example: {mark} {section}mm²",
+ "Настройки диспетчера электрических цепей": "Electrical circuit manager settings",
+ "Настройки нагрузки": "Load settings",
+ "Нет": "No",
+ "Параметр мощности": "Power parameter",
+ "Параметр напряжения": "Voltage parameter",
+ "Параметр тока": "Current parameter",
+ "Параметры оборудования": "Equipment parameters",
+ "Параметры по семействам": "Parameters by family",
+ "По одной строке: Семейство=Параметр": "One per line: Family=Parameter",
+ "Проводник": "Conductor",
+ "Сохранить настройки": "Save settings"
 }
