@@ -1,4 +1,4 @@
 title: "Модели в\nаннотации"
-tooltip: Преобразует выбранные линейные обобщённые модели в линии аннотаций активного вида.
+tooltip: Преобразует выбранные линейные обобщённые модели в линии аннотаций активного вида. Перед преобразованием выберите стиль линий в списке с поиском.
 title_en: "Models to\ndetail lines"
-tooltip_en: Converts selected line-based generic models into detail lines on the active view.
+tooltip_en: Converts selected line-based generic models into detail lines on the active view. Choose the target line style from the searchable list first.
