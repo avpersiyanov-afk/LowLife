@@ -201,9 +201,11 @@ LowLife как пара WPF-`GeometryGroup` (обычные буквы, акце
 
 ## generic_model_lines.py
 Преобразование выбранных линейных экземпляров «Обобщённые модели» в `DetailCurve` на активном виде.
-`convert_to_detail_lines(doc, view, elements)` использует `LocationCurve` экземпляра, создаёт линии
-в транзакции вызывающей кнопки, удаляет только успешно преобразованные исходные элементы и возвращает
-`converted`, `skipped`, `skipped_details` и `errors` для отчёта кнопки.
+`list_line_style_options(doc, keep_source_label)` возвращает поисковые варианты стилей линий из проекта.
+`convert_to_detail_lines(doc, view, elements, target_style)` использует `LocationCurve` экземпляра,
+создаёт линии в транзакции вызывающей кнопки, удаляет только успешно преобразованные исходные элементы
+и возвращает `converted`, `skipped`, `skipped_details` и `errors` для отчёта кнопки. Если `target_style`
+не задан, сохраняется стиль исходной линии.
 
 ## params.py
 Чтение/запись параметров элемента по списку возможных имён (когда параметр

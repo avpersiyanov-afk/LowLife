@@ -13,6 +13,33 @@ from lowlife.i18n import tr
 from lowlife.json_snapshot_common import safe_name, category_name
 
 
+class LineStyleOption(object):
+    """Searchable SelectFromList option for a Revit line style."""
+
+    def __init__(self, style, name=None):
+        self.style = style
+        self.name = unicode(name if name is not None else safe_name(style) or u"")
+
+    def __str__(self):
+        return self.name
+
+
+def list_line_style_options(doc, keep_source_label=None):
+    """Return searchable projection line-style options from the current document."""
+    options = []
+    if keep_source_label:
+        options.append(LineStyleOption(None, keep_source_label))
+    try:
+        lines = doc.Settings.Categories.get_Item(DB.BuiltInCategory.OST_Lines)
+        for subcategory in lines.SubCategories:
+            style = subcategory.GetGraphicsStyle(DB.GraphicsStyleType.Projection)
+            if style is not None:
+                options.append(LineStyleOption(style))
+    except Exception:
+        return options
+    return sorted(options, key=lambda option: option.name.lower())
+
+
 def _is_generic_model(element):
     try:
         return (element.Category is not None and
@@ -64,7 +91,7 @@ def _line_curve(element, view):
     return curve
 
 
-def convert_to_detail_lines(doc, view, elements):
+def convert_to_detail_lines(doc, view, elements, target_style=None):
     """Создаёт DetailCurve для линейных Generic Model и удаляет исходные."""
     result = {"converted": 0, "skipped": 0, "skipped_details": [], "errors": []}
     to_delete = []
@@ -83,7 +110,7 @@ def convert_to_detail_lines(doc, view, elements):
         try:
             detail = doc.Create.NewDetailCurve(view, curve)
             try:
-                style = element.LineStyle
+                style = target_style if target_style is not None else element.LineStyle
                 if style is not None:
                     detail.LineStyle = style
             except Exception:
