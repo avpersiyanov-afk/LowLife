@@ -28,7 +28,7 @@ except NameError:  # Python 3
 
 from Autodesk.Revit.DB import BuiltInParameter, ElementId, Element
 
-from lowlife.params import set_element_id_param
+from lowlife.params import param_to_text, set_element_id_param
 from lowlife.wire_catalog import DEFAULT_KEY_PARAM_NAME
 
 
@@ -92,6 +92,11 @@ def set_circuit_wire_type(doc, circuit, row_id):
     if row_id is None or row_id == ElementId.InvalidElementId:
         return False
     return set_element_id_param(circuit, wire_type_param_name(doc, row_id), row_id)
+
+
+def panel_name(panel):
+    """Читает штатное «Имя панели» экземпляра электрооборудования."""
+    return param_to_text(_builtin(panel, BuiltInParameter.RBS_ELEC_PANEL_NAME))
 
 
 def set_panel_name(panel, value):

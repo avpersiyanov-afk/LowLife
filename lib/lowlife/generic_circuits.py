@@ -25,7 +25,7 @@
                      устройства-источника).
 
 Выбор панели и устройств — общий с кнопками «Цепи СКС/СКУД/СПА»
-(manual_circuits.pick_panel_and_devices), само создание цепи —
+(manual_circuits.choose_panel_and_devices), само создание цепи —
 electrical_circuits.create_circuit.
 """
 

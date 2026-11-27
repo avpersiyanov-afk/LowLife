@@ -69,6 +69,84 @@ class CommandSwitchWindow(forms.CommandSwitchWindow):
             button.Visibility = Visibility.Visible if visible else Visibility.Collapsed
 
 
+def show_dropdown(options, title):
+    """Одиночный выбор из выпадающего списка с текстовым фильтром."""
+    from System.Windows import (
+        HorizontalAlignment, SizeToContent, Thickness, Window, WindowStartupLocation
+    )
+    from System.Windows.Controls import Button, ComboBox, Label, Orientation, StackPanel, TextBox
+    from System.Windows.Interop import WindowInteropHelper
+    from pyrevit import HOST_APP
+    from lowlife import ui_theme
+
+    window = Window()
+    window.Title = tr(title)
+    window.Width = 460
+    window.SizeToContent = SizeToContent.Height
+    window.WindowStartupLocation = WindowStartupLocation.CenterOwner
+    WindowInteropHelper(window).Owner = HOST_APP.uiapp.MainWindowHandle
+    body = StackPanel()
+    body.Margin = Thickness(16)
+    window.Content = body
+
+    search = TextBox()
+    search.MinHeight = 26
+    search_label = Label()
+    search_label.Content = tr(u"Поиск")
+    search_label.Target = search
+    body.Children.Add(search_label)
+    body.Children.Add(search)
+    choices = ComboBox()
+    choices.Margin = Thickness(0, 8, 0, 12)
+    choices.MinHeight = 26
+    choices.MaxDropDownHeight = 320
+    body.Children.Add(choices)
+
+    ok = Button()
+    ok.Content = u"OK"
+    ok.IsDefault = True
+    ok.IsEnabled = False
+    ok.MinWidth = 84
+    ok.MinHeight = 26
+    cancel = Button()
+    cancel.Content = tr(u"Отмена")
+    cancel.IsCancel = True
+    cancel.MinWidth = 84
+    cancel.MinHeight = 26
+    cancel.Margin = Thickness(8, 0, 0, 0)
+    buttons = StackPanel()
+    buttons.Orientation = Orientation.Horizontal
+    buttons.HorizontalAlignment = HorizontalAlignment.Right
+    buttons.Children.Add(ok)
+    buttons.Children.Add(cancel)
+    body.Children.Add(buttons)
+
+    def refresh(*args):
+        selected = choices.SelectedItem
+        matches = text_search.rank(options, search.Text) if search.Text.strip() else options
+        choices.Items.Clear()
+        for option in matches:
+            choices.Items.Add(option)
+        if selected in matches:
+            choices.SelectedItem = selected
+        elif len(matches) == 1:
+            choices.SelectedIndex = 0
+
+    def selection_changed(*args):
+        ok.IsEnabled = choices.SelectedIndex >= 0
+
+    def accept(*args):
+        window.DialogResult = True
+
+    search.TextChanged += refresh
+    choices.SelectionChanged += selection_changed
+    ok.Click += accept
+    window.Loaded += lambda sender, args: search.Focus()
+    refresh()
+    ui_theme.apply(window)
+    return choices.SelectedItem if window.ShowDialog() else None
+
+
 def select_views(title=N_(u"Выбор видов"), button_name=N_(u"Выбрать"), multiple=True, filterfunc=None, doc=None):
     """Как forms.select_views (без use_selection): виды модели в списке с поиском LowLife."""
     from pyrevit import revit

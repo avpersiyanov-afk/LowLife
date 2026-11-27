@@ -2,10 +2,8 @@
 __title__ = u"Цепь\n(общее)"
 __doc__ = (
     u"Строит произвольные электрические цепи «панель → устройства» по "
-    u"настройкам — ничего не зашито в код. Выберите "
-    u"панель и все устройства вместе, одним выбором (рамкой и/или кликами, "
-    u"без порядка; панель определяется автоматически по категории "
-    u"«Электрооборудование», среди выбранного она должна быть ровно одна). "
+    u"настройкам. Сначала выберите панель на плане или найдите её по имени "
+    u"в списке. Затем выберите устройства рамкой и уточните выбор кликами. "
     u"Выбор отфильтрован — нельзя случайно захватить аннотации, связанные "
     u"файлы, оси, уровни, текст, линии детализации и обобщённые модели.\n\n"
     u"Тип цепи берётся из настроек (а если там пусто — по коннектору "
@@ -25,7 +23,7 @@ __author__ = "Pipers"
 from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 from lowlife.i18n import tr
 
-from lowlife.manual_circuits import pick_panel_and_devices
+from lowlife.manual_circuits import choose_panel_and_devices
 from lowlife import generic_circuits_settings
 from lowlife.generic_circuits_settings import get_settings_silent, get_settings_interactive
 from lowlife.generic_circuits import get_conductor_id, build_generic_circuits
@@ -60,12 +58,9 @@ generic_circuits_settings.require(settings, [
 
 conductor_id = get_conductor_id(doc, settings)
 
-panel_el, device_els = pick_panel_and_devices(
-    uidoc, doc,
-    tr(u"Выберите панель и устройства вместе — рамкой и/или кликами, "
-    u"без порядка (подтвердите Enter/«Готово»)"),
-    strict=True
-)
+panel_el, device_els = choose_panel_and_devices(uidoc, doc, strict=True)
+if not device_els:
+    pyrevit_script.exit()
 
 created, errors = build_generic_circuits(doc, panel_el, device_els, conductor_id, settings)
 

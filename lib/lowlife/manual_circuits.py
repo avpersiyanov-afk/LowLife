@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 Тело кнопок ручного построения цепей «панель -> устройства» на панелях
-CircuitsSCS/CircuitsSKUD: пользователь выбирает панель и устройства одним
-общим выбором (рамкой и/или кликами, без определённого порядка), кнопка
-создаёт по одной отдельной цепи на каждое устройство (аналог «home run» —
+CircuitsSCS/CircuitsGeneric/CircuitsSKUD. СКС и общая команда сначала
+выбирают панель на плане или по имени, затем устройства. СКУД выбирает
+панель и устройства вместе (рамкой и/или кликами) и создаёт
+по одной отдельной цепи на каждое устройство (аналог «home run» —
 без промежуточных узлов и адресации). Какой из выбранных элементов панель,
 определяется автоматически по категории «Электрооборудование»
 (OST_ElectricalEquipment) — тем же способом, что и выбор изолятора в
@@ -14,7 +15,7 @@ fire_alarm_isolator_circuits.pick_devices_and_isolator.
 цепи по умолчанию — его в любом случае можно поменять в диалоге при
 запуске). СКС — особый случай: тип цепи определяется по коннектору
 устройства, а не запрашивается в диалоге, и добавлен выбор проводника,
-поэтому её кнопка использует только pick_panel_and_devices отсюда, а
+поэтому её кнопка использует только choose_panel_and_devices отсюда, а
 остальное — из lowlife.scs_manual_circuits. СПА раньше тоже использовала
 этот общий сценарий (заготовка, пока не было своей адресации), но теперь
 строит цепи по адресу устройства как СПС — см. CircuitsSPA.panel и
@@ -31,7 +32,9 @@ from Autodesk.Revit.Exceptions import OperationCanceledException
 from pyrevit import revit, forms, script as pyrevit_script
 from lowlife import select_list
 
+from lowlife.circuit_builtins import panel_name
 from lowlife.electrical_circuits import create_circuit
+from lowlife.selection import pick_rectangle_then_clicks
 
 
 class _NotLinkedSelectionFilter(ISelectionFilter):
@@ -112,6 +115,76 @@ def _is_panel(el):
         return el.Category.Id.IntegerValue == int(BuiltInCategory.OST_ElectricalEquipment)
     except:
         return False
+
+
+class _PanelSelectionFilter(_NotLinkedSelectionFilter):
+    def AllowElement(self, elem):
+        return _is_panel(elem) and super(_PanelSelectionFilter, self).AllowElement(elem)
+
+
+class _DeviceSelectionFilter(_NotLinkedSelectionFilter):
+    def __init__(self, strict):
+        self.base_filter = (_CircuitTargetSelectionFilter() if strict
+                            else _NotLinkedSelectionFilter())
+
+    def AllowElement(self, elem):
+        return not _is_panel(elem) and self.base_filter.AllowElement(elem)
+
+
+def _choose_named_panel(doc):
+    by_name = {}
+    for panel in revit.query.get_elements_by_categories(
+            [BuiltInCategory.OST_ElectricalEquipment], doc=doc):
+        name = panel_name(panel).strip()
+        if name:
+            by_name.setdefault(name, []).append(panel)
+
+    if not by_name:
+        forms.alert(tr(u"В проекте нет оборудования с заполненным именем панели.",
+                       u"No equipment in the project has a panel name."))
+        return None
+
+    by_label = {}
+    for name, panels in by_name.items():
+        for panel in panels:
+            label = name if len(panels) == 1 else u"{} [ID {}]".format(name, panel.Id)
+            by_label[label] = panel
+    label = select_list.show_dropdown(sorted(by_label, key=lambda name: name.lower()),
+                                      title=tr(u"Выбор панели", u"Select panel"))
+    return by_label.get(label)
+
+
+def choose_panel_and_devices(uidoc, doc, strict=False):
+    """Выбирает панель, затем устройства. При отмене возвращает (None, [])."""
+    on_plan = tr(u"Выбрать панель на плане", u"Pick a panel on the plan")
+    from_list = tr(u"Показать список панелей", u"Show the panel list")
+    mode = select_list.CommandSwitchWindow.show(
+        [on_plan, from_list],
+        message=tr(u"Как выбрать панель?", u"How would you like to select the panel?"),
+    )
+    if not mode:
+        return None, []
+
+    try:
+        if mode == on_plan:
+            reference = uidoc.Selection.PickObject(
+                ObjectType.Element, _PanelSelectionFilter(),
+                tr(u"Выберите панель на плане.", u"Pick a panel on the plan."))
+            panel = doc.GetElement(reference)
+        else:
+            panel = _choose_named_panel(doc)
+        if panel is None:
+            return None, []
+        devices = pick_rectangle_then_clicks(
+            uidoc, doc, _DeviceSelectionFilter(strict),
+            tr(u"Выберите устройства рамкой. Esc — перейти к одиночным кликам.",
+               u"Select devices by dragging a window. Press Esc to skip to individual clicks."),
+            tr(u"Устройств выбрано: {}. Клик — добавить или снять. Esc — завершить выбор.",
+               u"Devices selected: {}. Click to add or remove. Press Esc to finish."))
+    except OperationCanceledException:
+        return None, []
+
+    return panel, devices
 
 
 def pick_panel_and_devices(uidoc, doc, prompt, strict=False):
