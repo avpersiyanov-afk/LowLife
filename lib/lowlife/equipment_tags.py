@@ -68,7 +68,6 @@ AttributeError — старый.
 from Autodesk.Revit.DB import (
     BuiltInCategory, CategoryType, Element, ElementId, Family,
     FamilyInstance, FamilySymbol, FilteredElementCollector, IndependentTag,
-    RoomTag,
     LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewPlan,
     ViewType,
     XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point,
@@ -744,15 +743,25 @@ def _obstacle_rects(doc, view, frame, own_ids, others, scaled):
         r = symbol_rect(el, view, frame, scaled)
         if r is not None:
             rects.append(r)
-    # RoomTag не является IndependentTag, но его габарит должен занимать место
-    # при раскладке марок оборудования.
-    for cls in (IndependentTag, RoomTag, TextNote):
+    # Марки помещений не являются IndependentTag в IronPython API. Отдельно
+    # собираем их по категории, чтобы учитывать их габариты при раскладке.
+    for cls in (IndependentTag, TextNote):
         for el in FilteredElementCollector(doc, view.Id).OfClass(cls):
             if equipment_key(el) in own_ids:
                 continue
             r = frame.rect(el.get_BoundingBox(view))
             if r is not None:
                 rects.append(r)
+    try:
+        room_tag_category = BuiltInCategory.OST_RoomTags
+        for el in FilteredElementCollector(doc, view.Id).OfCategory(room_tag_category):
+            if equipment_key(el) in own_ids:
+                continue
+            r = frame.rect(el.get_BoundingBox(view))
+            if r is not None:
+                rects.append(r)
+    except Exception:
+        pass
     return rects
 
 
