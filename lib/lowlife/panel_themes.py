@@ -225,6 +225,7 @@ THEMES = {
         (u"FireBoxes", u"MarkInsideFireBox"),
         (u"Tools", u"DimensionGrids"),
         (u"Tools", u"GenericModelLength"),
+        (u"Tools", u"GenericModelToDetailLine"),
         (u"Tools", u"ZoomToElement"),
         (u"Tools", u"VISBox3D"),
         (u"Tools", u"CopyElementId"),

@@ -68,6 +68,7 @@ AttributeError — старый.
 from Autodesk.Revit.DB import (
     BuiltInCategory, CategoryType, Element, ElementId, Family,
     FamilyInstance, FamilySymbol, FilteredElementCollector, IndependentTag,
+    RoomTag,
     LeaderEndCondition, Reference, TagMode, TagOrientation, TextNote, ViewPlan,
     ViewType,
     XYZ, Options, GeometryInstance, Curve, Solid, PolyLine, Point,
@@ -743,7 +744,9 @@ def _obstacle_rects(doc, view, frame, own_ids, others, scaled):
         r = symbol_rect(el, view, frame, scaled)
         if r is not None:
             rects.append(r)
-    for cls in (IndependentTag, TextNote):
+    # RoomTag не является IndependentTag, но его габарит должен занимать место
+    # при раскладке марок оборудования.
+    for cls in (IndependentTag, RoomTag, TextNote):
         for el in FilteredElementCollector(doc, view.Id).OfClass(cls):
             if equipment_key(el) in own_ids:
                 continue
@@ -806,7 +809,8 @@ def run(doc, view, entries, settings, annotation=None):
         if rect is None:
             stats["no_bbox"] += 1
         elif has_symbol:
-            symbols[equipment_key(el)] = (rect, tag_layout.rect_center(rect), False)
+            symbols[equipment_key(el)] = (rect, tag_layout.rect_center(rect),
+                                          bool(settings.get("attach_to_family", False)))
         else:
             symbols[equipment_key(el)] = (rect, family_anchor(el, frame, rect), True)
             stats["no_symbol"] += 1
