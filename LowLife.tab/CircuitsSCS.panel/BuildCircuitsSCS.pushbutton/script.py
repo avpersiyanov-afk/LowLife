@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 __title__ = u"Цепи\nСКС"
 __doc__ = (
-    u"Строит электрические цепи СКС между панелью и устройствами. Выберите "
-    u"панель и все устройства вместе, одним выбором — рамкой и/или кликами, "
-    u"без определённого порядка (панель определяется автоматически по "
-    u"категории «Электрооборудование», среди выбранного должна быть ровно "
-    u"одна). На каждый электрический коннектор устройства создаётся отдельная "
+    u"Строит электрические цепи СКС между панелью и устройствами. Сначала "
+    u"выберите панель на плане или найдите её по имени в списке. Затем "
+    u"выберите устройства рамкой и уточните выбор кликами. "
+    u"На каждый электрический коннектор устройства создаётся отдельная "
     u"электрическая цепь, подключённая напрямую к панели («домашний прогон», "
     u"без промежуточных узлов и адресации) — у обычных устройств коннектор "
     u"один, у устройств с несколькими (например розетка с двумя гнёздами "
@@ -24,7 +23,7 @@ __author__ = "Pipers"
 from pyrevit import revit, forms, script as pyrevit_script, EXEC_PARAMS
 from lowlife.i18n import tr
 
-from lowlife.manual_circuits import pick_panel_and_devices
+from lowlife.manual_circuits import choose_panel_and_devices
 from lowlife.scs_manual_circuits import get_conductor_id, build_scs_manual_circuits
 from lowlife import scs_settings
 from lowlife.scs_settings import get_settings_silent
@@ -63,11 +62,9 @@ scs_settings.require(settings, [
 
 conductor_id = get_conductor_id(doc, settings)
 
-panel_el, device_els = pick_panel_and_devices(
-    uidoc, doc,
-    tr(u"Выберите панель и устройства СКС вместе — рамкой и/или кликами, "
-    u"без порядка (подтвердите Enter/«Готово»)")
-)
+panel_el, device_els = choose_panel_and_devices(uidoc, doc)
+if not device_els:
+    pyrevit_script.exit()
 
 created, errors = build_scs_manual_circuits(doc, panel_el, device_els, conductor_id, settings)
 

@@ -5,7 +5,7 @@ from pyrevit import forms
 from lowlife.i18n import N_, tr
 
 from Autodesk.Revit.DB import (
-    BuiltInCategory, CategoryType, FilteredElementCollector, View, ViewType
+    BuiltInCategory, CategoryType, ElementId, FilteredElementCollector, View, ViewType
 )
 from Autodesk.Revit.UI.Selection import ObjectType, ISelectionFilter
 from Autodesk.Revit.Exceptions import OperationCanceledException
@@ -36,6 +36,41 @@ def pick_point(uidoc, prompt):
         return uidoc.Selection.PickPoint(prompt)
     except OperationCanceledException:
         return None
+
+
+def pick_rectangle_then_clicks(uidoc, doc, selection_filter, rectangle_prompt, click_prompt):
+    """Одна рамка, затем клики с накоплением. В click_prompt подставляется число выбранных."""
+    from System.Collections.Generic import List
+
+    selection = uidoc.Selection
+    original_ids = selection.GetElementIds()
+    try:
+        try:
+            boxed = selection.PickElementsByRectangle(selection_filter, rectangle_prompt)
+        except OperationCanceledException:
+            boxed = ()
+
+        picked = [element.Id for element in boxed]
+        picked_ids = set(picked)
+        selection.SetElementIds(List[ElementId](picked))
+        while True:
+            try:
+                reference = selection.PickObject(ObjectType.Element, selection_filter,
+                                                 click_prompt.format(len(picked)))
+            except OperationCanceledException:
+                break
+            element_id = reference.ElementId
+            if element_id in picked_ids:
+                picked.remove(element_id)
+                picked_ids.remove(element_id)
+            else:
+                picked.append(element_id)
+                picked_ids.add(element_id)
+            selection.SetElementIds(List[ElementId](picked))
+
+        return [doc.GetElement(element_id) for element_id in picked]
+    finally:
+        selection.SetElementIds(original_ids)
 
 
 def _bic_ids(*names):
