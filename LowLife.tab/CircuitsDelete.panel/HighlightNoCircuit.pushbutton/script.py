@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 __title__ = u"Подсветить\nбез цепи"
 __author__ = "Pipers"
+__persistentengine__ = True
 
 from pyrevit import revit, forms, EXEC_PARAMS
 from lowlife.i18n import tr

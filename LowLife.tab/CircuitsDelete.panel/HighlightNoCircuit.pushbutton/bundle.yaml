@@ -15,3 +15,5 @@ tooltip_en: >-
   this button again. Running it again in the same view recalculates the highlight (for example, after
   new devices were added to the view). Shift+click — clear the highlight this button placed in the
   active view without waiting for circuits.
+engine:
+  persistent: true
