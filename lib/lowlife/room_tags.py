@@ -471,20 +471,22 @@ def run(doc, view, tag_type_id):
         # выпадают.
         existing_tags = []
         seen_tag_ids = set()
-        for coll in (
-            FilteredElementCollector(doc, view.Id)
+        for visible, coll in (
+            (True, FilteredElementCollector(doc, view.Id)
             .OfCategory(BuiltInCategory.OST_RoomTags)
-            .WhereElementIsNotElementType(),
-            FilteredElementCollector(doc)
+            .WhereElementIsNotElementType()),
+            (False, FilteredElementCollector(doc)
             .OfCategory(BuiltInCategory.OST_RoomTags)
-            .WhereElementIsNotElementType(),
+            .WhereElementIsNotElementType()),
         ):
             for tag in coll:
                 try:
                     tid = tag.Id.IntegerValue
                     if tid in seen_tag_ids:
                         continue
-                    if tag.OwnerViewId != view.Id:
+                    # На зависимом плане видны марки основного вида:
+                    # их OwnerViewId отличается, но помещение уже помечено.
+                    if not visible and tag.OwnerViewId != view.Id:
                         continue
                     seen_tag_ids.add(tid)
                     existing_tags.append(tag)
@@ -492,6 +494,12 @@ def run(doc, view, tag_type_id):
                     stats["errors"] += 1
 
         tagged_keys = set()
+        tag_counts = {}
+        for tag in existing_tags:
+            key = _tagged_room_key(tag)
+            if key is not None:
+                tag_counts[key] = tag_counts.get(key, 0) + 1
+        tagged_keys.update(tag_counts)
 
         # 1) Существующие марки: показывает «?» — удаляем (шаг 2 поставит
         #    свежую на освободившееся помещение), иначе — приводим
@@ -510,6 +518,9 @@ def run(doc, view, tag_type_id):
         #    Марки, чья связь сейчас *выгружена* — не трогаем: не знаем,
         #    жива ли привязка (stats["link_unloaded"]).
         for tag in existing_tags:
+            key = _tagged_room_key(tag)
+            # Запоминаем до любых изменений: ChangeTypeId может заменить
+            # элемент, а неудачное удаление оставляет старую марку на виде.
             try:
                 kind, room, transform = _resolve_tag_room(doc, tag)
 
@@ -528,15 +539,18 @@ def run(doc, view, tag_type_id):
                     try:
                         doc.Delete(tag.Id)
                         stats["deleted"] += 1
+                        # Учитываем другие марки того же помещения, если
+                        # они остались (в том числе после ошибки удаления).
+                        if key is not None:
+                            tag_counts[key] -= 1
+                            if tag_counts[key] == 0:
+                                tagged_keys.discard(key)
                     except Exception:
                         stats["orphan_unresolved"] += 1
                     continue
 
                 if _apply_type(tag, tag_type_id):
                     stats["retyped"] += 1
-                key = _tagged_room_key(tag)
-                if key is not None:
-                    tagged_keys.add(key)
             except Exception:
                 stats["errors"] += 1
 
@@ -570,6 +584,7 @@ def run(doc, view, tag_type_id):
                     continue
                 _apply_type(new_tag, tag_type_id)
                 stats["added"] += 1
+                tagged_keys.add(key)
             except Exception:
                 stats["errors"] += 1
     finally:
